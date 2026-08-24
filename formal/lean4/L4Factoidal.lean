@@ -344,6 +344,7 @@ import L4Factoidal.Cottas.DictWriter
 import L4Factoidal.Cottas.BaseWriterPrims
 import L4Factoidal.Cottas.BaseWriterThrift
 import L4Factoidal.Cottas.BaseWriterColumn
+import L4Factoidal.Cottas.BaseWriterDict
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PlanPruning
 import L4Factoidal.Cottas.AccessPath

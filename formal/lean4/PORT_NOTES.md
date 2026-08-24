@@ -12332,3 +12332,51 @@ lengths.
 **Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: three
 layers of about five, with dictionary encoding and the Parquet page and
 metadata builders left. Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterDict.lean` — layer 4 of `RDF.CottasStore.BaseWriter`
+
+Dictionary encoding, and the choice between it and DLBA. The predicate
+and graph columns of a COTTAS file repeat heavily, so RLE_DICTIONARY is
+much smaller for them; the F\* source keeps BOTH encoders and picks per
+column by MEASURING, which is the only way to be right for a column
+whose cardinality is not known in advance.
+
+The pipeline is: values, sort, dedup, index, per-row lookup through a
+balanced tree, maximal runs.
+
+**Dedup only works on a SORTED list, and that is now a checked fact.**
+`dedupSortedStr` compares adjacent elements and nothing else, so on
+unsorted input it silently keeps duplicates — and a dictionary with
+duplicates gives two indices for one value, which no reader can detect.
+`dedup_unsorted_keeps_duplicates` exhibits exactly that, as a theorem
+rather than a warning in a comment.
+
+**`groupRuns` collapses ADJACENT equal indices only**, which is what
+RLE means. `groupRuns_nonAdjacent_stays_split` pins `[1, 2, 1]` staying
+three runs against `[1, 1, 1]` becoming one.
+
+**Three places in this writer put the two varint kinds side by side.**
+A run header is `(run_length << 1) | 0` as a PLAIN varint; a Thrift
+binary length is a PLAIN varint; an `i32` value is a ZIGZAG one. And a
+PLAIN dictionary entry is neither — it is a little-endian 32-bit
+length, the opposite of DLBA's varint length block. Each is `#guard`ed
+with its own bytes.
+
+**The measurement goes both ways.** `encodeColumnChooseSmaller` builds
+both encodings and keeps the shorter, and `#guard` covers a repeating
+column choosing the dictionary AND an all-distinct column choosing
+DLBA, so the comparison cannot silently become a constant.
+`encodeColumnChooseSmaller_is_one_of` says the answer is always one of
+the two the sizer built.
+
+**A banned tactic, caught and removed.** One theorem was first written
+with `native_decide`, which this tree forbids. The kernel does not
+reduce `String` comparison, so `decide` cannot close it either — so the
+fact is a `#guard` with a sentence saying why, not a theorem with an
+escape hatch.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: four layers
+of five, with the Parquet page, schema, row-group and file-metadata
+builders left. Coverage stays 198 of 220.
