@@ -430,6 +430,57 @@ The check that caught it costs one command: `grep` the tool for the
 alias you just added, before reading its output. That is now the first
 item after any alias edit.
 
+### Eleventh: an adjudication that did NOT move the count
+
+`RDF.Entailment.RDFS.Refinement` (1,613 lines) looked ready to alias on
+2026-08-24. Its twelve `_licensed` results map row for row onto Lean
+lemmas that already exist:
+
+| F\* | Lean |
+|---|---|
+| `rdfs_rule_domain_licensed` | `RDFS.ClosureTheorems.rdfs2For_sound` |
+| `rdfs_rule_range_licensed` | `rdfs3For_sound` |
+| the `rdfs_rule_sub*` family | `rdfs5For_sound`, `rdfs7For_sound`, `rdfs9For_sound`, `rdfs11For_sound` |
+| `rdfs_rule_resource_subject/object_licensed` | `FullClosureTheorems` rdfs4a, rdfs4b |
+| `rdfs_rule_class_subclass_resource_licensed` | rdfs8 |
+| `rdfs_rule_datatype_subclass_literal_licensed` | rdfs13 |
+| `rdfs_rule_container_membership_licensed` | rdfs12 |
+| `rdf_property_axiom_closure_licensed` | rdfD2 |
+| `rdfs_reflexivity_axioms_licensed` | rdfs6, rdfs10, plus `RDFS.ReflexivityWitness` |
+
+Reading the statements rather than counting the names stopped it.
+The F\* lemmas are stated over an **INDEXED GRAPH**:
+
+    val rdfs_rule_domain_licensed (g : rdf_graph) (ig : indexed_graph)
+      : Lemma (requires ig_wf_pred ig)
+              (ensures licensed_by2 rdfs2_derives ig.ig_triples g
+                         (rdfs_rule_domain g ig))
+
+`ig_wf_pred`, `bucket_lookup ig.ig_pred`. The Lean lemmas are stated
+over a plain list graph with `triplesWithPredicate`. Both prove "the
+engine emits only licensed triples" — of DIFFERENT ENGINES.
+
+That is not the same situation as `RDF.NTriples.RoundTrip`, where the
+F\*-only residue was UTF-8 byte walking: a different REPRESENTATION of
+the same computation. Here the residue is a different engine. So the
+alias was not added and the module stays not covered.
+
+🧭 **A decision for the owner sits behind this.** The Lean tree has no
+indexed-graph path at this rung by design — `RDF.Indexed.KeyInjectivity`
+and `RDF.Indexed.Completeness` are already in the by-design bucket as
+F\*-only machinery repairing a non-injective composite key. If that
+classification is right, then licensing proved of the list engine is
+the whole Lean-side obligation and this module is covered. If the Lean
+tree should grow an indexed path, it is not. The question is what
+"covered" means when the two trees run different engines, and it is not
+mine to settle.
+
+Recording the pull as well as the answer: the count had just moved 192
+to 193, the mapping was one-to-one, and aliasing would have made it
+194. That is exactly the pressure `skills/counting-coverage` exists to
+resist, so the reasoning is written down here rather than left as a
+judgement someone has to trust.
+
 ## Not covered, by group
 
 | Group | Modules | F* lines |

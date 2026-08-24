@@ -201,6 +201,41 @@ The tool locates theorems. It does not review them: a theorem with the
 right name and a weaker statement still counts. Say so next to the
 number.
 
+## Rule 6e — the residue tells you whether it is really covered
+
+When a Lean module carries most of an F\* module's results, look at what
+is LEFT OVER and ask which kind it is.
+
+**Representation residue** — the F\*-only lemmas exist because F\*
+represents a value differently. `RDF.NTriples.RoundTrip`'s dozen
+leftovers are UTF-8 byte walking, because `FStar.String` is byte-indexed
+and `List Char` is not. Same computation, different encoding. That is
+covered.
+
+**Engine residue** — the F\*-only content is a different program.
+`RDF.Entailment.RDFS.Refinement`'s twelve licensing lemmas are stated
+over an INDEXED GRAPH (`ig_wf_pred`, `bucket_lookup ig.ig_pred`); the
+Lean lemmas that map onto them one for one are stated over a plain list
+graph. Both prove "the engine emits only licensed triples", of different
+engines. That is NOT covered, whatever the name mapping looks like.
+
+The two are easy to confuse because both leave the headline results
+matching. Ask what a reader would be told: "the Lean tree proves this"
+is true in the first case and misleading in the second.
+
+## Rule 6f — write down the pull, not only the answer
+
+When you decline to alias, record what made aliasing attractive.
+
+Why. On 2026-08-24 the count had just moved 192 to 193, the twelve-row
+mapping for `RDF.Entailment.RDFS.Refinement` was one-to-one, and
+aliasing would have made it 194. The reasoning against is a judgement
+someone has to trust, so it went into
+`docs/designissues/2026-08-23-lean-port-gap.md` as the eleventh
+correction — with the pressure named. A decision recorded without its
+temptation reads as obvious later, and the next person under the same
+pressure gets no help from it.
+
 ## Rule 7 — an audit that finds nothing tells you about the audit first
 
 When a check comes back clean, write down HOW you checked, next to the
