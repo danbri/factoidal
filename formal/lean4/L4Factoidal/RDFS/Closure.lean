@@ -221,4 +221,24 @@ def closureFuelBound (g : Graph) : Nat :=
 def closureFix (g : Graph) : Graph :=
   closure g (closureFuelBound g)
 
+/-! ## The ρdf model fragment, decided
+
+`RhoDfCompleteness.RhoDfModelFragGraph` is the Prop under which the
+completeness theorem holds: every object is an IRI or a blank node,
+and the object of `rdfs:subPropertyOf` is an IRI. `isRhoDfFrag` is its
+executable twin — the check the npm `rhoDfFragmentCheck` entry serves
+(the F\* counterpart is `rho_df_model_frag_check`). -/
+
+/-- One triple of the fragment. -/
+def isRhoDfFragTriple (t : Triple) : Bool :=
+  (match t.o with
+   | .iri _ => true
+   | .bnode _ => true
+   | _ => false) &&
+  (t.p != rdfsSubPropertyOf ||
+   (match t.o with | .iri _ => true | _ => false))
+
+/-- The whole graph. -/
+def isRhoDfFrag (g : Graph) : Bool := g.all isRhoDfFragTriple
+
 end L4Factoidal.RDFS

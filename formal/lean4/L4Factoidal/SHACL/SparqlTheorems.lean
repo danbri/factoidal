@@ -71,7 +71,8 @@ theorem termToExpr_evalIn_eq_literalPromote (env : EvalEnv) (mu : Binding) (l : 
       · rw [if_pos h3, if_pos h3]; simp [Expr.evalIn]
       · rw [if_neg h3, if_neg h3]
         by_cases h4 : (l.val.datatype == RDF.xsdBoolean) = true
-        · rw [if_pos h4, if_pos h4]; simp [Expr.evalIn]
+        · rw [if_pos h4, if_pos h4]
+          split <;> simp_all [Expr.evalIn]
         · rw [if_neg h4, if_neg h4]; simp [Expr.evalIn]
 
 /-- The same statement in the form the substitution uses it: replacing

@@ -238,6 +238,18 @@ executable edge only.
     goal no longer contains the pattern. Two rounds of the same error
     cost a rebuild each (2026-08-24).
 
+- **`lake build l4w3c` is not `lake build`.** The harness target skips
+  every theorem-only module (`*Refinement.lean`, `*Theorems.lean` files
+  nothing executable imports). A gate that builds only `l4w3c` can pass
+  while an engine change broke the agreement proofs downstream — and a
+  commit message then claims "full lake build clean" falsely.
+  (2026-08-24: the SPARQL 1.2 EBV/literalPromote change broke
+  `SPARQL.ExprRefinement` and `SHACL.SparqlTheorems`; two commits
+  shipped before the full build caught it. When an engine definition
+  changes, its spec-transcription twin — `ebvSpec`, `termToExpr?` —
+  must move in the same commit.) Before any commit claiming build
+  cleanliness: `lake build`, no target.
+
 ## Style contract (owner priority: W3C-expert readability)
 
 - Every definition's doc comment cites the W3C document + section it

@@ -154,7 +154,13 @@ def termToExpr? : Term → Option Expr
     else if l.val.datatype == RDF.xsdDouble || l.val.datatype == SPARQL.xsdFloat then
       some (.doubleLit l.val.lexicalForm)
     else if l.val.datatype == RDF.xsdBoolean then
-      some (.boolLit (l.val.lexicalForm == "true" || l.val.lexicalForm == "1"))
+      -- Valid lexical forms only, matching `literalPromote`: an
+      -- ill-formed boolean stays a term literal so its type errors
+      -- surface, exactly as an unsubstituted binding's would.
+      match l.val.lexicalForm with
+      | "true" | "1" => some (.boolLit true)
+      | "false" | "0" => some (.boolLit false)
+      | _ => some (.lit l)
     else some (.lit l)
   | _ => none
 

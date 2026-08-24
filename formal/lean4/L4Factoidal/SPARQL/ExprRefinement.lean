@@ -51,7 +51,14 @@ def ebvSpec : EvalResult → Option Bool
   | .dbl s  => some (s ≠ "0" && s ≠ "0.0" && s ≠ "NaN" && s ≠ "")
   | .term (.literal l) =>
       if l.val.datatype == xsdBoolean then
-        some (l.val.lexicalForm == "true" || l.val.lexicalForm == "1")
+        -- SPARQL 1.2 §17.2: valid boolean lexical forms only
+        -- (XSD 1.1 §3.3.2). SPARQL 1.1 additionally sent an
+        -- ill-formed boolean to `false`; 1.2 removed that row, so it
+        -- falls to "any other argument" — a type error.
+        match l.val.lexicalForm with
+        | "true" | "1" => some true
+        | "false" | "0" => some false
+        | _ => none
       else if l.val.datatype == xsdString then
         some (l.val.lexicalForm.length > 0)
       else if isNumericDatatype l.val.datatype then
