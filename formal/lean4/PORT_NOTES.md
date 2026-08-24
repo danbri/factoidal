@@ -13597,3 +13597,34 @@ nodes are not legal answer terms), and variables in CLASS position
 names only. Individual-position blank-node answers stay (owlds02).
 No `eraseDups` anywhere: expected files contain duplicate rows
 (bind07, sparqldl-10) — answers are bags.
+
+## RIF entailment regime wired: suite complete — 2026-08-24
+
+📊 sparql11 `entailment` suite, Lean runner:
+
+* before: 66 pass, 0 fail, 0 skip, 4 unsupported (out of 70)
+* after: **70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)** — parity
+  with the F\* runner.
+
+New library module `L4Factoidal/RIF/Saturate.lean` — the FUNCTION of
+the F\* `RIF.Core.Tests.saturate_with_program` / 
+`materialise_import_graph` pair:
+
+* `factsOfTriple` (RIF-RDF Compatibility §3: frame always; `rdf:type`
+  also membership; `rdfs:subClassOf` also subclass) and its REVERSE
+  `tripleOfGAtom` — derived frames, memberships and subclass atoms
+  come back as triples, `pos` atoms have no RDF form, and a constant
+  survives only if its lexical form passes `isIri` / `literalWf`.
+* `saturateGraph`: facts → `Engine.closure` fixpoint (100 rounds, the
+  F\* `default_fuel`) → derived triples appended, deduplicated.
+  Rule-local constants are qualified first, so a rule's `_x` cannot
+  capture a data blank node.
+
+`Harness/Run.lean` glue, mirror of the F\* runner's consumer side:
+the four SPARQL entailment tests name RIF-XML rule documents the
+SPARQL suite does not bundle; they resolve by `mf:name` against the
+vendored mirror `third_party/testing/rif/tc/`. DOCTYPE/entity
+preprocessing, `Import` location→local-file resolution, and the
+profile dispatch (`RDF`/`RDFS` → `RDFS.closureFix`, `OWL-*` →
+`OWL.RL.closureFix`, `Simple`/none → plain triples) before
+saturation; evaluation is then the PLAIN query path.

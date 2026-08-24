@@ -58,6 +58,7 @@ import L4Factoidal.SPARQL.ResultsXml
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv
 import L4Factoidal.OWL.QueryEval
+import L4Factoidal.RIF.Saturate
 
 open L4Factoidal.RDF
 open L4Factoidal.RDF.Canonical
@@ -284,6 +285,112 @@ def recognizedDatatypesOf (names : List String) : Except String (List WfIri) := 
     else throw s!"recognized datatype is not an IRI: {n}"
   return withMinimalD ds
 
+/-! ## The RIF entailment regime (sparql11 entailment rif01/03/04/06)
+
+Mirror of the F* runner's consumer-side glue
+(`bin/w3c-runner/w3c_runner.ml`, `rif_rules_path_for` /
+`rif_load_imports` / the `"RIF"` regime branch): the SPARQL test
+suite does not bundle the RIF-XML rule documents, so they are
+resolved by `mf:name` against the vendored mirror under
+`third_party/testing/rif/tc/`. Saturation itself is library code
+(`L4Factoidal.RIF.Saturate`). -/
+
+/-- The vendored RIF Test Cases mirror, from any supported working
+directory. -/
+def rifTcBase : IO (Option String) := do
+  let candidates := [
+    "third_party/testing/rif/tc",
+    "../../third_party/testing/rif/tc",
+    "../../../third_party/testing/rif/tc" ]
+  candidates.findM? (fun c => System.FilePath.isDir (System.FilePath.mk c))
+
+/-- Test directory + premise filename by `mf:name` — the four-entry
+table is exhaustive for the SPARQL 1.1 entailment manifest. -/
+def rifPremiseFor (name : String) : Option (String × String) :=
+  if name == "RIF Logical Entailment (referencing RIF XML)" then
+    some ("Logical_entailment_referencing_RIF_XML", "rif01-premise.rif")
+  else if name == "RIF Core WG tests: Frames" then
+    some ("Frames", "Frames-premise.rif")
+  else if name == "RIF Core WG tests: Modeling Brain Anatomy" then
+    some ("Modeling_Brain_Anatomy", "Modeling_Brain_Anatomy-premise.rif")
+  else if name == "RIF Core WG tests: RDF Combination Blank Node" then
+    some ("RDF_Combination_Blank_Node", "RDF_Combination_Blank_Node-premise.rif")
+  else none
+
+/-- Drop the `<!DOCTYPE … ]>` block and inline the `<!ENTITY n "v">`
+substitutions it declares (`&n;` → `v`). The vendored premises use
+entity references for the RIF/XSD/RDF namespaces; the XML parser
+takes the document without its DTD. -/
+def rifXmlPreprocess (raw : String) : String :=
+  let replaceAll (s pat rep : String) : String :=
+    String.intercalate rep (s.splitOn pat)
+  match raw.splitOn "<!DOCTYPE" with
+  | [only] => only
+  | before :: rest =>
+      let restStr := String.intercalate "<!DOCTYPE" rest
+      match restStr.splitOn "]>" with
+      | inner :: after =>
+          let doc := before ++ String.intercalate "]>" after
+          let ents := ((inner.splitOn "<!ENTITY").drop 1).filterMap (fun e =>
+            match e.splitOn "\"" with
+            | namePart :: value :: _ => some (namePart.trim, value)
+            | _ => none)
+          ents.foldl (fun acc (n, v) => replaceAll acc ("&" ++ n ++ ";") v) doc
+      | [] => raw
+  | [] => raw
+
+/-- Load one resolved import file by extension (`.rdf` RDF/XML,
+otherwise Turtle) and close it under the profile its `Import` names —
+the F* `materialise_import_graph` dispatch. -/
+def rifLoadImport (path : String) (profile : Option String) : IO Graph := do
+  let some text ← readOpt path | return []
+  let g := if path.endsWith ".rdf"
+           then (L4Factoidal.Syntax.RdfXml.parseRdfXml text (some ("file://" ++ path))).toOption.getD []
+           else (parseTurtle text (some ("file://" ++ path))).toOption.getD []
+  let entNs := "http://www.w3.org/ns/entailment/"
+  return (match profile with
+    | some p =>
+        if p == entNs ++ "RDF" || p == entNs ++ "RDFS" then
+          L4Factoidal.RDFS.closureFix g
+        else if (p.splitOn "OWL").length > 1 then
+          L4Factoidal.OWL.RL.closureFix g
+        else g
+    | none => g)
+
+/-- Resolve one `Import` location URL to a local file in `dir`:
+basename, tried bare, then `.rdf`, then `.ttl`. -/
+def rifResolveImport (dir url : String) : IO (Option String) := do
+  let bn := (url.splitOn "/").getLast?.getD url
+  let candidates :=
+    if bn.endsWith ".rdf" || bn.endsWith ".ttl" then [bn]
+    else [bn ++ ".rdf", bn ++ ".ttl", bn]
+  let found ← candidates.findM? (fun c =>
+    System.FilePath.pathExists (System.FilePath.mk (dir ++ "/" ++ c)))
+  return found.map (fun c => dir ++ "/" ++ c)
+
+/-- The RIF regime's dataset: premise rules + imports + saturation.
+`.error` carries the outcome when the premise cannot be used. -/
+def rifSaturateDataset (tc : TestCase) (ds : Dataset) :
+    IO (Except Outcome Dataset) := do
+  let some base ← rifTcBase
+    | return .error (.unsupported "RIF premise mirror not vendored (third_party/testing/rif/tc)")
+  let some (sub, fname) := rifPremiseFor tc.name
+    | return .error (.unsupported s!"no vendored RIF rules for test {tc.name}")
+  let dir := base ++ "/" ++ sub
+  let some raw ← readOpt (dir ++ "/" ++ fname)
+    | return .error (.unsupported s!"RIF premise missing: {dir}/{fname}")
+  let xml := rifXmlPreprocess raw
+  let some doc := L4Factoidal.RIF.Xml.parseRifProgram xml
+    | return .error (.fail "RIF-XML premise did not parse")
+  let mut imported : Graph := []
+  for (url, profile) in doc.imports do
+    match ← rifResolveImport dir url with
+    | some path => imported := imported ++ (← rifLoadImport path profile)
+    | none => pure ()
+  let merged := ds.default ++ imported
+  let saturated := L4Factoidal.RIF.Saturate.saturateGraph "rules" doc.rules merged
+  return .ok { ds with default := saturated }
+
 /-- One `QueryEvaluationTest` / `CSVResultFormatTest`. -/
 def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   -- Entailment-regime tests: pick the regime now; the closure is
@@ -295,8 +402,9 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   let owlRegime : Bool :=
     tc.entailmentRegimes.contains "OWL-RDF-Based"
       || tc.entailmentRegimes.contains "OWL-Direct"
+  let rifRegime : Bool := tc.entailmentRegimes.contains "RIF"
   let regime? : Option Regime ←
-    if tc.entailmentRegimes.isEmpty || owlRegime then pure none
+    if tc.entailmentRegimes.isEmpty || owlRegime || rifRegime then pure none
     else match pickRegime tc.entailmentRegimes with
       | some r => pure (some r)
       | none => return .ofOutcome (.unsupported
@@ -314,13 +422,19 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   -- SPARQL 1.1 Entailment Regimes: answers are simple-entailment
   -- answers over the regime's closure of the active graph, with the
   -- minimal datatype map (the suite names no recognised datatypes).
-  let ds := if owlRegime then
-              { default := L4Factoidal.OWL.RL.closureFix ds0.default,
-                named := ds0.named.map (fun ng =>
-                  { ng with graph := L4Factoidal.OWL.RL.closureFix ng.graph }) }
-            else match regime? with
-            | some r => closeDataset r (withMinimalD []) ds0
-            | none   => ds0
+  let dsE : Except Outcome Dataset ←
+    if rifRegime then rifSaturateDataset tc ds0
+    else pure (.ok (
+      if owlRegime then
+        { default := L4Factoidal.OWL.RL.closureFix ds0.default,
+          named := ds0.named.map (fun ng =>
+            { ng with graph := L4Factoidal.OWL.RL.closureFix ng.graph }) }
+      else match regime? with
+      | some r => closeDataset r (withMinimalD []) ds0
+      | none   => ds0))
+  let ds ← match dsE with
+    | .error o => return .ofOutcome o
+    | .ok d => pure d
   -- SPARQL 1.1 Entailment Regimes: an answer may not bind a blank node
   -- the QUERIED graph does not contain (the closure mints witness
   -- nodes, and those are not legal answer terms). The original
