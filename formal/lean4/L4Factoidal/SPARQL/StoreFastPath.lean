@@ -131,7 +131,100 @@ def detectLimitSingleTp (q : Query) : Option (TriplePattern × Nat) :=
             | some tp => some (tp, k)
   | _ => none
 
-/-! ## 3. The fast paths -/
+/-! ## 3. The two GROUP BY streaming detectors
+
+Both need a PAIRWISE-DISTINCT triple pattern, and both refuse anything
+else. The F* source records the reason (reviewer, 2026-05-01): shapes
+like `GRAPH ?g { ?g ?p ?o }` or `GRAPH ?g { ?s ?p ?s }` carry an
+implicit equality constraint that a streaming count does not honour, so
+matching them would return a wrong over-count. -/
+
+/-- `SELECT ?g (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g`.
+
+ORDER BY, LIMIT and OFFSET are allowed: they act on the aggregated rows
+and the result is one row per named graph, so sorting and slicing after
+the fact is the same answer. HAVING, VALUES, DISTINCT and REDUCED are
+refused -- each needs row materialisation. -/
+def detectStreamingCountGroupByGraph (q : Query) : Option (VarName × VarName) :=
+  match q.form with
+  | .select (.vars items) =>
+      if !q.having.isEmpty then none
+      else if q.postValues.isSome then none
+      else if q.modifier.distinct then none
+      else if q.modifier.reduced then none
+      else
+        match items with
+        | [.var gv, .expr countE nv] =>
+            match countE with
+            | .aggregate .count false subE =>
+                if !(match subE with
+                     | .var "*" => true
+                     | .boolLit true => true
+                     | _ => false) then none
+                else
+                  match q.groupBy with
+                  | some [.var gbv] =>
+                      if gbv != gv then none
+                      else
+                        match q.pattern with
+                        | .graph (.var graphV) inner =>
+                            if graphV != gv then none
+                            else
+                              match extractSingleTpBgp inner with
+                              | none => none
+                              | some tp =>
+                                  match tp.s, tp.p, tp.o with
+                                  | .var sv, .var pv, .var ov =>
+                                      if sv == gv || pv == gv || ov == gv then none
+                                      else if sv == pv || sv == ov || pv == ov then none
+                                      else some (gv, nv)
+                                  | _, _, _ => none
+                        | _ => none
+                  | _ => none
+            | _ => none
+        | _ => none
+  | _ => none
+
+/-- `SELECT ?p (COUNT(*) AS ?c) WHERE { ?s ?p ?o } GROUP BY ?p`, bare or
+under one constant `GRAPH <g>` layer. The pattern's PREDICATE position
+must be exactly the grouping variable. -/
+def detectStreamingCountGroupByPredicate (q : Query) :
+    Option (VarName × VarName × Option WfIri) :=
+  match q.form with
+  | .select (.vars items) =>
+      if !q.having.isEmpty then none
+      else if q.postValues.isSome then none
+      else if q.modifier.distinct then none
+      else if q.modifier.reduced then none
+      else
+        match items with
+        | [.var pv, .expr countE nv] =>
+            match countE with
+            | .aggregate .count false subE =>
+                if !(match subE with
+                     | .var "*" => true
+                     | .boolLit true => true
+                     | _ => false) then none
+                else
+                  match q.groupBy with
+                  | some [.var gbv] =>
+                      if gbv != pv then none
+                      else
+                        match extractSingleTpBgpScoped q.pattern with
+                        | none => none
+                        | some (tp, scope) =>
+                            match tp.s, tp.p, tp.o with
+                            | .var sv, .var tpv, .var ov =>
+                                if tpv != pv then none
+                                else if sv == tpv || sv == ov || tpv == ov then none
+                                else some (pv, nv, scope)
+                            | _, _, _ => none
+                  | _ => none
+            | _ => none
+        | _ => none
+  | _ => none
+
+/-! ## 4. The fast paths -/
 
 /-- The one-row answer for `COUNT(*) = n`. -/
 def countStarSolution (alias : VarName) (n : Nat) : SolutionSeq :=
@@ -155,7 +248,7 @@ def evalLimitSingleTp (sel : SelectClause) (tp : TriplePattern)
   | .vars items => projectSolutions (selectItemVars items) omega'
   | .all => omega'
 
-/-! ## 4. What the detectors refuse
+/-! ## 5. What the detectors refuse
 
 Each of these is a query the fast path must NOT claim. A widening that
 drops one of these lines makes a wrong answer fast. -/

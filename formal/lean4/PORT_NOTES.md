@@ -11941,3 +11941,86 @@ a HAVING clause" and the rejection fires on the same queries.
 `eval_pattern_backend`, `eval_fulltext_tp_backend`, the GROUP BY
 streaming family, and the two query entry points. Coverage stays 197 of
 220.
+
+---
+
+## `SPARQL/StoreDataset.lean` — layer 4, and `SPARQL11.Store` complete
+
+The dataset seam, the backend-routed pattern evaluator, the GROUP BY
+streaming family, and the two query entry points.
+
+**Where the two trees genuinely differ, stated rather than hidden.** The
+F\* `eval_pattern_backend` recurses structurally through FILTER,
+LEFTJOIN and BIND, and materialises the dataset only for the three arms
+it cannot do natively — FILTER/LEFTJOIN carrying an EXISTS, LATERAL, and
+property paths. The Lean tree cannot, and the reason is architectural.
+`QueryPattern.lowerWith` compiles a FILTER condition into a CLOSURE over
+the active graph and a LATERAL right operand into a function of the left
+row; those closures are how the Lean algebra states §18.6's EXISTS, and
+they are built at lowering time. A backend-routed evaluator here either
+rebuilds the whole lowering or delegates.
+
+This module delegates. BGP, JOIN, UNION, MINUS, `GRAPH <constant>` and
+the empty pattern are backend-native; every other arm materialises and
+runs the algebra evaluator. **What that costs is performance on those
+shapes, not correctness** — the delegate is the algebra evaluator, which
+is the semantic source of truth in both trees, and it is the same device
+the F\* source uses for its own hard arms, applied to more of them. Four
+theorems pin which arms are native so the list cannot drift silently.
+
+**The cross-check.** `evalBgpBackend_allVars_list` proves that on a list
+backend, an all-variable one-pattern BGP evaluated through the backend
+equals the same BGP evaluated by the algebra. It is one pattern because
+the planner reorders longer BGPs, and all-variable because a bound
+position makes the backend pre-filter — proving that pre-filter never
+drops a row the match would keep is a separate lemma about
+`boundMatches` against `tpMatch`.
+
+**Two backends the Lean tree cannot construct, and three it does not
+need.** `cottas_ondisk_dataset_backend` discovers its named graphs by
+READING the store; `cottas_with_delta_dataset_backend` reads and parses
+a delta log under the `ML` effect. Under the purity doctrine the read
+is a parameter, so both take the graph list they would have discovered.
+`indexed_graph_backend_for` and its two siblings build only the index
+BUCKETS a pattern needs; they have no Lean counterpart by design, for
+the reason already recorded for the `RDF.Indexed.KeyInjectivity` group —
+the Lean index is a `Std.HashMap` keyed on structured values, so there
+are no six buckets to choose between.
+
+**A dead definition, ported.** `eval_select_query_backend_bgp` has NO
+call site in the F\* module: it sits inside the mutually recursive group
+and is never invoked. It is ported anyway, with that fact written down,
+on the same discipline as the unreferenced definitions of
+`OWL.QueryRewrite`. Folding it into the materialise arm would have LOST
+its behaviour rather than preserved it: it returns `none` when the query
+needs grouping, and the Lean materialise arm does not need that escape
+because `selectPost` runs the whole post-WHERE pipeline.
+
+**ASK cannot read an empty answer as `false`.** When the answer is empty
+AND any backend reports a decode failure, `evalAskBackend` returns
+`none`. The F\* source explains: a column that fails to decode
+contributes zero rows silently, so "genuinely empty" and "could not
+read" are indistinguishable downstream, and ASK would turn a read
+failure into a wrong answer with a clean exit.
+`evalAskBackend_none_on_decode_failure` is that as a theorem.
+
+**The audit's own reach was a finding** (hazard #28). The first pass
+matched only `^let` and reported 24 of 44 names covered. It could not
+see the mutually recursive `and`-bound group, which is where
+`eval_pattern_backend`, both query entry points and the fuelled BGP
+evaluator live — the four largest definitions in the module. The
+corrected regex matches `let`, `let rec` and `and`, finds 50 names, and
+the alias in `tools/lean-port-gap.py` carries it so the next reader
+audits with a method that can see what it is looking for.
+
+**A trap that cost a build cycle.** A compound `cd formal/lean4 &&
+python3 - <<EOF` run from a shell already IN `formal/lean4` fails at the
+`cd`, so the edit never applies — and the `lake build` that follows
+reports SUCCESS, because it built the unchanged file. The tell is that a
+name the edit was supposed to add is still unknown one command later.
+Verify an edit landed (`grep -c`) before trusting the build that follows
+it.
+
+**Status.** `SPARQL11.Store` is covered. Coverage 197 to 198 of 220.
+Not covered is 22 modules: 5 engine (11,746 lines), 3 proof (7,975),
+14 by design (8,993).

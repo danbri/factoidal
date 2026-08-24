@@ -181,6 +181,28 @@ alias={
  # someValuesFrom arm accepted a variable owl:onProperty where the F*
  # source falls back to the leaf.
  "OWL.QueryRewrite":"OWL.QueryRewriteNested",
+ # SPARQL11.Store is ported across four Lean modules under
+ # L4Factoidal/SPARQL/Store*.lean. As with OWL.QueryRewrite, coverage is
+ # an explicit decision backed by a definition-level audit, not a name
+ # match: every `let`, `let rec` AND `and`-bound name in the 1,452-line
+ # F* module was matched to a Lean definition on 2026-08-24, and the 14
+ # names whose spelling differs were resolved by hand. Ten are renames
+ # (estimate_tp_backend_mu -> estimateTpBackend,
+ # materialize_dataset_backend -> materialiseDatasetBackend, and so on);
+ # list_take_n is capsTakeN in RDF/StoreCapabilities.lean; and
+ # indexed_graph_backend_for, indexed_dataset_backend_for and
+ # indexed_dataset_backend_for_query have no Lean counterpart BY DESIGN,
+ # for the reason already recorded for the RDF.Indexed.KeyInjectivity
+ # group -- the Lean index is a Std.HashMap keyed on structured values,
+ # so there are no six buckets to choose between and nothing for a
+ # bucket_needs flag to select.
+ #
+ # The audit's own reach was a finding: an earlier pass matched only
+ # `^let` and could not see the mutually recursive `and`-bound group,
+ # which hid eval_pattern_backend and the two query entry points. The
+ # regex above is the corrected one (hazard #28: state the method next
+ # to the result).
+ "SPARQL11.Store":"SPARQL.StoreDataset",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
