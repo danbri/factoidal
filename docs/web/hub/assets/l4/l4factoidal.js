@@ -39,6 +39,7 @@ export function loadL4() {
 
     const cVersion = Module.cwrap('l4_version_c', 'number', []);
     const cBgpQuery = Module.cwrap('l4_bgp_query_c', 'number', ['string', 'string']);
+    const cCall = Module.cwrap('l4_call_c', 'number', ['string', 'string']);
     const cFree = Module.cwrap('l4_free_result', null, ['number']);
     const cInit = Module.cwrap('l4_init', 'number', []);
 
@@ -72,6 +73,23 @@ export function loadL4() {
       bgpQuery(data, bgp) {
         const parsed = JSON.parse(take(cBgpQuery(asJson(data), asJson(bgp))));
         if (parsed.error) throw new Error(`l4factoidal: ${parsed.error}`);
+        return parsed;
+      },
+
+      /**
+       * The dispatch ABI (formal/lean4/Wasm/Dispatch.lean): one entry
+       * for every npm-entry-shaped op the Lean engine serves. Method
+       * names and envelopes match bin/npm-entry/entry_jsoo.ml.
+       *
+       * @param op    the method name, e.g. "parseToDatasetJson";
+       *              "ops" lists the available names
+       * @param args  array of positional STRING arguments
+       * @returns     the parsed {"ok":true,...} envelope
+       * @throws      if the Lean side reports {"ok":false,"error":...}
+       */
+      call(op, args) {
+        const parsed = JSON.parse(take(cCall(op, JSON.stringify(args))));
+        if (parsed.ok === false) throw new Error(`l4factoidal: ${parsed.error}`);
         return parsed;
       },
 

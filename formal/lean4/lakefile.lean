@@ -77,7 +77,9 @@ extern_lib libl4hacl pkg := do
 -- even when no wasm toolchain is present.
 @[default_target] lean_lib l4wasm where
   srcDir := "."
-  roots := #[`Wasm.Abi, `Wasm.Exports]
+  roots := #[`Wasm.Abi, `Wasm.Exports, `Wasm.Dispatch,
+             `Wasm.Ops.Support, `Wasm.Ops.Parse, `Wasm.Ops.Query,
+             `Wasm.Ops.Reason, `Wasm.Ops.Canon]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See
