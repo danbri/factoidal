@@ -11426,3 +11426,50 @@ asserts, for the fragment the traversal reaches.
 **One deliberate hole, named in the code.** `rewritePattern` does NOT
 descend into `.subSelect`, because that carries a whole `Query` and
 needs the Query-level pass. The F\* source puts it in the same place.
+
+---
+
+## `OWL.QueryRewrite` layer 4 → `OWL/QueryRewriteRestriction.lean` (2026-08-24)
+
+The restriction classifier the nested (Phase 4) path needs: given a
+marker key, which kind of restriction is it, and is its filler itself a
+class expression?
+
+The EXPANSION that consumes this is not here. In the F\* source that is
+`expand_ce_subject`, 460 lines, and CLAUDE.md records the known
+narrowness living inside it —
+<https://github.com/danbri/factoidal/issues/236>: the N=1 qualified
+`CE_MaxCardinality` rewrite emits an anchor triple that MULTIPLIES rows
+per P-edge and drops vacuous-truth individuals. So `OWL.QueryRewrite`
+stays not covered, no alias, coverage 193 of 220.
+
+**The discipline this layer encodes, and why it is not obvious.** Not
+every restriction is a rewrite target:
+
+* `owl:someValuesFrom` with a NAMED-class filler is NOT — the OWL-RL
+  closure's canonical-bnode materialisation is the correct path, and a
+  query rewrite would compete with it (`simple2`).
+* `owl:someValuesFrom` with a class-expression filler IS (`simple5`,
+  `simple8`).
+* `owl:allValuesFrom` always is, whatever the filler.
+
+`svf_namedFiller_not_target` proves the first line rather than leaving
+it to the reader — it is the one a later simplification would drop,
+because "handle all restrictions uniformly" looks like a tidy-up.
+
+**`restrictionHasNestedFiller` is where three notions of class
+expression have to agree**: a flat marker, another restriction, or an
+`owl:complementOf` bnode. Any of the three makes a filler nested.
+
+**Vocabulary added.** `owl:cardinality`,
+`owl:minQualifiedCardinality` and `owl:qualifiedCardinality` were
+absent from `OWL/Vocabulary.lean`; `owl:maxCardinality`,
+`owl:maxQualifiedCardinality` and `owl:minCardinality` were already
+there. The three complete the family the classifier tries.
+
+**Two traps.** Editing a vocabulary file and then running `lake env
+lean` on a dependant reads the STALE `.olean` — build the dependency
+first or the new names read as unknown. And a blanket
+`open L4Factoidal.OWL.RL` collides with `L4Factoidal.RDFS` on
+`rdfType`; the earlier layers already use a selective open, and this
+one now does too.
