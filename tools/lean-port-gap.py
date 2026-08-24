@@ -203,6 +203,28 @@ alias={
  # regex above is the corrected one (hazard #28: state the method next
  # to the result).
  "SPARQL11.Store":"SPARQL.StoreDataset",
+ # RDF.CottasStore.BaseWriter is ported across six Lean modules under
+ # L4Factoidal/Cottas/BaseWriter*.lean. Definition-level audit, 2026-08-24:
+ # 124 F* names, 53 unmatched by spelling, every one resolved by hand.
+ #  * 25 are ACCUMULATOR variants (*_acc, *_racc) folded into their
+ #    non-accumulator Lean forms. The F* accumulators exist for OCaml
+ #    stack safety; Lean core rewrites List.append and List.flatMap to
+ #    tail-recursive versions at code generation (@[csimp], finding A11),
+ #    so the split serves nothing here.
+ #  * 10 are renames (write_uvarint -> uvarintEncode,
+ #    build_def_level_section -> defLevelSection, and so on) or stdlib
+ #    substitutions (list_len -> List.length, split_pos_str_acc ->
+ #    List.take/List.drop, concat_bytes_list -> List.flatten).
+ #  * 4 are the per-column projections map_cq_s/p/o/g, which are
+ #    rows.map (.s) in Lean.
+ #  * 14 are the lemma_* version-field HEX round-trip family. They have no
+ #    Lean counterpart BY DESIGN: their subject is Parquet.Footer's
+ #    hex-string reader, the layer finding A4 is about, and the Lean tree
+ #    reads bytes rather than hex. The byte-level fact those lemmas exist
+ #    to establish -- that field 1 of the file metadata is
+ #    [21, 250, 6] = version 445 -- is #guarded in
+ #    Cottas/BaseWriterFileV2.lean.
+ "RDF.CottasStore.BaseWriter":"Cottas.BaseWriterFileV2",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.

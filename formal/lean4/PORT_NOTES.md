@@ -12434,3 +12434,62 @@ path into `serializeCottas`), `build_dictionary_page_header`, and
 eleven hex round-trip lemmas about the version field.
 `RDF.CottasStore.BaseWriter` therefore stays NOT covered, and coverage
 stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterFileV2.lean` — layer 6, and `RDF.CottasStore.BaseWriter` complete
+
+Layer 5 wired the v1 path, which writes DELTA_LENGTH_BYTE_ARRAY for
+every column. The F\* banner records what that cost:
+
+> v1 always writes DELTA_LENGTH_BYTE_ARRAY: correct for any cardinality
+> but pays the full string bytes on every row, every column, even for
+> p/g whose whole point is massive repetition.
+
+v2 adds the RLE_DICTIONARY emit path and closes a roughly sixty-fold
+size premium against pycottas.
+
+**Two columns are FORCED, two are measured, and the asymmetry is the
+design.** `p` and `g` repeat by construction — the graph column is
+mostly one `DEFAULT` sentinel — so measuring them would only confirm
+the obvious. `s` and `o` can be all-distinct, and then the dictionary
+is bigger. `rowGroupV2_forces_p_and_g` states the forcing so it cannot
+be tidied into "encode every column the same".
+
+**The offset field that is two fields.** A dictionary-encoded chunk
+carries field 9 (the DATA page) and field 11 (the DICTIONARY page). The
+dictionary comes first, so field 11 is the chunk start and field 9 is
+that plus the dictionary page length. The F\* source records this as bug
+history: a reader treating them as one offset reads the index stream as
+if it were the dictionary. A DLBA chunk has no field 11 at all, which
+is why these are two builders rather than one with a flag, and
+`columnMetadataV2_dlba_delegates` says the DLBA case calls the v1
+builder unchanged.
+
+**A `#guard` that asserted something false.** The first draft claimed
+v2 is smaller than v1, full stop. It is not: on a two-row file of short
+strings the dictionary page's own header outweighs the saving. The
+check now runs BOTH ways — smaller on eight repeating rows of long
+strings, and NOT smaller on the two-row case — so the claim in the
+module is the one that is true.
+
+**A vacuous theorem, caught and replaced.** `chunkStart + dictPageLen ≥
+chunkStart` is true whatever the hypothesis says, and Lean's unused-
+variable warning is what exposed it (hazard #29). It is replaced by
+`columnMetadataV2_dlba_delegates`, which says something a later edit
+could break.
+
+**Coverage IS claimed, from a definition-level audit.** 124 F\* names,
+53 unmatched by spelling, every one resolved by hand: 25 accumulator
+variants folded into their non-accumulator forms (the F\* accumulators
+exist for OCaml stack safety, which Lean core's `@[csimp]` rewrites
+handle — finding A11), 10 renames or stdlib substitutions, 4 per-column
+projections that are `rows.map (·.s)` in Lean, and 14 `lemma_*` hex
+round-trip lemmas that have no Lean counterpart BY DESIGN — their
+subject is `Parquet.Footer`'s hex-string reader, the layer finding A4
+is about, and the Lean tree reads bytes rather than hex. The byte-level
+fact those lemmas establish is `#guard`ed here.
+
+The audit and its reasoning are written into the alias in
+`tools/lean-port-gap.py`, so the claim is checkable rather than
+asserted. Coverage 198 to 199 of 220.

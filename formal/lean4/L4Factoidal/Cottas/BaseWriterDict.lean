@@ -163,40 +163,15 @@ inductive ColumnEncoding where
   | rleDictionary
   deriving DecidableEq, Repr
 
-structure ColEncoded where
-  kind : ColumnEncoding
-  numValues : Nat
-  /-- Zero for `dlba`: there is no dictionary page at all. -/
-  dictPageLen : Nat
-  /-- The FULL byte length of this column's pages. -/
-  totalLen : Nat
-  deriving Repr
-
-/-- The dictionary for a column: sorted, deduplicated. -/
+/-- The dictionary for a column: sorted, then deduplicated. The order
+of those two matters — see `dedup_unsorted_keeps_duplicates`. -/
 def columnDictionary (values : List String) : List String :=
   dedupSortedStr (mergeSortStrings values)
 
-/-- Both encodings, measured. -/
-def encodeColumnSizes (values : List String) : ColEncoded × ColEncoded :=
-  let dictEntries := columnDictionary values
-  let tree := dictTreeOfSorted (zipWithIndex dictEntries) dictEntries.length
-  let indices := lookupIndices values tree
-  let runs := groupRuns indices
-  let bitWidth := bitsNeeded (if dictEntries.isEmpty then 0 else dictEntries.length - 1)
-  let dictPage := buildDictPagePayload dictEntries
-  let dataPage := buildRleDictionaryPagePayload values.length bitWidth runs
-  let dlbaBlock := dlbaLengthBlock values
-  let dlbaPage := defLevelSection values.length ++ dlbaBlock.2 ++ concatStringsBytes values
-  ({ kind := .dlba, numValues := values.length, dictPageLen := 0
-   , totalLen := dlbaPage.length },
-   { kind := .rleDictionary, numValues := values.length
-   , dictPageLen := dictPage.length
-   , totalLen := dictPage.length + dataPage.length })
-
-/-- Build both and keep the shorter, as the F* source does. -/
-def encodeColumnChooseSmaller (values : List String) : ColEncoded :=
-  let (dlba, dict) := encodeColumnSizes values
-  if dict.totalLen < dlba.totalLen then dict else dlba
+/-! The byte-producing encoders and the choice between them live in
+`Cottas/BaseWriterFileV2.lean`: they need the page builders, which are
+one layer up. This layer stops at the enum and the pipeline the
+encoders run. -/
 
 /-! ## 7. Where a dictionary encoder goes wrong -/
 
@@ -219,16 +194,6 @@ theorem groupRuns_adjacent_collapses :
     groupRuns [1, 1, 1] = [(1, 3)] := by decide
 
 theorem groupRuns_nil : groupRuns [] = [] := rfl
-
-/-- The choice is between the two the sizer built, never a third
-thing. -/
-theorem encodeColumnChooseSmaller_is_one_of (values : List String) :
-    encodeColumnChooseSmaller values = (encodeColumnSizes values).1
-    ∨ encodeColumnChooseSmaller values = (encodeColumnSizes values).2 := by
-  simp only [encodeColumnChooseSmaller]
-  split
-  · exact Or.inr rfl
-  · exact Or.inl rfl
 
 /-! ## Build-time checks -/
 
@@ -259,20 +224,10 @@ the opposite of DLBA's length block. -/
 #guard writeDictEntry "ab" == [(2 : UInt8), 0, 0, 0, (97 : UInt8), (98 : UInt8)]
 #guard buildDictPagePayload [] == ([] : Bytes)
 
-/-! **The measurement goes both ways.** A repeating column is smaller
-dictionary-encoded; an all-distinct column is not. -/
-#guard (encodeColumnChooseSmaller ["aaaa", "aaaa", "aaaa", "aaaa"]).kind
-        == ColumnEncoding.rleDictionary
-#guard (encodeColumnChooseSmaller ["a", "b", "c", "d"]).kind == ColumnEncoding.dlba
-#guard (encodeColumnChooseSmaller ["a", "b", "c", "d"]).dictPageLen == 0
-#guard (encodeColumnChooseSmaller ["aaaa", "aaaa", "aaaa", "aaaa"]).dictPageLen > 0
-#guard (encodeColumnChooseSmaller ["a", "b"]).numValues == 2
-
 /-! ## Axiom audit -/
 
 #print axioms dedup_unsorted_keeps_duplicates
 #print axioms groupRuns_nonAdjacent_stays_split
 #print axioms groupRuns_adjacent_collapses
-#print axioms encodeColumnChooseSmaller_is_one_of
 
 end L4Factoidal.Cottas.BaseWriterDict
