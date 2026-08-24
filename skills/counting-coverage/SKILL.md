@@ -170,6 +170,37 @@ measuring the method working and calling it a deficit. It is kept as a
 READING LIST — which covered module to open first — and it now refuses
 to print a coverage percentage.
 
+## Rule 6d — join the two sides on SPECIFICATION vocabulary
+
+When implementation names cannot be compared (rule 6c), look for names
+the specification fixes. Those are the same on both sides by
+obligation, whatever each tree calls its own lemmas.
+
+Why it works here. W3C OWL 2 RL rule ids — `cax-sco`, `prp-spo1`,
+`eq-ref` — are fixed by the Recommendation. `docs/theorem-registry.md`
+lists every one with its proof status. Matching those ids against Lean
+theorem names answers a real question where the definition-name
+comparison answered none: `tools/lean-registry-audit.py`, 2026-08-24,
+51 rule ids, 45 named by a Lean theorem, 6 absent and every one of the
+six recorded by the registry as unproved on the F\* side too. Zero
+gaps, and the six are listed individually with the registry's own
+words rather than excluded in bulk — a blanket exclusion would hide a
+regression.
+
+Two traps this run hit, both worth repeating:
+
+- The first id regex matched `dt-branch`, which is a git branch name in
+  the registry prose, not a rule id. It inflated the denominator by
+  one. Constrain the pattern to what the Recommendation spells.
+- A rule id appearing anywhere in the Lean tree is a HIT, not a result.
+  The first count said "51 of 52 found" from plain text search;
+  requiring the id to appear in a THEOREM name moved it to 45, and
+  that second number is the one that means something.
+
+The tool locates theorems. It does not review them: a theorem with the
+right name and a weaker statement still counts. Say so next to the
+number.
+
 ## Rule 7 — an audit that finds nothing tells you about the audit first
 
 When a check comes back clean, write down HOW you checked, next to the
