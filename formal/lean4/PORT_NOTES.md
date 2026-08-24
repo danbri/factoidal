@@ -12618,3 +12618,43 @@ is a behaviour change on the shipping query path, not a refactor.
 Coverage for `RDF.CottasStore` is still NOT claimed: the LIMIT-pushdown
 walks, the candidate planning, and the public search/estimate/count
 entry points remain.
+
+## RDF.CottasStore, layer 4 — LIMIT pushdown
+
+`Cottas/OnDiskLimit.lean` ports the second family of walks, the one a
+`LIMIT`-bearing query uses: `filter_zipped_rows_limited_tok_seq`,
+`walk_candidate_rgs_search_limited` and their siblings.
+
+`RDF/StoreCapabilities.lean` already states the law such a path must
+satisfy — `StoreCapsLawful.limitAgrees`, "a limited read returns the
+prefix the unbounded read would have returned" — and nothing in the F\*
+tree connects the limited family to the unlimited one at all.
+`walkCandidatesLimitedTok_prefix` is that connection: the limited
+walk's answer, flipped into row order, is the unlimited walk's answer
+flipped and truncated. Early exit is a refinement of the full scan, so a
+`LIMIT` query cannot return a row the unlimited query would not, nor
+stop before it has `limit` of them.
+
+Supporting results: `filterTokSeq_append` and `walkCandidatesTok_append`
+(a walk started from a non-empty accumulator appends to it and never
+inspects it), `filterLimitedTok_count` (the count the F\* walks carry
+alongside the list IS the list's length, so it is not a second source of
+truth an edit can desynchronise), `filterLimitedTok_flag` (the early-exit
+flag holds exactly when the count reached the limit — the fact that
+makes the walk's stop branch and its recurse branch agree).
+
+**A branch that decides nothing.** The F\* end-of-row-group arm returns
+`(acc_rev, acc_count, acc_count >= limit)`, but that arm is reachable
+only when the same test already failed one guard earlier, so the flag it
+computes is always `false`. Transcribed as written; `filterLimitedTok_end`
+states that the computation is dead. Deleting it would be a change to
+the F\* source, which this port does not make.
+
+Every statement here is about the FLIPPED list. Both families accumulate
+in reverse, and stating the prefix property on the accumulator instead
+would turn "the first `limit` rows" into "the last `limit` rows".
+
+Coverage for `RDF.CottasStore` is still NOT claimed: candidate planning
+(`plan_candidate_rgs`, the dictionary cache, the compound predicate-object
+prune, the subject-range prune) and the public search/estimate/count
+entry points remain.

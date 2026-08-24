@@ -350,6 +350,7 @@ import L4Factoidal.Cottas.BaseWriterFileV2
 import L4Factoidal.Cottas.OnDiskStore
 import L4Factoidal.Cottas.OnDiskFilter
 import L4Factoidal.Cottas.OnDiskWalk
+import L4Factoidal.Cottas.OnDiskLimit
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PlanPruning
 import L4Factoidal.Cottas.AccessPath
