@@ -975,8 +975,10 @@ def runTest (mode : Mode) (assumedBase : Option String) (manifestDir : String)
 
   /- ### SPARQL 1.1 Update (sparql11 suites) — see the section above. -/
   | "UpdateEvaluationTest"       => runUpdateEvaluation tc mode
-  | "PositiveUpdateSyntaxTest11" => runUpdateSyntaxTest true tc mode
-  | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc mode
+  | "PositiveUpdateSyntaxTest11" | "PositiveUpdateSyntaxTest" =>
+      runUpdateSyntaxTest true tc mode
+  | "NegativeUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest" =>
+      runUpdateSyntaxTest false tc mode
 
   /- ### RDF 1.1 Semantics (rdf-mt) — see "RDF 1.1 Semantics" above. -/
   | "PositiveEntailmentTest" => runEntailmentTest mode true tc

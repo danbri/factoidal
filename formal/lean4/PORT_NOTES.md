@@ -13662,3 +13662,16 @@ the v12 flag), so the 1.1 grammar is untouched.
   `.v11` — a harness gap, not a grammar gap (the query path already
   passes `.v12` for rdf12-mode suites).
 * sparql11 syntax-query: **94 pass, 0 fail (out of 94)** — unchanged.
+
+## sparql12 complete — 2026-08-24
+
+📊 sparql12 family, Lean runner: **254 pass, 0 fail, 0 skip, 0
+unsupported (out of 254)** — from 76 pass, 158 fail, 20 unsupported
+this morning. Landings, in order: suite mode plumbing (fixtures,
+queries, updates, expected graphs parse as 1.2), the reified-triple/
+annotation grammar port (issue #556), the update-runner 1.2 mode, the
+evaluator fixes (ill-formed `xsd:boolean` has no value; `STRLANG`
+requires a non-empty tag — both defects shared by the F\* engine
+behind a lenient runner comparison, issue #577), and the un-suffixed
+`PositiveUpdateSyntaxTest`/`NegativeUpdateSyntaxTest` type names in
+the dispatcher.
