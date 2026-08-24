@@ -125,6 +125,51 @@ Aliasing it would have moved the count by one and made the count mean
 less. It stayed on the not-covered list, with the missing half named
 in an issue.
 
+## Rule 6b — an alias covers a module, and a module is not one result
+
+An alias says "this F* module has a Lean counterpart". It does not say
+every definition in it arrived. On a large module, expect the alias to
+cover the PRINCIPAL result and expect individual functions to be
+missing.
+
+Why. `SPARQL11.Algebra` is aliased and counts as covered.
+`strip_rewrite_internal_vars` and its two helpers were not in the Lean
+tree at all — and CLAUDE.md names that function as load-bearing, with a
+constraint on where it may be applied.
+
+The check that found it was not a tool. It was reading the project's
+own list of results that matter and looking each one up. So:
+
+**Audit against the results the project has written down as
+load-bearing, not against definition names.** CLAUDE.md's rules,
+`docs/theorem-registry.md`, and the findings sections of module headers
+are that list.
+
+## Rule 6c — do not try to measure this by comparing names
+
+A tool that compares F* definition names against Lean definition names
+cannot answer "how much of this module arrived", and no percentage it
+prints will mean that.
+
+Why, measured 2026-08-24. `tools/lean-port-depth.py` was written to do
+exactly this. Its first version reported 73% of definitions missing,
+with several fully ported modules at 100%. Two rounds of correcting the
+normalisation — stripping F* domain prefixes that Lean drops under
+namespaces, then searching the whole tree instead of one module — moved
+it to 62% and left the same modules at 100%.
+
+The cause is not fixable by better normalisation. The two trees share
+almost no internal vocabulary, because the Lean side was written
+against the W3C text rather than translated. F* has
+`rho_df_closure_iter` and `lemma_dedup_pairs_memP`; Lean has
+`Derives.cut` and `mem_addOne_of_mem`. Same results, different proof
+architecture. A name comparison cannot tell that apart from an absence.
+
+That difference is the point of having two trees, so the tool is
+measuring the method working and calling it a deficit. It is kept as a
+READING LIST — which covered module to open first — and it now refuses
+to print a coverage percentage.
+
 ## Rule 7 — an audit that finds nothing tells you about the audit first
 
 When a check comes back clean, write down HOW you checked, next to the
@@ -147,9 +192,11 @@ read as coverage.
 5. Did every alias resolve to a file that exists?
 6. For each newly covered item, did you read the file?
 7. For each newly covered item, does it carry the whole result?
-8. Can you state the method next to the number?
+8. If the number came from comparing names, can it tell a rename from
+   an absence? (Usually it cannot — see rule 6c.)
+9. Can you state the method next to the number?
 
-Eight yes answers, then publish.
+Nine yes answers, then publish.
 
 ## Related
 
