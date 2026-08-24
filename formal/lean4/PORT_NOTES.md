@@ -11672,3 +11672,54 @@ rather than "unknown identifier". `unfold f at h` leaves the outer
 
 **Status of the module.** Six layers in. `OWL.QueryRewrite` is 1,799 F\*
 lines and stays not covered. Coverage 194 of 220.
+
+---
+
+## `RDF/StoreCapabilitiesCottas.lean` — `RDF.Store.Capabilities.Cottas`, and the first laws `StoreCaps` has ever carried
+
+The F\* module builds the read-only capability record for a COTTAS file
+on disk. Its own banner states the property that makes it reviewable:
+"zero new logic, one-to-one mapping" — every field wraps the entry point
+the matching `GB_CottasOnDisk` dispatcher arm already called.
+
+**The purity doctrine.** The F\* module reaches `RDF.CottasStore`, which
+is `assume val` I/O: mmap, file ranges, dictionary pages. Those are not
+assumptions in the Lean tree. `CottasReadOps` is the record of the eight
+entry points the builder wraps, taken as a parameter, and `capsOfCottas`
+is the wiring over it.
+
+**`StoreCaps` carried no laws at all.** `RDF/StoreCapabilities.lean` has
+no theorems, so nothing in the tree said what a backend record must
+satisfy — not the union combinator, not the in-memory builder, not the
+dataset seam. A claim about a wiring layer is exactly the kind that
+decays: a later edit adds a `take`, a swap or a default and the comment
+still says zero.
+
+`StoreCapsLawful` states five laws — `limitAgrees`, `countIsSolve`,
+`estimateExact`, `selectiveAgrees`, `presenceSound` — and
+`capsOfCottas_lawful` derives all five from facts about the reader and
+nothing else. That is what "zero new logic" means, said so a later edit
+breaks the build instead of the comment.
+
+**Two backends, one statement.** `capsOfIndexed_lawful` proves the same
+contract for the in-memory builder that was already in the tree, with no
+hypotheses. Checking two backends against ONE statement is the point of
+having the statement.
+
+**Which laws are vacuous where, said out loud** (hazard #24). For the
+COTTAS record `estimateExact` is discharged by the flag, because the
+builder advertises `estimateIsExact := false` — correct for a reader
+whose bounds-present branch approximates, and it means the contract
+constrains nothing about that record's `estimate`. For the in-memory
+record `selectiveAgrees` is discharged by `solveSelective := none`.
+`presenceSound` has teeth for both.
+
+**One faithfulness decision.** The F\* source notes that the
+`backend_predicate_present` dispatcher ignores the graph scope, and that
+the wrapper "matches that exactly rather than fixing it". The Lean
+`CottasReadOps.predicatePresent` therefore takes no scope either.
+Changing it would have been a silent behaviour edit dressed as a port.
+
+Nine `#guard` checks, one of them the satisfiability evidence hazard #24
+asks for before a theorem with hypotheses is trusted. `lake build` green
+at 796 jobs. Coverage 194 to 195 of 220; this landing is the cause.

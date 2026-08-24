@@ -166,6 +166,7 @@ alias={
  "RDF.Entailment.Simple.Refinement":"RDF.EntailmentSimpleRefinement",
  "SPARQL11.Algebra.Spec":"SPARQL.AlgebraSpec",
  "RDF.List.Helpers":"RDF.ListHelpers",
+ "RDF.Store.Capabilities.Cottas":"RDF.StoreCapabilitiesCottas",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
