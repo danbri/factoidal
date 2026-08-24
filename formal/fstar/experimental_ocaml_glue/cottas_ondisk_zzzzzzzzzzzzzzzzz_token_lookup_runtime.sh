@@ -1,35 +1,42 @@
 #!/bin/bash
-# Phase 2.7-mini (issue #118) — realise the four
-# `ondisk_lookup_{subj,pred,obj,graph}_id_global` `assume val`s
-# declared in RDF.CottasStore.fst.
+# Realise the ONE remaining dictionary `assume val` of
+# RDF.CottasStore.fst: `ondisk_token_tables_global`.
 #
-# Why: the F*-extracted `build_qp_row` used to call
-# `revmap_lookup h.coh_*_raw_revmap tok` to map a parquet column
-# token back to its term-id. On Bet7-lazy-opened handles those
-# F*-side assoc-lists are empty (Bet7 defers their construction to
-# keep handle-open under 5 s for the parliament corpus). So the
-# F*-extracted `cottas_ondisk_search` body returned 0 rows.
+# History. Until 2026-08-24 this patch realised EIGHT `assume val`s --
+# `ondisk_id_to_{subj,pred,obj,graph}_token_global` and
+# `ondisk_lookup_{subj,pred,obj,graph}_id_global`, the two directions of
+# one token dictionary. None of the eight was input/output, so none of
+# them qualified under CLAUDE.md rule #11, and their correctness
+# requirement lived only in a prose comment in the F-star source that
+# nothing could check.
 #
-# This shim bridges the F* spec to Bet7's OCaml-side
-# `ensure_*_loaded` + `Hashtbl<token, int>` infrastructure: the F*
-# `build_qp_row` calls these `_global` lookups; OCaml realises them
-# by ensuring the relevant column is populated, then a single
-# `Hashtbl.find_opt`. Rule #11(c) thin dispatch shim.
+# The F-star source now carries `cottas_token_tables` (the eight
+# directions as one record), `token_tables_agree_with` (the requirement,
+# as a Type0 predicate), `tables_of_handle` + `tables_of_handle_agree`
+# (the populated-handle instance and its proof), and
+# `build_qp_row_agrees` (the consequence: under agreement the fast
+# tables and the handle's own assoc-lists build the same row). What is
+# left assumed is a single value -- the deferred read of the four
+# dictionary columns of the store file -- which this patch supplies.
 #
-# Soundness: post-realisation, the assume-val outcome is observably
-# equivalent to `revmap_lookup h.coh_*_raw_revmap tok` on a
-# fully-populated handle. The data is the same; only the lookup
-# shape (assoc-list vs Hashtbl) differs.
+# Why the deferred read exists: the F-star-side `coh_*_raw` /
+# `coh_*_raw_revmap` assoc-lists are EMPTY on a lazily-opened handle
+# (the lazy open defers building them to keep handle-open under 5 s for
+# the parliament corpus). The OCaml runtime carries the same data in
+# `Cottas_ondisk_runtime.fast_tables`, populated on first touch by
+# `Cottas_ondisk_lazy.ensure_*_loaded`. This patch is a thin rule-#11
+# dispatch shim over that: ensure_loaded + Hashtbl.find_opt, one
+# closure per direction, no semantic decision and no byte layout.
 #
-# Sort order: zzzzzzzzzzzzzzzzz (17 z's) — runs LAST in the
+# The eight closures ignore the `path` handed to
+# `ondisk_token_tables_global` and take the path per call, exactly as
+# the eight assume-vals did, so ONE shared record serves every path and
+# `build_qp_row` allocates nothing per row.
+#
+# Sort order: zzzzzzzzzzzzzzzzz (17 z's) -- runs LAST in the
 # cottas_ondisk_* chain. Needs Cottas_ondisk_runtime (defined by
 # cottas_ondisk_runtime.sh) and Cottas_ondisk_lazy (defined by
 # cottas_ondisk_z_lazy_open.sh) to be in place.
-#
-# After 2.7-mini lands, Phase 2.5e (retire the OCaml `search_fast`
-# / `estimate_fast` dispatch shims) becomes a clean removal of the
-# `cottas_ondisk_search` / `_estimate` substitutions in
-# cottas_ondisk_runtime.sh — the F* path will produce correct rows.
 
 set -euo pipefail
 
@@ -68,26 +75,19 @@ path = pathlib.Path(sys.argv[1])
 content = path.read_text()
 
 # ----------------------------------------------------------------------
-# Helper: substitute the four failwith stubs with stateful realisations
-# that route via Cottas_ondisk_runtime + Cottas_ondisk_lazy.
-#
-# F* 2025.x extraction shape:
-#   let ondisk_lookup_subj_id_global (path : Prims.string)
-#     (token : Prims.string) :
-#     Prims.nat FStar_Pervasives_Native.option=
-#     failwith
-#       "Not yet implemented: RDF.CottasStore.ondisk_lookup_subj_id_global"
-# (and similar for pred / obj / graph)
+# Helper module: the two dispatch shapes, one per dictionary direction.
+# Both open the per-path tables, run the column's ensure_*_loaded hook,
+# and answer from the Hashtbl, wrapped in the F-star-extracted option
+# type.
 # ----------------------------------------------------------------------
 
-# Common helper: opens the per-path tables, runs the appropriate
-# ensure_*_loaded hook, returns Hashtbl.find_opt result wrapped in
-# the F*-extracted FStar_Pervasives_Native option type.
 helper_block = '''
-(* Phase 2.7-mini (issue #118): token -> id lookup helper, used by
-   build_qp_row's `ondisk_lookup_*_id_global` assume-val realisations
-   below. Rule #11(c) thin dispatch shim — no semantic decisions,
-   only the same routing search_fast already uses.
+(* Realisation of RDF.CottasStore.ondisk_token_tables_global: the
+   deferred read of the four dictionary columns. Rule #11 dispatch
+   shim over Cottas_ondisk_lazy's ensure_*_loaded + Hashtbl.find_opt.
+   Its obligation is stated in F-star as
+   `token_tables_agree_with (ondisk_token_tables_global h.coh_path) h`
+   and consumed by `build_qp_row_agrees`.
    __TOKEN_LOOKUP_RUNTIME_APPLIED__ *)
 module Cottas_token_lookup_global = struct
   let lookup_with_ensure
@@ -104,10 +104,7 @@ module Cottas_token_lookup_global = struct
        | Some i -> FStar_Pervasives_Native.Some (Z.of_int i)
        | None   -> FStar_Pervasives_Native.None)
 
-  (* Phase 2.7-mini Phase 2: id -> raw token (mirror of lookup_with_ensure).
-     Used by `id_to_raw_token_via_global` in the F* spec. Same Bet7-aware
-     ensure_*_loaded routing; takes an id, returns the raw column-token
-     string. *)
+  (* Mirror of lookup_with_ensure for the id -> raw token direction. *)
   let id_to_token_with_ensure
       (ensure : cottas_ondisk_handle -> Cottas_ondisk_runtime.fast_tables -> unit)
       (table_of : Cottas_ondisk_runtime.fast_tables -> (Stdlib.Int.t, string) Hashtbl.t)
@@ -123,101 +120,78 @@ module Cottas_token_lookup_global = struct
        | None   -> FStar_Pervasives_Native.None)
 end
 
+(* One shared record. Every closure takes its path per call, so this
+   value is path-independent and `build_qp_row` allocates nothing per
+   matched row. *)
+let cottas_global_token_tables : cottas_token_tables =
+  {
+    ctt_id_to_subj_token =
+      Cottas_token_lookup_global.id_to_token_with_ensure
+        Cottas_ondisk_runtime.ensure_subjects_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_id_to_subj_tok);
+    ctt_id_to_pred_token =
+      Cottas_token_lookup_global.id_to_token_with_ensure
+        Cottas_ondisk_runtime.ensure_predicates_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_id_to_pred_tok);
+    ctt_id_to_obj_token =
+      Cottas_token_lookup_global.id_to_token_with_ensure
+        Cottas_ondisk_runtime.ensure_objects_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_id_to_obj_tok);
+    ctt_id_to_graph_token =
+      Cottas_token_lookup_global.id_to_token_with_ensure
+        Cottas_ondisk_runtime.ensure_graphs_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_id_to_graph_tok);
+    ctt_lookup_subj_id =
+      Cottas_token_lookup_global.lookup_with_ensure
+        Cottas_ondisk_runtime.ensure_subjects_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_subj_tok_to_id);
+    ctt_lookup_pred_id =
+      Cottas_token_lookup_global.lookup_with_ensure
+        Cottas_ondisk_runtime.ensure_predicates_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_pred_tok_to_id);
+    ctt_lookup_obj_id =
+      Cottas_token_lookup_global.lookup_with_ensure
+        Cottas_ondisk_runtime.ensure_objects_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_obj_tok_to_id);
+    ctt_lookup_graph_id =
+      Cottas_token_lookup_global.lookup_with_ensure
+        Cottas_ondisk_runtime.ensure_graphs_loaded
+        (fun t -> t.Cottas_ondisk_runtime.ft_graph_tok_to_id);
+  }
+
 '''
 
-# Insert helper module just BEFORE the first ondisk_*_global extracted
-# stub so the realisations below can reference it. F* declares the
-# id->token assume-vals before the token->id ones, so the first stub
-# in OCaml extraction order is `ondisk_id_to_subj_token_global`.
-anchor = "let ondisk_id_to_subj_token_global "
+anchor = "let ondisk_token_tables_global "
 if anchor not in content:
-    # Fallback for older builds (only token->id assume-vals existed).
-    anchor = "let ondisk_lookup_subj_id_global "
-if anchor not in content:
-    sys.stderr.write("  [token-lookup-runtime] FATAL: no ondisk_*_global stub found; F* extraction may have changed.\n")
+    sys.stderr.write("  [token-lookup-runtime] FATAL: ondisk_token_tables_global stub not found; F-star extraction may have changed.\n")
     sys.exit(1)
 
 content = content.replace(anchor, helper_block + anchor, 1)
 
-# Substitute each of the four failwith stubs with a one-line dispatch.
-# F* 2025.x extracts assume-vals as `let foo (...) : ...= failwith "..."`.
+# Substitute the failwith stub. F* 2025.x extracts the assume-val as
+#   let ondisk_token_tables_global (path : Prims.string) : cottas_token_tables=
+#     failwith "Not yet implemented: RDF.CottasStore.ondisk_token_tables_global"
+pattern = re.compile(
+    r"let ondisk_token_tables_global\s*\(path\s*:\s*Prims\.string\)\s*"
+    r":\s*cottas_token_tables=\s*"
+    r"failwith\s*"
+    r'"Not yet implemented: RDF\.CottasStore\.ondisk_token_tables_global"',
+    re.MULTILINE,
+)
 
-# F* 2025.x extracts these assume-vals in slightly varying shapes:
-# sometimes both args on one line, sometimes split; sometimes failwith
-# on one line, sometimes split. Match permissively with a regex.
-column_specs = [
-    ("subj",  "ensure_subjects_loaded",   "ft_subj_tok_to_id"),
-    ("pred",  "ensure_predicates_loaded", "ft_pred_tok_to_id"),
-    ("obj",   "ensure_objects_loaded",    "ft_obj_tok_to_id"),
-    ("graph", "ensure_graphs_loaded",     "ft_graph_tok_to_id"),
-]
+new_body = (
+    "let ondisk_token_tables_global (_path : Prims.string)\n"
+    "  : cottas_token_tables =\n"
+    "  cottas_global_token_tables"
+)
 
-applied = 0
-
-# ---- Phase 2: id -> raw token assume-vals (mirror of token -> id).
-id_to_tok_specs = [
-    ("subj",  "ensure_subjects_loaded",   "ft_id_to_subj_tok"),
-    ("pred",  "ensure_predicates_loaded", "ft_id_to_pred_tok"),
-    ("obj",   "ensure_objects_loaded",    "ft_id_to_obj_tok"),
-    ("graph", "ensure_graphs_loaded",     "ft_id_to_graph_tok"),
-]
-
-for col, ensure_fn, table_field in id_to_tok_specs:
-    fn = f"ondisk_id_to_{col}_token_global"
-    pattern = re.compile(
-        r"let " + re.escape(fn) +
-        r"\s*\(path\s*:\s*Prims\.string\)\s*\(id\s*:\s*Prims\.nat\)\s*"
-        r":\s*Prims\.string\s+FStar_Pervasives_Native\.option=\s*"
-        r"failwith\s*"
-        r'"Not yet implemented: RDF\.CottasStore\.' + re.escape(fn) + r'"',
-        re.MULTILINE,
-    )
-    new_body = (
-        f"let {fn} (path : Prims.string) (id : Prims.nat)\n"
-        f"  : Prims.string FStar_Pervasives_Native.option =\n"
-        f"  Cottas_token_lookup_global.id_to_token_with_ensure\n"
-        f"    Cottas_ondisk_runtime.{ensure_fn}\n"
-        f"    (fun t -> t.Cottas_ondisk_runtime.{table_field})\n"
-        f"    path id"
-    )
-    new_content, n = pattern.subn(new_body, content, count=1)
-    if n == 1:
-        content = new_content
-        applied += 1
-    else:
-        sys.stderr.write(f"  [token-lookup-runtime] WARN: {fn} stub not found (regex didn't match)\n")
-
-# ---- Phase 1: token -> id assume-vals (existing).
-for col, ensure_fn, table_field in column_specs:
-    fn = f"ondisk_lookup_{col}_id_global"
-    # Permissive pattern: header (any whitespace, including line breaks
-    # between params and return type), then the failwith with the full
-    # "Not yet implemented: RDF.CottasStore.<fn>" message.
-    pattern = re.compile(
-        r"let " + re.escape(fn) +
-        r"\s*\(path\s*:\s*Prims\.string\)\s*\(token\s*:\s*Prims\.string\)\s*"
-        r":\s*Prims\.nat\s+FStar_Pervasives_Native\.option=\s*"
-        r"failwith\s*"
-        r'"Not yet implemented: RDF\.CottasStore\.' + re.escape(fn) + r'"',
-        re.MULTILINE,
-    )
-    new_body = (
-        f"let {fn} (path : Prims.string) (token : Prims.string)\n"
-        f"  : Prims.nat FStar_Pervasives_Native.option =\n"
-        f"  Cottas_token_lookup_global.lookup_with_ensure\n"
-        f"    Cottas_ondisk_runtime.{ensure_fn}\n"
-        f"    (fun t -> t.Cottas_ondisk_runtime.{table_field})\n"
-        f"    path token"
-    )
-    new_content, n = pattern.subn(new_body, content, count=1)
-    if n == 1:
-        content = new_content
-        applied += 1
-    else:
-        sys.stderr.write(f"  [token-lookup-runtime] WARN: {fn} stub not found (regex didn't match)\n")
+content, n = pattern.subn(new_body, content, count=1)
+if n != 1:
+    sys.stderr.write("  [token-lookup-runtime] FATAL: ondisk_token_tables_global stub regex did not match.\n")
+    sys.exit(1)
 
 path.write_text(content)
-sys.stderr.write(f"  [token-lookup-runtime] applied {applied}/8 ondisk_lookup_*_id_global + ondisk_id_to_*_token_global realisations\n")
+sys.stderr.write("  [token-lookup-runtime] applied ondisk_token_tables_global realisation (8 dictionary directions in 1 record)\n")
 PYEOF
 
 echo "  Cottas token-lookup runtime applied."

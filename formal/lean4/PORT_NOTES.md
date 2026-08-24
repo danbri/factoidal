@@ -13444,3 +13444,34 @@ needs the converse concatenation direction recorded in
 Remaining for `RDF.NQuads.Streaming` coverage: the generic-consumer
 half (`stream_consume` / `batch_consume` and their agreement theorem),
 next.
+
+## The generic N-Quads consumer — 2026-08-24
+
+`Syntax/NQuadsFold.lean` ports the consumer half of
+`RDF.NQuads.Streaming.fst`: a caller supplies
+`consume : α → Triple → Option Subject → α` and receives every quad,
+chunked (`streamConsume`) or whole (`batchConsume`), with no `Dataset`
+built. `streamConsume11_eq_batch` is the agreement theorem.
+
+Per the abstraction steer (CLAUDE.md, Standing decisions), fuel
+independence and the line-boundary concatenation lemma are stated once
+here over `α`. They are the proofs from `NQuadsStreaming.lean` /
+`NQuadsConcat.lean` with `Dataset` generalised to `α` and `addQuad` to
+`consume`; the proof text is otherwise unchanged, because those proofs
+never inspect the accumulator. `parseQuadLinesAcc_eq_fold` ties the
+shipping parser to the fold at `consume = addQuad`, so the dataset case
+is an instantiation.
+
+Six `#guard`s run a counting consumer chunked and whole, with chunk
+boundaries mid-line, and check the graph-label slot reaches the
+consumer.
+
+Axioms `[propext, Classical.choice, Quot.sound]` on all five theorems;
+no `sorry`, no user `axiom`, no `native_decide`.
+✅ Build green at 864 jobs; Lean W3C runner unchanged (N-Triples 70
+pass, 0 fail (out of 70); N-Quads 87 pass, 0 fail (out of 87); Turtle
+313 pass, 0 fail (out of 313)).
+
+Next: the `skills/counting-coverage` definition-level audit of
+`RDF.NQuads.Streaming.fst` against the Lean modules, before any
+coverage number moves.

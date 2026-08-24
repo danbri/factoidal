@@ -73,6 +73,7 @@ import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.NQuadsStreaming
 import L4Factoidal.Syntax.NQuadsConcat
 import L4Factoidal.Syntax.NQuadsHomomorphism
+import L4Factoidal.Syntax.NQuadsFold
 import L4Factoidal.Syntax.LexShift
 import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Syntax.Turtle
