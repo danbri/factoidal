@@ -13628,3 +13628,37 @@ preprocessing, `Import` location→local-file resolution, and the
 profile dispatch (`RDF`/`RDFS` → `RDFS.closureFix`, `OWL-*` →
 `OWL.RL.closureFix`, `Simple`/none → plain triples) before
 saturation; evaluation is then the PLAIN query path.
+
+## SPARQL 1.2 reified triples + annotation blocks — 2026-08-24
+
+Issue #556. Port of `parse_reified_triple_pattern`, `parse_reifier_id`
+and `parse_annotations` from `SPARQL11.Parser.fst` into
+`L4Factoidal/SPARQL/Parser.lean`: bare reified triples
+`<< s p o (~ reifier)? >>` in subject and object position, and the
+`~ VarOrReifierId?` / `{| predicateObjectList |}` annotation sequence
+after a simple-predicate object. Same desugaring as the F\*: a reified
+triple denotes its reifier (named by `~`, else a fresh blank node),
+which takes the triple's place in the enclosing position and carries
+one extra pattern `reifier rdf:reifies <<( s p o )>>`; the triple is
+NOT itself asserted. Components reuse the restricted triple-term
+parsers (no collections; predicate var/IRI/`a` only); annotations are
+reachable only from `pObjectListSimple`, never `pObjectListPath`. All
+of it is v12-gated at the tokenizer (the five tokens exist only under
+the v12 flag), so the 1.1 grammar is untouched.
+
+📊 Scores (Lean runner `l4w3c`):
+
+* sparql12 syntax-triple-terms-positive: before 21 pass, 74 fail,
+  18 unsupported (out of 113) → after **95 pass, 0 fail,
+  18 unsupported (out of 113)**.
+* sparql12 syntax-triple-terms-negative: **63 pass, 0 fail,
+  2 unsupported (out of 65)** — unchanged, no regression.
+* sparql12 eval-triple-terms: before 15 pass, 26 fail (out of 41) →
+  after **38 pass, 3 fail (out of 41)**. The 3 remaining failures are
+  the UpdateEvaluationTests; the update PARSER accepts all three
+  fixtures at `.v12` (probed directly), but
+  `Harness/Run.lean`'s `runUpdateEvaluation` calls
+  `parseSparqlUpdate` without a version argument, defaulting to
+  `.v11` — a harness gap, not a grammar gap (the query path already
+  passes `.v12` for rdf12-mode suites).
+* sparql11 syntax-query: **94 pass, 0 fail (out of 94)** — unchanged.
