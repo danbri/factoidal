@@ -442,7 +442,16 @@ def ebv : EvalResult → Option Bool
   | .dbl s  => some (s ≠ "0" && s ≠ "0.0" && s ≠ "NaN" && s ≠ "")
   | .term (.literal l) =>
       if l.val.datatype == xsdBoolean then
-        some (l.val.lexicalForm == "true" || l.val.lexicalForm == "1")
+        -- Valid lexical forms only (XSD 1.1 §3.3.2). SPARQL 1.1
+        -- §17.2.2 sent an ill-formed boolean to `false`; SPARQL 1.2
+        -- removed that rule, so it is a type error (`not-not`: the
+        -- row for `"z"^^xsd:boolean` leaves its BIND unbound). No
+        -- sparql11 suite test exercises the removed rule — measured,
+        -- all 34 suites stay green — so one behaviour serves both.
+        match l.val.lexicalForm with
+        | "true" | "1" => some true
+        | "false" | "0" => some false
+        | _ => none
       else if l.val.datatype == xsdString then
         some (l.val.lexicalForm.length > 0)
       else if isNumericDatatype l.val.datatype then
@@ -955,7 +964,14 @@ def literalPromote (l : WfLiteral) : EvalResult :=
   else if l.val.datatype == xsdDouble || l.val.datatype == xsdFloat then
     .dbl l.val.lexicalForm
   else if l.val.datatype == xsdBoolean then
-    .bool (l.val.lexicalForm == "true" || l.val.lexicalForm == "1")
+    -- Valid lexical forms only, like the integer arm above: an
+    -- ill-formed boolean has no value to promote TO, and promoting it
+    -- to `false` hid the type error `ebv` must raise (sparql12
+    -- `expression/not-not`, the `"z"^^xsd:boolean` row).
+    match l.val.lexicalForm with
+    | "true" | "1" => .bool true
+    | "false" | "0" => .bool false
+    | _ => .term (.literal l)
   else .term (.literal l)
 
 /-- Literal equality that compares numeric literals by VALUE and
@@ -1756,7 +1772,11 @@ def Expr.evalIn (env : EvalEnv) (mu : Binding) : Expr → EvalResult
   | .strLang e1 e2 =>
       match Expr.evalIn env mu e1, (Expr.evalIn env mu e2).toString? with
       | .term (.literal l), some tag =>
-          if l.val.datatype == xsdString && l.val.langTag.isNone then
+          -- An empty language tag is not a language tag; SPARQL 1.2
+          -- `lang-basedir/strlang` requires the error, and `strLangDir`
+          -- below already carries the same check.
+          if l.val.datatype == xsdString && l.val.langTag.isNone
+              && tag.length > 0 then
             .term (.literal (mkLangLiteral l.val.lexicalForm tag))
           else .error
       | _, _ => .error
