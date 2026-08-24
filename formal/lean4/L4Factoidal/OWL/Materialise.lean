@@ -111,6 +111,56 @@ Fuel bounds the recursion. Running out answers `none`, which is the
 same answer an unreadable expression gets — the reasoner never
 guesses past its budget. -/
 
+/-- One class expression PROVABLY entails another, by the rules this
+module can justify from the graph: syntactic equality; named
+subsumption asserted (or closure-derived) as `rdfs:subClassOf`; and a
+named class inside the complement of a class it is declared
+`owl:disjointWith`. `false` is "not proved here", never "false". -/
+partial def ceEntailsCe (st : Store) (c1 c2 : ClassExpr) : Bool :=
+  if ClassExpr.beq c1 c2 then true
+  else match c1, c2 with
+  | .named a, .named b =>
+      (st.withSubjPred (.iri a) rdfsSubClassOf).any (fun t => t.o == Term.iri b)
+  | .named a, .complement (.named w) =>
+      (st.withSubjPred (.iri a) owlDisjointWith).any
+        (fun t => t.o == Term.iri w) ||
+      (st.withSubjPred (.iri w) owlDisjointWith).any
+        (fun t => t.o == Term.iri a)
+  | _, _ => false
+
+/-- The class expressions PROVABLY above a named class `c`: the
+objects of its `rdfs:subClassOf` and `owl:equivalentClass` triples
+(and the subjects of reverse `owl:equivalentClass` triples), read
+back through `parseClassExpr`, followed recursively through further
+NAMED classes. Sound because `i ∈ C` with `C ⊑ D` or `C ≡ D` gives
+`i ∈ D`. Fuel bounds the recursion. -/
+partial def namedSuperCEs (st : Store) (c : WfIri) (fuel : Nat)
+    : List ClassExpr :=
+  match fuel with
+  | 0 => []
+  | n + 1 =>
+    let ups : List Term :=
+      (st.withSubjPred (.iri c) rdfsSubClassOf).map (·.o) ++
+      (st.withSubjPred (.iri c) owlEquivalentClass).map (·.o) ++
+      (st.withPredObj owlEquivalentClass (Term.iri c)).map (·.s.toTerm)
+    ups.flatMap (fun u =>
+      let ce := parseClassExpr st u n
+      ce :: (match ce with
+             | .named c2 => if c2 == c then [] else namedSuperCEs st c2 n
+             | _ => []))
+
+/-- The class expressions of `i`'s asserted (or closure-derived)
+types, read back through `parseClassExpr` — each named type expanded
+through `rdfs:subClassOf` / `owl:equivalentClass` to the class
+expressions provably above it. -/
+def typeCEsOf (st : Store) (i : Subject) (fuel : Nat) : List ClassExpr :=
+  (st.withSubjPred i rdfType).flatMap (fun t =>
+    let ce := parseClassExpr st t.o fuel
+    ce :: (match ce with
+           | .named c => namedSuperCEs st c (min fuel 8)
+           | _ => []))
+
+
 mutual
 
 partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
@@ -133,7 +183,24 @@ partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
     -- `∃ p. c`: a known successor in `c` is a witness. No known
     -- successor is not a refutation — an unseen one may exist — so
     -- this never answers `some false`.
-    | .someOf p c => anyIsMember st (successors st i p) c n
+    | .someOf p c =>
+        match anyIsMember st (successors st i p) c n with
+        | some true => some true
+        | r =>
+            -- A type of `i` that is itself `∃ p. c'` with `c' ⊑ c`
+            -- proves membership with no witness edge: the existential
+            -- is inherited through the filler subsumption.
+            if (typeCEsOf st i n).any (fun tce =>
+                 match tce with
+                 | .someOf q c' => q == p && ceEntailsCe st c' c
+                 | .hasValue q _ =>
+                     -- the filler's class is unknown, so this is sound
+                     -- only against the top class
+                     q == p && (match c with
+                                | .named cn => cn == owlThing
+                                | _ => false)
+                 | _ => false)
+            then some true else r
 
     -- `∀ p. c`: `some true` only when every KNOWN successor is
     -- provably in `c`; `some false` as soon as one provably is not.
@@ -156,7 +223,15 @@ partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
     -- `≥ k p`: the count of known successors is a conservative floor,
     -- because two distinct names may denote one individual. Reaching
     -- `k` proves membership; falling short proves nothing.
-    | .minCard k p => if (successors st i p).length ≥ k then some true else none
+    | .minCard k p =>
+        if (successors st i p).length ≥ k then some true
+        -- `∃ p. c` and `∋ p. v` each entail at least one `p`-filler.
+        else if k ≤ 1 && (typeCEsOf st i n).any (fun tce =>
+               match tce with
+               | .someOf q _ => q == p
+               | .hasValue q _ => q == p
+               | _ => false)
+        then some true else none
 
     -- `≤ k p` and `= k p`. Two ways to prove one, and no others:
     -- `k = 0` with no known successor, or a FILLER BOUND — `i` is in

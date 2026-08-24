@@ -229,9 +229,16 @@ def expandCeSubject (b : Bgp) (subj : PatternSubject) : PatternTerm → Nat → 
           | _, _ => .bgp (singleTypeBgp subj op)
       | some (k, none, some .minCardinality) =>
           -- N = 0 is trivially satisfied, so it contributes nothing.
-          -- N >= 1 emits the existential anchor, which is exactly the
-          -- someValuesFrom shape. Sound, and an over-approximation for
-          -- N >= 2, which needs a chain of distinct variables.
+          -- N >= 1 unqualified: re-emit the ORIGINAL pattern — the
+          -- type-consumer triple plus the marker's shape triples.
+          -- `QueryMaterialise.augmentForQuery` guarantees the queried
+          -- graph holds a node stating this expression whose members
+          -- are exactly the `Mat.isMember`-proved individuals, so the
+          -- original pattern matches that node with EXACT counting.
+          -- The old edge pattern `subj prop ?v` missed members whose
+          -- membership is type-derived with no asserted edge (W3C
+          -- `sparqldl` parent4: Alice), and over-approximated N >= 2.
+          -- Qualified (owl:onClass) keeps the edge + filler route.
           match (bgpFindFirstObj b k owlOnProperty).bind patternIri,
                 cardValue b k owlMinCardinality owlMinQualifiedCardinality with
           | some prop, some cardN =>
@@ -243,7 +250,9 @@ def expandCeSubject (b : Bgp) (subj : PatternSubject) : PatternTerm → Nat → 
                 match bgpFindFirstObj b k owlOnClass with
                 | some filler =>
                     joinPatterns [propPat, expandCeSubject b (.var v) filler n]
-                | none => propPat
+                | none =>
+                    .bgp (singleTypeBgp subj op ++
+                          b.filter (fun tp => subjectMarkerKey tp.s == some k))
           | _, _ => .bgp (singleTypeBgp subj op)
       | some (k, none, some .maxCardinality) =>
           match (bgpFindFirstObj b k owlOnProperty).bind patternIri,
@@ -477,7 +486,9 @@ private def minCard0B : Bgp :=
 #guard (match expandCeSubject minCard0B (.var "x") (.bnode "r") 5 with
         | .empty => true | _ => false)
 
-/-! Minimum cardinality one is the existential anchor. -/
+/-! Minimum cardinality one re-emits the original pattern: the type
+triple plus the marker's two shape triples (the augmented graph's
+realising node is what it matches). -/
 private def minCard1B : Bgp :=
   [ { s := .bnode "r", p := .iri owlOnProperty, o := .iri cP },
     { s := .bnode "r", p := .iri owlMinCardinality,
@@ -486,7 +497,7 @@ private def minCard1B : Bgp :=
                      by simp [literalWf, xsdNonNegativeInteger, rdfLangString,
                               rdfDirLangString, Subtype.ext_iff]⟩ } ]
 #guard (match expandCeSubject minCard1B (.var "x") (.bnode "r") 5 with
-        | .bgp out => out.length == 1
+        | .bgp out => out.length == 3
         | _ => false)
 
 /-! Maximum qualified cardinality one emits the six-triple shape: four

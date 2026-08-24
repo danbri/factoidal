@@ -837,7 +837,8 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       chainToTransFor g d, prpRflFor g d,
       xsdAxiomsFor g d, dtRangeIntersectFor g d,
       caxDwToComplementFor g d, clsMaxqc1ToComplementFor g d,
-      minCard1ComprehensionFor g d, caxAdcToDwFor g d ]
+      minCard1ComprehensionFor g d, caxAdcToDwFor g d,
+      inverseOfDomRngFlipFor g d ]
 
 /-- The flattening of `conclusionsList`. -/
 def conclusionsFrom (g : Graph) (d : Triple) : List Triple :=

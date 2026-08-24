@@ -13536,3 +13536,64 @@ and now visible; F\* passes all 70. The failure shapes:
 
 Each is a work item against the F\* score, not a regression: every one
 of these tests reported "unsupported" yesterday.
+
+## Entailment regimes: 7 failures repaired, suite green — 2026-08-24
+
+📊 sparql11 `entailment` suite, Lean runner:
+
+* before: 59 pass, 7 fail, 4 unsupported (out of 70)
+* after: **66 pass, 0 fail, 0 skip, 4 unsupported (out of 70)**
+
+The 4 unsupported name the RIF regime only; every OWL/RDFS regime test
+passes. F\* passes 70 of 70 (it implements the RIF regime). The
+repairs, in dependency order:
+
+1. **`Mat.typeCEsOf` expands named types** (`OWL/Materialise.lean`,
+   `namedSuperCEs`): an asserted type that is a NAMED class is
+   followed through `rdfs:subClassOf` and `owl:equivalentClass` (both
+   directions) to the class expressions provably above it. Sound:
+   `i ∈ C` with `C ⊑ D` or `C ≡ D` gives `i ∈ D`. This is what lets
+   `Mat.isMember` prove `:Alice ∈ (≥ 1 :hasChild)` from
+   `:Alice a :Parent` + `:Parent ≡ (∃ :hasChild . owl:Thing)`
+   (parent4), and `:paper1 ∈ (∃ :publishedAt . ¬:Workshop)` from
+   `:ConferencePaper ⊑ (∃ :publishedAt . :Conference)` +
+   `:Conference owl:disjointWith :Workshop` (paper-sparqldl-Q3).
+2. **Unqualified `minCardinality` N ≥ 1 stops rewriting to the edge
+   pattern** (`OWL/QueryRewriteExpand.lean`): the edge pattern
+   `subj p ?v` missed members whose membership is type-derived with no
+   asserted edge, and over-approximated N ≥ 2. The branch now
+   re-emits the ORIGINAL pattern (type triple + the marker's shape
+   triples); `QueryMaterialise.augmentForQuery` guarantees the queried
+   graph holds a realising node whose members are exactly the
+   `Mat.isMember`-proved individuals, so the original pattern matches
+   with exact counting.
+3. **`∃ p. F` with a nested filler gets comprehension witness edges**
+   (`OWL/QueryMaterialise.lean`): that query form IS rewritten to the
+   edge pattern, so membership triples are invisible to it. For each
+   individual whose membership only the type route proves, the
+   augmentation adds `i p _:w` and `_:w a c'` — the existential the
+   type asserts, read back as a blank node. Added only when the known
+   successors do not already prove membership, so no row is doubled.
+   Named-filler `∃ p. F` is never rewritten and keeps being served by
+   the membership triples (parent2).
+4. **`inverseOfDomRngFlipFor` is now IN the closure**
+   (`OWL/RLClosure.lean`): the rule was defined, documented — its doc
+   comment even names `sparqldl-11` — and never registered in
+   `conclusionsList`. Registered, with full soundness threading: four
+   `Derives` rows (`invFlipDomRng`/`invFlipRngDom` and their reverse
+   readings) in `RLRules.lean`, `inverseOfDomRngFlipFor_sound`, the
+   dispatch case in `conclusionsFrom_sound`, four simulation cases in
+   `complete_of_saturated` (`RLTheorems.lean`), and the store mirror +
+   agreement lemma in `RLClosureIndexed.lean`. With the flip,
+   `:child rdfs:domain :Parent` + `:child owl:inverseOf :parent`
+   yields `:parent rdfs:range :Parent`, and scm-cls + scm-rng2 lift it
+   to `owl:Thing` — the two expected sparqldl-11 rows.
+
+Also in this batch (`Harness/Run.lean`): answers drop rows binding
+blank nodes the queried graph does not contain (the closure's witness
+nodes are not legal answer terms), and variables in CLASS position
+(object of `rdf:type` / `rdfs:domain` / `rdfs:range` /
+`owl:equivalentClass`, either side of `rdfs:subClassOf`) bind class
+names only. Individual-position blank-node answers stay (owlds02).
+No `eraseDups` anywhere: expected files contain duplicate rows
+(bind07, sparqldl-10) — answers are bags.

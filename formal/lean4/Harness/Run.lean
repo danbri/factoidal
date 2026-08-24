@@ -321,6 +321,44 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
             else match regime? with
             | some r => closeDataset r (withMinimalD []) ds0
             | none   => ds0
+  -- SPARQL 1.1 Entailment Regimes: an answer may not bind a blank node
+  -- the QUERIED graph does not contain (the closure mints witness
+  -- nodes, and those are not legal answer terms). The original
+  -- dataset's blank-node ids are the allowed set.
+  let origBnodes : List BNodeId :=
+    let ofGraph (g : Graph) : List BNodeId :=
+      g.flatMap (fun t =>
+        (match t.s with | .bnode b => [b] | _ => []) ++
+        (match t.o with | .bnode b => [b] | _ => []))
+    ofGraph ds0.default ++ ds0.named.flatMap (fun ng => ofGraph ng.graph)
+  -- OWL Direct Semantics additionally restricts a variable standing in
+  -- a CLASS position (object of rdf:type, either side of
+  -- rdfs:subClassOf, object of rdfs:domain / rdfs:range /
+  -- owl:equivalentClass) to CLASS NAMES: an anonymous class expression
+  -- is not in the ontology's signature, so a blank node is not a legal
+  -- binding there. Individual positions keep their blank nodes — the
+  -- suite's own `owlds02` ("bnodes are not existentials with answer")
+  -- expects one.
+  let classPosVars : List VarName :=
+    (L4Factoidal.OWL.QueryMaterialise.bgpsOf q.pattern).flatMap (fun b =>
+      b.flatMap (fun tp =>
+        match tp.p with
+        | .iri pi =>
+            (if pi == L4Factoidal.OWL.RL.rdfType
+                || pi == L4Factoidal.OWL.RL.rdfsDomain
+                || pi == L4Factoidal.OWL.RL.rdfsRange
+                || pi == L4Factoidal.OWL.RL.owlEquivalentClass then
+               match tp.o with | .var v => [v] | _ => []
+             else []) ++
+            (if pi == L4Factoidal.OWL.RL.rdfsSubClassOf then
+               (match tp.s with | .var v => [v] | _ => []) ++
+               (match tp.o with | .var v => [v] | _ => [])
+             else [])
+        | _ => []))
+  let rowAllowed (row : List (VarName × Term)) : Bool :=
+    row.all (fun vt => match vt.2 with
+      | .bnode b => origBnodes.contains b && !classPosVars.contains vt.1
+      | _ => true)
   let some rf := tc.resultFile
     | return .ofOutcome (.skip "no mf:result")
   let some rtext ← readOpt rf
@@ -334,7 +372,8 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   let ordered := q.modifier.orderBy.isSome
   match q.form, expected with
   | .select _, .rows erows csv =>
-      let arows := if owlRegime then L4Factoidal.OWL.QueryEval.evalSelectOwl env ds q
+      let arows := if owlRegime then
+                     (L4Factoidal.OWL.QueryEval.evalSelectOwl env ds q).filter rowAllowed
                    else (evalSelect env ds q).2
       let n := erows.length + arows.length
       return (match compareSelectRows ordered csv erows arows with

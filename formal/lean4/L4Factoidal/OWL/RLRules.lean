@@ -1151,6 +1151,31 @@ inductive Derives (g : Graph) : Triple → Prop where
       (hne : ci ≠ cj) :
       Derives g ⟨Subject.iri ci, owlDisjointWith, Term.iri cj⟩
 
+  /-- **inv-flip** `[ext]` — schema-level inverseOf domain/range
+  exchange, NOT in OWL 2 RL/RDF Table 9. `p owl:inverseOf q` makes the
+  extension of `q` the transposition of `p`'s, so a domain class of `p`
+  is a range class of `q`, and conversely — in both reading directions
+  of the `owl:inverseOf` triple. Sound under OWL 2 Direct and RDF-Based
+  Semantics. Four rows, one per emitted shape of
+  `RLClosure.inverseOfDomRngFlipFor`; W3C SPARQL entailment
+  `sparqldl-11` is the test that needs the schema triple itself. -/
+  | invFlipDomRng {p q c : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hdom : Derives g ⟨Subject.iri p, rdfsDomain, Term.iri c⟩) :
+      Derives g ⟨Subject.iri q, rdfsRange, Term.iri c⟩
+  | invFlipRngDom {p q c : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hrng : Derives g ⟨Subject.iri p, rdfsRange, Term.iri c⟩) :
+      Derives g ⟨Subject.iri q, rdfsDomain, Term.iri c⟩
+  | invFlipDomRngRev {p q c : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hdom : Derives g ⟨Subject.iri q, rdfsDomain, Term.iri c⟩) :
+      Derives g ⟨Subject.iri p, rdfsRange, Term.iri c⟩
+  | invFlipRngDomRev {p q c : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hrng : Derives g ⟨Subject.iri q, rdfsRange, Term.iri c⟩) :
+      Derives g ⟨Subject.iri p, rdfsDomain, Term.iri c⟩
+
 /-! ## The no-consequent (clash) rows
 
 Rows whose conclusion is `false`: their premises being satisfiable in
@@ -1380,6 +1405,10 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | minCard1Comprehension _ hax ih => exact Derives.minCard1Comprehension ih hax
   | caxAdcToDw _ _ _ h1 h2 hne ihgc ih1 ih2 =>
       exact Derives.caxAdcToDw ihgc ih1 ih2 h1 h2 hne
+  | invFlipDomRng _ _ ih1 ih2 => exact Derives.invFlipDomRng ih1 ih2
+  | invFlipRngDom _ _ ih1 ih2 => exact Derives.invFlipRngDom ih1 ih2
+  | invFlipDomRngRev _ _ ih1 ih2 => exact Derives.invFlipDomRngRev ih1 ih2
+  | invFlipRngDomRev _ _ ih1 ih2 => exact Derives.invFlipRngDomRev ih1 ih2
 
 /-- Cut: if every triple of `g'` is derivable from `g`, then everything
 derivable from `g'` is derivable from `g`. This is what makes the
@@ -1477,6 +1506,10 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | minCard1Comprehension _ hax ih => exact Derives.minCard1Comprehension ih hax
   | caxAdcToDw _ _ _ h1 h2 hne ihgc ih1 ih2 =>
       exact Derives.caxAdcToDw ihgc ih1 ih2 h1 h2 hne
+  | invFlipDomRng _ _ ih1 ih2 => exact Derives.invFlipDomRng ih1 ih2
+  | invFlipRngDom _ _ ih1 ih2 => exact Derives.invFlipRngDom ih1 ih2
+  | invFlipDomRngRev _ _ ih1 ih2 => exact Derives.invFlipDomRngRev ih1 ih2
+  | invFlipRngDomRev _ _ ih1 ih2 => exact Derives.invFlipRngDomRev ih1 ih2
 
 /-- Clash detection is monotone too: a bigger graph clashes at least as
 often. -/
