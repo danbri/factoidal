@@ -11087,3 +11087,48 @@ family as `String.mapAux`. `rfl` and `decide` both fail on
 (`SPARQL/Expr.lean`, `listIsPrefix` over `toList`) does reduce, and
 switching to it made the classification theorem and the join witness
 close by `rfl`.
+
+---
+
+## The IRIREF scanner refactor — unblocking the N-Triples round trip (2026-08-24)
+
+`Syntax/IriScan.lean`. Groundwork for
+<https://github.com/danbri/factoidal/issues/565> and therefore for
+`RDF.NTriples.RoundTrip`.
+
+**The blocker, restated.** `Lexing.readIriRefBody` is a ten-arm
+recursive match, two arms carrying six- and ten-character literal
+patterns. Lean's well-founded recursion generates one equation lemma
+per arm, and generating them exhausts the container's memory. No
+equations means no rewriting, so the round trip cannot be stated about
+it at all.
+
+**The fix, and why it works.** Move the deep patterns out of the
+recursion. `iriNextStep` does all the pattern matching and does NOT
+recurse, so its match compiles to a plain case tree. `scanIriBody`
+recurses on a three-constructor `IriStep`, so its equations are three
+small ones — `scanIriBody_close`, `scanIriBody_fail`,
+`scanIriBody_emit`, all proved here. Those three are exactly what
+`readIriRefBody` cannot give.
+
+**Termination is now one lemma.** `iriNextStep_emit_shorter`: an `emit`
+step consumed at least one character. It is provable arm by arm
+precisely because `iriNextStep` does not recurse.
+
+**Two `let`s had to go.** `split` cannot see through a `let` compiled
+to `have`, so the escape arms' `let cp := ...` blocked the termination
+proof. The `\u` and `\U` tails are now one shared `iriEmitAt` helper —
+shorter, and `iriEmitAt_emit` reduces both arms of the big proof to one
+line each. The plain-character arm's `let cp := c.toNat` was inlined.
+
+**Not yet swapped in.** `Syntax.Lexing` still uses `readIriRefBody`.
+Ten `#guard`s check that `scanIriBody` and `readIriRefBody` agree on
+the same input — including both escape forms, both malformed escape
+forms, an unterminated body, a forbidden character and the empty
+input — but a full equality would need the equations that cannot be
+generated, which is the whole problem. Swapping the shipping lexer over
+is a separate landing so that a transcription error meets the 325
+`#guard`s of the syntax tests on its own commit.
+
+**Axiom note.** Both theorems report `[propext, Quot.sound]` — narrower
+than the usual three, with no `Classical.choice`.

@@ -51,6 +51,7 @@ import L4Factoidal.SPARQL.Exists
 import L4Factoidal.SPARQL.QueryTheorems
 import L4Factoidal.SPARQL.QueryTests
 import L4Factoidal.Syntax.Lexing
+import L4Factoidal.Syntax.IriScan
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NTriplesRoundTrip
 import L4Factoidal.Syntax.NQuads
