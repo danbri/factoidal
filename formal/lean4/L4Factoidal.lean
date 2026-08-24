@@ -354,6 +354,8 @@ import L4Factoidal.Cottas.OnDiskLimit
 import L4Factoidal.Cottas.OnDiskPlan
 import L4Factoidal.Cottas.OnDiskSearch
 import L4Factoidal.Cottas.OnDiskCount
+import L4Factoidal.Cottas.OnDiskSelective
+import L4Factoidal.Cottas.OnDiskCountExact
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PlanPruning
 import L4Factoidal.Cottas.AccessPath

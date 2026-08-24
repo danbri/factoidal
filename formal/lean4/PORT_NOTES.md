@@ -12773,3 +12773,53 @@ Two `#guard`s in this module's first draft asserted false things, both
 mine: one put a predicate token in the subject bound position, and one
 expected the empty-range case to prune to nothing. Both were caught by
 the build, and the second is what sent me to read the caller.
+
+## RDF.CottasStore, layers 8 and 9 — selective decode, and the count-exact fast paths
+
+`Cottas/OnDiskSelective.lean` ports the row-index-selective search: it
+decodes an unbound column's values only at the indices that already
+matched on the cheap columns. The F\* entry point's banner states the
+differential gate's premise outright — "identical row/row-group ORDER to
+`cottas_ondisk_search_tok` … `need` only changes which UNBOUND columns
+get decoded, never which rows match or their order" — and that is two
+claims, both proved: `matched_iff_rowSelected` (the selective gate holds
+exactly where `rowSelected` returns a row) and
+`selectiveRows_need_invariant` (narrowing `need` changes neither the row
+count nor the graph values nor the order).
+
+The accumulator in `buildSelectiveRows_graph_invariant` is deliberately
+allowed to DIFFER between the two walks as long as it already agrees on
+`g`. That generalisation is not decoration: the two walks build rows
+whose other three positions genuinely differ, and an induction demanding
+identical accumulators cannot get past its own first step.
+
+`Cottas/OnDiskCountExact.lean` ports the last eight definitions: the
+predicate- and subject-offset-index fast paths, the eligibility guard,
+the summation, the four-way dispatcher, and the selective row's
+conversion to a triple. `offsetIndex_paths_disjoint` proves the F\*
+comment that justifies trying both fast paths in sequence.
+`sumOffsetCounts_none_of_fullScan` proves that one unusable row group
+abandons the whole sum, because a partial sum would silently undercount
+— the same all-or-nothing discipline as `collectDistinct_none_of_missing`
+in layer 7.
+
+**A vacuous theorem, caught and deleted.** A draft of layer 8 carried a
+`matchedIndicesSeq_eq_filterTokSeq` whose right-hand side reduced to its
+own left-hand side, closed by `rfl`. It proved nothing while reading
+like the module's headline result — anti-pattern #29's exact shape, in
+its worst form. It was deleted rather than weakened, and
+`matched_iff_rowSelected` is the statement that carries the content.
+
+## Coverage: 199 → 200
+
+`RDF.CottasStore` is now covered, and the alias in
+`tools/lean-port-gap.py` carries the audit method beside the result.
+Every one of the 125 names matched by
+`^(let (rec )?|and |assume val |noeq type |type )` was resolved BY HAND.
+A name-shape pre-pass matched 51 of the 125; that number is recorded as
+evidence about the PASS, not about the code (hazard #28). The count
+moved by exactly one module and by exactly 2,825 lines, which is this
+module's own length — no other classification shifted.
+
+Remaining: 3 engine (`Parquet.Footer`, `RDF.NQuads.Streaming`,
+`SPARQL11.Parser.AskBgpRoundTrip`), 3 proof, 14 by design.

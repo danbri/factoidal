@@ -225,6 +225,41 @@ alias={
  #    [21, 250, 6] = version 445 -- is #guarded in
  #    Cottas/BaseWriterFileV2.lean.
  "RDF.CottasStore.BaseWriter":"Cottas.BaseWriterFileV2",
+# RDF.CottasStore (2,825 lines) is ported across nine Lean modules under
+# Cottas/OnDisk*.lean; the alias points at the last one. AUDIT METHOD,
+# because a name is a hint and coverage is a decision
+# (skills/counting-coverage): every name matched by
+# `^(let (rec )?|and |assume val |noeq type |type )` in the F* module --
+# 125 of them -- was resolved BY HAND against the Lean tree, not by name
+# shape. A name-shape pre-pass matched only 51 of the 125; that figure is
+# evidence about the PASS, not about the code (hazard #28).
+# Findings of the hand pass:
+#  * 8 of the module's 10 `assume val`s are not I/O at all -- they are
+#    the two directions of one dictionary -- and became the fields of
+#    TokenTables. `cottas_ondisk_open` is StoreIo, the opened handle
+#    supplied by the caller; `cottas_ondisk_close` has no F* use site and
+#    Lean has no handle to release.
+#  * The ~14 walk variants (search/estimate x cached/global x tok/id x
+#    limited) collapse to walkRangeTok, walkCandidatesTok,
+#    walkRangeCount, walkCandidatesCount and walkCandidatesLimitedTok.
+#    The id-shaped variants are recovered by mapping rowOfTok, which
+#    layer 2 PROVES is the relation (filterSeq_eq_map_filterTokSeq_start)
+#    rather than asserting it.
+#  * The two sidecar prunes (compound predicate-object, subject offsets)
+#    are StoreIo parameters on purpose: compound_po_dict_encode resolves
+#    ids through the .p.dict sorted-rank space and NOT through the lazy
+#    runtime's first-occurrence space, and the F* source documents that
+#    mixing them prunes the row group holding the pair. Their loop bodies
+#    ARE ported (subjectRangeCandidateRgsLoop).
+#  * filter_zipped_rows_limited (list shape) has no in-tree callers
+#    post-2.5c per its own comment; it is covered by filterListTok plus
+#    the limit, and the list/indexed shape equivalence is proved
+#    (filterTokSeq_eq_filterListTok_start).
+# Two defects were found by the port and filed rather than fixed:
+# issue 571 (a corrupt row group and an empty one give the same answer)
+# and issue 572 (the selective exact-count and the full count disagree on
+# a null cell in an unbound column).
+ "RDF.CottasStore":"Cottas.OnDiskCountExact",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
