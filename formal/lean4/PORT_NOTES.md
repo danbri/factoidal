@@ -11338,3 +11338,46 @@ modules.
 (`SPARQL/Expr.lean`), `rdfFirst`/`rdfRest`/`rdfNil` in
 `L4Factoidal.RDFS`, and `owlIntersectionOf`/`owlUnionOf` in
 `L4Factoidal.OWL.RL` — not `L4Factoidal.OWL`. Three separate opens.
+
+---
+
+## `OWL.QueryRewrite` layer 2 → `OWL/QueryRewriteFlat.lean` (2026-08-24)
+
+Layer 1 decided what the operands of a flat class expression are. This
+decides what happens to the BGP. Still partial — the `GraphPattern`
+traversal, the UNION ladder and the Phase 4 nested cases remain — so no
+alias, and coverage stays 193 of 220.
+
+**Three kinds of triple, and every triple is exactly one.** Marker
+bookkeeping (`owl:intersectionOf`, `owl:unionOf`, `rdf:type owl:Class`,
+and the collection's `rdf:first`/`rdf:rest` cells) is deleted, because
+it describes the class expression rather than the data. A consumer
+(`?x rdf:type _:c`) is replaced by one triple per operand. Everything
+else is kept.
+
+**The property this layer owes.** `rewriteBgpIntersection_mem`: every
+output triple is either an input triple, or `⟨s, rdf:type, o⟩` for an
+`s` that already appeared as a consumer subject and an `o` that is one
+of the operands. With layer 1's `extractFlatIntersection_mem` — every
+operand is itself an object in the BGP — that says **the rewrite
+invents no IRI**.
+
+That is not answer-preservation. Answer-preservation needs the
+entailment regime, and is exactly where the narrowness recorded at
+<https://github.com/danbri/factoidal/issues/236> lives (the anchor
+multiplies rows per P-edge and drops vacuous-truth individuals). It is
+the weaker claim that has to hold first, and it is the one a reader can
+check against the module's own definition of the three kinds.
+
+`rewriteBgpStripMarker_mem` is the union branch's counterpart: the
+residue every branch shares is a sub-BGP of the input.
+
+**Reusable.** `mem_foldl_append` — membership in a left fold that only
+appends — carries both proofs. The RIF port needed the same shape; it
+is worth hoisting if a third caller appears.
+
+**Ten `#guard`s on the worked example** from the module header, plus an
+unrelated triple that must survive untouched, plus the no-marker case.
+Two of them assert the NEGATIVE: after rewriting, no triple is
+bookkeeping and none is a consumer. Those are what would catch a
+partial deletion.

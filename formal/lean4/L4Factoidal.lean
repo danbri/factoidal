@@ -84,6 +84,7 @@ import L4Factoidal.XML.Theorems
 import L4Factoidal.XML.Tests
 import L4Factoidal.OWL.Vocabulary
 import L4Factoidal.OWL.QueryRewriteCore
+import L4Factoidal.OWL.QueryRewriteFlat
 import L4Factoidal.OWL.RLRules
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
