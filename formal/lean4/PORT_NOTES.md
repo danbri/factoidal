@@ -13321,3 +13321,56 @@ pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
 
 Locality for `skipToEol` / `skipComment` / `skipEol`, then the
 line-boundary concatenation lemma, then the homomorphism.
+
+## Skip locality, and positions that count characters — 2026-08-24
+
+Two modules, both prerequisites for the line-boundary concatenation
+lemma (<https://github.com/danbri/factoidal/issues/570>).
+
+### `Syntax/LocalitySkips.lean`
+
+A chunk handed to the streaming parser ends with a newline. These
+lemmas turn that into the side conditions the readers need:
+
+* `span_snd_ne_nil_of_last` — a span stops when the last character
+  fails its test, so a whitespace run never runs off the end of a
+  chunk;
+* `getLast?_of_suffix` — a non-empty suffix keeps the last character,
+  so "still ends with a newline" survives every reader;
+* `skipToEol_local`, `skipComment_local`, `skipEol_local`.
+
+⚠️ Each locality lemma carries a side condition and each is real. A
+`skipToEol` that ran off the end keeps running. A `skipComment` on an
+empty input can be turned into a comment by appending a `#`. A
+`skipEol` on exactly `['\r']` becomes a CRLF pair when a `\n` arrives.
+
+### `Syntax/LocalityCount.lean`
+
+Every reader's returned position is its starting position plus the
+number of characters it took, stated as
+`p' + rest.length = pos + cs.length` so `omega` can use it. Eighteen
+theorems, from the two step functions up to `readNQuad11_counts`.
+
+This is what makes the streaming module's threaded offset CORRECT
+rather than merely plausible. `feedChunk` advances its stored offset by
+`complete.length`; these theorems say the parser's own position
+advanced by exactly that much. Without them the stored offset would be
+an assumption, and a parse error in a later chunk could name the wrong
+place — which is the defect the threading was meant to fix.
+
+It is also the Lean counterpart of the F\* module's `lemma_*_shift`
+family: both exist so a restart can be lined up with a run that never
+stopped. The F\* version shifts byte offsets through `Parser.FastString`;
+here the position is a plain character count over a `List Char`.
+
+### Gate
+
+✅ Build green at 858 jobs.
+
+### Next
+
+The concatenation lemma itself: parsing `complete ++ carry`, where
+`complete` ends with a newline, equals parsing `complete` and then
+parsing `carry` from where it stopped. Every piece it needs is now in
+place — per-line locality, the terminator's position, fuel
+independence, skip locality, and positions that count characters.

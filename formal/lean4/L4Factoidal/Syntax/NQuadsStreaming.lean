@@ -85,7 +85,7 @@ is proved.
 
 No `sorry`, no user `axiom`, no `native_decide`.
 -/
-import L4Factoidal.Syntax.LocalitySuffix
+import L4Factoidal.Syntax.LocalityCount
 
 namespace L4Factoidal.Syntax.NQuadsStreaming
 

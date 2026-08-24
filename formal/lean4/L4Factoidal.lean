@@ -64,6 +64,8 @@ import L4Factoidal.Syntax.Locality
 import L4Factoidal.Syntax.LocalityLiteral
 import L4Factoidal.Syntax.LocalityLine
 import L4Factoidal.Syntax.LocalitySuffix
+import L4Factoidal.Syntax.LocalitySkips
+import L4Factoidal.Syntax.LocalityCount
 import L4Factoidal.Syntax.IriScan
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NTriplesRoundTrip
