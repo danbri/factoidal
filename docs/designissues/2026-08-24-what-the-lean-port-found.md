@@ -7,13 +7,13 @@ The Lean 4 port started from zero code on 2026-08-22. It now covers 192
 of 220 F\* modules: 325 files, 114,232 lines, `lake build` green at 772
 jobs, zero `sorry`, zero user `axiom`, zero `native_decide`.
 
-The line count is not the result. The result is fourteen findings. Ten
-of them have the same shape, and this document says what that shape is
-and what follows from it.
+The line count is not the result. The result is fifteen findings.
+Eleven of them have the same shape, and this document says what that
+shape is and what follows from it.
 
 ## 1. The evidence
 
-### Group A — ten findings with one shape
+### Group A — eleven findings with one shape
 
 | # | Finding | Where |
 |---|---|---|
@@ -26,6 +26,7 @@ and what follows from it.
 | A7 | Adding `HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines, no Lean counterpart at all — disappear from the not-covered list, and took five more modules with it. Both names end in `Store`. | hazard #31 |
 | A8 | An alias was added, the module was ported, and the coverage count did not move. A `git stash` cycle had dropped the edit to the measuring tool. The number on screen was correct for the state before the landing. | tenth correction, `2026-08-23-lean-port-gap.md` |
 | A9 | `tools/lean-port-gap.py` read its Lean module list from a session scratchpad. It reported a module as not covered minutes after that module's file landed. | hazard #30 |
+| A9b | The F\* proof that `C rdfs:subClassOf C` is not an axiomatic triple needs `--fuel 50 --z3rlimit 600 --split_queries always` and must EXCLUDE one unrelated symbol's facts, because that symbol's definition equation in the SMT context tips a borderline `assert_norm`. Raising the budget did not recover it. The Lean proof is a case split on a finite table with no budget, no splitting and no filtering. | `RDFS/ReflexivityWitness.lean` |
 | A10 | Lean has its own wall, in a different place. `readIriRefBody` has ten match arms; generating its per-arm equation lemmas exhausts the container's memory. And the kernel does not reduce `String.mapAux`, so `decide` cannot evaluate `"en".toLower = "EN".toLower`. | [#565](https://github.com/danbri/factoidal/issues/565) |
 
 ### Group B — two ordinary defects, no pattern
@@ -89,6 +90,9 @@ as a fact about what it MEANS.
   deciding the specification's relation on mappings.
 - A7, A8, A9: a module name and an alias-table entry represent a
   module. Matching or missing them was read as the fact of coverage.
+- A9b: an SMT context's sensitivity to which definitions are in scope.
+  That was read as the difficulty of proving a fact about the RDFS
+  axiom tables.
 - A10: Lean's match compilation and string primitives. Those are being
   read correctly, as representation, which is why the blocker is filed
   as a refactor rather than as a limit on what can be proved.

@@ -29,6 +29,7 @@ import L4Factoidal.RDFS.ClosureTheorems
 import L4Factoidal.RDFS.ClosureTests
 import L4Factoidal.RDFS.FixedPoint
 import L4Factoidal.RDFS.RhoDfCompleteness
+import L4Factoidal.RDFS.ReflexivityWitness
 import L4Factoidal.RDFS.FullClosure
 import L4Factoidal.RDFS.FullClosureTheorems
 import L4Factoidal.RDFS.SchemaSplit

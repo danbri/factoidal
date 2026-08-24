@@ -10994,3 +10994,55 @@ holds of every pair the engine conflates, not only of `"x"@en` versus
 `Binding.lookup` and the specification's `sval` are the same partial
 function, written with different argument order and `=` against `==`.
 Every later join lemma will need it.
+
+---
+
+## `RDF.Entailment.RDFS.Refinement` — the RS-1 witness (2026-08-24)
+
+**Partial, and the count does not move.** The F\* module is 1,613 lines
+and about 95 declarations, most of them `rdfs_rule_*_licensed`. The
+Lean tree already carries that per-row pattern in
+`RDFS/ClosureTheorems.lean` and `RDFS/FullClosureTheorems.lean`, but
+against `RDF.Entailment.RDFS.RhoDFClosure` and against a
+proof-theoretic derivation relation, so those files do NOT cover this
+module. No alias was added.
+
+What is ported here is the finding RS-1 vertical:
+`RDFS/ReflexivityWitness.lean`.
+
+**The fact the fix rests on.** The pre-fix `rdfs_reflexivity_axioms`
+emitted `C rdfs:subClassOf C` for every `C` typed `owl:Class`. rdfs10
+fires on `rdfs:Class`, not `owl:Class`, so the emission was not
+RDFS-entailed. `selfloop_not_axiomatic` states that the self-loop is in
+no axiom table of either vocabulary, for every IRI and every datatype
+map and container slice, so no later edit can justify the emission by
+declaring the triple axiomatic.
+
+**The statement needs no side condition, and the reason is worth
+recording.** Both open axiom families emit only `rdf:type`,
+`rdfs:domain` and `rdfs:range` rows, so neither can produce a
+`rdfs:subClassOf` triple at all. The F\* source's note that "every
+axiomatic `rdfs:subClassOf` row has distinct endpoints" applies only to
+the fixed table. `containerAxioms_pred` and `datatypeAxioms_pred` say
+this in one line each.
+
+**What the same fact costs in each tree.** The F\* proof carries
+`--fuel 50 --ifuel 2 --z3rlimit 600 --split_queries always
+--using_facts_from '*,-RDFS.Closure.emit_once_term'` and about thirty
+lines of comment. Its own record: z3 returned "unknown because
+(incomplete quantifiers)" at 75 of a 240 rlimit; the budget later went
+600 to 1200; and one unrelated symbol had to have its facts EXCLUDED,
+because its definition equation in the SMT context tipped a borderline
+`assert_norm` block — raising rlimit to 1200 and fuel to 100 did not
+recover it.
+
+The Lean proof is a case split on a finite table. No budget, no query
+splitting, no fact filtering. The two proofs establish the same fact
+and differ only in what the host makes hard. That is instance five of
+the pattern in
+`docs/designissues/2026-08-24-what-the-lean-port-found.md`, and the
+first one where the difficulty is in the PROOF rather than in the code.
+
+**One trap.** `decide` refuses a goal with a free variable, so
+`(owlClassReflTriple c).p = rdfType` must be reduced through
+`selfloop_pred` to the closed `rdfsSubClassOf = rdfType` first.
