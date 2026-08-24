@@ -11254,3 +11254,38 @@ under `simp` without `isNtWs` unfolded IN THE HYPOTHESIS as well as the
 goal — `simp only [isNtWs, ...] at h` first. And an existential witness
 cannot be supplied by `refine ⟨_, ?_⟩` before the goal is reduced;
 reduce first, then `exact ⟨_, rfl⟩`.
+
+---
+
+## `SPARQL11.Parser.AskBgpRoundTrip` — the parser direction pinned, not proved (2026-08-24)
+
+The text-to-tokens half was already there (`tokenize_printAsk`). The
+F\* module's top-level result is the whole round trip: parsing the
+printed query recovers `GP_BGP b`, general over any fragment BGP with a
+trailing token stream and enough fuel — the same trailing-remainder
+shape the N-Triples work needed.
+
+**Checked that it is true before deciding how to state it.** Running
+the shipping `parseSparql` on `printAsk` of a one-triple BGP recovers a
+one-pattern BGP and the ASK form. Three `#guard`s pin that on every
+build, so the statement to be proved is known true rather than hoped
+for.
+
+**Not proved, and the chain is named.** Six layers, each conditional on
+the next, matching the fifteen lemmas the F\* module spends on it:
+`pPrologue` no-op, `resolveIriTokens` identity on absolute IRIs,
+`pAskBody`, `pGroupGraphPattern`, `pTriplesBlock`, and fuel accounting.
+Layer 5 is the work: the Lean `pTriplesBlock` calls
+`pSubjectWithExtras` and `pPredObjList`, which fan out into property
+paths, collections, blank-node property lists and annotations — the F\*
+counterparts are `lemma_parse_subject_with_extras_1`,
+`lemma_parse_pred_obj_list_1`, `lemma_parse_object_list_simple_1`,
+`lemma_parse_object_with_extras_1`, `lemma_parse_annotations_dot`,
+`lemma_ggp_add_triple_acc` and `lemma_ggp_join_acc_empty`.
+
+That is a multi-session job, not a landing. `SPARQL11.Parser.AskBgpRoundTrip`
+stays not covered and no alias was added.
+
+**The doc-comment trap, hit a third time.** `/-- … -/` cannot attach to
+a `#guard`. It is in these notes twice already and still cost a build
+cycle. When adding guards, write `/-! … -/` first and never the other.

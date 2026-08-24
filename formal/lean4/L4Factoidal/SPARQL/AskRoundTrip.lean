@@ -48,6 +48,7 @@ character is not whitespace". A printer that inserted spaces would be
 just as correct and would make every step carry an extra offset.
 -/
 import L4Factoidal.SPARQL.TokenizeChain
+import L4Factoidal.SPARQL.Parser
 
 namespace L4Factoidal.SPARQL
 
@@ -281,6 +282,67 @@ theorem tokenize_printAsk (b : FragBgp) (h : FragBgpOk b) :
         (nextToken_lbrace 3 _) (by simp) (by simp) (by simp [hlen])]
   rw [tokensOf_bgp b h _ 4 _ (by simp [hlen])]
   simp [tokensOf, expectedTokens]
+
+/-! ## The parser direction — pinned, and the chain that would prove it
+
+`tokenize_printAsk` above is the TEXT to TOKENS half. The F\* module's
+top-level result, `lemma_parse_select_query_ask_bgp`, is the whole
+thing: parsing the printed query recovers `GP_BGP b`. It is general,
+quantified over any fragment BGP with a trailing token stream and
+enough fuel — the same trailing-remainder shape
+`Syntax/NTriplesRoundTrip.lean` needed.
+
+That half is NOT proved here. What is pinned below is that it HOLDS on
+a concrete instance, run through the shipping `parseSparql`, so the
+statement to be proved is known to be true rather than merely hoped
+for.
+
+**The chain a proof needs**, in call order, each layer conditional on
+the next — this is what the F\* module spends fifteen lemmas on:
+
+1. `pPrologue` returns its input unchanged on a stream whose head is
+   `.ask` (the catch-all arm). Small.
+2. `resolveIriTokens none ts = ts` when every fragment IRI is already
+   absolute. The F\* side carries this as an explicit hypothesis,
+   `resolve_relative_iri_tokens None after_eof == after_eof`.
+3. `pAskBody` builds the query record around `pGroupGraphPattern`.
+4. `pGroupGraphPattern` on `{ … }` delegates to `pTriplesBlock`.
+5. `pTriplesBlock` recovers the BGP. This is the hard layer, and where
+   the F\* module's `lemma_parse_subject_with_extras_1`,
+   `lemma_parse_pred_obj_list_1`, `lemma_parse_object_list_simple_1`,
+   `lemma_parse_object_with_extras_1`, `lemma_parse_annotations_dot`,
+   `lemma_ggp_add_triple_acc` and `lemma_ggp_join_acc_empty` all live.
+   The Lean `pTriplesBlock` calls `pSubjectWithExtras` and
+   `pPredObjList`, each of which fans out into property paths,
+   collections, blank-node property lists and annotations.
+6. Fuel accounting: `ask_bgp_fuel_cost` and
+   `lemma_ask_bgp_fuel_cost_n5_fits_entry_fuel` on the F\* side.
+
+So `SPARQL11.Parser.AskBgpRoundTrip` stays on the not-covered list and
+no alias was added.
+
+-/
+
+private def probeBgp : FragBgp :=
+  [{ s := .iri "http://a/s".toList, p := .iri "http://a/p".toList,
+     o := .var "x".toList }]
+
+/-! The printed form, its token stream, and the parse — all three run
+on every build. -/
+#guard printAsk probeBgp == "ASK{<http://a/s><http://a/p>?x.}"
+
+#guard (match parseSparql (printAsk probeBgp) with
+        | .ok q => match q.pattern with
+                   | .bgp ts => ts.length == 1
+                   | _ => false
+        | .error _ => false)
+
+/-! The parse also reports the ASK form, not merely a pattern. -/
+#guard (match parseSparql (printAsk probeBgp) with
+        | .ok q => match q.form with
+                   | .ask => true
+                   | _ => false
+        | .error _ => false)
 
 /-! ## Pinned behaviour
 
