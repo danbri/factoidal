@@ -12250,3 +12250,37 @@ sentence saying so.
 one layer of about five (Thrift field writers, the
 DELTA_LENGTH_BYTE_ARRAY encoder, dictionary encoding, the Parquet page
 and metadata builders). Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterThrift.lean` — layer 2 of `RDF.CottasStore.BaseWriter`
+
+Parquet's file metadata is a Thrift struct in the COMPACT protocol, so
+every field the writer emits goes through one of these. Each has a
+matching read in `Parquet.Footer`, and the F\* source names the decoder
+next to each writer.
+
+**Fifteen is the boundary in two rules, and it lands on opposite
+sides.** A FIELD header is one byte when the id is 1 to 15 more than
+the previous one — a delta of exactly 15 still fits. A LIST header is
+one byte for a count BELOW 15 — a count of exactly 15 does not fit and
+moves to a plain varint after a `0xF_` byte. Reading the two as the
+same rule is the mistake `fieldHeader_short_at_15`,
+`fieldHeader_long_at_16` and `listHeader_long_at_15` exist to catch,
+with `#guard`s on both at once.
+
+**Zigzag or plain, per field.** `i32` and `i64` values are ZIGZAG
+varints. A binary field's LENGTH is a PLAIN varint, and so is a
+long-form list count. Mixing them produces values that are right only
+when they are zero, which is exactly the kind of defect a small test
+misses.
+
+**The issue this layer must not reintroduce.**
+<https://github.com/danbri/factoidal/issues/445>: a binary field's
+length prefix is the UTF-8 BYTE length, never the codepoint count. The
+two coincide for ASCII, which is why the original defect survived. The
+Lean writer takes `s.toUTF8.toList.length`, and a `#guard` on `"é"`
+pins the case where the two differ — one codepoint, two bytes.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: two layers
+of about five. Coverage stays 198 of 220.
