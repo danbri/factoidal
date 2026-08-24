@@ -11046,3 +11046,44 @@ first one where the difficulty is in the PROOF rather than in the code.
 **One trap.** `decide` refuses a goal with a free variable, so
 `(owlClassReflTriple c).p = rdfType` must be reduced through
 `selfloop_pred` to the closed `rdfsSubClassOf = rdfType` first.
+
+---
+
+## `SPARQL11.Algebra.strip_rewrite_internal_vars` + `OWL.QueryEval` wiring → `SPARQL/RewriteVarStrip.lean` (2026-08-24)
+
+**A gap found INSIDE a module the tool counts as covered.**
+`SPARQL11.Algebra` is aliased to `SPARQL.Algebra` and counts as
+covered, but `strip_rewrite_internal_vars` and its two helpers were not
+in the Lean tree. An alias is a statement about a module, and a module
+is not one result. Rule 6 of `skills/counting-coverage` says covered
+means the result is carried; for a module this large, the honest
+reading is that the alias covers the module's PRINCIPAL result, and
+individual functions can still be missing. Worth a systematic check
+later, and noted here so the 192 figure is read correctly.
+
+**What is ported.** `isRewriteInternalVar` (the seven prefixes),
+`stripRewriteInternalVarsMu`, `stripRewriteInternalVars`, and the three
+`OWL.QueryEval` wrappers with the rewrite as a PARAMETER.
+
+**The constraint CLAUDE.md states in prose is now a theorem.** CLAUDE.md
+says the strip "must stay at the top level" because inner Select_All
+sub-selects re-expose the anchor var for the enclosing JOIN, and
+stripping inside decorrelates it.
+`strip_inside_join_admits_spurious_row` is that, machine-checked: two
+rows disagreeing on `_sv_1` do not join, and after stripping they do,
+so the stripped join returns a row the unstripped join does not.
+Moving the strip inward does not lose a column — it changes which rows
+come back.
+
+**`OWL.QueryEval` stays not covered, and no alias was added.**
+`OWL.QueryRewrite` is 1,799 lines and unported, so the wrappers take
+the rewrite as a parameter. The Lean side cannot run an OWL-rewritten
+query. What IS carried is the composition and the strip placement,
+which is the part CLAUDE.md flags as load-bearing.
+
+**One trap.** `String.startsWith` does not reduce in the kernel — same
+family as `String.mapAux`. `rfl` and `decide` both fail on
+`isRewriteInternalVar "_sv_1" = true`. The tree's own `strStartsWith`
+(`SPARQL/Expr.lean`, `listIsPrefix` over `toList`) does reduce, and
+switching to it made the classification theorem and the join witness
+close by `rfl`.
