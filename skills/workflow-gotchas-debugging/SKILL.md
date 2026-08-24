@@ -1402,3 +1402,67 @@ This is the third measurement defect in this tool in one day (hazards
 #28, #30, #31). All three shared a shape: the tool answered, the answer
 looked reasonable, and nothing in the output said which evidence it
 rested on.
+
+---
+
+## Hazard #32 — two sessions in ONE worktree: `git commit -a` absorbs the other session's in-flight edits (2026-08-24)
+
+### Symptom
+
+An agent finished a change, verified it, then ran `git status` to stage
+its own commit and got **`nothing to commit, working tree clean`** — with
+its edits present in the files. `git log -- <the changed file>` named a
+commit about an unrelated subject, authored minutes earlier. The agent
+had no commit of its own to report.
+
+### Root cause
+
+Two agent sessions were running against the SAME container and the SAME
+checkout of `claude/autoexec-scratchpad-assess-37oeok`. The other session
+was landing Lean work every ten minutes, some of it with a whole-tree
+`git commit -a`. Every such commit swept up whatever the first session
+had written so far.
+
+Measured on 2026-08-24: one F-star change and its glue patch and its two
+doc edits were split across three commits belonging to a Lean porting
+session — `2a2d50ddee2`, `3d9b9c47188`, `c4ff99d94e5` — none of whose
+messages mention the on-disk store.
+
+Two costs, and the second is the larger one:
+
+1. The change has no commit of its own, so its message, its rationale and
+   its score line are absent from history. A later `git log --oneline`
+   cannot find it, and a bisect blames a Lean parser commit for an F-star
+   backend change.
+2. **A `-a` commit can capture a half-written edit.** The absorbing
+   commit lands whatever is on disk at that second, verified or not. A
+   session that has changed three files out of five and is still editing
+   gets its middle state committed, and the branch carries source that
+   nothing has type-checked.
+
+### Detection
+
+- `git status` reports clean when you know you have unstaged work.
+- `git log -1 --format=%ad --date=iso` shows a commit minutes old that
+  you did not make.
+- `git log --oneline -S '<an identifier you just introduced>' -- <file>`
+  names someone else's commit.
+- `git reflog` shows commits interleaved with your own timeline.
+
+### The rules
+
+1. **Check for a co-tenant BEFORE the first edit.** `git log -1
+   --date=iso` at session start, and again before committing. A commit
+   timestamp inside your own session window that you did not author means
+   you are sharing the checkout.
+2. **Share a branch, never a working directory.** A second session in the
+   same container works in its own `git worktree`. This is the same rule
+   `skills/subagent-prompting` already applies to subagents; it applies
+   to sibling sessions for the same reason.
+3. **Never `git commit -a` in a shared checkout** — stage the paths you
+   changed by name. `-a` is a claim that every modified file in the tree
+   is yours, and in a shared checkout that claim is false.
+4. **Report what actually happened.** If your work landed inside another
+   session's commit, say so and give that SHA. Do not synthesise a commit
+   that "represents" the change, and do not report a SHA that does not
+   contain it.
