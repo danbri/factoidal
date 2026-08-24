@@ -12204,3 +12204,49 @@ residual for BOTH open issues is now one named lemma about
 **Coverage is unchanged at 198 of 220.** This module is scaffolding for
 two ports, not a port of its own — there is no F\* module named
 `LexShift`. Counting it would be inventing coverage.
+
+---
+
+## `Cottas/BaseWriterPrims.lean` — layer 1 of `RDF.CottasStore.BaseWriter`
+
+The F\* module is the native writer for the COTTAS base Parquet file.
+Its banner says why it exists: until it landed, store creation and
+compaction shelled out to pycottas/DuckDB and only the delta log had a
+native writer. Iron rule 11 puts the byte assembly in the formal source
+— `serialize_cottas : list cottas_quad -> Tot (list u8)` — leaving the
+OCaml side with an atomic write and nothing else.
+
+This layer is the bottom of it: zigzag, LEB128, little-endian integers,
+bit widths, bit packing, padding.
+
+**An encoder is only correct against a decoder**, so where the Lean
+tree carries the decoder the round trip is PROVED rather than checked:
+`zigzagDecode_encodeNat` and `zigzagDecode_encodeInt` for both zigzag
+forms, `uvarintDecode_encode_small` for the single-byte LEB128 case.
+
+**The polarity that matters.** LEB128 sets the high bit on every byte
+EXCEPT the last: the high bit means CONTINUE. HDT's VByte in
+`Storage/Bytes.lean` sets it on the LAST byte instead. Both formats
+live in this tree and differ by exactly that bit. Getting it backwards
+decodes every multi-byte number wrongly while single-byte values keep
+working, which is the failure mode that survives casual testing.
+`uvarintDecode_encode_small` and `uvarintEncode_single_byte` are proved
+at exactly that boundary, and `#guard` pins 127, 128, 16383 and 16384.
+
+**What is checked rather than proved.** The general multi-byte LEB128
+round trip needs a bound of the form `n < 128 ^ (fuel + 1)` threaded
+through the recursion. That is its own piece of work, and the module
+says so rather than leaving the reader to infer it from the absence of
+a theorem. The bit-packing side is checked too, because its decoder is
+in `Parquet.Footer`, which is not ported.
+
+**A `sorry` was written and removed rather than landed.** The first
+draft of the general round trip left a `sorry` in the multi-byte case.
+It is deleted, not weakened and not admitted: the repo policy is no
+`sorry`, and a theorem that cannot be proved yet is a `#guard` plus a
+sentence saying so.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered — this is
+one layer of about five (Thrift field writers, the
+DELTA_LENGTH_BYTE_ARRAY encoder, dictionary encoding, the Parquet page
+and metadata builders). Coverage stays 198 of 220.
