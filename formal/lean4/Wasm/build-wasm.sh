@@ -185,12 +185,23 @@ RT_SRCS="debug thread mpz utf8 object apply exception interrupt memory stackinfo
          compact init_module io hash byteslice platform alloc allocprof sharecommon
          stack_overflow process object_ref mpn mutex"
 # c++20: runtime/object.cpp uses std::memory_order::relaxed and std::bit_cast.
-# uv.h is needed for DECLARATIONS only (io.cpp includes it).
+# uv.h is needed for DECLARATIONS only (io.cpp includes it). The
+# header is STAGED into an isolated include dir rather than adding its
+# system directory to the include path: on Linux the header lives in
+# /usr/include, and putting -I/usr/include on an Emscripten compile
+# line makes glibc headers shadow the wasm sysroot's
+# (bits/wordsize.h fatal error in step 5).
 UVINC=""
 for d in /opt/homebrew/include /usr/local/include /usr/include; do
-  [ -f "$d/uv.h" ] && { UVINC="-I $d"; break; }
+  if [ -f "$d/uv.h" ]; then
+    mkdir -p "$WORK/uv-include"
+    cp "$d/uv.h" "$WORK/uv-include/"
+    [ -d "$d/uv" ] && cp -r "$d/uv" "$WORK/uv-include/"
+    UVINC="-I $WORK/uv-include"
+    break
+  fi
 done
-[ -n "$UVINC" ] || { echo "uv.h not found (brew install libuv) — needed for declarations only"; exit 1; }
+[ -n "$UVINC" ] || { echo "uv.h not found (apt-get install libuv1-dev / brew install libuv) — needed for declarations only"; exit 1; }
 for s in $RT_SRCS; do
   [ -s "$RT_OBJ/$s.o" ] && continue
   em++ -std=c++20 $CFLAGS -I "$RT_SRC" $UVINC -c "$RT_SRC/runtime/$s.cpp" -o "$RT_OBJ/$s.o"
