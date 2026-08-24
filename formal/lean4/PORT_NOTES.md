@@ -12823,3 +12823,50 @@ module's own length — no other classification shifted.
 
 Remaining: 3 engine (`Parquet.Footer`, `RDF.NQuads.Streaming`,
 `SPARQL11.Parser.AskBgpRoundTrip`), 3 proof, 14 by design.
+
+## SPARQL11.Parser.AskBgpRoundTrip — the theorem F\* calls impossible
+
+`SPARQL/AskBgpRoundTripString.lean` proves
+`askBgp_string_roundtrip`: printing a query in the ASK-BGP fragment and
+tokenizing the result gives back exactly the tokens the query denotes.
+
+The F\* module reaches this statement and stops. Its banner marks stage
+(a) IMPOSSIBLE and proves the impossibility with a counter-probe: in that
+ulib snapshot `FStar.String.sub` exposes a length refinement and nothing
+relating its output characters to its input, so no lemma can be STATED
+connecting a printed payload back to the token's extract — which blocks
+every payload-carrying token, not just this fragment's.
+
+The Lean lexer scans `List Char`. `scanIriBody` and `scanVarName` have
+ordinary equation lemmas, and the connection is an ordinary induction.
+The obstruction was never about RDF or SPARQL; it was one library's
+interface to one datatype. Separating those two kinds of fact is what the
+two-tree design is for, and this is the clearest case of it so far.
+
+**How the proof goes.** The printed query is cut into chunks, one per
+token, each carrying its LEADING separator — forced, because `nextToken`
+calls `skipWs` first, so a trailing space would be left unconsumed and
+`LexesTo` would be false. `tokenizeLoop_chunks` folds the lexer along
+the chunk list; `chunkChars_query` shows the chunks concatenate to the
+printed string; `chunksOk_query` discharges the per-chunk obligations.
+
+**And a second defect, from writing the side condition.**
+`LexesTo` quantifies over what follows a chunk, so the theorem needs to
+say exactly which IRI bodies round-trip. §19.8 [139] admits any body
+without `>`, `\`, or a control character. This lexer additionally
+requires an acceptable FIRST character, so `<1abc>` — a valid IRIREF —
+lexes as four tokens. Both trees carry it, and the committed binary
+rejects the query while accepting the same query with an alpha-initial
+IRI. Filed as <https://github.com/danbri/factoidal/issues/573>;
+`iriFirstOk` is the honest side condition until it is fixed, and a
+`#guard` pins that the engine really does mis-lex the case.
+
+Neither this defect nor issue 572 came from running a test. The test
+corpora contain no digit-initial IRI. They came from having to state a
+theorem precisely enough to prove it.
+
+## Coverage: 200 → 201
+
+Engine modules 3 → 2, lines down by exactly 852 — this module's own
+length. Remaining: 2 engine (`Parquet.Footer`, `RDF.NQuads.Streaming`),
+3 proof, 14 by design.

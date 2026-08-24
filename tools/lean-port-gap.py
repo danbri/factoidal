@@ -260,6 +260,31 @@ alias={
 # and issue 572 (the selective exact-count and the full count disagree on
 # a null cell in an unbound column).
  "RDF.CottasStore":"Cottas.OnDiskCountExact",
+# SPARQL11.Parser.AskBgpRoundTrip is covered by TWO Lean modules:
+# SPARQL/AskBgpRoundTrip.lean (the fragment predicate, printer, expected
+# tokens and the payload scan lemmas) and SPARQL/AskBgpRoundTripString.lean
+# (the string round trip). The alias points at the second.
+#
+# This is the one module where the Lean tree proves MORE than the F* one,
+# and the F* source says so itself. Its banner marks stage (a) --
+# `tokenize (print_query_1 q) == expected_tokens_1 q` -- as IMPOSSIBLE,
+# with a counter-probe, because FStar.String.sub's ulib specification
+# exposes a length refinement and nothing relating its output characters
+# to its input. Every payload-carrying token is blocked by that, not just
+# this fragment's.
+#
+# The Lean lexer scans `List Char`, so scanIriBody and scanVarName have
+# ordinary equation lemmas, and askBgp_string_roundtrip is proved.
+# The obstruction was never about RDF or SPARQL: it was one library's
+# interface to one datatype, which is exactly the kind of difference the
+# two-tree design exists to separate out.
+#
+# The proof also produced issue 573: writing the theorem's side condition
+# forced the question of WHICH IRI bodies round-trip, and the answer is
+# narrower than the specification -- <1abc> is a valid IRIREF that both
+# trees mis-lex, confirmed on the committed binary. iriFirstOk is the
+# honest side condition until that is fixed.
+ "SPARQL11.Parser.AskBgpRoundTrip":"SPARQL.AskBgpRoundTripString",
 }
 # ---------------------------------------------------------------------------
 # What counts as coverage.
