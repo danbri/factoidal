@@ -290,4 +290,40 @@ cp "$WORK/l4factoidal.wasm" "$ASSETS/l4factoidal.wasm"
 ls -l "$ASSETS"
 echo
 echo "wasm bytes: $(wc -c < "$ASSETS/l4factoidal.wasm")"
+# ---------------------------------------------------------------------
+say "step 9 — companion npm package + Pages mirror + provenance"
+NPMLEAN="$LEAN_DIR/../../npm/factoidal-lean"
+MIRROR="$LEAN_DIR/../../docs/npm/lean"
+if [ -d "$NPMLEAN" ]; then
+  cp "$ASSETS/l4factoidal.js" "$ASSETS/l4factoidal.mjs" "$ASSETS/l4factoidal.wasm" "$NPMLEAN/"
+  WASM_SHA=$(sha256sum "$ASSETS/l4factoidal.wasm" | cut -d' ' -f1)
+  GIT_SHA=$(git -C "$LEAN_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
+  EMCC_VER=$(emcc --version | head -1)
+  LEAN_TC=$(cat "$LEAN_DIR/lean-toolchain")
+  PKG_VER=$(python3 -c "import json;print(json.load(open('$NPMLEAN/package.json'))['version'])")
+  python3 - "$NPMLEAN/version.json" <<PYEOF
+import json, sys, datetime
+json.dump({
+  "version": "$PKG_VER",
+  "gitSha": "$GIT_SHA",
+  "builtAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+  "leanToolchain": "$LEAN_TC",
+  "emscripten": "$EMCC_VER",
+  "abiVersion": "1",
+  "wasmSha256": "$WASM_SHA",
+  "wasmBytes": $(stat -c %s "$ASSETS/l4factoidal.wasm" 2>/dev/null || stat -f %z "$ASSETS/l4factoidal.wasm"),
+  "claims": {
+    "source": "formal/lean4 (L4Factoidal): no sorry, no user axioms, no native_decide; W3C behaviour pinned by build-time #guard",
+    "suitesAtBuildSha": "see docs/test-results and formal/lean4/PORT_NOTES.md at gitSha"
+  }
+}, open(sys.argv[1], "w"), indent=2)
+PYEOF
+  mkdir -p "$MIRROR"
+  cp "$NPMLEAN"/l4factoidal.js "$NPMLEAN"/l4factoidal.mjs "$NPMLEAN"/l4factoidal.wasm \
+     "$NPMLEAN"/version.json "$NPMLEAN"/package.json "$NPMLEAN"/README.md "$NPMLEAN"/LICENSE "$MIRROR/" 2>/dev/null || true
+  echo "  companion + mirror updated (wasm sha256 $WASM_SHA)"
+else
+  echo "  (npm/factoidal-lean absent — companion step skipped)"
+fi
+
 echo "done."
