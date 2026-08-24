@@ -13131,3 +13131,61 @@ restart at an offset needs those shifts. The Lean parser walks a
 locality is provable outright instead of assumed. That is the
 differential experiment paying out: the witness machinery is a property
 of F\*'s string representation, not of N-Quads.
+
+## Line-level reader locality — 2026-08-24
+
+`Syntax/LocalityLine.lean` carries locality up from the lexical readers
+to the pieces a whole statement is built from. Nine theorems, axioms
+`[propext, Classical.choice, Quot.sound]` or less, no `sorry`, no user
+`axiom`, no `native_decide`:
+
+`skipWs_local`, `readLangTag_local`, `readDatatype_local`,
+`readLiteral11_local`, `readBlankNodeLabel_local'`, `readSubject_local`,
+`readPredicate_local`, `readObject11_local`, `readGraphLabel_local`.
+
+### The side conditions, and why each one is real
+
+Three exclusions appear, and none is bookkeeping — each names an input
+where the reader genuinely answers differently on longer input.
+
+⚠️ **Empty remainder.** A whitespace run or a language-tag run that
+reached the end of its input keeps running into whatever is appended.
+
+⚠️ **A remainder of exactly `['.']`.** `readBlankNodeLabel` on `_:ab.`
+reads the label `ab` and leaves `['.']`; on `_:ab.c` it reads the label
+`ab.c` and leaves nothing. The dot belongs to the label unless something
+after it stops the run.
+
+⚠️ **A remainder of exactly `['^']`.** RDF 1.1 `readLiteral` branches on
+what follows the closing quote — `@` for a language tag, `^^` for a
+datatype, anything else ends the literal as `xsd:string`. One more `^`
+turns the third branch into the second.
+
+All three are met by a reader looking at a line that still has its
+terminator, which is the case the streaming N-Quads fold needs.
+
+### Guarding against an unsatisfiable hypothesis
+
+Per the discipline that a hypothesis nothing can meet proves nothing,
+the module ends with `#guard`s over an ordinary object slot
+(`"x" .` plus a newline): the remainder is non-empty, is not `['.']`,
+is not `['^']`, and the reader returns the same term, the same end
+position and a remainder longer by exactly the appended text. They run
+at build time.
+
+### Gate
+
+✅ Build green at 852 jobs, guards included.
+✅ Lean W3C runner: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87
+pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+### Next
+
+`readOptGraphLabel_local` and `readNQuad11_local`, then the restart
+lemma for `parseQuadLinesAcc`, then the stream-equals-batch theorem that
+covers `RDF.NQuads.Streaming`
+(<https://github.com/danbri/factoidal/issues/570>).
+
+`readNQuad11_local` should need only `rest ≠ []`: the line ends at `.`,
+so every intermediate remainder still holds that terminator and meets
+the three exclusions above.

@@ -62,6 +62,7 @@ import L4Factoidal.SPARQL.QueryTests
 import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.Locality
 import L4Factoidal.Syntax.LocalityLiteral
+import L4Factoidal.Syntax.LocalityLine
 import L4Factoidal.Syntax.IriScan
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NTriplesRoundTrip
