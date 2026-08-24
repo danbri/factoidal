@@ -230,68 +230,6 @@ def readIriRefBody (pos : Nat) (cs : List Char) :
 termination_by cs.length
 
 
-/-! ### SCAFFOLDING — the pre-split scanner, kept as a differential oracle
-
-The ten-arm structural recursion `readIriRefBody` used to be. It is kept
-only so `Syntax/IriScan.lean` can `#guard` the new scanner against it on
-a table of inputs, which turns "was the transcription faithful" from a
-judgement into a build-time check.
-
-Its equation lemmas still cannot be generated — that is issue 565 and the
-reason for the split — but EVALUATION is unaffected, and evaluation is
-all `#guard` needs.
-
-NOT `private`, because its only consumer is `Syntax/IriScan.lean` and
-`private` in Lean 4 is module-scoped. That is the sole reason it is
-exported; nothing else may call it.
-
-REMOVAL CONDITION: delete this, and the differential guards that use it,
-in the commit after the swap lands green. It has no other purpose and
-must not acquire one.
--/
-
-def readIriRefBodyLegacy (pos : Nat) : List Char → Except ParseError (String × Nat × List Char)
-  | [] => .error ⟨"unterminated IRIREF (expected '>')", pos⟩
-  | '>' :: rest => .ok ("", pos + 1, rest)
-  | '\\' :: 'u' :: h0 :: h1 :: h2 :: h3 :: rest =>
-      match hexVal h0, hexVal h1, hexVal h2, hexVal h3 with
-      | some d0, some d1, some d2, some d3 =>
-          let cp := d0 * 4096 + d1 * 256 + d2 * 16 + d3
-          if isIriForbiddenCodepoint cp then
-            .error ⟨"IRI-forbidden codepoint in \\u escape", pos⟩
-          else
-            match codepointToChar cp pos with
-            | .error e => .error e
-            | .ok c =>
-                (readIriRefBodyLegacy (pos + 6) rest).map
-                  (fun (s, p, r) => (c.toString ++ s, p, r))
-      | _, _, _, _ => .error ⟨"invalid hex digit in \\u escape", pos⟩
-  | '\\' :: 'u' :: _ => .error ⟨"incomplete \\u escape in IRIREF", pos⟩
-  | '\\' :: 'U' :: h0 :: h1 :: h2 :: h3 :: h4 :: h5 :: h6 :: h7 :: rest =>
-      match hexVal h0, hexVal h1, hexVal h2, hexVal h3,
-            hexVal h4, hexVal h5, hexVal h6, hexVal h7 with
-      | some d0, some d1, some d2, some d3, some d4, some d5, some d6, some d7 =>
-          let cp := d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
-                  + d4 * 4096 + d5 * 256 + d6 * 16 + d7
-          if isIriForbiddenCodepoint cp then
-            .error ⟨"IRI-forbidden codepoint in \\U escape", pos⟩
-          else
-            match codepointToChar cp pos with
-            | .error e => .error e
-            | .ok c =>
-                (readIriRefBodyLegacy (pos + 10) rest).map
-                  (fun (s, p, r) => (c.toString ++ s, p, r))
-      | _, _, _, _, _, _, _, _ => .error ⟨"invalid hex digit in \\U escape", pos⟩
-  | '\\' :: 'U' :: _ => .error ⟨"incomplete \\U escape in IRIREF", pos⟩
-  | '\\' :: [] => .error ⟨"backslash at end of IRIREF", pos⟩
-  | '\\' :: _ :: _ => .error ⟨"invalid escape in IRIREF (only \\u/\\U permitted)", pos⟩
-  | c :: rest =>
-      let cp := c.toNat
-      if cp ≤ 0x20 || isIriForbiddenCodepoint cp then
-        .error ⟨"invalid character in IRIREF", pos⟩
-      else
-        (readIriRefBodyLegacy (pos + 1) rest).map (fun (s, p, r) => (c.toString ++ s, p, r))
-
 /-- IRIREF: `'<' ... '>'`, `pos` pointing at the opening `<`. Port of
 `parse_iri_raw` (well-formedness against `RDF.isIri` is checked one layer
 up, in `Syntax.NTriples`, since it needs the RDF term model). -/

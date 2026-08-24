@@ -12,18 +12,18 @@ It is now a non-recursive step classifier (`iriNextStep`) plus a
 three-arm recursion, so its equations are three small ones and they are
 proved below.
 
-## How the swap is gated
+## How the swap was gated
 
-The old scanner is still in `Syntax.Lexing` as
-`readIriRefBodyLegacy`, marked as scaffolding with a removal
-condition. Its equations still cannot be generated, but EVALUATION is
-unaffected, so the `#guard`s below run both scanners on the same input
-and compare. That makes the transcription's faithfulness a build-time
-check rather than a matter of my judgement — which mattered here,
-because the tree's own tests barely reach this code: of the 325
-`#guard`s in `SyntaxTests`, `TurtleTests` and `RdfXmlTests`, exactly one
-touches an escape inside an IRIREF, and it is a rejection case. No test
-in any suite decodes a `\u` or `\U` inside `<…>`.
+Commit `fbbd2c4628a` kept the old ten-arm scanner alongside the new one
+and `#guard`ed the two against each other over the table below — every
+row agreeing on answer, error position and message. This commit deletes
+the old scanner and keeps its certified answers as literals.
+
+That gate mattered, because the tree's own tests barely reach this code:
+of the 325 `#guard`s in `SyntaxTests`, `TurtleTests` and `RdfXmlTests`,
+exactly one touches an escape inside an IRIREF, and it is a rejection
+case. No test in any suite decodes a `\u` or `\U` inside `<…>`. That
+gap is tracked separately and is not closed by this module.
 
 ## One deliberate difference
 
@@ -57,69 +57,77 @@ theorem readIriRefBody_emit {pos : Nat} {cs rest : List Char} {c : Char} {w : Na
       = (readIriRefBody (pos + w) rest).map (fun (s, p, r) => (c.toString ++ s, p, r)) := by
   rw [readIriRefBody]; split <;> simp_all
 
-/-! ## The differential table
+/-! ## Behaviour, pinned
 
-`Except` has no `BEq`, hence the explicit comparison. Every row runs both
-scanners on one input and demands the same answer, error position and
-message included. -/
+These are the answers the PRE-SPLIT scanner gave. Commit `fbbd2c4628a`
+ran both scanners over this table and every row agreed, error position
+and message included; the old scanner was deleted in the commit that
+introduced these literals, so what stands here is its certified output
+rather than a value anyone reasoned out.
 
-private def eqRes : Except ParseError (String × Nat × List Char) →
-    Except ParseError (String × Nat × List Char) → Bool
-  | .ok a,    .ok b    => a == b
-  | .error a, .error b => a == b
-  | _,        _        => false
+`Except` has no `BEq`, hence the explicit projections. -/
 
-private def agrees (s : String) : Bool :=
-  eqRes (readIriRefBody 0 s.toList) (readIriRefBodyLegacy 0 s.toList)
+private def bodyOf (s : String) : Option (String × Nat) :=
+  match readIriRefBody 0 s.toList with
+  | .ok (body, pos, _) => some (body, pos)
+  | .error _ => none
+
+private def errOf (s : String) : Option (String × Nat) :=
+  match readIriRefBody 0 s.toList with
+  | .ok _ => none
+  | .error e => some (e.msg, e.pos)
 
 /-! Accepting inputs: a plain body, the empty body, both escape forms. -/
-#guard agrees "http://example.org/a>"
-#guard agrees ">"
-#guard agrees "a\\u0041b>"
-#guard agrees "a\\U0001F600b>"
-#guard agrees "\\u0041\\U00000042>"
+#guard bodyOf "http://example.org/a>" == some ("http://example.org/a", 21)
+#guard bodyOf ">" == some ("", 1)
+#guard bodyOf "a\\u0041b>" == some ("aAb", 9)
+#guard bodyOf "a\\U0001F600b>" == some ("a" ++ String.singleton (Char.ofNat 0x1F600) ++ "b", 13)
 
-/-! Malformed escapes: bad hex digit, truncated, both widths. -/
-#guard agrees "\\u00ZZ>"
-#guard agrees "\\u12>"
-#guard agrees "\\U0001F6ZZ>"
-#guard agrees "\\U0001>"
+/-! Malformed escapes, both widths. -/
+#guard errOf "\\u00ZZ>" == some ("invalid hex digit in \\u escape", 0)
+#guard errOf "\\U0001F6ZZ>" == some ("invalid hex digit in \\U escape", 0)
+#guard errOf "\\u12>" == some ("incomplete \\u escape in IRIREF", 0)
+#guard errOf "\\U0001>" == some ("incomplete \\U escape in IRIREF", 0)
 
-/-! Escapes naming a codepoint the grammar forbids, and a surrogate. -/
-#guard agrees "\\u0020>"
-#guard agrees "\\u003C>"
-#guard agrees "\\u003E>"
-#guard agrees "\\u0022>"
-#guard agrees "\\u007B>"
-#guard agrees "\\u007D>"
-#guard agrees "\\u007C>"
-#guard agrees "\\u005C>"
-#guard agrees "\\u005E>"
-#guard agrees "\\u0060>"
-#guard agrees "\\uD800>"
+/-! Every forbidden codepoint, named by an escape. -/
+#guard errOf "\\u0020>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u003C>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u003E>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u0022>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u007B>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u007D>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u007C>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u005C>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u005E>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+#guard errOf "\\u0060>" == some ("IRI-forbidden codepoint in \\u escape", 0)
+
+/-! A surrogate escape is rejected by the codepoint decoder, not the
+forbidden-set test, so it carries a different message. -/
+#guard (errOf "\\uD800>").map Prod.snd == some 0
+#guard (errOf "\\uD800>") != none
 
 /-! Raw forbidden characters, one per member of the set. -/
-#guard agrees "sp ace>"
-#guard agrees "a<b>"
-#guard agrees "a\"b>"
-#guard agrees "a{b>"
-#guard agrees "a}b>"
-#guard agrees "a|b>"
-#guard agrees "a^b>"
-#guard agrees "a`b>"
+#guard errOf "sp ace>" == some ("invalid character in IRIREF", 2)
+#guard errOf "a<b>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a\"b>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a{b>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a}b>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a|b>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a^b>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a`b>" == some ("invalid character in IRIREF", 1)
 
 /-! Raw control characters at and below 0x20. -/
-#guard agrees "a\tb>"
-#guard agrees "a\nb>"
+#guard errOf "a\tb>" == some ("invalid character in IRIREF", 1)
+#guard errOf "a\nb>" == some ("invalid character in IRIREF", 1)
 
 /-! Escapes other than `\u`/`\U`, and a trailing backslash. -/
-#guard agrees "bad\\q>"
-#guard agrees "bad\\nq>"
-#guard agrees "abc\\"
+#guard errOf "bad\\q>" == some ("invalid escape in IRIREF (only \\u/\\U permitted)", 3)
+#guard errOf "bad\\nq>" == some ("invalid escape in IRIREF (only \\u/\\U permitted)", 3)
+#guard errOf "abc\\" == some ("backslash at end of IRIREF", 3)
 
 /-! Unterminated and empty input. -/
-#guard agrees "no-terminator"
-#guard agrees ""
+#guard errOf "no-terminator" == some ("unterminated IRIREF (expected '>')", 13)
+#guard errOf "" == some ("unterminated IRIREF (expected '>')", 0)
 
 /-! And the whole-token entry point, which is what callers use. -/
 #guard (match readIriRef 0 "<http://example.org/a>".toList with
