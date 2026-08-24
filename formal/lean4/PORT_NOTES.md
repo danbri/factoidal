@@ -11473,3 +11473,47 @@ first or the new names read as unknown. And a blanket
 `open L4Factoidal.OWL.RL` collides with `L4Factoidal.RDFS` on
 `rdfType`; the earlier layers already use a selective open, and this
 one now does too.
+
+---
+
+## `OWL.QueryRewrite` layer 5 → `OWL/QueryRewriteExpand.lean` (2026-08-24)
+
+The recursive class-expression expander, counterpart of the F\*
+source's `expand_ce_subject`. Three arms are here — intersection,
+union, existential restriction — plus the leaf. `owl:allValuesFrom`,
+the three cardinality arms and `owl:complementOf` are not.
+
+**The boundary is a design decision, not a transcription choice, and it
+is the owner's.** CLAUDE.md records the shipping cardinality rewrite as
+sound-but-narrow at
+<https://github.com/danbri/factoidal/issues/236>: the N=1 qualified
+`CE_MaxCardinality` rewrite emits an anchor triple that MULTIPLIES rows
+per P-edge and drops vacuous-truth individuals.
+
+Porting it faithfully reproduces that narrowness. Fixing it in Lean
+makes the two trees stop computing the same thing — the one property
+the differential method rests on, and the reason every finding in
+`2026-08-24-what-the-lean-port-found.md` is checkable. Neither is mine
+to pick, so this layer stops at the boundary and says why in the module
+header.
+
+**The fall-through is proved sound, not assumed.**
+`expandCeSubject_unhandled_is_leaf`: an unported arm produces the
+pre-rewrite triple. That is the F\* source's own discipline, stated at
+its fuel-exhaustion case — *"at worst this is the pre-rewrite
+behaviour … Sound — never adds solutions."* Proving it means an
+unported arm degrades to the identity rather than to something wrong,
+which is what makes stopping at the boundary safe rather than merely
+convenient.
+
+**Two modules share one convention, and a `#guard` checks it.** The
+existential arm's fresh variable is `_sv_<marker key>`, and
+`SPARQL.isRewriteInternalVar` is what strips it from the final
+projection. Neither module works if the prefixes drift, so
+`isRewriteInternalVar (svVarName "r") == true` runs on every build.
+That is worth more than either module's own tests: it is the seam.
+
+**Status of the module.** Five layers in — operands, BGP rewrite, union
+ladder and traversal, restriction classifier, expander. The flat path
+is complete; the nested path is complete except for the arms above.
+`OWL.QueryRewrite` stays not covered, coverage 193 of 220.
