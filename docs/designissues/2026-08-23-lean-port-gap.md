@@ -10,9 +10,9 @@ so on). The script is `tools/lean-port-gap.py`.
 
 | Kind | Modules | F\* lines |
 |---|---|---|
-| Engine and specification code — to port | 10 | 18020 |
+| Engine and specification code — to port | 9 | 15172 |
 | Proofs about the F\* implementation — see below | 3 | 7975 |
-| F\*-only machinery with no Lean counterpart by design | 14 | 6340 |
+| F\*-only machinery with no Lean counterpart by design | 15 | 9188 |
 | **Total not covered** | **27** | **32335** |
 
 193 of 220 F\* modules have a Lean counterpart.
@@ -480,6 +480,52 @@ to 193, the mapping was one-to-one, and aliasing would have made it
 194. That is exactly the pressure `skills/counting-coverage` exists to
 resist, so the reasoning is written down here rather than left as a
 judgement someone has to trust.
+
+### Twelfth: the largest by-design module, found by proving its purpose away
+
+`Parser.NTriples.Locality` (2,848 lines) was classified as engine code
+to port until 2026-08-24. It is now by design, and the evidence is a
+demonstration rather than an argument.
+
+**What the module is.** Its own banner says: proof-only, not wired into
+`build-ocaml.sh`, written to unblock two theorems stuck on one wall —
+`theorem_stream_eq_batch` in `RDF.NQuads.Streaming` and checkpoint (b)
+of `RDF.NTriples.RoundTrip`. It names the wall precisely:
+
+> `"" ^ s == s` and `(a^b)^c == a^(b^c)` both FAIL for symbolic strings
+> via plain `()` … because Z3 has no native associativity/identity
+> theory for `FStar.String.strcat` over symbolic operands.
+
+So the module restates everything over BYTE READS instead of string
+identity, and that restatement is what costs 2,848 lines.
+
+**Why it needs no Lean counterpart.** `List.nil_append` and
+`List.append_assoc` are in Lean's standard library. The wall is not
+there.
+
+**The demonstration.** Checkpoint (b) — one of the exact two theorems
+this module exists to unblock — was proved in Lean on 2026-08-24 as
+`Syntax/NTriplesRoundTrip.readIriRefBody_printSafe`. It is an ordinary
+three-line induction over `List Char` and uses no locality lemma of any
+kind. The module's purpose was discharged without the module.
+
+**One correction to the first reading.** `RDF.NQuads.Streaming` does
+have REAL proof dependencies on it — `lemma_pws_shift`,
+`lemma_skip_eol_shift`, `lemma_nt_skip_to_eol_shift`,
+`lemma_parse_nquad_shift_generic` are applied inside its proofs, not
+merely mentioned in comments. So this is not free-standing scaffolding.
+It is proof infrastructure for a representation wall, which is exactly
+the status `OWL.Semantics.MemLemmas` already has in this bucket as the
+proof infrastructure a representation REPAIR needs. `RDF.NQuads.Streaming`
+itself stays on the engine list; when it is ported, its theorems get
+proved directly.
+
+**What moved, and what did not.** Coverage is unchanged at 193 of 220,
+because a by-design module is still not covered. What changed is the
+statement of remaining WORK: engine code to port drops from 18,020
+lines to 15,172, and the by-design bucket rises from 6,340 to 9,188.
+This is instance thirteen of the pattern in
+`2026-08-24-what-the-lean-port-found.md`, and the largest single one.
 
 ## Not covered, by group
 

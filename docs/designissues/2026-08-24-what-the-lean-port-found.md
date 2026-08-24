@@ -7,13 +7,13 @@ The Lean 4 port started from zero code on 2026-08-22. It now covers 192
 of 220 F\* modules: 325 files, 114,232 lines, `lake build` green at 772
 jobs, zero `sorry`, zero user `axiom`, zero `native_decide`.
 
-The line count is not the result. The result is fifteen findings.
-Eleven of them have the same shape, and this document says what that
+The line count is not the result. The result is sixteen findings.
+Twelve of them have the same shape, and this document says what that
 shape is and what follows from it.
 
 ## 1. The evidence
 
-### Group A — eleven findings with one shape
+### Group A — twelve findings with one shape
 
 | # | Finding | Where |
 |---|---|---|
@@ -27,6 +27,7 @@ shape is and what follows from it.
 | A8 | An alias was added, the module was ported, and the coverage count did not move. A `git stash` cycle had dropped the edit to the measuring tool. The number on screen was correct for the state before the landing. | tenth correction, `2026-08-23-lean-port-gap.md` |
 | A9 | `tools/lean-port-gap.py` read its Lean module list from a session scratchpad. It reported a module as not covered minutes after that module's file landed. | hazard #30 |
 | A9b | The F\* proof that `C rdfs:subClassOf C` is not an axiomatic triple needs `--fuel 50 --z3rlimit 600 --split_queries always` and must EXCLUDE one unrelated symbol's facts, because that symbol's definition equation in the SMT context tips a borderline `assert_norm`. Raising the budget did not recover it. The Lean proof is a case split on a finite table with no budget, no splitting and no filtering. | `RDFS/ReflexivityWitness.lean` |
+| A9c | `Parser.NTriples.Locality` is 2,848 lines of proof-only code, not in the extraction build, written because Z3 has no associativity or identity theory for `FStar.String.strcat` over symbolic operands — `"" ^ s == s` fails. It restates two blocked theorems over byte reads to route around that. `List.nil_append` and `List.append_assoc` are in Lean's standard library, and one of the two theorems it exists to unblock was proved in Lean as a three-line induction using no locality lemma. | see the twelfth correction in `2026-08-23-lean-port-gap.md` |
 | A10 | Lean has its own wall, in a different place. `readIriRefBody` has ten match arms; generating its per-arm equation lemmas exhausts the container's memory. And the kernel does not reduce `String.mapAux`, so `decide` cannot evaluate `"en".toLower = "EN".toLower`. | [#565](https://github.com/danbri/factoidal/issues/565) |
 
 ### Group B — two ordinary defects, no pattern
@@ -93,6 +94,8 @@ as a fact about what it MEANS.
 - A9b: an SMT context's sensitivity to which definitions are in scope.
   That was read as the difficulty of proving a fact about the RDFS
   axiom tables.
+- A9c: a solver's lack of a string-append theory. That was read as 2,848
+  lines of necessary locality infrastructure.
 - A10: Lean's match compilation and string primitives. Those are being
   read correctly, as representation, which is why the blocker is filed
   as a refactor rather than as a limit on what can be proved.
@@ -132,9 +135,10 @@ one, with the reason:
 | `OWL.Semantics.MemLemmas` | 442 | the proof infrastructure that repair needs |
 | `RDF.CottasStore.ColumnSeq` | 163 | an array shim for F\*'s pure fragment |
 | `RDF.List.Helpers` | 195 | list lemmas Lean's standard library already has |
-| **Total** | **6,340** | |
+| `Parser.NTriples.Locality` | 2,848 | routes around Z3's missing `strcat` associativity and identity; Lean's `List.append_assoc` and `List.nil_append` make it unnecessary (added 2026-08-24) |
+| **Total** | **9,188** | |
 
-6,340 of the F\* tree's 169,736 lines say nothing about RDF or SPARQL.
+9,188 of the F\* tree's 169,736 lines say nothing about RDF or SPARQL.
 They are there because of how the F\* side is written. That figure was
 not estimated. Each module was read and classified, and the tool
 recomputes the total on every run.

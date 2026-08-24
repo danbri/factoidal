@@ -276,7 +276,8 @@ BY_DESIGN_EXACT = {"RDF.List.Helpers",
                    "RDF.Entailment.RDFS.SepFree",
                    "RDF.Entailment.RDFS.ChainWf",
                    "OWL.Semantics.MemLemmas",
-                   "RDF.CottasStore.ColumnSeq"}
+                   "RDF.CottasStore.ColumnSeq",
+                   "Parser.NTriples.Locality"}
 
 def classify(m):
     # BY-DESIGN is tested FIRST: `RDF.Indexed.Completeness` ends in a
