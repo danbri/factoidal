@@ -13269,3 +13269,55 @@ that `Syntax/NQuadsStreaming.lean`'s header names as the one thing
 missing, then the homomorphism
 `finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`
 (<https://github.com/danbri/factoidal/issues/570>).
+
+## Streaming: the offset is threaded, and fuel is independent — 2026-08-24
+
+Two steps toward the homomorphism
+`finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`,
+which `Syntax/NQuadsStreaming.lean`'s header names as the one thing it
+was missing (<https://github.com/danbri/factoidal/issues/570>).
+
+### `StreamState` now carries the absolute offset
+
+⚠️ A change from the F\* design, taken deliberately. `RDF.NQuads.Streaming`'s
+`feed_chunk` calls `parse_nquads_acc complete 0` — every chunk restarts
+the offset at zero — and pays for it with the `lemma_*_shift` family,
+which is a large part of its 3,438 lines.
+
+Two reasons to thread it instead, and the first is a defect the F\*
+design has: a parse error in the fifth chunk should name its place in
+the DOCUMENT, not in whatever buffer the consumer happened to assemble.
+The second is that with the offset threaded, the streaming run and the
+batch run hand the same positions to the same readers, so no shift
+lemma is needed to compare them.
+
+`NQuadsStreaming` has no consumers outside the library, so the change
+is contained. Its 20 build-time `#guard`s, including the three that
+split a document mid-line, still pass.
+
+### Fuel independence
+
+`parseQuadLinesAcc11_fuel_indep`: two runs with different fuel agree as
+long as each budget exceeds the input length. That is what lets the
+streaming run, whose fuel comes from one chunk, be compared with the
+batch run, whose fuel comes from the whole document.
+
+The proof needs to know each round consumes at least one character, and
+that now follows from the suffix module: `readNQuad11_len` reads it off
+`readNQuad11_dot`, since `'.' :: rest` being a suffix of the input makes
+`rest` strictly shorter.
+
+ⓘ Stated for `.rdf11`, which is the mode the F\* module's own theorem is
+about. The RDF 1.2 reader admits triple terms in the object slot and
+needs its own `readNQuad12_dot` before the same argument runs.
+
+### Gate
+
+✅ Build green at 854 jobs.
+✅ Lean W3C runner: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87
+pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+### Next
+
+Locality for `skipToEol` / `skipComment` / `skipEol`, then the
+line-boundary concatenation lemma, then the homomorphism.

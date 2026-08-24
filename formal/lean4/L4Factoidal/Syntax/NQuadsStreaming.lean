@@ -46,7 +46,25 @@ depends on:
 character list with fuel `length + 1` — the same discipline
 `parseNQuads` uses for a whole document. Fuel is never guessed and
 never carried: each call gets its own provably-sufficient budget.
-`parseFrom_fuel_is_local` states that.
+`parseFrom_fuel_is_local` states that, and
+`parseQuadLinesAcc11_fuel_indep` says two runs with different budgets
+agree whenever each budget exceeds the input length — which is what
+lets the streaming run, whose fuel comes from one chunk, be compared
+with the batch run, whose fuel comes from the whole document.
+
+## The offset IS threaded, and that is a change from the F\* module
+
+`RDF.NQuads.Streaming`'s `feed_chunk` calls `parse_nquads_acc complete 0`
+— every chunk restarts the offset at zero — and pays for it with the
+`lemma_*_shift` family, which is a large part of its 3,438 lines. Here
+`StreamState` carries the absolute offset instead. Two reasons, and the
+first is a defect the F\* design has:
+
+* a parse error in the fifth chunk should name its place in the
+  DOCUMENT, not in whatever buffer the consumer happened to assemble;
+* with the offset threaded, the streaming run and the batch run pass
+  the same positions to the same readers, so no shift lemma is needed
+  to compare them.
 
 ## What is NOT proved here
 
@@ -67,7 +85,7 @@ is proved.
 
 No `sorry`, no user `axiom`, no `native_decide`.
 -/
-import L4Factoidal.Syntax.NQuads
+import L4Factoidal.Syntax.LocalitySuffix
 
 namespace L4Factoidal.Syntax.NQuadsStreaming
 
@@ -149,16 +167,22 @@ the partial line not yet parsed, and the first error if one happened. -/
 structure StreamState where
   ds : Dataset
   carry : List Char
+  /-- Absolute character offset in the whole document at which `carry`
+  starts. Threaded so a parse error names its place in the DOCUMENT and
+  not in whatever buffer the consumer happened to assemble. -/
+  pos : Nat
   err : Option ParseError
   deriving Repr
 
-def initialState : StreamState := { ds := Dataset.empty, carry := [], err := none }
+def initialState : StreamState :=
+  { ds := Dataset.empty, carry := [], pos := 0, err := none }
 
-/-- Parse a self-contained character list from a starting dataset. The
-fuel is computed HERE, from this list, and never carried in. -/
-def parseFrom (mode : Mode) (cs : List Char) (ds : Dataset) :
+/-- Parse a self-contained character list from a starting dataset, at a
+given absolute offset. The fuel is computed HERE, from this list, and
+never carried in. -/
+def parseFrom (mode : Mode) (pos : Nat) (cs : List Char) (ds : Dataset) :
     Except ParseError Dataset :=
-  parseQuadLinesAcc mode (cs.length + 1) 0 cs ds
+  parseQuadLinesAcc mode (cs.length + 1) pos cs ds
 
 /-- Take one chunk. Everything up to the last newline is parsed now;
 the rest waits for the next chunk. An error is sticky: once a chunk has
@@ -169,15 +193,18 @@ def feedChunk (mode : Mode) (st : StreamState) (chunk : List Char) : StreamState
   | none =>
       let buf := st.carry ++ chunk
       let (complete, carry) := splitCompleteLines buf
-      match parseFrom mode complete st.ds with
-      | .ok ds' => { ds := ds', carry := carry, err := none }
-      | .error e => { ds := st.ds, carry := carry, err := some e }
+      match parseFrom mode st.pos complete st.ds with
+      | .ok ds' =>
+          { ds := ds', carry := carry, pos := st.pos + complete.length, err := none }
+      | .error e =>
+          { ds := st.ds, carry := carry, pos := st.pos + complete.length,
+            err := some e }
 
 /-- End of stream: parse whatever partial line is left. -/
 def finish (mode : Mode) (st : StreamState) : Except ParseError Dataset :=
   match st.err with
   | some e => .error e
-  | none => parseFrom mode st.carry st.ds
+  | none => parseFrom mode st.pos st.carry st.ds
 
 def streamParse (mode : Mode) (chunks : List (List Char)) :
     Except ParseError Dataset :=
@@ -186,8 +213,9 @@ def streamParse (mode : Mode) (chunks : List (List Char)) :
 /-! ## 4. Facts -/
 
 /-- Fuel is local to the call, never threaded across a boundary. -/
-theorem parseFrom_fuel_is_local (mode : Mode) (cs : List Char) (ds : Dataset) :
-    parseFrom mode cs ds = parseQuadLinesAcc mode (cs.length + 1) 0 cs ds := rfl
+theorem parseFrom_fuel_is_local (mode : Mode) (pos : Nat) (cs : List Char)
+    (ds : Dataset) :
+    parseFrom mode pos cs ds = parseQuadLinesAcc mode (cs.length + 1) pos cs ds := rfl
 
 /-- An empty stream is an empty dataset, not an error. -/
 theorem streamParse_nil (mode : Mode) :
@@ -208,14 +236,127 @@ characters the batch call does, in the same order. This is the case
 that needs no line-boundary concatenation lemma. -/
 theorem streamParse_single_chunk (mode : Mode) (chunk : List Char) :
     streamParse mode [chunk]
-      = (match parseFrom mode (splitCompleteLines chunk).1 Dataset.empty with
-         | .ok ds => parseFrom mode (splitCompleteLines chunk).2 ds
+      = (match parseFrom mode 0 (splitCompleteLines chunk).1 Dataset.empty with
+         | .ok ds =>
+             parseFrom mode (splitCompleteLines chunk).1.length
+               (splitCompleteLines chunk).2 ds
          | .error e => .error e) := by
   simp only [streamParse, List.foldl_cons, List.foldl_nil, feedChunk,
              initialState, List.nil_append]
-  cases parseFrom mode (splitCompleteLines chunk).1 Dataset.empty with
+  cases parseFrom mode 0 (splitCompleteLines chunk).1 Dataset.empty with
   | ok ds => simp [finish]
   | error e => simp [finish]
+
+/-! ## How much a single round consumes -/
+
+theorem skipWs_len (pos : Nat) (cs : List Char) :
+    (skipWs pos cs).2.length ≤ cs.length := (skipWs_suffix pos cs).length_le
+
+theorem skipComment_len (pos : Nat) (cs : List Char) :
+    (skipComment pos cs).2.length ≤ cs.length := (skipComment_suffix pos cs).length_le
+
+theorem skipEol_len (pos : Nat) (cs : List Char) :
+    (skipEol pos cs).2.length ≤ cs.length := (skipEol_suffix pos cs).length_le
+
+theorem skipComment_hash_len (pos : Nat) (t : List Char) :
+    (skipComment pos ('#' :: t)).2.length ≤ t.length := by
+  have he : skipComment pos ('#' :: t) = skipToEol (pos + 1) t := rfl
+  rw [he]
+  exact (skipToEol_suffix (pos + 1) t).length_le
+
+theorem skipEol_lf_len (pos : Nat) (t : List Char) :
+    (skipEol pos ('\n' :: t)).2.length ≤ t.length := by
+  have he : skipEol pos ('\n' :: t) = (pos + 1, t) := rfl
+  rw [he]
+  simp
+
+theorem skipEol_cr_len (pos : Nat) (t : List Char) :
+    (skipEol pos ('\r' :: t)).2.length ≤ t.length := by
+  cases t with
+  | nil => have he : skipEol pos ['\r'] = (pos + 1, []) := rfl
+           rw [he]
+           simp
+  | cons b t2 =>
+      by_cases hb : b = '\n'
+      · subst hb
+        have he : skipEol pos ('\r' :: '\n' :: t2) = (pos + 2, t2) := rfl
+        rw [he]; simp
+      · have he : skipEol pos ('\r' :: b :: t2) = (pos + 1, b :: t2) := by
+          simp [skipEol, hb]
+        rw [he]
+        simp
+
+theorem readNQuad11_len (pos : Nat) (cs : List Char) (tr : Triple)
+    (g : Option Subject) (p' : Nat) (rest : List Char)
+    (h : readNQuad11 pos cs = .ok (tr, g, p', rest)) : rest.length < cs.length := by
+  have := (readNQuad11_dot pos cs tr g p' rest h).length_le
+  simp at this
+  omega
+
+
+/-! ## Fuel independence
+
+`parseQuadLinesAcc` recurses on a fuel counter. Two runs with DIFFERENT
+fuel agree, as long as each budget exceeds the input length — which is
+the discipline every entry point already follows. This is what lets the
+streaming run, whose fuel comes from one chunk, be compared with the
+batch run, whose fuel comes from the whole document.
+
+ⓘ Stated for `.rdf11`, which is the mode the F\* streaming module's own
+theorem is about (`Parser.NQuads.parse_nquads`). The RDF 1.2 reader
+admits triple terms in the object slot and needs its own
+`readNQuad12_dot` before the same argument runs. -/
+
+theorem parseQuadLinesAcc11_fuel_indep :
+    ∀ (f g pos : Nat) (cs : List Char) (ds : Dataset),
+      cs.length < f → cs.length < g →
+      parseQuadLinesAcc .rdf11 f pos cs ds = parseQuadLinesAcc .rdf11 g pos cs ds
+  | 0, _, _, _, _, hf, _ => absurd hf (by omega)
+  | _ + 1, 0, _, _, _, _, hg => absurd hg (by omega)
+  | f + 1, g + 1, pos, cs, ds, hf, hg => by
+      simp only [parseQuadLinesAcc]
+      cases hw : skipWs pos cs with
+      | mk pos1 cs1 =>
+        have hle1 : cs1.length ≤ cs.length := by
+          have := skipWs_len pos cs; rw [hw] at this; exact this
+        dsimp only
+        cases hc1 : cs1 with
+        | nil => rfl
+        | cons a t =>
+          have hlt : t.length < cs.length := by
+            rw [hc1] at hle1; simp at hle1; omega
+          by_cases hh : a = '#'
+          · subst hh
+            have h1 := skipComment_hash_len pos1 t
+            have h2 := skipEol_len (skipComment pos1 ('#' :: t)).1
+                         (skipComment pos1 ('#' :: t)).2
+            refine parseQuadLinesAcc11_fuel_indep f g _ _ _ ?_ ?_ <;> omega
+          · by_cases hn : a = '\n'
+            · subst hn
+              have h2 := skipEol_lf_len pos1 t
+              refine parseQuadLinesAcc11_fuel_indep f g _ _ _ ?_ ?_ <;> omega
+            · by_cases hr : a = '\r'
+              · subst hr
+                have h2 := skipEol_cr_len pos1 t
+                refine parseQuadLinesAcc11_fuel_indep f g _ _ _ ?_ ?_ <;> omega
+              · split
+                all_goals (try (exfalso; simp_all; done))
+                split
+                · rfl
+                · rename_i tr gg p2 c2 heq
+                  have hlen := readNQuad11_len pos1 (a :: t) tr gg p2 c2 heq
+                  have hA : (skipWs p2 c2).2.length ≤ c2.length := skipWs_len p2 c2
+                  have hB : (skipComment (skipWs p2 c2).1 (skipWs p2 c2).2).2.length
+                      ≤ (skipWs p2 c2).2.length := skipComment_len _ _
+                  have hC : (skipEol
+                        (skipComment (skipWs p2 c2).1 (skipWs p2 c2).2).1
+                        (skipComment (skipWs p2 c2).1 (skipWs p2 c2).2).2).2.length
+                      ≤ (skipComment (skipWs p2 c2).1 (skipWs p2 c2).2).2.length :=
+                    skipEol_len _ _
+                  simp at hlen
+                  refine parseQuadLinesAcc11_fuel_indep f g _ _ _ ?_ ?_ <;> omega
+
+#print axioms parseQuadLinesAcc11_fuel_indep
 
 /-! ## Build-time checks
 
@@ -276,5 +417,7 @@ gets wrong by an off-by-one. -/
 #print axioms splitCompleteLines_carry_no_newline
 #print axioms splitCompleteLines_complete_ends_newline
 #print axioms streamParse_single_chunk
+#print axioms readNQuad11_len
+#print axioms parseQuadLinesAcc11_fuel_indep
 
 end L4Factoidal.Syntax.NQuadsStreaming
