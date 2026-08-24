@@ -13374,3 +13374,51 @@ The concatenation lemma itself: parsing `complete ++ carry`, where
 parsing `carry` from where it stopped. Every piece it needs is now in
 place — per-line locality, the terminator's position, fuel
 independence, skip locality, and positions that count characters.
+
+## The line-boundary concatenation lemma — 2026-08-24
+
+`Syntax/NQuadsConcat.lean`. `Syntax/NQuadsStreaming.lean`'s header names
+ONE thing as missing: that parsing `a ++ b`, where `a` ends in a
+newline, equals parsing `b` from the state parsing `a` reached. That is
+the F\* module's `lemma_parse_nquads_acc_concat_line_general`, and the
+bulk of its 3,438 lines. `parseQuadLines11_concat` is it.
+
+Axioms `[propext, Classical.choice, Quot.sound]`, no `sorry`, no user
+`axiom`, no `native_decide`. ✅ Build green at 860 jobs.
+
+ⓘ Stated in ok-form: it assumes the `complete` half parses. That is the
+direction the streaming fold needs, since the fold has already run that
+half and holds its dataset.
+
+⚠️ The converse is NOT proved, and it is not free. "If the combined run
+succeeds then the `complete` half does" needs the fact that no reader
+consumes a raw newline. That is true of this grammar — IRIs forbid raw
+control characters, literals forbid a raw newline, and inline
+whitespace is space and tab only — but there is no proof of it in the
+tree. Without the converse, the streaming parser could in principle
+reject a document the batch parser accepts; the ok-form lemma rules out
+the other way round, which is the direction that would give a WRONG
+dataset rather than an error.
+
+### What each round of the proof needs
+
+The proof walks one round of the parser at a time over four branches
+(blank or comment line, LF, CR, statement). Every round needs four
+things, and each comes from a module below this one:
+
+* the round answers the same on the longer input — `skipWs_local`,
+  `skipComment_local`, `skipEol_local`, `readNQuad11_local`;
+* what is left still ends with a newline — `getLast?_of_suffix` over
+  the suffix lemmas;
+* the position advanced by exactly what was consumed —
+  `Syntax.LocalityCount`, which is what makes the two runs line up;
+* the remaining fuel is still enough —
+  `parseQuadLinesAcc11_fuel_indep`.
+
+### Next
+
+The homomorphism itself,
+`finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`, by an
+induction over the chunk list carrying: the text consumed so far ends
+with a newline, the stored offset is its length, and parsing it from
+zero gives the stored dataset (<https://github.com/danbri/factoidal/issues/570>).

@@ -71,6 +71,7 @@ import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.NTriplesRoundTrip
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.NQuadsStreaming
+import L4Factoidal.Syntax.NQuadsConcat
 import L4Factoidal.Syntax.LexShift
 import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Syntax.Turtle
