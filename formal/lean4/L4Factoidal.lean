@@ -24,6 +24,9 @@ import L4Factoidal.SPARQL.Algebra
 import L4Factoidal.SPARQL.AlgebraSpec
 import L4Factoidal.SPARQL.AlgebraRefinement
 import L4Factoidal.SPARQL.JoinRefinement
+import L4Factoidal.SPARQL.StoreBackend
+import L4Factoidal.SPARQL.StorePlan
+import L4Factoidal.SPARQL.StoreFastPath
 import L4Factoidal.SPARQL.RewriteVarStrip
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.RDFS.Vocabulary

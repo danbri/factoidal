@@ -11861,3 +11861,83 @@ a transcription is reading the source again, definition by definition.
 
 **Status.** Coverage 196 to 197 of 220. Not covered is 23 modules:
 6 engine (13,198 lines), 3 proof (7,975), 14 by design (8,993).
+
+---
+
+## `SPARQL/StoreBackend.lean`, `StorePlan.lean`, `StoreFastPath.lean` — three of four layers of `SPARQL11.Store`
+
+The F\* module is the backend-neutral store layer: the algebra stays the
+semantic source of truth and this layer dispatches physical
+triple-pattern access.
+
+**Layer 1, the seam.** `GraphBackend`, `capsOfBackend`, and the six
+`backend_*` forwarders. The F\* banner states the discipline —
+"`caps_of_backend` is the ONE dispatch point a new backend touches",
+and each dispatcher "is now a one-line forwarder through
+`caps_of_backend`'s single dispatch point". Six theorems say that, so a
+backend cannot grow a second dispatch path without one of them failing.
+
+The purity doctrine applies at the backend types: an HDT store, a
+COTTAS dataset and a COTTAS on-disk store are handles into `assume val`
+I/O, so each becomes the operations it offers. `BackendReadOps` is
+`search`, `estimate` and `predicatePresent`, which is all the two DEAD
+arms need — the F\* banner names them dead itself ("GB_HDT, and the dead
+in-memory GB_COTTAS path … no live construction site, same for
+GB_List"). They are ported anyway, for the reason the previous landing
+gives: dropping an arm on the reader's judgement leaves an unrecorded
+hole.
+
+`capsOfReadOps_lawful` and `capsOfList_lawful` put both dead arms under
+`StoreCapsLawful`, and here `estimateExact` is NOT vacuous — these arms
+advertise an exact estimate, so the law constrains them where it did
+not constrain the COTTAS record.
+
+**Layer 2, planning.** `patternBoundFor` grounds a triple pattern under
+a solution mapping. Three of its rules are RDF, not optimisation, and
+each is a theorem: a triple-term SUBJECT pattern never grounds, a
+variable bound to a literal never grounds a PREDICATE, and a
+triple-term OBJECT grounds only when all three positions do. A bound
+that is too tight silently drops rows, which is why these are stated
+rather than trusted.
+
+`chooseBest_perm` is the planner's correctness obligation: the chosen
+pattern together with the returned rest has the same length as the
+input, so the planner reorders work and never adds or drops a pattern.
+The F\* source states the cost intent in a comment; the safety property
+was unstated in both trees.
+
+**Layer 3, the fast paths.** Streaming `COUNT(*)` and LIMIT pushdown,
+with their detectors. Every rejection is load-bearing, because falling
+through to the materialise path is always correct and matching a subtly
+different shape is not. Six theorems pin the rejections a later
+widening would be tempted to drop, including the one the F\* source
+argues at length: `GRAPH ?g { tp }` with a VARIABLE graph is refused,
+because an unbound `?g` ranges over every named graph, so a non-grouped
+`COUNT(*)` over that shape is a SUM over N backends — a different
+evaluation shape, not a mechanical widening.
+
+`evalLimitSingleTp_bounded` says the LIMIT path never returns more rows
+than the limit, however the backend behaves, because the result is
+truncated after the pattern match as well as before it.
+
+**A vacuity check that was worth running** (hazard #29).
+`detectStreamingCountStar_rejects_distinct` closes its last case by
+`rfl`, which looks like a theorem that does not use its hypothesis. It
+does: with the hypothesis removed from the statement, the same script
+fails on the un-reduced `if q.modifier.distinct …` chain. The check was
+run explicitly and the result is recorded next to the theorem, together
+with the `#guard` that the detector returns `some` on a clean query —
+the other half, which rules out a detector that is constantly `none`.
+
+**One representation difference, stated.** The F\* `q_having` is an
+`option` and its detectors test `Some?`; the Lean `Query.having` is a
+`List Expr` and the same test is "not empty". Both mean "the query has
+a HAVING clause" and the rejection fires on the same queries.
+
+**Status.** `SPARQL11.Store` stays NOT covered. Twenty-four of its 44
+`let`s are matched; the remainder is one more layer — the dataset seam
+(`dataset_caps_of_backend`, `lookup_named_backend`,
+`materialize_dataset_backend`, the backend constructors),
+`eval_pattern_backend`, `eval_fulltext_tp_backend`, the GROUP BY
+streaming family, and the two query entry points. Coverage stays 197 of
+220.
