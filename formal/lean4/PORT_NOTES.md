@@ -11608,3 +11608,67 @@ that reading carries over: `List.lookup` is already tail-recursive.
 
 Eleven `#guard` checks, five `#print axioms` lines, all `[propext]` or
 `[propext, Quot.sound]`. `lake build` green at 792 jobs.
+
+---
+
+## `OWL/QueryRewriteJoins.lean` — layer 6, and a comment turned into a theorem
+
+`rewrite_query` runs `normalise_joins` before the class-expression
+rewriter. The reason is in the F\* source: the SPARQL parser splits a
+basic graph pattern at every period, so
+
+    ?x a [ owl:intersectionOf (:A :B) ] .
+
+parses to a tree of small `GP_BGP` leaves under `GP_Join`, with the
+class-expression marker and its `rdf:first`/`rdf:rest` chain in
+different leaves. The rewriter works one BGP at a time and finds
+nothing until the leaves are folded back together.
+
+**The claim the F\* source makes in a comment.** The header says the
+flattening "preserves SPARQL semantics (GP_Join of two BGPs =
+BGP-concat)". That is a statement about §18.5 evaluation, sitting next
+to a function on the shipping OWL query path, proved in neither tree.
+
+**What this layer proves.** `evalBgp_append` is the list identity:
+
+    evalBgp (b1 ++ b2) g = (evalBgp b1 g).flatMap (evalBgpFrom g b2)
+
+Exact — same list, same order, same multiplicities — because
+`evalBgpFrom` seeds the second half with each row of the first. Four
+`*_extends` theorems say the seed survives: `tryBindTerm`,
+`tryBindSubject`, `tpMatch` and `evalBgpFrom` each agree with the input
+mapping on every variable the input already bound. So coalescing never
+overwrites a binding the left BGP made.
+
+**What it does not prove, and why that is stated.** The full claim is
+
+    Occurs mu (evalBgp (b1 ++ b2) g)
+      ↔ Occurs mu (join (evalBgp b1 g) (evalBgp b2 g))
+
+`evalBgp_append` reduces the left side to a seeded run of `b2`; the
+right side runs `b2` from the empty mapping and filters with
+`Binding.compatible` afterwards. Bridging them needs a lemma comparing
+seeded and unseeded `tpMatch` on one graph triple, and `tpMatch` threads
+the mapping through subject, predicate and object in sequence, so a
+pattern with a repeated variable does not decompose into per-position
+facts. Tracked as
+<https://github.com/danbri/factoidal/issues/568>. Nothing in the module
+assumes it.
+
+Both sides use `Term.eqb` — `tryBindTerm`'s bound-variable arm and
+`Binding.compatible` — so the `Literal.eqb` coarseness recorded as
+finding A5 applies equally to both and is not the obstacle.
+
+**Traps paid for here.** `QueryPattern` lives in `SPARQL/Expr.lean`,
+which imports `SPARQL/Algebra.lean`, not the other way round; importing
+only `SPARQL.JoinRefinement` leaves `QueryPattern` unknown, and
+`autoImplicit` turns the unknown name into an implicit variable so the
+error reads "expected type QueryPattern is not of the form `C ...`"
+rather than "unknown identifier". `unfold f at h` leaves the outer
+`match` unreduced, so `rw [h_lookup] at h` finds nothing until a
+`dsimp only at h` fires the iota reduction. `QueryPattern` derives no
+`BEq`, so the `#guard` checks go through two small projections
+(`bgpSize`, `isJoin`) instead of comparing patterns.
+
+**Status of the module.** Six layers in. `OWL.QueryRewrite` is 1,799 F\*
+lines and stays not covered. Coverage 194 of 220.

@@ -90,6 +90,7 @@ import L4Factoidal.OWL.QueryRewriteFlat
 import L4Factoidal.OWL.QueryRewritePattern
 import L4Factoidal.OWL.QueryRewriteRestriction
 import L4Factoidal.OWL.QueryRewriteExpand
+import L4Factoidal.OWL.QueryRewriteJoins
 import L4Factoidal.OWL.RLRules
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
