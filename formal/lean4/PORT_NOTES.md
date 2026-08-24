@@ -11517,3 +11517,45 @@ That is worth more than either module's own tests: it is the seam.
 ladder and traversal, restriction classifier, expander. The flat path
 is complete; the nested path is complete except for the arms above.
 `OWL.QueryRewrite` stays not covered, coverage 193 of 220.
+
+---
+
+## `SPARQL/JoinRefinement.lean` — layer 2 of `SPARQL11.Algebra.Refinement`
+
+Layer 1 did UNION and FILTER, and built the bridge between the engine's
+`Binding.compatible` and §18.3's `Compatible`. This layer is what that
+bridge was for: JOIN.
+
+**The engine's merge prepends, so the bridge is a relation.**
+`Binding.merge` puts each new binding at the FRONT, so its result is not
+`mu1 ++ mu2` and the list order is the engine's, not the
+specification's. §18.3 states merge as a relation on `sval` for exactly
+this reason. `merge_isMerge` is the lemma the whole layer rests on, and
+it is where the prepending is handled: the induction generalises over
+the LEFT mapping, because the engine grows that side.
+
+The statement is `∀ (mu2 mu1 : SMap)` in that order. `mu2` first is not
+a style choice — Lean's structural recursion needs the argument it
+recurses on to come first, and the recursive call in the `none` arm
+passes a DIFFERENT left mapping (`(w, t) :: mu1`).
+
+**Two directions, two hypotheses, neither a weakening.**
+`join_spec_complete` needs `noRepeats (sdom m)` on the left mappings:
+the engine tests every pair in the list while `sval` reads only the
+first, so a duplicate-key list makes the two disagree.
+`join_spec_sound` needs an exactness hypothesis as well, because
+`Literal.eqb` folds language-tag case, which makes the engine's test
+strictly coarser than §18.3's. Layer 1's
+`compatible_not_Compatible_of_coarse` is the witness that dropping it
+is not available. Each hypothesis names the fragment on which the
+shipping engine DECIDES the specification's relation.
+
+**Commutativity is stated about `Occurs`, not about list equality.**
+§18.3's merge is symmetric on compatible arguments, so `join o1 o2` and
+`join o2 o1` answer the same SET. They do not answer the same LIST,
+because `Binding.merge` is order-sensitive. A theorem claiming list
+equality would be false; one claiming set equality is what §18.5 says.
+
+**Status of the module.** Two layers in — UNION and FILTER, then JOIN.
+`SPARQL11.Algebra.Refinement` is 2,497 F\* lines and stays not covered.
+Coverage 193 of 220.
