@@ -651,8 +651,13 @@ function buildApi(driver) {
 
     if (outFormat === 'nquads') {
       const e = await entry();
-      if (e && docs.every((d) => d.ext === 'nq')) {
-        const nq = docs.map((d) => d.content).join('');
+      if (e) {
+        // Non-N-Quads documents normalize through parseToDatasetJson
+        // (docsToEntryNQuads), same as the turtle branch above — so
+        // entry-only drivers (e.g. l4-core.js) serve this path too.
+        const nq = docs.every((d) => d.ext === 'nq')
+          ? docs.map((d) => d.content).join('')
+          : docsToEntryNQuads(e, docs, 'serialize(nquads)');
         return entryResult(e.serializeNQuads(nq), 'serialize').nquads;
       }
     }

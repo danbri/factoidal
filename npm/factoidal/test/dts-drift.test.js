@@ -66,6 +66,28 @@ test('fn.js implements nothing that fn.d.ts leaves untyped', () => {
     `fn.js exports names undeclared in fn.d.ts: ${untyped.join(', ')}`);
 });
 
+test('l4-core.d.ts declares nothing l4-core.js does not implement', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'l4-core.d.ts'));
+  const runtime = runtimeNames(require('../l4-core.js'));
+  const missing = [...declared].filter((n) => !runtime.has(n));
+  assert.deepEqual(missing, [],
+    `l4-core.d.ts declares names absent from l4-core.js: ${missing.join(', ')}`);
+});
+
+test('l4-core.js implements nothing that l4-core.d.ts leaves untyped', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'l4-core.d.ts'));
+  const runtime = runtimeNames(require('../l4-core.js'));
+  // Dataset is exported as a value (class) by l4-core.js but typed via
+  // the `export { Dataset, ... }` re-export from './index' in
+  // l4-core.d.ts, which declaredValueNames's regex cannot see (same
+  // situation as fn.d.ts's FnDataset); treat it as typed here without
+  // widening TYPE_ONLY for the index.d.ts checks.
+  const untyped = [...runtime].filter(
+    (n) => !declared.has(n) && !TYPE_ONLY.has(n) && n !== 'Dataset');
+  assert.deepEqual(untyped, [],
+    `l4-core.js exports names undeclared in l4-core.d.ts: ${untyped.join(', ')}`);
+});
+
 test('index.d.ts declares nothing index.js does not implement', () => {
   const declared = declaredValueNames(path.join(__dirname, '..', 'index.d.ts'));
   const runtime = runtimeNames(require('../index.js'));

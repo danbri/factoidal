@@ -60,7 +60,20 @@ async function loadLeanEntry() {
   }
   const entry = { abiVersion: '1' };
   for (const op of OPS) {
-    entry[op] = (...args) => eng.call(op, args.map(String));
+    // lib/api.js's entryResult() takes the envelope as a JSON STRING
+    // (entry_jsoo.ml's wire shape). The Lean loader's call() parses the
+    // envelope and throws on {"ok":false}; re-encode both outcomes so
+    // this entry object is wire-compatible with the F* one.
+    entry[op] = (...args) => {
+      try {
+        return JSON.stringify(eng.call(op, args.map(String)));
+      } catch (err) {
+        return JSON.stringify({
+          ok: false,
+          error: String((err && err.message) || err),
+        });
+      }
+    };
   }
   return entry;
 }
