@@ -383,6 +383,247 @@ theorem readGraphLabel_local (pos : Nat) (cs extra : List Char) (g : Subject)
         · subst hdq; simp [readGraphLabel] at h
         · simp [readGraphLabel, hlt, hus, hdq] at h
 
+private theorem skipWs_nil (pos : Nat) : skipWs pos ([] : List Char) = (pos, []) := rfl
+
+private theorem skipWs_dot (pos : Nat) : skipWs pos ['.'] = (pos, ['.']) := rfl
+
+private theorem skipWs_underscore (pos : Nat) : skipWs pos ['_'] = (pos, ['_']) := rfl
+
+private theorem skipWs_hat (pos : Nat) : skipWs pos ['^'] = (pos, ['^']) := rfl
+
+private theorem readOptGraphLabel_nil (pos : Nat) :
+    readOptGraphLabel pos [] = .ok (none, pos, []) := rfl
+
+private theorem readOptGraphLabel_dot (pos : Nat) :
+    readOptGraphLabel pos ['.'] = .ok (none, pos, ['.']) := rfl
+
+private theorem readOptGraphLabel_hat (pos : Nat) :
+    readOptGraphLabel pos ['^'] = .ok (none, pos, ['^']) := rfl
+
+theorem readOptGraphLabel_local (pos : Nat) (cs extra : List Char)
+    (gopt : Option Subject) (p' : Nat) (rest : List Char)
+    (h : readOptGraphLabel pos cs = .ok (gopt, p', rest))
+    (hne : rest ≠ []) (hnd : rest ≠ ['.']) (hnu : rest ≠ ['_']) :
+    readOptGraphLabel pos (cs ++ extra) = .ok (gopt, p', rest ++ extra) := by
+  simp only [readOptGraphLabel] at h ⊢
+  cases hw : skipWs pos cs with
+  | mk pos1 cs1 =>
+    rw [hw] at h
+    simp only at h
+    have hcs1 : cs1 ≠ [] := by
+      intro hc; rw [hc] at h; simp at h; grind
+    have hskip : skipWs pos (cs ++ extra) = (pos1, cs1 ++ extra) := by
+      have hs := skipWs_local pos cs extra (by rw [hw]; exact hcs1)
+      rw [hw] at hs; simpa using hs
+    rw [hskip]
+    simp only
+    cases hc1 : cs1 with
+    | nil => exact absurd hc1 hcs1
+    | cons a t =>
+      rw [hc1] at h
+      by_cases hdot : a = '.'
+      · subst hdot
+        simp only [List.cons_append] at h ⊢
+        grind
+      · by_cases hlt : a = '<'
+        · subst hlt
+          simp only [List.cons_append] at h ⊢
+          cases hg : readGraphLabel pos1 ('<' :: t) with
+          | error e => rw [hg] at h; simp at h
+          | ok v =>
+              obtain ⟨g, pos2, rest2⟩ := v
+              rw [hg] at h
+              simp only [Except.ok.injEq, Prod.mk.injEq] at h
+              have hr2 : rest2 = rest := by grind
+              subst hr2
+              have hloc := readGraphLabel_local pos1 ('<' :: t) extra g pos2 rest2 hg
+                hne hnd
+              rw [List.cons_append] at hloc
+              rw [hloc]
+              grind
+        · by_cases hus : a = '_'
+          · subst hus
+            cases t with
+            | nil => first | grind | (simp at h; grind)
+            | cons b t2 =>
+              by_cases hco : b = ':'
+              · subst hco
+                simp only [List.cons_append] at h ⊢
+                cases hg : readGraphLabel pos1 ('_' :: ':' :: t2) with
+                | error e => rw [hg] at h; simp at h
+                | ok v =>
+                    obtain ⟨g, pos2, rest2⟩ := v
+                    rw [hg] at h
+                    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                    have hr2 : rest2 = rest := by grind
+                    subst hr2
+                    have hloc := readGraphLabel_local pos1 ('_' :: ':' :: t2) extra g
+                      pos2 rest2 hg hne hnd
+                    rw [List.cons_append, List.cons_append] at hloc
+                    rw [hloc]
+                    grind
+              · simp only [List.cons_append] at h ⊢
+                grind
+          · by_cases hdq : a = '"'
+            · subst hdq
+              simp only [List.cons_append] at h
+              simp at h
+            · simp only [List.cons_append] at h ⊢
+              grind
+
+/-! ## A whole N-Quads statement
+
+⚠️ One side condition, `rest ≠ []`, and it is the line terminator doing
+the work. A statement ends at `.`, so if anything at all follows that
+dot then every earlier remainder still holds it, and each of the three
+exclusions the readers above carry is met. Without it the statement
+`<a> <b> <c> _:g.` is a counterexample: the graph label reads as `g`
+with `['.']` left over, but on `<a> <b> <c> _:g.x` the label reads as
+`g.x` and the statement has no terminator at all. -/
+
+theorem readNQuad11_local (pos : Nat) (cs extra : List Char) (tr : Triple)
+    (g : Option Subject) (p' : Nat) (rest : List Char)
+    (h : readNQuad11 pos cs = .ok (tr, g, p', rest)) (hne : rest ≠ []) :
+    readNQuad11 pos (cs ++ extra) = .ok (tr, g, p', rest ++ extra) := by
+  simp only [readNQuad11] at h ⊢
+  cases hw1 : skipWs pos cs with
+  | mk pos1 cs1 =>
+    rw [hw1] at h; simp only at h
+    cases hs : readSubject pos1 cs1 with
+    | error e => rw [hs] at h; simp at h
+    | ok v1 =>
+      obtain ⟨subj, pos2, cs2⟩ := v1
+      rw [hs] at h; simp only at h
+      cases hw2 : skipWs pos2 cs2 with
+      | mk pos3 cs3 =>
+        rw [hw2] at h; simp only at h
+        cases hp : readPredicate pos3 cs3 with
+        | error e => rw [hp] at h; simp at h
+        | ok v2 =>
+          obtain ⟨pred, pos4, cs4⟩ := v2
+          rw [hp] at h; simp only at h
+          cases hw3 : skipWs pos4 cs4 with
+          | mk pos5 cs5 =>
+            rw [hw3] at h; simp only at h
+            cases ho : readObject11 pos5 cs5 with
+            | error e => rw [ho] at h; simp at h
+            | ok v3 =>
+              obtain ⟨obj, pos6, cs6⟩ := v3
+              rw [ho] at h; simp only at h
+              cases hgl : readOptGraphLabel pos6 cs6 with
+              | error e => rw [hgl] at h; simp at h
+              | ok v4 =>
+                obtain ⟨gopt, pos7, cs7⟩ := v4
+                rw [hgl] at h; simp only at h
+                cases hw4 : skipWs pos7 cs7 with
+                | mk pos8 cs8 =>
+                  rw [hw4] at h; simp only at h
+                  cases hc8 : cs8 with
+                  | nil => rw [hc8] at h; simp at h
+                  | cons d cs9 =>
+                    rw [hc8] at h
+                    by_cases hd : d = '.'
+                    · subst hd
+                      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+                      have hrest : cs9 = rest := by grind
+                      subst hrest
+                      -- Every remainder still holds the terminator.
+                      have h7ne : cs7 ≠ [] := by
+                        intro hc; rw [hc, skipWs_nil] at hw4; grind
+                      have h7dot : cs7 ≠ ['.'] := by
+                        intro hc; rw [hc, skipWs_dot] at hw4; grind
+                      have h7us : cs7 ≠ ['_'] := by
+                        intro hc; rw [hc, skipWs_underscore] at hw4; grind
+                      have h7hat : cs7 ≠ ['^'] := by
+                        intro hc; rw [hc, skipWs_hat] at hw4; grind
+                      have h6ne : cs6 ≠ [] := by
+                        intro hc; rw [hc, readOptGraphLabel_nil] at hgl; grind
+                      have h6dot : cs6 ≠ ['.'] := by
+                        intro hc; rw [hc, readOptGraphLabel_dot] at hgl; grind
+                      have h6hat : cs6 ≠ ['^'] := by
+                        intro hc; rw [hc, readOptGraphLabel_hat] at hgl; grind
+                      have h5ne : cs5 ≠ [] := by
+                        intro hc; rw [hc] at ho
+                        simp [readObject11] at ho
+                      have h4ne : cs4 ≠ [] := by
+                        intro hc; rw [hc, skipWs_nil] at hw3; grind
+                      have h3ne : cs3 ≠ [] := by
+                        intro hc; rw [hc] at hp
+                        simp [readPredicate, readIriRef] at hp
+                      have h2ne : cs2 ≠ [] := by
+                        intro hc; rw [hc, skipWs_nil] at hw2
+                        have hc3 : cs3 = [] := by grind
+                        rw [hc3] at hp
+                        simp [readPredicate, readIriRef] at hp
+                      have h2dot : cs2 ≠ ['.'] := by
+                        intro hc; rw [hc, skipWs_dot] at hw2
+                        have hc3 : cs3 = ['.'] := by grind
+                        rw [hc3] at hp
+                        simp [readPredicate, readIriRef] at hp
+                      have h1ne : cs1 ≠ [] := by
+                        intro hc; rw [hc] at hs
+                        simp [readSubject] at hs
+                      -- Rewrite the longer run, stage by stage.
+                      have k1 : skipWs pos (cs ++ extra) = (pos1, cs1 ++ extra) := by
+                        have := skipWs_local pos cs extra (by rw [hw1]; exact h1ne)
+                        rw [hw1] at this; simpa using this
+                      rw [k1]; simp only
+                      rw [readSubject_local pos1 cs1 extra subj pos2 cs2 hs h2ne h2dot]
+                      simp only
+                      have k2 : skipWs pos2 (cs2 ++ extra) = (pos3, cs3 ++ extra) := by
+                        have := skipWs_local pos2 cs2 extra (by rw [hw2]; exact h3ne)
+                        rw [hw2] at this; simpa using this
+                      rw [k2]; simp only
+                      rw [readPredicate_local pos3 cs3 extra pred pos4 cs4 hp]
+                      simp only
+                      have k3 : skipWs pos4 (cs4 ++ extra) = (pos5, cs5 ++ extra) := by
+                        have := skipWs_local pos4 cs4 extra (by rw [hw3]; exact h5ne)
+                        rw [hw3] at this; simpa using this
+                      rw [k3]; simp only
+                      rw [readObject11_local pos5 cs5 extra obj pos6 cs6 ho h6ne h6dot
+                            h6hat]
+                      simp only
+                      rw [readOptGraphLabel_local pos6 cs6 extra gopt pos7 cs7 hgl h7ne
+                            h7dot h7us]
+                      simp only
+                      have k4 : skipWs pos7 (cs7 ++ extra) = (pos8, ('.' :: cs9) ++ extra) := by
+                        have := skipWs_local pos7 cs7 extra (by rw [hw4, hc8]; simp)
+                        rw [hw4, hc8] at this; simpa using this
+                      rw [k4]; simp only [List.cons_append]
+                      grind
+                    · simp [hd] at h
+
+/-! ## The quad-line side condition is doing real work
+
+Measured, not reasoned out. `<http://a/s> <http://a/p> <http://a/o> _:g.`
+parses, with the graph name `_:g` and NOTHING left over. Add one
+character and the blank-node label swallows the dot, so the statement
+has no terminator and the read FAILS. That guard pair is the refutation
+of `readNQuad11_local` without `rest ≠ []`. -/
+
+private def quadRemainder
+    (r : Except ParseError (Triple × Option Subject × Nat × List Char)) :
+    Option (List Char) :=
+  match r with
+  | .ok (_, _, _, rest) => some rest
+  | .error _ => none
+
+private def demoLine : List Char :=
+  "<http://a/s> <http://a/p> <http://a/o> .\n".toList
+private def demoNoTail : List Char :=
+  "<http://a/s> <http://a/p> <http://a/o> _:g.".toList
+
+-- With a terminator: the remainder is non-empty and grows by exactly
+-- what was appended.
+#guard quadRemainder (readNQuad11 0 demoLine) = some ['\n']
+#guard quadRemainder (readNQuad11 0 (demoLine ++ demoLine))
+         = some (['\n'] ++ demoLine)
+
+-- Without one: the remainder is empty, and one more character turns a
+-- successful read into a failure.
+#guard quadRemainder (readNQuad11 0 demoNoTail) = some []
+#guard quadRemainder (readNQuad11 0 (demoNoTail ++ ['x'])) = none
+
 /-! ## The side conditions are satisfiable
 
 A hypothesis nothing can meet proves nothing. These run at build time
@@ -428,5 +669,7 @@ private def objEnd (r : Except ParseError (Term × Nat × List Char)) : Option N
 #print axioms readPredicate_local
 #print axioms readObject11_local
 #print axioms readGraphLabel_local
+#print axioms readOptGraphLabel_local
+#print axioms readNQuad11_local
 
 end L4Factoidal.Syntax

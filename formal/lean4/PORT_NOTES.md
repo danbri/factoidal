@@ -13189,3 +13189,43 @@ covers `RDF.NQuads.Streaming`
 `readNQuad11_local` should need only `rest ≠ []`: the line ends at `.`,
 so every intermediate remainder still holds that terminator and meets
 the three exclusions above.
+
+## A whole N-Quads statement is local — 2026-08-24
+
+`readOptGraphLabel_local` and `readNQuad11_local` close the reader chain.
+Axioms `[propext, Classical.choice, Quot.sound]`, no `sorry`, no user
+`axiom`, no `native_decide`.
+
+`readNQuad11_local` carries ONE side condition, `rest ≠ []`, and the
+line terminator is what discharges everything else. A statement ends at
+`.`; if anything at all follows that dot, then each earlier remainder
+still holds it, so none of them is empty, `['.']`, `['_']` or `['^']` —
+the four shapes the readers underneath exclude. The proof derives all
+eleven of those facts from `rest ≠ []` and the `'.' :: rest` match, then
+rewrites the longer run stage by stage.
+
+⚠️ The condition is not bookkeeping. Measured, not reasoned out:
+
+```
+<http://a/s> <http://a/p> <http://a/o> _:g.      parses, graph _:g, remainder []
+<http://a/s> <http://a/p> <http://a/o> _:g.x     FAILS: expected '.' terminator
+```
+
+One more character and the blank-node label swallows the dot, so the
+statement loses its terminator. That guard pair is the refutation of
+`readNQuad11_local` without `rest ≠ []`, and it is in the module as two
+`#guard`s next to two more showing a terminated line grows its remainder
+by exactly the appended text.
+
+### Gate
+
+✅ Build green at 852 jobs with all guards.
+✅ Lean W3C runner: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87
+pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+### Next
+
+The restart lemma for `parseQuadLinesAcc` (fuel monotonicity plus the
+per-line locality above), then `splitCompleteLines` and the
+stream-equals-batch theorem, which is what covers `RDF.NQuads.Streaming`
+(<https://github.com/danbri/factoidal/issues/570>).
