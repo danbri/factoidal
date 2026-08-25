@@ -91,9 +91,9 @@ the repository checkout.
 
 ### 4. Lean native harnesses — require the Lean toolchain
 
-Native Lean binaries are NOT committed. To build:
-`curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y`,
-then `export PATH="$HOME/.elan/bin:$PATH"`, then
+Native Lean binaries other than `l4factoidal` (below) are NOT
+committed. To build: `curl -sSf https://elan.lean-lang.org/elan-init.sh
+| sh -s -- -y`, then `export PATH="$HOME/.elan/bin:$PATH"`, then
 `cd formal/lean4 && lake build` (the build also re-checks every
 theorem and `#guard`). Executables land in
 `formal/lean4/.lake/build/bin/`: `l4wasm-cli` (the dispatch ABI,
@@ -104,6 +104,35 @@ natively), `l4w3c` (W3C manifest runner), and per-spec probes
 test fixtures are git submodules: run `tools/ensure-test-env.sh`
 first; with the fixtures absent every suite reports zero tests
 discovered and the score means nothing.
+
+### 5. `l4factoidal` — the committed Lean CLI
+
+`bin/linux-x86_64/l4factoidal` is a committed binary (iron rule 9):
+it runs from a fresh clone with no Lean toolchain, the same way
+`bin/linux-x86_64/factoidal` (F\* flavour) does. It is a real
+command-line interface, not the ABI smoke tool — named verbs and
+flags over the same `Wasm/Ops/*.lean` functions the wasm build and
+`l4wasm-cli` call (`formal/lean4/Wasm/Cli.lean`), so a person or a
+script can drive the Lean engine without knowing the dispatch ABI's
+JSON envelopes. Verbs: `parse`, `query`, `update`, `canonicalize`,
+`closure --regime rdfs|rho-df|rdfs-plus|owl-rl`, `owl-consistent`,
+`owl-entails`, `cl parse|to-rdf|query` (Common Logic / IKL), `version`,
+`ops`. `l4factoidal help` prints the full flag reference. Exit codes:
+0 success/true, 1 failure/false/error, 2 usage error.
+
+```
+$ bin/linux-x86_64/l4factoidal parse --format turtle --out nquads <<< \
+    '@prefix ex: <http://example.org/> . ex:a ex:p ex:b .'
+<http://example.org/a> <http://example.org/p> <http://example.org/b> .
+
+$ bin/linux-x86_64/l4factoidal owl-consistent data.nq --fuel 5000
+true
+```
+
+`l4wasm-cli` (`Wasm/Main.lean`, `call`/`callseq`) is unchanged and
+stays the ABI smoke driver `Wasm/native-smoke.sh` pins — build it
+from source per §4 above. `l4factoidal`'s own smoke suite is
+`Wasm/cli-smoke.sh`.
 
 ## Result conventions (both flavours)
 
@@ -376,6 +405,10 @@ error. Parse format tags accepted by the Lean engine: `turtle`,
 gap and errors.
 
 ## The Lean dispatch ABI for non-JS hosts
+
+For a person or a script that wants named verbs and flags instead of
+this ABI directly, use `l4factoidal` (§5 above) — it calls the same
+op functions this section describes.
 
 The wasm module (and the native `lake exe l4wasm-cli`) serve ONE
 entry: `l4_call(op, argsJson) -> resultJson`, where `argsJson` is a

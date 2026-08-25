@@ -127,6 +127,17 @@ extern_lib libl4hacl pkg := do
   srcDir := "."
   root := `Wasm.Main
 
+-- `l4factoidal` — the real command-line interface (issue #466 ladder):
+-- named verbs and flags over the SAME `Wasm/Ops/*.lean` functions
+-- `l4wasm-cli`/the wasm build call, for people and scripts that do not
+-- want to know the dispatch ABI. `Wasm/Cli.lean` is thin argument
+-- parsing + JSON-envelope decoding; no RDF/SPARQL/OWL/CL logic lives
+-- here. `l4wasm-cli` above is unchanged and stays the ABI smoke
+-- driver `Wasm/native-smoke.sh` pins.
+@[default_target] lean_exe «l4factoidal» where
+  srcDir := "."
+  root := `Wasm.Cli
+
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean
 -- Turtle parser and scores the Lean engine in the same score-line

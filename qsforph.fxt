@@ -1,0 +1,75 @@
+Questions for Pat Hayes — IKL semantics as formalized in Factoidal's Lean 4 tree
+Status: DRAFT, held — not sent anywhere. Owner will decide if/when/how to use.
+Date: 2026-08-25. Context: https://github.com/danbri/factoidal/issues/598
+(machine-checked unified LBase/IKL model theory), issues 580/589 (CL/IKL
+component, proposition individuation). Each question states the source text,
+what we currently do, and what an answer would settle. References: IKL GUIDE
+(https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html), IKL Specification
+[IKLSPEC], LBase (https://www.w3.org/TR/lbase/), ISO/IEC 24707.
+
+Q1. Proposition individuation: naming between the semantic floor and =p.
+  Source: GUIDE Appendix B fixes the semantic minimum (bound-variable
+  renaming does not change the proposition; the proposition depends on the
+  things named, not the names) and deliberately leaves anything stronger to
+  the defined relation =p.
+  What we do: proposition named graphs are keyed by SHA-256 of the
+  alpha-normalized canonical CLIF sentence — so the floor's condition (1)
+  holds by construction; condition (2) (co-referring names) is not
+  syntactically decidable and is left to equality reasoning; =p variants
+  (commuted conjunctions etc.) get distinct graph names today.
+  Question: for a system that must give propositions stable public names
+  (IRIs), is keying on the alpha-normalized sentence the intended reading of
+  the floor, or did you envisage implementations keying on the =p normal
+  form — accepting that the name then identifies more than the semantic
+  minimum requires? Is there a reason to prefer one as the interchange
+  convention?
+
+Q2. The exact =p axiom set and its closure.
+  Source: GUIDE, "Identity between propositions": =p is reflexive,
+  symmetric, transitive, "based on work by John Sowa", with listed
+  identities (and-commutativity, the or/not-and identity,
+  associativity flattening), and the intent that =p be checkable "by a
+  reasonably fast computation on the inner sentences".
+  What we plan: implement =p as an executable normalizer (sort conjuncts,
+  flatten associativity, the listed de Morgan identity, alpha-normalize).
+  Question: is the GUIDE's identity list intended to be exhaustive for =p,
+  or exemplary of a longer Sowa-derived set? If a canonical list exists
+  (published or not), which identities are in it? Was double-negation
+  elimination in scope?
+
+Q3. The phrase layer in IKL practice.
+  Source: ISO/IEC 24707 gives texts phrase structure (cl:text, cl:module,
+  cl:imports, cl:comment). The GUIDE's examples are bare sentence
+  sequences.
+  What we do: our reader parses bare sentence sequences and rejects the
+  phrase forms with an explicit error (tracked, deliberate boundary).
+  Question: did IKL practice/intended use assume the CL phrase layer
+  (modules, imports) or treat texts as flat sentence sequences? Is
+  rejecting the phrase forms a defensible interchange boundary, or does
+  real IKL content in the wild depend on them?
+
+Q4. Statements about statements: named graphs and RDF 1.2 triple terms as
+  the operational rendering of that-terms.
+  What we do: every sentence S maps to a named graph (content plus the
+  canonical sentence recorded as a literal inside it), decorated from the
+  default graph — cl:asserts for assertion, plain link triples for
+  predications like believes/ist (which do NOT assert their content), and,
+  where S is a single atom with translation triple t, an RDF 1.2 bridge
+  <g> rdf:reifies <<t>>. Querying "what holds" is done by an entailment
+  regime that lifts only asserts-decorated graph content.
+  Question: does this decorated-graph rendering match your intent for how
+  ist/contexts and proposition names should land in an RDF-family system?
+  Anything in it you would flag as a semantic mistake rather than a
+  representation choice?
+
+Q5. A machine-checked model construction as a review artifact.
+  What we plan: constructing, inside Lean 4, an interpretation satisfying
+  the IKL structural axioms (GUIDE Appendix A) — a mechanized consistency
+  witness for the semantics; deviations discovered en route would be
+  findings about the documents' intent.
+  Question: would you be willing to review such a construction against
+  intent — in particular the treatment of the that-operator's
+  interpretation (our iProp is keyed by the canonical sentence, with
+  alpha-invariance imposed as an interpretation condition), and the
+  handling of paradoxical "definitions" as unsatisfiable rather than
+  detected?
