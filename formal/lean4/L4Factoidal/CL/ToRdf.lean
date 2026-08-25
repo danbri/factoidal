@@ -21,12 +21,26 @@ contains ':'; e.g. `urn:cl:`). Then:
   (ALPHA / DIGIT / `-` `.` `_` `~`) and %XX-encodes every other UTF-8
   byte (uppercase hex). Injective on names, and never emits a raw ':'.
 * the PROPOSITION named by `(that S)` maps to
-  `<base ++ "that:" ++ percentEncode(S.toClif)>` — the percent-encoding
-  of the CANONICAL CLIF SERIALISATION of S, so the graph name is
-  deterministic, reversible by percent-decoding, and equal for two
-  that-terms exactly when their sentences serialise identically.
-  The raw ':' in `"that:"` cannot appear in an encoded name, so
-  proposition IRIs and name IRIs never collide.
+  `<base ++ "that:sha256:" ++ hex>` where `hex` is the 64-character
+  lowercase SHA-256 (`Crypto.hashHex`) of the UTF-8 bytes of
+  `(S.alphaNorm).toClif` — the canonical CLIF serialisation of the
+  ALPHA-NORMALIZED sentence (`CL/Alpha.lean`). Two that-terms name
+  one graph exactly when their sentences are alpha-equivalent, the
+  individuation minimum the IKL guide's Appendix B sets (bound-
+  variable renaming does not change the proposition;
+  https://github.com/danbri/factoidal/issues/589). The name is a
+  fixed-length content address, never the sentence packed into the
+  IRI; the sentence itself is DATA — see the sentence-record triple
+  below. The raw ':' in `"that:"` cannot appear in an encoded name,
+  so proposition IRIs and name IRIs never collide.
+* inside each proposition's named graph, one SENTENCE-RECORD triple
+  `<propIri> <urn:cl:def:sentence> "<(S.alphaNorm).toClif>"` (an
+  `xsd:string` literal) records the proposition's canonical sentence
+  as queryable data. It is the graph's carrier of any untranslatable
+  remainder (a quantified conjunct is still counted in `skipped`, but
+  its text is no longer lost), it makes the named graph non-empty
+  even when S is wholly untranslatable, and it is NOT included in
+  `count` (which counts translated statements only).
 
 ## The translatable fragment (everything else is SKIPPED and COUNTED)
 
@@ -37,13 +51,14 @@ Per top-level sentence (a top-level `and` is flattened):
   `xsd:string` literal.
 * `(P a)` — unary predication, both names → `a rdf:type P`.
 * `(pred subj (that S))` — `pred`, `subj` names → the default-graph
-  link triple `subj pred <propIri(S)>`, plus S's content (translatable
-  atoms of S, where S is an atom or an `and` of sentences, recursively
+  link triple `subj pred <propIri(S)>`, plus the sentence-record
+  triple (see the mapping above) and S's content (translatable atoms
+  of S, where S is an atom or an `and` of sentences, recursively
   flattened) as triples IN THE NAMED GRAPH `<propIri(S)>`. An
   untranslatable conjunct inside S is skipped and counted; S wholly
-  untranslatable still yields the link triple and an empty (absent)
-  named graph — the assertion about the proposition survives, its
-  content does not.
+  untranslatable still yields the link triple and a named graph
+  holding only the sentence record — the assertion about the
+  proposition survives, and the sentence text stays queryable.
 * `((that S))` — IKL's cancelling-parentheses assertion → S's
   translatable content goes to the DEFAULT graph (asserting the
   proposition is asserting S — `Semantics.sat_assert_that`).
@@ -52,11 +67,14 @@ Everything else — quantified sentences, `or` / `not` / `if` / `iff`,
 equations, sequence markers, non-name subjects/predicates, functional
 terms — is not translated: each such sentence (or conjunct) adds 1 to
 `skipped`, never silently dropped. `count` is the number of translated
-statements (link triples included); after set-semantic deduplication
-the dataset may hold fewer quads than `count`.
+statements (link triples included, sentence-record triples not);
+after set-semantic deduplication the dataset may hold fewer quads
+than `count`, and named graphs hold one sentence-record triple each
+on top of it.
 -/
 
-import L4Factoidal.CL.Clif
+import L4Factoidal.CL.Alpha
+import L4Factoidal.Crypto.SHA2
 import L4Factoidal.RDF.Graph
 import L4Factoidal.Syntax.NQuads
 
@@ -116,14 +134,40 @@ def IriBase.mk' (b : IriBase) (suffix : String) : RDF.WfIri :=
 def nameIri (b : IriBase) (n : String) : RDF.WfIri :=
   b.mk' (percentEncode n)
 
+/-- The proposition-name hash. Per the Crypto module's hash-agility
+directive the algorithm is named ONCE here (with its IRI label
+`propHashLabel`) and reached through `Crypto.hashHex` — retiring
+SHA-256 is a two-def change plus the documented IRI-format bump. -/
+def propHashAlg : L4Factoidal.Crypto.HashAlgorithm := .sha256
+
+/-- The algorithm label inside proposition IRIs (`that:sha256:`). -/
+def propHashLabel : String := "sha256"
+
+/-- The canonical sentence text a proposition is keyed and recorded
+by: the CLIF serialisation of the alpha-normalized sentence
+(`CL/Alpha.lean`; IKL guide Appendix B individuation, issue 589). -/
+def propNormClif (s : Sentence) : String := s.alphaNorm.toClif
+
 /-- The proposition IRI of a `that`-term's sentence (see the module
-header's mapping). -/
+header's mapping): `<base ++ "that:sha256:" ++ hex64>`, a fixed-
+length content address over `propNormClif`. Well-formedness is by
+`isIri_append` exactly as for name IRIs — the suffix's shape (64
+lowercase hex characters, no raw ':' beyond the two separators) needs
+no per-sentence reasoning. -/
 def propIri (b : IriBase) (s : Sentence) : RDF.WfIri :=
-  b.mk' ("that:" ++ percentEncode s.toClif)
+  b.mk' ("that:" ++ propHashLabel ++ ":" ++
+         L4Factoidal.Crypto.hashHex propHashAlg (propNormClif s))
 
 /-- `rdf:type` (the unary-predication predicate). -/
 def rdfTypeIri : RDF.WfIri :=
   ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#type", rfl⟩
+
+/-- The sentence-record predicate: relates a proposition's graph name
+to the canonical CLIF text of its sentence (module header). A fixed
+absolute IRI, deliberately outside every `<base>` namespace a caller
+can occupy with names (`percentEncode` never emits ':'). -/
+def clDefSentenceIri : RDF.WfIri :=
+  ⟨"urn:cl:def:sentence", rfl⟩
 
 /-! ## The atomic fragment -/
 
@@ -170,8 +214,9 @@ end
 /-! ## Dataset assembly -/
 
 /-- Merge a graph into the named graph `name`, creating it if absent
-(set-semantic union either way). An empty graph adds nothing — an
-untranslatable proposition body leaves no empty named graph behind. -/
+(set-semantic union either way). An empty graph adds nothing (the IKL
+clause below never passes one — the sentence record is always
+present). -/
 def addToNamed (ds : RDF.Dataset) (name : RDF.Subject) (g : RDF.Graph) :
     RDF.Dataset :=
   if g.isEmpty then ds
@@ -196,15 +241,18 @@ header's fragment, clause by clause). -/
 def translateTop (b : IriBase) (acc : ToRdfResult) : Sentence → ToRdfResult
   | .conj ss => translateTops b acc ss
   | .atom (.name pred) [.term (.name subj), .term (.that s)] =>
-      -- The IKL clause: proposition content → named graph, link triple
-      -- → default graph.
+      -- The IKL clause: sentence record + proposition content → named
+      -- graph, link triple → default graph.
       let pIri := propIri b s
       let (g, c, k) := sentenceTriples b s
+      let record : RDF.Triple :=
+        { s := .iri pIri, p := clDefSentenceIri,
+          o := .literal (RDF.Literal.string (propNormClif s)) }
       let link : RDF.Triple :=
         { s := .iri (nameIri b subj), p := nameIri b pred, o := .iri pIri }
       { ds := addToNamed
                 { acc.ds with default := acc.ds.default.add link }
-                (.iri pIri) g,
+                (.iri pIri) (record :: g),
         count := acc.count + 1 + c,
         skipped := acc.skipped + k }
   | .atom (.that s) [] =>
@@ -250,12 +298,38 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
 
 -- The guide's ist shape ("Contexts and Modalities in IKL"): the
 -- proposition becomes a named graph, the context assertion a
--- default-graph triple pointing at it.
+-- default-graph triple pointing at it. The graph name is the
+-- sha256 content address of the (alpha-normalized) canonical CLIF —
+-- `echo -n '(Dead OBL)' | sha256sum` — and the graph holds the
+-- sentence record plus the content triple.
 #guard clifToNQuads "urn:cl:" "(ist c (that (Dead OBL)))"
-  == some ("<urn:cl:c> <urn:cl:ist> <urn:cl:that:%28Dead%20OBL%29> .\n" ++
+  == some ("<urn:cl:c> <urn:cl:ist> " ++
+           "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> .\n" ++
+           "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> " ++
+           "<urn:cl:def:sentence> \"(Dead OBL)\" " ++
+           "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> .\n" ++
            "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> " ++
-           "<urn:cl:Dead> <urn:cl:that:%28Dead%20OBL%29> .\n",
+           "<urn:cl:Dead> " ++
+           "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> .\n",
            2, 0)
+
+-- Alpha-variant that-terms name ONE graph (issue 589): the guide's
+-- Appendix B pair, asserted, translates to byte-identical N-Quads —
+-- the quantified body is skipped and counted, and the sentence
+-- record (over the alpha-normal form) carries its text as data.
+#guard clifToNQuads "urn:cl:" "(believes K (that (exists (x)(loves Jim x))))"
+  == clifToNQuads "urn:cl:" "(believes K (that (exists (y)(loves Jim y))))"
+#guard clifToNQuads "urn:cl:" "(believes K (that (exists (x)(loves Jim x))))"
+  == some ("<urn:cl:K> <urn:cl:believes> " ++
+           "<urn:cl:that:sha256:98d23403b8111bf633e55edf9b546962a7ba5aadf08e68fe14fa563f21888b65> .\n" ++
+           "<urn:cl:that:sha256:98d23403b8111bf633e55edf9b546962a7ba5aadf08e68fe14fa563f21888b65> " ++
+           "<urn:cl:def:sentence> \"(exists (v1) (loves Jim v1))\" " ++
+           "<urn:cl:that:sha256:98d23403b8111bf633e55edf9b546962a7ba5aadf08e68fe14fa563f21888b65> .\n",
+           1, 1)
+
+-- Distinct propositions keep distinct graph names.
+#guard ((clifToNQuads "urn:cl:" "(ist c (that (Dead OBL)))")
+        == (clifToNQuads "urn:cl:" "(ist c (that (Alive OBL)))")) == false
 
 -- Binary predication with a name object, and with a string object.
 #guard clifToNQuads "urn:cl:" "(married Jack Jill)"

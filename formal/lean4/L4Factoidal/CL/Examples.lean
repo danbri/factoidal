@@ -16,6 +16,7 @@ run (`skills/factoidal-lean-basics`, Build/test/demo).
 -/
 
 import L4Factoidal.CL.Clif
+import L4Factoidal.CL.Alpha
 import L4Factoidal.CL.Semantics
 
 namespace L4Factoidal.CL
@@ -61,6 +62,13 @@ Each comment quotes the guide's own reading. -/
 -- closed quantified sentence inside — belief about the general
 -- proposition, not about any particular individual.
 #guard stable "(believes Bill_Andersen (that (forall ((x isHuman))(isMammal x))))"
+
+-- guide (Appendix B): bound-variable renaming does not change the
+-- proposition — the guide's alpha-variant pair has ONE alpha-normal
+-- form (`CL/Alpha.lean`, issue 589), which is what `CL/ToRdf.lean`
+-- keys proposition graph names on.
+#guard alphaCanon "(exists (x)(loves Jim x))"
+       == alphaCanon "(exists (y)(loves Jim y))"
 
 -- guide (Appendix B): propositions as zero-ary relations — a bound
 -- sequence marker, zero-ary predication `(p)`, and a proposition-

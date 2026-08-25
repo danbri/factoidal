@@ -17,8 +17,11 @@ the sentence count, whether the text is pure ISO/IEC 24707 CL (no IKL
 `that`), and the canonical re-serialisation, newline-separated.
 
 `clToDataset` is the CL→RDF bridge (`CL/ToRdf.lean`): names become
-IRIs under the caller's base, IKL propositions become NAMED GRAPHS,
-and the returned N-Quads carry the graph names. `count` is translated
+IRIs under the caller's base, IKL propositions become NAMED GRAPHS
+named `<base>that:sha256:<hex64>` — the content address of the
+alpha-normalized canonical CLIF (issue 589), with the sentence text
+itself recorded inside the graph under `urn:cl:def:sentence` — and
+the returned N-Quads carry the graph names. `count` is translated
 statements, `skipped` the sentences/conjuncts outside the fragment —
 reported, never silently dropped.
 

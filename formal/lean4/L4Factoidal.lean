@@ -384,6 +384,7 @@ import L4Factoidal.Cottas.OffsetIndex
 import L4Factoidal.Cottas.SubjectOffsetIndex
 import L4Factoidal.CL.Syntax
 import L4Factoidal.CL.Clif
+import L4Factoidal.CL.Alpha
 import L4Factoidal.CL.Semantics
 import L4Factoidal.CL.Examples
 import L4Factoidal.CL.FiniteSat
