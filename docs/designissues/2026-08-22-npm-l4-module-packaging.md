@@ -135,6 +135,7 @@ committed module now serves the ten-op dispatch ABI (`l4_call`) behind
 | BGP-only surface (targeted imports) | 1,448,306 | the floor: runtime + Init + the BGP closure |
 | Full v1 dispatch surface | 3,510,827 | + five parsers, SPARQL 1.1/1.2 eval + update, four closures, RDFC-1.0 |
 | v1 + Common Logic / IKL ops (measured 2026-08-25, Linux) | 3,598,886 | + `clParse` / `clToDataset` / `queryWithIklService` (`Wasm/Ops/CL.lean`, `L4Factoidal/CL/`) — ~88 KB over the v1 surface |
+| + dataset handles + x-ikl regime (measured 2026-08-25, Linux) | 3,866,580 | + `datasetOpen`/`datasetQuery`/`datasetUpdate`/`datasetSerialize`/`datasetClose` (`Wasm/Ops/Handles.lean`, [#585](https://github.com/danbri/factoidal/issues/585)) and the `x-ikl-*` regime module ([#581](https://github.com/danbri/factoidal/issues/581)) — ~261 KB over the CL row; abiVersion 0.2.0 |
 | `import L4Factoidal` umbrella | 4,534,258 | non-functional — its 374-module initializer chain dies under wasm32 |
 
 Decision the table settles: ONE module, no payload split. The v1

@@ -785,7 +785,15 @@ const fn = {
    */
   async loadL4() {
     if (!this._l4Promise) {
-      this._l4Promise = import("../assets/l4/l4factoidal.js").then((m) => m.loadL4());
+      // `?v=` is the eleventy build's BUILD_VERSION (docs/.eleventy.js
+      // computes it once and exposes it as the `buildVersion` template
+      // global — the same value docs/sw.js's cache name is stamped
+      // with). Changing the import URL per build is the fix for issue
+      // #584: the ServiceWorker serves same-origin assets stale-while-
+      // revalidate, so without a version-busted URL the first page
+      // load after a deploy can pair the new hub HTML with the
+      // PREVIOUS build's l4factoidal.js.
+      this._l4Promise = import("../assets/l4/l4factoidal.js?v={{ buildVersion }}").then((m) => m.loadL4());
     }
     return this._l4Promise;
   },

@@ -328,8 +328,18 @@ say "step 9 — companion npm package + Pages mirror + provenance"
 NPMLEAN="$LEAN_DIR/../../npm/factoidal-lean"
 MIRROR="$LEAN_DIR/../../docs/npm/lean"
 if [ -d "$NPMLEAN" ]; then
-  cp "$ASSETS/l4factoidal.js" "$ASSETS/l4factoidal.mjs" "$ASSETS/l4factoidal.wasm" "$NPMLEAN/"
   WASM_SHA=$(sha256sum "$ASSETS/l4factoidal.wasm" | cut -d' ' -f1)
+  # Stamp the wasm's content hash into the wrapper's WASM_VERSION
+  # constant (issue #584) BEFORE copying it anywhere, so the loader
+  # that ships to the Pages assets dir, npm/factoidal-lean/ and
+  # docs/npm/lean/ all carry the same value and the wasm fetch's `?v=`
+  # query string changes exactly when the wasm bytes change -- the
+  # ServiceWorker's stale-while-revalidate cache (docs/sw.js) keys by
+  # pathname, so without this a fresh loader could pair with a stale
+  # wasm for one page load after a deploy.
+  sed -i.bak -E "s/^const WASM_VERSION = \"[0-9a-f]*\";/const WASM_VERSION = \"${WASM_SHA:0:12}\";/" "$ASSETS/l4factoidal.js"
+  rm -f "$ASSETS/l4factoidal.js.bak"
+  cp "$ASSETS/l4factoidal.js" "$ASSETS/l4factoidal.mjs" "$ASSETS/l4factoidal.wasm" "$NPMLEAN/"
   GIT_SHA=$(git -C "$LEAN_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
   EMCC_VER=$(emcc --version | head -1)
   LEAN_TC=$(cat "$LEAN_DIR/lean-toolchain")

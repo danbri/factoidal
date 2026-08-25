@@ -23,10 +23,33 @@
 // formal/lean4/Wasm/l4_shim.c for the ownership contract.
 //
 // Regenerate the wasm with formal/lean4/Wasm/build-wasm.sh.
+//
+// WASM VERSIONING (issue #584)
+// docs/sw.js serves same-origin assets stale-while-revalidate, keyed
+// by pathname. Without a content-derived query string on the wasm
+// fetch, a fresh l4factoidal.js could pair with the PREVIOUS build's
+// l4factoidal.wasm for one page load after a deploy (loader and wasm
+// share one URL, so a stale cache entry for that URL is
+// indistinguishable from a fresh one). WASM_VERSION below is the
+// first 12 hex chars of the wasm's sha256 (matching version.json's
+// wasmSha256) and is stamped into this file by build-wasm.sh step 9
+// every time the wasm is rebuilt, so the URL changes exactly when the
+// bytes change.
+
+// Stamped by formal/lean4/Wasm/build-wasm.sh step 9 -- do not hand-edit.
+const WASM_VERSION = "c37c59fa1c49";
 
 import createModule from './l4factoidal.mjs';
 
 let modulePromise = null;
+
+// Only a browser/worker page load goes through the ServiceWorker's
+// cache; Node's (and Deno's node-compat) `fs.readFileSync` path
+// resolves the locateFile() result as a literal filesystem path, so
+// appending a query string there would 404 against a file that
+// doesn't exist under that name. Version the URL only where the
+// staleness this fixes can actually happen.
+const isNodeLike = !!(globalThis.process && globalThis.process.versions && globalThis.process.versions.node);
 
 /**
  * Instantiate the Lean engine (once per module instance; repeated calls
@@ -35,7 +58,18 @@ let modulePromise = null;
 export function loadL4() {
   if (modulePromise) return modulePromise;
   modulePromise = (async () => {
-    const Module = await createModule();
+    const moduleArg = isNodeLike ? {} : {
+      // Called by the Emscripten glue only to resolve the sibling
+      // .wasm (see l4factoidal.mjs's findWasmBinary); appending the
+      // content-hash query string here is the fix, not a rename --
+      // the glue still opens the file by its real basename.
+      locateFile(path, scriptDirectory) {
+        return path.endsWith('.wasm')
+          ? `${scriptDirectory}${path}?v=${WASM_VERSION}`
+          : scriptDirectory + path;
+      },
+    };
+    const Module = await createModule(moduleArg);
 
     const cVersion = Module.cwrap('l4_version_c', 'number', []);
     const cBgpQuery = Module.cwrap('l4_bgp_query_c', 'number', ['string', 'string']);

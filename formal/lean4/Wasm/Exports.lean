@@ -33,11 +33,29 @@ Never throws: decoding failures come back as `{"error":"…"}`. -/
 def l4BgpQueryExport (dataJson : String) (bgpJson : String) : String :=
   L4Wasm.bgpQuery dataJson bgpJson
 
-/-- C symbol `l4_call`. The single dispatch entry (`Wasm/Dispatch.lean`):
+/-- C symbol `l4_call`. The pure dispatch entry (`Wasm/Dispatch.lean`):
 `op` names the method, `argsJson` is a JSON array of strings (positional
 arguments), and the result is one `{"ok":…}` envelope matching the F*
 npm entry's for that op. Never throws: every failure comes back as
-`{"ok":false,"error":"…"}`. -/
+`{"ok":false,"error":"…"}`. Serves the STATELESS ops only; the
+dataset-handle ops need `l4_call_io` below. The signature is pinned —
+callers of the committed wasm bind it — so it stays pure and 2-arg. -/
 @[export l4_call]
 def l4CallExport (op : String) (argsJson : String) : String :=
   L4Wasm.call op argsJson
+
+/-- C symbol `l4_call_io`. The full dispatch entry: every stateless op
+(delegated to `L4Wasm.call`, envelope for envelope) PLUS the
+dataset-handle ops of https://github.com/danbri/factoidal/issues/585,
+whose `IO.Ref` store a pure export cannot reach. Because the result
+type is `IO String`, the generated C differs from `l4_call`'s in the
+RESULT only: the v4.33 code generator erases the IO world token, so
+the symbol still takes two `lean_object *` arguments, but it returns
+an IO RESULT object (tag 0 = ok, wrapping the string), not the string
+object itself — unwrap with `lean_io_result_take_value` after
+`lean_io_result_is_ok`. `Wasm/l4_shim.c`'s `l4_call_c` does exactly
+that, so the `char *` wire surface is unchanged. Never throws: every
+failure comes back as `{"ok":false,"error":"…"}`. -/
+@[export l4_call_io]
+def l4CallIOExport (op : String) (argsJson : String) : IO String :=
+  L4Wasm.callIO op argsJson
