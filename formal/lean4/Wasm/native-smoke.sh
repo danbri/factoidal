@@ -258,12 +258,17 @@ args "$TMP/cl-parse-bad.json" '(P a'
 check "clParse unclosed paren -> error" clParse "$TMP/cl-parse-bad.json" \
   'r["ok"] is False and "unclosed" in r["error"]'
 
+# The proposition graph name is the sha256 content address of the
+# alpha-normalized canonical CLIF (issue 589):
+# echo -n '(Dead OBL)' | sha256sum
+DEADOBL_G='urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0'
 args "$TMP/cl-ds.json" "$IKL" "urn:cl:"
 check "clToDataset proposition -> named graph" clToDataset "$TMP/cl-ds.json" \
   'r["ok"] is True and r["count"] == 2 and r["skipped"] == 0
-   and "<urn:cl:c> <urn:cl:ist> <urn:cl:that:%28Dead%20OBL%29> ." in r["nquads"]
-   and "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <urn:cl:that:%28Dead%20OBL%29> ." in r["nquads"]
-   and r["nquads"].count("<urn:cl:that:%28Dead%20OBL%29>") == 2'
+   and "<urn:cl:c> <urn:cl:ist> <'"$DEADOBL_G"'> ." in r["nquads"]
+   and "<'"$DEADOBL_G"'> <urn:cl:def:sentence> \"(Dead OBL)\" <'"$DEADOBL_G"'> ." in r["nquads"]
+   and "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <'"$DEADOBL_G"'> ." in r["nquads"]
+   and r["nquads"].count("<'"$DEADOBL_G"'>") == 4'
 
 args "$TMP/cl-ds-skip.json" '(and (Dog Rex) (forall (x) (P x)))' "urn:cl:"
 check "clToDataset skips are counted" clToDataset "$TMP/cl-ds-skip.json" \
@@ -280,7 +285,7 @@ args "$TMP/cl-q.json" "$IKLDATA" "$IKL" "$IKLQ"
 check "queryWithIklService service+graph join" queryWithIklService "$TMP/cl-q.json" \
   'r["ok"] is True and r["kind"] == "select"
    and r["srj"]["results"]["bindings"][0]["l"]["value"] == "ctx"
-   and r["srj"]["results"]["bindings"][0]["g"]["value"] == "urn:cl:that:%28Dead%20OBL%29"
+   and r["srj"]["results"]["bindings"][0]["g"]["value"] == "'"$DEADOBL_G"'"
    and r["srj"]["results"]["bindings"][0]["s"]["value"] == "urn:cl:OBL"'
 
 args "$TMP/cl-q-ask.json" "$IKLDATA" "$IKL" \

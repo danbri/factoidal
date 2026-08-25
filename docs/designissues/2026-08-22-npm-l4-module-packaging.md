@@ -137,6 +137,7 @@ committed module now serves the ten-op dispatch ABI (`l4_call`) behind
 | v1 + Common Logic / IKL ops (measured 2026-08-25, Linux) | 3,598,886 | + `clParse` / `clToDataset` / `queryWithIklService` (`Wasm/Ops/CL.lean`, `L4Factoidal/CL/`) — ~88 KB over the v1 surface |
 | + dataset handles + x-ikl regime (measured 2026-08-25, Linux) | 3,866,580 | + `datasetOpen`/`datasetQuery`/`datasetUpdate`/`datasetSerialize`/`datasetClose` (`Wasm/Ops/Handles.lean`, [#585](https://github.com/danbri/factoidal/issues/585)) and the `x-ikl-*` regime module ([#581](https://github.com/danbri/factoidal/issues/581)) — ~261 KB over the CL row; abiVersion 0.2.0 |
 | + OWL verdict ops (measured 2026-08-25, Linux) | 4,190,019 | + `owlIsConsistent`/`owlEntails` (three-valued, `OWL/Refute.tableauConsistent` + `OWL/NegationGoals.lean`, [#586](https://github.com/danbri/factoidal/issues/586)) — ~316 KB over the handles row |
+| + content-addressed proposition naming (measured 2026-08-25, Linux) | 4,220,881 | + `CL/Alpha.lean` alpha-normalization and `urn:cl:that:sha256:<hex64>` graph names with the sentence-record triple ([#589](https://github.com/danbri/factoidal/issues/589)) — ~30 KB over the OWL row |
 | `import L4Factoidal` umbrella | 4,534,258 | non-functional — its 374-module initializer chain dies under wasm32 |
 
 Decision the table settles: ONE module, no payload split. The v1

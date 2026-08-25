@@ -42,8 +42,14 @@ const cells = extractObservableCells(POST_FILE);
 
 const post = () => runReactivePost(cells, { fn, pretty });
 
-test('post39: post has 9 live cells', () => {
-  assert.equal(cells.length, 9, `expected 9 live cells, found ${cells.length}`);
+// The content-addressed graph name of (Dead OBL) (issue 589):
+// urn:cl:that:sha256:<sha256 of the alpha-normalized canonical CLIF>.
+// echo -n '(Dead OBL)' | sha256sum
+const DEADOBL_G =
+  'urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0';
+
+test('post39: post has 10 live cells', () => {
+  assert.equal(cells.length, 10, `expected 10 live cells, found ${cells.length}`);
 });
 
 test('post39: the committed wasm artifact exists and is a real module', () => {
@@ -72,20 +78,37 @@ test('post39 cell "from proposition to graph": count/skipped and the named graph
   assert.equal(env.ok, true);
   assert.equal(env.count, 2);
   assert.equal(env.skipped, 0);
-  assert.match(env.nquads,
-    /<urn:cl:Zeno> <urn:cl:believes> <urn:cl:that:%28Dead%20OBL%29> \.\n/);
-  assert.match(env.nquads,
-    /<urn:cl:OBL> <http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#type> <urn:cl:Dead> <urn:cl:that:%28Dead%20OBL%29> \.\n/);
+  assert.ok(env.nquads.includes(
+    `<urn:cl:Zeno> <urn:cl:believes> <${DEADOBL_G}> .\n`));
+  assert.ok(env.nquads.includes(
+    `<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <${DEADOBL_G}> .\n`));
+  // The sentence-record triple: the canonical CLIF text as data
+  // inside the named graph, not packed into the IRI.
+  assert.ok(env.nquads.includes(
+    `<${DEADOBL_G}> <urn:cl:def:sentence> "(Dead OBL)" <${DEADOBL_G}> .\n`));
 });
 
 test('post39 cell "what is inside each proposition": GRAPH pattern enumerates it', async () => {
   const rows = await post().value('propositions');
-  assert.deepEqual(rows, [{
-    g: 'urn:cl:that:%28Dead%20OBL%29',
+  // Two rows from the one named graph: the sentence record and the
+  // content triple. Sort on the predicate for a stable comparison.
+  const sorted = [...rows].sort((a, b) => a.p.localeCompare(b.p));
+  assert.deepEqual(sorted, [{
+    g: DEADOBL_G,
     s: 'urn:cl:OBL',
     p: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',
     o: 'urn:cl:Dead',
+  }, {
+    g: DEADOBL_G,
+    s: DEADOBL_G,
+    p: 'urn:cl:def:sentence',
+    o: '(Dead OBL)',
   }]);
+});
+
+test('post39 cell "the sentence is in the graph": canonical CLIF queried back out', async () => {
+  const rows = await post().value('sentenceBack');
+  assert.deepEqual(rows, [{ sentence: '(Dead OBL)' }]);
 });
 
 test('post39 cell "propositions joined against ordinary data": believer + label', async () => {

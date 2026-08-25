@@ -29,8 +29,9 @@ into the default graph every named graph
 
 1. whose graph name is an IRI starting with `urn:cl:that:` (the
    proposition-IRI convention `CL/ToRdf.lean` emits under the
-   `urn:cl:` base — `propIri` produces `<base ++ "that:" ++
-   percentEncode(canonical CLIF)>`), and
+   `urn:cl:` base — `propIri` produces `<base ++ "that:sha256:" ++
+   hex64>`, the content address of the alpha-normalized canonical
+   CLIF; issue 589), and
 2. whose name occurs as the OBJECT of some default-graph triple —
    i.e. the default graph asserts that proposition through a link
    triple, under ANY predicate (`ist`, `believes`, ...).
@@ -151,6 +152,11 @@ private def exContent : RDF.Triple :=
 
 private def exRegime : IklRegime := ⟨"flat"⟩
 
+-- The graph name `propIri` emits (`urn:cl:that:sha256:<hex64>`) is
+-- inside the prefix the handler recognizes.
+#guard isPropositionGraphName
+        (.iri (propIri exBase (.atom (.name "Dead") [.term (.name "OBL")]))) == true
+
 -- Before: the content triple lives only in the named graph.
 #guard exDs.default.mem exContent == false
 -- After: the handler makes it default-graph (BGP-) matchable...
@@ -161,11 +167,16 @@ private def exRegime : IklRegime := ⟨"flat"⟩
 
 /-! ### (d) What the default does NOT do -/
 
+/-- A dummy digest in the `that:sha256:<hex64>` shape, for the
+unasserted-graph check below. -/
+private def exDummySuffix : String :=
+  "that:sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
 /-- A proposition-named graph the default graph never asserts (no link
 triple): its content must NOT be merged. -/
 private def unassertedDs : RDF.Dataset :=
   { default := [],
-    named := [{ name := .iri (exBase.mk' "that:X"), graph := [exContent] }] }
+    named := [{ name := .iri (exBase.mk' exDummySuffix), graph := [exContent] }] }
 
 #guard (exRegime.extendDataset unassertedDs).default.mem exContent == false
 

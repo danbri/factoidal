@@ -71,12 +71,19 @@ believesDataset = fn.l4Call("clToDataset", [believesText, "urn:cl:"])
 
 `count` is 2 — the link triple plus the one triple inside the
 proposition — and `skipped` is 0: nothing in this sentence fell
-outside the translatable fragment. The graph name in the N-Quads,
-`urn:cl:that:%28Dead%20OBL%29`, is `urn:cl:that:` followed by
-[RFC 3986 §2.1](https://www.rfc-editor.org/rfc/rfc3986#section-2.1)
-percent-encoding of `(Dead OBL)`, the proposition's own canonical
-CLIF text — so the same proposition, written any number of times,
-always names the same graph.
+outside the translatable fragment. The graph name in the N-Quads is
+`urn:cl:that:sha256:` followed by 64 hex characters: the SHA-256 of
+the proposition's canonical CLIF text, computed after renaming bound
+variables to a canonical scheme. One sentence states the naming rule:
+a proposition's graph name is the content address (SHA-256) of the
+alpha-normalized canonical CLIF form of its sentence, so two
+that-terms name the same graph exactly when their sentences differ at
+most by bound-variable renaming — the individuation minimum of the
+[IKL GUIDE](https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html)'s
+Appendix B, where `(that (exists (x)(loves Jim x)))` and `(that
+(exists (y)(loves Jim y)))` are one proposition. The sentence itself
+is not packed into the IRI; it travels inside the graph, as the next
+section shows.
 
 ## What is inside each proposition?
 
@@ -99,9 +106,31 @@ propositions = {
 }
 ```
 
-One row: the graph named `urn:cl:that:%28Dead%20OBL%29` asserts
-`urn:cl:OBL rdf:type urn:cl:Dead`, exactly the content of `(Dead
-OBL)`.
+Two rows from one named graph: the content triple `urn:cl:OBL
+rdf:type urn:cl:Dead` — exactly the content of `(Dead OBL)` — and a
+sentence-record triple, whose object is the canonical CLIF text of
+the proposition's sentence as a literal.
+
+## The sentence is in the graph, not in the URL
+
+The graph name is only a hash; the proposition's sentence lives
+INSIDE the named graph as data, under the predicate
+`urn:cl:def:sentence`. That keeps the parts of a sentence the
+translator cannot turn into triples — quantifiers, negation,
+disjunction — queryable instead of lost (they are still counted in
+`skipped`). Asking the dataset for each proposition's own sentence is
+an ordinary `GRAPH` query:
+
+```observable-js
+sentenceBack = {
+  const r = await fn.l4Call("queryDataset", [believesDataset.nquads,
+    "SELECT ?sentence WHERE { GRAPH ?g { ?g <urn:cl:def:sentence> ?sentence } }"]);
+  return rows(r);
+}
+```
+
+One row, and its value is `(Dead OBL)` — the canonical CLIF text,
+recovered from the data rather than decoded out of an IRI.
 
 ## Propositions joined against ordinary data
 
@@ -148,10 +177,14 @@ forms do the rest. The fragment this page exercises is documented in
 [`CL/ToRdf.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/CL/ToRdf.lean):
 binary and unary atomic predication, and the `(that S)` clause,
 translated and counted; a quantified sentence, or a non-name subject,
-is skipped and counted rather than silently dropped. The wider CL/IKL
-port — quantifiers, equations, `cl:module` structure, the guide's
-numeric quantifiers — is tracked at
-[issue 580](https://github.com/danbri/factoidal/issues/580); the
+is skipped and counted rather than silently dropped, and every
+proposition's canonical sentence rides along inside its named graph.
+The wider CL/IKL port — quantifiers, equations, `cl:module`
+structure, the guide's numeric quantifiers — is tracked at
+[issue 580](https://github.com/danbri/factoidal/issues/580);
+proposition individuation (the alpha-normalized content-address
+naming above, and the guide's stronger `=p` relation as a follow-up)
+at [issue 589](https://github.com/danbri/factoidal/issues/589); the
 sentence forms above follow the [IKL
 GUIDE](https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html)
 (Hayes and Menzel).
