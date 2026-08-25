@@ -102,6 +102,67 @@ merge operation). Stage 1 landed without `DSchema.lean` /
    `Unified/DSchema.lean` next to the schema rather than in
    `Witnesses.lean`.
 
+### Stage 2 landing notes (2026-08-25)
+
+`Unified/RhoDfSchema.lean` and `Unified/RdfsSchema.lean` landed
+(recovered from an interrupted agent run, verified and completed).
+Four notes in the same spirit as 1–7:
+
+8. **§4.2 ρdf gate strength.** The design statement carried
+   `RhoDfModelFragGraph` hypotheses. Landed instead: the gate theorem
+   `unified_adequate_rhoDf` is an UNCONDITIONAL iff against the native
+   model-theoretic relation `RDF.RhoDfEntails` (which postdates this
+   document's statement). The fragment, closedness and
+   triple-term-freedom hypotheses belong to the DECIDED corollary
+   `unified_adequate_rhoDf_decided`, where the native Herbrand
+   construction (`rhoDfClosed_iff`) needs them; each has an executable
+   sufficient check (`rhoDfClosedCheck`, `RDFS.isRhoDfFrag`)
+   dischargeable by `decide` on concrete inputs.
+9. **§4.2 full-RDFS strength, §3 schema signatures, and the bridge's
+   home.** (a) The document predicted soundness-only for full RDFS,
+   citing Finding C-1. C-1 blocks the EXECUTABLE characterisation,
+   not model-theoretic adequacy: `unified_adequate_rdfs` landed as a
+   FULL unconditional iff against `RDF.RdfsEntails` (itself
+   `EntailsUnder` over the §9 conditions); no decided RDFS corollary
+   is stated, and C-1's witness pair is restated at the unified level
+   (`rhoDf_not_entails_selfLoop_unified` vs
+   `rdfs_entails_selfLoop_unified` — also the strictness witness
+   between the two schemas). (b) `rdfSchema` landed WITHOUT the `D`
+   parameter (the native `RDF.RdfConditions` carries none; rdfD1 is
+   excluded by both engines), and `rdfsSchema` takes a
+   `RDF.DatatypeSet`, adding the `dMinimal` rows the native bundle
+   carries. (c) §3's `rdfsSchema` docstring folded the
+   type-application bridge into the schema; that would make the gate
+   iff FALSE — `liftInterp` gives every non-binary predication an
+   empty extension, so no lifted interpretation satisfies the bridge
+   over a non-empty type extension. Landed: `typeBridge` is a
+   SEPARATE one-sentence schema with a conservativity theorem over
+   translated graphs (`typeBridge_conservative`, by rel-surgery
+   `bridgeify`) and a machine-checked separation outside the
+   translated fragment (`bridge_derives_classApp` /
+   `rdfsSchema_no_classApp` on the LBase class-application sentence).
+10. **§5.7 finite-slice, and one weakening.** (a) The landed schemas
+    index their axiom rows by the native predicates
+    `RDF.RdfAxiomatic` / `RDF.RdfsAxiomatic`, which carry the FULL
+    infinite `rdf:_n` families — both sides of every gate iff
+    quantify over the same family, so no landed theorem consumes a
+    finite-slice-suffices lemma. It becomes load-bearing only for a
+    decided full-RDFS corollary, which C-1 independently blocks;
+    recorded as the stage's named open lemma in the registry, not
+    proved. (b) One recorded weakening: `unified_rdfs_closure_sound`
+    (and `RDF.axiomaticTriples_hold` under it) carries the hypothesis
+    `rdf:XMLLiteral ∈ D`. The closure's seed table
+    (`RDFS.rdfsAxiomaticTriplesFixed`, 40 rows) contains
+    `rdf:XMLLiteral rdf:type rdfs:Datatype` and
+    `rdf:XMLLiteral rdfs:subClassOf rdfs:Literal`, which RDF 1.1
+    Semantics §9.3 does NOT list as RDFS axiomatic triples (the note
+    after the spec's table: RDF-D interpretations MAY fail to
+    recognize `rdf:XMLLiteral`/`rdf:HTML`); the spec-faithful 38-row
+    `RDF.rdfsAxiomaticTriples` table rightly excludes them, and the
+    two rows are true in a §9 interpretation exactly when
+    `rdf:XMLLiteral` is recognised. `#guard`s pin the table mismatch
+    in `Unified/RdfsSchema.lean`.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from

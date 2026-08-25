@@ -397,4 +397,6 @@ import L4Factoidal.Unified.RdfTransport
 import L4Factoidal.Unified.RdfAdequacy
 import L4Factoidal.Unified.DatasetEmbed
 import L4Factoidal.Unified.DSchema
+import L4Factoidal.Unified.RhoDfSchema
+import L4Factoidal.Unified.RdfsSchema
 import L4Factoidal.Unified.Witnesses
