@@ -7,10 +7,12 @@
 #   formal/lean4/Wasm/native-smoke.sh
 #
 # Builds l4wasm-cli, then drives `l4wasm-cli call <op> <argsJsonFile>`
-# with tiny inline fixtures and asserts the envelope keys the F* npm
-# entry (bin/npm-entry/entry_jsoo.ml) pins. Includes one error path per
-# family: bad Turtle (parse), DESCRIBE (query), unknown op (dispatch).
-# Exits non-zero on any mismatch.
+# (and, for the dataset-handle ops whose state must survive across
+# calls, `l4wasm-cli callseq <seqJsonFile>` — several ops in one
+# process) with tiny inline fixtures and asserts the envelope keys the
+# F* npm entry (bin/npm-entry/entry_jsoo.ml) pins. Includes one error
+# path per family: bad Turtle (parse), DESCRIBE (query), unknown handle
+# (handles), unknown op (dispatch). Exits non-zero on any mismatch.
 set -euo pipefail
 
 LEAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,6 +38,28 @@ import json, sys
 with open(sys.argv[1], "w") as f:
     json.dump(sys.argv[2:], f)
 EOF
+}
+
+# checkseq <label> <seqfile> <python-assert-expr>
+# Runs `l4wasm-cli callseq <seqfile>` — several op/args pairs in ONE
+# process, which is what dataset-handle state needs — and hands the
+# expression the parsed envelopes as the list `rs`, in call order.
+checkseq() {
+  local label="$1" seqfile="$2" expr="$3"
+  local out
+  out="$("$CLI" callseq "$seqfile")"
+  if printf '%s' "$out" | python3 -c "
+import json, sys
+rs = [json.loads(line) for line in sys.stdin if line.strip()]
+assert ($expr), rs
+"; then
+    echo "ok   $label"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL $label"
+    printf '     output: %s\n' "$out"
+    FAIL=$((FAIL + 1))
+  fi
 }
 
 # check <label> <op> <argsfile> <python-assert-expr>
@@ -209,15 +233,86 @@ args "$TMP/cl-q-bad.json" "$IKLDATA" '(P a' 'SELECT ?s WHERE { ?s ?p ?o }'
 check "queryWithIklService bad CLIF -> error" queryWithIklService "$TMP/cl-q-bad.json" \
   'r["ok"] is False and "CLIF parse error" in r["error"]'
 
+# --- Dataset handles (issue 585) --------------------------------------
+# Handle state lives in the process, so the dependent sequence runs
+# through `callseq`: open -> query -> update -> query -> serialize
+# (both formats) -> close -> use-after-close error.
+python3 - "$TMP/handles-seq.json" <<'EOF'
+import json, sys
+TTL = '@prefix ex: <http://e/> . ex:a ex:p ex:b .'
+seq = [
+  ["datasetOpen",      [TTL, "turtle", ""]],
+  ["datasetQuery",     ["h1", "SELECT ?s WHERE { ?s <http://e/p> ?o }"]],
+  ["datasetUpdate",    ["h1", "INSERT DATA { <http://e/x> <http://e/p> <http://e/y> }"]],
+  ["datasetQuery",     ["h1", "ASK { <http://e/x> <http://e/p> <http://e/y> }"]],
+  ["datasetSerialize", ["h1", "nquads"]],
+  ["datasetSerialize", ["h1", "turtle"]],
+  ["datasetClose",     ["h1"]],
+  ["datasetQuery",     ["h1", "ASK { ?s ?p ?o }"]],
+]
+json.dump(seq, open(sys.argv[1], "w"))
+EOF
+checkseq "dataset handle lifecycle (open/query/update/serialize/close)" "$TMP/handles-seq.json" \
+  'rs[0]["ok"] is True and rs[0]["handle"] == "h1" and rs[0]["count"] == 1
+   and rs[1]["ok"] is True and rs[1]["kind"] == "select"
+   and rs[1]["srj"]["results"]["bindings"][0]["s"]["value"] == "http://e/a"
+   and rs[2]["ok"] is True and rs[2]["count"] == 2
+   and rs[3]["ok"] is True and rs[3]["kind"] == "ask" and rs[3]["boolean"] is True
+   and rs[4]["ok"] is True and "<http://e/x>" in rs[4]["nquads"] and "<http://e/a>" in rs[4]["nquads"]
+   and rs[5]["ok"] is True and "@prefix" in rs[5]["turtle"]
+   and rs[6] == {"ok": True}
+   and rs[7]["ok"] is False and rs[7]["error"] == "unknown dataset handle: h1"'
+
+# Two handles are independent: an update through h2 must not leak into
+# h1, and closing h2 must leave h1 open. Also the per-family errors:
+# an unknown serialize format, and closing an unknown handle.
+python3 - "$TMP/handles-two.json" <<'EOF'
+import json, sys
+seq = [
+  ["datasetOpen",      ["<http://e/a> <http://e/p> <http://e/b> .", "ntriples", ""]],
+  ["datasetOpen",      ["<http://f/c> <http://f/q> <http://f/d> .", "ntriples", ""]],
+  ["datasetUpdate",    ["h2", "INSERT DATA { <http://f/x> <http://f/q> <http://f/y> }"]],
+  ["datasetSerialize", ["h1", "nquads"]],
+  ["datasetSerialize", ["h1", "trig"]],
+  ["datasetClose",     ["h2"]],
+  ["datasetClose",     ["h2"]],
+  ["datasetQuery",     ["h1", "ASK { <http://e/a> <http://e/p> <http://e/b> }"]],
+]
+json.dump(seq, open(sys.argv[1], "w"))
+EOF
+checkseq "dataset handles are independent + per-family errors" "$TMP/handles-two.json" \
+  'rs[0]["handle"] == "h1" and rs[1]["handle"] == "h2"
+   and rs[2]["ok"] is True and rs[2]["count"] == 2
+   and rs[3]["ok"] is True and "<http://f/" not in rs[3]["nquads"]
+   and rs[4]["ok"] is False and "unknown format tag" in rs[4]["error"]
+   and rs[5] == {"ok": True}
+   and rs[6]["ok"] is False and rs[6]["error"] == "unknown dataset handle: h2"
+   and rs[7]["ok"] is True and rs[7]["boolean"] is True'
+
+# One-shot error paths reachable without process state.
+args "$TMP/h-open-bad.json" 'this is not turtle @@@' "turtle" ""
+check "datasetOpen bad turtle -> error, no handle" datasetOpen "$TMP/h-open-bad.json" \
+  'r["ok"] is False and "handle" not in r and len(r["error"]) > 0'
+
+args "$TMP/h-query-unknown.json" "h999" 'ASK { ?s ?p ?o }'
+check "datasetQuery unknown handle -> error" datasetQuery "$TMP/h-query-unknown.json" \
+  'r["ok"] is False and r["error"] == "unknown dataset handle: h999"'
+
+args "$TMP/h-open-arity.json" "just-one-arg"
+check "datasetOpen wrong arity -> error" datasetOpen "$TMP/h-open-arity.json" \
+  'r["ok"] is False and "expects 3 arguments" in r["error"]'
+
 # --- Dispatch reflection + unknown op ---------------------------------
 args "$TMP/empty.json"
-check "ops reflection" ops "$TMP/empty.json" \
+check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
   'r["ok"] is True and isinstance(r["abiVersion"], str)
    and set(["parseToDatasetJson","queryDataset","updateDataset",
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
             "owlClosure","rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clToDataset",
-            "queryWithIklService","ops"]) <= set(r["ops"])'
+            "queryWithIklService","ops",
+            "datasetOpen","datasetQuery","datasetUpdate",
+            "datasetSerialize","datasetClose"]) <= set(r["ops"])'
 
 check "unknown op -> error" definitelyNotAnOp "$TMP/empty.json" \
   'r["ok"] is False and "unknown op" in r["error"]'

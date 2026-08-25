@@ -35,11 +35,10 @@ open L4Factoidal.Syntax
 open L4Factoidal.SPARQL
 open L4Factoidal.JSON
 
-/-- `queryDataset(nquads, sparql)`. -/
-def queryDataset (nq sparql : String) : String :=
-  match parseNQuads nq with
-  | .error e => errJson (fmtParseError e)
-  | .ok ds =>
+/-- The `queryDataset` envelope family over an ALREADY-PARSED dataset —
+shared by the stateless op below and the handle op `datasetQuery`
+(`Wasm/Ops/Handles.lean`), so both answer byte-identical envelopes. -/
+def queryParsedDataset (ds : Dataset) (sparql : String) : String :=
   match parseSparql sparql with
   | .error e => errJson s!"SPARQL parse error: {fmtParseError e}"
   | .ok q =>
@@ -62,16 +61,32 @@ def queryDataset (nq sparql : String) : String :=
     | .describe _ =>
         errJson "DESCRIBE is not supported by the npm entry yet"
 
+/-- `queryDataset(nquads, sparql)`. -/
+def queryDataset (nq sparql : String) : String :=
+  match parseNQuads nq with
+  | .error e => errJson (fmtParseError e)
+  | .ok ds   => queryParsedDataset ds sparql
+
+/-- Parse and apply a SPARQL Update to an ALREADY-PARSED dataset —
+shared by the stateless op below and the handle op `datasetUpdate`
+(`Wasm/Ops/Handles.lean`). The error strings are the envelope error
+texts both ops answer. -/
+def applyUpdateText (ds : Dataset) (updateText : String) :
+    Except String Dataset :=
+  match parseSparqlUpdate updateText with
+  | .error e => .error s!"SPARQL update parse error: {fmtParseError e}"
+  | .ok u =>
+  match applyUpdate ds u with
+  | .error e  => .error (toString e)
+  | .ok ds'   => .ok ds'
+
 /-- `updateDataset(nquads, sparqlUpdate)`. -/
 def updateDataset (nq updateText : String) : String :=
   match parseNQuads nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
-  match parseSparqlUpdate updateText with
-  | .error e => errJson s!"SPARQL update parse error: {fmtParseError e}"
-  | .ok u =>
-  match applyUpdate ds u with
-  | .error e  => errJson (toString e)
+  match applyUpdateText ds updateText with
+  | .error e  => errJson e
   | .ok ds'   => okWith [("nquads", .string (Dataset.toCanonicalNQuads ds'))]
 
 end L4Wasm.Ops

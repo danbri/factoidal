@@ -34,13 +34,15 @@ open L4Factoidal.RDF
 open L4Factoidal.Syntax
 open L4Factoidal.JSON
 
-/-- Total quad count of a dataset (the F* `dataset_triple_count`). -/
-private def datasetQuadCount (ds : Dataset) : Nat :=
+/-- Total quad count of a dataset (the F* `dataset_triple_count`).
+Not private: `Wasm/Ops/Handles.lean`'s count envelopes use it too. -/
+def datasetQuadCount (ds : Dataset) : Nat :=
   ds.default.length + (ds.named.map (·.graph.length)).foldl (· + ·) 0
 
 /-- Parse `text` under `formatTag` into a `Dataset`. Graph-shaped
-formats (Turtle, N-Triples, RDF/XML) wrap as the default graph. -/
-private def parseTextToDataset (text formatTag baseIRI : String) :
+formats (Turtle, N-Triples, RDF/XML) wrap as the default graph.
+Not private: `Wasm/Ops/Handles.lean`'s `datasetOpen` is the same parse. -/
+def parseTextToDataset (text formatTag baseIRI : String) :
     Except String Dataset :=
   let base : Option String := if baseIRI == "" then none else some baseIRI
   -- Consumer-side RDF 1.2 opt-in, exactly as entry_jsoo.ml: a "*12"
