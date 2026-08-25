@@ -468,15 +468,21 @@ sentence becomes a NAMED proposition graph (its translatable atoms
 plus its canonical sentence text under `urn:cl:def:sentence`), and
 the default graph holds only decorations — `urn:cl:def:asserts` per
 asserted sentence, a link triple per predication about a proposition
-(`believes`/`ist`/…), and an `rdf:reifies` RDF 1.2 triple-term
-bridge when a proposition's sentence is one translatable atom.
+(`believes`/`ist`/…), and a `urn:cl:def:rdfProjection` RDF 1.2
+triple-term decoration when a proposition's sentence translates to
+exactly one triple (the proposition's RDF-native projection;
+`rdf:reifies` is deliberately not used — a reifier is an occurrence
+token, reserved for future report nodes). One top-level sentence is
+ONE proposition: a top-level `(and A B)` is a single asserted
+conjunction proposition, the same translation `((that (and A B)))`
+receives.
 `count` = graph-content triples + decorations (records excluded):
 
 ```bash
 printf '%s' '["(P a b)", "http://example.org/"]' > /tmp/cl.json
 .lake/build/bin/l4wasm-cli call clToDataset /tmp/cl.json
 # {"ok":true,"count":3,"skipped":0,"nquads":"<urn:cl:kb> <urn:cl:def:asserts> <http://example.org/that:sha256:4b35…> .\n
-#   <http://example.org/that:sha256:4b35…> <…rdf-syntax-ns#reifies> <<( <http://example.org/a> <http://example.org/P> <http://example.org/b> )>> .\n
+#   <http://example.org/that:sha256:4b35…> <urn:cl:def:rdfProjection> <<( <http://example.org/a> <http://example.org/P> <http://example.org/b> )>> .\n
 #   <http://example.org/that:sha256:4b35…> <urn:cl:def:sentence> \"(P a b)\" <http://example.org/that:sha256:4b35…> .\n
 #   <http://example.org/a> <http://example.org/P> <http://example.org/b> <http://example.org/that:sha256:4b35…> .\n"}
 

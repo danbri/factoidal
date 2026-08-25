@@ -140,15 +140,18 @@ test('post41 cell "harryBillDs": believes/that translates in full', async () => 
   const env = await post().value('harryBillDs');
   assert.equal(env.ok, true);
   // Graph-decoration translation (issue 581): link + content + the
-  // rdf:reifies bridge a single-atom proposition earns.
+  // urn:cl:def:rdfProjection decoration a single-triple proposition
+  // earns (rdf:reifies is reserved for report occurrences).
   assert.equal(env.count, 3);
   assert.equal(env.skipped, 0);
   assert.ok(env.nquads.includes('<urn:cl:Harry> <urn:cl:Believes> <urn:cl:that:sha256:'));
   assert.ok(env.nquads.includes(
     '<urn:cl:Bill> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:isLiar>'));
   assert.ok(env.nquads.includes(
-    '<http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> ' +
+    '<urn:cl:def:rdfProjection> ' +
     '<<( <urn:cl:Bill> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:isLiar> )>>'));
+  assert.ok(!env.nquads.includes('reifies'),
+    'rdf:reifies must not appear in the translation (reserved for report occurrences)');
 });
 
 // ---- "Quantifying-in" ----

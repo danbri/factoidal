@@ -49,10 +49,17 @@ contains ':'; e.g. `urn:cl:`). Then:
 
 ## The translation rules
 
-A top-level `and` distributes into per-conjunct sentences, each
-translated on its own — sentence individuation, not flattening: each
-conjunct gets its own proposition graph and its own decorations. Then
-every top-level sentence S maps by exactly one of these clauses:
+Individuation is uniform: ONE top-level sentence = ONE proposition
+(review disposition, owner-relayed 2026-08-25). In particular a
+top-level `(and A B)` does NOT distribute into separate asserted
+conjunct propositions: it is one asserted proposition — one graph
+holding its canonical sentence record plus ALL its translatable
+atoms, and one assertion decoration — exactly the translation
+`((that (and A B)))` receives. Both key the same alpha-normalized
+canonical sentence, so they land in the SAME graph under the same
+content address (a `#guard` below pins the byte-equality of the two
+translations). Every top-level sentence S maps by exactly one of
+these clauses:
 
 1. `(pred subj (that S'))`, `pred` and `subj` names — a predication
    ABOUT a proposition: S''s proposition graph is emitted (sentence
@@ -66,9 +73,10 @@ every top-level sentence S maps by exactly one of these clauses:
    the proposition asserts S' (`Semantics.sat_assert_that`), so this
    is clause 3 applied to S' — the graph is the SAME graph any
    `(that S')` term names.
-3. any other sentence S — an ASSERTED proposition: S's proposition
-   graph is emitted (sentence record + S's translatable atoms), and
-   the default graph receives the ASSERTION decoration
+3. any other sentence S (a top-level `and` included) — an ASSERTED
+   proposition: S's proposition graph is emitted (sentence record +
+   S's translatable atoms), and the default graph receives the
+   ASSERTION decoration
    `<urn:cl:kb> <urn:cl:def:asserts> <propIri(S)>`. An S wholly
    outside the translatable fragment still gets its graph (record
    only) and its assertion decoration — the sentence is preserved as
@@ -76,16 +84,23 @@ every top-level sentence S maps by exactly one of these clauses:
 
 Additionally, whenever a proposition graph is emitted (clauses 1–3)
 and its sentence is a SINGLE translatable atomic sentence with
-translation triple `t`, the default graph receives the RDF-STAR
-BRIDGE decoration `<propIri> rdf:reifies <<t>>` — RDF 1.2
-`rdf:reifies` with the TRIPLE TERM of `t` as object (RDF 1.2 Concepts
-§triple terms; the module header of `Syntax/NTriples.lean` carries
-the `<<( … )>>` grammar). A triple term is not asserted by being
-mentioned, so the bridge, like every decoration, adds no claim about
-the world — it links the proposition to the one RDF statement its
-sentence translates to. (The header's rule statement generalises the
-binary `(p a b)` case to unary `(P a)` as well: the condition is
-"translates to exactly one triple", tested by `atomToTriple`.)
+translation triple `t` (the condition is "translates to exactly one
+triple", tested by `atomToTriple` — the unary `(P a)` case included),
+the default graph receives the RDF-PROJECTION decoration
+`<propIri> <urn:cl:def:rdfProjection> <<t>>`: `rdfProjection`
+connects the CL proposition to its RDF-native projection, the RDF 1.2
+TRIPLE TERM of `t` (RDF 1.2 Concepts §triple terms; the module header
+of `Syntax/NTriples.lean` carries the `<<( … )>>` grammar). The
+predicate is deliberately NOT `rdf:reifies`: in RDF 1.2 the triple
+term itself denotes the proposition, while a REIFIER is an occurrence
+token — many reifiers can share one triple term — so the proposition
+IRI must not stand in `rdf:reifies` position. `rdf:reifies` is
+reserved for future report/occurrence nodes (assertion-report tokens,
+one per report event, never content-deduplicated; see hub post 39's
+closing section and
+https://github.com/danbri/factoidal/issues/589). A triple term is not
+asserted by being mentioned, so the projection, like every
+decoration, adds no claim about the world.
 
 ## The translatable fragment (everything else is SKIPPED and COUNTED)
 
@@ -102,8 +117,8 @@ equations, sequence markers, non-name subjects/predicates, functional
 terms, a nested `(that …)` argument — is not translated: each such
 sentence (or conjunct) adds 1 to `skipped`, never silently dropped.
 `count` is the number of translated statements: graph-content triples
-PLUS default-graph decorations (assertion, link, and bridge triples);
-sentence-record triples are excluded. After set-semantic
+PLUS default-graph decorations (assertion, link, and projection
+triples); sentence-record triples are excluded. After set-semantic
 deduplication the dataset may hold fewer quads than `count` (two
 alpha-equivalent asserted sentences produce one graph and one
 assertion decoration).
@@ -198,10 +213,15 @@ def propIri (b : IriBase) (s : Sentence) : RDF.WfIri :=
 def rdfTypeIri : RDF.WfIri :=
   ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#type", rfl⟩
 
-/-- `rdf:reifies` (RDF 1.2; the bridge-decoration predicate — see the
-module header's bridge rule). -/
-def rdfReifiesIri : RDF.WfIri :=
-  ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies", rfl⟩
+/-- The rdf-projection predicate (module header's projection rule):
+relates a proposition to its RDF-native projection, the RDF 1.2
+triple term of its single-triple translation. Deliberately NOT RDF
+1.2's `rdf:reifies` — a reifier is an occurrence token, many per
+proposition, and the proposition IRI is not one; `rdf:reifies` is
+reserved for future report/occurrence nodes. Same fixed-namespace
+rationale as `clDefSentenceIri`. -/
+def clDefRdfProjectionIri : RDF.WfIri :=
+  ⟨"urn:cl:def:rdfProjection", rfl⟩
 
 /-- The sentence-record predicate: relates a proposition's graph name
 to the canonical CLIF text of its sentence (module header). A fixed
@@ -292,43 +312,43 @@ def recordTriple (pIri : RDF.WfIri) (s : Sentence) : RDF.Triple :=
   { s := .iri pIri, p := clDefSentenceIri,
     o := .literal (RDF.Literal.string (propNormClif s)) }
 
-/-- The rdf-star bridge decoration (module header): the proposition
-graph name `rdf:reifies` the RDF 1.2 triple term of its single-atom
-translation. -/
-def bridgeTriple (pIri : RDF.WfIri) (t : RDF.Triple) : RDF.Triple :=
-  { s := .iri pIri, p := rdfReifiesIri, o := .tripleTerm t.s t.p t.o }
+/-- The rdf-projection decoration (module header): the proposition
+IRI's RDF-native projection — the RDF 1.2 triple term of its
+single-triple translation. -/
+def projectionTriple (pIri : RDF.WfIri) (t : RDF.Triple) : RDF.Triple :=
+  { s := .iri pIri, p := clDefRdfProjectionIri, o := .tripleTerm t.s t.p t.o }
 
-/-- The bridge decoration of a proposition, when its sentence is one
-translatable atomic sentence (with the count of bridges emitted, for
-`count`). -/
-def bridgeOf (b : IriBase) (pIri : RDF.WfIri) (s : Sentence) :
+/-- The projection decoration of a proposition, when its sentence is
+one translatable atomic sentence (with the count of projections
+emitted, for `count`). -/
+def projectionOf (b : IriBase) (pIri : RDF.WfIri) (s : Sentence) :
     List RDF.Triple × Nat :=
   match atomToTriple b s with
-  | some t => ([bridgeTriple pIri t], 1)
+  | some t => ([projectionTriple pIri t], 1)
   | none => ([], 0)
 
-/-- Emit proposition S's named graph (record + content) and any bridge
-decoration, add `extraDecorations` (link or assertion triples) to the
-default graph, and account for `count`/`skipped`. The shared engine of
-the module header's clauses 1–3. -/
+/-- Emit proposition S's named graph (record + content) and any
+projection decoration, add `extraDecorations` (link or assertion
+triples) to the default graph, and account for `count`/`skipped`. The
+shared engine of the module header's clauses 1–3. -/
 def emitProposition (b : IriBase) (acc : ToRdfResult) (s : Sentence)
     (extraDecorations : List RDF.Triple) : ToRdfResult :=
   let pIri := propIri b s
   let (g, c, k) := sentenceTriples b s
-  let (bridges, nb) := bridgeOf b pIri s
+  let (projections, np) := projectionOf b pIri s
   let newDefault :=
-    (extraDecorations ++ bridges).foldl (fun d t => d.add t) acc.ds.default
+    (extraDecorations ++ projections).foldl (fun d t => d.add t) acc.ds.default
   { ds := addToNamed { acc.ds with default := newDefault }
             (.iri pIri) (recordTriple pIri s :: g),
-    count := acc.count + extraDecorations.length + nb + c,
+    count := acc.count + extraDecorations.length + np + c,
     skipped := acc.skipped + k }
 
-mutual
-
 /-- Translate one top-level sentence into the accumulator (the module
-header's clauses, in order). -/
+header's clauses, in order). A `.conj` matches neither of the first
+two clauses and falls to clause 3: one asserted conjunction
+proposition — individuation is uniform, a top-level `and` does not
+distribute (module header). -/
 def translateTop (b : IriBase) (acc : ToRdfResult) : Sentence → ToRdfResult
-  | .conj ss => translateTops b acc ss
   | .atom (.name pred) [.term (.name subj), .term (.that s)] =>
       -- Clause 1: predication about a proposition — link decoration,
       -- no assertion.
@@ -340,16 +360,9 @@ def translateTop (b : IriBase) (acc : ToRdfResult) : Sentence → ToRdfResult
       emitProposition b acc s
         [{ s := .iri clKbIri, p := clDefAssertsIri, o := .iri (propIri b s) }]
   | s =>
-      -- Clause 3: an asserted sentence.
+      -- Clause 3: an asserted sentence (a top-level `and` included).
       emitProposition b acc s
         [{ s := .iri clKbIri, p := clDefAssertsIri, o := .iri (propIri b s) }]
-
-/-- `translateTop` over a top-level conjunct list. -/
-def translateTops (b : IriBase) (acc : ToRdfResult) : List Sentence → ToRdfResult
-  | [] => acc
-  | s :: r => translateTops b (translateTop b acc s) r
-
-end
 
 /-- Translate a CL/IKL text (a list of sentences) into an RDF dataset
 under `base`. The only error is an ill-formed base. -/
@@ -373,15 +386,16 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
 
 -- The guide's ist shape ("Contexts and Modalities in IKL"): the
 -- proposition becomes a named graph (record + content), the context
--- link and the rdf:reifies bridge decorate the default graph. The
--- graph name is the sha256 content address of the (alpha-normalized)
--- canonical CLIF — `echo -n '(Dead OBL)' | sha256sum`. Nothing about
--- OBL lands in the default graph: `ist` does not assert.
+-- link and the rdfProjection decoration land in the default graph.
+-- The graph name is the sha256 content address of the
+-- (alpha-normalized) canonical CLIF — `echo -n '(Dead OBL)' |
+-- sha256sum`. Nothing about OBL lands in the default graph: `ist`
+-- does not assert.
 #guard clifToNQuads "urn:cl:" "(ist c (that (Dead OBL)))"
   == some ("<urn:cl:c> <urn:cl:ist> " ++
            "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> .\n" ++
            "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> " ++
-           "<http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> " ++
+           "<urn:cl:def:rdfProjection> " ++
            "<<( <urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> )>> .\n" ++
            "<urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0> " ++
            "<urn:cl:def:sentence> \"(Dead OBL)\" " ++
@@ -395,7 +409,7 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
 -- Appendix B pair, asserted, translates to byte-identical N-Quads —
 -- the quantified body is skipped and counted, and the sentence
 -- record (over the alpha-normal form) carries its text as data. No
--- bridge: the sentence is not a single translatable atom.
+-- projection: the sentence is not a single translatable atom.
 #guard clifToNQuads "urn:cl:" "(believes K (that (exists (x)(loves Jim x))))"
   == clifToNQuads "urn:cl:" "(believes K (that (exists (y)(loves Jim y))))"
 #guard clifToNQuads "urn:cl:" "(believes K (that (exists (x)(loves Jim x))))"
@@ -411,13 +425,14 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
         == (clifToNQuads "urn:cl:" "(ist c (that (Alive OBL)))")) == false
 
 -- An asserted plain sentence: its proposition graph (record +
--- content), the assertion decoration, and the bridge — no content in
--- the default graph. `echo -n '(married Jack Jill)' | sha256sum`.
+-- content), the assertion decoration, and the projection — no
+-- content in the default graph.
+-- `echo -n '(married Jack Jill)' | sha256sum`.
 #guard clifToNQuads "urn:cl:" "(married Jack Jill)"
   == some ("<urn:cl:kb> <urn:cl:def:asserts> " ++
            "<urn:cl:that:sha256:cf0776be87acf0dbf7c3954ffcefac822e218e14fab0e4edb37f5f2d06ff84c6> .\n" ++
            "<urn:cl:that:sha256:cf0776be87acf0dbf7c3954ffcefac822e218e14fab0e4edb37f5f2d06ff84c6> " ++
-           "<http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> " ++
+           "<urn:cl:def:rdfProjection> " ++
            "<<( <urn:cl:Jack> <urn:cl:married> <urn:cl:Jill> )>> .\n" ++
            "<urn:cl:that:sha256:cf0776be87acf0dbf7c3954ffcefac822e218e14fab0e4edb37f5f2d06ff84c6> " ++
            "<urn:cl:def:sentence> \"(married Jack Jill)\" " ++
@@ -427,12 +442,12 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
            3, 0)
 
 -- A string object stays an xsd:string literal — in the graph, in the
--- record, and inside the bridge's triple term.
+-- record, and inside the projection's triple term.
 #guard clifToNQuads "urn:cl:" "(hasName Jack 'Jack B. Quick')"
   == some ("<urn:cl:kb> <urn:cl:def:asserts> " ++
            "<urn:cl:that:sha256:2e6ceb7063fa9c67fb0c3b7ad9b4c94cee3da057d4df5efb309ede2d5eb9db62> .\n" ++
            "<urn:cl:that:sha256:2e6ceb7063fa9c67fb0c3b7ad9b4c94cee3da057d4df5efb309ede2d5eb9db62> " ++
-           "<http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> " ++
+           "<urn:cl:def:rdfProjection> " ++
            "<<( <urn:cl:Jack> <urn:cl:hasName> \"Jack B. Quick\" )>> .\n" ++
            "<urn:cl:that:sha256:2e6ceb7063fa9c67fb0c3b7ad9b4c94cee3da057d4df5efb309ede2d5eb9db62> " ++
            "<urn:cl:def:sentence> \"(hasName Jack 'Jack B. Quick')\" " ++
@@ -441,21 +456,35 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
            "<urn:cl:that:sha256:2e6ceb7063fa9c67fb0c3b7ad9b4c94cee3da057d4df5efb309ede2d5eb9db62> .\n",
            3, 0)
 
--- A top-level `and` distributes: TWO asserted propositions, each with
--- its own graph, assertion decoration and bridge (sentence
--- individuation, not flattening).
-#guard (clifToNQuads "urn:cl:" "(and (Boy Bill) (owns Bill Rex))").map
-    (fun r => (r.2.1, r.2.2))
-  == some (6, 0)
-#guard ((clifToNQuads "urn:cl:" "(and (Boy Bill) (owns Bill Rex))").map
-    (fun r => r.1)).map (fun nq =>
-      (nq.splitOn "<urn:cl:kb> <urn:cl:def:asserts>").length)
-  == some 3   -- two assertion decorations
+-- A top-level `and` is ONE asserted proposition (review disposition,
+-- 2026-08-25): one graph (record + both atoms), one assertion
+-- decoration, no projection (the sentence is not a single atom).
+-- `echo -n '(and (Boy Bill) (owns Bill Rex))' | sha256sum`
+#guard clifToNQuads "urn:cl:" "(and (Boy Bill) (owns Bill Rex))"
+  == some ("<urn:cl:kb> <urn:cl:def:asserts> " ++
+           "<urn:cl:that:sha256:ef21c48c858b3f739033491e91a37a80fd330da053b31ec33eac0b77914f9d1d> .\n" ++
+           "<urn:cl:that:sha256:ef21c48c858b3f739033491e91a37a80fd330da053b31ec33eac0b77914f9d1d> " ++
+           "<urn:cl:def:sentence> \"(and (Boy Bill) (owns Bill Rex))\" " ++
+           "<urn:cl:that:sha256:ef21c48c858b3f739033491e91a37a80fd330da053b31ec33eac0b77914f9d1d> .\n" ++
+           "<urn:cl:Bill> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> " ++
+           "<urn:cl:Boy> " ++
+           "<urn:cl:that:sha256:ef21c48c858b3f739033491e91a37a80fd330da053b31ec33eac0b77914f9d1d> .\n" ++
+           "<urn:cl:Bill> <urn:cl:owns> <urn:cl:Rex> " ++
+           "<urn:cl:that:sha256:ef21c48c858b3f739033491e91a37a80fd330da053b31ec33eac0b77914f9d1d> .\n",
+           3, 0)
+
+-- Conjunction uniformity (review disposition, 2026-08-25): the
+-- top-level `and` and its cancelling-parentheses assertion form key
+-- the SAME alpha-normalized canonical sentence, so they translate to
+-- byte-identical N-Quads — same graph, same content address, same
+-- decoration.
+#guard clifToNQuads "urn:cl:" "(and (Boy Bill) (owns Bill Rex))"
+  == clifToNQuads "urn:cl:" "((that (and (Boy Bill) (owns Bill Rex))))"
 
 -- The assertion form ((that S)): the proposition is asserted — SAME
 -- graph as any (that S) term names, decorated with urn:cl:def:asserts;
--- the conjunction's atoms stay in the proposition's graph. No bridge
--- (not a single atom).
+-- the conjunction's atoms stay in the proposition's graph. No
+-- projection (not a single atom).
 #guard clifToNQuads "urn:cl:" "((that (and (P a) (q a b))))"
   == some ("<urn:cl:kb> <urn:cl:def:asserts> " ++
            "<urn:cl:that:sha256:a71ed173c46624a5f0a778e55348e5b0ecda9802af02484f2718741c35f28b3d> .\n" ++
@@ -474,6 +503,13 @@ def clifToNQuads (base text : String) : Option (String × Nat × Nat) :=
 -- quantified conjunct is skipped AND counted; count = link + content.
 #guard (clifToNQuads "urn:cl:"
     "(believes K (that (and (Dog Rex) (forall (x) (P x)))))").map
+    (fun r => (r.2.1, r.2.2))
+  == some (2, 1)
+
+-- A top-level conjunction whose second conjunct is untranslatable:
+-- still ONE asserted proposition — the atom is graph content, the
+-- quantified conjunct skipped and counted; count = asserts + content.
+#guard (clifToNQuads "urn:cl:" "(and (Dog Rex) (forall (x) (P x)))").map
     (fun r => (r.2.1, r.2.2))
   == some (2, 1)
 

@@ -194,9 +194,12 @@ harryBillDs = fn.l4Call("clToDataset", [harryBill, "urn:cl:"])
 `count` is 3, `skipped` is 0: the link triple `urn:cl:Harry
 urn:cl:Believes <propIri>` in the default graph, `urn:cl:Bill
 rdf:type urn:cl:isLiar` inside the named graph the proposition IRI
-names, and — because the believed sentence is a single atomic
-predication — an `rdf:reifies` decoration giving the proposition's
-graph name the RDF 1.2 triple term of that one statement. This page does not run the equality reasoning the GUIDE's
+names, and — because the believed sentence translates to exactly one
+triple — a `urn:cl:def:rdfProjection` decoration giving the
+proposition its RDF-native projection, the RDF 1.2 triple term of
+that one statement. (Not `rdf:reifies`: in RDF 1.2 the triple term
+denotes the proposition, while a reifier is an occurrence token, many
+per proposition — the proposition IRI is not one.) This page does not run the equality reasoning the GUIDE's
 transparency claim depends on (`Bill` and `William` are two different
 CLIF names here, translated to two different IRIs) — that is a
 separate question from the naming rule section 6 below returns to.
@@ -302,8 +305,8 @@ simpleContextDs = fn.l4Call("clToDataset", [simpleContext, "urn:cl:"])
 ```
 
 `count` is 3, `skipped` is 0: the `ist` link, the proposition's one
-content triple, and the `rdf:reifies` triple-term bridge the
-single-atom proposition earns. A `GRAPH` pattern reads inside the
+content triple, and the `urn:cl:def:rdfProjection` triple-term
+decoration a single-triple proposition earns. A `GRAPH` pattern reads inside the
 context's proposition directly:
 
 ```observable-js
@@ -373,8 +376,14 @@ orgLabel = '<urn:cl:Acme> <http://www.w3.org/2000/01/rdf-schema#label> "Acme Cor
 ```
 
 ```observable-js
-orgClif = "(and (worksAt Alice Acme)(believes Alice (that (Trustworthy Acme))))"
+orgClif = "(worksAt Alice Acme) (believes Alice (that (Trustworthy Acme)))"
 ```
+
+Two separate top-level sentences, deliberately: one top-level
+sentence is one proposition, so a single `(and …)` wrapping both
+would be ONE asserted conjunction proposition — its `believes`
+conjunct graph content rather than a default-graph link — and the
+`SERVICE` join below would have nothing to read.
 
 ```observable-js
 orgSparql = `PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -393,8 +402,9 @@ orgJoined = {
 ```
 
 One row: `urn:cl:Alice`, `"Acme Corp"`. The default-graph pattern reads
-the RDF label; the `SERVICE` pattern reads the CL translation's
-`worksAt` and `believes` link triples; the `GRAPH` pattern reads inside
+the RDF label; the `SERVICE` pattern reads the asserted `worksAt`
+proposition's content together with the `believes` link decoration;
+the `GRAPH` pattern reads inside
 the believed proposition to confirm it is about the same company. None
 of the three sources alone answers the query.
 

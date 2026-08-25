@@ -3,8 +3,9 @@
 // Post 39 is the Common Logic / IKL page (Wasm/Ops/CL.lean, issue 580)
 // over the graph-decoration translation (issue 581): a top-level
 // sentence becomes a named proposition graph, the default graph holds
-// only decorations (asserts / link / rdf:reifies bridge), and the
-// page's arc is a two-source disagreement found by a SPARQL join.
+// only decorations (asserts / link / urn:cl:def:rdfProjection triple
+// terms), and the page's arc is a two-source disagreement discovered
+// from an owl:disjointWith declaration by a SPARQL join.
 //
 // Harness shape follows tests/hub/post38_test.mjs: `fn` here is the
 // node npm package with the Lean names layered on over the SAME
@@ -53,8 +54,8 @@ const ALIVEOBL_G =
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
-test('post39: post has 14 live cells', () => {
-  assert.equal(cells.length, 14, `expected 14 live cells, found ${cells.length}`);
+test('post39: post has 15 live cells', () => {
+  assert.equal(cells.length, 15, `expected 15 live cells, found ${cells.length}`);
 });
 
 test('post39: the committed wasm artifact exists and is a real module', () => {
@@ -71,7 +72,7 @@ test('post39 cell "sourcesDataset": graphs + decorations, nothing flattened', as
   const env = await post().value('sourcesDataset');
   assert.equal(env.ok, true);
   // count = graph-content triples (2) + decorations (2 says links + 2
-  // rdf:reifies bridges) — sentence records are not counted.
+  // rdfProjection triple terms) — sentence records are not counted.
   assert.equal(env.count, 6);
   assert.equal(env.skipped, 0);
   // The says links decorate the default graph.
@@ -93,11 +94,15 @@ test('post39 cell "sourcesDataset": graphs + decorations, nothing flattened', as
   // The sentence-record triples: canonical CLIF as data inside each graph.
   assert.ok(env.nquads.includes(
     `<${ALIVEOBL_G}> <urn:cl:def:sentence> "(Alive OBL)" <${ALIVEOBL_G}> .\n`));
-  // The rdf:reifies bridge: graph name -> RDF 1.2 triple term, in the
-  // default graph.
+  // The rdfProjection decoration: proposition IRI -> RDF 1.2 triple
+  // term, in the default graph. NOT rdf:reifies — the proposition IRI
+  // is not an occurrence token (reifiers are reserved for the future
+  // report layer).
   assert.ok(env.nquads.includes(
-    `<${DEADOBL_G}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> ` +
+    `<${DEADOBL_G}> <urn:cl:def:rdfProjection> ` +
     `<<( <urn:cl:OBL> <${RDF_TYPE}> <urn:cl:Dead> )>> .\n`));
+  assert.ok(!env.nquads.includes('reifies'),
+    'rdf:reifies must not appear in the translation (reserved for report occurrences)');
 });
 
 test('post39 cell "whoSaysWhat": sources paired with claim sentences, no hashes shown', async () => {
@@ -108,7 +113,7 @@ test('post39 cell "whoSaysWhat": sources paired with claim sentences, no hashes 
   ]);
 });
 
-test('post39 cell "disagreement": the Alive/Dead join finds the conflicting pair', async () => {
+test('post39 cell "disagreement": the owl:disjointWith join discovers the conflicting pair', async () => {
   const rows = await post().value('disagreement');
   assert.deepEqual(rows, [{
     about: 'urn:cl:OBL',
@@ -144,7 +149,7 @@ test('post39 cell "sourcesParse": two sentences, IKL not pure CL, canonical echo
     '(says MorningWire (that (Alive OBL)))\n(says EveningPost (that (Dead OBL)))');
 });
 
-test('post39 cell "bridge": rdf:reifies triple terms render as <<( s p o )>>', async () => {
+test('post39 cell "bridge": rdfProjection triple terms render as <<( s p o )>>', async () => {
   const table = await post().value('bridge');
   assert.equal(table.kind, 'table');
   assert.deepEqual(table.columns, ['claim', 'fact']);

@@ -18,18 +18,21 @@ the sentence count, whether the text is pure ISO/IEC 24707 CL (no IKL
 
 `clToDataset` is the CL→RDF bridge (`CL/ToRdf.lean`, graph-decoration
 translation — issue 581): names become IRIs under the caller's base;
-EVERY proposition becomes a NAMED GRAPH named
+EVERY top-level sentence (a top-level `and` included — one sentence,
+one proposition) becomes a NAMED GRAPH named
 `<base>that:sha256:<hex64>` — the content address of the
 alpha-normalized canonical CLIF (issue 589), holding the sentence
 text under `urn:cl:def:sentence` plus its translatable atoms — and
 the default graph holds only DECORATIONS (`urn:cl:def:asserts`
 assertion triples, link triples for predications about propositions,
-and `rdf:reifies` triple-term bridges for single-atom propositions).
+and `urn:cl:def:rdfProjection` triple-term projections for
+single-atom propositions; `rdf:reifies` is deliberately unused —
+reserved for future report/occurrence nodes, see `CL/ToRdf.lean`).
 The returned N-Quads carry the graph names, and RDF 1.2 `<<( … )>>`
-triple terms where bridges were emitted. `count` counts graph-content
-triples PLUS decorations (sentence records excluded); `skipped` the
-sentences/conjuncts outside the fragment — reported, never silently
-dropped.
+triple terms where projections were emitted. `count` counts
+graph-content triples PLUS decorations (sentence records excluded);
+`skipped` the sentences/conjuncts outside the fragment — reported,
+never silently dropped.
 
 `queryWithIklService` is the combination op: the SPARQL query runs
 over `dataNq`'s dataset, with
@@ -40,7 +43,7 @@ over `dataNq`'s dataset, with
     ASSERTED proposition graph — the same rule the `x-ikl-*` regime
     applies (`CL.IklRegime.extendDataset`, issue 581). So
     `SERVICE <urn:ikl:kb> { … }` matches what the CL text SAYS —
-    assertions, links and bridges, plus what its asserted
+    assertions, links and projections, plus what its asserted
     propositions claim — while the content of a merely-mentioned
     proposition (`believes`/`ist`/… link, no assertion) stays out;
   * the translation's NAMED graphs merged into the evaluation
@@ -93,7 +96,7 @@ def clParse (cliftext : String) : String :=
             (ss.map L4Factoidal.CL.Sentence.toClif))) ]
 
 /-- `clToDataset(cliftext, base)`. `count` is graph-content triples
-plus default-graph decorations (asserts / link / bridge); sentence
+plus default-graph decorations (asserts / link / projection); sentence
 records are not counted (`CL/ToRdf.lean`, module header). -/
 def clToDataset (cliftext base : String) : String :=
   match L4Factoidal.CL.parseClifText cliftext with
