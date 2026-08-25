@@ -2096,6 +2096,17 @@ else
   PERF_SECTION_HTML=""
 fi
 
+# --- Quad-store baseline (optional; fail-soft) -------------------------------
+# Produced by tools/bench-quadstore-baseline.sh (persistence program
+# workstream A, issue #595), same committed-binary/no-toolchain contract
+# and same fail-soft include pattern as the perf fragment above.
+QUADSTORE_FRAGMENT="$OUTPUT_DIR/perf-quadstore-baseline.fragment.html"
+if [ -f "$QUADSTORE_FRAGMENT" ]; then
+  QUADSTORE_SECTION_HTML=$(cat "$QUADSTORE_FRAGMENT")
+else
+  QUADSTORE_SECTION_HTML=""
+fi
+
 # --- RDFS / OWL-RL closure benchmark (optional; fail-soft) ------------------
 # Produced by tools/bench-closure.sh. Same contract as the fragment
 # above: included verbatim if present, silently omitted if not, no JSON
@@ -3588,6 +3599,8 @@ ${GROUP4_HTML}
 
 ${PERF_SECTION_HTML}
 
+${QUADSTORE_SECTION_HTML}
+
 ${CLOSURE_SECTION_HTML}
 
 <details>
@@ -3597,6 +3610,7 @@ ${CLOSURE_SECTION_HTML}
     <li><a href="latest.json"><code>latest.json</code></a> — same data plus totals, structured</li>
     <li><code>history/&lt;timestamp&gt;.csv</code> / <code>.json</code> — timestamped copies, one pair per runner invocation</li>
     <li><a href="perf-parse-serialize.json"><code>perf-parse-serialize.json</code></a> — parse/serialize/canonicalize throughput (if present; produced by <code>tools/bench-parse-serialize.sh</code>, not this script)</li>
+    <li><a href="perf-quadstore-baseline.json"><code>perf-quadstore-baseline.json</code></a> — quad-store import/query baseline (if present; produced by <code>tools/bench-quadstore-baseline.sh</code>, not this script)</li>
   </ul>
   <p style="margin: 0.6em 0 0; color: var(--muted); font-size: 0.9em;">
     The raw runner logs (including per-test FAIL lines with diffs) are committed under
