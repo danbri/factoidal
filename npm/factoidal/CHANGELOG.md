@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 — Lean 4 engine subpath
+
+- New `factoidal/l4-core` subpath: the same typed API served by the
+  Lean 4-extracted wasm engine instead of the F\*-extracted one
+  ([#476](https://github.com/danbri/factoidal/issues/476)). Engine
+  assets resolve from the `@factoidal/lean` companion package, the
+  `FACTOIDAL_L4_ASSETS` environment variable, or the repository
+  checkout, in that order. `capabilities()` reports the Lean engine's
+  actual surface; `shaclValidate`/`owlIsConsistent`/`owlEntails`
+  raise pinned errors rather than returning wrong answers
+  ([#586](https://github.com/danbri/factoidal/issues/586) tracks the
+  OWL verdicts).
+- `serialize({ format: "nquads" })` now normalizes through the entry
+  ABI instead of the CLI path.
+
+
 ## 0.1.0 — First published release (as `@factoidal/core`)
 
 - SPARQL 1.1 §17.6 extension functions
