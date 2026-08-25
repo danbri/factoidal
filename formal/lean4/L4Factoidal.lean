@@ -281,6 +281,7 @@ import L4Factoidal.Testing.Enumerate
 import L4Factoidal.XSD.Facets
 import L4Factoidal.XSD.FacetsTests
 import L4Factoidal.OWL.Refute
+import L4Factoidal.OWL.NegationGoals
 import L4Factoidal.OWL.RefuteTests
 import L4Factoidal.HTTP.Client
 import L4Factoidal.HTTP.ClientTests

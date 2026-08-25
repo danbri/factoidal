@@ -184,6 +184,65 @@ check "rdfsPlusClosure" rdfsPlusClosure "$TMP/rdfsplus.json" \
   'r["ok"] is True and "<http://e/b> <http://e/p> <http://e/v> ." in r["ntriples"]
    and isinstance(r["rounds"], int) and r["rounds"] >= 1'
 
+# --- OWL DL consistency / entailment (issue 586) ----------------------
+# Envelopes pinned against bin/npm-entry/entry_jsoo.ml's
+# owl_is_consistent_json / owl_entails_json: three-valued, budget-out
+# reported as null with a reason, never a silent false.
+args "$TMP/owl-cons-yes.json" "$SUBCLASS" ""
+check "owlIsConsistent consistent -> true, no reason" owlIsConsistent "$TMP/owl-cons-yes.json" \
+  'r["ok"] is True and r["consistent"] is True and "reason" not in r'
+
+NOTHING='<http://e/i> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Nothing> .
+'
+args "$TMP/owl-cons-no.json" "$NOTHING" ""
+check "owlIsConsistent owl:Nothing member -> false + reason" owlIsConsistent "$TMP/owl-cons-no.json" \
+  'r["ok"] is True and r["consistent"] is False and "contradiction" in r["reason"]'
+
+# A cyclic TBox (A subClassOf someValuesFrom(p, A)) keeps the expansion
+# changing, so fuel 1 runs out mid-search: the verdict is null.
+CYCLIC='<http://e/i> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://e/A> .
+<http://e/A> <http://www.w3.org/2000/01/rdf-schema#subClassOf> _:r .
+_:r <http://www.w3.org/2002/07/owl#onProperty> <http://e/p> .
+_:r <http://www.w3.org/2002/07/owl#someValuesFrom> <http://e/A> .
+'
+args "$TMP/owl-cons-unk.json" "$CYCLIC" '{"fuel":"1"}'
+check "owlIsConsistent fuel 1 -> null (budget-out, fuel named)" owlIsConsistent "$TMP/owl-cons-unk.json" \
+  'r["ok"] is True and r["consistent"] is None and "budget-out" in r["reason"]
+   and "fuel 1 " in r["reason"]'
+
+# The same cyclic TBox at the default budget saturates under the
+# witness-depth cap: consistent.
+args "$TMP/owl-cons-cyc.json" "$CYCLIC" ""
+check "owlIsConsistent cyclic TBox, default fuel -> true" owlIsConsistent "$TMP/owl-cons-cyc.json" \
+  'r["ok"] is True and r["consistent"] is True'
+
+# Entailment via the closure path: a type D . follows from
+# a type C, C subClassOf D by cax-sco.
+CONCL='<http://e/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://e/D> .
+'
+args "$TMP/owl-ent-yes.json" "$SUBCLASS" "$CONCL" ""
+check "owlEntails subclass typing -> true via closure" owlEntails "$TMP/owl-ent-yes.json" \
+  'r["ok"] is True and r["entailed"] is True and r["via"] == "closure"'
+
+# Not entailed: the negated conclusion is satisfiable beside the
+# premise (a countermodel), reported via the refutation path.
+UNRELATED='<http://e/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://e/Zebra> .
+'
+args "$TMP/owl-ent-no.json" "$SUBCLASS" "$UNRELATED" ""
+check "owlEntails unrelated class -> false via refutation" owlEntails "$TMP/owl-ent-no.json" \
+  'r["ok"] is True and r["entailed"] is False and r["via"] == "refutation"
+   and "model" in r["reason"]'
+
+# Budget-out on a refutation goal: null, never a silent false.
+args "$TMP/owl-ent-unk.json" "$CYCLIC" "$UNRELATED" '{"fuel":"1"}'
+check "owlEntails fuel 1 -> null (budget-out)" owlEntails "$TMP/owl-ent-unk.json" \
+  'r["ok"] is True and r["entailed"] is None and r["via"] == "refutation"
+   and "budget-out" in r["reason"]'
+
+args "$TMP/owl-ent-badnq.json" 'not nquads @@@' "$CONCL" ""
+check "owlEntails bad premise -> error" owlEntails "$TMP/owl-ent-badnq.json" \
+  'r["ok"] is False and len(r["error"]) > 0'
+
 # --- Common Logic / IKL family ----------------------------------------
 IKL='(ist c (that (Dead OBL)))'
 args "$TMP/cl-parse.json" "$IKL"
@@ -308,7 +367,8 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
   'r["ok"] is True and isinstance(r["abiVersion"], str)
    and set(["parseToDatasetJson","queryDataset","updateDataset",
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
-            "owlClosure","rhoDfClosure","rhoDfFragmentCheck",
+            "owlClosure","owlIsConsistent","owlEntails",
+            "rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clToDataset",
             "queryWithIklService","ops",
             "datasetOpen","datasetQuery","datasetUpdate",

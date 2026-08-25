@@ -13700,3 +13700,36 @@ Not covered (named in each module header and on the issue):
 special name forms, role sets, datatype/string/number theories,
 propositional identity (`=p`) and the guide's structural axioms, and
 any completeness result.
+
+## OWL three-valued verdict + negation goals (`OWL/Refute.lean`, `OWL/NegationGoals.lean`, 2026-08-25)
+
+Issue <https://github.com/danbri/factoidal/issues/586>: the Lean
+refuter's public verdict collapsed quiescence and budget-out into one
+`none`, so the F\* wire contract (`consistent: true|false|null`) could
+not be served. The `search` function already distinguished the three
+outcomes; the change exposes them and integrates rather than
+duplicates.
+
+| Lean 4 | Source of truth | Notes |
+|---|---|---|
+| `OWL/Refute.lean` `tableauConsistent` | `Tableau.Refute.fst` `tableau_consistent` | verdict meanings mirrored exactly: `some false` = clash on every branch or immediate violation; `some true` = quiescence (NOT completeness); `none` = budget out. `refute` is now its refutation-only projection — one search path; `refute_eq_false_iff` proves the two views agree on refutation |
+| `OWL/NegationGoals.lean` | `Tableau.Refute.fst` §11a/11b (`negation_goals` + builders) | structural/content split (incl. the named-subject boolean-marker exception), the seven negation arms, the `≤0 p.{y}` encoding of `¬p(x,y)` over `Vocabulary.litNni0`. One unsupported conjunct collapses to `none` (caller keeps its closure verdict) |
+| `Wasm/Ops/Reason.lean` `owlIsConsistent` / `owlEntails` + `Wasm/Dispatch.lean` | `bin/npm-entry/entry_jsoo.ml` | envelopes field for field (`consistent`/`entailed` true\|false\|null, `via`, `reason`, fuel as a decimal string in opts, default 20000); chain = `OWL.RL.closureFix` then the refuter, the Lean tree's counterpart of the F\* entry's closure-then-`tableau_consistent` |
+
+Correspondence with the declarative calculus (`OWL/Tableau.lean`):
+stated rule-for-rule in `Refute.lean`'s header; `RefuteTests.lean`
+carries an instance-level paired witness (one contradiction refuted by
+the executable search AND by an explicit `Refuted` derivation). The
+general abstraction — a clash trace serialised as a `Refuted`
+derivation — is the certificate-checker rung, follow-up 6 on the
+issue.
+
+📊 `lake exe l4owl-probe --dir third_party/testing/owl [--dl]`
+re-measured before and after at the same HEAD: identical column for
+column (RL TOTAL 1131 pass, 316 fail, 2 skip, 8 unsupported, out of
+1457; `--dl` TOTAL 1208 pass, 239 fail, 2 skip, 8 unsupported, out of
+1457) — expected, since the harness consumes the `refute` projection
+and the search is unchanged. `Wasm/native-smoke.sh` 43 pass, 0 fail
+(out of 43), seven new cases: consistent / inconsistent / budget-out
+(fuel named in the reason) / cyclic-TBox-settles / entails-via-closure
+/ countermodel / entails-budget-out.

@@ -64,11 +64,23 @@ export function shexValidate(
   schema: string,
   shapeMap: string
 ): Promise<unknown>;
-export function owlIsConsistent(data: DataInput): Promise<boolean | null>;
-export function owlEntails(
+// Served by the Lean engine when the resolved wasm carries the ops
+// (dispatch ABI `owlIsConsistent` / `owlEntails`, formal/lean4 issue
+// 586); same three-valued envelopes as index.d.ts. An older bundle
+// rejects with an "unknown op" error.
+export function owlIsConsistent(
   data: DataInput,
-  conclusion: DataInput
-): Promise<boolean | null>;
+  options?: { format?: string; fuel?: number | string }
+): Promise<{ consistent: boolean | null; reason?: string }>;
+export function owlEntails(
+  premise: DataInput,
+  conclusion: DataInput,
+  options?: { format?: string; fuel?: number | string }
+): Promise<{
+  entailed: boolean | null;
+  via: 'closure' | 'refutation';
+  reason?: string;
+}>;
 
 export function capabilities(): Promise<Record<string, boolean | string>>;
 export const dataFactory: DataFactory;
