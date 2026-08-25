@@ -90,6 +90,39 @@ if [ ! -d "$RT_SRC/runtime" ]; then
 fi
 
 # ---------------------------------------------------------------------
+say "step 1b — patch the runtime's string_to_list_core for wasm32"
+# Upstream defect, present at v4.33.1 AND on leanprover/lean4 master
+# (checked 2026-08-25): runtime/object.cpp's string_to_list_core — the
+# body of lean_string_data, i.e. String.data / String.toList —
+# terminates the List Char it builds with `lean_box_uint32(0)`. On
+# 64-bit targets that folds to the scalar lean_box(0), the correct
+# representation of List.nil, so no shipped Lean build ever misbehaves.
+# On wasm32 (sizeof(void*) == 4) lean_box_uint32 HEAP-ALLOCATES a ctor
+# object (tag 0, 0 fields, 4 scalar bytes) — which is NOT a scalar.
+# Lean-COMPILED consumers read that object's pointer tag (0 = List.nil)
+# and work anyway, so span/take/foldl over such a list all pass — but
+# lean_string_mk (String.mk / String.ofList) walks the list with
+# `while (!lean_is_scalar(o))`, never meets a scalar terminator, reads
+# a garbage tail out of the fake nil's scalar area and runs off across
+# the heap until a word with the low bit set stops it: measured
+# 2026-08-25 as a 3,267,424,256-byte std::string allocation
+# (std::bad_alloc) from `_init_..._closed__48` under lean_obj_once.
+# lean_box(0) is List.nil's representation on EVERY target; patch the
+# one line. The guard makes this idempotent across cached work dirs;
+# a fresh patch application invalidates the cached object.o.
+OBJ_CPP="$RT_SRC/runtime/object.cpp"
+if grep -q 'obj_res  r = lean_box_uint32(0);' "$OBJ_CPP"; then
+  sed -i.bak 's|obj_res  r = lean_box_uint32(0);|obj_res  r = lean_box(0); /* wasm32 patch (build-wasm.sh step 1b): List.nil must be the scalar lean_box(0); lean_box_uint32 heap-allocates on 32-bit, and lean_string_mk then never sees a list terminator */|' \
+    "$OBJ_CPP"
+  rm -f "$OBJ_CPP.bak" "$RT_OBJ/object.o"
+  echo "  patched string_to_list_core (object.o invalidated)"
+else
+  grep -q 'wasm32 patch (build-wasm.sh step 1b)' "$OBJ_CPP" \
+    && echo "  already patched" \
+    || { echo "  PATCH ANCHOR NOT FOUND — upstream object.cpp changed; re-audit string_to_list_core"; exit 1; }
+fi
+
+# ---------------------------------------------------------------------
 say "step 2 — wasm build configuration headers"
 # CMake normally generates these.
 #

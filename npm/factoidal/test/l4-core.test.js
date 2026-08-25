@@ -99,6 +99,18 @@ test('l4-core parse: turtle relative IRI resolves against baseIRI', async (t) =>
     [`<http://base.example/dir/me> <${X}p> "c" .`]);
 });
 
+// Fragment-only relative IRIs went through the same String.toList /
+// String.ofList resolution path that trapped on wasm32 until
+// 2026-08-25 (skills/lean4-wasm-export/SKILL.md, trap 8).
+test('l4-core parse: turtle fragment IRI resolves against baseIRI', async (t) => {
+  if (skipUnlessAvailable(t)) return;
+  const ds = await l4core.parse(`<#me> <${X}p> "c" .`,
+    { format: 'turtle', baseIRI: 'http://base.example/dir/doc' });
+  const nq = await l4core.serialize(ds, { format: 'nquads' });
+  assert.deepEqual(sortedLines(nq),
+    [`<http://base.example/dir/doc#me> <${X}p> "c" .`]);
+});
+
 // ---------------------------------------------------------------------
 // query
 // ---------------------------------------------------------------------
@@ -172,20 +184,24 @@ test('l4-core update: INSERT DATA then query sees the triple', async (t) => {
 // serialize
 // ---------------------------------------------------------------------
 
-// The committed Lean wasm's serializeTurtle op raises a raw
-// WebAssembly.Exception (a Lean panic) on ANY non-empty graph — only
-// the empty graph serializes. Engine-side bug (formal/lean4/Wasm/Ops/
-// Parse.lean's serializeTurtle -> turtleOfGraphAuto), out of scope for
-// the npm wiring; this case flips to passing when the wasm is rebuilt
-// fixed.
-test("l4-core serialize({format:'turtle'}) contains the expected term",
-  { todo: 'committed Lean wasm panics (WebAssembly.Exception) in serializeTurtle on any non-empty graph' },
+// This raised a raw WebAssembly.Exception on ANY non-empty graph until
+// 2026-08-25. Not an engine bug: Lean's runtime built String.toList
+// results with a heap-allocated list terminator on wasm32, and
+// String.ofList then walked off the end of the heap
+// (skills/lean4-wasm-export/SKILL.md, trap 8). Fixed by
+// build-wasm.sh step 1b; real test since. The serializer
+// prefix-abbreviates (ns1:s), so the content check is a round-trip
+// back through parse, not a substring match.
+test("l4-core serialize({format:'turtle'}) round-trips the graph",
   async (t) => {
     if (skipUnlessAvailable(t)) return;
     const ttl = await l4core.serialize(
       `<${X}s> <${X}p> <${X}o> .`,
       { format: 'turtle', inputFormat: 'ntriples' });
-    assert.match(ttl, /http:\/\/x\/s/);
+    assert.match(ttl, /http:\/\/x\//, 'namespace appears in the Turtle');
+    const back = await l4core.parse(ttl, { format: 'turtle' });
+    const nq = await l4core.serialize(back, { format: 'nquads' });
+    assert.deepEqual(sortedLines(nq), [`<${X}s> <${X}p> <${X}o> .`]);
   });
 
 test("l4-core serialize rejects format:'ntriples' (CLI-only path)", async (t) => {
