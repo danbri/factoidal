@@ -1,6 +1,6 @@
 ---
 name: workflow-gotchas-debugging
-description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Twenty-three hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches), shallow-clone pushes hanging in boundary negotiation (fix: fetch --deepen, not retry loops), and a serializer labelled "display, not wire" whose every consumer was a wire path (silent store data loss, #339/#443) — plus their detection + recovery steps.
+description: Diagnostic playbook for the dev-loop hazards that recur in this repo. Use when a build mysteriously fails, a fresh clone breaks where local works, an agent's work doesn't appear on its branch, the same uncommitted file keeps coming back after `git checkout`, a secondary compile script poisons shared `.cmi`/`.cmx` files, a `set -e` + cleanup trap eats a failing build's log, or "stop hook fires every turn but I'm not done." Thirty-three hazards total (see "Lessons from 2026-05-07" below): subagent worktree-leakage, concurrent F* extract races, source-without-build-wiring, stale doc numbers, the build-aware stop-hook gap, the `(* *)` comment trap, worktree garbage, secondary-script `.cmx` poisoning, editing build inputs mid-build, cleanup traps eating diagnostics, old-base cherry-picks silently dropping build-list/consumer entries, stale js/npm bundles failing hub cells, old-base agent branches reverting content fixes you just made, `>=` test floors on decreasing metrics breaking on progress, missing test submodules in worktrees/fresh containers producing lying 0/0 scores and phantom ENOENT failures (fix: tools/ensure-test-env.sh), the node hub harness masking browser-only fn-surface gaps (missing hub.njk wrappers, Turtle-vs-N-Quads convention mismatches), shallow-clone pushes hanging in boundary negotiation (fix: fetch --deepen, not retry loops), and a serializer labelled "display, not wire" whose every consumer was a wire path (silent store data loss, #339/#443) — plus their detection + recovery steps.
 ---
 
 # Workflow gotchas + debugging
@@ -1466,3 +1466,92 @@ Two costs, and the second is the larger one:
    session's commit, say so and give that SHA. Do not synthesise a commit
    that "represents" the change, and do not report a SHA that does not
    contain it.
+
+## Hazard #33 — an annotated-but-uncited semantics default plus zero suite pressure: two engines shipped opposite unexercised behaviors, and the first proof contact blamed the wrong layer (2026-08-25)
+
+### Symptom
+
+The unified-semantics program's D-entailment stage found the Lean
+executable and the Lean model theory disagreeing on RDF 1.2 graphs
+whose only ill-typed literal sits inside a triple term. The
+disagreement was machine-checked (`dEntailsMt_tt_gap`), filed as
+[https://github.com/danbri/factoidal/issues/602](https://github.com/danbri/factoidal/issues/602),
+and attributed to the EXECUTABLE ("the collector must not treat
+triple-term-interior literals as asserted"). The attribution was
+wrong: the current RDF 1.2 Semantics Working Draft (7 April 2026, §5
+`I(E) = IT(I(E.s), I(E.p), I(E.o))` composed with §7.1) and the W3C
+rdf12 `malformed-literal` test ("Malformed literals are allowed in
+triple terms, but cause inconsistency") side with the executable. The
+defective layer was the totalized model theory, whose exclusion clause
+was top-level-only.
+
+### Root cause — three layers, none sufficient alone
+
+1. **A semantics default annotated but not cited.** `Term.literals`
+   was born (2026-08-22) recursing through `tripleTerm`, with a
+   docstring saying so — a typed decision, but naming no
+   specification clause. Its top-level-only counterparts
+   (`hasRangeClash`, F\* `has_ill_formed_recognized_literal`,
+   `hasIllFormedRecognizedLiteral` in a SECOND Lean module) each made
+   the OPPOSITE choice through catch-all `_` arms. One tree carried
+   both polarities of the same check, silently.
+2. **The term type was one spec version ahead of the semantics
+   modules' cited anchor.** Every fold over `Term` was written against
+   an RDF 1.2-shaped type while the semantics modules cited RDF 1.1
+   Semantics §7, which has no triple-term clause — so each fold
+   contained a decision its cited spec could not answer, and each fold
+   decided independently.
+3. **Zero test pressure, itself layered.** The one suite that decides
+   the question (rdf12 `rdf-semantics`) never loaded in the Lean
+   harness — an upstream manifest defect (undeclared `test:` prefix)
+   met a strict manifest parse, so every umbrella run reported
+   0 pass, 0 fail (out of 0) with `no_manifest=1`; and the F\* runner
+   skips that suite's `mf:result false` inconsistency verdicts
+   entirely. Between 2026-08-22 and 2026-08-25 NOTHING exercised any
+   of the folds' interior polarity.
+
+Cost: a wrong fix direction stood in an open issue with owner
+visibility; the model-theory defect was pinned in-source as a theorem
+whose name (`_gap`) blamed the executable; one session-day of repair
+work had to start by re-deciding the spec anchor. Full post-mortem:
+the investigation comment on
+[https://github.com/danbri/factoidal/issues/602](https://github.com/danbri/factoidal/issues/602).
+
+### The rules
+
+1. **A semantics default in a fold over a syntax type MUST name the
+   specification clause that licenses it** — in the arm or the
+   docstring. "Annotated" is not "anchored": the interior recursion
+   WAS documented, and still carried no authority a reviewer could
+   check. If the cited spec has no clause for a constructor (the type
+   is a spec version ahead), that absence goes in the docstring and
+   into an issue — it is a decision nobody has made yet.
+2. **No catch-all `_` arms over a semantics-bearing inductive in a
+   verdict fold.** Write every constructor. The compiler then flags
+   every fold when the type grows, and reviewers see each polarity as
+   a decision instead of an omission. (Applied 2026-08-25:
+   `Term.mentionedLiterals` / `assertedLiterals` are the canonical
+   collector pair in `RDF/Entailment.lean`, all four constructors
+   explicit, each collector citing its WD clause; every
+   D-inconsistency check routes through them by name.)
+3. **A suite that reports `0 out of 0` is not a suite.** `no_manifest`
+   / `zero_tests` diagnostics existed and were printed for two months;
+   nothing escalated them. Treat a persistent zero-denominator suite
+   as a broken gate, not as background noise — the F\* runner's
+   lenient-with-report manifest policy
+   ([https://github.com/danbri/factoidal/issues/334](https://github.com/danbri/factoidal/issues/334))
+   is now in the Lean harness too (`parseManifestTextLenient`,
+   `MANIFEST-RECOVERY` warning lines).
+4. **A machine-checked divergence names TWO suspects.** A theorem that
+   pins "layer A disagrees with layer B" proves neither side correct;
+   which layer must move is a spec-anchor decision to make FIRST,
+   against the current specification text and its test suite, before
+   any repair — and before the theorem gets a name. `dEntailsMt_tt_gap`
+   type-checked while blaming the wrong side; the repaired tree states
+   the same separation as `topLevel_exclusion_insufficient_for_tt`,
+   named for the superseded variant it refutes.
+5. The F\* side of the same defect family (opaque scan + missing
+   rdf12 inconsistency path) is tracked in
+   [https://github.com/danbri/factoidal/issues/604](https://github.com/danbri/factoidal/issues/604)
+   — out of scope of the Lean repair, referenced here so the polarity
+   decision is not re-made independently a third time.

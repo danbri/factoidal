@@ -51,6 +51,7 @@ that over as a pass.
 -/
 import L4Factoidal.RDF.EntailmentRdfsSpec
 import L4Factoidal.RDF.Datatypes
+import L4Factoidal.RDF.Entailment
 
 namespace L4Factoidal.RDF
 
@@ -60,12 +61,21 @@ open L4Factoidal.RDFS (rdfsRange)
 
 `literalIllFormed` is reused verbatim from `RDF.Datatypes`, not
 re-derived: it already carries the whitespace-strict numeric lexical
-grammar the XSD whitespace-facet tests probe. -/
+grammar the XSD whitespace-facet tests probe.
+
+The occurrence set is the CANONICAL collector `termIllTypedMention`
+(`RDF/Entailment.lean`): mentioned literals, triple-term interiors
+included. Before 2026-08-25 this module scanned top-level objects only
+through a catch-all `_` arm, the OPPOSITE polarity from
+`hasIllFormedLiteral` in the same tree, and nothing decided between
+them — the issue-602 defect class. The interior polarity is RDF 1.2
+Semantics WD (7 April 2026) §5 + §7.1 plus the rdf12 `malformed-literal`
+test; the F\* source (`RDF.Entailment.RDFS.DatatypeClash.fst`) still
+scans top level only, tracked in
+https://github.com/danbri/factoidal/issues/604. -/
 
 def hasIllFormedRecognizedLiteral (g : Graph) (recognized : List WfIri) : Bool :=
-  g.any (fun t => match t.o with
-                  | .literal l => literalIllFormed recognized l.val
-                  | _ => false)
+  g.any (fun t => termIllTypedMention recognized t.o)
 
 /-! ## (b) Range / datatype clash -/
 
@@ -133,6 +143,17 @@ private def illFormed : Graph := [⟨exS, exFoo, litOf "flargh" xsdInteger⟩]
 
 #guard rdfsDInconsistent illFormed [xsdInteger]
 #guard !rdfsDInconsistent illFormed []
+
+/-! An ill-formed literal INSIDE a triple term is a clash too (rdf12
+`malformed-literal`; WD §5 + §7.1) — and this detector now agrees with
+`Regime.inconsistent`'s `hasIllFormedLiteral` on the quote polarity
+instead of silently answering the opposite (issue 602). -/
+
+private def illFormedInterior : Graph :=
+  [⟨exS, exFoo, .tripleTerm exS exBar (litOf "flargh" xsdInteger)⟩]
+
+#guard rdfsDInconsistent illFormedInterior [xsdInteger]
+#guard !rdfsDInconsistent illFormedInterior []
 
 /-! A WELL-formed literal of the same recognised datatype is not a
 clash — without this the rule could be "always true on a recognised

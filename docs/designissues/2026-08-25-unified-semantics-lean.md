@@ -56,6 +56,142 @@ standardizing-apart; the native tree has the renaming but no named
 merge operation). Stage 1 landed without `DSchema.lean` /
 `unified_adequate_d`, which go with the D-entailment landing.
 
+### D-entailment landing notes (2026-08-25)
+
+`Unified/DSchema.lean` landed (`dSchema`, `unified_adequate_d`, the
+§5.1 separating model). Three notes in the same spirit as 1–4 above:
+
+5. **§4.1 native anchor.** As the parenthetical under the
+   `unified_adequate_d` statement anticipated, the native tree had NO
+   model-theoretic D-entailment: `RDF/Semantics.lean` stops at
+   `SimpleEntailsMt`, and `RDF/EntailmentTheorems.lean` deliberately
+   gives the `literalValueEq` regime variants no soundness theorem.
+   `RDF.DInterpCond` / `RDF.DEntailsMt` are therefore introduced with
+   the landing (in the `RDF` namespace, inside `Unified/DSchema.lean`),
+   as `EntailsUnder` over interpretations that (a) identify literals
+   `literalValueEq D` accepts and (b) exclude `literalIllFormed D`
+   literals from every property extension's object position. This is
+   the fragment of RDF 1.1 Semantics §7 the tree's executable datatype
+   machinery expresses; completeness against the full §7
+   D-interpretation class (value-space structure) is not claimed.
+   `RDF/EntailmentRdfsDatatypeClash.lean`, which §4.1 cites, is the
+   `rdfs:range` clash rule — that is RDFS-regime material and rides
+   with stage 2, not with `dSchema`.
+6. **The decided corollary is deferred, with a machine-checked
+   reason.** The executable anchor `RDF.regimeEntails .d` exists, but
+   the characterisation theorem the simple corollary composed with
+   (`simpleEntails_iff_mt`) has no D analogue, and the correspondence
+   is FALSE without triple-term-freedom hypotheses: the procedure's
+   inconsistency check collects literals inside RDF 1.2 triple terms
+   (`Term.literals` recurses through `tripleTerm`), while both model
+   theories — native `iTt` and the `urn:cl:def:tripleTerm` operator —
+   read a triple term as an uninterpreted function of its components'
+   denotations, so a triple-term-interior ill-typed literal yields no
+   contradiction. `dEntailsMt_tt_gap` plus a `#guard` pin the
+   disagreeing pair. The future corollary needs a native
+   D-interpolation lemma under `GraphTtFree` on both graphs.
+7. **§2.5 quantification domain.** The value-identification rows are
+   stated over literal PAIRS `literalValueEq D` accepts (which covers
+   the cross-datatype numeric chain, e.g. `xsd:integer`/`xsd:int`),
+   not per-datatype lexical-form pairs as §2.5's wording suggests —
+   matching what `Regime.literalEq` actually decides with. The
+   exclusion rows stay silent about ill-typed terms beyond the
+   exclusion itself, as §5.1 requires; the separating model
+   (`dSepInterp`, satisfies value identification + the translated
+   ill-typed graph, refutes the exclusion axiom) is in
+   `Unified/DSchema.lean` next to the schema rather than in
+   `Witnesses.lean`.
+
+### Stage 2 landing notes (2026-08-25)
+
+`Unified/RhoDfSchema.lean` and `Unified/RdfsSchema.lean` landed
+(recovered from an interrupted agent run, verified and completed).
+Four notes in the same spirit as 1–7:
+
+8. **§4.2 ρdf gate strength.** The design statement carried
+   `RhoDfModelFragGraph` hypotheses. Landed instead: the gate theorem
+   `unified_adequate_rhoDf` is an UNCONDITIONAL iff against the native
+   model-theoretic relation `RDF.RhoDfEntails` (which postdates this
+   document's statement). The fragment, closedness and
+   triple-term-freedom hypotheses belong to the DECIDED corollary
+   `unified_adequate_rhoDf_decided`, where the native Herbrand
+   construction (`rhoDfClosed_iff`) needs them; each has an executable
+   sufficient check (`rhoDfClosedCheck`, `RDFS.isRhoDfFrag`)
+   dischargeable by `decide` on concrete inputs.
+9. **§4.2 full-RDFS strength, §3 schema signatures, and the bridge's
+   home.** (a) The document predicted soundness-only for full RDFS,
+   citing Finding C-1. C-1 blocks the EXECUTABLE characterisation,
+   not model-theoretic adequacy: `unified_adequate_rdfs` landed as a
+   FULL unconditional iff against `RDF.RdfsEntails` (itself
+   `EntailsUnder` over the §9 conditions); no decided RDFS corollary
+   is stated, and C-1's witness pair is restated at the unified level
+   (`rhoDf_not_entails_selfLoop_unified` vs
+   `rdfs_entails_selfLoop_unified` — also the strictness witness
+   between the two schemas). (b) `rdfSchema` landed WITHOUT the `D`
+   parameter (the native `RDF.RdfConditions` carries none; rdfD1 is
+   excluded by both engines), and `rdfsSchema` takes a
+   `RDF.DatatypeSet`, adding the `dMinimal` rows the native bundle
+   carries. (c) §3's `rdfsSchema` docstring folded the
+   type-application bridge into the schema; that would make the gate
+   iff FALSE — `liftInterp` gives every non-binary predication an
+   empty extension, so no lifted interpretation satisfies the bridge
+   over a non-empty type extension. Landed: `typeBridge` is a
+   SEPARATE one-sentence schema with a conservativity theorem over
+   translated graphs (`typeBridge_conservative`, by rel-surgery
+   `bridgeify`) and a machine-checked separation outside the
+   translated fragment (`bridge_derives_classApp` /
+   `rdfsSchema_no_classApp` on the LBase class-application sentence).
+10. **§5.7 finite-slice, and one weakening.** (a) The landed schemas
+    index their axiom rows by the native predicates
+    `RDF.RdfAxiomatic` / `RDF.RdfsAxiomatic`, which carry the FULL
+    infinite `rdf:_n` families — both sides of every gate iff
+    quantify over the same family, so no landed theorem consumes a
+    finite-slice-suffices lemma. It becomes load-bearing only for a
+    decided full-RDFS corollary, which C-1 independently blocks;
+    recorded as the stage's named open lemma in the registry, not
+    proved. (b) One recorded weakening: `unified_rdfs_closure_sound`
+    (and `RDF.axiomaticTriples_hold` under it) carries the hypothesis
+    `rdf:XMLLiteral ∈ D`. The closure's seed table
+    (`RDFS.rdfsAxiomaticTriplesFixed`, 40 rows) contains
+    `rdf:XMLLiteral rdf:type rdfs:Datatype` and
+    `rdf:XMLLiteral rdfs:subClassOf rdfs:Literal`, which RDF 1.1
+    Semantics §9.3 does NOT list as RDFS axiomatic triples (the note
+    after the spec's table: RDF-D interpretations MAY fail to
+    recognize `rdf:XMLLiteral`/`rdf:HTML`); the spec-faithful 38-row
+    `RDF.rdfsAxiomaticTriples` table rightly excludes them, and the
+    two rows are true in a §9 interpretation exactly when
+    `rdf:XMLLiteral` is recognised. `#guard`s pin the table mismatch
+    in `Unified/RdfsSchema.lean`.
+
+### D-entailment repair note (2026-08-25, issue 602)
+
+11. **Correction note 6 mis-attributed the divergence, and §2.5's
+    exclusion schema was too narrow.** Note 6 (and
+    `dEntailsMt_tt_gap`) read the executable's triple-term-interior
+    literal collection as the defect. The decided spec anchor
+    ([https://github.com/danbri/factoidal/issues/602](https://github.com/danbri/factoidal/issues/602))
+    is the RDF 1.2 Semantics Working Draft (7 April 2026,
+    [https://www.w3.org/TR/rdf12-semantics/](https://www.w3.org/TR/rdf12-semantics/)
+    — a WD, not a Recommendation): §5's compositional triple-term
+    denotation `I(E) = IT(I(E.s), I(E.p), I(E.o))` with §7.1's "any
+    triple containing the literal must be false", as the W3C rdf12
+    `malformed-literal` test states ("Malformed literals are allowed
+    in triple terms, but cause inconsistency"). The EXECUTABLE was
+    right; the totalized model theory was the diverging layer. Landed:
+    `RDF.DInterpCond` clause 2 and `dExclusionSchema` now exclude
+    every term with an ill-typed MENTION (`RDF.termIllTypedMention`,
+    interiors included); `dEntailsMt_tt_gap` is removed — its content
+    survives as `topLevel_exclusion_insufficient_for_tt` over the
+    superseded bundle `DInterpCondTopLevel`, and the flipped pin is
+    `dEntailsMt_tt_illtyped` (agreement, both layers TRUE). The
+    decided corollary landed as its SOUND half,
+    `unified_adequate_d_decided_sound` — unconditional, no
+    `GraphTtFree` (note 6's prediction that the corollary needs
+    triple-term-freedom is withdrawn); the COMPLETE half is the
+    registry's named open lemma (D-Herbrand literal quotient by
+    `literalValueEq D` + `bindable`-restricted search completeness),
+    and is not a triple-term matter.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from

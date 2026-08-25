@@ -63,7 +63,11 @@ Two decidable shapes, the same two `RDF.Entailment.RDFS.DatatypeClash`
 decides in the F\* tree:
 
   (a) a literal typed with a recognised datatype whose lexical form is
-      outside that datatype's lexical space (`literalIllFormed`);
+      outside that datatype's lexical space (`literalIllFormed`) —
+      collected over triple-term interiors too (`mentionedLiterals`;
+      RDF 1.2 Semantics WD §5 + §7.1 and the rdf12 `malformed-literal`
+      test — see the collector section below and
+      https://github.com/danbri/factoidal/issues/602);
   (b) under RDFS, a literal forced by `rdfs:range` (through any
       `rdfs:subClassOf` chain — the closure is transitively closed, so
       one lookup suffices) into a recognised datatype class whose value
@@ -232,21 +236,92 @@ def entailsWith (leq : Literal → Literal → Bool) (bindable : Term → Bool)
 def simpleEntails (g h : Graph) : Bool :=
   entailsWith literalStrictEq (fun _ => true) g h
 
-/-! ## D-inconsistency -/
+/-! ## D-inconsistency
 
-/-- Every literal in object position of `g` (triple-term interiors
-included). -/
-def Term.literals : Term → List Literal
+### The canonical literal collectors (issue 602 guard)
+
+There are exactly two ways to collect a graph's literals, and each
+semantic check MUST name the one it means (the two used to exist
+implicitly, with opposite polarities in different modules —
+https://github.com/danbri/factoidal/issues/602):
+
+* `mentionedLiterals` — triple-term interiors INCLUDED. The collector
+  for D-inconsistency. RDF 1.2 Semantics, W3C Working Draft
+  7 April 2026, https://www.w3.org/TR/rdf12-semantics/ — §5 gives a
+  ground triple term the compositional denotation
+  `I(E) = IT(I(E.s), I(E.p), I(E.o))`, and §7.1 says an ill-typed
+  recognised literal "cannot denote anything. In this case, any triple
+  containing the literal must be false. Thus, any triple, and hence
+  any graph, containing an ill-typed literal will be D-unsatisfiable."
+  An interior literal's denotation reaches the containing triple
+  term's, so "containing" covers triple-term interiors — as the W3C
+  rdf12 rdf-semantics test `malformed-literal` states outright
+  ("Malformed literals are allowed in triple terms, but cause
+  inconsistency"). WD status caveat: this is a Working Draft clause,
+  not a Recommendation; RDF 1.1 Semantics has no triple-term clause
+  at all.
+* `assertedLiterals` — top-level object positions ONLY. The collector
+  for checks that constrain PROPERTY EXTENSIONS of asserted triples
+  (`rdfs:range` — WD §9's rdfs3 applies to IEXT pairs, and a
+  triple-term interior contributes no IEXT pair).
+
+No catch-all `_` arm over `Term` here: all four constructors are
+written out, so a future constructor addition fails the build at every
+semantics fold instead of inheriting a silent polarity (issue 602's
+systemic cause). -/
+
+/-- Literals MENTIONED by a term: the term itself when it is a
+literal, plus every literal inside an RDF 1.2 triple-term interior,
+recursively. A triple term's subject cannot hold a literal (`Subject`
+has no literal constructor), so recursing on the object exhausts the
+interiors. -/
+def Term.mentionedLiterals : Term → List Literal
+  | .iri _ => []
+  | .bnode _ => []
   | .literal l => [l.val]
-  | .tripleTerm _ _ o => o.literals
-  | _ => []
+  | .tripleTerm _ _ o => o.mentionedLiterals
 
-def literalsOf (g : Graph) : List Literal :=
-  g.flatMap (fun t => t.o.literals)
+/-- Literals ASSERTED by the graph: object position of a top-level
+triple only. -/
+def assertedLiterals (g : Graph) : List Literal :=
+  g.filterMap (fun t => match t.o with
+    | .iri _ => none
+    | .bnode _ => none
+    | .literal l => some l.val
+    | .tripleTerm _ _ _ => none)
 
-/-- Rule (a): some recognised literal is ill-formed. -/
+/-- Literals MENTIONED by the graph: asserted literals plus triple-term
+interiors. -/
+def mentionedLiterals (g : Graph) : List Literal :=
+  g.flatMap (fun t => t.o.mentionedLiterals)
+
+/-- Does `t` mention (at any triple-term depth) a literal that is
+ill-typed under `D`? The syntactic trigger of the WD §5 + §7.1
+verdict: a term for which this is `true` cannot denote in any
+D-interpretation, so no asserted triple may use it (the model-theoretic
+counterpart is `DInterpCond` clause 2, `Unified/DSchema.lean`). -/
+def termIllTypedMention (D : List WfIri) (t : Term) : Bool :=
+  t.mentionedLiterals.any (literalIllFormed D)
+
+/-- Rule (a): some MENTIONED recognised literal is ill-formed
+(WD §7.1; the `malformed-literal` fixture is the interior case). -/
 def hasIllFormedLiteral (D : List WfIri) (g : Graph) : Bool :=
-  (literalsOf g).any (literalIllFormed D)
+  g.any (fun t => termIllTypedMention D t.o)
+
+/-! Trivial facts the model-theory side consumes. -/
+
+theorem literalIllFormed_nil (l : Literal) :
+    literalIllFormed [] l = false := by
+  simp [literalIllFormed]
+
+theorem termIllTypedMention_nil (t : Term) :
+    termIllTypedMention [] t = false := by
+  simp [termIllTypedMention, literalIllFormed_nil]
+
+theorem hasIllFormedLiteral_iff {D : List WfIri} {g : Graph} :
+    hasIllFormedLiteral D g = true ↔
+      ∃ t ∈ g, termIllTypedMention D t.o = true := by
+  simp [hasIllFormedLiteral]
 
 /-- The classes a literal object of property `p` is forced into by
 `rdfs:range` in the (closed) graph `c`: every range class and every
@@ -259,14 +334,20 @@ def rangeClassesOf (c : Graph) (p : WfIri) : List WfIri :=
       match o with | .iri i => some i | _ => none))
 
 /-- Rule (b): some recognised, well-formed literal is range-forced into
-a recognised datatype whose value space does not hold its value. -/
+a recognised datatype whose value space does not hold its value.
+ASSERTED literals only, deliberately: `rdfs:range` constrains IEXT
+pairs of asserted triples (WD §9), and a triple-term interior
+contributes none — so the arms below are the `assertedLiterals`
+polarity, written out constructor by constructor (issue 602 guard). -/
 def hasRangeClash (D : List WfIri) (c : Graph) : Bool :=
   c.any (fun t =>
     match t.o with
+    | .iri _ => false
+    | .bnode _ => false
     | .literal l =>
         D.contains l.val.datatype && !literalIllFormed D l.val &&
         (rangeClassesOf c t.p).any (fun cls => D.contains cls && !valueInSpace l.val cls)
-    | _ => false)
+    | .tripleTerm _ _ _ => false)
 
 /-! ## Regimes -/
 
@@ -309,13 +390,22 @@ def Regime.literalEq (r : Regime) (D : List WfIri) : Literal → Literal → Boo
   | _       => literalValueEq D
 
 /-- What a blank node may range over under a regime: anything, except
-(under D) an ill-formed recognised literal. -/
+(under D) an ill-formed recognised literal (§7: such a literal denotes
+nothing, so no blank node can denote it — the
+`malformed-literal-bnode-neg` polarity). A triple term is bindable at
+its own level even when its INTERIOR mentions an ill-formed literal:
+any premise graph exhibiting such a term is already D-inconsistent
+(`hasIllFormedLiteral` on `mentionedLiterals`, WD §5 + §7.1) and
+short-circuits before bindability matters. All four constructors
+written out (issue 602 guard). -/
 def Regime.bindable (r : Regime) (D : List WfIri) : Term → Bool :=
   match r with
   | .simple => fun _ => true
   | _ => fun t => match t with
+                  | .iri _ => true
+                  | .bnode _ => true
                   | .literal l => !literalIllFormed D l.val
-                  | _ => true
+                  | .tripleTerm _ _ _ => true
 
 /-- Is the closed graph D-inconsistent under the regime? Rule (a) in
 every D-aware regime; rule (b) only where `rdfs:range` has force. -/
