@@ -4966,7 +4966,7 @@
    "files": [
     "formal/fstar/Parquet.Footer.fst"
    ],
-   "loc": 3350,
+   "loc": 3374,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -11111,7 +11111,7 @@
    "files": [
     "formal/fstar/RDF.CottasStore.fst"
    ],
-   "loc": 2826,
+   "loc": 2930,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -11119,33 +11119,79 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_CottasStore.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 117,
-   "declarative_relation_count": 0,
+   "shipping_function_count": 113,
+   "declarative_relation_count": 1,
    "unclassified_definition_count": 0,
-   "assume_val_active": 10,
+   "assume_val_active": 3,
    "assume_val_names": [
     "cottas_ondisk_open",
     "cottas_ondisk_close",
-    "ondisk_id_to_subj_token_global",
-    "ondisk_id_to_pred_token_global",
-    "ondisk_id_to_obj_token_global",
-    "ondisk_id_to_graph_token_global",
-    "ondisk_lookup_subj_id_global",
-    "ondisk_lookup_pred_id_global",
-    "ondisk_lookup_obj_id_global",
-    "ondisk_lookup_graph_id_global"
+    "ondisk_token_tables_global"
    ],
    "assume_other_active": 0,
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": true,
-   "local_refinement_lemma_count": 0,
-   "local_refinement_lemma_names": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 1,
+   "local_refinement_lemma_names": [
+    "build_qp_row_default_graph"
+   ],
    "algorithm_correctness_theorems": [],
-   "internal_refinement_theorems": [],
+   "internal_refinement_theorems": [
+    {
+     "name": "tables_of_handle_agree",
+     "proved_in": "RDF.CottasStore",
+     "file": "formal/fstar/RDF.CottasStore.fst",
+     "line": 387,
+     "unconditional": true,
+     "names_shipping_functions": [
+      "tables_of_handle"
+     ],
+     "names_declarative_relations": [
+      "token_tables_agree_with"
+     ],
+     "declarative_relations_from": [
+      "RDF.CottasStore"
+     ]
+    },
+    {
+     "name": "graph_bound_to_raw_token_agrees",
+     "proved_in": "RDF.CottasStore",
+     "file": "formal/fstar/RDF.CottasStore.fst",
+     "line": 442,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "graph_bound_to_raw_token_with",
+      "tables_of_handle"
+     ],
+     "names_declarative_relations": [
+      "token_tables_agree_with"
+     ],
+     "declarative_relations_from": [
+      "RDF.CottasStore"
+     ]
+    },
+    {
+     "name": "build_qp_row_agrees",
+     "proved_in": "RDF.CottasStore",
+     "file": "formal/fstar/RDF.CottasStore.fst",
+     "line": 505,
+     "unconditional": false,
+     "names_shipping_functions": [
+      "build_qp_row_with",
+      "tables_of_handle"
+     ],
+     "names_declarative_relations": [
+      "token_tables_agree_with"
+     ],
+     "declarative_relations_from": [
+      "RDF.CottasStore"
+     ]
+    }
+   ],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
+   "assurance_tier": "internal-refinement",
    "suites": [
     {
      "suite": "local-cottas-corpus",
@@ -38348,6 +38394,92 @@
    "class": "algorithm_correctness"
   },
   {
+   "name": "tables_of_handle_agree",
+   "host_module": "RDF.CottasStore",
+   "file": "formal/fstar/RDF.CottasStore.fst",
+   "line": 387,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "tables_of_handle"
+   ],
+   "shipping_modules": [
+    "RDF.CottasStore"
+   ],
+   "declarative_relations_named": [
+    "token_tables_agree_with"
+   ],
+   "declarative_modules": [
+    "RDF.CottasStore"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "graph_bound_to_raw_token_agrees",
+   "host_module": "RDF.CottasStore",
+   "file": "formal/fstar/RDF.CottasStore.fst",
+   "line": 442,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "graph_bound_to_raw_token_with",
+    "tables_of_handle"
+   ],
+   "shipping_modules": [
+    "RDF.CottasStore"
+   ],
+   "declarative_relations_named": [
+    "token_tables_agree_with"
+   ],
+   "declarative_modules": [
+    "RDF.CottasStore"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "build_qp_row_agrees",
+   "host_module": "RDF.CottasStore",
+   "file": "formal/fstar/RDF.CottasStore.fst",
+   "line": 505,
+   "unconditional": false,
+   "shipping_functions_named": [
+    "build_qp_row_with",
+    "tables_of_handle"
+   ],
+   "shipping_modules": [
+    "RDF.CottasStore"
+   ],
+   "declarative_relations_named": [
+    "token_tables_agree_with"
+   ],
+   "declarative_modules": [
+    "RDF.CottasStore"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "internal_refinement"
+  },
+  {
+   "name": "build_qp_row_default_graph",
+   "host_module": "RDF.CottasStore",
+   "file": "formal/fstar/RDF.CottasStore.fst",
+   "line": 515,
+   "unconditional": true,
+   "shipping_functions_named": [
+    "build_qp_row_with"
+   ],
+   "shipping_modules": [
+    "RDF.CottasStore"
+   ],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "finite_rdf_axioms_sound",
    "host_module": "RDF.Entailment.RDF.Spec",
    "file": "formal/fstar/RDF.Entailment.RDF.Spec.fst",
@@ -64028,16 +64160,16 @@
  "totals": {
   "modules": 221,
   "files": 231,
-  "assume_val_active": 88,
+  "assume_val_active": 81,
   "assume_other_active": 4,
   "admissions_active": 0,
   "lax_or_admit_pragmas": 0,
   "modules_with_w3c_refinement_theorem": 11,
   "modules_with_algorithm_correctness_theorem": 45,
-  "modules_with_internal_refinement_theorem": 22,
-  "modules_merely_tot": 122,
+  "modules_with_internal_refinement_theorem": 23,
+  "modules_merely_tot": 121,
   "w3c_refinement_theorem_count": 322,
-  "internal_refinement_theorem_count": 160,
+  "internal_refinement_theorem_count": 163,
   "algorithm_correctness_theorem_count": 364,
   "unclassified_lemma_count": 3,
   "pure_formalisation_modules": [
@@ -64059,16 +64191,16 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1692,
+  "lemma_count": 1696,
   "tiers": {
    "algorithm-correctness": 29,
-   "internal-refinement": 12,
+   "internal-refinement": 13,
    "local-lemmas-only": 13,
-   "merely-tot": 122,
+   "merely-tot": 121,
    "specification-and-proof": 17,
    "unclassified": 17,
    "w3c-refinement": 11
   }
  },
- "commit": "970d2178b"
+ "commit": "7205cca96"
 }
