@@ -74,9 +74,16 @@ a green test run.
 - **Spec/engine decoupling.** The port keeps the SPECIFICATION
   evaluator: list scans, left-to-right BGP extension, nested-loop
   join. The F\* engine's index seam (`graph_store`/`RDF.Indexed`),
-  selectivity planner (`choose_best_tp`), keyed hash join, fuel
-  bounds, and tail-recursion (`*_tr`) rewrites are performance
-  machinery over this same semantics and are deliberately not ported.
+  selectivity planner (`choose_best_tp`), fuel bounds, and
+  tail-recursion (`*_tr`) rewrites are performance machinery over
+  this same semantics and are not ported. The keyed hash join IS
+  ported (2026-08-25): `hashJoin` / `evalBgpIdx` in `Algebra.lean`
+  bucket by the canonicalised key `Term.joinKey` (the
+  `join_canon_term` counterpart, `RDF/Core.lean`), and
+  `SPARQL/IndexedEvalRefinement.lean` proves each LIST-equal to its
+  spec twin (`hashJoin_eq_join`, `evalBgpIdx_eq_evalBgp`);
+  `GraphPattern.evalIn` runs the indexed pair through those
+  equalities, and the spec pair remains the statement of record.
 - **Filter conditions are `Binding → Bool`** in `Algebra.lean`. The
   expression stage (`Expr.lean`) supplies the real thing through
   `Expr.toCond : Expr → Binding → Bool` and the wrappers

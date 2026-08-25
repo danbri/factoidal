@@ -12,13 +12,16 @@ Port of the corresponding sections of
     `minus`, filter).
 
 What is deliberately NOT ported here (with why):
-  * the `graph_store`/`RDF.Indexed` seam, index-driven candidate
-    search, the `choose_best_tp` selectivity planner, and the keyed
-    hash join — engine PERFORMANCE machinery. This file is the
-    SPECIFICATION-level evaluator: `evalTP` scans the graph list, the
-    BGP evaluator takes patterns left-to-right, `join` is the
-    nested-loop compatible-merge. (The F* source's own banner frames
-    the hash join as an optimisation over exactly this semantics.)
+  * the `graph_store`/`RDF.Indexed` seam and the `choose_best_tp`
+    selectivity planner — engine PERFORMANCE machinery. The
+    SPECIFICATION-level evaluator is still here and still the spec:
+    `evalTP` scans the graph list, the BGP evaluator takes patterns
+    left-to-right, `join` is the nested-loop compatible-merge. The
+    keyed hash join and the per-pattern graph bucketing ARE ported
+    (2026-08-25, the "Hash-indexed evaluation" section below), each
+    proved list-equal to its spec twin in
+    `SPARQL/IndexedEvalRefinement.lean`; `GraphPattern.evalIn` runs
+    the indexed path through those equalities.
   * the SPARQL expression language (`expr`, `eval_expr`, effective
     boolean value). `Filter`/`LeftJoin` conditions are abstracted as
     `Graph → Binding → Bool` — the shape §18.5 needs from a filter,
@@ -55,6 +58,7 @@ mapping, compatibility, merge) rather than implementation jargon.
 -/
 import L4Factoidal.RDF.Graph
 import L4Factoidal.SPARQL.PropertyPath
+import Std.Data.HashMap
 
 namespace L4Factoidal.SPARQL
 
@@ -391,6 +395,193 @@ def leftJoin (omega1 omega2 : SolutionSeq) (cond : Binding → Bool) :
       else none)
     if extended.isEmpty then [mu1] else extended)
 
+/-! ## Hash-indexed evaluation — the performance path
+
+The functions above (`join`, `evalBgp`) are the §18.5/§18.3
+SPECIFICATION: nested-loop join, per-row graph scans. The functions in
+this section are what `GraphPattern.evalIn` actually runs: a hash join
+keyed on the shared always-bound variables, and a BGP step that
+buckets the graph once per triple pattern instead of scanning it once
+per row. Each is proved EQUAL — as a list, order included — to its
+specification twin in `SPARQL/IndexedEvalRefinement.lean`
+(`hashJoin_eq_join`, `evalBgpIdx_eq_evalBgp`); that equality is what
+licenses the wiring. The plain functions remain the spec, and every
+theorem about them transfers across the equality.
+
+Keys are canonicalised with `Term.joinKey` (RDF/Core.lean) because row
+compatibility is `Term.eqb`, which is coarser than structural
+equality (language-tag case, XMLLiteral c14n);
+`Term.joinKey_eq_of_eqb` is the bridge. A bucket probe still runs the
+FULL compatibility (or `tpMatch`) test on every candidate, so the key
+only ever has to be sound (eqb-compatible rows share a key), never
+complete. -/
+
+/-- Group a list into buckets by key. Buckets accumulate REVERSED
+(cons is O(1)); `bucketOf` reads them back in original order. -/
+def groupByKeyAux {κ α : Type} [BEq κ] [Hashable κ] (key : α → κ) :
+    List α → Std.HashMap κ (List α) → Std.HashMap κ (List α)
+  | [], m => m
+  | a :: rest, m =>
+      groupByKeyAux key rest (m.insert (key a) (a :: m.getD (key a) []))
+
+def groupByKey {κ α : Type} [BEq κ] [Hashable κ] (key : α → κ)
+    (l : List α) : Std.HashMap κ (List α) :=
+  groupByKeyAux key l ∅
+
+/-- The bucket for `k`, in the grouped list's original order
+(`bucketOf_groupByKey`: it IS `l.filter (key · == k)`). -/
+def bucketOf {κ α : Type} [BEq κ] [Hashable κ]
+    (m : Std.HashMap κ (List α)) (k : κ) : List α :=
+  (m.getD k []).reverse
+
+/-- The canonicalised key of `mu` over `kvs`; `none` when `mu` leaves
+one of them unbound. -/
+def Binding.hashKey? : List VarName → Binding → Option (List Term)
+  | [], _ => some []
+  | v :: vs, mu =>
+      match mu.lookup v with
+      | none => none
+      | some t =>
+          match Binding.hashKey? vs mu with
+          | none => none
+          | some ts => some (t.joinKey :: ts)
+
+/-- The variables a hash join may key on: those of the first left
+row's domain that EVERY row of both sides binds. A solution sequence
+with heterogeneous domains (an OPTIONAL result) keeps a variable out
+of the KEY rather than out of the join — a row missing a key variable
+is compatible with rows in every bucket, so such a variable cannot
+partition the probe. -/
+def joinKeyVars (o1 o2 : SolutionSeq) : List VarName :=
+  match o1 with
+  | [] => []
+  | mu :: _ =>
+      mu.domain.filter (fun v =>
+        o1.all (fun m => (m.lookup v).isSome) &&
+        o2.all (fun m => (m.lookup v).isSome))
+
+/-- The keyed core of the hash join: bucket Ω2 on the key ONCE, probe
+with each μ1's key. The per-row `none` fallback (a μ1 missing a key
+variable) scans Ω2 as the nested loop would; `joinKeyVars` makes it
+unreachable, but the function stays total without that argument. -/
+def hashJoinKeyed (kvs : List VarName) (omega1 omega2 : SolutionSeq) :
+    SolutionSeq :=
+  let idx := groupByKey (Binding.hashKey? kvs) omega2
+  omega1.flatMap (fun mu1 =>
+    (match Binding.hashKey? kvs mu1 with
+     | none => omega2
+     | some k => bucketOf idx (some k)).filterMap (fun mu2 =>
+      if mu1.compatible mu2 then some (mu1.merge mu2) else none))
+
+/-- Join(Ω1, Ω2) by hash: equal to `join` as a list — same rows, same
+order (`hashJoin_eq_join`). With no usable key variable (a cross
+product, or heterogeneous domains throughout) it IS the nested-loop
+`join`. -/
+def hashJoin (omega1 omega2 : SolutionSeq) : SolutionSeq :=
+  match joinKeyVars omega1 omega2 with
+  | [] => join omega1 omega2
+  | v :: vs => hashJoinKeyed (v :: vs) omega1 omega2
+
+/-! ### The indexed BGP step
+
+`evalBgpFrom` scans the whole graph once per row per pattern. The
+indexed twin buckets the graph once per PATTERN, keyed on the
+positions the current rows pin — a constant in the pattern, or a
+variable the rows already bind — and probes per row. -/
+
+/-- The key a subject position pins under μ: a constant in the
+pattern, or the value μ binds its variable to. `none` when the
+position stays free. (A triple-term subject pattern matches nothing,
+so it keys nothing.) -/
+def PatternSubject.resolveKey (ps : PatternSubject) (mu : Binding) :
+    Option Term :=
+  match ps with
+  | .iri i            => some (.iri i)
+  | .bnode b          => some (.bnode b)
+  | .tripleTerm _ _ _ => none
+  | .var v            => mu.lookup v
+
+/-- Likewise for a predicate or object position. A triple-term
+PATTERN is treated as free (it recursively binds, so it pins no single
+key); a constant of the wrong kind for its position (a literal
+predicate, say) still yields a key, soundly — it simply names a bucket
+no data triple's key equals. -/
+def PatternTerm.resolveKey (pt : PatternTerm) (mu : Binding) :
+    Option Term :=
+  match pt with
+  | .iri i            => some (.iri i)
+  | .bnode b          => some (.bnode b)
+  | .literal l        => some (.literal l)
+  | .tripleTerm _ _ _ => none
+  | .var v            => mu.lookup v
+
+/-- Which of a pattern's three positions the index keys on. -/
+structure TpMask where
+  s : Bool
+  p : Bool
+  o : Bool
+
+/-- A data triple's key at the masked positions (canonicalised). -/
+def tripleKey (m : TpMask) (t : Triple) : List Term :=
+  (if m.s then [t.s.toTerm.joinKey] else []) ++
+  (if m.p then [(Term.iri t.p).joinKey] else []) ++
+  (if m.o then [t.o.joinKey] else [])
+
+/-- One masked component of a probe key: `some []` when the position
+is not keyed, `some [key]` when it is keyed and μ pins it, `none` when
+it is keyed but μ does not pin it (then this row must scan). -/
+def maskedKey (on : Bool) (resolved : Option Term) : Option (List Term) :=
+  if on then resolved.map (fun c => [c.joinKey]) else some []
+
+/-- The key μ probes the index with; `none` sends the row to the
+unindexed scan. -/
+def probeKey? (m : TpMask) (tp : TriplePattern) (mu : Binding) :
+    Option (List Term) :=
+  match maskedKey m.s (tp.s.resolveKey mu) with
+  | none => none
+  | some ks =>
+      match maskedKey m.p (tp.p.resolveKey mu) with
+      | none => none
+      | some kp =>
+          match maskedKey m.o (tp.o.resolveKey mu) with
+          | none => none
+          | some ko => some (ks ++ kp ++ ko)
+
+/-- `evalTP` against a pre-bucketed graph (`evalTPIdx_eq`: same list
+for the index built by `groupByKey (tripleKey m) g`). -/
+def evalTPIdx (m : TpMask) (idx : Std.HashMap (List Term) Graph)
+    (g : Graph) (tp : TriplePattern) (mu : Binding) : SolutionSeq :=
+  match probeKey? m tp mu with
+  | none => evalTP tp g mu
+  | some k => (bucketOf idx k).filterMap (fun t => tpMatch tp t mu)
+
+/-- One BGP step over a whole row set: bucket the graph ONCE on the
+positions the first row pins, then probe per row. Rows from a common
+seed all share a domain, so the first row's mask fits every row; a row
+it does not fit falls back to the scan inside `evalTPIdx`. -/
+def evalBgpStepIdx (tp : TriplePattern) (g : Graph)
+    (rows : SolutionSeq) : SolutionSeq :=
+  match rows with
+  | [] => []
+  | mu0 :: _ =>
+      let m : TpMask := { s := (tp.s.resolveKey mu0).isSome
+                        , p := (tp.p.resolveKey mu0).isSome
+                        , o := (tp.o.resolveKey mu0).isSome }
+      if m.s || m.p || m.o then
+        let idx := groupByKey (tripleKey m) g
+        rows.flatMap (evalTPIdx m idx g tp)
+      else
+        rows.flatMap (evalTP tp g)
+
+def evalBgpRowsIdx (g : Graph) : Bgp → SolutionSeq → SolutionSeq
+  | [], rows => rows
+  | tp :: rest, rows => evalBgpRowsIdx g rest (evalBgpStepIdx tp g rows)
+
+/-- eval(BGP) by index — `evalBgpIdx_eq_evalBgp`: the same list
+`evalBgp` returns. -/
+def evalBgpIdx (b : Bgp) (g : Graph) : SolutionSeq :=
+  evalBgpRowsIdx g b [Binding.empty]
+
 /-! ## VALUES — SPARQL 1.1 §10.2 / §18.6
 
 `VALUES (?x ?y) { (1 2) (3 UNDEF) }` is inline data: each row becomes
@@ -575,7 +766,10 @@ def bindRowsFresh (binder : Binding → Option Term) (v : VarName) :
 def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
     SolutionSeq :=
   match p with
-  | .bgp b          => evalBgp b active
+  -- Wired to the indexed twin; `evalBgpIdx_eq_evalBgp`
+  -- (IndexedEvalRefinement.lean) proves it returns exactly `evalBgp
+  -- b active`, so the spec-level reading of this arm is unchanged.
+  | .bgp b          => evalBgpIdx b active
   -- SERVICE ?v on the RIGHT of a join: evaluate the left side first,
   -- then dispatch each row to the endpoint that row's binding names.
   -- Port of the F* `GP_Join p1 (GP_ServiceVar ...)` arm.
@@ -600,8 +794,12 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
                   if mu.compatible mu1 then some (mu.merge mu1) else none)
             | none => if silent then [mu] else []
         | _ => if silent then [mu] else [])
+  -- Wired to the hash join; `hashJoin_eq_join`
+  -- (IndexedEvalRefinement.lean) proves it returns exactly the
+  -- nested-loop `SPARQL.join` of the two operands, list order
+  -- included.
   | .join l r       =>
-      SPARQL.join (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+      SPARQL.hashJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
   | .leftJoin l r c =>
       SPARQL.leftJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
         (c active)

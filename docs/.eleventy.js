@@ -76,6 +76,11 @@ module.exports = function(eleventyConfig) {
   // so renaming either one breaks loading in every runtime.
   eleventyConfig.addPassthroughCopy("web/hub/assets/l4");
 
+  // Pass-through the COTTAS demo corpus (hub post 42's fixture: a
+  // 4,000-triple, four-graph TriG corpus, and the generator script
+  // that produced it -- docs/web/hub/assets/data/gen-cottas-corpus.mjs).
+  eleventyConfig.addPassthroughCopy("web/hub/assets/data");
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an

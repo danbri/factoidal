@@ -17,9 +17,12 @@ Design correspondences (F* → Lean 4):
   - `assert_norm (is_iri "...")`           → `rfl` on the decidable check
 
 Deliberately NOT ported (F*-side pragmatics, not data model):
-  - the `join_canon_term` hash-join key canonicaliser (an optimisation
-    seam for the OCaml extraction's hash join);
   - `RDF.Indexed`'s bucket trees (storage pragmatics).
+The `join_canon_term` hash-join key canonicaliser IS ported (2026-08-25,
+as `Literal.joinKey` / `Term.joinKey` at the end of this file): the Lean
+tree now has a hash join (`SPARQL/Algebra.lean`), and its key function
+must identify exactly what `Term.eqb` identifies —
+`Term.joinKey_eq_of_eqb` below is that guarantee.
 The rdf:XMLLiteral exclusive-c14n machinery IS ported — it is part of
 `literalEq`'s semantics, not scaffolding — in `RDF.XmlCanon`.
 -/
@@ -444,5 +447,105 @@ theorem Term.eqb_symm : ∀ (a b : Term), a.eqb b = b.eqb a
 
 theorem Triple.eqb_symm (a b : Triple) : a.eqb b = b.eqb a := by
   simp [Triple.eqb, Subject.eqb_symm a.s b.s, Term.eqb_symm a.o b.o, BEq.comm]
+
+/-! ## The hash-join key canonicaliser (port of `join_canon_term`)
+
+A hash join buckets rows by STRUCTURAL equality of a key, but the
+engine joins rows under `Term.eqb`, which is coarser than structural
+equality in exactly two places: language tags compare
+case-insensitively, and `rdf:XMLLiteral` lexical forms compare via
+exclusive canonicalisation. `joinKey` maps every term to a canonical
+representative of its `eqb`-class — tags lowercased, XMLLiteral
+lexical forms canonicalised — so that eqb-equal terms carry
+structurally equal keys (`Term.joinKey_eq_of_eqb`). That is the ONLY
+property the hash join needs of it: a bucket may still hold
+eqb-distinct rows (the probe re-tests compatibility in full), but no
+eqb-compatible row may land in a different bucket. -/
+
+/-- The canonical-representative literal for hash-join keys. -/
+def Literal.joinKey (l : Literal) : Literal :=
+  { lexicalForm := if l.datatype == rdfXMLLiteral
+                   then String.ofList (XmlCanon.canonicalize l.lexicalForm)
+                   else l.lexicalForm
+  , datatype    := l.datatype
+  , langTag     := l.langTag.map String.toLower
+  , direction   := l.direction }
+
+/-- Canonicalising for the join key does not change well-formedness:
+the datatype, the tag's presence, and the direction are untouched. -/
+theorem literalWf_joinKey (l : Literal) : literalWf l.joinKey = literalWf l := by
+  unfold literalWf Literal.joinKey
+  cases l.langTag <;> cases l.direction <;> rfl
+
+/-- eqb-equal literals have identical join keys — the bucket-soundness
+half of the canonicaliser's contract. -/
+theorem Literal.joinKey_eq_of_eqb {l1 l2 : Literal}
+    (h : l1.eqb l2 = true) : l1.joinKey = l2.joinKey := by
+  simp only [Literal.eqb, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨⟨hlex, hdt⟩, htag⟩, hdir⟩ := h
+  have hlex' :
+      (if l1.datatype == rdfXMLLiteral
+       then String.ofList (XmlCanon.canonicalize l1.lexicalForm)
+       else l1.lexicalForm)
+    = (if l2.datatype == rdfXMLLiteral
+       then String.ofList (XmlCanon.canonicalize l2.lexicalForm)
+       else l2.lexicalForm) := by
+    by_cases hx : l1.datatype = rdfXMLLiteral
+    · have hx2 : l2.datatype = rdfXMLLiteral := hdt ▸ hx
+      rw [if_pos (beq_iff_eq.mpr hx), if_pos (beq_iff_eq.mpr hx2)]
+      rw [if_pos ⟨hx, hx2⟩] at hlex
+      simp only [XmlCanon.xmlCanonEq, beq_iff_eq] at hlex
+      rw [hlex]
+    · have hx2 : ¬ l2.datatype = rdfXMLLiteral := fun h2 => hx (hdt.trans h2)
+      rw [if_neg (fun hb => hx (eq_of_beq hb)),
+          if_neg (fun hb => hx2 (eq_of_beq hb))]
+      rw [if_neg (fun hc => hx hc.1)] at hlex
+      exact eq_of_beq hlex
+  have htag' : l1.langTag.map String.toLower = l2.langTag.map String.toLower := by
+    cases h1 : l1.langTag with
+    | none => cases h2 : l2.langTag with
+      | none => rfl
+      | some b => rw [h1, h2] at htag; simp [langTagOptionEq] at htag
+    | some a => cases h2 : l2.langTag with
+      | none => rw [h1, h2] at htag; simp [langTagOptionEq] at htag
+      | some b =>
+          rw [h1, h2] at htag
+          simp only [langTagOptionEq, langTagEq, beq_iff_eq] at htag
+          simp [htag]
+  unfold Literal.joinKey
+  rw [hlex', hdt, htag', hdir]
+
+/-- The canonical-representative term for hash-join keys: literals via
+`Literal.joinKey`, recursively through triple-term objects. -/
+def Term.joinKey : Term → Term
+  | .iri i     => .iri i
+  | .bnode b   => .bnode b
+  | .literal l => .literal ⟨l.val.joinKey, by
+      rw [literalWf_joinKey]; exact l.property⟩
+  | .tripleTerm s p o => .tripleTerm s p o.joinKey
+
+/-- eqb-equal terms have identical join keys: the theorem the hash
+join's bucket lookup rests on. -/
+theorem Term.joinKey_eq_of_eqb : ∀ {a b : Term},
+    Term.eqb a b = true → a.joinKey = b.joinKey := by
+  intro a
+  induction a with
+  | iri i => intro b h; cases b <;> simp_all [Term.eqb, Term.joinKey, Subtype.ext_iff]
+  | bnode x => intro b h; cases b <;> simp_all [Term.eqb, Term.joinKey]
+  | literal l =>
+      intro b h
+      cases b <;> simp only [Term.eqb] at h
+      case literal l2 =>
+        simp only [Term.joinKey, Term.literal.injEq]
+        exact Subtype.ext (Literal.joinKey_eq_of_eqb h)
+      all_goals simp at h
+  | tripleTerm s p o ih =>
+      intro b h
+      cases b <;> simp only [Term.eqb, Bool.and_eq_true, beq_iff_eq] at h
+      case tripleTerm s2 p2 o2 =>
+        obtain ⟨⟨hs, hp⟩, ho⟩ := h
+        simp only [Term.joinKey, Term.tripleTerm.injEq]
+        exact ⟨Subject.eqb_eq hs, hp, ih ho⟩
+      all_goals simp at h
 
 end L4Factoidal.RDF
