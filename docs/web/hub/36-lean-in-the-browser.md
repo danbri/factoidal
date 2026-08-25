@@ -1,6 +1,6 @@
 ---
 title: "Lean 4 in the browser: a second engine on the page"
-description: "The Lean 4 port compiled Lean → C → WebAssembly and run next to the F*-derived engine, on the same data, in the same page — with an exact account of what the Lean side can and cannot do yet."
+description: "The Lean 4 port, compiled Lean → C → WebAssembly, answering the same query as the F*-derived engine in the same page."
 layout: hub.njk
 series: docs-hub
 series_order: 36
@@ -12,57 +12,24 @@ tests: tests/hub/post36_test.mjs
 Every other page in this series runs one engine: the F\* specification,
 extracted to OCaml, compiled to JavaScript. This page runs **two**. The
 second is the [Lean 4 port](https://github.com/danbri/factoidal/issues/466)
-— separate source, separate proof assistant, separate compiler — reaching
-your browser by a completely different road: Lean to C, C to
-WebAssembly.
+— separate source, separate proof assistant, separate compiler —
+compiled Lean → C → wasm32, with Lean's runtime and core library
+rebuilt for wasm32
+([`skills/lean4-wasm-export`](https://github.com/danbri/factoidal/blob/claude/main/skills/lean4-wasm-export/SKILL.md)).
+When the two engines return the same rows, the specification is doing
+the work; when they disagree, one of them has a bug, and it shows here
+rather than in a conformance report.
 
-Two independently written implementations of the same W3C specification,
-answering the same query in the same page, is a much stronger signal than
-either one answering it alone. When they agree, the specification is
-doing the work. When they disagree, one of them has a bug — and you can
-see it here rather than in a conformance report.
-
-## What is actually running
-
-The Lean side is not a re-implementation of the JavaScript engine, and
-it is not a wrapper around it. It is
+The Lean function on this page is
 [`L4Factoidal.SPARQL.evalBgp`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/SPARQL/Algebra.lean)
-— the Basic Graph Pattern evaluator of [SPARQL 1.1
-§18.3](https://www.w3.org/TR/sparql11-query/#BasicGraphPatterns), written
-in Lean with no `sorry`, no `axiom`, no `partial` and no
-`native_decide` — compiled by the Lean compiler to C, and that C
-compiled to wasm32 together with Lean's own runtime.
-
-Getting there needed one piece nobody ships: Lean's runtime and its
-compiled core library exist as native binaries only, so both were
-rebuilt for wasm32 (the recipe is in
-[`skills/lean4-wasm-export`](https://github.com/danbri/factoidal/blob/claude/main/skills/lean4-wasm-export/SKILL.md)).
-The result is a single 1.4 MB `.wasm` that the browser, Node and Deno all
-load — no GMP, no threads, no server.
-
-## Be clear about what this is not
-
-This is phase 1, and the gap is worth stating plainly rather than
-discovering mid-page:
-
-- **The Lean side parses no SPARQL.** There is no query parser in the
-  Lean port yet, so a Basic Graph Pattern arrives as a *table of
-  patterns*, not as a query string. The F\* engine below gets the same
-  query as ordinary SPARQL text, because it has a parser.
-- **The Lean side parses no Turtle or N-Triples.** Data arrives as a
-  table of term objects. The N-Triples/N-Quads reader and a JSON module
-  are in flight on separate branches; when they land, the JSON shim in
-  [`Wasm/Abi.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/Wasm/Abi.lean)
-  gets deleted and these cells start from text on both sides.
-- **Only BGP evaluation is exported.** No `OPTIONAL`, `UNION`,
-  `FILTER`, projection or `ORDER BY` across the wasm boundary yet,
-  though `Algebra.lean` implements the §18.5 operators natively.
-
-So the comparison below is narrow on purpose: the part both engines
-implemented when this page was written. (These three gaps have since
-closed — see the dated update at the end of this page, and
-[post 38](../38-one-triple-at-a-time/) for the wider surface running
-live.)
+— [SPARQL 1.1 §18.3](https://www.w3.org/TR/sparql11-query/#BasicGraphPatterns)
+Basic Graph Pattern matching, written with no `sorry`, no `axiom`, no
+`partial` and no `native_decide`. The cells keep the narrow phase-1
+surface they were written against: patterns and data arrive as term
+tables, because this page predates the Lean parsers. That gap has
+closed — the same wasm module now parses RDF text and full SPARQL, and
+[post 38](../38-one-triple-at-a-time/) runs that wider surface from
+text on both sides.
 
 ## Loading the Lean engine
 
@@ -216,22 +183,12 @@ about its evaluator, the Lean tree carries its own
 proves BGP monotonicity and the merge/lookup characterisation, with
 `#print axioms` in the build log to show nothing was assumed).
 
-## What lands next
+## Status
 
-In dependency order: the [N-Triples/N-Quads
-reader](https://github.com/danbri/factoidal/issues/466) and a JSON
-module, which let both sides start from RDF text; then a SPARQL parser
-on the Lean side, which turns the pattern table above into an actual
-query string; then the §18.5 operators across the wasm boundary, which
-`Algebra.lean` already implements. At that point this page can run the
-W3C test suite twice on one screen.
-
-**Update (2026-08-25):** the gaps listed above have closed. The Lean
-engine now parses N-Triples/N-Quads, Turtle, TriG and RDF/XML, parses
-and evaluates SPARQL query and update, runs the RDFS and OWL 2 RL
-closures, and canonicalizes with RDFC-1.0 — all across the same wasm
-boundary, through a second, generic dispatch entry (`fn.l4Call`). The
-cells on this page keep the phase-1 `bgpQuery` surface they were
-written against; [post 38](../38-one-triple-at-a-time/) walks the
-dispatch surface one call at a time, from a single parsed triple to a
-cross-engine agreement check.
+**Update (2026-08-25):** the phase-1 gaps have closed. The Lean engine
+now parses N-Triples/N-Quads, Turtle, TriG and RDF/XML, parses and
+evaluates SPARQL query and update, runs the RDFS and OWL 2 RL
+closures, and canonicalizes with RDFC-1.0 — all through the same wasm
+module's generic dispatch entry (`fn.l4Call`).
+[Post 38](../38-one-triple-at-a-time/) walks that surface one call at
+a time, ending in a cross-engine agreement check.
