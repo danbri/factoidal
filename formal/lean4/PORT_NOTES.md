@@ -13675,3 +13675,28 @@ requires a non-empty tag — both defects shared by the F\* engine
 behind a lenient runner comparison, issue #577), and the un-suffixed
 `PositiveUpdateSyntaxTest`/`NegativeUpdateSyntaxTest` type names in
 the dispatcher.
+
+## Common Logic + IKL bootstrap (`CL/*.lean`, 2026-08-25)
+
+The first LEAN-FIRST component: there is no F\* original. Owner
+direction (2026-08-25): implement IKL and Common Logic "in parallel
+expressions for both F\* and Lean 4. It is ok to do Lean first." The
+F\* twin is the follow-up item on
+<https://github.com/danbri/factoidal/issues/580>; every `CL` definition
+uses inductive datatypes, structural recursion through explicit list
+helpers, and explicit fuel where recursion is not on a direct suffix,
+so the transcription is mechanical.
+
+| Lean 4 | Source of truth | Notes |
+|---|---|---|
+| `L4Factoidal/CL/Syntax.lean` | ISO/IEC 24707 clause 6.1, Annex A; IKL guide "IKL Overview" | terms/sequences/sentences with IKL `(that S)` as one `Term` constructor; `isPureCL` characterises the ISO/IEC 24707 subset |
+| `L4Factoidal/CL/Clif.lean` | ISO/IEC 24707 Annex A.2.2; IKL guide | CLIF lexer (quoted strings, enclosed names, sequence markers), fuel-bounded S-expression parser and reader, serialiser, 17 round-trip `#guard`s |
+| `L4Factoidal/CL/Semantics.lean` | ISO/IEC 24707 §6.2–6.3; IKL guide + Appendix B | unsegregated-universe interpretations, `Prop`-valued satisfaction, `EntailsUnder`; IKL `iProp` + `IklRespectsThat`, with the cancelling-parentheses law `sat_assert_that` proved |
+| `L4Factoidal/CL/Examples.lean` | IKL guide sentences (transcribed + adapted) | 20 build-time `#guard`s; four satisfaction theorems over a finite interpretation |
+
+Not covered (named in each module header and on the issue):
+`cl:text`/`cl:module`/`cl:imports` and importation semantics,
+`cl:comment`, `/* */` lexical comments, IKL numeric quantifiers and
+special name forms, role sets, datatype/string/number theories,
+propositional identity (`=p`) and the guide's structural axioms, and
+any completeness result.
