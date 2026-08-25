@@ -117,13 +117,29 @@ Readings, with their limits stated:
   [#476](https://github.com/danbri/factoidal/issues/476).
 - Sizes are a wash: all three engines land at 1.1–1.5 MB.
 
-## Not done here (needs Emscripten; this container cannot hold it)
+## Done 2026-08-25 (superseding "Not done here")
 
-Widening the Lean wasm ABI beyond `l4_bgp_query` — Turtle parsing,
-RDFC-1.0 canonicalization, rdfs-core closure, isomorphism check,
-SHA-256 — so hub post 36 (and `factoidal/l4`) can show the breadth of
-`formal/lean4`. Export list, per-export steps, and the build-machine
-requirement are scoped in
-[#476](https://github.com/danbri/factoidal/issues/476). Hub cells must
-NOT call exports the committed wasm lacks (anti-pattern #28), so the
-page grows only when the rebuilt artifact lands with it.
+The section that stood here said the ABI widening needed a build
+machine this container could not hold. Both halves are done:
+Emscripten 6.0.8 runs in the Linux container (first Linux build of
+`build-wasm.sh`, four defects fixed at source — see the commits of
+2026-08-24/25 and `skills/lean4-wasm-export` traps 5–8), and the
+committed module now serves the ten-op dispatch ABI (`l4_call`) behind
+`factoidal/l4-core`, with `@factoidal/lean` as the companion package
+(`npm/factoidal-lean/`, mirrored to `docs/npm/lean/`).
+
+### Size decomposition, measured 2026-08-25 (M1)
+
+| Variant | Bytes | Note |
+|---|---|---|
+| BGP-only surface (targeted imports) | 1,448,306 | the floor: runtime + Init + the BGP closure |
+| Full v1 dispatch surface | 3,510,827 | + five parsers, SPARQL 1.1/1.2 eval + update, four closures, RDFC-1.0 |
+| `import L4Factoidal` umbrella | 4,534,258 | non-functional — its 374-module initializer chain dies under wasm32 |
+
+Decision the table settles: ONE module, no payload split. The v1
+surface costs ~2.1 MB over a ~1.4 MB floor that any split would pay
+per module; the ~8 MB raw budget alarm is far off. Granularity is
+API-level (npm subpaths over one memoised instance); the
+`Wasm/Ops/*.lean` file-per-group layout and the single `l4_call`
+export keep a later split mechanical if a future op group changes the
+economics.
