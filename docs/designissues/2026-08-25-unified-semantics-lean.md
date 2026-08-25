@@ -56,6 +56,52 @@ standardizing-apart; the native tree has the renaming but no named
 merge operation). Stage 1 landed without `DSchema.lean` /
 `unified_adequate_d`, which go with the D-entailment landing.
 
+### D-entailment landing notes (2026-08-25)
+
+`Unified/DSchema.lean` landed (`dSchema`, `unified_adequate_d`, the
+§5.1 separating model). Three notes in the same spirit as 1–4 above:
+
+5. **§4.1 native anchor.** As the parenthetical under the
+   `unified_adequate_d` statement anticipated, the native tree had NO
+   model-theoretic D-entailment: `RDF/Semantics.lean` stops at
+   `SimpleEntailsMt`, and `RDF/EntailmentTheorems.lean` deliberately
+   gives the `literalValueEq` regime variants no soundness theorem.
+   `RDF.DInterpCond` / `RDF.DEntailsMt` are therefore introduced with
+   the landing (in the `RDF` namespace, inside `Unified/DSchema.lean`),
+   as `EntailsUnder` over interpretations that (a) identify literals
+   `literalValueEq D` accepts and (b) exclude `literalIllFormed D`
+   literals from every property extension's object position. This is
+   the fragment of RDF 1.1 Semantics §7 the tree's executable datatype
+   machinery expresses; completeness against the full §7
+   D-interpretation class (value-space structure) is not claimed.
+   `RDF/EntailmentRdfsDatatypeClash.lean`, which §4.1 cites, is the
+   `rdfs:range` clash rule — that is RDFS-regime material and rides
+   with stage 2, not with `dSchema`.
+6. **The decided corollary is deferred, with a machine-checked
+   reason.** The executable anchor `RDF.regimeEntails .d` exists, but
+   the characterisation theorem the simple corollary composed with
+   (`simpleEntails_iff_mt`) has no D analogue, and the correspondence
+   is FALSE without triple-term-freedom hypotheses: the procedure's
+   inconsistency check collects literals inside RDF 1.2 triple terms
+   (`Term.literals` recurses through `tripleTerm`), while both model
+   theories — native `iTt` and the `urn:cl:def:tripleTerm` operator —
+   read a triple term as an uninterpreted function of its components'
+   denotations, so a triple-term-interior ill-typed literal yields no
+   contradiction. `dEntailsMt_tt_gap` plus a `#guard` pin the
+   disagreeing pair. The future corollary needs a native
+   D-interpolation lemma under `GraphTtFree` on both graphs.
+7. **§2.5 quantification domain.** The value-identification rows are
+   stated over literal PAIRS `literalValueEq D` accepts (which covers
+   the cross-datatype numeric chain, e.g. `xsd:integer`/`xsd:int`),
+   not per-datatype lexical-form pairs as §2.5's wording suggests —
+   matching what `Regime.literalEq` actually decides with. The
+   exclusion rows stay silent about ill-typed terms beyond the
+   exclusion itself, as §5.1 requires; the separating model
+   (`dSepInterp`, satisfies value identification + the translated
+   ill-typed graph, refutes the exclusion axiom) is in
+   `Unified/DSchema.lean` next to the schema rather than in
+   `Witnesses.lean`.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from

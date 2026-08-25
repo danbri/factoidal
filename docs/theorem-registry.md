@@ -2496,9 +2496,30 @@ theorem: `propext`, `Classical.choice`, `Quot.sound` only.
 | `dataset_decoration_asserts_nothing` — a named-graph-only dataset does NOT entail its named graph's content (RDF 1.1 Concepts §4: datasets carry no entailment semantics) | `Unified/Witnesses.lean` | separating model `namesOnlyInterp` | ✅ PROVED (2026-08-25) — refutation witness | concrete `decorationDataset` |
 | `rdfToTheory_satisfiable` / `datasetToTheory_satisfiable`, `unified_entails_not_everything`, `unified_entails_instance`, `propAlphaInvariant_satisfiable` / `_entails_not_everything` / `alphaKeyed_distinguishes` | `Unified/Witnesses.lean` | `RDF/SemanticsHypothesisWitness.lean` discipline | ✅ PROVED (2026-08-25) | non-vacuity guards: every stage 1 relation shown neither empty nor the everything-relation |
 
-NOT claimed at stage 1: D-entailment (`unified_adequate_d`,
-`DSchema.lean` — design doc §4.1, deferred to its own landing), any
-RDFS/OWL/SPARQL row (stages 2+), and the N-Quads round-trip corollary
+D-entailment landing (2026-08-25, `Unified/DSchema.lean`): the
+datatype-map schema `dSchema D` (value identification via
+`RDF.literalValueEq D` + ill-typed exclusion via
+`RDF.literalIllFormed D`, design doc §2.5/§5.1) and the native
+model-theoretic anchor `RDF.DInterpCond` / `RDF.DEntailsMt`
+(`EntailsUnder` over the D-interpretations), introduced in the same
+module because the native tree had none — `RDF/EntailmentTheorems.lean`
+deliberately gives the `literalValueEq` regime variants no soundness
+theorem. Axiom audit on every row below: `propext`,
+`Classical.choice`, `Quot.sound` only.
+
+| Theorem | Module | Native anchor | Status | Fragment / hypotheses |
+|---|---|---|---|---|
+| `unified_adequate_d` — `EntailsSchema condTrue (dSchema D) [rdfToTheory g] (rdfToTheory h) ↔ RDF.DEntailsMt D g h` | `Unified/DSchema.lean` | `RDF.DEntailsMt` (introduced there; design doc §4.1's parenthetical) | ✅ PROVED (2026-08-25) — full iff | NONE — no side condition, any `D`, any graphs |
+| `unified_d_illtyped_entails_all` / `dEntailsMt_illtyped` — a premise with an ill-typed recognised literal in object position entails everything (RDF 1.1 Semantics §7.2) | `Unified/DSchema.lean` | `RDF.literalIllFormed`; verdict agreement with `RDF.Regime.inconsistent` pinned by `#guard` | ✅ PROVED (2026-08-25) | literal at top-level object position (NOT triple-term interior — see the gap row) |
+| `dValueSchema_alone_insufficient` + `dSchema_exclusion_does_work` — the §5.1 separating model: `dSepInterp` satisfies the whole value-identification half plus the translated ill-typed graph and refutes the exclusion axiom, so value identification alone does not give the §7.2 everything-verdict and the exclusion rows do | `Unified/DSchema.lean` | separating model `dSepInterp` | ✅ PROVED (2026-08-25) — exclusion-schema non-redundancy | concrete witness `dBadGraph` (`"yes"^^xsd:boolean`) |
+| `dEntailsMt_value_instance` / `unified_d_value_instance` / `dNum_not_simple` — `"1"^^xsd:integer` D-entails `"01"^^xsd:integer` in the same triple, and simple entailment refutes the pair: D strictly extends simple | `Unified/DSchema.lean` | `RDF.literalValueEq`, `RDF.simpleEntails_iff_mt` | ✅ PROVED (2026-08-25) | concrete witness pair `dNumG`/`dNumH` |
+| `noRel_satisfiesSchema_d`, `dSchema_entails_not_everything`, `noExt_dCond`, `dEntailsMt_not_everything` | `Unified/DSchema.lean` | `RDF/SemanticsHypothesisWitness.lean` discipline | ✅ PROVED (2026-08-25) | non-vacuity guards: schema and condition bundle satisfiable for every `D`; neither relation is the everything-relation |
+| DECIDED COROLLARY NOT CLAIMED — `RDF.regimeEntails .d` exists but has no native model-theory characterisation (the D analogue of `simpleEntails_iff_mt` does not exist), and the correspondence FAILS without `GraphTtFree`: the procedure's inconsistency check recurses into RDF 1.2 triple-term interiors (`Term.literals`) while the model theory reads triple terms as uninterpreted — `dEntailsMt_tt_gap` refutes a pair the procedure accepts (`#guard`) | `Unified/DSchema.lean` | `RDF.regimeEntails .d` | ⬜ GAP, machine-checked witness `dTtGraph` | future work: native D-interpolation lemma under `GraphTtFree` |
+
+NOT claimed at stage 1: any RDFS/OWL/SPARQL row (stages 2+ —
+`rdfSchema`'s rdfD2 typing rows and the `rdfs:range` clash rule of
+`RDF/EntailmentRdfsDatatypeClash.lean` ride with stage 2, not with
+`dSchema`), and the N-Quads round-trip corollary
 (blocked on the general parser round-trip theorem,
 [#576](https://github.com/danbri/factoidal/issues/576) — the native
 theorem exists only for the empty graph).
