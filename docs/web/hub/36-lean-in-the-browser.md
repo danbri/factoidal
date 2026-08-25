@@ -17,11 +17,16 @@ compiled Lean → C → wasm32, with Lean's runtime and core library
 rebuilt for wasm32
 ([`skills/lean4-wasm-export`](https://github.com/danbri/factoidal/blob/claude/main/skills/lean4-wasm-export/SKILL.md)).
 Both engines below parse the same Turtle text and answer the same
-SPARQL text, through `fn.l4Call(op, args)` — the generic dispatch
-wrapper into
-[`Wasm/Dispatch.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/Wasm/Dispatch.lean).
-When the two engines return the same rows, the specification is doing
-the work; when they disagree, one of them has a bug, and it shows here
+SPARQL text, through typed wrappers with the same shape on each side:
+`fn.l4Parse`/`fn.l4Query` for Lean, `fn.parse`/`fn.query` for F\*.
+The Lean wrappers hold the parsed data as a HANDLE inside the wasm
+module rather than as N-Quads text passed back and forth
+([issue #585](https://github.com/danbri/factoidal/issues/585)) —
+`fn.l4Parse` calls `datasetOpen` once in
+[`Wasm/Ops/Handles.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/Wasm/Ops/Handles.lean)
+and every later `fn.l4Query` call carries only that handle. When the
+two engines return the same rows, the specification is doing the
+work; when they disagree, one of them has a bug, and it shows here
 rather than in a conformance report.
 
 ## Loading the Lean engine
@@ -63,19 +68,18 @@ NAME_AGE_QUERY = `
 
 ## Lean parses it and answers it
 
-`parseToDatasetJson` parses the Turtle; `queryDataset` runs the SPARQL
-SELECT over the parsed dataset. Both are dispatch ops on the same wasm
-module `leanVersion` came from.
+`fn.l4Parse` parses the Turtle into a dataset handle; `fn.l4Query` runs
+the SPARQL SELECT against that handle. Same two-step shape as the F\*
+cells below — parse once into a dataset, query the dataset.
 
 ```observable-js
-leanParsed = fn.l4Call("parseToDatasetJson", [PEOPLE_TTL, "turtle", ""])
+leanDataset = fn.l4Parse(PEOPLE_TTL)
 ```
 
 ```observable-js
 leanNameAge = {
-  const r = await fn.l4Call("queryDataset", [leanParsed.nquads, NAME_AGE_QUERY]);
-  return r.srj.results.bindings.map((b) =>
-    Object.fromEntries(Object.entries(b).map(([k, t]) => [k, t.value])));
+  const rows = await fn.l4Query(leanDataset, NAME_AGE_QUERY);
+  return rows.map((m) => Object.fromEntries([...m].map(([k, t]) => [k, t.value])));
 }
 ```
 
@@ -126,10 +130,7 @@ ASK_QUERY = `ASK { ?s <${EX}age> ?a . FILTER(?a > 25) }`
 ```
 
 ```observable-js
-leanAsk = {
-  const r = await fn.l4Call("queryDataset", [leanParsed.nquads, ASK_QUERY]);
-  return r.boolean;
-}
+leanAsk = fn.l4Query(leanDataset, ASK_QUERY)
 ```
 
 ```observable-js
@@ -156,6 +157,8 @@ proves BGP monotonicity and the merge/lookup characterisation, with
 The Lean engine parses N-Triples/N-Quads, Turtle, TriG and RDF/XML,
 parses and evaluates SPARQL query and update, runs the RDFS and OWL 2
 RL closures, and canonicalizes with RDFC-1.0 — all through the wasm
-module's generic dispatch entry, `fn.l4Call`, exercised above.
-[Post 38](../38-one-triple-at-a-time/) walks that surface one call at
-a time, ending in its own cross-engine agreement check.
+module's dispatch entry, reached above through the typed
+`fn.l4Parse`/`fn.l4Query` wrappers over `datasetOpen`/`datasetQuery`.
+[Post 38](../38-one-triple-at-a-time/) drives the same dispatch
+surface directly, one call at a time through `fn.l4Call`, ending in
+its own cross-engine agreement check.

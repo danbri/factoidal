@@ -27,10 +27,54 @@ const L4_WASM = new URL('../../docs/web/hub/assets/l4/l4factoidal.wasm', import.
 const factoidal = (await import(NPM_FACTOIDAL_INDEX)).default;
 const { loadL4 } = await import(L4_LOADER.href);
 
+// Node twin of docs/_includes/hub.njk's L4Dataset/srjTermToFn, needed
+// for this post's closing "typed surface" cell (issue #585, page-level
+// half) — see tests/hub/post36_test.mjs's copy of the same pair.
+function srjTermToFn(t) {
+  if (t.type === 'uri') return { termType: 'NamedNode', value: t.value };
+  if (t.type === 'bnode') return { termType: 'BlankNode', value: t.value };
+  const language = t['xml:lang'] || '';
+  const datatype = t.datatype
+    || (language ? 'http://www.w3.org/1999/02/22-rdf-syntax-ns#langString'
+                 : 'http://www.w3.org/2001/XMLSchema#string');
+  return { termType: 'Literal', value: t.value, language, datatype: { termType: 'NamedNode', value: datatype } };
+}
+
+class L4Dataset {
+  constructor(engine, handle, count) {
+    this._engine = engine;
+    this._handle = handle;
+    this._count = count;
+  }
+  get size() { return this._count; }
+  get handle() { return this._handle; }
+  toNQuads() { return this._engine.call('datasetSerialize', [this._handle, 'nquads']).nquads; }
+}
+
 let l4Promise = null;
 const l4api = {
   loadL4: () => (l4Promise ??= loadL4()),
   l4Call: async (op, args) => (await l4api.loadL4()).call(op, args),
+  l4Parse: async (text, options) => {
+    const opts = options || {};
+    const engine = await l4api.loadL4();
+    const r = engine.call('datasetOpen', [text, opts.format || 'turtle', opts.baseIRI || '']);
+    return new L4Dataset(engine, r.handle, r.count);
+  },
+  l4Query: async (dataset, sparql) => {
+    const r = dataset._engine.call('datasetQuery', [dataset.handle, sparql]);
+    if (r.kind === 'ask') return !!r.boolean;
+    if (r.kind === 'select') {
+      const rows = (r.srj.results && r.srj.results.bindings) || [];
+      return rows.map((row) => {
+        const map = new Map();
+        for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+        return map;
+      });
+    }
+    if (r.kind === 'construct') return r.nquads;
+    throw new Error(`l4Query: unexpected result kind "${r.kind}"`);
+  },
 };
 
 // The page's `fn`: the npm package, with the Lean dispatch layered on.
@@ -47,8 +91,8 @@ const cells = extractObservableCells(POST_FILE);
 
 const post = () => runReactivePost(cells, { fn, pretty });
 
-test('post38: post has 16 live cells', () => {
-  assert.equal(cells.length, 16, `expected 16 live cells, found ${cells.length}`);
+test('post38: post has 17 live cells', () => {
+  assert.equal(cells.length, 17, `expected 17 live cells, found ${cells.length}`);
 });
 
 test('post38: the committed wasm artifact exists and is a real module', () => {
@@ -123,6 +167,14 @@ test('post38 cell "changed graph": one changed predicate breaks canonical equali
   const c = await post().value('changedGraph');
   assert.equal(c.identicalToA, false);
   assert.match(c.canonicalC, /likes/);
+});
+
+test('post38 cell "typed surface": fn.l4Parse/fn.l4Query reproduce the earlier join', async () => {
+  const rows = await post().value('typedJoin');
+  assert.deepEqual(
+    rows.map((r) => `${r.s.split('/').pop()}/${r.n}/${r.a}`).sort(),
+    ['alice/Alice/30', 'bob/Bob/24'],
+  );
 });
 
 test('post38 cell "the F* engine": the same join from the same bytes', async () => {

@@ -282,6 +282,26 @@ agreement = {
 }
 ```
 
+## A typed surface over the same dispatch
+
+Every call above went through `fn.l4Call(op, args)` — the raw dispatch,
+walked deliberately one op at a time so this page shows the ABI itself.
+A typed layer sits over the same dispatch: `fn.l4Parse`/`fn.l4Query`,
+the wrappers [post 36](../36-lean-in-the-browser/) uses, backed by the
+same dataset-handle ABI (`Wasm/Ops/Handles.lean`,
+[issue #585](https://github.com/danbri/factoidal/issues/585)) instead
+of the stateless `parseToDatasetJson`/`queryDataset` ops. It reproduces
+`bothPeople`'s join from the exact same bytes.
+
+```observable-js
+typedJoin = {
+  const ds = await fn.l4Parse(afterInsert.nquads, { format: "nquads" });
+  const rows = await fn.l4Query(ds,
+    `SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`);
+  return rows.map((m) => Object.fromEntries([...m].map(([k, t]) => [k, t.value])));
+}
+```
+
 ## What the agreement means
 
 Every answer above the last cell was computed by one engine; the last
