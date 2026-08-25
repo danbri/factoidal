@@ -297,6 +297,28 @@ import `npm/factoidal`/`lib/api.js` directly — the browser entry
 (`browser.js`/`fn.js`/`index.d.ts` under `npm/factoidal/`, mirrored to
 `docs/npm/factoidal/`) is the only shared surface.
 
+### Trap: `*/` inside a `fn`-wrapper JSDoc comment breaks EVERY post
+
+`hub.njk`'s `fn` object and its supporting functions live inside ONE
+inline `<script type="module">` block that every hub post's page
+shares. A JS block comment (`/** ... */`) closes at the FIRST `*/` it
+contains — same trap as F*'s nesting `(* ... *)` comments (CLAUDE.md's
+"F\* Syntax Traps"), except a JS block comment does not nest at all,
+so it is even easier to trip. Writing a glob-ish name like `rhoDf*/
+sigmoid` inside a doc comment (post 42's `toCottas`/`openCottas`
+wrapper, 2026-08-25) closes the comment right there; every line after
+it becomes literal top-level code, and the whole shared script fails
+to parse with a generic `Unexpected token '*'` — on EVERY post's page,
+not just the one being edited, since they all load the same script.
+Two fixes, either is enough: write the name without the slash
+(`rhoDf-family`, not `rhoDf*/`), or use `//` line comments instead of
+`/** */` for prose that might contain `*/`. Verify a hub.njk edit by
+extracting the ACTUAL rendered `<script type="module">…</script>`
+block from a built page (anchor on the line that is exactly
+`<script type="module">`, not a textual mention of that string inside
+the CSP `<!-- -->` comment near the top of the file — an easy
+false-negative) and running `node --check` on it.
+
 ### The `pretty()` rendering option
 
 Every cell can return raw arrays/objects and let the Inspector render

@@ -766,6 +766,39 @@ const fn = {
     });
   },
   /**
+   * In-memory COTTAS/Parquet bytes store (post 42; issue #595's
+   * persistence program; docs/designissues/2026-07-06-inmemory-bytes-
+   * store.md). Thin fn-shape wrappers over Factoidal.toCottas/
+   * openCottas/queryCottas/closeCottas (npm/factoidal/browser.js,
+   * already exported there) -- no fn wrapper existed until post 42
+   * called one, same masked-fn-surface class as the rhoDf-family and
+   * sigmoid gaps above (the node test harness can't see a missing browser-
+   * layer wrapper; only a live cell on a real post exposes it). This
+   * is the browser tier of the same reader/writer the CLI's
+   * `--data-cottas`/`--data-cottas-mem` serves on disk
+   * (skills/disk-storage-format/SKILL.md §6): bytes held in the wasm
+   * heap instead of a file, read-only, no entailment, no write
+   * overlay -- see Factoidal.queryCottas's own doc comment in
+   * browser.js for the full divergence list from fn.query().
+   */
+  async toCottas(dataset) { return Factoidal.toCottas(dataset.toNQuads()); },
+  async openCottas(bytes) { return Factoidal.openCottas(bytes); },
+  async queryCottas(handle, sparql) {
+    if (typeof handle !== "string") {
+      throw new TypeError("queryCottas: handle must be the string openCottas() returned");
+    }
+    const r = await Factoidal.queryCottas(handle, sparql);
+    if (r.kind === "ask") return !!r.boolean;
+    if (r.kind === "construct") return new FnDataset(r.nquads);
+    const rows = (r.srj.results && r.srj.results.bindings) || [];
+    return rows.map((row) => {
+      const map = new Map();
+      for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+      return map;
+    });
+  },
+  async closeCottas(handle) { return Factoidal.closeCottas(handle); },
+  /**
    * SPARQL 1.1 §17.6 extension functions (issue #463) + SERVICE
    * endpoint snapshots (issue #57 family) — thin pass-throughs to the
    * browser adapter, which owns the registry + async trampoline.
