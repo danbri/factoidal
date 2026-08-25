@@ -38,21 +38,15 @@
   Function(...)` at runtime (the whole reactive-cell mechanism this
   entire hub is built on). Every script SOURCE is still same-origin
   only in both modes -- no external <script src="https://..."> host is
-  ever allowed, live mode or strict -- WITH ONE NAMED, NARROW
-  EXCEPTION: a post whose own front matter sets
-  `hubAllowRegistryCdn: true` (as of this writing, only post 37,
-  "Installed, not vendored" -- the page whose entire point is running
-  the ACTUAL @factoidal/core code published to the npm registry, not a
-  same-origin mirror of it) gets exactly `https://cdn.jsdelivr.net` and
-  `https://unpkg.com` added to script-src, and ONLY on that post's live
-  twin (hubMode == 'live' AND hubAllowRegistryCdn) -- the strict/
-  default page for that post carries NO such carve-out, so it degrades
-  exactly like every other post's strict page (no third-party code,
-  cells catch the CSP-blocked fetch and render "registry unreachable").
-  This is a deliberate, per-page opt-in, not a loosening of the shared
-  policy -- every other post's script-src stays untouched in both
-  modes, and the two hostnames are the npm-package CDN mirrors
-  themselves, not a general allowance.
+  ever allowed, live mode or strict -- with one named exception: a
+  post whose own front matter sets `hubAllowRegistryCdn: true` (only
+  post 37, "Installed, not vendored", whose point is running the
+  @factoidal/core code published to the npm registry) gets exactly
+  `https://cdn.jsdelivr.net` and `https://unpkg.com` added to
+  script-src and connect-src, in BOTH modes (owner decision,
+  2026-08-25 -- before that the carve-out was live-twin-only and the
+  default page showed "registry unreachable" in every cell). Per-page
+  opt-in; every other post's policy is unchanged.
 
   `frame-ancestors` is deliberately NOT in the policy below: the CSP
   spec requires it be delivered as a real HTTP response header --
@@ -61,7 +55,7 @@
   would just be console noise on every hub page for no enforcement
   gained.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'{% if hubMode == 'live' and hubAllowRegistryCdn %} https://cdn.jsdelivr.net https://unpkg.com{% endif %}; style-src 'self' 'unsafe-inline'; img-src 'self' data:{% if hubMode == 'live' %} https:{% endif %}; connect-src 'self'{% if hubMode == 'live' %} https:{% endif %}{% if hubMode == 'live' and hubAllowRegistryCdn %} https://cdn.jsdelivr.net https://unpkg.com{% endif %}; font-src 'self'; object-src 'none'; base-uri {% if hubMode == 'live' %}'self'{% else %}'none'{% endif %}">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'{% if hubAllowRegistryCdn %} https://cdn.jsdelivr.net https://unpkg.com{% endif %}; style-src 'self' 'unsafe-inline'; img-src 'self' data:{% if hubMode == 'live' %} https:{% endif %}; connect-src 'self'{% if hubMode == 'live' %} https:{% endif %}{% if hubAllowRegistryCdn %} https://cdn.jsdelivr.net https://unpkg.com{% endif %}; font-src 'self'; object-src 'none'; base-uri {% if hubMode == 'live' %}'self'{% else %}'none'{% endif %}">
 <title>{{ title }}{% if hubMode == 'live' %} (live mode){% endif %} — Factoidal</title>
 {% if hubMode == 'live' %}
 <!--
@@ -428,6 +422,15 @@
   and query remote endpoints; the
   <a href="{{ ('/web/hub/' + livePostSlug + '/') | url }}">standard hub</a>
   is fully self-contained (same cells, no network).
+</div>
+{% elif series_order is defined and hubAllowRegistryCdn %}
+<div class="hub-live-banner hub-live-banner-strict" role="note">
+  This page loads the published @factoidal/core package from
+  cdn.jsdelivr.net / unpkg.com — the only external hosts its
+  Content-Security-Policy allows. A
+  <a href="{{ ('/web/hub-live/' + page.fileSlug + '/') | url }}">live mode</a>
+  twin of this same post can also load map tiles and remote SPARQL
+  endpoints.
 </div>
 {% elif series_order is defined %}
 <div class="hub-live-banner hub-live-banner-strict" role="note">
