@@ -387,3 +387,4 @@ import L4Factoidal.CL.Semantics
 import L4Factoidal.CL.Examples
 import L4Factoidal.CL.FiniteSat
 import L4Factoidal.CL.ToRdf
+import L4Factoidal.CL.IklRegime
