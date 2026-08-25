@@ -1,0 +1,917 @@
+# 2026-08-25 — Unified model theory in Lean 4: LBase/IKL over every semantic language in the tree
+
+## Status
+
+Design (Stage 0 of
+[https://github.com/danbri/factoidal/issues/598](https://github.com/danbri/factoidal/issues/598)).
+No code lands with this document. Every Lean signature and theorem
+statement below is a proposal; each one becomes real only in the stage
+that proves it, under that stage's gate.
+
+## 1. Goal and provenance
+
+Owner direction (2026-08-25, verbatim, from
+[https://github.com/danbri/factoidal/issues/598](https://github.com/danbri/factoidal/issues/598)):
+
+> "Do it, with ultimate integration of all the semantic languages we
+> implement here including rdf core semantics, rdfs, rhoDF/rdfscore,
+> owl rl, owl dl tableaux, sparql 1.x, nquads etc. Throw in an lbase
+> and datalog if you like just bind it all together in lean deeply. We
+> want more than previously merely using f+ as a vibe coding
+> functional language. Lean-backed lbase ikl gives a unifying account
+> of w3c logical assertion and querying and logic languages."
+
+### The lineage
+
+**LBase** (R. V. Guha and Patrick Hayes, *LBase: Semantics for
+Languages of the Semantic Web*, W3C Working Group Note, 10 October
+2003, [https://www.w3.org/TR/lbase/](https://www.w3.org/TR/lbase/))
+proposed one first-order base language into which each Semantic Web
+language translates, so that "the model theory of Lbase is the model
+theory of all the Semantic Web Languages" (§2, Outline of Approach).
+Its §3.0 recipe is: a translation procedure per language, a vocabulary
+set, and axioms/axiom schemas that constrain the vocabulary's intended
+meanings; the translation of a graph conjoined with the instantiated
+axioms is the graph's "axiomatic equivalent" A(G). The Note supplies a
+sketch translation table for RDF (§3.0): classes become unary
+predicates, properties binary relations, `rdf:type` becomes predicate
+application, a typed literal `"sss"^^ddd` becomes the term
+`LiteralValueOf('sss', TR[ddd])`, a blank node becomes a variable, and
+an RDF graph becomes "the existential closure of the conjunction of
+the translations of all the triples in the graph." The Note also names
+its own limits (§4.0): no "propositional attitudes or true second
+order constructs". It was never normative, never completed, and
+never machine-checked.
+
+**IKL** (Hayes/Menzel, IKRIS 2006; primary reference the IKL guide,
+[https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html](https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html))
+extends Common Logic (ISO/IEC 24707) with the proposition-forming
+`(that S)` term — exactly the facility LBase §4.0 says LBase lacks.
+This repository already formalizes the ISO/IEC 24707 §6.2/§6.3
+interpretation and satisfaction clauses plus the IKL proposition
+domain in
+[`formal/lean4/L4Factoidal/CL/Semantics.lean`](../../formal/lean4/L4Factoidal/CL/Semantics.lean)
+(tracking
+[https://github.com/danbri/factoidal/issues/580](https://github.com/danbri/factoidal/issues/580)).
+
+### The binding rule
+
+The existing native Lean formalizations — the RDF model theory in
+`RDF/Semantics.lean`, the decision procedures in `RDF/Entailment.lean`,
+the closures in `RDFS/` and `OWL/`, the tableau in `OWL/Tableau.lean`,
+the algebra in `SPARQL/Algebra.lean` — **remain ground truth**. The
+unified theory is the checked common layer above them. At every stage,
+adequacy of the translation is proved **in both directions** against
+the native formalization of that language: the translation-based
+entailment relation and the native relation pick out the same pairs,
+as a Lean theorem with no `sorry`, no user `axiom`, no
+`native_decide`, no `partial`. This is the relation LBase asserted and
+never established: the Note's §3.0 table carries the caveat "this
+should not be referred to as an accurate or normative semantic
+description." Here the accuracy claim is the deliverable.
+
+## 2. The interpretation structure
+
+### 2.1 What is already there
+
+`CL.Interp`
+([`formal/lean4/L4Factoidal/CL/Semantics.lean`](../../formal/lean4/L4Factoidal/CL/Semantics.lean))
+supplies:
+
+* `dom : Type`, `domWit : dom` — one unsegregated universe of
+  discourse (ISO/IEC 24707 §6.2), non-empty;
+* `iName : String → dom` — every name denotes an individual;
+* `iStr : String → dom` — quoted-string denotation;
+* `rel : dom → List dom → Prop` — relation extension over finite
+  sequences (variadic; arity is not fixed anywhere);
+* `fn : dom → List dom → dom` — functional extension;
+* `iProp : Sentence → (String → dom) → (String → List dom) → dom` —
+  the IKL proposition domain: the individual a sentence expresses
+  under a pair of valuations.
+
+The `EntailsUnder (conds : Interp → Prop)` pattern — entailment
+relative to a class of interpretations — is already the extension
+mechanism in both `CL/Semantics.lean` and `RDF/Semantics.lean`.
+
+### 2.2 The extension decision: conditions and schemas
+
+The unified layer adds **no fields** to `CL.Interp`. Each language
+embeds through (a) a translation into `CL.Sentence`, (b) an **axiom
+schema** — a possibly-infinite set of sentences, LBase §2.4 style —
+and (c) where a constraint is not expressible as object-language
+sentences, an interpretation-class condition in the `EntailsUnder`
+bundle. A schema is represented as a set:
+
+```lean
+/-- An axiom schema: a (possibly infinite) set of sentences.
+LBase §2.4 axiom schemes; the rdf:_n families of RDF 1.1 Semantics
+need exactly this. -/
+abbrev Schema := CL.Sentence → Prop
+
+def SatisfiesSchema (i : CL.Interp) (S : Schema) : Prop :=
+  ∀ s, S s → CL.Satisfies i s
+
+def EntailsSchema (conds : CL.Interp → Prop) (S : Schema)
+    (premises : List CL.Sentence) (conclusion : CL.Sentence) : Prop :=
+  ∀ i, conds i → SatisfiesSchema i S →
+    CL.SatisfiesAll i premises → CL.Satisfies i conclusion
+```
+
+Every condition bundle gets a satisfiability witness and a
+non-triviality witness, per the discipline of
+`RDF/SemanticsHypothesisWitness.lean` and the witness section of
+[`formal/lean4/L4Factoidal/OWL/Semantics.lean`](../../formal/lean4/L4Factoidal/OWL/Semantics.lean)
+— a bundle nothing satisfies makes every `EntailsSchema` statement
+vacuous, and a draft theorem with a false hypothesis has verified
+cleanly in this repository before.
+
+### 2.3 How RDF terms embed
+
+Uniform translation of a triple to binary predication, with the
+property term in operator position — legal because CL is unsegregated
+(the same individual has a relation extension via `rel`):
+
+* **IRI** `i : WfIri` → `CL.Term.name i.val`. The IRI string is the
+  name; no encoding.
+* **Literal** `l : WfLiteral` → the functional term
+  `funapp (name "urn:cl:def:literalValueOf") [str lex, name dtIri]`
+  (language-tagged strings carry the tag as a third argument). This
+  is LBase §3.0's `LiteralValueOf('sss', TR[ddd])` made concrete
+  under the `urn:cl:def:` vocabulary that
+  [`formal/lean4/L4Factoidal/CL/ToRdf.lean`](../../formal/lean4/L4Factoidal/CL/ToRdf.lean)
+  already owns. The D-schema (§5.1 below) constrains this operator.
+* **Blank node** → an existentially bound name. Scoping rule, stated
+  precisely: **the closure is taken once, at graph level** — RDF 1.1
+  Semantics §5.2
+  ([https://www.w3.org/TR/rdf11-mt/#simpleentailment](https://www.w3.org/TR/rdf11-mt/#simpleentailment))
+  defines graph satisfaction as "[I+A](G) = true for some mapping A",
+  one assignment for the whole graph, and LBase §3.0 translates a
+  graph as "the existential closure of the conjunction". So
+  `rdfToTheory g` is ONE sentence: `ex (bnode bindings) (conj atoms)`,
+  never one sentence per triple. Consequences, to be proved as
+  stage-1 lemmas:
+  * union with shared labels shares scope:
+    `rdfToTheory (g ++ h)` closes over `graphBnodeIds (g ++ h)` once,
+    which is NOT in general entailment-equivalent to
+    `conj [rdfToTheory g, rdfToTheory h]`;
+  * merge (RDF 1.1 Semantics §4.1: union after standardizing apart)
+    IS: `rdfToTheory (merge g h)` is entailment-equivalent to the
+    conjunction of the two closures. `RDF/DatasetMerge.lean` holds
+    the native standardize-apart machinery.
+
+  Bound-name freshness: bnode bound names use the `_:` spelling by
+  default, and the translation carries a freshness obligation — the
+  chosen bound names are distinct from every IRI string occurring in
+  the graph (an RFC 3986 IRI's scheme starts with a letter, so `_:`
+  never collides with a parsed IRI, but `RDF.isIri` is looser than
+  RFC 3986; the freshness lemma is stated against the graph's actual
+  IRI strings, not against the grammar).
+* **RDF 1.2 triple term** →
+  `funapp (name "urn:cl:def:tripleTerm") [s, p, o]` — an
+  uninterpreted function of the components' denotations, the same
+  reading `RDF.Interp.iTt` gives it. This keeps the embedding total
+  and lets stage 1 avoid the `GraphTtFree` hypotheses where the
+  native tree needs them (`herbrand`'s constant `iTt` is the native
+  quarantine point; the transport constructions in §4.1 carry the
+  component-wise reading instead).
+
+### 2.4 How datasets and named graphs embed
+
+Following the conventions of
+[`formal/lean4/L4Factoidal/CL/ToRdf.lean`](../../formal/lean4/L4Factoidal/CL/ToRdf.lean)
+(propositions are named graphs; the default graph carries
+decorations only) run in the opposite direction, and the
+individuation rule of
+[https://github.com/danbri/factoidal/issues/589](https://github.com/danbri/factoidal/issues/589):
+
+* the **default graph** is asserted: `rdfToTheory ds.default` is a
+  premise;
+* each **named graph** `(n, G)` contributes ONE decoration sentence
+  and asserts nothing about the world:
+  `atom (name "urn:cl:def:names") [term n, that (rdfToTheory G)]` —
+  the graph name denotes an individual standing in the naming
+  relation to the proposition the graph's translation expresses.
+  RDF 1.1 Concepts §4 deliberately gives datasets no entailment
+  semantics; the decoration reading adds none.
+* blank-node scope for a dataset is dataset-wide (RDF 1.1 Concepts
+  §4: blank nodes may be shared between graphs of one dataset), so
+  `datasetToTheory` closes existentially once, over the whole
+  dataset, with the per-graph `that`-terms inside the closure. The
+  proposition a shared-bnode graph expresses then depends on the
+  ambient valuation — which is exactly why `iProp` takes the
+  valuations as arguments (quantifying-in, `CL/Semantics.lean`
+  module header).
+* individuation: `iProp` is keyed on syntax, so proposition identity
+  beyond syntactic identity is a CONDITION, not a structural fact.
+  Stage 1 adds `PropAlphaInvariant : CL.Interp → Prop` (alpha-variant
+  sentences express the same proposition — issue 589's semantic
+  minimum, condition (1)); the stronger `=p` identities stay in the
+  defined relation per issue 589 and are out of scope here.
+* the `x-ikl-*` assertion rule
+  ([`formal/lean4/L4Factoidal/CL/IklRegime.lean`](../../formal/lean4/L4Factoidal/CL/IklRegime.lean)):
+  a default-graph `urn:cl:def:asserts` decoration of a proposition
+  IRI corresponds, on the unified side, to the additional premise
+  `atom (that (rdfToTheory G)) []` — IKL's assertion-as-zero-ary
+  predication, tied to satisfaction by `IklRespectsThat`
+  (`sat_assert_that`). The stage-6 regime theorem makes
+  `IklRegime.extendDataset` adequate against exactly this reading.
+
+### 2.5 Datatype maps
+
+D-interpretations (RDF 1.1 Semantics §7,
+[https://www.w3.org/TR/rdf11-mt/#datatype-entailment](https://www.w3.org/TR/rdf11-mt/#datatype-entailment))
+enter as a schema-plus-condition pair parameterised by the recognised
+set `D : List RDF.WfIri`, reusing the executable lexical-space and
+value-space machinery of `RDF/Datatypes.lean`
+(`literalIllFormed`, `valueInSpace`, `literalValueEq`):
+
+* **value identification** (schema): for recognised `d` and lexical
+  forms `s₁, s₂` with the same value under the tree's
+  lexical-to-value mapping, the sentence
+  `eq (literalTerm s₁ d) (literalTerm s₂ d)` — §7's "literals with
+  the same value are interchangeable", the fact `Regime.literalEq`
+  decides with `literalValueEq D`;
+* **ill-typed exclusion** (schema): for each recognised `d` and each
+  lexical form outside `d`'s lexical space, the sentence
+  `neg (ex [x, r] (atom r [x, literalTerm s d]))` — no true
+  predication holds of the ill-typed literal in object position.
+  §5.5 below records why this encoding (rather than partial
+  denotation) is the decided treatment and what it costs.
+
+## 3. Per-language translation signatures
+
+Signatures only; implementations are the stages' work. Namespace
+`L4Factoidal.Unified` throughout. `RDF`, `RDFS`, `OWL`, `SPARQL`,
+`RIF`, `CL` abbreviate the existing `L4Factoidal.*` namespaces.
+
+```lean
+/-! ## Stage 1 — RDF core + N-Quads -/
+
+/-- A graph as ONE sentence: the existential closure, over the graph's
+blank nodes, of the conjunction of one binary predication per triple
+(LBase §3.0's last row; RDF 1.1 Semantics §5.2 graph satisfaction). -/
+def rdfToTheory (g : RDF.Graph) : CL.Sentence
+
+/-- The Skolem reading: blank nodes as free names, no closure
+(RDF 1.1 Semantics §6). Used by BGP adequacy (stage 6), where answers
+name the graph's own terms. -/
+def rdfToTheorySk (g : RDF.Graph) : CL.Sentence
+
+/-- A dataset: dataset-wide existential closure of the asserted
+default-graph theory plus one `urn:cl:def:names` decoration per named
+graph, the named graph's content under a `that`-term (§2.4). -/
+def datasetToTheory (ds : RDF.Dataset) : CL.Sentence
+
+/-- RDF axiomatic schema: the 8 finite axiomatic triples
+(`RDF/VocabularyAxioms.rdfAxiomaticTriples`), the infinite rdf:_n
+family, and the rdfD2-shaped typing rows for D
+(https://www.w3.org/TR/rdf11-mt/#rdf-entailment). -/
+def rdfSchema (D : List RDF.WfIri) : Schema
+
+/-- D-interpretation schema: value identification + ill-typed
+exclusion (§2.5). -/
+def dSchema (D : List RDF.WfIri) : Schema
+
+/-! ## Stage 2 — RDFS, ρdf, x-rdfscore -/
+
+/-- RDFS axiom schema: the 38 finite RDFS axiomatic triples, the
+rdf:_n container-membership families, and one universally quantified
+sentence per RDFS semantic condition / entailment-rule row of RDF 1.1
+Semantics §9 (https://www.w3.org/TR/rdf11-mt/#rdfs-entailment) —
+e.g. rdfs9 as
+`(forall (x a b) (if (and (rdfs:subClassOf a b) (rdf:type x a))
+                     (rdf:type x b)))`.
+Includes the type-application bridge
+`(forall (x c) (iff (rdf:type x c) (c x)))` — LBase §2's reading of
+rdf:type as predicate application, stated as an axiom rather than a
+translation special case, which CL's unsegregated universe permits. -/
+def rdfsSchema (D : List RDF.WfIri) : Schema
+
+/-- The ρdf sub-schema: exactly the six rule rows of
+`RDFS/Closure.lean` (rdfs2, rdfs3, rdfs5, rdfs7, rdfs9, rdfs11) —
+no axiomatic triples, no reflexivity rows. -/
+def rhoDfSchema : Schema
+
+/-- The x-rdfscore regime's schema: rhoDfSchema (the regime closes
+with `RDFS.closureFix`; `RDFS/RegimeDispatch.lean`). Named separately
+so the regime table (stage 6) can cite it. -/
+def rdfsCoreSchema : Schema
+
+/-! ## Stage 3 — Datalog -/
+
+/-- A Datalog atom over the unified vocabulary: predicate name applied
+to variables/constants. No function symbols in derived positions. -/
+structure DAtom where
+  pred : String
+  args : List DTerm
+
+/-- A rule: definite Horn clause, NO existential variables in the
+head (every head variable occurs in the body). rdfD1's surrogate
+blank nodes are outside this class by construction — the same
+exclusion `RDFS/FullClosure.lean` documents. -/
+structure DRule where
+  head : DAtom
+  body : List DAtom
+
+structure DatalogProgram where
+  rules : List DRule
+
+/-- Rules read as universally closed implications. -/
+def DatalogProgram.toSchema (p : DatalogProgram) : Schema
+
+/-- One materialisation step over a fact set, and the fuel-bounded
+least fixpoint (the shape `RDFS/FixedPoint.lean` and the closures
+already use). -/
+def DatalogProgram.step (p : DatalogProgram) (facts : List DAtom) : List DAtom
+def DatalogProgram.lfp  (p : DatalogProgram) (facts : List DAtom) (fuel : Nat) : List DAtom
+
+/-! ## Stage 4 — OWL 2 RL -/
+
+/-- One universally quantified Horn sentence (or sentence family, for
+the list-valued rows) per OWL 2 RL/RDF rule-table row implemented in
+`OWL/RLRules.lean` (https://www.w3.org/TR/owl2-profiles/#OWL_2_RL,
+Tables 4-9), each carrying its row id. The sentences are the
+object-language counterparts of the `Cond*` interpretation conditions
+of `OWL/Semantics.lean`, and the stage proves that correspondence
+(§4.4). -/
+def owlRlSchema (D : List RDF.WfIri) : Schema
+
+/-! ## Stage 5 — OWL DL, Direct Semantics, the tableau -/
+
+/-- Class expression to open formula with one free name
+(OWL 2 Direct Semantics Table 5,
+https://www.w3.org/TR/owl2-direct-semantics/, restricted to the
+fragment of `OWL/Tableau.lean`: names, Booleans, value restrictions,
+qualified/unqualified cardinality — cardinality via equality and
+pairwise distinctness, both first-order). -/
+def conceptFormula (c : OWL.Concept) (x : String) : CL.Sentence
+
+def assertionSentence  (φ : OWL.Assertion)  : CL.Sentence
+def roleAxiomSentences (R : OWL.RoleAxioms) : List CL.Sentence
+
+/-- The Direct Semantics route: ontology (tableau fragment) straight
+to sentences. This mapping does NOT factor through RDF graphs — see
+§5.3. -/
+def owlDlDirect (R : OWL.RoleAxioms) (A : List OWL.Assertion) : List CL.Sentence
+
+/-! ## RIF Core (in-repo; the issue's "etc.") -/
+
+/-- RIF Core rules as universally closed implications over the same
+triple predications, per the desugaring the RIF/RDF/OWL combination
+specification fixes (https://www.w3.org/TR/rif-rdf-owl/ §5;
+frames/member/subclass to triples as in `RIF/Translation.lean`).
+Positional atoms of arity ≠ 2 reuse `RIF/Translation.lean`'s
+documented encoding. -/
+def rifCoreToTheory (rules : RIF.RuleSet) : List CL.Sentence
+
+/-! ## Stage 6 — SPARQL 1.x -/
+
+/-- A satisfaction query: distinguished variables plus an open body
+sentence (variables as free names under a reserved `?`-prefix
+spelling). -/
+structure UQuery where
+  vars : List SPARQL.VarName
+  body : CL.Sentence
+
+def sparqlBgpToQuery (b : SPARQL.Bgp) : UQuery
+
+/-- The body with a solution mapping applied to its free variables. -/
+def UQuery.instantiate (q : UQuery) (μ : SPARQL.Binding) : CL.Sentence
+
+/-- μ answers q in a theory, under a condition bundle and schema. -/
+def Answers (conds : CL.Interp → Prop) (S : Schema)
+    (premises : List CL.Sentence) (q : UQuery) (μ : SPARQL.Binding) : Prop
+
+/-- A regime string to its schema + condition bundle. Covers the
+W3C-named regimes of `RDF.Entailment.Regime`, the experimental
+x-rdfscore / x-rdfsplus of `RDFS/RegimeDispatch.lean`, and the
+x-ikl-* family of `CL/IklRegime.lean`
+(https://github.com/danbri/factoidal/issues/581). -/
+def regimeToSchema (regime : String) (D : List RDF.WfIri) :
+    Option (Schema × (CL.Interp → Prop))
+```
+
+## 4. Adequacy theorem statements per stage
+
+Statements only, in the form each stage's gate checks. Each names the
+native formalization it is proved against. `Unified.Entails` is
+`CL.Entails`; `EntailsSchema` as in §2.2.
+
+### 4.1 Stage 1 — RDF core + N-Quads
+
+Proved against
+[`formal/lean4/L4Factoidal/RDF/Semantics.lean`](../../formal/lean4/L4Factoidal/RDF/Semantics.lean)
+and, through its `simpleEntails_iff_mt`, against the decision
+procedure of
+[`formal/lean4/L4Factoidal/RDF/Entailment.lean`](../../formal/lean4/L4Factoidal/RDF/Entailment.lean).
+Mechanism: a transport pair —
+`liftInterp : RDF.Interp → CL.Interp` (dom preserved; `rel` on the
+denoted property restricted to 2-element sequences is `iext`;
+`literalValueOf`/`tripleTerm` operators realised from `iLit`/`iTt`)
+and `restrictInterp : CL.Interp → RDF.Interp`
+(`iext p x y := rel (interp of p) [x, y]`) — with a satisfaction
+transfer lemma in each direction.
+
+```lean
+/-- Stage 1 gate theorem. -/
+theorem unified_adequate_simple (g h : RDF.Graph) :
+    Unified.Entails [rdfToTheory g] (rdfToTheory h)
+      ↔ RDF.SimpleEntailsMt g h
+
+/-- Corollary chain to the executable engine, via
+`RDF.simpleEntails_iff_mt` (triple-term-free graphs, where the native
+Herbrand construction applies). -/
+theorem unified_adequate_simple_decided (g h : RDF.Graph)
+    (hg : RDF.GraphTtFree g) (hh : RDF.GraphTtFree h) :
+    Unified.Entails [rdfToTheory g] (rdfToTheory h)
+      ↔ RDF.simpleEntails g h = true
+
+/-- Scoping lemmas (§2.3): merge is conjunction; shared-label union
+is single-scope closure. Proved against `RDF/DatasetMerge.lean`. -/
+theorem rdfToTheory_merge (g h : RDF.Graph) :
+    EntailEquiv [rdfToTheory (RDF.merge g h)]
+                [rdfToTheory g, rdfToTheory h]
+
+/-- D-entailment. Proved against `RDF.Entailment.Regime.d`'s
+components (`literalValueEq`, `literalIllFormed`,
+`Regime.inconsistent`) and the D-clash module
+`RDF/EntailmentRdfsDatatypeClash.lean`. -/
+theorem unified_adequate_d (D : List RDF.WfIri) (g h : RDF.Graph) :
+    EntailsSchema (fun _ => True) (dSchema D)
+        [rdfToTheory g] (rdfToTheory h)
+      ↔ RDF.DEntailsMt D g h
+```
+
+(`RDF.DEntailsMt` is the model-theoretic D-entailment the stage also
+introduces natively if it is not yet stated; the executable anchor is
+`RDF.regimeEntails .d`.)
+
+### 4.2 Stage 2 — RDFS + ρdf/x-rdfscore
+
+Proved against `RDF/EntailmentRdfsModelTheory.lean` (soundness side)
+and
+[`formal/lean4/L4Factoidal/RDFS/RhoDfCompleteness.lean`](../../formal/lean4/L4Factoidal/RDFS/RhoDfCompleteness.lean)
+(the ρdf completeness side, Herbrand construction).
+
+```lean
+/-- Soundness over the full RDFS schema: everything the native RDFS
+closure emits is schema-entailed. Anchor: `RDFS.fullClosure` and the
+per-row soundness of `RDF/EntailmentRdfsModelTheory.lean`. -/
+theorem unified_rdfs_closure_sound (D : List RDF.WfIri) (g : RDF.Graph)
+    (t : RDF.Triple) (h : t ∈ RDFS.fullClosure D cmps g) :
+    EntailsSchema (fun _ => True) (rdfsSchema D)
+      [rdfToTheory g] (rdfToTheory [t])
+
+/-- Stage 2 gate theorem: on the ρdf model fragment, unified
+entailment under the ρdf sub-schema coincides with ρdf entailment,
+hence (by `RhoDfCompleteness`) with the executable
+closure-then-instance decision. -/
+theorem unified_adequate_rhoDf (g h : RDF.Graph)
+    (hg : RDF.RhoDfModelFragGraph g) (hh : RDF.RhoDfModelFragGraph h) :
+    EntailsSchema (fun _ => True) rhoDfSchema
+        [rdfToTheory g] (rdfToTheory h)
+      ↔ RDF.RhoDfEntailsMt g h
+```
+
+Full-RDFS completeness is NOT claimed: `RhoDfCompleteness.lean`'s
+Finding C-1 (the `rdfs:subClassOf` self-loop witness pair) shows RDFS
+entailment differs from simple entailment of the closure even on the
+fragment, so the completeness half is stated for ρdf/x-rdfscore
+exactly as the native tree states it.
+
+### 4.3 Stage 3 — Datalog
+
+```lean
+/-- The generic theorem, proved once: for a Datalog program and a
+ground fact base, the fuel-adequate least fixpoint contains a ground
+atom iff the program-as-schema plus facts entail it. Soundness is an
+induction on `step`; completeness is the minimal-model (Herbrand)
+argument, the same construction `RhoDfCompleteness` uses, done once
+at the generic level. -/
+theorem datalog_lfp_iff_entails (p : DatalogProgram)
+    (facts : List DAtom) (a : DAtom) (hg : a.ground)
+    (hfuel : FuelAdequate p facts fuel) :
+    a ∈ p.lfp facts fuel
+      ↔ EntailsSchema (fun _ => True) p.toSchema
+          (facts.map DAtom.toSentence) a.toSentence
+
+/-- Exhibits, one per closure engine: the ρdf closure
+(`RDFS/Closure.lean`), the RDFS-Plus closure (`RDFS/RDFSPlus.lean`),
+and the OWL RL closure's non-list core, each as a `DatalogProgram`
+whose lfp agrees with the engine's output. -/
+theorem rhoDfClosure_is_datalog (g : RDF.Graph) :
+    (rhoDfProgram.lfp (factsOf g) fuel).toGraph = RDFS.closureFix g
+```
+
+### 4.4 Stage 4 — OWL 2 RL
+
+Proved against
+[`formal/lean4/L4Factoidal/OWL/RLTheorems.lean`](../../formal/lean4/L4Factoidal/OWL/RLTheorems.lean)
+(T2 licensing / T4 fixpoint completeness over `OWL.RL.Derives`) and
+[`formal/lean4/L4Factoidal/OWL/Semantics.lean`](../../formal/lean4/L4Factoidal/OWL/Semantics.lean)
+(the `Cond*` interpretation conditions).
+
+```lean
+/-- The schema-to-condition correspondence, one lemma per row: a CL
+interpretation satisfies the row's schema sentence iff its
+restriction satisfies the row's `OWL.Cond*`. This is the bridge that
+lets the unified layer reuse the native condition family. -/
+theorem owlRl_row_condition (i : CL.Interp) (row : RlRowId) :
+    CL.Satisfies i (owlRlSentence row) ↔ CondOf row (restrictInterp i)
+
+/-- Stage 4 gate theorem, soundness: every triple the RL closure
+emits is schema-entailed (via T2's `Derives` and per-row
+truth-in-every-model over the schema). -/
+theorem unified_owlRl_sound (D : List RDF.WfIri) (g : RDF.Graph)
+    (t : RDF.Triple) (h : OWL.RL.Derives g t) :
+    EntailsSchema (fun _ => True) (owlRlSchema D)
+      [rdfToTheory g] (rdfToTheory [t])
+
+/-- Completeness at the fragment: the closure is the Datalog decider
+for the ground-atomic consequences of the schema (instantiating
+stage 3's generic theorem through T4). -/
+theorem unified_owlRl_complete_ground (D : List RDF.WfIri)
+    (g : RDF.Graph) (t : RDF.Triple) (hsat : Saturated g fuel)
+    (hcons : ¬ RlClash g)
+    (h : EntailsSchema (fun _ => True) (owlRlSchema D)
+           [rdfToTheory g] (rdfToTheory [t]))
+    (hground : t.ground) :
+    t ∈ OWL.RL.closure g fuel
+```
+
+Note the scope enlargement this stage carries: `RLTheorems.lean`
+names truth preservation (the model-theoretic half) as NOT ported
+from F\*. `unified_owlRl_sound` requires exactly that half; proving it
+over the unified schema IS the port, and the stage is sized for it
+(§7).
+
+### 4.5 Stage 5 — OWL DL and the tableau
+
+Proved against
+[`formal/lean4/L4Factoidal/OWL/Tableau.lean`](../../formal/lean4/L4Factoidal/OWL/Tableau.lean)
+(`Interp.sem`, `Refuted`) and
+[`formal/lean4/L4Factoidal/OWL/TableauTheorems.lean`](../../formal/lean4/L4Factoidal/OWL/TableauTheorems.lean).
+
+```lean
+/-- Stage 5 gate theorem: Direct-Semantics satisfiability of the
+tableau fragment coincides with unified-theory satisfiability of the
+direct translation. -/
+theorem unified_adequate_dl (R : OWL.RoleAxioms) (A : List OWL.Assertion) :
+    (∃ i : CL.Interp,
+        CL.SatisfiesAll i (owlDlDirect R A ++ roleAxiomSentences R))
+      ↔ (∃ (δ : Type) (I : OWL.Interp δ) (ν : OWL.Ind → δ),
+           OWL.RespectsRBox I R ∧ OWL.SatAll I ν A)
+
+/-- The clash calculus against the unified theory: a refutation is a
+proof of unified unsatisfiability (composes `TableauTheorems`
+refutation soundness with the ← transport above). Relates the
+three-valued verdict contract of
+https://github.com/danbri/factoidal/issues/586: "inconsistent" =
+unified-unsatisfiable; "consistent" (model built) =
+unified-satisfiable; "unknown" claims nothing. -/
+theorem refuted_unified_unsat (R : OWL.RoleAxioms) (A : List OWL.Assertion)
+    (h : OWL.Refuted R A) :
+    ¬ ∃ i : CL.Interp,
+        CL.SatisfiesAll i (owlDlDirect R A ++ roleAxiomSentences R)
+```
+
+### 4.6 Stage 6 — SPARQL 1.x
+
+Proved against
+[`formal/lean4/L4Factoidal/SPARQL/Algebra.lean`](../../formal/lean4/L4Factoidal/SPARQL/Algebra.lean)
+(`evalBgp`), `RDFS/RegimeDispatch.lean`, and `CL/IklRegime.lean`.
+
+```lean
+/-- BGP adequacy at the solution-mapping level, simple regime:
+membership in the algebra's BGP answer set coincides with ground
+entailment of the instantiated body from the Skolem reading of the
+graph (§5.4 states the multiplicity delimitation). -/
+theorem unified_adequate_bgp (b : SPARQL.Bgp) (g : RDF.Graph)
+    (μ : SPARQL.Binding) :
+    μ ∈ SPARQL.evalBgp b g
+      ↔ (μ.domExact b ∧ μ.rangeIn g ∧
+         Unified.Entails [rdfToTheorySk g]
+           ((sparqlBgpToQuery b).instantiate μ))
+
+/-- One theorem shape for regime soundness, instantiated per regime:
+if `regimeToSchema r D = some (S, conds)`, then every solution the
+regime's materialisation-based evaluator returns is an `Answers`
+witness over the unified theory. Instances: simple, D, RDF, RDFS
+(`RDF.Entailment.Regime`); x-rdfscore (with the ↔ form, via stage 2);
+x-rdfsplus (soundness only — `RDFS/RegimeDispatch.lean` deliberately
+does not claim chain-level completeness); x-ikl-* (against
+`IklRegime.extendDataset`, under `IklRespectsThat` +
+`PropAlphaInvariant`, with the assertion-decoration premise of
+§2.4). -/
+theorem regime_sound (r : String) (D : List RDF.WfIri)
+    (hr : regimeToSchema r D = some (S, conds))
+    (ds : RDF.Dataset) (b : SPARQL.Bgp) (μ : SPARQL.Binding)
+    (h : μ ∈ regimeEval r D ds b) :
+    Answers conds S [datasetToTheorySk ds] (sparqlBgpToQuery b) μ
+```
+
+### 4.7 RIF Core
+
+```lean
+/-- Agreement with the native forward-chaining engine
+(`RIF/Engine.lean`): a fact the engine derives is entailed by the
+rules-as-sentences plus the facts, and conversely on the ground
+fragment via the stage 3 generic theorem (RIF Core rules are in the
+Datalog class). -/
+theorem unified_adequate_rifCore (rs : RIF.RuleSet) (g : RDF.Graph)
+    (t : RDF.Triple) :
+    t ∈ RIF.Engine.saturate rs g fuel
+      ↔ EntailsSchema (fun _ => True) (fun s => s ∈ rifCoreToTheory rs)
+          [rdfToTheorySk g] (rdfToTheory [t])
+```
+
+## 5. Hard points — decided treatments and their risks
+
+### 5.1 D-entailment and ill-typed literals
+
+RDF 1.1 Semantics §7.1: an ill-typed literal "cannot denote
+anything", so any graph containing one is D-unsatisfiable. CL
+totalises denotation — `iStr` and `fn` are total — so "no referent"
+is not directly representable. **Decided treatment**: total
+denotation plus the ill-typed **exclusion schema** (§2.5): for every
+recognised-datatype ill-typed literal, an axiom that no predication
+with it in object position is true. A translated graph containing
+such a literal contradicts its own exclusion axiom, so the theory is
+unsatisfiable and entails everything — the same extension of the
+entailment relation §7.2 derives, and the same verdict
+`Regime.inconsistent` computes. **Risk**: the encodings agree on
+entailment between translated graphs, and the adequacy theorem
+(4.1's `unified_adequate_d`) is exactly the check; but the ill-typed
+literal's term still denotes an individual inside the model, so
+statements the object language can make ABOUT that individual (e.g.
+through `eq`) have no counterpart in the native semantics. The
+schema must therefore stay silent about ill-typed terms beyond the
+exclusion axioms; a value-identification axiom accidentally
+quantifying over them would be unsound. The stage-1 witness file
+carries a model separating the two readings to keep this visible.
+
+### 5.2 Blank-node scoping across graph merge
+
+**Decided treatment**: graph-level (and for datasets, dataset-level)
+existential closure, §2.3/§2.4, with `rdfToTheory_merge` and the
+shared-scope union lemma as proved facts rather than conventions.
+**Risk**: the translation of a graph is not compositional
+triple-by-triple — any lemma that decomposes a translated graph must
+go through the closure. Mitigation: an unscoped body-level
+translation (`rdfBody : Graph → CL.Sentence`, no closure) is the
+recursion vehicle; `rdfToTheory` is `ex` over it; the native
+blank-node locality lemmas (`RDF/Semantics.lean`,
+`AssignmentsAgreeOn`) transport to valuation-locality on the CL side.
+
+### 5.3 OWL's two semantics
+
+OWL 2 has two model theories: Direct Semantics
+([https://www.w3.org/TR/owl2-direct-semantics/](https://www.w3.org/TR/owl2-direct-semantics/)),
+defined on the structural ontology, and RDF-Based Semantics
+([https://www.w3.org/TR/owl2-rdf-based-semantics/](https://www.w3.org/TR/owl2-rdf-based-semantics/)),
+defined on graphs. **Direct Semantics does not factor through RDF
+graphs**: `owlDlDirect` maps the ontology (here, the tableau
+fragment's `Concept`/`Assertion`/`RoleAxioms`) straight to sentences
+— complement, disjunction and cardinality translate to `neg`/`disj`/
+counting formulae, none of which is the translation of any RDF graph.
+**Decided treatment**: the unified layer hosts BOTH routes side by
+side over the same `CL.Interp`: `owlRlSchema` on the graph route
+(stage 4), `owlDlDirect` on the structural route (stage 5). How they
+relate: the OWL 2 correspondence theorem (OWL 2 RDF-Based Semantics
+§7.2) states the entailment-preservation relation between the two on
+mapped ontologies; this program does NOT undertake to machine-check
+it. Within the tree the two routes meet only through test agreement
+(the OWL suites both engines run). **Risk**: a reader may take the
+shared universe as a claim that the routes agree; the LBase account
+document (stage 7) states explicitly that no such theorem is proved
+here.
+
+### 5.4 SPARQL bag semantics versus set-based entailment
+
+SPARQL 1.1 §18 evaluates to multisets; entailment is a relation, not
+a counter. **Decided treatment**: the unified layer claims BGP
+matching adequacy at the **solution-mapping level** — membership in
+the answer set, theorem 4.6 — over the Skolem reading
+`rdfToTheorySk` (RDF 1.1 Semantics §6; the SPARQL 1.1 Entailment
+Regimes recommendation's answer-restriction conditions,
+[https://www.w3.org/TR/sparql11-entailment/](https://www.w3.org/TR/sparql11-entailment/)
+§2.1, restrict answers to terms of the queried graph for the same
+finiteness reason). SELECT multiplicity — how many copies of μ appear
+— is delegated entirely to the algebra formalization
+(`SPARQL/Algebra.lean`'s list semantics and its refinement modules),
+which is already the native authority for it. The unified layer makes
+no multiplicity claim, and `Answers` is a `Prop`. **Risk**: none to
+soundness; the delimitation must be restated wherever regime results
+are reported, or a reader will take "adequate" to cover cardinality
+of results. The stage-6 registry rows carry the delimitation in
+their statement column.
+
+### 5.5 Paradox and self-reference
+
+IKL's `(that S)` admits self-referential and paradoxical texts.
+**Decided treatment** — IKL's own (IKL guide, "IKL Overview" and
+Appendix B): a paradoxical theory is simply unsatisfiable over the
+coherent interpretations (`IklRespectsThat`); there is **no detection
+obligation** — no syntactic paradox check, no truth-predicate
+stratification. `IklEntails` from an unsatisfiable theory is the
+everything-relation, which is the standing reading of inconsistency
+everywhere else in the tree (RDF 1.1 Semantics §7.2's D-unsatisfiable
+case). What MUST be proved so the condition class is not empty: a
+coherent interpretation exists. Construction sketch, recorded here
+because it is the one non-obvious obligation: build `dom` over a
+syntactic universe containing proposition codes; define `rel` on a
+code `⟨S, ν, σ⟩` applied to `[]` by strong induction on the size of
+`S` — well-founded because `Sat` reaches `iProp` only through
+`denotTerm`, which never recurses into satisfaction
+(`CL/Semantics.lean` makes this structural on the term), and every
+`that`-subterm carries a strictly smaller sentence. **Risk**: the
+witness construction is the kind of fixed-point argument that fails
+in formalisation for representation reasons rather than mathematical
+ones; it is scheduled early in stage 6 (it gates every x-ikl claim)
+and its failure mode is a smaller-than-planned interpretation class,
+not unsoundness.
+
+### 5.6 The Datalog fragment boundary
+
+**Decided treatment**: `DRule` forbids existential head variables and
+function symbols in derived positions (§3). This puts rdfD1's
+surrogate blank nodes, `owl:someValuesFrom` witness generation, and
+every comprehension-style rule outside the class — matching what the
+native closures already exclude (`RDFS/FullClosure.lean` documents
+the rdfD1 exclusion; the RL closure mints no witnesses,
+`RDFS/RegimeDispatch.lean`). The generic completeness theorem (4.3)
+is therefore about ground-atomic consequences only. **Risk**: the
+phrase "closure engines as provably-complete fragment deciders" must
+always name the fragment: ground-atomic consequences of a
+definite-Horn schema. The x-rdfsplus regime illustrates the boundary
+from the other side: `owl:sameAs` equality reasoning is in the
+Datalog class as rules, but the native tree deliberately does not
+claim chain-level completeness for it, and the unified layer inherits
+exactly that claim level (4.6).
+
+### 5.7 Infinite axiomatic families versus finite harvest
+
+The rdf:_n axiomatic families are infinite; the native engines
+harvest the finite `rdf:_n` slice occurring in the input
+(`containerMembershipIn`, `RDF/Entailment.lean`), per the finite
+enumeration recipe of RDF 1.1 Semantics Appendix A
+([https://www.w3.org/TR/rdf11-mt/#entailment_rules](https://www.w3.org/TR/rdf11-mt/#entailment_rules)).
+**Decided treatment**: the schemas state the infinite family
+(`Schema` is a set, §2.2); the adequacy proofs carry a
+finite-slice-suffices lemma — consequences mentioning only harvested
+`rdf:_n` IRIs are derivable from the harvested instances. This lemma
+exists nowhere in the tree yet and is new stage-2 work. **Risk**:
+the lemma's statement must be careful about conclusions that mention
+un-harvested members (Appendix A's step 2/3 rule is the guide); a
+wrong statement here would be the classic vacuous-hypothesis failure,
+so it gets a witness pair like every condition bundle.
+
+## 6. Module layout and registry rows
+
+### 6.1 `formal/lean4/L4Factoidal/Unified/`
+
+| File | Contents (one line) |
+|---|---|
+| `Theory.lean` | `Schema`, `SatisfiesSchema`, `EntailsSchema`, `EntailEquiv`, condition-bundle composition |
+| `Witnesses.lean` | satisfiability + non-triviality witnesses per condition bundle and schema (the `SemanticsHypothesisWitness` discipline) |
+| `RdfEmbed.lean` | term/literal/triple-term encodings, `rdfBody`, `rdfToTheory`, `rdfToTheorySk`, freshness lemmas |
+| `RdfTransport.lean` | `liftInterp` / `restrictInterp` and the satisfaction transfer lemmas |
+| `RdfAdequacy.lean` | stage 1 theorems (4.1) incl. merge/union scoping |
+| `DatasetEmbed.lean` | `datasetToTheory`, naming decorations, `PropAlphaInvariant`, N-Quads round-trip corollaries |
+| `DSchema.lean` | `dSchema`: value identification + ill-typed exclusion; the separating model of §5.1 |
+| `RdfsSchema.lean` | `rdfSchema`, `rdfsSchema`, `rhoDfSchema`, `rdfsCoreSchema`; finite-slice-suffices (§5.7) |
+| `RdfsAdequacy.lean` | stage 2 theorems (4.2), Finding C-1 restated at the unified level |
+| `Datalog.lean` | `DAtom`/`DRule`/`DatalogProgram`, `step`/`lfp`, `toSchema`, generic lfp-iff-entails (4.3) |
+| `DatalogClosures.lean` | ρdf / RDFS-Plus / RL-core exhibits as programs; per-engine agreement theorems |
+| `OwlRlSchema.lean` | `owlRlSchema` row sentences with row ids; row-to-`Cond*` correspondence lemmas (4.4) |
+| `OwlRlAdequacy.lean` | stage 4 soundness + ground completeness |
+| `OwlDlDirect.lean` | `conceptFormula`, `assertionSentence`, `roleAxiomSentences`, `owlDlDirect` |
+| `OwlDlAdequacy.lean` | stage 5 satisfiability equivalence + refutation-to-unsatisfiability (4.5) |
+| `RifEmbed.lean` | `rifCoreToTheory` + agreement with `RIF/Engine` (4.7) |
+| `SparqlQuery.lean` | `UQuery`, `instantiate`, `Answers`, `sparqlBgpToQuery`, `regimeToSchema` |
+| `SparqlAdequacy.lean` | stage 6 BGP adequacy + the one regime-soundness theorem shape and its instances |
+| `IklWitness.lean` | the coherent-interpretation construction of §5.5 |
+| `LBase.lean` | the machine-checked LBase account: the TR-table correspondence, documented deviations from the 2003 Note, stage 7's statement theorems |
+
+### 6.2 Theorem-registry rows
+
+[`docs/theorem-registry.md`](../theorem-registry.md) gains a section
+"9. Unified model theory
+([https://github.com/danbri/factoidal/issues/598](https://github.com/danbri/factoidal/issues/598))",
+one row per gate theorem, columns matching the registry's existing
+shape (theorem, module, native anchor, status):
+
+| Stage | Rows added |
+|---|---|
+| 1 | `unified_adequate_simple`, `unified_adequate_simple_decided`, `rdfToTheory_merge`, `unified_adequate_d`, dataset embedding lemmas |
+| 2 | `unified_rdfs_closure_sound`, `unified_adequate_rhoDf`, finite-slice-suffices |
+| 3 | `datalog_lfp_iff_entails`, one exhibit row per closure engine |
+| 4 | `owlRl_row_condition` (counted N of M rows, both labelled, per the registry's counting rules), `unified_owlRl_sound`, `unified_owlRl_complete_ground` |
+| 5 | `unified_adequate_dl`, `refuted_unified_unsat` |
+| 6 | `unified_adequate_bgp`, `regime_sound` + one row per regime instance |
+| 7 | no new theorems; the account document and hub post cite the rows above |
+
+Registry update lands in the same commit as each proof landing, per
+the registry's own maintenance rule.
+
+## 7. Stage plan, gates, sizes
+
+Every stage's gate: (a) the stage's bidirectional adequacy theorems
+against the named native formalization, (b) full `lake build` green,
+(c) no `sorry` / no user `axiom` / no `partial` / no `native_decide`
+(the standing policy of
+[`skills/factoidal-lean-basics/SKILL.md`](../../skills/factoidal-lean-basics/SKILL.md)),
+(d) theorem-registry rows in the same commit. Sizes: S ≈ one focused
+session, M ≈ several sessions / one subagent wave, L ≈ multi-wave
+with harvest cycles.
+
+| Stage | Content | Size | What makes it that size |
+|---|---|---|---|
+| 0 | this document | S | reading-dominated |
+| 1 | RDF core + N-Quads: `Theory`/`RdfEmbed`/`RdfTransport`/`RdfAdequacy`/`DatasetEmbed`/`DSchema` | **M** | the transport pair and transfer lemmas are new but small and definitional; the native interpolation lemma already connects to the decision procedure; care concentrates in the literal/triple-term encodings, the freshness lemmas, and the §5.1 separating model |
+| 2 | RDFS + ρdf/x-rdfscore schemas and adequacy | **L** | one sentence-to-condition lemma per §9 row; the Herbrand completeness transport from `RhoDfCompleteness` (829 F\* lines' worth of argument re-targeted); the finite-slice-suffices lemma is new mathematics for this tree (§5.7) |
+| 3 | Datalog class + generic lfp theorem + exhibits | **M** | the generic theorem is one Herbrand construction done once; exhibits are equation-chasing against existing `step` functions; `RDFS/FixedPoint.lean` is prior art |
+| 4 | OWL 2 RL schema + adequacy | **L** | 50+ row sentences and row-condition lemmas; the truth-preservation half is NOT yet ported to Lean (`RLTheorems` names it) and this stage supplies it; list-valued rows (`SeqIs`) need sequence axioms in the schema |
+| 5 | OWL DL direct + tableau relation | **M** | the tableau fragment is deliberately small; `TableauTheorems` soundness exists; the counting formulae for cardinality are fiddly but bounded; the model-built direction beyond `Refuted` tracks [https://github.com/danbri/factoidal/issues/586](https://github.com/danbri/factoidal/issues/586) and only its calculus-level relation is in scope here |
+| 6 | SPARQL BGP + regimes (incl. x-ikl) | **L** | BGP adequacy over the Skolem reading; the regime theorem shape with seven instances; the §5.5 coherent-interpretation witness construction; dataset/GRAPH-pattern interaction with §2.4's decorations |
+| 7 | the LBase account, written | **S** | document + hub post citing landed theorems; `Unified/LBase.lean` statement stubs land with stage 1 and grow per stage |
+
+RIF Core (4.7) rides with stage 3 (its rules are in the Datalog
+class); if it grows, it splits out as its own M stage between 3
+and 4.
+
+Ordering follows the issue's staging; stages 3 and 5 have no
+dependency on each other and can run as parallel waves once stage 2
+lands.
+
+## 8. What this buys
+
+Stated at the claim level each theorem supports, nothing above it:
+
+1. **One semantic foundation under the parser/streaming theorems**
+   ([https://github.com/danbri/factoidal/issues/576](https://github.com/danbri/factoidal/issues/576)).
+   Today the N-Quads/Turtle round-trip theorems bottom out at graph
+   equality or isomorphism; with stage 1 they compose with
+   `unified_adequate_simple` so a parse-serialize cycle is provably
+   meaning-preserving in one model theory, not per-format.
+2. **Closure engines as provably-complete fragment deciders.** The
+   ρdf, RDFS-Plus-core and RL-core closures become instances of one
+   theorem (4.3): each is the least-fixpoint decider for the
+   ground-atomic consequences of its schema fragment. Claim level per
+   engine stays exactly what the native tree already claims (the
+   x-rdfsplus completeness gap stays a gap).
+3. **Regime soundness as one theorem shape.** Seven entailment
+   regimes — the four W3C-named ones, x-rdfscore, x-rdfsplus, x-ikl-*
+   — become instances of `regime_sound` (4.6) instead of seven
+   unrelated arguments, and a future regime lands by supplying a
+   schema + condition bundle + one instance proof.
+4. **The first machine-checked LBase.** The 2003 Note's programme —
+   translations, vocabulary axioms, one model theory — carried out
+   with its adequacy proved instead of sketched, extended by the IKL
+   proposition domain the Note itself listed as missing (§4.0), over
+   the languages this repository implements. Stage 7's document
+   states exactly which LBase table rows are realised, where the
+   realisation deviates (e.g. uniform binary predication + the
+   type-application axiom, in place of the Note's per-form
+   translation), and which theorems back each row.
+
+## References
+
+* LBase: R. V. Guha, P. Hayes, *LBase: Semantics for Languages of the
+  Semantic Web*, W3C Working Group Note, 10 October 2003 —
+  [https://www.w3.org/TR/lbase/](https://www.w3.org/TR/lbase/)
+  (§2 Outline of Approach; §2.4 Axiom Schemas; §2.5 Entailment; §3.0
+  Using Lbase; §4.0 Inadequacies).
+* RDF 1.1 Semantics, W3C Recommendation, 25 February 2014 —
+  [https://www.w3.org/TR/rdf11-mt/](https://www.w3.org/TR/rdf11-mt/)
+  (§4.1 merge; §5.2 simple entailment; §6 Skolemization; §7
+  literals/D-interpretations; §8 RDF interpretations; §9 RDFS
+  interpretations; Appendix A entailment rules and the axiomatic
+  triple tables).
+* SPARQL 1.1 Entailment Regimes, W3C Recommendation —
+  [https://www.w3.org/TR/sparql11-entailment/](https://www.w3.org/TR/sparql11-entailment/).
+* OWL 2 Direct Semantics —
+  [https://www.w3.org/TR/owl2-direct-semantics/](https://www.w3.org/TR/owl2-direct-semantics/);
+  OWL 2 RDF-Based Semantics (§7.2 correspondence theorem) —
+  [https://www.w3.org/TR/owl2-rdf-based-semantics/](https://www.w3.org/TR/owl2-rdf-based-semantics/);
+  OWL 2 Profiles (RL rule tables) —
+  [https://www.w3.org/TR/owl2-profiles/](https://www.w3.org/TR/owl2-profiles/).
+* RIF RDF and OWL Compatibility (§5) —
+  [https://www.w3.org/TR/rif-rdf-owl/](https://www.w3.org/TR/rif-rdf-owl/).
+* ISO/IEC 24707, Common Logic; IKL guide —
+  [https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html](https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html).
+* ρdf: S. Muñoz, J. Pérez, C. Gutierrez, *Simple and Efficient
+  Minimal RDFS*, Journal of Web Semantics 7(3), 2009.
+* Issues:
+  [https://github.com/danbri/factoidal/issues/598](https://github.com/danbri/factoidal/issues/598)
+  (this programme),
+  [https://github.com/danbri/factoidal/issues/580](https://github.com/danbri/factoidal/issues/580)
+  (CL/IKL),
+  [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581)
+  (x-ikl regimes),
+  [https://github.com/danbri/factoidal/issues/589](https://github.com/danbri/factoidal/issues/589)
+  (proposition individuation),
+  [https://github.com/danbri/factoidal/issues/586](https://github.com/danbri/factoidal/issues/586)
+  (tableau verdicts),
+  [https://github.com/danbri/factoidal/issues/576](https://github.com/danbri/factoidal/issues/576)
+  (parser/streaming theorems).

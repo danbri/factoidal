@@ -191,10 +191,12 @@ harryBill = "(Believes Harry (that (isLiar Bill)))"
 harryBillDs = fn.l4Call("clToDataset", [harryBill, "urn:cl:"])
 ```
 
-`count` is 2, `skipped` is 0: the link triple `urn:cl:Harry
-urn:cl:Believes <propIri>` in the default graph, and `urn:cl:Bill
+`count` is 3, `skipped` is 0: the link triple `urn:cl:Harry
+urn:cl:Believes <propIri>` in the default graph, `urn:cl:Bill
 rdf:type urn:cl:isLiar` inside the named graph the proposition IRI
-names. This page does not run the equality reasoning the GUIDE's
+names, and — because the believed sentence is a single atomic
+predication — an `rdf:reifies` decoration giving the proposition's
+graph name the RDF 1.2 triple term of that one statement. This page does not run the equality reasoning the GUIDE's
 transparency claim depends on (`Bill` and `William` are two different
 CLIF names here, translated to two different IRIs) — that is a
 separate question from the naming rule section 6 below returns to.
@@ -216,10 +218,11 @@ loisParse = fn.l4Call("clParse", [loisLane])
 ```
 
 It parses (`pureCL` is `false`, as any `that`-bearing sentence is),
-but `clToDataset` translates only specific top-level shapes — an
-atomic sentence, or `(pred subj (that S))` — and a top-level
-quantified sentence, this one included, is outside that fragment: the
-whole sentence is skipped and counted, not partially translated. What
+but `clToDataset`'s translatable fragment is atomic: a top-level
+quantified sentence, this one included, contributes no content
+triples — it becomes an asserted proposition graph holding only its
+sentence record, with the untranslated sentence counted in `skipped`,
+not partially translated. What
 DOES translate is a `that`-term whose OWN sentence contains a
 quantifier, which the GUIDE gives right next to its quantifying-in
 example, as the weaker, de dicto contrast: "Bill believes that some
@@ -280,12 +283,15 @@ xsdContext = "(ist (TemporalContext (xsd:dateTime '2002-10-10-T12:00:00-05:00'))
 xsdContextDs = fn.l4Call("clToDataset", [xsdContext, "urn:cl:"])
 ```
 
-It parses, but `count` comes back 0 and `skipped` 1: `clToDataset`'s
+It parses, but `count` comes back 1 and `skipped` 1: `clToDataset`'s
 `(pred subj (that S))` clause needs `subj` to be a plain CLIF name,
 and `(TemporalContext (xsd:dateTime ...))` is a functional term, not a
-name. Simplified to the GUIDE's own earlier, bare-name context —
-dropping the datatype function, keeping the same relation and
-proposition — the sentence translates in full.
+name — so no context link is read. The whole sentence instead becomes
+one asserted proposition graph holding only its sentence record (the
+count is the assertion decoration), its untranslated content counted
+in `skipped`. Simplified to the GUIDE's own earlier, bare-name
+context — dropping the datatype function, keeping the same relation
+and proposition — the sentence translates in full.
 
 ```observable-js
 simpleContext = "(ist TemporalContextDay06-16-2006 (that (Dead Osama-Bin-Laden)))"
@@ -295,7 +301,9 @@ simpleContext = "(ist TemporalContextDay06-16-2006 (that (Dead Osama-Bin-Laden))
 simpleContextDs = fn.l4Call("clToDataset", [simpleContext, "urn:cl:"])
 ```
 
-`count` is 2, `skipped` is 0. A `GRAPH` pattern reads inside the
+`count` is 3, `skipped` is 0: the `ist` link, the proposition's one
+content triple, and the `rdf:reifies` triple-term bridge the
+single-atom proposition earns. A `GRAPH` pattern reads inside the
 context's proposition directly:
 
 ```observable-js

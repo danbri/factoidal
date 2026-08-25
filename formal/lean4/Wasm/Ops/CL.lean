@@ -16,29 +16,40 @@ The Common Logic / IKL ops (L4Factoidal/CL/, issue 580):
 the sentence count, whether the text is pure ISO/IEC 24707 CL (no IKL
 `that`), and the canonical re-serialisation, newline-separated.
 
-`clToDataset` is the CL→RDF bridge (`CL/ToRdf.lean`): names become
-IRIs under the caller's base, IKL propositions become NAMED GRAPHS
-named `<base>that:sha256:<hex64>` — the content address of the
-alpha-normalized canonical CLIF (issue 589), with the sentence text
-itself recorded inside the graph under `urn:cl:def:sentence` — and
-the returned N-Quads carry the graph names. `count` is translated
-statements, `skipped` the sentences/conjuncts outside the fragment —
-reported, never silently dropped.
+`clToDataset` is the CL→RDF bridge (`CL/ToRdf.lean`, graph-decoration
+translation — issue 581): names become IRIs under the caller's base;
+EVERY proposition becomes a NAMED GRAPH named
+`<base>that:sha256:<hex64>` — the content address of the
+alpha-normalized canonical CLIF (issue 589), holding the sentence
+text under `urn:cl:def:sentence` plus its translatable atoms — and
+the default graph holds only DECORATIONS (`urn:cl:def:asserts`
+assertion triples, link triples for predications about propositions,
+and `rdf:reifies` triple-term bridges for single-atom propositions).
+The returned N-Quads carry the graph names, and RDF 1.2 `<<( … )>>`
+triple terms where bridges were emitted. `count` counts graph-content
+triples PLUS decorations (sentence records excluded); `skipped` the
+sentences/conjuncts outside the fragment — reported, never silently
+dropped.
 
 `queryWithIklService` is the combination op: the SPARQL query runs
 over `dataNq`'s dataset, with
 
   * the SERVICE endpoint IRI `urn:ikl:kb` (SPARQL 1.1 Federated Query
-    §2) bound in `EvalEnv.services` to the FLATTENED translation of
-    `cliftext` (default + named triples in one graph — `services`
-    maps an endpoint to a `Graph`, so `SERVICE <urn:ikl:kb> { … }`
-    matches over everything the CL text says, link triples included);
+    §2) bound in `EvalEnv.services` to the translation's DEFAULT
+    graph (the decorations) unioned with the content of every
+    ASSERTED proposition graph — the same rule the `x-ikl-*` regime
+    applies (`CL.IklRegime.extendDataset`, issue 581). So
+    `SERVICE <urn:ikl:kb> { … }` matches what the CL text SAYS —
+    assertions, links and bridges, plus what its asserted
+    propositions claim — while the content of a merely-mentioned
+    proposition (`believes`/`ist`/… link, no assertion) stays out;
   * the translation's NAMED graphs merged into the evaluation
-    dataset, so `GRAPH ?p { … }` quantifies over IKL propositions in
-    the same query. The translation's default-graph triples stay OUT
-    of the evaluation default graph — they are reachable through the
-    SERVICE pattern, keeping the user's data and the IKL-derived
-    knowledge distinguishable.
+    dataset, so `GRAPH ?p { … }` quantifies over every IKL
+    proposition (asserted or not) in the same query. The
+    translation's default-graph triples stay OUT of the evaluation
+    default graph — they are reachable through the SERVICE pattern,
+    keeping the user's data and the IKL-derived knowledge
+    distinguishable.
 
 The CL translation base is fixed at `urn:cl:` for this op (the
 documented mapping in `CL/ToRdf.lean`).
@@ -50,6 +61,7 @@ wasm32).
 import Wasm.Ops.Support
 import L4Factoidal.CL.Clif
 import L4Factoidal.CL.ToRdf
+import L4Factoidal.CL.IklRegime
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.Query
@@ -80,7 +92,9 @@ def clParse (cliftext : String) : String :=
         , ("normalized", .string (String.intercalate "\n"
             (ss.map L4Factoidal.CL.Sentence.toClif))) ]
 
-/-- `clToDataset(cliftext, base)`. -/
+/-- `clToDataset(cliftext, base)`. `count` is graph-content triples
+plus default-graph decorations (asserts / link / bridge); sentence
+records are not counted (`CL/ToRdf.lean`, module header). -/
 def clToDataset (cliftext base : String) : String :=
   match L4Factoidal.CL.parseClifText cliftext with
   | .error e => errJson (fmtParseError e)
@@ -93,11 +107,13 @@ def clToDataset (cliftext base : String) : String :=
             , ("skipped", .number (toString r.skipped))
             , ("nquads", .string (Dataset.toCanonicalNQuads r.ds)) ]
 
-/-- The one-graph flattening of a translation, for the SERVICE
-endpoint: default-graph triples (the IKL link triples included) plus
-every named graph's triples, set-union semantics. -/
-private def flattenDataset (ds : Dataset) : Graph :=
-  ds.named.foldl (fun acc ng => Graph.union acc ng.graph) ds.default
+/-- The SERVICE endpoint's graph: the translation's default graph
+(the decorations) unioned with the content of every ASSERTED
+proposition graph — computed by the SAME rule the `x-ikl-*` regime
+applies to a dataset (`CL.IklRegime.extendDataset`, issue 581), so
+the SERVICE view and the regime cannot drift apart. -/
+private def serviceView (ds : Dataset) : Graph :=
+  ((L4Factoidal.CL.IklRegime.mk "").extendDataset ds).default
 
 /-- `queryWithIklService(dataNq, cliftext, sparql)`. -/
 def queryWithIklService (dataNq cliftext sparql : String) : String :=
@@ -114,11 +130,12 @@ def queryWithIklService (dataNq cliftext sparql : String) : String :=
   | .error e => errJson s!"SPARQL parse error: {fmtParseError e}"
   | .ok q =>
     -- IKL propositions are named graphs of the evaluation dataset;
-    -- the whole translation is the `urn:ikl:kb` SERVICE graph.
+    -- the decorations + asserted content are the `urn:ikl:kb`
+    -- SERVICE graph (see the module header).
     let dsEval : Dataset := { ds with named := ds.named ++ r.ds.named }
     let env : EvalEnv :=
       { base := q.base
-        services := [(iklServiceIri, flattenDataset r.ds)] }
+        services := [(iklServiceIri, serviceView r.ds)] }
     match q.form with
     | .ask =>
         let b := evalAsk env dsEval q

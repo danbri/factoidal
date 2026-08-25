@@ -261,18 +261,28 @@ check "clParse unclosed paren -> error" clParse "$TMP/cl-parse-bad.json" \
 # The proposition graph name is the sha256 content address of the
 # alpha-normalized canonical CLIF (issue 589):
 # echo -n '(Dead OBL)' | sha256sum
+# Graph-decoration translation (issue 581): count = graph-content
+# triples + decorations (ist link + rdf:reifies bridge here); the
+# graph holds record + content, nothing flattens into the default
+# graph. 5 occurrences of the graph IRI: link object, bridge subject,
+# record subject + graph label, content graph label.
 DEADOBL_G='urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0'
 args "$TMP/cl-ds.json" "$IKL" "urn:cl:"
 check "clToDataset proposition -> named graph" clToDataset "$TMP/cl-ds.json" \
-  'r["ok"] is True and r["count"] == 2 and r["skipped"] == 0
+  'r["ok"] is True and r["count"] == 3 and r["skipped"] == 0
    and "<urn:cl:c> <urn:cl:ist> <'"$DEADOBL_G"'> ." in r["nquads"]
+   and "<'"$DEADOBL_G"'> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( <urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> )>> ." in r["nquads"]
    and "<'"$DEADOBL_G"'> <urn:cl:def:sentence> \"(Dead OBL)\" <'"$DEADOBL_G"'> ." in r["nquads"]
    and "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <'"$DEADOBL_G"'> ." in r["nquads"]
-   and r["nquads"].count("<'"$DEADOBL_G"'>") == 4'
+   and r["nquads"].count("<'"$DEADOBL_G"'>") == 5'
 
+# Top-level `and` distributes into two ASSERTED propositions:
+# (Dog Rex) -> asserts + bridge + content (3), the quantified
+# conjunct -> asserts only, its body skipped and counted (1).
 args "$TMP/cl-ds-skip.json" '(and (Dog Rex) (forall (x) (P x)))' "urn:cl:"
 check "clToDataset skips are counted" clToDataset "$TMP/cl-ds-skip.json" \
-  'r["ok"] is True and r["count"] == 1 and r["skipped"] == 1'
+  'r["ok"] is True and r["count"] == 4 and r["skipped"] == 1
+   and r["nquads"].count("<urn:cl:kb> <urn:cl:def:asserts>") == 2'
 
 args "$TMP/cl-ds-bad.json" "$IKL" "nocolon"
 check "clToDataset bad base -> error" clToDataset "$TMP/cl-ds-bad.json" \
