@@ -596,6 +596,11 @@ session.
   — no Claude attribution in commit messages (iron rule #13).
 - [`repo-tour`](skills/repo-tour/SKILL.md) — directory layout,
   "where does X live?".
+- [`using-factoidal`](skills/using-factoidal/SKILL.md) — drive
+  Factoidal from any external LLM/agent system: both engine flavours
+  (F\* CLI + npm, Lean wasm + native), the capability matrix with
+  measured scores, runnable examples per spec area, and the l4_call
+  dispatch ABI. Self-contained for readers outside this repo.
 - [`fstar-mcp`](skills/fstar-mcp/SKILL.md) — F\* MCP server for
   interactive proof / typecheck queries (replaces batch `fstar.exe`
   reruns for diagnostic work).
