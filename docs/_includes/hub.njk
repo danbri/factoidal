@@ -800,6 +800,17 @@ const fn = {
     return (await this.loadL4()).bgpQuery(data, bgp);
   },
   /**
+   * Generic dispatch into the Lean 4 engine (hub post 38): `op` is an
+   * op name from formal/lean4/Wasm/Dispatch.lean ("ops" lists them),
+   * `args` an array of positional string arguments. Returns the parsed
+   * {"ok":true,...} envelope; throws when the Lean side reports
+   * {"ok":false,"error":...}. One wrapper serves every dispatch op,
+   * because the envelopes match bin/npm-entry/entry_jsoo.ml op for op.
+   */
+  async l4Call(op, args) {
+    return (await this.loadL4()).call(op, args);
+  },
+  /**
    * SHACL Core validation (mirrors npm/factoidal/index.js's
    * `shaclValidate(data, shapes, options) -> Promise<{conforms, report}>`).
    * `data`/`shapes` may each be raw RDF text (parsed with `options.format`,

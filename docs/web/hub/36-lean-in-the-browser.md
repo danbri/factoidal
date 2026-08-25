@@ -59,7 +59,10 @@ discovering mid-page:
   though `Algebra.lean` implements the §18.5 operators natively.
 
 So the comparison below is narrow on purpose: the part both engines
-implement today.
+implemented when this page was written. (These three gaps have since
+closed — see the dated update at the end of this page, and
+[post 38](../38-one-triple-at-a-time/) for the wider surface running
+live.)
 
 ## Loading the Lean engine
 
@@ -222,3 +225,13 @@ on the Lean side, which turns the pattern table above into an actual
 query string; then the §18.5 operators across the wasm boundary, which
 `Algebra.lean` already implements. At that point this page can run the
 W3C test suite twice on one screen.
+
+**Update (2026-08-25):** the gaps listed above have closed. The Lean
+engine now parses N-Triples/N-Quads, Turtle, TriG and RDF/XML, parses
+and evaluates SPARQL query and update, runs the RDFS and OWL 2 RL
+closures, and canonicalizes with RDFC-1.0 — all across the same wasm
+boundary, through a second, generic dispatch entry (`fn.l4Call`). The
+cells on this page keep the phase-1 `bgpQuery` surface they were
+written against; [post 38](../38-one-triple-at-a-time/) walks the
+dispatch surface one call at a time, from a single parsed triple to a
+cross-engine agreement check.
