@@ -63,7 +63,7 @@ open L4Factoidal.RDF L4Factoidal.SPARQL
 
 /-- Version of the Lean-side ABI, not of the Lean toolchain. Bump when
 the wire format changes in a way a caller can observe. -/
-def abiVersion : String := "l4factoidal-wasm 0.1.0 (phase 1: BGP only)"
+def abiVersion : String := "l4factoidal-wasm 0.2.0 (dispatch: RDF parse/serialize, SPARQL query+update, RDFS/OWL-RL closures, RDFC-1.0, CL/IKL)"
 
 /-! ## A minimal JSON value, reader and writer — PHASE-1 SHIM -/
 
