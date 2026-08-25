@@ -1216,9 +1216,62 @@ function prettyIsDatasetLike(v) {
   );
 }
 
+// Render one SPARQL-Results-JSON-shaped term ({type: "uri"|"literal"|
+// "bnode", value, [datatype], ["xml:lang"]}) the same way prettyTermNode
+// renders an RDF/JS term -- a compact <span> with the full detail in
+// `title`. A separate function from prettyTermNode because the SRJ
+// shape (https://www.w3.org/TR/sparql11-results-json/) uses `type` not
+// `termType`, and a plain-string `datatype` rather than a nested term.
+function prettySrjTermNode(term) {
+  const span = document.createElement("span");
+  span.className = "pretty-term";
+  if (term.type === "uri") {
+    span.textContent = prettyShortenIri(term.value);
+    span.title = term.value;
+  } else if (term.type === "bnode") {
+    span.textContent = "_:" + term.value;
+    span.title = "_:" + term.value;
+  } else if (term.type === "literal") {
+    let text = JSON.stringify(String(term.value));
+    let detail = '"' + term.value + '"';
+    const lang = term["xml:lang"];
+    if (lang) {
+      text += "@" + lang;
+      detail += "@" + lang;
+    } else if (term.datatype && term.datatype !== XSD_STRING) {
+      text += "^^" + prettyShortenIri(term.datatype);
+      detail += "^^<" + term.datatype + ">";
+    }
+    span.textContent = text;
+    span.title = detail;
+  } else {
+    span.textContent = String(term.value);
+  }
+  return span;
+}
+
 function prettyCellNode(value) {
   if (value && typeof value === "object" && typeof value.termType === "string") {
     return prettyTermNode(value);
+  }
+  if (
+    value && typeof value === "object" && typeof value.value === "string" &&
+    (value.type === "uri" || value.type === "literal" || value.type === "bnode")
+  ) {
+    return prettySrjTermNode(value);
+  }
+  // Any other plain object or array: a compact JSON rendering instead of
+  // the useless "[object Object]" String() gives, with the full JSON in
+  // `title`. Owner screenshot, 2026-08-25: the Table toggle showed
+  // "[object Object]" in every cell of a row-object table because this
+  // fallback used to be a bare String(value).
+  if (value !== null && typeof value === "object") {
+    const span = document.createElement("span");
+    span.className = "pretty-value";
+    const json = JSON.stringify(value);
+    span.textContent = json.length > 80 ? json.slice(0, 80) + "…" : json;
+    span.title = json;
+    return span;
   }
   const span = document.createElement("span");
   span.textContent = value === undefined || value === null ? "" : String(value);
