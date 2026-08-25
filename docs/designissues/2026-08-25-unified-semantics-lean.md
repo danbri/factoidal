@@ -192,6 +192,68 @@ Four notes in the same spirit as 1–7:
     `literalValueEq D` + `bindable`-restricted search completeness),
     and is not a triple-term matter.
 
+### Stage 3 landing notes (2026-08-25)
+
+`Unified/Datalog.lean` and `Unified/DatalogClosures.lean` landed
+(the generic least-fixpoint theorems and the closure-engine
+exhibits). Four notes in the same spirit as 1–11:
+
+12. **§3 Datalog signatures.** (a) `DAtom.pred` landed as a `DTerm`
+    (variable or constant), not the `String` of §3's sketch: rdfs7's
+    and eq-rep-p's heads predicate on a VARIABLE, which CL's
+    unsegregated universe reads directly; a string predicate cannot.
+    (b) `DatalogProgram` landed with a `wf` PROOF FIELD
+    (definiteness + the colon-free variable discipline), so the
+    "no existential heads" comment of §3 is enforced by construction —
+    a rule of rdfD1's shape cannot be written into a program
+    (`rdfD1Shape_not_wf` pins the rejection). (c) `DRule` therefore
+    has no separate wf story of its own; `DTerm` has no function
+    symbols in ANY position, which only shrinks the class §3 sketched.
+13. **§4.3 exhibit statement.** The design equation
+    `(rhoDfProgram.lfp (factsOf g) fuel).toGraph = RDFS.closureFix g`
+    is not the landed form, per the stage 2 salvage's instruction:
+    agreement is MEMBERSHIP equality
+    (`rhoDf_closure_datalog_agree`), because the engine's list
+    order/`Triple.eqb` dedup cannot match a generic fixpoint's list.
+    The landed hypotheses are exactly the stage 2 decided corollary's
+    engine-side pair (`rhoDfClosedCheck`, `isRhoDfFrag`, both
+    `decide`-dischargeable) plus Datalog-side `FuelAdequate`
+    (executable check `saturatedCheck`), plus `RhoDfModelObjectOk` on
+    the queried triple's object — the encoding gives literal /
+    triple-term objects placeholder constants, so injectivity (and
+    the iff) holds ON the ρdf model fragment, where the engine's
+    completeness story lives anyway. The Datalog rules mirror the
+    DIAGONAL specification relations `Rdfs*Derives` — NOT the engine
+    step functions — so the decode direction lands on `RhoDfClosed`,
+    blank-node classes included (the engine step's rdfs9 blank-node
+    gap is closed by the closedness hypothesis, exactly as in
+    stage 2's `rdfs9BnodeConclusions`).
+14. **§4.3's second exhibit tier is instance-level.** The RDFS-Plus
+    tier (`rdfsPlusProgram`: the six ρdf rows + the 13 OWL
+    equality/property rows + the four schema-level inverseOf flips —
+    the RL closure's non-list, non-clash core) landed with agreement
+    against `RDFS.rdfsPlusClosure` established on the demo instances
+    of `RDFS/RDFSPlus.lean` in both directions — as a `decide`d
+    theorem on the TransitiveProperty demo, and as native-evaluated
+    build-time `#guard` pins on the sameAs and inverseOf demos, whose
+    substitution closures exceed the kernel `decide` budget (the
+    kernel re-evaluates each unshared fixpoint round) — plus the
+    generic gate theorem instantiated on one. A GENERAL bridging
+    theorem in the ρdf style is not claimed for this tier: the native
+    tier itself claims no chain-level completeness, and the engine's
+    per-row IRI-subject guards (`subjIri`) restrict firings the
+    Datalog rules do not, so the general membership iff is not
+    expected to hold off the demo shapes without a new fragment
+    predicate. Recorded as the stage's named open item, not a defect.
+15. **§4.7 RIF Core did not ride with stage 3.** The document offered
+    the split ("if it grows, it splits out as its own M stage");
+    taken: `unified_adequate_rifCore` needs `rifCoreToTheory` plus
+    the frame/positional-atom desugaring of `RIF/Translation.lean`,
+    which is its own module's work. The generic theorem it will
+    instantiate is landed and generic (n-ary atoms were built for
+    exactly this — RIF positional atoms of arity ≠ 2 need no new
+    machinery).
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
