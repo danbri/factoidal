@@ -139,11 +139,16 @@ test('post41 cell "cheikesParse": cancelling-parentheses assertion flips pureCL 
 test('post41 cell "harryBillDs": believes/that translates in full', async () => {
   const env = await post().value('harryBillDs');
   assert.equal(env.ok, true);
-  assert.equal(env.count, 2);
+  // Graph-decoration translation (issue 581): link + content + the
+  // rdf:reifies bridge a single-atom proposition earns.
+  assert.equal(env.count, 3);
   assert.equal(env.skipped, 0);
   assert.ok(env.nquads.includes('<urn:cl:Harry> <urn:cl:Believes> <urn:cl:that:sha256:'));
   assert.ok(env.nquads.includes(
     '<urn:cl:Bill> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:isLiar>'));
+  assert.ok(env.nquads.includes(
+    '<http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> ' +
+    '<<( <urn:cl:Bill> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:isLiar> )>>'));
 });
 
 // ---- "Quantifying-in" ----
@@ -172,18 +177,26 @@ test('post41 cell "deDictoSentence": the alpha-normalized sentence text queried 
 
 // ---- "Contexts via ist" ----
 
-test('post41 cell "xsdContextDs": the xsd:dateTime context name is a functional term, skipped whole', async () => {
+test('post41 cell "xsdContextDs": the xsd:dateTime context name is a functional term, no link read', async () => {
   const env = await post().value('xsdContextDs');
   assert.equal(env.ok, true);
-  assert.equal(env.count, 0);
+  // No context link (subj is a functional term); the sentence becomes
+  // one asserted proposition graph holding only its record (count =
+  // the assertion decoration), its content skipped and counted.
+  assert.equal(env.count, 1);
   assert.equal(env.skipped, 1);
-  assert.equal(env.nquads, '');
+  assert.ok(env.nquads.includes('<urn:cl:kb> <urn:cl:def:asserts> <urn:cl:that:sha256:'));
+  assert.ok(env.nquads.includes('<urn:cl:def:sentence>'));
+  // Still no ist link and no content triple anywhere.
+  assert.ok(!env.nquads.includes('<urn:cl:ist>'));
+  assert.ok(!env.nquads.includes('<urn:cl:Dead>'));
 });
 
 test('post41 cell "simpleContextDs": simplified to a bare context name, translates in full', async () => {
   const env = await post().value('simpleContextDs');
   assert.equal(env.ok, true);
-  assert.equal(env.count, 2);
+  // ist link + content triple + the single-atom rdf:reifies bridge.
+  assert.equal(env.count, 3);
   assert.equal(env.skipped, 0);
   assert.ok(env.nquads.includes(`<${DEAD_OBL_TEMPORAL_G}>`));
 });

@@ -429,16 +429,30 @@ number "h1", "h2", … per process.
 
 CLIF sentences parse, translate to RDF, and answer SPARQL through an
 in-process SERVICE endpoint (`urn:ikl:kb`; names translate under the
-`urn:cl:` base):
+`urn:cl:` base). The translation is graph-decoration shaped
+(https://github.com/danbri/factoidal/issues/581): every top-level
+sentence becomes a NAMED proposition graph (its translatable atoms
+plus its canonical sentence text under `urn:cl:def:sentence`), and
+the default graph holds only decorations — `urn:cl:def:asserts` per
+asserted sentence, a link triple per predication about a proposition
+(`believes`/`ist`/…), and an `rdf:reifies` RDF 1.2 triple-term
+bridge when a proposition's sentence is one translatable atom.
+`count` = graph-content triples + decorations (records excluded):
 
 ```bash
 printf '%s' '["(P a b)", "http://example.org/"]' > /tmp/cl.json
 .lake/build/bin/l4wasm-cli call clToDataset /tmp/cl.json
-# {"ok":true,"count":1,"skipped":0,"nquads":"<http://example.org/a> <http://example.org/P> <http://example.org/b> .\n"}
+# {"ok":true,"count":3,"skipped":0,"nquads":"<urn:cl:kb> <urn:cl:def:asserts> <http://example.org/that:sha256:4b35…> .\n
+#   <http://example.org/that:sha256:4b35…> <…rdf-syntax-ns#reifies> <<( <http://example.org/a> <http://example.org/P> <http://example.org/b> )>> .\n
+#   <http://example.org/that:sha256:4b35…> <urn:cl:def:sentence> \"(P a b)\" <http://example.org/that:sha256:4b35…> .\n
+#   <http://example.org/a> <http://example.org/P> <http://example.org/b> <http://example.org/that:sha256:4b35…> .\n"}
 
-printf '%s' '["", "(likes alice bob)", "SELECT ?s ?o WHERE { SERVICE <urn:ikl:kb> { ?s ?p ?o } }"]' > /tmp/ikl.json
+printf '%s' '["", "(likes alice bob)", "SELECT ?s ?o WHERE { SERVICE <urn:ikl:kb> { ?s <urn:cl:likes> ?o } }"]' > /tmp/ikl.json
 .lake/build/bin/l4wasm-cli call queryWithIklService /tmp/ikl.json
-# bindings: s=urn:cl:alice, o=urn:cl:bob
+# bindings: s=urn:cl:alice, o=urn:cl:bob — the SERVICE graph is the
+# decorations plus the content of ASSERTED propositions (the x-ikl
+# regime rule); a merely believed/ist-linked proposition's content
+# stays GRAPH-only.
 ```
 
 `cl:text` phrases are rejected with a named error (reader gap,

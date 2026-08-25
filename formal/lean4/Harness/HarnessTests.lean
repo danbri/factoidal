@@ -438,12 +438,12 @@ pin that a manifest regime list naming any family member is accepted
 #guard pickRegime ["RDFS"] == some .rdfs
 
 /-- The provisional default end to end through the REAL SPARQL parser
-and evaluator: `(ist c (that (Dead OBL)))` translated by
-`CL/ToRdf.lean`, the dataset extended by the one family handler, and
-a default-graph ASK for the proposition's content. -/
-private def iklAsk (extend : Bool) : Bool :=
+and evaluator: a CLIF text translated by `CL/ToRdf.lean`, the dataset
+extended by the one family handler, and a default-graph ASK for the
+proposition's content. -/
+private def iklAsk (extend : Bool) (text : String) : Bool :=
   let ds : L4Factoidal.RDF.Dataset :=
-    match L4Factoidal.CL.parseClifText "(ist c (that (Dead OBL)))" with
+    match L4Factoidal.CL.parseClifText text with
     | .error _ => L4Factoidal.RDF.Dataset.empty
     | .ok ss =>
         match L4Factoidal.CL.toRdfDataset "urn:cl:" ss with
@@ -456,10 +456,15 @@ private def iklAsk (extend : Bool) : Bool :=
   | .error _ => false
   | .ok q => L4Factoidal.SPARQL.evalAsk {} ds q
 
--- Without the regime the content triple is invisible to a
--- default-graph BGP; under the x-ikl default it matches.
-#guard iklAsk false == false
-#guard iklAsk true == true
+-- The asserted proposition `((that (Dead OBL)))`: nothing flattens
+-- (the graph-decoration translation, issue 581), so without the
+-- regime its content is invisible to a default-graph BGP; under the
+-- x-ikl default the `urn:cl:def:asserts` decoration merges it.
+#guard iklAsk false "((that (Dead OBL)))" == false
+#guard iklAsk true "((that (Dead OBL)))" == true
+-- The narrowing (issue 581): an `ist` LINK decoration does not
+-- assert its proposition, so the regime does not merge its content.
+#guard iklAsk true "(ist c (that (Dead OBL)))" == false
 
 /-! ## Axiom audit
 

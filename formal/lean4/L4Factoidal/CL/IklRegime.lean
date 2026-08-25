@@ -22,24 +22,31 @@ So this module fixes the FAMILY, not the semantics:
 
 ## The provisional default (all suffixes) — see issue 581
 
-BGP matching over the dataset extended by the proposition-content
-rule: the content of an IKL proposition in the dataset is made
-reachable from the default graph. Concretely, `extendDataset` merges
-into the default graph every named graph
+BGP matching over the dataset extended by the ASSERTED-proposition
+rule: the content of every proposition the default graph ASSERTS is
+made reachable from the default graph. Concretely, `extendDataset`
+merges into the default graph every named graph
 
 1. whose graph name is an IRI starting with `urn:cl:that:` (the
    proposition-IRI convention `CL/ToRdf.lean` emits under the
    `urn:cl:` base — `propIri` produces `<base ++ "that:sha256:" ++
    hex64>`, the content address of the alpha-normalized canonical
    CLIF; issue 589), and
-2. whose name occurs as the OBJECT of some default-graph triple —
-   i.e. the default graph asserts that proposition through a link
-   triple, under ANY predicate (`ist`, `believes`, ...).
+2. whose name is the OBJECT of a default-graph triple with predicate
+   `urn:cl:def:asserts` — `CL/ToRdf.lean`'s assertion decoration
+   (any asserting subject).
+
+NARROWED 2026-08-25 with the graph-decoration translation
+(https://github.com/danbri/factoidal/issues/581): trigger 2 used to be
+"object of ANY default-graph triple", so a mere LINK decoration
+(`believes`, `ist`, `says`, ...) merged its proposition's content —
+but a predication about a proposition does not assert it. Under the
+current rule only the `urn:cl:def:asserts` decoration merges; link
+decorations leave their graphs `GRAPH`-visible and nothing more.
 
 Nothing else: one pass, no recursion into propositions asserted only
-inside other propositions, no quantifiers, no negation, and the
-predicate of the link triple is not inspected. Named subsets and
-their exact semantics are DEFERRED, tracked in issue 581; do not
+inside other propositions, no quantifiers, no negation. Named subsets
+and their exact semantics are DEFERRED, tracked in issue 581; do not
 build on the details of this default.
 -/
 
@@ -86,10 +93,14 @@ def isPropositionGraphName : RDF.Subject → Bool
   | .iri i  => i.val.startsWith propositionGraphPrefix
   | .bnode _ => false
 
-/-- Does the default graph assert the proposition named `name` — is
-`name` the object of some default-graph triple (any predicate)? -/
-def assertedInDefault (dflt : RDF.Graph) : RDF.Subject → Bool
-  | .iri i   => dflt.any (fun t => t.o == RDF.Term.iri i)
+/-- Does the default graph ASSERT the proposition named `name` — is
+`name` the object of a default-graph triple whose predicate is
+`urn:cl:def:asserts` (`CL/ToRdf.lean`'s assertion decoration; any
+asserting subject)? A link decoration (`believes`, `ist`, ...) does
+NOT satisfy this — see the module header's narrowing note (issue
+581). -/
+def assertsDecorated (dflt : RDF.Graph) : RDF.Subject → Bool
+  | .iri i   => dflt.any (fun t => t.p == clDefAssertsIri && t.o == RDF.Term.iri i)
   | .bnode _ => false
 
 /-- The ONE `x-ikl-*` handler. PROVISIONAL DEFAULT for every suffix
@@ -98,14 +109,15 @@ deferred, https://github.com/danbri/factoidal/issues/581): the
 default graph is extended with the content of every ASSERTED
 proposition — every named graph whose name is a proposition IRI
 (`propositionGraphPrefix`) occurring as the object of a default-graph
-link triple. One pass over the ORIGINAL default graph: a proposition
-asserted only inside another proposition's content is not merged.
-Named graphs are left in place, so `GRAPH` patterns still see them. -/
+`urn:cl:def:asserts` decoration. One pass over the ORIGINAL default
+graph: a proposition asserted only inside another proposition's
+content is not merged. Named graphs are left in place, so `GRAPH`
+patterns still see them. -/
 def IklRegime.extendDataset (_r : IklRegime) (ds : RDF.Dataset) : RDF.Dataset :=
   { ds with
     default := ds.named.foldl
       (fun acc ng =>
-        if isPropositionGraphName ng.name && assertedInDefault ds.default ng.name
+        if isPropositionGraphName ng.name && assertsDecorated ds.default ng.name
         then RDF.Graph.union acc ng.graph
         else acc)
       ds.default }
@@ -126,24 +138,27 @@ def IklRegime.extendDataset (_r : IklRegime) (ds : RDF.Dataset) : RDF.Dataset :=
 #guard IklRegime.parse? "x-rdfscore" == none
 #guard IklRegime.parse? "" == none
 
-/-! ### (c) The default behavior, over the `ToRdf` guide example
+/-! ### (c) The default behavior, over the `ToRdf` assertion example
 
-`(ist c (that (Dead OBL)))` translates to a default-graph link triple
-plus the content triple in the proposition's named graph; the handler
+`((that (Dead OBL)))` asserts the proposition: the translation
+decorates its named graph with `urn:cl:def:asserts`, and the handler
 makes the content triple visible in the default graph. -/
 
 private def exBase : IriBase := ⟨"urn:cl:", rfl⟩
 
-/-- The guide example's dataset, via the real CLIF parser and
-translator (`Dataset.empty` only on a parse/translate failure, which
-the guards below would then catch as missing triples). -/
-private def exDs : RDF.Dataset :=
-  match parseClifText "(ist c (that (Dead OBL)))" with
+/-- A CLIF text's dataset, via the real parser and translator
+(`Dataset.empty` only on a parse/translate failure, which the guards
+below would then catch as missing triples). -/
+private def dsOf (text : String) : RDF.Dataset :=
+  match parseClifText text with
   | .error _ => RDF.Dataset.empty
   | .ok ss =>
       match toRdfDataset "urn:cl:" ss with
       | .error _ => RDF.Dataset.empty
       | .ok r => r.ds
+
+/-- The asserted example. -/
+private def exDs : RDF.Dataset := dsOf "((that (Dead OBL)))"
 
 /-- The content triple `<urn:cl:OBL> rdf:type <urn:cl:Dead>`. -/
 private def exContent : RDF.Triple :=
@@ -152,38 +167,46 @@ private def exContent : RDF.Triple :=
 
 private def exRegime : IklRegime := ⟨"flat"⟩
 
+private def exProp : RDF.WfIri :=
+  propIri exBase (.atom (.name "Dead") [.term (.name "OBL")])
+
 -- The graph name `propIri` emits (`urn:cl:that:sha256:<hex64>`) is
 -- inside the prefix the handler recognizes.
-#guard isPropositionGraphName
-        (.iri (propIri exBase (.atom (.name "Dead") [.term (.name "OBL")]))) == true
+#guard isPropositionGraphName (.iri exProp) == true
 
 -- Before: the content triple lives only in the named graph.
 #guard exDs.default.mem exContent == false
 -- After: the handler makes it default-graph (BGP-) matchable...
 #guard (exRegime.extendDataset exDs).default.mem exContent == true
 -- ...and the named graph itself is still there for GRAPH patterns.
-#guard ((exRegime.extendDataset exDs).lookupNamed
-          (.iri (propIri exBase (.atom (.name "Dead") [.term (.name "OBL")])))).isSome
+#guard ((exRegime.extendDataset exDs).lookupNamed (.iri exProp)).isSome
 
 /-! ### (d) What the default does NOT do -/
+
+-- The narrowing (issue 581): a LINK decoration is not an assertion.
+-- `(ist c (that (Dead OBL)))` decorates the same proposition graph
+-- with an `ist` link only, so its content is NOT merged.
+#guard (exRegime.extendDataset (dsOf "(ist c (that (Dead OBL)))")).default.mem
+        exContent == false
 
 /-- A dummy digest in the `that:sha256:<hex64>` shape, for the
 unasserted-graph check below. -/
 private def exDummySuffix : String :=
   "that:sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
-/-- A proposition-named graph the default graph never asserts (no link
-triple): its content must NOT be merged. -/
+/-- A proposition-named graph the default graph never asserts (no
+decoration at all): its content must NOT be merged. -/
 private def unassertedDs : RDF.Dataset :=
   { default := [],
     named := [{ name := .iri (exBase.mk' exDummySuffix), graph := [exContent] }] }
 
 #guard (exRegime.extendDataset unassertedDs).default.mem exContent == false
 
-/-- A linked named graph OUTSIDE the proposition convention: not
-merged either, even though the default graph points at it. -/
+/-- An asserts-decorated named graph OUTSIDE the proposition
+convention: not merged either, even though the default graph carries
+an `urn:cl:def:asserts` triple pointing at it. -/
 private def nonPropDs : RDF.Dataset :=
-  { default := [{ s := .iri (nameIri exBase "c"), p := nameIri exBase "sees",
+  { default := [{ s := .iri clKbIri, p := clDefAssertsIri,
                   o := .iri (nameIri exBase "g") }],
     named := [{ name := .iri (nameIri exBase "g"), graph := [exContent] }] }
 
