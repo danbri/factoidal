@@ -595,6 +595,32 @@ class FnDataset {
   toNQuads() { return this._text; }
 }
 
+// Lean twin of FnDataset (issue #585's page-level half: typed wrappers
+// over the dataset-handle ABI, `Wasm/Ops/Handles.lean`, so a hub cell
+// never has to carry N-Quads text through fn.l4Call itself). Where
+// FnDataset holds the parsed text in JS, L4Dataset holds a HANDLE --
+// the dataset stays parsed once, inside the wasm module's own store,
+// and every op after `fn.l4Parse` sends only the handle string. Same
+// external shape as FnDataset (`size`, `toNQuads()`) so the two engines'
+// cells read symmetrically; `_engine`/`handle` are read by
+// `fn.l4Query`/`fn.l4Update`, not meant for a cell to touch directly.
+class L4Dataset {
+  constructor(engine, handle, count) {
+    this._engine = engine;
+    this._handle = handle;
+    this._count = count;
+  }
+  get size() { return this._count; }
+  get handle() { return this._handle; }
+  toNQuads() {
+    return this._engine.call("datasetSerialize", [this._handle, "nquads"]).nquads;
+  }
+  /** Prefix-compacted Turtle of the same handle (datasetSerialize's other format). */
+  toTurtle() {
+    return this._engine.call("datasetSerialize", [this._handle, "turtle"]).turtle;
+  }
+}
+
 // Same heuristic as npm/factoidal/lib/api.js's sniffQueryForm: blank
 // out IRIs/comments first so '#' inside a PREFIX IRI or a keyword
 // appearing inside a string literal can't hide/fake the query verb.
@@ -820,6 +846,63 @@ const fn = {
    */
   async l4Call(op, args) {
     return (await this.loadL4()).call(op, args);
+  },
+  /**
+   * Parse an RDF document into a Lean-side dataset handle (hub posts
+   * 36/38; issue #585's page-level half: WHY ARE WE PARSING TTL TO
+   * JSON NOT A GRAPH API -- owner, 2026-08-25). Mirrors `fn.parse`'s
+   * contract (`text, {format, baseIRI} -> Dataset`) but backs the
+   * result with `datasetOpen` (`Wasm/Ops/Handles.lean`): the text
+   * crosses the JS/wasm boundary exactly once, here, and every later
+   * `fn.l4Query`/`fn.l4Update` call carries only the returned
+   * L4Dataset's handle.
+   */
+  async l4Parse(text, options) {
+    const opts = options || {};
+    const engine = await this.loadL4();
+    const r = engine.call("datasetOpen", [text, opts.format || "turtle", opts.baseIRI || ""]);
+    return new L4Dataset(engine, r.handle, r.count);
+  },
+  /**
+   * Query an L4Dataset (mirrors `fn.query`'s contract: SELECT rows as
+   * an array of `Map<name, term>` -- the same `srjTermToFn`-shaped term
+   * objects `fn.query` returns -- ASK as a boolean, CONSTRUCT as a
+   * dataset). Divergence from `fn.query`: the Lean `datasetQuery`
+   * envelope carries its own `"kind"` field (`"select"|"ask"|
+   * "construct"`), so this dispatches on that instead of sniffing the
+   * SPARQL text the way `fn.query`'s `sniffQueryForm` does for the
+   * stateless F* ABI. A CONSTRUCT result comes back from
+   * `datasetQuery` as plain N-Quads text with no handle of its own
+   * (`Wasm/Ops/Query.lean`'s `queryParsedDataset` does not register one
+   * for its result graph), so it is wrapped in a text-backed
+   * `FnDataset`, not a further handle-backed `L4Dataset`.
+   */
+  async l4Query(dataset, sparql) {
+    const r = dataset._engine.call("datasetQuery", [dataset.handle, sparql]);
+    if (r.kind === "ask") return !!r.boolean;
+    if (r.kind === "select") {
+      const rows = (r.srj.results && r.srj.results.bindings) || [];
+      return rows.map((row) => {
+        const map = new Map();
+        for (const [name, term] of Object.entries(row)) map.set(name, srjTermToFn(term));
+        return map;
+      });
+    }
+    if (r.kind === "construct") return new FnDataset(r.nquads);
+    throw new Error(`l4Query: unexpected result kind "${r.kind}"`);
+  },
+  /**
+   * Apply a SPARQL 1.1 Update to an L4Dataset. Divergence from
+   * `fn.update` (which returns a NEW FnDataset, leaving its argument
+   * untouched): `datasetUpdate` REPLACES the dataset stored under the
+   * same handle (`Wasm/Ops/Handles.lean`), so this mutates `dataset`'s
+   * cached size in place and returns the same object -- the handle
+   * identity does not change, only what it refers to.
+   */
+  async l4Update(dataset, sparqlUpdate) {
+    const r = dataset._engine.call("datasetUpdate", [dataset.handle, sparqlUpdate]);
+    dataset._count = r.count;
+    return dataset;
   },
   /**
    * SHACL Core validation (mirrors npm/factoidal/index.js's
