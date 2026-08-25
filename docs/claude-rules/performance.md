@@ -124,3 +124,113 @@ scale; fixes land in F\*, not OCaml patches — are captured in the
   compliance change.
 - Never leave a perf claim in a doc without a date and a binary
   provenance.
+
+## Persistence program (owner, 2026-08-25) — verbatim
+
+Recorded verbatim because these set the direction for all storage
+work; paraphrase drifts. Context the owner gave with them: COTTAS has
+consumed many files and lines against little demonstrated payoff; HDT
+has traction but is triples-only; "until we have a credible
+persistence solution our toolkit is just a nice-to-have set of
+utilities rather than the heart of anyones data operation."
+
+> My persisitence plans are:
+>
+> 1. Become one of a handful of most performant and scaleable rdf
+>    databases
+> 2. Implement bit for bit perfect replicas for common rdf on disk
+>    storage/indexing patterns, where documented.
+> 3. Be corpus/datarepo centric: allow for named graphs to be at rest
+>    on disk and OPTIONALLY and CLEVERLY brung up into "hot" use
+>    (indicices loaded, caches warmed and in memory) such that the
+>    full corpus might be many times larger than what we might expect
+>    from a normal rdf db. Yet useful working subsets sliced and
+>    diced to remove the pain of deciding which named graphs to have
+>    hot warm or cold.
+> 4. Allow for NGs to be further decomposed into large sets of
+>    instantiated shapes such that a geaph g1 might be covered by
+>    1000000 pccurences of shape sh632 sh734 etc.
+> 5. Be comparable in perf to the likes of Qlever and adopt all
+>    public opensource and published perf best practices from high
+>    perf systems including compact IDs.
+
+And the wasm memory-layout direction, same message, verbatim:
+
+> Next: wasm to js bridge is limited (cf js to webgpu) and slightly
+> reminiscent of other bytes to code situations like those of binary
+> disk formats eg hdt, cottas. Consider if in memory wasm layout of
+> rdf quads could be same as disk layout and whether memory mapping
+> style techniques could allow subdatasets / nquads to be pages in
+> and out of use. Add this to perf.md doc too.
+
+### Analysis (Claude, 2026-08-25 — inferred, not owner-decided)
+
+Plan-by-plan reading, with the published practice each one points at:
+
+- **Plan 2 (bit-perfect replicas of documented formats).** Realistic
+  targets in order of documentation quality: HDT (spec published; we
+  already read `.hdt` bytes on three surfaces), QLever's index
+  layout (open source, undocumented-but-readable), Jena TDB2
+  (partially documented). This plan fits the repo's existing
+  discipline exactly: byte formats specified in the formal source
+  (rule #11 Option-B, hash-witness CI), so a "replica" is a proved
+  serializer against a foreign reader, not a resemblance.
+- **Plan 3 (corpus-centric hot/warm/cold named graphs).** Needs a
+  graph-level manifest (which graphs exist, sizes, index state) with
+  lazy per-graph index construction. The existing symlink-current
+  compaction layout and delta log already separate immutable base
+  from mutation; the missing piece is per-named-graph granularity
+  and an eviction/warming policy. The wasm dataset-handle API
+  (issue 585) is the natural in-memory face of the same lifecycle.
+- **Plan 4 (graphs decomposed into instantiated shapes).** This is
+  the step that makes Parquet a principled choice instead of an ad
+  hoc one: a shape occurrence is a ROW whose columns derive from the
+  shape, so shape-decomposed storage IS columnar storage. The
+  published literature calls the unsupervised version of this
+  "characteristic sets" (Neumann & Moerkotte) and property tables;
+  Factoidal's difference is that SHACL shapes make the schema
+  explicit, validated, and queryable. Candidate layout: one Parquet
+  row-group family per shape id, plus a residual triples table for
+  whatever no shape covers — coverage is then a measurable number
+  per graph.
+- **Plan 5 (QLever-class performance, compact IDs).** The published
+  practices to adopt, in dependency order: dictionary-encoded
+  compact integer IDs (interacts with the FastString re-founding);
+  sorted, delta-compressed permutations over those IDs (RDF-3X /
+  QLever pattern); vocabulary kept on disk with only the
+  frontier in memory; join orders from cardinality estimates over
+  the permutations. Each is measurable in isolation; per
+  `skills/measuring-inference` and anti-pattern #28, adopt only
+  with a benchmark that can see the failure.
+
+**Unified disk/memory layout for wasm.** The observation holds: wasm
+linear memory is a flat byte array, and the current Lean-heap
+representation of a dataset (boxed objects, pointers, GC) is the
+opposite of a disk format, which is why bytes are re-serialized at
+every boundary today. If the quad-store layout is defined once as a
+position-independent (offset-based, little-endian, page-aligned)
+byte format in the formal source, then:
+
+1. disk file, HTTP response body, JS `ArrayBuffer`, and wasm linear
+   memory all hold the SAME bytes — load is a copy, not a parse;
+2. "memory mapping" in wasm, which has no real `mmap`, becomes
+   manual paging: copy in only the pages a query touches (browser:
+   HTTP Range requests; Node: `fs.read` at offsets), evict by
+   dropping page refs — which is also exactly plan 3's hot/warm/cold
+   mechanism at page granularity rather than graph granularity;
+3. the engine queries the flat buffer through a verified accessor
+   layer (the store lives OUTSIDE the Lean/OCaml heap, reached
+   through the existing C shim, so the GC never walks it);
+4. HDT already proves the pattern viable for triples — its succinct
+   in-memory structure is its on-disk structure; the work here is
+   the quads + named-graph + shape-table generalisation.
+
+Costs to respect: a fixed endianness and versioned page header;
+mutation via the existing delta log over immutable base pages (never
+in-place writes); and the accessor proofs are the price of zero-copy
+— without them this is exactly the "bytes to code" hazard the owner
+names.
+
+Tracking: https://github.com/danbri/factoidal/issues/595 (program
+issue; supersedes ad hoc COTTAS scope decisions, links
+https://github.com/danbri/factoidal/issues/579).
