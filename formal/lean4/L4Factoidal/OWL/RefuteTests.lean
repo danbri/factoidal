@@ -14,6 +14,8 @@ contradiction turns a passing consistency test into a failing one
 while looking exactly like progress.
 -/
 import L4Factoidal.OWL.Refute
+import L4Factoidal.OWL.NegationGoals
+import L4Factoidal.OWL.Tableau
 
 namespace L4Factoidal.OWL.Refute
 
@@ -413,5 +415,97 @@ irreflexivity says no pair `(x,x)` is in it. -/
                 ⟨indI, exP, .iri exI⟩]
 #guard !(refuted [⟨.iri exP, rdfType, .iri owlIrreflexiveProperty⟩,
                   ⟨indI, exP, .iri exY⟩])
+
+/-! ## The three-valued verdict (issue 586)
+
+`tableauConsistent` mirrors F* `tableau_consistent` meaning for
+meaning: `some false` = clash, `some true` = quiescence, `none` =
+budget out. `refute` is its refutation-only projection
+(`refute_eq_false_iff`). -/
+
+/-! Quiescence with no clash answers `some true` where `refute`
+answers `none`. -/
+#guard tableauConsistent [⟨indI, rdfType, .iri exC⟩] fuel == some true
+#guard refute [⟨indI, rdfType, .iri exC⟩] fuel == none
+
+/-! A clash answers `some false` through BOTH views. -/
+#guard tableauConsistent gComplement fuel == some false
+#guard refute gComplement fuel == some false
+
+/-! A cyclic TBox (`A ⊑ ∃P.A`) keeps the expansion changing: budget 1
+is exhausted mid-search and the verdict is `none` — indeterminate,
+never collapsed into either Boolean. The SAME input at a working
+budget saturates under the witness-depth cap and answers
+`some true`. -/
+private def gCyclicExists : Graph :=
+  [ ⟨indI, rdfType, .iri exC⟩,
+    ⟨.iri exC, rdfsSubClassOf, bnT "r"⟩,
+    ⟨bn "r", owlOnProperty, .iri exP⟩,
+    ⟨bn "r", owlSomeValuesFrom, .iri exC⟩ ]
+
+#guard tableauConsistent gCyclicExists 1 == none
+#guard tableauConsistent gCyclicExists fuel == some true
+#guard refute gCyclicExists 1 == none
+
+/-! ## Paired witness: procedural clash ↔ declarative `Refuted`
+
+The same contradiction — `C` and `¬C` at one individual — refuted by
+this module's search (the `#guard` above on `gComplement`) and by an
+explicit derivation in the declarative calculus of
+`OWL/Tableau.lean`. The pairing is the instance-level form of the
+correspondence the module header states; the general abstraction is
+the certificate-checker rung
+(https://github.com/danbri/factoidal/issues/586 follow-up 6). -/
+example : Refuted .empty [.inst "i" (.atom "C"), .inst "i" (.neg (.atom "C"))] :=
+  .clash (.hyp (.head _)) (.hyp (.tail _ (.head _)))
+
+/-! ## Negation goals (PE-via-refutation, issue 586)
+
+Shape checks first, then two end-to-end verdicts. -/
+
+/-! A class membership negates to ONE goal carrying the complement
+pair. -/
+#guard (negationGoals [⟨indI, rdfType, .iri exD⟩]).map List.length == some 1
+
+/-! A subsumption negates to one goal; an equivalence to two (C ⊑ D
+and D ⊑ C, both required). -/
+#guard (negationGoals [⟨.iri exC, rdfsSubClassOf, .iri exD⟩]).map List.length
+       == some 1
+#guard (negationGoals [⟨.iri exC, owlEquivalentClass, .iri exD⟩]).map List.length
+       == some 2
+
+/-! A plain property assertion negates through the `≤0 p.{y}`
+encoding — ten triples, no base. -/
+#guard (negationGoals [⟨indI, exP, .iri exY⟩]).map (·.map List.length)
+       == some [10]
+
+/-! A property assertion with a LITERAL object has no sound negation
+in this encoding (`owl:oneOf` of a literal is a data range):
+conservative `none`. A purely structural conclusion has no content
+assertion to negate: `none`. -/
+#guard negationGoals
+        [⟨indI, exP, .literal ⟨{ lexicalForm := "v", datatype := xsdString,
+                                 langTag := none, direction := none }, rfl⟩⟩]
+       == none
+#guard negationGoals [⟨bn "r", owlOnProperty, .iri exP⟩] == none
+
+/-! End to end, entailed: `i ∈ C, C ⊑ D ⊨ i ∈ D`. The negated
+conclusion (`i ∈ ¬D`) clashes with the derived `D`: every goal
+refutes. -/
+private def gPremiseSub : Graph :=
+  [ ⟨indI, rdfType, .iri exC⟩, ⟨.iri exC, rdfsSubClassOf, .iri exD⟩ ]
+
+#guard (negationGoals [⟨indI, rdfType, .iri exD⟩]).map
+         (·.all (fun neg => tableauConsistent (gPremiseSub ++ neg) fuel
+                            == some false))
+       == some true
+
+/-! End to end, NOT entailed: `i ∈ C ⊭ i ∈ D`. The augmented graph
+has a model (quiescence, `some true`) — a countermodel, reported as
+`entailed: false`, never as a silent miss. -/
+#guard (negationGoals [⟨indI, rdfType, .iri exD⟩]).map
+         (·.any (fun neg => tableauConsistent ([⟨indI, rdfType, .iri exC⟩] ++ neg)
+                              fuel == some true))
+       == some true
 
 end L4Factoidal.OWL.Refute

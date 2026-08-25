@@ -7,40 +7,94 @@ https://github.com/danbri/factoidal/issues/548 . Where
 entailed memberships and never detects unsatisfiability), this module
 answers the other question: does this graph have a model?
 
-## Two answers, and the one that is missing on purpose
+## The verdicts (three-valued since 2026-08-25, issue 586)
 
-`refute` answers `Option Bool`:
+`tableauConsistent` answers `Option Bool`, with the SAME meanings as
+the F* `Tableau_Refute.tableau_consistent` verdict it mirrors:
 
 * `some false` — REFUTED. A clash was derived on every branch, or a
   graph-level violation was found. The contract is that `some false`
   implies the graph has no model under OWL 2 Direct Semantics, and
   every rule that can contribute to one carries its model-theoretic
-  argument beside it.
-* `none` — not refuted. The budget ran out, or the expansion reached
-  quiescence without a clash.
+  argument beside it. This is the only verdict wired into suite
+  scoring.
+* `some true` — the expansion saturated and every branch point was
+  explored to quiescence with no clash: the search state IS a
+  candidate model. NOT a completeness guarantee — the calculus
+  derives fewer consequences than OWL 2 DL, so an unsatisfiable
+  graph outside its reach also answers `some true`. Callers may
+  report it (the wire contract's `consistent: true`) but must not
+  score "consistent" on it beyond what they already do by default.
+* `none` — the budget ran out before the answer was determined.
+  Indeterminate, never to be collapsed into either Boolean.
 
-There is deliberately no `some true`. A saturated branch with no
-clash is NOT a proof of consistency here: this calculus is
-incomplete, wave 1 more so than the F* engine it ports (see "What is
-NOT here"). The F* module does return `Some true` and then tells its
-callers to treat it exactly like `None`; collapsing the two removes a
-value that no caller may act on. A verdict a reader can misuse is a
-defect, not a feature.
+`refute` is the refutation-only VIEW of the same search (defined
+through `tableauConsistent`; one search path, no duplicate
+dispatch): `some false` = refuted, `none` = not refuted, quiescence
+and budget-out deliberately indistinguishable. The harness's
+inconsistency judges consume this view.
+
+An earlier revision of this header argued for withholding
+`some true` entirely. The wire contract decided otherwise
+(`owlIsConsistent` must report `consistent: true|false|null`,
+matching `bin/npm-entry/entry_jsoo.ml`), and the misuse the argument
+feared is prevented by contract instead: the `some true` doc above
+and the F* original both pin what it does NOT mean.
+
+## Relation to the declarative calculus (`OWL/Tableau.lean`)
+
+`OWL/Tableau.lean` is the PROOF HOME: the `Derives`/`Refuted` clash
+calculus over the OWL 2 Direct Semantics fragment of names, Boolean
+connectives, value restrictions and (qualified) cardinality, with
+soundness proofs in `TableauTheorems.lean`. This module is the
+EXECUTABLE engine over RDF graphs. On the shared fragment each
+procedural clash source corresponds to a `Refuted` constructor:
+
+* `clashForLabel` complement arm ↔ `Refuted.clash`;
+* `owl:Nothing` label arm ↔ `Refuted.botClash`;
+* min/max label pairs (`existsMaxLt`/`existsMaxQualLt`) ↔
+  `Refuted.minMaxClash` / `.minMaxClashQ` / `.minQMaxClash`;
+* counted provably-distinct successors over a `≤ k` label ↔
+  `Refuted.maxClash` / `.maxClashQ`;
+* `search`'s union branching ↔ `Refuted.disjSplit`;
+* the ≤-rule witness merge (`pendingMerge`/`mergeInto`) ↔
+  `Refuted.leqMerge`;
+* `ensureWitnesses` ↔ `Refuted.exWitness`.
+
+The procedural fragment is WIDER (nominal size rules, the datatype
+value-space clashes C5/C6, the graph-level violations G1–G9, TBox
+unfolding via `collectAxioms`, inverse roles) and, inside the shared
+fragment, weaker only through its caps (witness depth ≤ 3, ≤ 6
+generated witnesses, the threaded budget) — caps withhold
+refutations, never invent them. `RefuteTests.lean` keeps an
+instance-level paired witness: one input refuted here by `#guard`
+and refuted in the calculus by an explicit `Refuted` derivation. The
+general linkage — an abstraction from a clash trace to a serialisable
+`Refuted` derivation, `refute g b = some false → Refuted R A` on the
+shared fragment — is the certificate-checker rung
+`OWL/Tableau.lean`'s header names; tracked as follow-up 6 on
+https://github.com/danbri/factoidal/issues/586 .
 
 ## What is NOT here, named
 
 The F* module carries several more waves. Each ABSENCE only makes
 refutation harder — the calculus derives fewer clashes, never wrong
-ones — so wave 1 is sound with respect to the `some false` contract
-while answering `none` where the F* engine answers `Some false`:
+ones — so this port is sound with respect to the `some false`
+contract while answering `none`/`some true` where the F* engine
+answers `Some false`:
 
-* the ≤-rule (merging witness successors) and named-individual
-  identification;
+* named-individual identification (the ≤-rule below merges WITNESS
+  blank nodes only);
 * nominal (`owl:oneOf`) branching beyond the two size rules below;
-* the counting oracle and the analytic min-sum counting clash;
-* datatype facet and datatype-cardinality clashes;
+* the counting oracle and the analytic min-sum counting clash
+  (`OWL/CountingOracle.lean` exists, with a proved Farkas validator,
+  but is not yet consulted from this search);
 * the disjoint-data-property pattern collision;
 * DPLL-style branch-ordering heuristics.
+
+(The ≤-rule itself and the datatype facet/cardinality clashes were
+on this list until 2026-08-23; they are ported — see the ≤-rule and
+"Datatype value spaces" sections below.)
 
 ## Every label is in negation normal form
 
@@ -1347,17 +1401,48 @@ def initState (g : Graph) : RState :=
   g.foldl (fun st t =>
     if t.p == rdfType then (addLabel st t.s (parseNnfWith us store t.o)).1 else st) st0
 
-/-- Is this graph provably UNSATISFIABLE?
+/-- The three-valued satisfiability verdict — the Lean counterpart of
+    F* `Tableau_Refute.tableau_consistent`, meaning for meaning:
 
-    `some false` means refuted — no model exists. `none` means not
-    refuted, which covers both "the budget ran out" and "the
-    expansion went quiet without a clash". There is no `some true`:
-    see the module header. -/
-def refute (g : Graph) (budget : Nat) : Option Bool :=
+    * `some false` — provably inconsistent: an immediate graph-level
+      violation, or a clash on every branch of the search;
+    * `some true` — saturated and branched to quiescence with no
+      clash. NOT a completeness guarantee (module header);
+    * `none` — budget exhausted, indeterminate.
+
+    The budget is the caller's: it is threaded through the whole
+    branch search (see `search`), so cost is close to linear in it
+    and running out is reported, never silently absorbed. -/
+def tableauConsistent (g : Graph) (budget : Nat) : Option Bool :=
   if immediateInconsistency g then some false
   else
     match (search (collectAxioms g) g (initState g) budget).1 with
     | .clash => some false
-    | _      => none
+    | .open' => some true
+    | .out   => none
+
+/-- Is this graph provably UNSATISFIABLE?
+
+    The refutation-only view of `tableauConsistent` (one search path —
+    this is a projection, not a second procedure): `some false` means
+    refuted, no model exists; `none` means not refuted, which covers
+    both "the budget ran out" and "the expansion went quiet without a
+    clash". Callers that must not act on quiescence (the harness's
+    inconsistency judges) consume this view; callers serving the wire
+    contract's three-valued verdict use `tableauConsistent`. -/
+def refute (g : Graph) (budget : Nat) : Option Bool :=
+  match tableauConsistent g budget with
+  | some false => some false
+  | _          => none
+
+/-- The two views agree on refutation: `refute` says `some false`
+    exactly when `tableauConsistent` does. With `refute` defined as a
+    projection the proof is case analysis on the shared verdict. -/
+theorem refute_eq_false_iff (g : Graph) (budget : Nat) :
+    refute g budget = some false ↔ tableauConsistent g budget = some false := by
+  unfold refute
+  cases h : tableauConsistent g budget with
+  | none => simp
+  | some b => cases b <;> simp
 
 end L4Factoidal.OWL.Refute

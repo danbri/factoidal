@@ -26,6 +26,36 @@ function skipUnlessAvailable(t) {
   return true;
 }
 
+// The op names the RESOLVED wasm actually serves, from the dispatch
+// ABI's `ops` reflection. The committed wasm can predate ops added in
+// the same landing as their tests (the suite runs against the asset
+// ladder's bundle, not against freshly built Lean), so tests for a new
+// op probe this at runtime and skip when the op is absent — no test
+// edit is needed at rebuild time.
+let leanOpsPromise = null;
+function leanOps() {
+  if (!leanOpsPromise) {
+    leanOpsPromise = require('../l4.js')
+      .loadL4()
+      .then((eng) =>
+        typeof eng.call === 'function' ? eng.call('ops', []).ops : [])
+      .catch(() => []);
+  }
+  return leanOpsPromise;
+}
+
+async function skipUnlessOp(t, op) {
+  if (skipUnlessAvailable(t)) return true;
+  const ops = await leanOps();
+  if (!ops.includes(op)) {
+    t.skip(
+      `resolved Lean wasm predates the '${op}' op (ops reflection); ` +
+      'rebuild formal/lean4/Wasm/build-wasm.sh to unskip');
+    return true;
+  }
+  return false;
+}
+
 // Sort N-Quads text into a canonical line list (order-insensitive
 // content comparison — the Lean engine's line order is not pinned to
 // the F* engine's sorted order).
@@ -274,6 +304,60 @@ test("l4-core owlClosure mode 'OWL-RL' returns a Dataset superset", async (t) =>
   assert.ok(ds.size >= 2, 'closure keeps the input triples');
   const nq = await l4core.serialize(ds, { format: 'nquads' });
   assert.ok(sortedLines(nq).includes(`<${X}i> <${RDF_TYPE}> <${X}B> .`));
+});
+
+// ---------------------------------------------------------------------
+// OWL DL consistency / entailment (three-valued; formal/lean4 issue 586)
+// ---------------------------------------------------------------------
+
+const OWL_NS = 'http://www.w3.org/2002/07/owl#';
+const SUBCLASS_NT =
+  `<${X}a> <${RDF_TYPE}> <${X}C> .\n` +
+  `<${X}C> <${RDFS_SUBCLASS}> <${X}D> .\n`;
+// A ⊑ ∃p.A keeps the tableau expansion changing, so a fuel-1 budget
+// runs out mid-search — the fixture for the null verdict.
+const CYCLIC_NT =
+  `<${X}i> <${RDF_TYPE}> <${X}A> .\n` +
+  `<${X}A> <${RDFS_SUBCLASS}> _:r .\n` +
+  `_:r <${OWL_NS}onProperty> <${X}p> .\n` +
+  `_:r <${OWL_NS}someValuesFrom> <${X}A> .\n`;
+
+test('l4-core owlIsConsistent: true / false / null (budget-out)', async (t) => {
+  if (await skipUnlessOp(t, 'owlIsConsistent')) return;
+  const yes = await l4core.owlIsConsistent(SUBCLASS_NT, { format: 'ntriples' });
+  assert.equal(yes.consistent, true);
+  assert.equal(yes.reason, undefined);
+  const no = await l4core.owlIsConsistent(
+    `<${X}i> <${RDF_TYPE}> <${OWL_NS}Nothing> .`, { format: 'ntriples' });
+  assert.equal(no.consistent, false);
+  assert.match(no.reason, /contradiction/);
+  const unk = await l4core.owlIsConsistent(CYCLIC_NT,
+    { format: 'ntriples', fuel: 1 });
+  assert.equal(unk.consistent, null);
+  assert.match(unk.reason, /budget-out.*fuel 1 /);
+  // The same graph at the default budget saturates under the
+  // witness-depth cap: null was the budget speaking, not the graph.
+  const settled = await l4core.owlIsConsistent(CYCLIC_NT, { format: 'ntriples' });
+  assert.equal(settled.consistent, true);
+});
+
+test('l4-core owlEntails: closure yes / refutation no / budget-out null', async (t) => {
+  if (await skipUnlessOp(t, 'owlEntails')) return;
+  const yes = await l4core.owlEntails(
+    SUBCLASS_NT, `<${X}a> <${RDF_TYPE}> <${X}D> .`, { format: 'ntriples' });
+  assert.equal(yes.entailed, true);
+  assert.equal(yes.via, 'closure');
+  const no = await l4core.owlEntails(
+    SUBCLASS_NT, `<${X}a> <${RDF_TYPE}> <${X}Zebra> .`, { format: 'ntriples' });
+  assert.equal(no.entailed, false);
+  assert.equal(no.via, 'refutation');
+  assert.match(no.reason, /model/);
+  const unk = await l4core.owlEntails(
+    CYCLIC_NT, `<${X}a> <${RDF_TYPE}> <${X}Zebra> .`,
+    { format: 'ntriples', fuel: 1 });
+  assert.equal(unk.entailed, null);
+  assert.equal(unk.via, 'refutation');
+  assert.match(unk.reason, /budget-out/);
 });
 
 // ---------------------------------------------------------------------

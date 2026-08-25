@@ -12,12 +12,16 @@
 //
 // Surface: the subset capabilities() reports. Operations the Lean
 // engine does not implement (SHACL, ShEx, HDT, COTTAS, VC crypto,
-// entailment-regime query modes, tableau consistency/entailment,
-// RML/CSVW/JSON-LD/RIF) reject with a clear engine-capability error
-// rather than silently falling back to the F* engine — the point of
-// this entry is that everything it answers came through the Lean
-// extraction. The export list mirrors wasm.js so callers can swap
-// engines by import path alone.
+// entailment-regime query modes, tableauMaterialise /
+// tableauDlInconsistent, RML/CSVW/JSON-LD/RIF) reject with a clear
+// engine-capability error rather than silently falling back to the F*
+// engine — the point of this entry is that everything it answers came
+// through the Lean extraction. owlIsConsistent / owlEntails ARE served
+// (the three-valued OWL DL verdict, formal/lean4 issue 586) when the
+// resolved wasm carries the ops — an older bundle answers "unknown op",
+// which surfaces as the entryResult error, so probe the `ops`
+// reflection before relying on them. The export list mirrors wasm.js
+// so callers can swap engines by import path alone.
 
 'use strict';
 
@@ -44,6 +48,8 @@ const OPS = [
   'serializeTurtle',
   'canonicalizeToNQuads',
   'owlClosure',
+  'owlIsConsistent',
+  'owlEntails',
   'rhoDfClosure',
   'rhoDfFragmentCheck',
   'rdfsPlusClosure',
@@ -98,13 +104,15 @@ module.exports = {
   rhoDfClosure: api.rhoDfClosure,
   rhoDfFragmentCheck: api.rhoDfFragmentCheck,
   rdfsPlusClosure: api.rdfsPlusClosure,
+  // Served by the Lean engine's dispatch ABI when the resolved wasm
+  // carries the ops (see the header note).
+  owlIsConsistent: api.owlIsConsistent,
+  owlEntails: api.owlEntails,
   // Not implemented by this engine — kept on the surface so a caller
   // swapping engines gets the pinned capability error, not
   // `undefined is not a function`.
   shaclValidate: api.shaclValidate,
   shexValidate: api.shexValidate,
-  owlIsConsistent: api.owlIsConsistent,
-  owlEntails: api.owlEntails,
   capabilities: api.capabilities,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,

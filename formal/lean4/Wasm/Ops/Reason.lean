@@ -1,6 +1,6 @@
 /-
 Wasm.Ops.Reason — owlClosure / rhoDfClosure / rhoDfFragmentCheck /
-rdfsPlusClosure.
+rdfsPlusClosure / owlIsConsistent / owlEntails.
 
 Envelopes match `bin/npm-entry/entry_jsoo.ml`:
 
@@ -9,6 +9,11 @@ Envelopes match `bin/npm-entry/entry_jsoo.ml`:
   rhoDfClosure(nquads)           -> {"ok":true,"ntriples":"…","rounds":N}
   rhoDfFragmentCheck(nquads)     -> {"ok":true,"fragment":true|false}
   rdfsPlusClosure(nquads)        -> {"ok":true,"ntriples":"…","rounds":N}
+  owlIsConsistent(nquads, optsJson)
+      -> {"ok":true,"consistent":true|false|null,"reason"?:"…"}
+  owlEntails(premiseNquads, conclusionNquads, optsJson)
+      -> {"ok":true,"entailed":true|false|null,
+          "via":"closure"|"refutation","reason"?:"…"}
 
 Only the DEFAULT graph is closed over (the same scope cut as the F*
 entry); output is N-Triples lines. `rounds` is telemetry counted by
@@ -30,6 +35,8 @@ import L4Factoidal.RDFS.Closure
 import L4Factoidal.RDFS.FullClosure
 import L4Factoidal.RDFS.RDFSPlus
 import L4Factoidal.OWL.RLClosure
+import L4Factoidal.OWL.Refute
+import L4Factoidal.OWL.NegationGoals
 
 namespace L4Wasm.Ops
 
@@ -97,5 +104,103 @@ def rdfsPlusClosure (nq : String) : String :=
       roundsToFixpoint L4Factoidal.RDFS.rdfsPlusStep
         (L4Factoidal.RDFS.closureFuelBound g) g
     ntriplesEnvelope "ntriples" closed [("rounds", .number (toString rounds))]
+
+/-! ## OWL DL reasoning by refutation (issue 586)
+
+The chain is the F* npm entry's, engine for engine: the OWL-RL
+closure of the default graph, then the three-valued clash-detecting
+tableau (`L4Factoidal.OWL.Refute.tableauConsistent`, mirroring
+`Tableau_Refute.tableau_consistent`). The Lean closure is this
+tree's standard `OWL.RL.closureFix` (the same one `owlClosure`'s
+"OWL-RL" mode serves; the F* entry reaches the equivalent rows
+through `owl_rl_closure_with_reflexivity`, fuel 100 — same
+architecture, no layering here). The `none` verdict is reported as
+`null` with a budget-out reason, never a silent `false`.
+No reasoning logic lives here: closure, refuter and `negationGoals`
+are all `L4Factoidal` library code; these ops only parse, dispatch
+and shape the JSON verdict. -/
+
+/-- The refutation budget: `optsJson` is `""` or `{"fuel":"<nat>"}`
+(fuel a decimal STRING — a large budget can exceed JS's safe-integer
+range, so it crosses the ABI as text, same as the F* entry). Default
+20000, matching `entry_jsoo.ml`'s `owl_refute_fuel_of_opts`; any
+unreadable opts document or fuel string falls back to the default. -/
+def owlRefuteFuelOfOpts (optsJson : String) : Nat :=
+  let defaultFuel := 20000
+  if optsJson == "" then defaultFuel
+  else
+    match parseJson optsJson with
+    | .error _ => defaultFuel
+    | .ok root =>
+      match root.getString? "fuel" with
+      | some s => (s.toNat?).getD defaultFuel
+      | none   => defaultFuel
+
+/-- `owlIsConsistent(nquads, optsJson)`. `reason` is a plumbing-level
+description of the verdict source (there is no clash-trace string in
+the refuter); present on the false/null verdicts, omitted on true. -/
+def owlIsConsistent (nq optsJson : String) : String :=
+  match parseNQuads nq with
+  | .error e => errJson (fmtParseError e)
+  | .ok ds =>
+    let closure := L4Factoidal.OWL.RL.closureFix ds.default
+    let fuel := owlRefuteFuelOfOpts optsJson
+    match L4Factoidal.OWL.Refute.tableauConsistent closure fuel with
+    | some false =>
+        okWith [("consistent", .bool false),
+                ("reason", .string
+                  ("the clash-detecting tableau derived a contradiction "
+                   ++ "on every branch of the OWL-RL closure"))]
+    | some true => okWith [("consistent", .bool true)]
+    | none =>
+        okWith [("consistent", .null),
+                ("reason", .string
+                  (s!"budget-out: tableau refutation fuel {fuel} exhausted "
+                   ++ "before every branch closed (indeterminate, not "
+                   ++ "inconsistent); raise it via opts.fuel"))]
+
+/-- `owlEntails(premiseNquads, conclusionNquads, optsJson)`. The two
+verified paths of the F* entry: `via:"closure"` when every conclusion
+triple is exactly (engine triple equality) in the OWL-RL closure of
+the premise; `via:"refutation"` when the negated conclusion
+(`negationGoals`) is refuted on every goal. A satisfiable goal is a
+countermodel (`entailed:false`); an indeterminate goal with no
+countermodel is `null`. -/
+def owlEntails (premiseNq conclusionNq optsJson : String) : String :=
+  match parseNQuads premiseNq with
+  | .error e => errJson (fmtParseError e)
+  | .ok dsP =>
+    match parseNQuads conclusionNq with
+    | .error e => errJson (fmtParseError e)
+    | .ok dsC =>
+      let gc := dsC.default
+      let closure := L4Factoidal.OWL.RL.closureFix dsP.default
+      let fuel := owlRefuteFuelOfOpts optsJson
+      if gc.all (fun t => Graph.mem t closure) then
+        okWith [("entailed", .bool true), ("via", .string "closure")]
+      else
+        match L4Factoidal.OWL.Refute.negationGoals gc with
+        | none =>
+            okWith [("entailed", .bool false), ("via", .string "closure"),
+                    ("reason", .string
+                      ("not in the OWL-RL closure, and the conclusion form "
+                       ++ "cannot be soundly negated for refutation"))]
+        | some goals =>
+          let results := goals.map (fun neg =>
+            L4Factoidal.OWL.Refute.tableauConsistent (closure ++ neg) fuel)
+          if results.all (· == some false) then
+            okWith [("entailed", .bool true), ("via", .string "refutation")]
+          else if results.any (· == some true) then
+            okWith [("entailed", .bool false), ("via", .string "refutation"),
+                    ("reason", .string
+                      ("a model satisfying the premise and the negated "
+                       ++ "conclusion was constructed (conclusion not "
+                       ++ "entailed)"))]
+          else
+            okWith [("entailed", .null), ("via", .string "refutation"),
+                    ("reason", .string
+                      (s!"budget-out: a refutation goal exhausted fuel {fuel} "
+                       ++ "before closing (indeterminate); raise it via "
+                       ++ "opts.fuel"))]
 
 end L4Wasm.Ops
