@@ -397,7 +397,31 @@ against the old core library.
    (`Library not loaded: libllhttp.9.3.dylib`), so `emcc --version`
    failed with a dyld error that looks nothing like a toolchain problem.
    Fix: `brew reinstall node`.
-8. **`pretty()` in a hub cell returns a DOM element in the browser and a
+8. **`String.toList` results crash `String.ofList` on wasm32 — patch
+   the runtime's list terminator** (2026-08-25). Upstream defect in
+   `runtime/object.cpp`'s `string_to_list_core` (the body of
+   `lean_string_data`, i.e. `String.data`/`String.toList`), present at
+   v4.33.1 and still on master: it terminates the `List Char` it
+   builds with `lean_box_uint32(0)`. On 64-bit that folds to the
+   scalar `lean_box(0)` — the correct `List.nil` — so no shipped Lean
+   build misbehaves. On wasm32 (`sizeof(void*) == 4`)
+   `lean_box_uint32` HEAP-ALLOCATES a ctor object, which is not a
+   scalar. Lean-COMPILED consumers read that object's pointer tag
+   (0 = `List.nil`) and work anyway — `span`, `take`, `zipIdx`,
+   `foldl` all pass — but `lean_string_mk` (`String.mk` /
+   `String.ofList`) walks the list with `while (!lean_is_scalar(o))`,
+   never meets a terminator, and runs off across the heap: measured
+   here as a 3,267,424,256-byte (3 GB) `std::string` allocation →
+   `std::bad_alloc`, surfacing from a `lean_obj_once` closed-constant
+   initializer, wasm32 only (native x86_64 peaked at 11.6 MB RSS).
+   The half-working state is the trap: every list op succeeding
+   points the suspicion away from the list's own representation.
+   Fix: `build-wasm.sh` step 1b patches the one line to `lean_box(0)`
+   after the sparse clone (idempotent; invalidates the cached
+   `object.o`). If the patch anchor ever vanishes on a toolchain bump,
+   the build fails loudly — re-audit `string_to_list_core` upstream
+   before deleting the step.
+9. **`pretty()` in a hub cell returns a DOM element in the browser and a
    plain object in the node harness.** Never read `.rows` off a
    `pretty()` result in a later cell — keep raw values in their own named
    cells and call `pretty` only in display cells. (Anti-pattern #28.)

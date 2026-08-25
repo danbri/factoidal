@@ -651,6 +651,23 @@ def caxAdcToDwForS (s : Store) (d : Triple) : List Triple :=
 
 /-! ## Section 5 — one round and the loop, over the index -/
 
+/-- **inv-flip** `[ext]` — the store version scans `s.graph`, exactly
+as the list version scans `g`. -/
+def inverseOfDomRngFlipForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        s.graph.flatMap (fun t =>
+          match t.s, t.o with
+          | .iri srcP, .iri c =>
+              if      srcP == p1 && t.p == rdfsDomain then [(⟨.iri p2, rdfsRange, .iri c⟩ : Triple)]
+              else if srcP == p1 && t.p == rdfsRange  then [(⟨.iri p2, rdfsDomain, .iri c⟩ : Triple)]
+              else if srcP == p2 && t.p == rdfsDomain then [(⟨.iri p1, rdfsRange, .iri c⟩ : Triple)]
+              else if srcP == p2 && t.p == rdfsRange  then [(⟨.iri p1, rdfsDomain, .iri c⟩ : Triple)]
+              else []
+          | _, _ => [])))
+  else []
+
 def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
     [ eqRefSForS s d, eqRefPForS s d, eqRefOForS s d,
       eqSymForS s d, eqTransForS s d,
@@ -672,7 +689,8 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       chainToTransForS s d, prpRflForS s d,
       xsdAxiomsForS s d, dtRangeIntersectForS s d,
       caxDwToComplementForS s d, clsMaxqc1ToComplementForS s d,
-      minCard1ComprehensionForS s d, caxAdcToDwForS s d ]
+      minCard1ComprehensionForS s d, caxAdcToDwForS s d,
+      inverseOfDomRngFlipForS s d ]
 
 def conclusionsFromS (s : Store) (d : Triple) : List Triple :=
   (conclusionsListS s d).flatten
@@ -960,6 +978,8 @@ theorem clsMaxqc1ToComplementForS_ofGraph (g : Graph) :
     clsMaxqc1ToComplementForS (Store.ofGraph g) = clsMaxqc1ToComplementFor g := rfl
 theorem minCard1ComprehensionForS_ofGraph (g : Graph) :
     minCard1ComprehensionForS (Store.ofGraph g) = minCard1ComprehensionFor g := rfl
+theorem inverseOfDomRngFlipForS_ofGraph (g : Graph) :
+    inverseOfDomRngFlipForS (Store.ofGraph g) = inverseOfDomRngFlipFor g := rfl
 theorem caxAdcToDwForS_ofGraph (g : Graph) :
     caxAdcToDwForS (Store.ofGraph g) = caxAdcToDwFor g := by
   funext d
@@ -993,7 +1013,8 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     chainToTransForS_ofGraph, prpRflForS_ofGraph,
     xsdAxiomsForS_ofGraph, dtRangeIntersectForS_ofGraph,
     caxDwToComplementForS_ofGraph, clsMaxqc1ToComplementForS_ofGraph,
-    minCard1ComprehensionForS_ofGraph, caxAdcToDwForS_ofGraph]
+    minCard1ComprehensionForS_ofGraph, caxAdcToDwForS_ofGraph,
+    inverseOfDomRngFlipForS_ofGraph]
 
 theorem stepConclusionsS_ofGraph (g : Graph) :
     stepConclusionsS (Store.ofGraph g) = stepConclusions g := by

@@ -1,0 +1,74 @@
+# Publish npm/factoidal-lean (@factoidal/lean) to npmjs.com via
+# TRUSTED PUBLISHING (OIDC) — no npm tokens anywhere. Mirror of
+# npm-publish.yml's skeleton; see that file's header for the OIDC
+# requirements and provenance notes.
+#
+# npmjs.com side (one-time, owner): package Settings -> Trusted
+# Publisher -> GitHub Actions with EXACTLY:
+#   Organization or user: danbri
+#   Repository:           factoidal
+#   Workflow filename:    npm-publish-lean.yml
+#   Environment name:     (leave blank)
+#   Allowed actions:      npm publish
+#
+# Pre-publish gate: the package ships the COMMITTED engine artifacts
+# (l4factoidal.{js,mjs,wasm} + version.json — iron rule #9 family), so
+# the gate here is tarball self-sufficiency: pack, extract, resolve
+# all three engine files through the exports map, and run the core
+# package's l4-core test suite against the EXTRACTED tarball via
+# FACTOIDAL_L4_ASSETS. An in-workflow wasm rebuild attestation
+# (emsdk + elan in CI, artifact byte-for-byte reproduction) is the
+# next rung, not this one — the wasmSha256 in version.json binds the
+# artifact to its recorded build inputs meanwhile.
+#
+# Trigger: manual (workflow_dispatch) or an npm-lean-v* tag.
+name: npm-publish-lean
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'npm-lean-v*'
+permissions:
+  id-token: write   # OIDC — required for trusted publishing
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: npm version check (trusted publishing needs >= 11.5.1)
+        run: |
+          set -e
+          NPMV=$(npm --version)
+          echo "npm $NPMV"
+          node -e "const [a,b,c]='$NPMV'.split('.').map(Number); if (a<11 || (a===11 && (b<5 || (b===5 && c<1)))) { console.error('npm >= 11.5.1 required for trusted publishing'); process.exit(1); }"
+
+      - name: Tarball self-sufficiency gate
+        run: |
+          set -e
+          cd npm/factoidal-lean
+          PKG=$(npm pack --silent)
+          mkdir -p /tmp/lean-pack && tar xzf "$PKG" -C /tmp/lean-pack
+          ls /tmp/lean-pack/package/l4factoidal.js /tmp/lean-pack/package/l4factoidal.mjs \
+             /tmp/lean-pack/package/l4factoidal.wasm /tmp/lean-pack/package/version.json
+          # sha256 in version.json must match the shipped wasm
+          node -e "
+            const fs=require('fs'), crypto=require('crypto');
+            const v=JSON.parse(fs.readFileSync('/tmp/lean-pack/package/version.json','utf8'));
+            const h=crypto.createHash('sha256').update(fs.readFileSync('/tmp/lean-pack/package/l4factoidal.wasm')).digest('hex');
+            if (h !== v.wasmSha256) { console.error('wasm sha256 mismatch: tarball '+h+' vs version.json '+v.wasmSha256); process.exit(1); }
+            console.log('wasm sha256 OK:', h);"
+          # run the core package's Lean-engine suite against the tarball
+          cd ../factoidal
+          FACTOIDAL_L4_ASSETS=/tmp/lean-pack/package node --test test/l4-core.test.js
+
+      - name: Publish (OIDC trusted publishing)
+        run: |
+          set -e
+          cd npm/factoidal-lean
+          npm publish

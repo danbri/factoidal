@@ -211,6 +211,45 @@ executable edge only.
     an absolute manifest path where the probe accepts one. A probe
     that prints "manifest not found" has measured nothing.
 
+12. **A proof about a match arm splits on EVERY scrutinee of that
+    arm's inner match.** `strLitNextStep`'s `\u` arm matched on
+    `hexVal h0, hexVal h1, hexVal h2, hexVal h3` at once, so any proof
+    that reached it produced 16 cases; the `\U` arm produced 256. With
+    the surrounding nineteen arms also split, `simp_all` reached
+    10.5-12 GB and took SIGKILL, measured three ways (2026-08-24,
+    <https://github.com/danbri/factoidal/issues/574>). The fix is to
+    factor the inner match into one `Option`-valued helper — `hex4`,
+    `hex8` — so the arm splits two ways. Behaviour is unchanged and the
+    existing `#guard` differential table against the legacy definition
+    is what proves that.
+13. **An arm does NOT carry the earlier arms' negations.** Lean's
+    equation compiler turns overlapping patterns into a case tree, so a
+    catch-all arm such as `| c :: rest` gives you `c` and `rest` and
+    nothing else — not `c ≠ '"'`, not `c ≠ '\\'`. A proof that needs
+    those must state them as its own lemma
+    (`strLitNextStep_plain`, `strLitNextStep_badEscape` in
+    `Syntax/LocalityLiteral.lean`), proved by `unfold` then `split`
+    over the arms. `grind` closes the residual cases that `simp_all`
+    leaves, because it instantiates hypotheses that carry binders —
+    `simp_all` does not.
+14. **`cases h : f x` rewrites the GOAL, not the other hypotheses.**
+    After it, `rw [h] at k` is still needed for every hypothesis `k`
+    that mentions `f x`, and `rw [h] at k ⊢` then FAILS, because the
+    goal no longer contains the pattern. Two rounds of the same error
+    cost a rebuild each (2026-08-24).
+
+- **`lake build l4w3c` is not `lake build`.** The harness target skips
+  every theorem-only module (`*Refinement.lean`, `*Theorems.lean` files
+  nothing executable imports). A gate that builds only `l4w3c` can pass
+  while an engine change broke the agreement proofs downstream — and a
+  commit message then claims "full lake build clean" falsely.
+  (2026-08-24: the SPARQL 1.2 EBV/literalPromote change broke
+  `SPARQL.ExprRefinement` and `SHACL.SparqlTheorems`; two commits
+  shipped before the full build caught it. When an engine definition
+  changes, its spec-transcription twin — `ebvSpec`, `termToExpr?` —
+  must move in the same commit.) Before any commit claiming build
+  cleanliness: `lake build`, no target.
+
 ## Style contract (owner priority: W3C-expert readability)
 
 - Every definition's doc comment cites the W3C document + section it

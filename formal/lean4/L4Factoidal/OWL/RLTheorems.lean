@@ -1408,6 +1408,51 @@ theorem caxAdcToDwFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
       simpa [Subtype.ext_iff] using hne
   · simp at h
 
+/-- **inv-flip** `[ext]`. -/
+theorem inverseOfDomRngFlipFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ inverseOfDomRngFlipFor g d) : Derives g t := by
+  unfold inverseOfDomRngFlipFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p1, hp1i, p2, hp2i, u, hug, hmem⟩ := h
+    have hdinv : Derives g ⟨Subject.iri p1, owlInverseOf, Term.iri p2⟩ :=
+      derives_of_parts hd (mem_subjIri hp1i) hp (mem_asIri hp2i)
+    rcases u with ⟨us, up, uo⟩
+    cases us with
+    | iri srcP =>
+      cases uo with
+      | iri c =>
+        simp only at hmem
+        split at hmem
+        · rename_i hcond
+          rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hcond
+          obtain ⟨rfl, rfl⟩ := hcond
+          simp only [List.mem_singleton] at hmem; subst hmem
+          exact Derives.invFlipDomRng hdinv (Derives.base hug)
+        · split at hmem
+          · rename_i hcond
+            rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hcond
+            obtain ⟨rfl, rfl⟩ := hcond
+            simp only [List.mem_singleton] at hmem; subst hmem
+            exact Derives.invFlipRngDom hdinv (Derives.base hug)
+          · split at hmem
+            · rename_i hcond
+              rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hcond
+              obtain ⟨rfl, rfl⟩ := hcond
+              simp only [List.mem_singleton] at hmem; subst hmem
+              exact Derives.invFlipDomRngRev hdinv (Derives.base hug)
+            · split at hmem
+              · rename_i hcond
+                rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hcond
+                obtain ⟨rfl, rfl⟩ := hcond
+                simp only [List.mem_singleton] at hmem; subst hmem
+                exact Derives.invFlipRngDomRev hdinv (Derives.base hug)
+              · simp at hmem
+      | _ => simp at hmem
+    | _ => cases uo <;> simp at hmem
+  · simp at h
+
 /-! ## Section 6 — T2, soundness of a round and of the whole closure -/
 
 /-- Every conclusion the ported rows emit from one driving triple is
@@ -1422,7 +1467,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqRefSFor_sound hd ht
   · exact eqRefPFor_sound hd ht
   · exact eqRefOFor_sound hd ht
@@ -1483,6 +1528,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact clsMaxqc1ToComplementFor_sound hd ht
   · exact minCard1ComprehensionFor_sound hd ht
   · exact caxAdcToDwFor_sound hd ht
+  · exact inverseOfDomRngFlipFor_sound hd ht
 
 /-- **cls-thing** and **cls-nothing1** are premise-free rows, and so is
 the `dtType1Builtin` `[ext]` row, so the axiom triples are derivable
@@ -2537,6 +2583,55 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
       have hb : (ci == cj) = false := by
         simp only [beq_eq_false_iff_ne, ne_eq]; exact hne
       simp [hb]
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invFlipDomRng p q c _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri q, rdfsRange, Term.iri c⟩ : Triple) ∈
+        inverseOfDomRngFlipFor sat
+          ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [inverseOfDomRngFlipFor, beq_self_eq_true, if_true,
+        List.mem_flatMap]
+      exact ⟨p, mem_subjIri_self p, q, mem_asIri_self q,
+        ⟨Subject.iri p, rdfsDomain, Term.iri c⟩, ih2, by simp⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invFlipRngDom p q c _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri q, rdfsDomain, Term.iri c⟩ : Triple) ∈
+        inverseOfDomRngFlipFor sat
+          ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [inverseOfDomRngFlipFor, beq_self_eq_true, if_true,
+        List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q,
+        ⟨Subject.iri p, rdfsRange, Term.iri c⟩, ih2, ?_⟩
+      have hdr : (rdfsRange == rdfsDomain) = false := by decide
+      simp [hdr]
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invFlipDomRngRev p q c _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri p, rdfsRange, Term.iri c⟩ : Triple) ∈
+        inverseOfDomRngFlipFor sat
+          ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [inverseOfDomRngFlipFor, beq_self_eq_true, if_true,
+        List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q,
+        ⟨Subject.iri q, rdfsDomain, Term.iri c⟩, ih2, ?_⟩
+      by_cases hqp : q = p
+      · subst hqp; simp
+      · have hb : (q == p) = false := by
+          simp only [beq_eq_false_iff_ne, ne_eq]; exact hqp
+        simp [hb]
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invFlipRngDomRev p q c _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri p, rdfsDomain, Term.iri c⟩ : Triple) ∈
+        inverseOfDomRngFlipFor sat
+          ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [inverseOfDomRngFlipFor, beq_self_eq_true, if_true,
+        List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q,
+        ⟨Subject.iri q, rdfsRange, Term.iri c⟩, ih2, ?_⟩
+      have hdr : (rdfsRange == rdfsDomain) = false := by decide
+      by_cases hqp : q = p
+      · subst hqp; simp [hdr]
+      · have hb : (q == p) = false := by
+          simp only [beq_eq_false_iff_ne, ne_eq]; exact hqp
+        simp [hb, hdr]
     exact R ih1 hc (by simp [conclusionsList])
 
 /-- **T4.** Everything derivable from `g` is in `g`'s closure, provided

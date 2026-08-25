@@ -25,6 +25,7 @@ import L4Factoidal.ShEx.FromJson
 import L4Factoidal.ShEx.Satisfies
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.JSON.Parser
+import L4Factoidal.CSVW.Emit
 
 open L4Factoidal.JSON
 open L4Factoidal.ShEx
@@ -52,16 +53,49 @@ def entriesOf (j : Json) : List Json :=
         | _ => [])
     | _ => []
 
+/-- The retrieval URL the suite's own `@context` gives its manifest.
+    Everything the manifest names is relative to it, and the DATA
+    FILES use that too: `p1.ttl` writes `<x> :p1 "p1-0"`, and the
+    entry's focus is the bare string `"x"`. Parsing the graph with no
+    base rejected the document outright — 41 entries came back "data
+    Turtle not read", which is a reader gap reported as a reader gap
+    but a reader gap all the same. -/
+def suiteBase : String :=
+  "https://raw.githubusercontent.com/shexSpec/shexTest/master/validation/manifest"
+
 /-- A focus node, written as an IRI or as a Turtle literal. The suite
     writes a bare string for an IRI and an object for a literal. -/
-def focusOf (j : Json) : Option Term :=
+def focusOf (base : String) (j : Json) : Option Term :=
   match j with
-  | .string s => if h : isIri s then some (.iri ⟨s, h⟩) else none
+  | .string s =>
+      -- A TOLD BLANK NODE focus is written `_:abcd`. Reading only
+      -- IRIs here made `0focusBNODE` and its neighbours read the
+      -- focus as nothing, and a `BNODE` node kind then had no node to
+      -- hold of.
+      if s.startsWith "_:" then some (.bnode (String.ofList (s.toList.drop 2)))
+      else
+        -- A focus written RELATIVE resolves against the data file,
+        -- exactly as the IRIs inside it do.
+        let abs := L4Factoidal.Syntax.resolveIri base s
+        if h : isIri abs then some (.iri ⟨abs, h⟩) else none
   | .object _ =>
       match str? "@value" j with
-      | some v => some (.literal (Literal.string v))
+      -- The focus literal carries its DATATYPE and its LANGUAGE, and
+      -- dropping them made `'ab'^^my:bloodType` read as a plain
+      -- string — a different term, which then matched nothing in the
+      -- graph (focusdatatype).
+      | some v =>
+          (match str? "@type" j, str? "@language" j with
+           | some d, _ => (if h : isIri d
+                           then some (Term.literal (L4Factoidal.CSVW.typedLiteral ⟨d, h⟩ v))
+                           else some (Term.literal (Literal.string v)))
+           | _, some g => some (Term.literal (Literal.langString v g))
+           | _, _      => some (Term.literal (Literal.string v)))
       | none   => (str? "@id" j).bind (fun s =>
-          if h : isIri s then some (Term.iri ⟨s, h⟩) else none)
+          if s.startsWith "_:" then some (Term.bnode (String.ofList (s.toList.drop 2)))
+          else
+            let abs := L4Factoidal.Syntax.resolveIri base s
+            if h : isIri abs then some (Term.iri ⟨abs, h⟩) else none)
   | _ => none
 
 /-- The ShExJ file beside a `.shex`. -/
@@ -100,7 +134,15 @@ def main (args : List String) : IO UInt32 := do
   | some mj =>
       let entries := entriesOf mj
       let mut t : Tally := {}
-      let mut readGaps : List String := []
+      -- Each not-read reason with its COUNT. A bare list of reasons
+      -- said which gaps exist and not how much of the suite each one
+      -- costs, so there was no way to tell a one-file quirk from the
+      -- reason forty entries went unanswered.
+      let mut readGaps : List (String × Nat) := []
+      let bump : List (String × Nat) → String → List (String × Nat) := fun gs r =>
+        if gs.any (fun (k, _) => k == r)
+        then gs.map (fun (k, n) => if k == r then (k, n + 1) else (k, n))
+        else gs ++ [(r, 1)]
       let mut seen := 0
       let _ := seen
       for e in entries do
@@ -113,21 +155,20 @@ def main (args : List String) : IO UInt32 := do
             let schemaRel := (str? "schema" act).getD ""
             let dataRel := (str? "data" act).getD ""
             let label := (str? "shape" act).getD ""
-            let focus := (fld? "focus" act).bind focusOf
+            let dataUrl := L4Factoidal.Syntax.resolveIri suiteBase dataRel
+            let focus := (fld? "focus" act).bind (focusOf dataUrl)
             let sp := jsonBeside (resolveRel dir schemaRel)
             let dp := resolveRel dir dataRel
             if !(← System.FilePath.pathExists sp) then
               t := { t with notRead := t.notRead + 1 }
-              if !readGaps.contains "schema json missing" then
-                readGaps := readGaps ++ ["schema json missing"]
+              readGaps := bump readGaps "schema json missing"
             else if !(← System.FilePath.pathExists dp) then
               t := { t with notRead := t.notRead + 1 }
-              if !readGaps.contains "data graph missing" then
-                readGaps := readGaps ++ ["data graph missing"]
+              readGaps := bump readGaps "data graph missing"
             else
               let ssrc ← IO.FS.readFile sp
               let dsrc ← IO.FS.readFile dp
-              match (parseJson? ssrc).bind schemaOf, parseTurtle dsrc none, focus with
+              match (parseJson? ssrc).bind schemaOf, parseTurtle dsrc (some dataUrl), focus with
               | some sch, .ok g, some n =>
                   let got := validateNode sch g label n
                   let want := ty == "sht:ValidationTest"
@@ -138,21 +179,20 @@ def main (args : List String) : IO UInt32 := do
                       IO.println s!"FAIL {name} ({ty}): got {got}"
               | none, _, _ =>
                   t := { t with notRead := t.notRead + 1 }
-                  if !readGaps.contains "schema JSON not read" then
-                    readGaps := readGaps ++ ["schema JSON not read"]
-              | _, .error _, _ =>
+                  readGaps := bump readGaps "schema JSON not read"
+              | _, .error msg, _ =>
                   t := { t with notRead := t.notRead + 1 }
-                  if !readGaps.contains "data Turtle not read" then
-                    readGaps := readGaps ++ ["data Turtle not read"]
+                  readGaps := bump readGaps "data Turtle not read"
+                  if verbose then IO.println s!"TURTLE {name}: {msg} ({dataRel})"
               | _, _, none =>
                   t := { t with notRead := t.notRead + 1 }
-                  if !readGaps.contains "focus node not read" then
-                    readGaps := readGaps ++ ["focus node not read"]
+                  readGaps := bump readGaps "focus node not read"
       IO.println ""
       IO.println s!"shex validation: {t.pass} pass, {t.fail} fail (out of {t.pass + t.fail} decided)"
       IO.println s!"NOT READ: {t.notRead} entries (out of {entries.length})"
       if !readGaps.isEmpty then
-        IO.println ("  reasons: " ++ String.intercalate ", " readGaps)
+        for (r, n) in readGaps do
+          IO.println s!"  {n} — {r}"
       IO.println ""
       IO.println "A NOT-READ entry is a gap in the reader, not a validation"
       IO.println "result: folding it into either column would report a parser"

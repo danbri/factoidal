@@ -107,10 +107,15 @@ def commonLeafTerm (base : String) (defaultLang : Option String) (v : Json)
               match (jStrField? "@type" v).map expandPrefixed with
               | some ty =>
                   (refIri? base ty).map (fun dt => Term.literal (typedLiteral dt lex))
-              | none =>
-                  match defaultLang.filter isLangTagValid with
-                  | some tag => some (.literal (Literal.langString lex tag))
-                  | none     => some (.literal (Literal.string lex))
+              -- An EXPLICIT `@value` object with neither `@language`
+              -- nor `@type` is a PLAIN literal. The document's default
+              -- language applies to a bare string, not to a value
+              -- object that states its value and states no language:
+              -- writing `{"@value": "text/plain"}` is how JSON-LD says
+              -- "this string, untagged", and re-tagging it put
+              -- `"text/plain"@en` where test036 expects
+              -- `"text/plain"`.
+              | none => some (.literal (Literal.string lex))
       | none =>
           match jStrField? "@id" v with
           | some i => (refIri? base i).map Term.iri
@@ -164,5 +169,21 @@ def commonPropsTriples (base : String) (defaultLang : Option String)
     (path : String) (subj : Subject) (ps : List CommonProp) : List Triple :=
   (ps.zipIdx).flatMap (fun (cp, i) =>
     commonTriples base defaultLang 16 (path ++ "_" ++ toString i) subj cp.prop cp.value)
+
+/-- `notes` (csv2rdf §5): each note becomes a `csvw:note` triple on the
+    table or table-group node, with the value read the way a common
+    property's value is read — a string, a `@value` object, an `@id`,
+    or a nested node that becomes a blank node and recurses.
+
+    Routed through `commonTriples` rather than duplicated: a note IS a
+    JSON-LD value on a known predicate, so the only thing that differs
+    is the predicate. test036's note is a nested `oa:Annotation` with
+    its own `oa:hasBody` and `oa:hasTarget`, which is exactly the
+    nested-node case `commonTriples` already handles. -/
+def notesTriples (base : String) (defaultLang : Option String)
+    (path : String) (subj : Subject) (ns : List L4Factoidal.JSON.Json) : List Triple :=
+  (ns.zipIdx).flatMap (fun (n, i) =>
+    commonTriples base defaultLang 16 (path ++ "_" ++ toString i) subj
+      csvwNoteProp.val n)
 
 end L4Factoidal.CSVW

@@ -37,6 +37,11 @@ def Graph.mem (t : Triple) : Graph → Bool
 def Graph.add (t : Triple) (g : Graph) : Graph :=
   if g.mem t then g else g ++ [t]
 
+/-- Remove every occurrence of `t`, by the same engine equality
+`Graph.mem` and `Graph.add` use — port of `graph_remove`. -/
+def Graph.remove (t : Triple) (g : Graph) : Graph :=
+  g.filter (fun u => !u.eqb t)
+
 /-- Graph union with deduplication: every triple of `g2` added to
 `g1` set-wise. -/
 def Graph.union (g1 g2 : Graph) : Graph :=
@@ -227,5 +232,116 @@ theorem graphMem_of_graphMem_eqb {g : Graph} {u t : Triple}
     Graph.mem t g = true := by
   obtain ⟨v, hv, hve⟩ := exists_of_graphMem h
   exact graphMem_of_exists ⟨v, hv, Triple.eqb_trans hve he⟩
+
+/-! ## What membership becomes after each set operation
+
+These three say exactly which triples a graph holds after an append,
+an add and a remove, in terms of the engine equality rather than
+propositional equality. They are what any proof about a sequence of
+updates needs, because `Graph.mem` compares with `Triple.eqb` and a
+`List.mem` fact says nothing about it.
+
+Proved 2026-08-23 for the delta-merge correctness bridge. The F\* tree
+proves the same three about the same functions, for the same reason. -/
+
+theorem mem_append (t : Triple) (l1 l2 : Graph) :
+    Graph.mem t (l1 ++ l2) = (Graph.mem t l1 || Graph.mem t l2) := by
+  induction l1 with
+  | nil => simp [Graph.mem]
+  | cons hd tl ih => simp [Graph.mem, ih, Bool.or_assoc]
+
+theorem mem_graph_add (q : Triple) (g : Graph) (t : Triple) :
+    Graph.mem t (g.add q) = (Graph.mem t g || Triple.eqb q t) := by
+  unfold Graph.add
+  split
+  · rename_i h
+    by_cases he : Triple.eqb q t = true
+    · simp [he, graphMem_of_graphMem_eqb h he]
+    · simp [Bool.eq_false_iff.mpr he]
+  · simp [mem_append, Graph.mem]
+
+theorem mem_graph_remove (q : Triple) (g : Graph) (t : Triple) :
+    Graph.mem t (Graph.remove q g) = (Graph.mem t g && !Triple.eqb q t) := by
+  induction g with
+  | nil => simp [Graph.remove, Graph.mem]
+  | cons hd tl ih =>
+    have hfil : Graph.remove q (hd :: tl)
+        = if hd.eqb q then Graph.remove q tl else hd :: Graph.remove q tl := by
+      unfold Graph.remove
+      cases h : hd.eqb q <;> simp [h]
+    rw [hfil]
+    cases hq : hd.eqb q with
+    | true =>
+        rw [if_pos rfl, ih]
+        cases ht : hd.eqb t with
+        | true =>
+            have hqt : Triple.eqb q t = true :=
+              Triple.eqb_trans (by rw [Triple.eqb_symm]; exact hq) ht
+            simp [Graph.mem, ht, hqt]
+        | false => simp [Graph.mem, ht]
+    | false =>
+        rw [if_neg (by simp), Graph.mem, ih]
+        cases hqt : Triple.eqb q t with
+        | true =>
+            cases ht : hd.eqb t with
+            | true =>
+                exact absurd
+                  (Triple.eqb_trans ht (by rw [Triple.eqb_symm]; exact hqt))
+                  (by rw [hq]; simp)
+            | false => simp
+        | false => simp [Graph.mem]
+
+/-- Membership after a filter, for any predicate that respects the
+engine equality. `Graph.remove` is the special case where the
+predicate is "not equal to `q`"; the delta merge needs the general
+form for its tombstone filter. -/
+theorem mem_filter_congr {f : Triple → Bool}
+    (hcong : ∀ a b, Triple.eqb a b = true → f a = f b) (t : Triple) (l : Graph) :
+    Graph.mem t (l.filter f) = (Graph.mem t l && f t) := by
+  induction l with
+  | nil => simp [Graph.mem]
+  | cons hd tl ih =>
+    cases hf : f hd with
+    | true =>
+        rw [List.filter_cons_of_pos hf, Graph.mem, Graph.mem, ih]
+        cases ht : hd.eqb t with
+        | true => rw [hcong hd t ht] at hf; simp [hf]
+        | false => simp
+    | false =>
+        rw [List.filter_cons_of_neg (by simp [hf]), ih, Graph.mem]
+        cases ht : hd.eqb t with
+        | true => rw [hcong hd t ht] at hf; simp [hf]
+        | false => simp
+
+/-! ## Which triple positions a reader actually needs
+
+Port of `col_need` from `formal/fstar/RDF.Graph.Executable.fst`. A
+columnar reader that already knows a row matches still has to decode
+the row's three positions to build a `Triple`. When the caller consumes
+only some of them — an OPTIONAL or FILTER that projects one variable —
+the rest need not be decoded at all. This record is how a caller says
+which ones it needs.
+
+It lives HERE, in the lowest module that both the store readers and the
+algebra can see, for the same reason the F\* source puts it in
+`RDF.Graph.Executable`: it inverts nobody's dependency edge.
+
+Narrowing `ColNeed` may only change WHICH positions are cheaply
+decoded, never which rows match or their order. It carries no flag for
+the graph column, because the graph column is always decoded whatever
+the query shape. -/
+structure ColNeed where
+  s : Bool
+  p : Bool
+  o : Bool
+  deriving Repr, DecidableEq, Inhabited
+
+/-- All three positions needed — the "decode everything" baseline, and
+the safe default for a caller that has not computed a real `ColNeed`. -/
+def colNeedAll : ColNeed := { s := true, p := true, o := true }
+
+/-- No position needed. Only safe when the caller genuinely consumes
+none of the pattern's variables. -/
+def colNeedNone : ColNeed := { s := false, p := false, o := false }
 
 end L4Factoidal.RDF

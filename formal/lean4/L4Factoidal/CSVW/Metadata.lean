@@ -152,6 +152,22 @@ deriving Repr, Inhabited
     one) and conflating them would be a real bug, not a naming nit. -/
 structure TableDesc where
   url       : String
+  /-- `@id` (§5.4): the IRI the table's node takes. Absent means the
+      node is a blank node, which is what most of the corpus expects;
+      test036 states `"@id": "http://example.org/tree-ops-ext"` and
+      every triple about the table hangs off that IRI instead. -/
+  id        : Option String := none
+  /-- `@id` was PRESENT but not a string, so it names nothing. Kept
+      apart from `id = none` because the two behave differently: an
+      absent `@id` leaves a blank node, while an unusable one makes
+      the table take the metadata document's own URL. -/
+  idNonString : Bool := false
+  /-- `notes` (§5.4): annotations on the table, emitted as
+      `csvw:note`. The value is kept as raw `Json` for the same reason
+      a common property is — §5.8's JSON-LD value shapes are the
+      emitter's business, and a shape this port does not read must
+      drop one triple rather than fail the document. -/
+  notes     : List L4Factoidal.JSON.Json := []
   schema    : Option TableSchema := none
   /-- A `tableSchema` given as a URL rather than inline. The parse is
       pure, so it records the LINK and leaves fetching to the caller —
@@ -166,6 +182,8 @@ deriving Repr, Inhabited
 /-- §5.3 table group — the top of the metadata document. -/
 structure TableGroup where
   id        : Option String := none
+  /-- `notes` on the GROUP, emitted as `csvw:note` on its node. -/
+  notes     : List L4Factoidal.JSON.Json := []
   tables    : List TableDesc := []
   dialect   : Option Dialect := none
   inherited : Inherited := {}
@@ -201,20 +219,35 @@ def langCompatible (want have' : Option String) : Bool :=
       String.ofList (w.toList.take k) == String.ofList (h.toList.take k)
 
 /-- §5.6 column-name derivation: an explicit `name`, else the first
-    title whose LANGUAGE is compatible with the document's, else the
+    title whose language IS the document's default language, else the
     positional `_col.N` form the spec mandates. `n` is the 1-based
     column position.
 
-    The language check is not optional. A document with `"lang": "de"`
-    whose column states `"titles": {"en": "On Street"}` has no usable
-    title for that column, so it is `_col.2` — taking the English
-    title anyway names the column after a title the document does not
-    offer in its own language (test148). -/
+    The comparison is EQUALITY of tags, not the truncated BCP 47
+    matching `langCompatible` performs, and the two rules are
+    different on purpose:
+
+    * matching a CSV HEADER against a column's titles uses truncated
+      matching, which is what `langCompatible` is for and what the
+      comment quoted on test148 and test149 describes;
+    * deriving the column NAME takes "the first titles value having
+      the same language tag as default language" — an exact tag. A
+      document with `"lang": "en"` and `"titles": {"en-US": "On
+      Street"}` therefore has NO usable title for that column and the
+      name is `_col.2` (test149), and so is one with `"lang": "de"`
+      against an `en` title (test148).
+
+    An UNTAGGED title is not skipped by this. §5.1.3 says a
+    natural-language property written as a plain string carries the
+    default language, so its tag equals the document's by
+    construction — which is why every plain-titled column in a
+    `"lang": "de"` document still takes its title as its name. -/
 def columnName (c : Column) (n : Nat) (preferLang : Option String) : String :=
   match c.name with
   | some nm => nm
   | none =>
-      match c.titlesLang.find? (fun (_, l) => langCompatible preferLang l) with
+      let deflt := preferLang.getD "und"
+      match c.titlesLang.find? (fun (_, l) => (l.getD deflt) == deflt) with
       | some (t, _) => t
       | none        => "_col." ++ toString n
 

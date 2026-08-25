@@ -96,14 +96,16 @@ NOT PORTED (each with its reason)
     (`parse_fulltext_query_object`). A vendor extension outside
     §19.8, whose encoding lives in `SPARQL.FullText.fst` — no Lean
     counterpart exists to encode into.
-  * SPARQL 1.2 bare reified triples `<< s p o >>`, the `~` reifier
-    and `{| … |}` annotation blocks
-    (`parse_reified_triple_pattern` / `parse_annotations`). The
-    tokenizer recognises all four tokens; the `QueryPattern` AST has
-    no reifier arm to build into. Triple-term patterns `<<( s p o )>>`
-    and the `TRIPLE`/`SUBJECT`/`PREDICATE`/`OBJECT`/`isTRIPLE`
-    builtins ARE ported, since `PatternTerm.tripleTerm` and the
-    matching `Expr` constructors exist.
+
+PORTED IN A LATER WAVE (issue #556): SPARQL 1.2 bare reified triples
+`<< s p o (~ reifier)? >>` in subject and object position, and the
+`~` / `{| predicateObjectList |}` annotation sequence after a
+simple-predicate object (`parse_reified_triple_pattern` /
+`parse_reifier_id` / `parse_annotations` → `pReifiedTriplePattern` /
+`pReifierId` / `pAnnotations`). Triple-term patterns `<<( s p o )>>`
+and the `TRIPLE`/`SUBJECT`/`PREDICATE`/`OBJECT`/`isTRIPLE` builtins
+were already ported. All of it is v12-only: the tokenizer emits the
+`<<` / `>>` / `~` / `{|` / `|}` tokens only under the v12 flag.
 -/
 import L4Factoidal.SPARQL.Query
 import L4Factoidal.SPARQL.Tokenizer
@@ -197,6 +199,8 @@ def rdfNilIri : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#nil", rf
 def rdfFirstIri : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#first", rfl⟩
 /-- `rdf_rest_iri_str`. -/
 def rdfRestIri : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#rest", rfl⟩
+/-- `rdf_reifies_iri_str` — SPARQL 1.2 reification (issue #556). -/
+def rdfReifiesIri : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies", rfl⟩
 /-- `fn_langmatches_iri_str` — LANGMATCHES is modelled as a call. -/
 def fnLangMatchesIri : WfIri :=
   ⟨"http://www.w3.org/2005/xpath-functions#langMatches", rfl⟩
@@ -310,6 +314,13 @@ def patternTermToSubject : PatternTerm → Option PatternSubject
   | .bnode b          => some (.bnode b)
   | .literal _        => none
   | .tripleTerm s p o => some (.tripleTerm s p o)
+
+/-- `pattern_subject_to_term`: every subject form is also a term. -/
+def patternSubjectToTerm : PatternSubject → PatternTerm
+  | .var v            => .var v
+  | .iri i            => .iri i
+  | .bnode b          => .bnode b
+  | .tripleTerm s p o => .tripleTerm s p o
 
 /-- `select_item_var`. -/
 def selectItemVar : SelectItem → VarName
@@ -682,6 +693,25 @@ def endsPredObjList : Token → Bool
   | .bind | .graph | .service | .values | .union
   | .lateral | .lbrace | .rbracket | .eof => true
   | _ => false
+
+/-- SPARQL 1.2 `VarOrReifierId ::= Var | iri | BlankNode`, after a `~`
+the caller consumed; any other token means no explicit id was given,
+which mints a fresh blank node without consuming anything — rewritten
+to a non-distinguished variable downstream, same as an anonymous `[]`
+(`parse_reifier_id`). -/
+def pReifierId (st : PState) (ts : TStream) : Except ParseError (PatternSubject × TStream) :=
+  match peekTok ts with
+  | .var v => .ok (.var v, advTok ts)
+  | .iri i =>
+    (match mkIri? i with
+     | some wi => .ok (.iri wi, advTok ts)
+     | none    => pErr "invalid reifier IRI" ts)
+  | .pname pn =>
+    (match resolvePnameIri st pn with
+     | some wi => .ok (.iri wi, advTok ts)
+     | none    => pErr "unresolved prefix" ts)
+  | .bnode b => .ok (.bnode b, advTok ts)
+  | _ => .ok (.bnode (freshBnodeId ts), ts)
 
 /-! ## The grammar — one mutual block, structural on `fuel`
 
@@ -1839,6 +1869,12 @@ def pObjectWithExtras (fuel : Nat) (st : PState) (ts : TStream) :
              | .ok (_, ts3) => .ok ((.bnode bid, extras), ts3)))
     | .lparen => pCollection f st (advTok ts)
     | .ttOpen => pTripleTermPattern f st (advTok ts)
+    | .ttBareOpen => do
+      -- SPARQL 1.2 bare reified triple in object position; also the
+      -- route by which one nests inside a triple-term COMPONENT slot,
+      -- via pTtPatComponent.
+      let (rp, ts1) ← pReifiedTriplePattern f st (advTok ts)
+      .ok ((patternSubjectToTerm rp.1, rp.2), ts1)
     | _ => pErr "expected object" ts
 
 /-- SPARQL 1.2: a triple-term PATTERN `<<( s p o )>>`; the opener is
@@ -1883,6 +1919,80 @@ def pTtPatPredicate (fuel : Nat) (st : PState) (ts : TStream) : Except ParseErro
        | some wi => .ok (.iri wi, advTok ts)
        | none    => pErr "unresolved prefix" ts)
     | _ => pErr "triple-term predicate must be a variable or IRI" ts
+
+/-- SPARQL 1.2: a bare reified triple `<< s p o (~ reifier)? >>`; the
+opening `<<` is consumed. Subject/object components and the predicate
+reuse the SAME restricted parsers as the paren'd triple-term form —
+collections are rejected, the predicate is var/IRI/`a` only. A
+reified triple denotes its REIFIER (the `~`-named var/IRI/blank node,
+else a fresh blank node), which takes the triple's place in the
+enclosing position; it does NOT itself assert `s p o` (RDF 1.2
+reification is deliberately not assertion). It emits ONE extra triple
+pattern `reifier rdf:reifies <<( s p o )>>`
+(`parse_reified_triple_pattern`). -/
+def pReifiedTriplePattern (fuel : Nat) (st : PState) (ts : TStream) :
+    Except ParseError ((PatternSubject × QueryPattern) × TStream) :=
+  match fuel with
+  | 0     => pErr "recursion limit" ts
+  | f + 1 => do
+    let (s, ts1) ← pTtPatComponent f st ts
+    let (p, ts2) ← pTtPatPredicate f st ts1
+    let (o, ts3) ← pTtPatComponent f st ts2
+    let exSo := ggpJoin s.2 o.2
+    let tt : PatternTerm := .tripleTerm s.1 p o.1
+    match peekTok ts3 with
+    | .tilde => do
+      let (reif, ts5) ← pReifierId st (advTok ts3)
+      match expectTok .ttBareClose ts5 with
+      | .error _     => pErr "expected '>>' to close reified triple" ts5
+      | .ok (_, ts6) =>
+        let reifiesTp : TriplePattern := { s := reif, p := .iri rdfReifiesIri, o := tt }
+        .ok ((reif, ggpJoin exSo (.bgp [reifiesTp])), ts6)
+    | _ =>
+      match expectTok .ttBareClose ts3 with
+      | .error _     => pErr "expected '>>' to close reified triple" ts3
+      | .ok (_, ts4) =>
+        let reif : PatternSubject := .bnode (freshBnodeId ts3)
+        let reifiesTp : TriplePattern := { s := reif, p := .iri rdfReifiesIri, o := tt }
+        .ok ((reif, ggpJoin exSo (.bgp [reifiesTp])), ts4)
+
+/-- SPARQL 1.2: the annotation sequence after a simple-predicate
+object: `( ('~' VarOrReifierId?) | ('{|' PredicateObjectList '|}') )*`,
+reifying the triple {baseS, baseP, baseO} (already added to the
+caller's BGP). A `~` mints/records a reifier, emits its `rdf:reifies`
+triple immediately, and becomes the PENDING reifier for an immediately
+following `{| … |}` block; a block with no pending reifier mints its
+own fresh blank node. Reachable only from `pObjectListSimple`, never
+`pObjectListPath` — the restriction the negative suite's
+annotated-*-path fixtures check (`parse_annotations`). -/
+def pAnnotations (fuel : Nat) (st : PState) (baseS : PatternSubject)
+    (baseP baseO : PatternTerm) (pending : Option PatternSubject) (ts : TStream) :
+    Except ParseError (QueryPattern × TStream) :=
+  match fuel with
+  | 0     => .ok (.empty, ts)
+  | f + 1 =>
+    let tt : PatternTerm := .tripleTerm (patternSubjectToTerm baseS) baseP baseO
+    match peekTok ts with
+    | .tilde => do
+      let (rsubj, ts2) ← pReifierId st (advTok ts)
+      let reifiesTp : TriplePattern := { s := rsubj, p := .iri rdfReifiesIri, o := tt }
+      let (rest, ts3) ← pAnnotations f st baseS baseP baseO (some rsubj) ts2
+      .ok (ggpJoin (.bgp [reifiesTp]) rest, ts3)
+    | .annotOpen => do
+      let ts1 := advTok ts
+      let (rsubj, pre) :=
+        match pending with
+        | some r => (r, QueryPattern.empty)
+        | none   =>
+          let r : PatternSubject := .bnode (freshBnodeId ts)
+          (r, QueryPattern.bgp [{ s := r, p := .iri rdfReifiesIri, o := tt }])
+      let (blk, ts2) ← pPredObjList f st rsubj .empty ts1
+      match expectTok .annotClose ts2 with
+      | .error _     => pErr "expected '|}' to close annotation block" ts2
+      | .ok (_, ts3) => do
+        let (rest, ts4) ← pAnnotations f st baseS baseP baseO none ts3
+        .ok (ggpJoin (ggpJoin pre blk) rest, ts4)
+    | _ => .ok (.empty, ts)
 
 /-- [102] Collection ::= '(' GraphNode+ ')' — desugared into an
 `rdf:first` / `rdf:rest` chain, `rdf:nil` when empty. -/
@@ -2074,9 +2184,14 @@ def pObjectListSimple (fuel : Nat) (st : PState) (subj : PatternSubject)
     let (obj, ts1) ← pObjectWithExtras f st ts
     let acc1 := ggpAddTriple acc { s := subj, p := pred, o := obj.1 }
     let acc2 := ggpJoin acc1 obj.2
-    match peekTok ts1 with
-    | .comma => pObjectListSimple f st subj pred acc2 (advTok ts1)
-    | _      => .ok (acc2, ts1)
+    -- SPARQL 1.2: this object may be followed by an annotation
+    -- sequence (`~ reifier` and/or `{| … |}`) reifying THIS triple.
+    -- Only on the simple-verb path, never pObjectListPath.
+    let (ann, ts2) ← pAnnotations f st subj pred obj.1 none ts1
+    let acc3 := ggpJoin acc2 ann
+    match peekTok ts2 with
+    | .comma => pObjectListSimple f st subj pred acc3 (advTok ts2)
+    | _      => .ok (acc3, ts2)
 
 /-- [86] ObjectListPath for a property-path predicate. -/
 def pObjectListPath (fuel : Nat) (st : PState) (subj : PatternSubject)
@@ -2149,6 +2264,12 @@ def pSubjectWithExtras (fuel : Nat) (st : PState) (ts : TStream) :
       match patternTermToSubject pt.1 with
       | some s => .ok ((s, pt.2, false), ts1)
       | none   => pErr "invalid triple-term subject" ts
+    | .ttBareOpen => do
+      -- SPARQL 1.2 bare reified triple in subject position. Like
+      -- `[ … ]`, it can stand alone as a complete triples statement
+      -- (pattern-08.rq) — the predicate-object list is OPTIONAL.
+      let (rp, ts1) ← pReifiedTriplePattern f st (advTok ts)
+      .ok ((rp.1, rp.2, true), ts1)
     | _ => pErr "expected subject" ts
 
 /-- [55] TriplesBlock ::= TriplesSameSubjectPath ( '.' TriplesBlock? )?.

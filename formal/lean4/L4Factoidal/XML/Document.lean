@@ -315,6 +315,11 @@ structure Doctype where
   /-- `(element name, attribute name)` pairs declared `[54] AttType`
   = `ID` in the internal subset. -/
   idAttrs : List (String × String)
+  /-- The SYSTEM identifier of the `[75] ExternalID`, when the DOCTYPE
+  has one. Recorded, not fetched: whether an external subset is read
+  is the caller's decision, and reading it needs I/O this module does
+  not do. -/
+  systemId : Option String := none
 deriving DecidableEq, Repr, Inhabited
 
 /-- `[1] document ::= prolog element Misc*`.

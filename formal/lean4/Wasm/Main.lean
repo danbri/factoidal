@@ -9,6 +9,11 @@ one another. The wasm build and this executable call exactly the same
 
   lake exe l4wasm-cli version
   lake exe l4wasm-cli bgp <data.json> <bgp.json>
+  lake exe l4wasm-cli call <op> <argsJsonFile>
+
+`call` drives the dispatch ABI (`Wasm/Dispatch.lean`): `<op>` is the
+method name and `<argsJsonFile>` holds a JSON array of strings — the
+same two strings `l4_call_c` carries across the wasm boundary.
 -/
 import Wasm.Exports
 
@@ -22,6 +27,10 @@ def main (args : List String) : IO UInt32 := do
       let bgp ← IO.FS.readFile bgpFile
       IO.println (L4Wasm.bgpQuery data bgp)
       return 0
+  | ["call", op, argsFile] =>
+      let argsJson ← IO.FS.readFile argsFile
+      IO.println (L4Wasm.call op argsJson)
+      return 0
   | _ =>
-      IO.eprintln "usage: l4wasm-cli (version | bgp <data.json> <bgp.json>)"
+      IO.eprintln "usage: l4wasm-cli (version | bgp <data.json> <bgp.json> | call <op> <argsJsonFile>)"
       return 1

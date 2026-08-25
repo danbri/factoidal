@@ -11,6 +11,16 @@ be committed (binaries, per Iron Rule #9), pushed to a cache branch,
 or accepted as lost. This skill is the inventory of what we cache,
 how restoration works, and the mistakes that motivated it.
 
+## Lean4 wasm build cache (toolchain-cache branch)
+
+`l4wasm-work-cache-v4.33.1.tar.gz` on `origin/toolchain-cache` holds
+the Lean-to-wasm build's expensive intermediates (regenerated core C,
+wasm objects, runtime objects, sparse sources) keyed to lean-toolchain
+v4.33.1 + Emscripten 6.0.8 — 12.8 MB, saves ~15 minutes and the
+network fetches. Restore per that branch's README; Emscripten itself
+reinstalls via emsdk (not cached, 1.7 GB), and uv.h comes from
+`apt-get install libuv1-dev`.
+
 ## What restores automatically (the bootstrap hook)
 
 `.claude/hooks/session-start.sh` → `tools/sandbox-bootstrap.sh` runs

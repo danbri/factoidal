@@ -929,15 +929,22 @@ def parseJsonLd (loader : Loader) (input : String) (base : Option String)
 compares). Same setup as `parseJsonLd`'s context-bearing branch, but it
 stops one step earlier and returns the expanded JSON. Expansion runs
 UNCONDITIONALLY here: context-free documents must still go through the
-algorithm to drop unmapped properties, array-wrap values, and so on. -/
+algorithm to drop unmapped properties, array-wrap values, and so on.
+
+`frameExpansion` selects the JSON-LD Framing grammar and defaults to
+`false`. The FRAME document is the only thing expanded with it set —
+never the input being framed. -/
 def expandDocument (loader : Loader) (input : String) (base : Option String)
-    (expandContext : Option String) (processingMode : Option String) : Res Json :=
+    (expandContext : Option String) (processingMode : Option String)
+    (frameExpansion : Bool := false) : Res Json :=
   let mode10 := processingMode == some "json-ld-1.0"
   match parseJson input with
   | .error _ => .error .notJsonLd
   | .ok root =>
     let acSeed : ActiveContext :=
-      { cur := { emptyContextCore with base := base, mode10 := mode10 }, prev := [] }
+      { cur := { emptyContextCore with
+                   base := base, mode10 := mode10, frameExpansion := frameExpansion },
+        prev := [] }
     match (match expandContext with
            | none => Except.ok acSeed
            | some ctxRef => contextProcess loader acSeed (.string ctxRef) false

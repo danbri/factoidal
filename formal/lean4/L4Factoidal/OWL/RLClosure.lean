@@ -389,6 +389,37 @@ def prpInv1For (g : Graph) (d : Triple) : List Triple :=
             (asSubject u.o).map (fun ys => ⟨ys, p2, u.s.toTerm⟩))))
   else []
 
+/-- **Schema-level inverseOf flip** — NOT in OWL 2 RL/RDF Table 9.
+
+If `p owl:inverseOf q` then `p rdfs:domain C` gives `q rdfs:range C`,
+and `p rdfs:range C` gives `q rdfs:domain C`, in both directions.
+
+Sound under both OWL 2 Direct and RDF-Based Semantics, because the
+extension of an inverse property pair is the transposition of each
+other's. Without it the closure derives the INSTANCE-level consequences
+(prp-inv with prp-dom and prp-rng) but not the schema triple itself, so
+`SELECT ?C WHERE { :parent rdfs:range ?C }` sees only scm-op's
+`owl:Thing` and misses the transposed data-domain class. W3C SPARQL
+entailment `sparqldl-11` ("domain test") is what catches that.
+
+Port of `OWL.Closure.fsti`'s `owl_rule_inverseOf_domain_range_flip`.
+Driven by the `owl:inverseOf` declaration, like prp-inv1 and prp-inv2
+above. -/
+def inverseOfDomRngFlipFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        g.flatMap (fun t =>
+          match t.s, t.o with
+          | .iri srcP, .iri c =>
+              if      srcP == p1 && t.p == rdfsDomain then [(⟨.iri p2, rdfsRange, .iri c⟩ : Triple)]
+              else if srcP == p1 && t.p == rdfsRange  then [(⟨.iri p2, rdfsDomain, .iri c⟩ : Triple)]
+              else if srcP == p2 && t.p == rdfsDomain then [(⟨.iri p1, rdfsRange, .iri c⟩ : Triple)]
+              else if srcP == p2 && t.p == rdfsRange  then [(⟨.iri p1, rdfsDomain, .iri c⟩ : Triple)]
+              else []
+          | _, _ => [])))
+  else []
+
 /-- **prp-inv2**. -/
 def prpInv2For (g : Graph) (d : Triple) : List Triple :=
   if d.p == owlInverseOf then
@@ -806,7 +837,8 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       chainToTransFor g d, prpRflFor g d,
       xsdAxiomsFor g d, dtRangeIntersectFor g d,
       caxDwToComplementFor g d, clsMaxqc1ToComplementFor g d,
-      minCard1ComprehensionFor g d, caxAdcToDwFor g d ]
+      minCard1ComprehensionFor g d, caxAdcToDwFor g d,
+      inverseOfDomRngFlipFor g d ]
 
 /-- The flattening of `conclusionsList`. -/
 def conclusionsFrom (g : Graph) (d : Triple) : List Triple :=

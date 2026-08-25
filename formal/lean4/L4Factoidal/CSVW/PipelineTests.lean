@@ -1,118 +1,135 @@
 /-
-L4Factoidal.CSVW.PipelineTests — build-time checks for the metadata
-parse, the common-property emitter and the metadata-driven pipeline.
-
-Every `#guard` here is a claim the csv2rdf corpus made concrete: each
-one names a mistake that produced a graph with the RIGHT number of
-triples and the wrong content, which is the failure mode a count
-check cannot see.
+L4Factoidal.CSVW.PipelineTests — build-time checks for the two rules
+metadata DISCOVERY turns on.
 -/
-import L4Factoidal.CSVW.Pipeline
+import L4Factoidal.CSVW.JsonDoc
 
 namespace L4Factoidal.CSVW
 
-open L4Factoidal.JSON
 open L4Factoidal.RDF
+open L4Factoidal.JSON
 
-/-! ## Prefix expansion (§5.8) -/
+private def suite : String := "http://www.w3.org/2013/csvw/tests/"
 
-#guard expandPrefixed "dc:title" == "http://purl.org/dc/terms/title"
-#guard expandPrefixed "schema:name" == "http://schema.org/name"
--- An ABSOLUTE IRI passes through: its scheme reads as a prefix, and
--- rewriting it would produce a term the document never stated.
-#guard expandPrefixed "http://example.org/p" == "http://example.org/p"
--- An unrecognised prefix is left ALONE rather than given a guessed
--- namespace; the emitter then declines to build an IRI from it.
-#guard expandPrefixed "zz:thing" == "zz:thing"
+/-! ## §5.2: discovered metadata that does not reference the requested
+file MUST be ignored.
 
-/-! ## `@context` -/
+Five tests in the corpus put a `csv-metadata.json` next to a CSV it
+does NOT describe, and check that the CSV is converted on its own.
+Without the rule the converter went looking for the table the
+metadata DID name, did not find it, and the run reported "table file
+not found" — a skip that reads as a missing fixture rather than as an
+unimplemented rule. -/
 
-private def ctxDoc : String :=
-  "{\"@context\": [\"http://www.w3.org/ns/csvw\", {\"@language\": \"en\"}], \"url\": \"t.csv\"}"
+private def refsOther : TableGroup :=
+  { tables := [{ url := "test117-ref.csv" }] }
 
-#guard match parseMetadataText ctxDoc with
-       | some (_, c) => c.lang == some "en"
-       | none => false
+private def refsIt : TableGroup :=
+  { tables := [{ url := "test117.csv" }] }
 
--- A single-table document is lifted into a one-table group, so
--- downstream code sees ONE shape.
-#guard match parseMetadataText ctxDoc with
-       | some (g, _) => g.tables.length == 1 && g.tables.head!.url == "t.csv"
-       | none => false
+#guard !(describesTable (suite ++ "test117.csv-metadata.json") refsOther
+           (suite ++ "test117.csv"))
+#guard describesTable (suite ++ "test117.csv-metadata.json") refsIt
+         (suite ++ "test117.csv")
 
-/-! ## Titles, in all four shapes (§5.6) -/
+-- The comparison is on the RESOLVED url, so a metadata document in a
+-- subdirectory naming `action.csv` describes the file beside it and
+-- not a same-named file at the top level.
+#guard describesTable (suite ++ "test119/csv-metadata.json")
+         { tables := [{ url := "action.csv" }] } (suite ++ "test119/action.csv")
+#guard !(describesTable (suite ++ "test119/csv-metadata.json")
+           { tables := [{ url := "action.csv" }] } (suite ++ "action.csv"))
 
-private def titlesJson (body : String) : List (String × Option String) :=
-  match parseJson? body with
-  | some j => titlesOf (some "en") j
-  | none   => []
+/-! ## §5.1: `@base` in the `@context` moves the document's base URL
 
-#guard titlesJson "\"A\"" == [("A", some "en")]
-#guard titlesJson "[\"A\", \"B\"]" == [("A", some "en"), ("B", some "en")]
-#guard titlesJson "{\"fr\": \"A\"}" == [("A", some "fr")]
-#guard titlesJson "{\"fr\": [\"A\", \"B\"]}" == [("A", some "fr"), ("B", some "fr")]
+`@base` is resolved against the metadata document's own location, and
+everything the document says is then relative to the result. test273
+puts `"@base": "test273/"` on a document at the top level, so its
+`"url": "action.csv"` names `test273/action.csv`. -/
 
-/-! ## Datatype names (§5.11.1)
+#guard effectiveBase (suite ++ "test273-metadata.json") { base := some "test273/" }
+       == suite ++ "test273/"
+#guard effectiveBase (suite ++ "test011/csv-metadata.json") {}
+       == suite ++ "test011/csv-metadata.json"
+#guard describesTable (effectiveBase (suite ++ "test273-metadata.json")
+                        { base := some "test273/" })
+         { tables := [{ url := "action.csv" }] } (suite ++ "test273/action.csv")
 
-`number`, `binary`, `datetime` and `any` are CSVW ALIASES, and `xml` /
-`html` / `json` are not XSD types at all. Reading every name as
-`xsd:<name>` minted `xsd:number` on real corpus output. -/
+/-! ## §5.4 `suppressOutput`, `@id`, and `notes` -/
 
-#guard datatypeIriFor "number" == some "http://www.w3.org/2001/XMLSchema#double"
-#guard datatypeIriFor "string" == some "http://www.w3.org/2001/XMLSchema#string"
-#guard datatypeIriFor "datetime" == some "http://www.w3.org/2001/XMLSchema#dateTime"
-#guard datatypeIriFor "xml"
-       == some "http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral"
-#guard datatypeIriFor "json" == some "http://www.w3.org/ns/csvw#JSON"
+private def twoRows : Table :=
+  { header := [{ num := 1, cells := ["a"] }],
+    rows := [{ num := 2, cells := ["x"] }] }
 
-/-! ## Column-scoped template variables
+private def plainTable : TableDesc := { url := "t.csv" }
+private def hushed : TableDesc := { url := "s.csv", suppress := some true }
 
-`{_name}` in a `propertyUrl` is what gives each column its own
-predicate. Without it every column of a table collapses onto one. -/
+-- A suppressed table contributes NOTHING: no rows, no table node, no
+-- link from the group. csv2json honoured this and csv2rdf did not, so
+-- test034 emitted 105 triples where 60 were expected.
+#guard (convert (suite ++ "m.json") {} { tables := [hushed] } false
+          [(hushed, twoRows)]).length == 1     -- the TableGroup type triple alone
+#guard (convert (suite ++ "m.json") {} { tables := [hushed] } true
+          [(hushed, twoRows)]) == []
 
-private def look0 : String → Option String := rowLookup [("c", "v")] 1 2
+-- `@id` makes the table node an IRI; absent, it is a blank node.
+#guard tableNodeOf (suite ++ "m.json") 0 plainTable == Subject.bnode "table0"
+#guard (match tableNodeOf (suite ++ "m.json") 0
+              { url := "t.csv", id := some "http://example.org/tree-ops-ext" } with
+        | .iri i => i.val == "http://example.org/tree-ops-ext"
+        | _      => false)
+-- An `@id` that is present but NOT A STRING makes the table take the
+-- metadata document's own URL. That is observed from test102, which
+-- writes `"@id": 1` and expects every triple on
+-- `<…/test102-metadata.json>`; the specification says the value is
+-- invalid and does not say what identity remains.
+#guard (match tableNodeOf (suite ++ "test102-metadata.json") 0
+              { url := "t.csv", idNonString := true } with
+        | .iri i => i.val == suite ++ "test102-metadata.json"
+        | _      => false)
 
-#guard UriTemplate.expand (cellLookup look0 "name" 3 3) "http://schema.org/{_name}"
-       == "http://schema.org/name"
-#guard UriTemplate.expand (cellLookup look0 "name" 3 3) "http://ex/{_column}"
-       == "http://ex/3"
--- The row-scoped variables still show through the column-scoped
--- layer.
-#guard UriTemplate.expand (cellLookup look0 "name" 3 3) "http://ex/{_row}"
-       == "http://ex/1"
+-- An explicit `@value` object with no `@language` is a PLAIN literal.
+-- The default language applies to a bare string, not to a value
+-- object that states its value and states no language; re-tagging it
+-- put `"text/plain"@en` where test036 expects `"text/plain"`.
+#guard commonLeafTerm (suite ++ "m.json") (some "en")
+         (.object [("@value", .string "text/plain")])
+       == some (Term.literal (Literal.string "text/plain"))
+#guard commonLeafTerm (suite ++ "m.json") (some "en") (.string "text/plain")
+       == some (Term.literal (Literal.langString "text/plain" "en"))
 
-/-! ## Common properties (§5.8) -/
+/-! ## csv2json value shapes
 
-private def cpTriples (body : String) : List Triple :=
-  match parseJson? body with
-  | some j => commonTriples "http://ex/base" none 8 "p" (.bnode "s") "http://ex/prop" j
-  | none   => []
+Three of these produced output of the right SHAPE with a wrong type or
+a missing member; the fourth produced output that was not JSON. -/
 
-#guard (cpTriples "\"hello\"").length == 1
-#guard match cpTriples "\"hello\"" with
-       | [⟨_, _, .literal l⟩] => l.val.lexicalForm == "hello"
-       | _ => false
--- An `@id` value is an IRI object, not a literal that happens to look
--- like one.
-#guard match cpTriples "{\"@id\": \"http://example.org/x\"}" with
-       | [⟨_, _, .iri i⟩] => i.val == "http://example.org/x"
-       | _ => false
--- `@value` with `@type` is a typed literal.
-#guard match cpTriples "{\"@value\": \"2010-12-31\", \"@type\": \"xsd:date\"}" with
-       | [⟨_, _, .literal l⟩] =>
-           l.val.datatype.val == "http://www.w3.org/2001/XMLSchema#date"
-       | _ => false
--- An ARRAY is one triple per element, sharing subject and predicate.
-#guard (cpTriples "[\"a\", \"b\", \"c\"]").length == 3
--- A nested node becomes a blank node, and its own members hang off
--- THAT node rather than off the outer subject.
-#guard (cpTriples "{\"schema:name\": \"X\"}").length == 2
-#guard match cpTriples "{\"schema:name\": \"X\"}" with
-       | ⟨_, _, .bnode b⟩ :: ⟨.bnode b2, p, _⟩ :: [] =>
-           b == b2 && p.val == "http://schema.org/name"
-       | _ => false
--- A value shape this module does not model emits NOTHING rather than
--- a guessed triple.
-#guard (cpTriples "null").isEmpty
+-- `NaN`, `INF` and `-INF` are not JSON numbers. Emitting them bare
+-- made the document unparseable, which is the only reason the defect
+-- announced itself instead of sitting as a quiet mismatch.
+#guard jsonValueOf (some "double") true "NaN" == Json.string "NaN"
+#guard jsonValueOf (some "double") true "-INF" == Json.string "-INF"
+
+-- A numeric cell is a JSON NUMBER, so its exponent is resolved: JSON
+-- has no lexical space to preserve. The RDF output keeps the lexical
+-- form, because an RDF literal's lexical form is part of its
+-- identity; a JSON number's is not.
+#guard jsonValueOf (some "double") true "10.10e1" == Json.number "101.0"
+#guard jsonValueOf (some "double") true "0.0e0" == Json.number "0.0"
+#guard jsonValueOf (some "decimal") true "10.1" == Json.number "10.1"
+#guard jsonValueOf (some "integer") true "10" == Json.number "10"
+-- A cell whose datatype does NOT apply keeps its text.
+#guard jsonValueOf (some "integer") false "abc" == Json.string "abc"
+
+-- Exponent resolution on its own.
+#guard resolveExponent "10.10e1" == "101.0"
+#guard resolveExponent "0.0e0" == "0.0"
+#guard resolveExponent "1e3" == "1000"
+#guard resolveExponent "1.5e-2" == "0.015"
+#guard resolveExponent "INF" == "INF"
+#guard resolveExponent "42" == "42"
+-- `shiftLeft` is the same function with the sign flipped, and its
+-- old behaviour is unchanged.
+#guard shiftLeft "123456.789" 2 == "1234.56789"
+#guard shiftLeft "123" 2 == "1.23"
 
 end L4Factoidal.CSVW

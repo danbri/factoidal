@@ -122,6 +122,9 @@ import L4Factoidal.XML.Parser
 import L4Factoidal.XML.Document
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
+import L4Factoidal.OWL.Materialise
+import L4Factoidal.OWL.Refute
+import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.Syntax.RdfXml
 import Harness.Common
 
@@ -175,6 +178,12 @@ structure Case where
   conclusion    : Option String := none
   nonConclusion : Option String := none
   fsPremise     : Bool := false
+  /-- The FUNCTIONAL-SYNTAX premise / conclusion text, when the case
+      carries one. Recording only the Boolean made every such case
+      `unsupported` even where the subset parser can read it. -/
+  fsPremiseText : Option String := none
+  fsConclusionText : Option String := none
+  fsNonConclusionText : Option String := none
   /-- `test:importedOntology` wrapper-node IRIs. -/
   imports       : List String := []
 deriving Inhabited
@@ -201,7 +210,12 @@ def readCase (attrs : List Attribute) (kids : List Node) : Case := Id.run do
       | "rdfXmlPremiseOntology"       => c := { c with premise := some (directText k) }
       | "rdfXmlConclusionOntology"    => c := { c with conclusion := some (directText k) }
       | "rdfXmlNonConclusionOntology" => c := { c with nonConclusion := some (directText k) }
-      | "fsPremiseOntology"           => c := { c with fsPremise := true }
+      | "fsPremiseOntology"           =>
+          c := { c with fsPremise := true, fsPremiseText := some (directText k) }
+      | "fsConclusionOntology"        =>
+          c := { c with fsConclusionText := some (directText k) }
+      | "fsNonConclusionOntology"     =>
+          c := { c with fsNonConclusionText := some (directText k) }
       | "importedOntology"            => c := { c with imports := c.imports ++ [res] }
       | _ => pure ()
     | _ => pure ()
@@ -400,6 +414,30 @@ def closureIO (g : Graph) (fuel : Nat) (deadlineMs : Nat) : IO ClosureResult := 
 
 def closureFuel : Nat := 100
 
+/-- The refuter's DEFAULT budget per premise, overridable with
+`--refute-budget N`. The budget is THREADED through the branch
+search, so it bounds the whole search rather than each branch, and
+the cost is close to linear in it. Running out answers `none` — not
+refuted — so the cap withholds a verdict rather than inventing one.
+
+📊 Measured on `type-inconsistency.rdf`, 2026-08-23, out of 127
+decided:
+
+| Budget | Score | Wall |
+| --- | --- | --- |
+| 16 | 88 pass, 39 fail | 1.9 s |
+| 24 | 90 pass, 37 fail | 2.2 s |
+| 40 | 90 pass, 37 fail | 2.8 s |
+| 64 | 92 pass, 35 fail | 3.5 s |
+| 200 | 92 pass, 35 fail | 6.6 s |
+| 400 | 92 pass, 35 fail | 9.6 s |
+
+64 is the default: it is where the curve flattens, and four seconds
+on the catalog the refuter exists for is not a cost worth trading a
+case against. Above it nothing more closes — the remaining 35 need
+rules, not budget. -/
+def defaultRefuteBudget : Nat := 64
+
 /-- Per-catalog measurement counters. -/
 structure Measure where
   triplesParsed  : Nat := 0
@@ -424,11 +462,30 @@ def isDirectOnly (c : Case) : Bool :=
 def isRdfBasedOnly (c : Case) : Bool :=
   c.semantics.contains "RDF-BASED" && !c.semantics.contains "DIRECT"
 
+/-- A functional-syntax document the subset parser CAN read, as
+    triples. `none` when the case has none or when the parser declines
+    — the two are the same to the caller, which then reports the case
+    as `unsupported functional-syntax` rather than as an empty
+    ontology. -/
+def fsGraph (txt? : Option String) : Option Graph :=
+  txt?.bind L4Factoidal.OWL.FS.parseFunctionalSyntax
+
+/-- Is the case functional-syntax-only AND outside the subset the
+    parser reads? Only then is it `unsupported`. -/
+def isFunctionalUnread (c : Case) : Bool :=
+  isFunctionalOnly c && (fsGraph c.fsPremiseText).isNone
+
 /-- Parse the premise and merge its imports: the graph the closure
 runs on. -/
 def premiseGraph (cat : Catalog) (c : Case) : Except Harness.Outcome Graph :=
   match c.premise with
-  | none => .error (.fail "harness: no RDF/XML premise")
+  | none =>
+      -- No RDF/XML premise: fall back to the functional-syntax one,
+      -- which the OWL 2 Mapping to RDF Graphs tables turn into the
+      -- same triples an RDF/XML premise would have carried.
+      (match fsGraph c.fsPremiseText with
+       | some g => .ok g
+       | none   => .error (.fail "harness: no RDF/XML premise"))
   | some ptxt =>
     match parseDoc "premise" c.iri ptxt with
     | .error e => .error (.fail e)
@@ -442,16 +499,43 @@ def premiseGraph (cat : Catalog) (c : Case) : Except Harness.Outcome Graph :=
 /-- Parse the premise, merge imports, run the closure. Shared by the
 four judges. Returns the closure result or a fail outcome, plus the
 measurement delta. -/
-def premiseClosure (cat : Catalog) (c : Case) (capMs : Nat)
+def premiseClosure (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
     : IO (Except Harness.Outcome ClosureResult × Measure) := do
   match premiseGraph cat c with
   | .error o => return (.error o, { parseFailures := 1 })
   | .ok gp =>
     let t0 ← IO.monoMsNow
     let r ← closureIO gp closureFuel (t0 + capMs)
-    let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
-                         capHits := if r.capped then 1 else 0 }
-    return (.ok r, m)
+    if !dl then
+      let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
+                           capHits := if r.capped then 1 else 0 }
+      return (.ok r, m)
+    else
+      -- `--dl`: one class-expression materialisation pass over the
+      -- closed graph, then the closure again so the new `rdf:type`
+      -- triples propagate through `rdfs:subClassOf`. The pass writes
+      -- only memberships `L4Factoidal.OWL.Mat.cePositiveSound`
+      -- admits, so every triple it adds is entailed. ONE pass, not a
+      -- fixpoint: iterating materialisation against the closure is a
+      -- separate decision with its own cost, and a bounded pass
+      -- cannot be mistaken for a complete DL procedure.
+      let (gm, budgetHit) := L4Factoidal.OWL.Mat.materialiseWithBudget r.graph
+                               L4Factoidal.OWL.Mat.defaultBudget
+      if budgetHit || gm.length == r.graph.length then
+        -- A budget hit is a CAP HIT: the memberships this premise
+        -- would have gained were not computed, so an absence verdict
+        -- on it is not evidence of anything.
+        let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
+                             capHits := if r.capped || budgetHit then 1 else 0 }
+        return (.ok r, m)
+      else
+        let t1 ← IO.monoMsNow
+        let r2 ← closureIO gm closureFuel (t1 + capMs)
+        let m : Measure := { triplesParsed := gp.length,
+                             closureRounds := r.rounds + r2.rounds,
+                             capHits := (if r.capped then 1 else 0) +
+                                        (if r2.capped then 1 else 0) }
+        return (.ok r2, m)
 
 /-! ## Profiling — where does a round spend its time?
 
@@ -560,16 +644,18 @@ ms={t6 - t5}  same set as the list round: {sameSet}  same list as step g: {sameL
         break
       g := g'
 
-def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
-  match c.conclusion with
-  | none => return (.fail "harness: no RDF/XML conclusion", {})
-  | some ctxt =>
-    match parseDoc "conclusion" c.iri ctxt with
+def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+    : IO (Harness.Outcome × Measure) := do
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+  match (match c.conclusion with
+         | some ctxt => parseDoc "conclusion" c.iri ctxt
+         | none => match fsGraph c.fsConclusionText with
+             | some g => .ok g
+             | none   => .error "harness: no RDF/XML conclusion") with
     | .error e => return (.fail e, { parseFailures := 1 })
     | .ok gc0 =>
       if gc0.isEmpty then return (.fail "parser: conclusion parsed to zero triples", { parseFailures := 1 })
-      let (res, m) ← premiseClosure cat c capMs
+      let (res, m) ← premiseClosure cat c capMs dl
       match res with
       | .error o => return (o, m)
       | .ok r =>
@@ -583,16 +669,18 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome
           else
             return (.fail s!"closure-gap: missing {showTriple t} (closure {r.graph.length} triples, {r.rounds} rounds)", m)
 
-def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
-  match c.nonConclusion with
-  | none => return (.fail "harness: no RDF/XML non-conclusion", {})
-  | some ctxt =>
-    match parseDoc "non-conclusion" c.iri ctxt with
+def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+    : IO (Harness.Outcome × Measure) := do
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+  match (match c.nonConclusion with
+         | some ctxt => parseDoc "non-conclusion" c.iri ctxt
+         | none => match fsGraph c.fsNonConclusionText with
+             | some g => .ok g
+             | none   => .error "harness: no RDF/XML non-conclusion") with
     | .error e => return (.fail e, { parseFailures := 1 })
     | .ok gc =>
       if gc.isEmpty then return (.fail "parser: non-conclusion parsed to zero triples", { parseFailures := 1 })
-      let (res, m) ← premiseClosure cat c capMs
+      let (res, m) ← premiseClosure cat c capMs dl
       match res with
       | .error o => return (o, m)
       | .ok r =>
@@ -604,29 +692,40 @@ def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome
         else
           return (.fail s!"closure-gap: every non-conclusion triple was derived (unexpected entailment)", m)
 
-def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
-  let (res, m) ← premiseClosure cat c capMs
+def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+    : IO (Harness.Outcome × Measure) := do
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+  let (res, m) ← premiseClosure cat c capMs dl
   match res with
   | .error o => return (o, m)
   | .ok r =>
     let clash := detectClashI r.index
+    -- Under `--dl` the refuter is consulted too. A refutation of a
+    -- premise the catalog asserts CONSISTENT is a defect in the
+    -- refuter, and it has to be visible as a failure — a refuter
+    -- scored only on the cases it is meant to close cannot be caught
+    -- fabricating a contradiction.
+    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph rb == some false
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     if clash then return (.fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)", m)
+    else if refuted then
+      return (.fail s!"clash: the tableau refuted a premise asserted consistent ({r.graph.length} triples)", m)
     else if r.capped then
       return (.fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds", m)
     else return (.pass, m)
 
-def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Outcome × Measure) := do
-  if isFunctionalOnly c then return (.unsupported "functional-syntax", {})
+def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+    : IO (Harness.Outcome × Measure) := do
+  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   if isRdfBasedOnly c then return (.skip "semantics-rdf-based-only", {})
-  let (res, m) ← premiseClosure cat c capMs
+  let (res, m) ← premiseClosure cat c capMs dl
   match res with
   | .error o => return (o, m)
   | .ok r =>
     let clash := detectClashI r.index
-    let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
-    if clash then return (.pass, m)
+    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph rb == some false
+    let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0) }
+    if clash || refuted then return (.pass, m)
     else if r.capped then
       return (.fail s!"cap: no clash on a closure that hit the budget after {r.rounds} rounds", m)
     else return (.fail s!"closure-gap: no clash row fired on a premise asserted inconsistent ({r.graph.length} triples, {r.rounds} rounds)", m)
@@ -634,11 +733,12 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) : IO (Harness.Ou
 def testTypes : List String :=
   ["PositiveEntailmentTest", "NegativeEntailmentTest", "ConsistencyTest", "InconsistencyTest"]
 
-def judge (cat : Catalog) (c : Case) (capMs : Nat) : String → IO (Harness.Outcome × Measure)
-  | "PositiveEntailmentTest" => judgePositive cat c capMs
-  | "NegativeEntailmentTest" => judgeNegative cat c capMs
-  | "ConsistencyTest"        => judgeConsistency cat c capMs
-  | "InconsistencyTest"      => judgeInconsistency cat c capMs
+def judge (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+    : String → IO (Harness.Outcome × Measure)
+  | "PositiveEntailmentTest" => judgePositive cat c capMs dl
+  | "NegativeEntailmentTest" => judgeNegative cat c capMs dl
+  | "ConsistencyTest"        => judgeConsistency cat c capMs dl rb
+  | "InconsistencyTest"      => judgeInconsistency cat c capMs dl rb
   | ty                       => pure (.unsupported s!"test type {ty}", {})
 
 /-- The cause tag of a FAIL reason: the text before the first `:`. -/
@@ -663,14 +763,15 @@ def bumpType (l : List (String × Harness.Score)) (ty : String) (o : Harness.Out
   | some _ => l.map (fun p => if p.1 == ty then (p.1, p.2.bump o) else p)
   | none   => l ++ [(ty, Harness.Score.bump {} o)]
 
-def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (verbose : Bool)
+def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (rb : Nat)
+    (verbose : Bool)
     : IO CatalogResult := do
   let t0 ← IO.monoMsNow
   let mut r : CatalogResult := {}
   for c in cat.cases do
     for ty in testTypes do
       if c.types.contains ty then
-        let (o, m) ← judge cat c capMs ty
+        let (o, m) ← judge cat c capMs dl rb ty
         let label := s!"{c.id} [{ty}]"
         -- A cap hit is named even when the unit still scored (a
         -- conclusion found before the budget, a clash on a truncated
@@ -753,6 +854,14 @@ structure Opts where
   /-- `--indexed-only`: profile rounds of the indexed engine alone
   (no list-engine rows), for inputs the list engine cannot finish. -/
   indexedOnly : Bool := false
+  /-- `--dl`: run one class-expression materialisation pass
+  (`L4Factoidal.OWL.Mat.materialise`) between two closures, instead
+  of the RL closure alone. Kept a FLAG rather than made the default
+  so both numbers can be measured from the same binary and the
+  difference attributed to the pass. -/
+  dl : Bool := false
+  /-- `--refute-budget N`: the refuter's per-premise budget. -/
+  refuteBudget : Nat := defaultRefuteBudget
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
@@ -763,6 +872,9 @@ def parseArgs : List String → Opts → Opts
   | "--case" :: c :: rest, o => parseArgs rest { o with cases := o.cases ++ [c] }
   | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
   | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
+  | "--dl" :: rest, o => parseArgs rest { o with dl := true }
+  | "--refute-budget" :: n :: rest, o =>
+      parseArgs rest { o with refuteBudget := n.toNat!.max 1 }
   | a :: rest, o =>
       if a.endsWith ".rdf" then parseArgs rest { o with only := o.only ++ [a] }
       else parseArgs rest { o with dir := a }
@@ -851,6 +963,10 @@ def main (args : List String) : IO UInt32 := do
   let dir : System.FilePath := o.dir
   IO.println "Lean OWL 2 RL/RDF probe — corpus census + closure run"
   IO.println s!"corpus dir: {dir}  closure fuel: {closureFuel}  per-closure cap: {o.capMs} ms"
+  IO.println (if o.dl then
+    s!"regime: RL closure + class-expression materialisation + tableau refuter \
+(--dl), refuter budget {o.refuteBudget}"
+  else "regime: RL closure only")
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
 unrelated triple absent = {!unrelatedAbsent}"
@@ -870,7 +986,7 @@ unrelated triple absent = {!unrelatedAbsent}"
       | none => notRead := notRead ++ [name]
       | some cat =>
         printCensus name cat.cases
-        let r ← runCatalog name cat o.capMs o.verbose
+        let r ← runCatalog name cat o.capMs o.dl o.refuteBudget o.verbose
         total := total.add r.score
         totalM := totalM.add r.measure
         totalCases := totalCases + cat.cases.length

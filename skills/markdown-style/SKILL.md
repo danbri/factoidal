@@ -284,3 +284,48 @@ impress." Banned alongside the sycophantic adjectives: "spike" (say
 strength", "game-changer", and similar startup/consultant register.
 Say what the work is in ordinary technical words. Same rule as
 anti-pattern #26: the sentence either carries weight or it doesn't.
+
+## Aphorisms and metaphors (anti-pattern #26b, #26c)
+
+Owner correction, 2026-08-23, verbatim: *"NEVER use flowery or
+metaphorical language for our actual semantic rules"* and *"DO NOT
+TALK LIKE FUCKING YODA"*.
+
+The patterns below are documented externally as recurring Claude
+writing tics. Names in brackets are from
+[Ivo Velitchkov's catalogue of Claude clichés](https://www.linkandth.ink/p/catalog-of-claude-cliches);
+the general complaint is also in
+[anthropics/claude-code#77136](https://github.com/anthropics/claude-code/issues/77136)
+and [How to Stop Claude Writing Like an AI](https://willfrancis.com/how-to-stop-claude-writing-like-an-ai/).
+
+### Banned patterns
+
+| Pattern | Catalogue name | Example from this repo |
+|---|---|---|
+| Aphoristic ending — a short balanced sentence written to sound quotable | **[AE]** Aphoristic Ender | "A vacuous truth is not an entailment." |
+| Contrast pair | **[CB]** Contrastive Binary | "an existential is discharged by a MEMBERSHIP, not an edge" |
+| Mirrored clauses with swapped terms | **[MCS]** Mirrored-clause Symmetry | "Withholding is sound; manufacturing emptiness is not." |
+| Telling the reader which point matters | **[SS]** Significance-signalling, **[SRC]** Self-ranking | "The design decision worth carrying forward", "worth naming because" |
+| Inflating the stakes | **[SK]** Stakes-raising | "a cap that hides which test it costs is a silent cap" |
+
+### Rewrite table
+
+| Instead of | Write |
+|---|---|
+| "A vacuous truth is not an entailment." | "`∀p.C` holds of an individual with no known `p`-successor in the interpretation being examined. The graph does not entail it: another model may give that individual a `p`-successor outside `C`." |
+| "A spelling difference is not a value difference." | "Two literals of one datatype with different lexical representations denote different values only when the datatype's lexical mapping is injective." |
+| "A witness must not be counted, including by consumers." | "A witness blank node may denote the same domain element as an existing successor, so it must not be counted against a cardinality bound. This applies to every consumer of the graph the pass writes, including the RL clash detector." |
+| "a cap that hides which test it costs is a silent cap" | "Report which tests the cap excluded. The score is otherwise indistinguishable from one where the cap did not apply." |
+| "Withholding is sound; manufacturing emptiness is not." | "Reporting an unknown value space is sound. Reporting an empty one that is not empty produces a clash that no model contradicts." |
+| "an existential is discharged by a MEMBERSHIP, not an edge" | "An existential restriction `∃p.C` is discharged when some `p`-successor carries `C` as a label. The count of `p`-successors alone does not discharge it." |
+
+### The test
+
+Read the sentence and ask: does it state a rule a reader can apply,
+or does it state a resemblance a reader has to decode? If the second,
+rewrite it as the first.
+
+For anything that is a rule OF A SPECIFICATION, use the term from
+[`docs/w3c-glossary.md`](../../docs/w3c-glossary.md). If the term is
+missing there, add it — with its defining specification and section —
+before writing the sentence.

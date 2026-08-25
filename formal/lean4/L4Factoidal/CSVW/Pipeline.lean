@@ -91,11 +91,19 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
   let headers := match t.schema, tbl.header.head? with
     | none, some h => h.cells
     | _, _         => []
+  -- The language a TITLE is matched against is the one INHERITED at
+  -- that column (§5.1.1 `lang`), and only then the document's
+  -- `@context` `@language`. Using the context language alone made a
+  -- table-level `"lang": "de"` invisible, so a column whose only
+  -- title is `{"en": "On Street"}` was named after an English title
+  -- the document does not offer in its own language — it must be
+  -- `_col.2` (test148).
   let nameOf : Column → Nat → String := fun c i =>
     match c.name with
     | some nm => nm
     | none =>
-        if !c.titlesLang.isEmpty then columnName c (i + 1) ctx.lang
+        let preferLang := ((effectiveInherited g t t.schema c).lang).orElse (fun _ => ctx.lang)
+        if !c.titlesLang.isEmpty then columnName c (i + 1) preferLang
         else match headers.getD i "" with
           | "" => "_col." ++ toString (i + 1)
           | h  => h
@@ -155,31 +163,107 @@ def tableRowInputs (base : String) (ctx : Ctx) (g : TableGroup) (t : TableDesc)
               | none     => Subject.bnode ("row" ++ toString rowNum)
             some { subject := subj, inh := inh, result := r, name := nm }) })
 
+/-- The node a table's triples hang off, which the GROUP must link to.
+    Kept as its own function so the link and the triples cannot
+    disagree about the subject.
+
+    Three cases, and the third is OBSERVED FROM THE CORPUS rather than
+    derived from the specification, which is why it is labelled:
+
+    * an `@id` that names an IRI — the table IS that IRI (test036);
+    * NO `@id` — a blank node, which is what most of the corpus
+      expects (test148 and its neighbours);
+    * an `@id` that is present but not a string — the table takes the
+      METADATA DOCUMENT's own URL. test102 writes `"@id": 1` under
+      the comment "@id takes a URI, not an integer" and expects every
+      triple about the table on `<…/test102-metadata.json>`. The
+      specification says the value is invalid; it does not say what
+      identity the table then has, and the corpus is what settles it.
+      Falling back to a blank node instead — the obvious reading —
+      produces a graph of the right SIZE with a different subject. -/
+def tableNodeOf (base : String) (idx : Nat) (t : TableDesc) : Subject :=
+  match t.id.bind (refIri? base) with
+  | some i => .iri i
+  | none   =>
+      if t.idNonString then
+        match refIri? base "" with
+        | some d => .iri d
+        | none   => .bnode ("table" ++ toString idx)
+      else .bnode ("table" ++ toString idx)
+
 /-- Everything one table contributes in STANDARD mode: the
     `csvw:Table` node with its common properties, and the rows. -/
 def tableStandard (base : String) (ctx : Ctx) (g : TableGroup) (idx : Nat)
     (t : TableDesc) (tbl : Table) : List Triple :=
   let tableUrl := L4Factoidal.Syntax.resolveIri base t.url
   let tag := toString idx
-  tableTriplesStandard tag ("table" ++ tag) tableUrl
+  -- §5.4 `@id`: the table's node is that IRI, not a blank node. Every
+  -- triple about the table then hangs off it, including the
+  -- `csvw:table` link from the group — test036 states
+  -- `"@id": "http://example.org/tree-ops-ext"` and expects exactly
+  -- that. An `@id` that is not a usable IRI leaves the blank node.
+  let node : Subject := tableNodeOf base idx t
+  tableTriplesStandard tag node tableUrl
     (tableRowInputs base ctx g t tbl)
-    (fun node => commonPropsTriples tableUrl ctx.lang ("t" ++ tag) node t.common)
+    (fun n => commonPropsTriples tableUrl ctx.lang ("t" ++ tag) n t.common
+              ++ notesTriples tableUrl ctx.lang ("n" ++ tag) n t.notes)
+
 
 /-- The whole conversion, both modes. `tables` pairs each table
     DESCRIPTION with the rows read from its file. -/
 def convert (base : String) (ctx : Ctx) (g : TableGroup) (minimal : Bool)
     (tables : List (TableDesc × Table)) : List Triple :=
+  -- §5.4 `suppressOutput`: a table with it set contributes NOTHING —
+  -- no rows, no table node, and no link from the table group. It is
+  -- still READ, because other tables' foreign keys refer to it; it is
+  -- only not emitted.
+  --
+  -- The csv2json path honoured this and the csv2rdf path did not, so
+  -- test034 emitted 105 triples where 60 were expected — the two
+  -- lookup tables it marks `suppressOutput` were converted in full.
+  -- The INDEX is taken before the filter so a table's blank-node
+  -- label does not shift when an earlier table is suppressed.
+  let kept := (tables.zipIdx).filter (fun ((t, _), _) => t.suppress != some true)
   if minimal then
-    (tables.zipIdx).flatMap (fun ((t, tbl), _) =>
+    kept.flatMap (fun ((t, tbl), _) =>
       (tableRowInputs base ctx g t tbl).flatMap rowTriplesMinimalOf)
   else
     let group : Subject := .bnode "tablegroup"
-    let links := (tables.zipIdx).map (fun (_, i) =>
-      (⟨group, csvwTableProp, (Subject.bnode ("table" ++ toString i)).toTerm⟩ : Triple))
+    let links := kept.map (fun ((t, _), i) =>
+      (⟨group, csvwTableProp, (tableNodeOf base i t).toTerm⟩ : Triple))
     (⟨group, rdfTypeIri, .iri csvwTableGroup⟩ : Triple)
       :: (commonPropsTriples base ctx.lang "g" group g.common
+          ++ notesTriples base ctx.lang "ng" group g.notes
           ++ links
-          ++ (tables.zipIdx).flatMap (fun ((t, tbl), i) =>
+          ++ kept.flatMap (fun ((t, tbl), i) =>
                 tableStandard base ctx g i t tbl))
+
+/-- tabular-data-model §5.2: metadata found by DISCOVERY — at
+    `<file>-metadata.json`, at `csv-metadata.json` in the directory, or
+    named by a `Link` header — applies only if it actually references
+    the tabular data file that was requested. "If the metadata file
+    found at this location does not explicitly include a reference to
+    the requested tabular data file then it MUST be ignored."
+
+    `base` is the metadata document's own base URL, since a `url`
+    inside it is relative to that and not to the CSV.
+
+    This is a rule about the METADATA, so it lives here rather than in
+    the runner: the runner's job is to read the candidate files, and
+    the decision about which one describes the request is the
+    specification's. Without it a discovered-but-irrelevant document
+    sent the converter looking for a table that was never requested,
+    and five tests reported "table file not found" — a skip that read
+    as a missing fixture rather than as an unimplemented rule. -/
+def describesTable (base : String) (g : TableGroup) (tableUrl : String) : Bool :=
+  g.tables.any (fun t => L4Factoidal.Syntax.resolveIri base t.url == tableUrl)
+
+/-- The base URL for everything a metadata document says: its own
+    location, unless its `@context` carries an `@base`, which is
+    resolved AGAINST that location (tabular-metadata §5.1). -/
+def effectiveBase (location : String) (ctx : Ctx) : String :=
+  match ctx.base with
+  | none   => location
+  | some b => L4Factoidal.Syntax.resolveIri location b
 
 end L4Factoidal.CSVW

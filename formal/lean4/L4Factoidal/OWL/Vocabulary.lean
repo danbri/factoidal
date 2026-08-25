@@ -226,6 +226,20 @@ def owlRestriction : WfIri :=
 def owlMinCardinality : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#minCardinality", rfl⟩
 
+/-- The remaining three members of the OWL 2 cardinality family. The
+unqualified `owl:cardinality` and the two qualified forms complete the
+set the query rewriter classifies on (`OWL/QueryRewriteRestriction.lean`);
+`owl:maxCardinality`, `owl:maxQualifiedCardinality` and
+`owl:minCardinality` were already here. -/
+def owlCardinality : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#cardinality", rfl⟩
+
+def owlMinQualifiedCardinality : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#minQualifiedCardinality", rfl⟩
+
+def owlQualifiedCardinality : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#qualifiedCardinality", rfl⟩
+
 /-- `"1"^^xsd:int` — the OWL 1 RDF mapping's spelling of the
 cardinality value 1, which the WebOnt-era conclusion documents use.
 `litNni1` is the OWL 2 spelling of the same VALUE; the comprehension

@@ -1,3 +1,25 @@
+## How to write to the owner (read this first)
+
+Owner, 2026-08-24, verbatim:
+
+> "I pay Anthropic for you to ALWAYS BE STRAIGHT WITH ME. Every time you
+> highlight your alleged honesty or straightness in a particular context
+> wastes tokens undermining everything else you say."
+
+1. **Never advertise honesty.** No "to be straight with you", "to be
+   honest", "I need to be clear with you", "the truth is", "candidly".
+   Straightness is the baseline. Announcing it in one place implies its
+   absence everywhere else.
+2. **Plain technical English**, with domain terminology from established
+   authorities — the W3C specifications, the RDF/OWL/SPARQL literature,
+   the Lean 4 and F\* manuals. Do not invent vocabulary.
+3. **No unsolicited metaphors.** State the mechanism.
+4. **Report in ASD-STE100 Simplified Technical English.**
+5. **Keep it short.** The owner reads on a phone, between other
+   commitments. Lead with the result or the decision needed.
+6. **A repeated steer means the last report failed.** Record decisions
+   in this file the first time, not the third.
+
 > **only report to me in ASD-STE100 Simplified Technical English.**
 
 # Factoidal — a linked information system with graph data and the Web at its heart
@@ -195,6 +217,70 @@ regime suite is at 70 pass, 0 fail (out of 70; re-measured 2026-07-10). Tracked 
 outside the entailment regime suite (the anchor still MULTIPLIES rows
 per P-edge and drops vacuous-truth individuals).
 
+## Standing decisions (owner, 2026-08-24)
+
+Recorded here because they were repeated several times before being
+written down. Verbatim; paraphrase drifts.
+
+### Port functionality, not files
+
+> "the key thing is to port functionality not files. The port was partly
+> motivated by fear F\* version was accumulating cruft and this may help
+> to clear it."
+
+Module-count coverage is a progress indicator, not the goal. Where an
+F\* module is cruft, the Lean side implements the FUNCTION correctly and
+the F\* file is marked, not transcribed.
+
+### Priority order
+
+> "Good to progress Cottas but I suggest core of rdf/s, sparql, owl, rif,
+> csvw, shacl, shex, xml, xpath, cslt, schematron are more urgent. Cottas
+> rdf store didn't really get mature enough to use in f\*, we may ship
+> Factoidal and make a separate FactoidalDB repo to focus attention on
+> the issues."
+
+- **Urgent:** RDF/S, SPARQL, OWL, RIF, CSVW, SHACL, ShEx, XML, XPath,
+  XSLT (read from "cslt"), Schematron.
+- **Not urgent:** COTTAS. Possible future split into a FactoidalDB repo.
+
+### Issue 566 — the hex layer. RULED, do not ask again.
+
+> "Yeah DO NOT PORT THAT TERRIBLE HEX CRAP!!!"
+> "We have no users so rip it up where it is crap."
+> "Fix it upstream in F\* and do not worry about legacy. You can defer
+> that for now just mark the F\* file as fucked and link to GitHub. Do it
+> right in Lean. F\* Cottas is essentially unused. I am only human using
+> anything."
+
+- Do NOT port the hex layer to Lean. Lean implements the byte format
+  directly.
+- The F\* file carries a header marking it broken and linking
+  <https://github.com/danbri/factoidal/issues/566>. Legacy compatibility
+  is deferred; there are no users.
+- `Parquet.Footer` was waiting on this call. The call is made and the
+  same ruling applies. It is not blocked and needs no further asking.
+
+### RDF.NQuads.Streaming and SPARQL11.Parser.AskBgpRoundTrip
+
+> "These are important. We need performant nquads and sparql
+> implementations across all surfaces!"
+> "Rdf.nquads.streaming it is ok to make the changes, ideally both f\* and
+> lean4 behave same"
+
+Changes approved. The two trees should agree in behaviour; where the
+Lean side changed (the streaming offset), the F\* side follows rather
+than the two drifting.
+
+### Prove over an abstraction
+
+> "Ideally we should prove it over an abstraction of both, in lean4 and
+> also optionally f\*"
+
+Where a property holds of both trees, state it once over an abstraction
+(a typeclass or parameterised structure in Lean) and instantiate it,
+rather than proving it twice. Lean first; F\* optional.
+
 ## Reading owner steers: prioritization is not prohibition
 
 The owner usually steers this project from a phone, between other
@@ -332,18 +418,75 @@ rule #17").
 24. Subagent prompts ship code sketches + file:line + signatures.
 25. Never write cryptic score strings. "972/59" without labels is
     banned — write "972 pass, 59 fail (out of 1031)".
-26. No sycophantic adjectives in user-facing prose. `honest`,
-    `genuine`, `important`, `critical`, `big-picture`, `headline`,
-    `key insight`, `key finding`, etc. perform candor instead of
-    being clear. The sentence either carries weight or it doesn't.
-    Full rule + rewrites in `skills/markdown-style/SKILL.md`.
+26. **Three language bans** in prose AND code comments (owner
+    correction, 2026-08-23). Rewrite table:
+    `skills/markdown-style/SKILL.md`.
+    (a) **Sycophantic adjectives**: `honest`, `genuine`, `important`,
+    `critical`, `big-picture`, `headline`, `key insight`, `key
+    finding`.
+    (b) **Aphorisms** — a short balanced sentence written to sound
+    like a maxim. Banned examples from this repo: "A vacuous truth is
+    not an entailment", "a cap that hides which test it costs is a
+    silent cap", "Withholding is sound; manufacturing emptiness is
+    not". Write the rule as a rule. Also banned: "not X, but Y"
+    contrast pairs, and telling the reader which of your points
+    matters ("worth noting", "the point is", "this matters
+    because"). These are named patterns in the published catalogue of
+    Claude writing tics.
+    (c) **Metaphor in any statement of a SEMANTIC RULE.** "A spelling
+    difference is not a value difference" was metaphor AND factually
+    wrong — `"colour"` and `"color"` ARE different `xsd:string`
+    values. The actual rule is about whether a datatype's LEXICAL
+    MAPPING is injective. Use the specification's own term from
+    [`docs/w3c-glossary.md`](docs/w3c-glossary.md); if the term is
+    missing, add it there first.
 27. Landing an old-branch agent commit onto a much newer tip silently
     drops `build-ocaml.sh` module-list entries (auto-merge) and
     consumer `.ml` changes — the build exits 0 but the feature isn't
     built. Verify the module list + force ancestor-safe consumer files;
     prefer a dedicated landing agent. Full text: hazard #11 in
     `skills/workflow-gotchas-debugging/SKILL.md`.
-28. A hub post's live cells run against the js/npm bundle, not the
+28. An audit that finds nothing is evidence about the AUDIT's reach
+    before it is evidence about the code. State the method next to the
+    result, and pick one that can see the failure you are looking for.
+    (2026-08-23: a squashed-module-name audit of the Lean port gap
+    reported "no other false negative"; four modules, 1,298 F* lines,
+    were already covered — the method cannot see a consolidation or a
+    substantive rename, and its silence about exactly those was read as
+    coverage. The reported figure was 120 of 220; the real one was 125.
+    Full text: hazard #28 in `skills/workflow-gotchas-debugging`.)
+29. A theorem whose hypothesis restates its conclusion type-checks
+    and proves nothing. Before claiming a theorem discharges an
+    obligation, unfold the conclusion and check no premise contains it;
+    a proof body of `exact h` is the tell. Delete such a theorem, never
+    weaken it -- it makes commit messages and design docs claim the
+    obligation is met. (2026-08-23, `Cottas.PresenceWriter`: a
+    `buildPresence_correct` under the heading "the producer-side
+    obligation, closed" took `BuiltCorrectly` with re-indexed bounds as
+    a hypothesis. Full text: hazard #29 in
+    `skills/workflow-gotchas-debugging`.)
+30. A measurement tool must derive its inputs from the repository on
+    every run. A cached file list reports the cache, not the tree, and
+    says nothing about being old. (2026-08-23:
+    `tools/lean-port-gap.py` read its Lean module list from the
+    session scratchpad and reported a module as not covered minutes
+    after its Lean file landed; the same cache would have made the
+    tool crash on a fresh container. Fail loudly on an empty walk, and
+    write generated reports to a temp path. Full text: hazard #30 in
+    `skills/workflow-gotchas-debugging`.)
+31. Coverage is an explicit decision, never a name resemblance. A
+    matching last name component is a suggestion to audit, not a
+    result; and a lookup table whose misses fall through to a
+    heuristic cannot report its own breakage. (2026-08-23: adding
+    `HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines, unported —
+    vanish from the Lean port gap's not-covered list, because both end
+    in `Store`. The audit found seven such false positives and two
+    aliases pointing at a Lean module that does not exist, hidden
+    because the leaf rule matched something else. The reported count
+    had been over by five. A count that moves without a cause is a bug
+    report: chase it before writing the number down. Full text: hazard
+    #31 in `skills/workflow-gotchas-debugging`.)
+32. A hub post's live cells run against the js/npm bundle, not the
     native binary. A docs landing that adds cells calling a new F\*
     feature is NOT docs-only — rebuild the bundle (the js build
     incrementally SKIPS npm-entry; force it) and gate on `node --test
@@ -461,7 +604,8 @@ session.
   daemon manager, port, transport). Read when adding/debugging the
   MCP plumbing rather than using F* MCP for proofs.
 - [`markdown-style`](skills/markdown-style/SKILL.md) — clickable-link
-  rules + the no-sycophantic-adjectives rewrite list.
+  rules, the no-sycophantic-adjectives rewrite list, and the
+  aphorism/metaphor ban with its rewrite table (anti-pattern #26).
 - [`choosing-models`](skills/choosing-models/SKILL.md) — model/effort
   selection per subagent. Core rule: for all coding tasks, judge an
   appropriate lower-power model and run it in a subagent; Fable-class
@@ -474,6 +618,11 @@ session.
   — wall-clock + Monitor + lock-cleanup pattern for long autonomous
   sessions. Read when kicking long background builds, when "the
   job has been silent for a while," or before a multi-hour solo run.
+- [`counting-coverage`](skills/counting-coverage/SKILL.md) — how to
+  count what a port or migration has covered without the number lying.
+  **Read before writing any coverage number, before adding an alias-table
+  entry, and whenever a count moves and you cannot name the commit that
+  moved it.** Core rule: a name is a hint, coverage is a decision.
 - [`issue-management`](skills/issue-management/SKILL.md) — **read
   before any status report, plan, or issue reference.** GitHub issues
   are the only durable work record; every issue reference is a full
@@ -507,6 +656,12 @@ session.
   reviewable-core registry: every W3C rule id → spec predicate →
   engine function → proof status, plus the trust-surface enumeration.
   UPDATE WITH EVERY PROOF LANDING (hand-curated until generated).
+- [`docs/w3c-glossary.md`](docs/w3c-glossary.md) — the cross-spec
+  architectural vocabulary: lexical space / value space / lexical
+  mapping, entailment and models, open-world and no-unique-name,
+  OWL 2 class expressions, tableau terms, conformance-testing terms,
+  and the local vocabulary that is NOT specification language. Use
+  these terms; do not paraphrase them.
 - [`docs/code-name-glossary.md`](docs/code-name-glossary.md) — Yod6 /
   Tet3 / Lamed3 / etc. decoder. **No new short-codes** — use
   descriptive names per the recovery plan.

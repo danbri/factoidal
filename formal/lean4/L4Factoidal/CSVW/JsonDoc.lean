@@ -60,7 +60,21 @@ def jsonValueOf (base : Option String) (ok : Bool) (lex : String) : Json :=
     (if lex == "true" || lex == "1" then .bool true
      else if lex == "false" || lex == "0" then .bool false
      else .string lex)
-  else if isNumericBase b then .number lex
+  else if isNumericBase b then
+    -- `NaN`, `INF` and `-INF` are NOT JSON numbers, so csv2json writes
+    -- them as STRINGS (test155). Emitting them bare produced output
+    -- that was not JSON at all — the runner's own comparison could not
+    -- parse it, which is the only reason the defect was visible
+    -- rather than a quiet mismatch.
+    if isSpecialDouble lex then .string lex
+    else
+      let plain := resolveExponent lex
+      -- The DOUBLE family is written with a fractional part, matching
+      -- the corpus: `10.10e1` becomes `101.0`, not `101`.
+      if (b == "double" || b == "float" || b == "number") &&
+         !(plain.toList.contains '.')
+      then .number (plain ++ ".0")
+      else .number plain
   else .string lex
 
 /-- `rdf:type` is written `@type` in csv2json, and its value is
@@ -192,9 +206,14 @@ def describesOf (tableUrl : String) (r : RowInput) : List Json :=
 
 /-- Standard mode, one row. -/
 def rowJsonOf (tableUrl : String) (r : RowInput) : Json :=
+  -- ONE title is a bare string, not a one-element array. csv2json
+  -- writes `"titles": "Andorra"`, and wrapping it changed the TYPE of
+  -- a value while leaving the document the right shape everywhere
+  -- else (test235, test236).
   let titlePairs := match r.titles with
-    | [] => []
-    | ts => [("titles", Json.array (ts.map Json.string))]
+    | []  => []
+    | [t] => [("titles", Json.string t)]
+    | ts  => [("titles", Json.array (ts.map Json.string))]
   .object (
     [ ("url", .string (tableUrl ++ "#row=" ++ toString r.sourceRow)),
       ("rownum", .number (toString r.rowNum)) ]
@@ -211,9 +230,29 @@ def convertJson (base : String) (ctx : Ctx) (g : TableGroup) (minimal : Bool)
       if t.suppress == some true then []
       else rows.flatMap (describesOf tableUrl)))
   else
-    .object ([("tables", .array (per.map (fun (t, tableUrl, rows) =>
-      .object ([("url", .string tableUrl)]
-        ++ commonMembers t.common
+    -- §5.4 `suppressOutput` applies in STANDARD mode too: the
+    -- minimal branch above filtered suppressed tables and this one
+    -- did not, so a document with a suppressed table emitted a table
+    -- object for it.
+    let kept := (per.zipIdx).filter (fun ((t, _, _), _) => t.suppress != some true)
+    .object ([("tables", .array (kept.map (fun ((t, tableUrl, rows), i) =>
+      -- A table with an IDENTITY carries it as `@id`. `tableNodeOf`
+      -- is the same function the RDF path uses for the table's
+      -- subject, so the two outputs cannot disagree about which
+      -- table is which (test102).
+      let idPairs := match tableNodeOf base i t with
+        | .iri iri => [("@id", Json.string iri.val)]
+        | _        => []
+      -- `notes` is carried through as a member of the same name, its
+      -- values read the way a common property's value is read — the
+      -- `@value` and `@id` wrappers flatten, so test036's
+      -- `{"@id": "http://example.org/tree-ops-ext"}` becomes the bare
+      -- string the corpus writes.
+      let notePairs := match t.notes.filterMap (commonJson 16) with
+        | []  => []
+        | ns  => [("notes", Json.array ns)]
+      .object (idPairs ++ [("url", Json.string tableUrl)]
+        ++ commonMembers t.common ++ notePairs
         ++ [("row", .array (rows.map (rowJsonOf tableUrl)))]))))]
       ++ commonMembers g.common)
 

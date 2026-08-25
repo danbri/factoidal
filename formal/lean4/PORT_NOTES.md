@@ -5630,3 +5630,8073 @@ did not finish either.
 
 No regression: csv2rdf 252 pass of 270, csv2json 253 of 270, JSON
 Schema 726 pass of 726 decided, MathML 56 of 56.
+
+---
+
+## Schematron: an XPath 1.0 subset, and 8 pass, 0 fail (out of 8)
+
+`Schematron/Validate.lean` was ported early and left TWO parameters
+open — `select` (does a rule's `@context` claim this node?) and
+`evalTest` (what does this `@test` evaluate to?) — because the purity
+doctrine keeps host services as arguments rather than a global
+registry. Nothing supplied them, so the module had never met a
+document. Three modules close that:
+
+- `XPath/Mini.lean` — an XPath 1.0 SUBSET over the project's own XML
+  tree. Its header states the accepted grammar in full and the ten
+  functions it knows. Everything else REFUSES with a reason, and the
+  refusal becomes `Schematron.TestResult.undecided`.
+- `Schematron/FromXml.lean` — reads a `.sch` into `Schematron.Schema`.
+  Names are matched on the LOCAL part, because the XML parser is
+  deliberately non-namespace and a Schematron document writes
+  `sch:pattern`.
+- `Harness/SchematronRun.lean` (`lake exe l4schematron`).
+
+📊 MEASURED: **8 pass, 0 fail (out of 8 decided)**, 0 undecided (out
+of 8 cases in `third_party/testing/schematron/manifest.json`).
+
+🔴 THE FIND, again in the shape this port keeps producing: **both bugs
+returned a confident answer of the right type.** Neither crashed,
+neither refused, and the runner counted both as decided.
+
+1. `takeName` used `takeWhile isNameC`, and `:` is a name character
+   because a QName writes `sch:pattern`. So `preceding-sibling::row`
+   came back as ONE name and parsed as a CHILD step looking for an
+   element literally called `preceding-sibling::row`. No document has
+   one, so `count(…)` was 0, `0 < 1` was TRUE, and the assertion that
+   should have fired reported a clean document. A misparse that
+   yields a DEFINITE answer is worse than one that refuses: the
+   refusal is counted apart, the wrong answer is counted as a pass.
+2. `stepFrom` located the context node among its parent's children
+   with `findIdx? (· == ctx)` — a STRUCTURAL comparison. `<row/><row/>`
+   are equal VALUES, so the second row was found at index 0 and both
+   rows reported zero preceding siblings. A sibling position is
+   IDENTITY, not a value; `resolvePath` now carries the index, and the
+   ancestor chain carries each ancestor's index too.
+
+Bug 1 masked bug 2: with the axis misparsed, the identity defect could
+not show. Fixing the parse turned one silent pass into a visible
+failure, which is the only reason the second bug was found at all.
+
+Both are pinned by `#guard` in `XPath/MiniTests.lean`, each with the
+wrong answer it produced written next to it. `FromXmlTests.lean` pins
+the reader, including that `assert` and `report` survive the read as
+DIFFERENT things — the inversion `Validate.applyAssertion` depends on.
+
+The undecided count is 0 here, and that is a fact about this corpus,
+not a claim about XPath. Eight cases use `count`, `not`, `false`,
+attribute tests, a child path, and one reverse axis. `book[1]`,
+`substring-before`, and an ordering comparison against a string are
+all refused — pinned as refusals, so the boundary is a test rather
+than a promise.
+
+---
+
+## JSON Schema draft-07: 770 pass, 0 fail (out of 770), 0 undetermined
+
+The suite was at 726 pass, 0 fail (out of 726 decided) with **44
+undetermined**. Both causes were the same shape as everything else in
+this port — the validator was RIGHT about everything it decided, and
+the gap was in what it declined to decide.
+
+**32 of the 44: `$id` and the base URI (draft-07 §8.2).** A `$ref` was
+resolved as a JSON pointer into the top document, or looked up whole
+in a registry. Neither is what draft-07 says: an `$id` sets the base
+URI for everything below it, so a relative `$ref` means something
+different depending on WHERE it is written. Three rules that are not
+string concatenation:
+
+- an `$id` composes with the NEAREST enclosing base, so `a.json` →
+  `b/c.json` → `d.json` publishes `http://example.com/b/d.json`;
+- a sibling `$ref` cancels the `$id` (§8.3 makes every keyword beside
+  a `$ref` inert, `$id` included);
+- a `$ref` is validated in the referenced schema's OWN scope, so a
+  pointer written there points into ITS document. Substituting the
+  destination and keeping the pointing document's scope is the
+  suite's "naive replacement of `$ref` with its destination is not
+  correct".
+
+`collectIds` now registers EVERY `$id` in a document — anchors
+(`"#foo"`) under `<base>#foo`, documents under their resolved URI —
+and `validateIn` carries the base in force. A URN base
+(`urn:uuid:…`) takes an absolute reference whole: RFC 3986 relative
+resolution is not defined against a URN.
+
+The third rule bit while writing its own `#guard`. The first draft
+wrote `{"$id": "b.json", "$ref": "#/definitions/y"}` — which §8.3
+makes unresolvable, because the sibling `$ref` cancels the very `$id`
+the outer ref needs. The guard failed, the example was wrong, and the
+comment now says why the inner `$ref` sits under an `allOf`.
+
+**12 of the 44: a count bound written as a decimal.** `{"maxItems":
+2.0}` is `2`. Six keywords matched `instRat v` against `some (n, 1)`
+and returned `unsupported` for anything else, so six groups of the
+suite got no verdict on a perfectly ordinary schema. `countAgainst`
+scales the COUNT by the bound's denominator instead of turning the
+bound into a float, so `3 ≤ 2.0` is decided as `30 ≤ 20` and the
+arithmetic stays exact.
+
+The runner now NAMES each undetermined group with how many of its
+tests are in it, rather than printing a total. That is what turned
+"44 undetermined, presumably remote refs" into two distinct causes in
+one run — the count alone had been read as one gap for weeks, and one
+of the two had nothing to do with `$ref` at all.
+
+No regression: csv2rdf 252 pass, 10 fail (out of 270), csv2json 253
+pass, 9 fail (out of 270), MathML 56 pass, 0 fail (out of 56),
+schematron 8 pass, 0 fail (out of 8).
+
+---
+
+## CSVW: metadata discovery, `@base`, and exact-tag column naming
+
+csv2rdf was 252 pass, 10 fail, 6 skip (out of 270); csv2json was 253
+pass, 9 fail, 6 skip. All six skips read "table file not found", which
+looks like a missing fixture and was not one. Three separate rules:
+
+**§5.2 — discovered metadata that does not reference the requested
+file MUST be ignored.** Five tests (117, 119, 120, 122, 123) put a
+`csv-metadata.json` beside a CSV it does not describe. The runner
+picked it up, the converter went looking for the table that document
+DID name, and the run reported a missing file. The candidates are now
+kept in discovery order — `Link` header, then
+`<file>-metadata.json`, then the directory's `csv-metadata.json` —
+and the first one that references the request wins; if none does, the
+CSV is converted on its own. test122 and test123 need exactly that
+fall-through: their first candidate does not describe the file and
+their second does.
+
+`describesTable` is in `CSVW/Pipeline.lean`, not in the runner. The
+runner's job is to read candidate files; which one describes the
+request is the specification's decision.
+
+**§5.1 — `@base` in the `@context` moves the document's base URL.**
+`Ctx.base` was parsed and then never used. test273 sets `"@base":
+"test273/"` on a metadata document at the top level, so its `"url":
+"action.csv"` names `test273/action.csv`. Disk paths now come from
+resolving the url against the effective base and stripping the
+suite's base URL, instead of concatenating a directory prefix.
+
+That change exposed a second defect in the same place: the no-metadata
+fallback built its table from the manifest's RELATIVE action name and
+resolved it against a base that already ended in it, giving
+`tests/test119/test119/action.csv`. The file was not found, and had it
+been found the emitted subject would have carried the doubled path.
+The fallback now takes the absolute requested URL.
+
+**§5.6 — the column NAME takes a title whose language tag EQUALS the
+document's.** The port used `langCompatible`, which truncates to the
+shorter tag — so `"lang": "en"` accepted an `en-US` title (test149)
+and, before the inherited-language fix below, `"lang": "de"` accepted
+an `en` one (test148). Two different rules had been conflated:
+
+* matching a CSV HEADER against a column's titles uses truncated
+  matching, which is what the comment quoted in both tests describes;
+* deriving the column NAME takes "the first titles value having the
+  same language tag as default language" — an exact tag.
+
+An untagged title still works, and not by an exception: §5.1.3 says a
+natural-language property written as a plain string carries the
+default language, so its tag equals the document's by construction.
+
+A third fix was needed to see the second: `nameOf` read the language
+from the `@context` only, so a table-level `"lang": "de"` was
+invisible and every title matched. The language is the one INHERITED
+at that column (§5.1.1), and the context language is the fallback.
+
+📊 MEASURED: csv2rdf **260 pass, 8 fail, 0 skip (out of 270)**;
+csv2json **261 pass, 7 fail, 0 skip (out of 270)**. Validator
+cross-check 0 in both — no positive test's metadata is wrongly
+rejected. Every skip is gone from both runners.
+
+---
+
+## CSVW value formats: four defects, all with the right triple count
+
+csv2rdf went 260 → **264 pass, 4 fail, 0 skip (out of 270)**; csv2json
+261 → **262 pass, 6 fail, 0 skip (out of 270)**. Every one of the four
+produced the RIGHT NUMBER of triples with the wrong content, which is
+the failure shape this port keeps meeting.
+
+1. **A duration `format` is a regular expression, and was not being
+   read as one.** tabular-metadata §5.11.3 says so outright. The
+   branch returned `.invalid` for ANY stated format, on the ground
+   that satisfaction could not be shown without an engine. The tree
+   HAS one (`Regex.regexMatch`, `fn:matches` semantics — a search
+   with `^`/`$` as anchors). Refusing to decide and deciding NO
+   produce the same output here, a plain literal, which is exactly
+   why the shortcut survived: nine rows of test193 were reported
+   plain and the count never moved.
+
+2. **A secondary group size only exists with two separators.**
+   `#,#00` under UAX #35 means groups of three; the leading `#` is
+   the "and any further digits" placeholder, not a size. Reading it
+   as a secondary size of ONE demanded `1,2,3,4,567`, so
+   `1,234,567` came out as a plain string with the right predicate
+   and no datatype (test282). `#,##,#00` is the genuine case:
+   primary 3, secondary 2.
+
+3. **A written `+` was stripped unconditionally.** `+` is in the
+   `xsd:decimal` lexical space, and test283's `+0` column expects
+   `"+1"^^xsd:decimal` while its `%000` column expects `%+123` to
+   become `1.23`. The sign is now dropped only where SCALING rebuilds
+   the number anyway.
+
+4. **A `double` writes its exponent marker lowercase.** test158
+   expects `"0.0e0"^^xsd:double`, and no expected file in the corpus
+   uses `E`. This is a stated DEVIATION from XSD's canonical mapping,
+   not an instance of it: canonical `double` writes `E` and
+   normalises the mantissa, so `10.10E1` would canonically be
+   `1.010E2`. The value is the same either way; RDF literal equality
+   is lexical, which is the only reason the difference is visible.
+
+Two existing `#guard`s had to be CORRECTED rather than extended —
+`parseNumber "decimal" {} "+42" == .valid "42"` and `parseNumber
+"double" {} "123.456E7" == .valid "123.456E7"`. Each pinned the defect
+it was written beside. That is now four separate landings in this port
+where a guard preserved a wrong answer; the check is always the same
+one — does the corpus agree with what this guard says?
+
+Remaining csv2rdf failures: test034 and test035 (a table group whose
+output is nearly twice the expected size), test036 (embedded metadata
+in the CSV), test102 (`"@id": 1`, where the expected output names the
+metadata document as the table node).
+
+---
+
+## csv2rdf: 270 pass, 0 fail, 0 skip — the whole manifest
+
+Five more defects, closing the csv2rdf suite.
+
+1. **`suppressOutput` on a TABLE was honoured by csv2json and ignored
+   by csv2rdf.** test034 emitted 105 triples where 60 were expected —
+   the two lookup tables it marks `suppressOutput` were converted in
+   full. A suppressed table is still READ (other tables' foreign keys
+   refer to it) and contributes nothing: no rows, no table node, no
+   link from the group.
+
+2. **`@id` on a table was parsed nowhere and used nowhere.** test036
+   states `"@id": "http://example.org/tree-ops-ext"` and every triple
+   about the table hangs off that IRI instead of a blank node. The
+   group's `csvw:table` link has to agree, so the node is computed by
+   one function (`tableNodeOf`) that both the link and the triples
+   call.
+
+3. **`notes` were not emitted.** A `notes` entry becomes a
+   `csvw:note` triple, and its value is read exactly as a common
+   property's value is — so it routes through `commonTriples` rather
+   than being duplicated. test036's note is a nested `oa:Annotation`
+   with its own `oa:hasBody`, which is the nested-node case that code
+   already handled.
+
+4. **An explicit `@value` object with no `@language` was being
+   language-tagged.** The document's default language applies to a
+   BARE STRING; `{"@value": "text/plain"}` is how JSON-LD says "this
+   string, untagged". The port re-tagged it and produced
+   `"text/plain"@en` where test036 expects `"text/plain"`.
+
+5. **Two manifest entries were never attempted, and the denominator
+   never said so.** test116 and test118 name `…csv?query`, and the
+   entry filter tested `action.endsWith ".csv"`. The query is part of
+   the URL — it appears in every emitted IRI, and test118 expects
+   `<action.csv?query#name>` — and is stripped only where a URL
+   becomes a path on disk. Both then pass with no further rule:
+   test116's file metadata describes `test116.csv`, which is NOT the
+   requested `test116.csv?query`, so §5.2 ignores it; test118's
+   directory metadata writes `"url": "action.csv?query"` and matches.
+
+One rule here is OBSERVED FROM THE CORPUS rather than derived from
+the specification, and is labelled as such in the source: an `@id`
+that is present but not a string makes the table take the metadata
+document's own URL. test102 writes `"@id": 1` under the comment "@id
+takes a URI, not an integer" and expects every triple on
+`<…/test102-metadata.json>`. The specification says the value is
+invalid; it does not say what identity the table then has. Falling
+back to a blank node — the obvious reading — gives a graph of the
+right SIZE with a different subject.
+
+📊 MEASURED: **csv2rdf 270 pass, 0 fail, 0 comparison-gave-up, 0 skip
+(out of 270 manifest entries)** — 212 positive and 58 negative.
+Validator cross-check 0. csv2json is at **264 pass, 6 fail, 0 skip
+(out of 270)**.
+
+---
+
+## csv2json: 270 pass, 0 fail, 0 skip — both CSVW suites complete
+
+Four defects on the JSON side, after the shared metadata work above
+took it from 253 to 265.
+
+1. **`NaN` / `INF` / `-INF` were emitted as bare JSON numbers.** They
+   are not JSON numbers, so the document was not JSON at all. That is
+   the one defect in this whole run that ANNOUNCED itself — the
+   runner's own comparison could not parse the output. Every other
+   one produced a well-formed document of the right shape.
+
+2. **A numeric cell kept its lexical form.** csv2json emits a JSON
+   NUMBER, and JSON has no lexical space to preserve: `10.10e1` and
+   `101.0` are the same number and the corpus writes the second
+   (test155). The RDF output does keep the lexical form, because an
+   RDF literal's lexical form is part of its identity; a JSON
+   number's is not. `resolveExponent` folds the exponent into the
+   digits, using the same decimal-point shift the `%` / `‰` scaling
+   uses — generalised from `Nat` to `Int` so it can move the point
+   right as well as left.
+
+3. **One row title was wrapped in an array.** csv2json writes
+   `"titles": "Andorra"` for a single title (test235, test236).
+
+4. **`@id` and `notes` were missing from the table object**, and
+   `suppressOutput` was honoured in minimal mode only. The `@id`
+   comes from `tableNodeOf`, the same function the RDF path uses for
+   the table's subject, so the two outputs cannot disagree about
+   which table is which.
+
+📊 MEASURED: **csv2json 270 pass, 0 fail, 0 skip (out of 270 manifest
+entries)** — 212 positive and 58 negative, validator cross-check 0.
+**csv2rdf stays at 270 pass, 0 fail, 0 skip (out of 270).** No
+regression elsewhere: JSON Schema 770 pass, 0 fail (out of 770
+decided), MathML 56 pass, 0 fail (out of 56), schematron 8 pass, 0
+fail (out of 8).
+
+---
+
+## ShEx: 889 → 1075 pass, and 41 fewer entries unread
+
+Six defects. Five of them made the validator ACCEPT too much, and the
+whole of that shows only in the suite's NEGATIVE half — a validator
+that accepts everything passes every positive test.
+
+1. **A `datatype` constraint checked the IRI and not the LEXICAL
+   SPACE.** ShEx 2.0 §5.4.3 requires both. `"1.0"^^xsd:integer`,
+   `"NaN"^^xsd:decimal` and `"+1"^^xsd:negativeInteger` were all
+   satisfied — 144 entries. `ShEx/XsdLexical.lean` decides the
+   lexical space per datatype IRI, and a datatype it does not decide
+   returns `none` rather than a silent `true`, so the gap stays
+   countable.
+
+   That module REUSES `CSVW/Formats.lean`'s lexical predicates rather
+   than restating them. They live under CSVW because csv2rdf needed
+   them first; their proper home is a shared `Xsd` module, and that
+   move is deferred to its own landing with the two CSVW suites (270
+   pass, 0 fail each) as its gate. A second copy of a lexical space
+   drifts silently, which is the cobbling rule #7 forbids.
+
+2. **`pattern`, `totalDigits` and `fractionDigits` were parsed and
+   never applied.** The ShExJ reader had all three fields; nothing
+   read them. `pattern` goes through `Regex.regexMatch` (`fn:matches`
+   semantics), and the digit facets count digits of the VALUE, so
+   `007.700` has two total and one fractional.
+
+3. **A stem range's EXCLUSIONS were all read as IRIs.** ShExJ writes
+   a bare string, and what it means depends on the range's KIND: an
+   IRI in an `IriStemRange`, a literal VALUE in a `LiteralStemRange`,
+   a language TAG in a `LanguageStemRange`. Reading every one as an
+   IRI made literal and language exclusions match nothing, so the
+   excluded nodes were admitted. Exclusions can also be nested STEMS
+   (`IriStem` inside an `IriStemRange`), which the old
+   `List ObjectValue` could not express at all.
+
+4. **An ordering facet could not compare an `xsd:double`.** The
+   literal writes `1.0E2`, the facet writes `100`, and
+   `compareDecimal` parsed neither side's exponent — so it returned
+   "undecidable", which the caller reports as UNSATISFIED. Twelve
+   positive tests failed on values that satisfy their facet.
+
+5. **A `pattern` on a blank node was refused.** The suite states that
+   it matches the LABEL (`1nonliteralPattern`). That is not obvious —
+   a label is not part of the graph's meaning — so the code says who
+   decided it.
+
+6. **41 entries were reported "data Turtle not read", and were.** The
+   suite's data files use relative IRIs (`<x> :p1 "p1-0"`) and its
+   entries name relative focus nodes (`"focus": "x"`), both relative
+   to the data file's own URL. The runner parsed with NO base, so the
+   graph was rejected outright. Both now resolve against the
+   retrieval URL the manifest's own `@context` gives. A told blank
+   node (`"_:abcd"`) and a typed-literal focus
+   (`{"@value": "ab", "@type": …}`) are read too — the second had been
+   read as a plain string, which is a DIFFERENT term and matched
+   nothing.
+
+📊 MEASURED: **1075 pass, 104 fail (out of 1179 decided)**, 3 not read
+(out of 1182). Was 889 pass, 249 fail (out of 1138 decided), 44 not
+read. The decided denominator grew by 41 because those entries are now
+read at all.
+
+The 104 remaining are ShEx 2.1 features, not defects in what is here:
+`EXTENDS` / `RESTRICTS` (15), cardinality on nested closed shapes
+(12), recursion through a value reference (7), and the `start` shape
+expression (9). Each is engine work with a named shape, which is why
+they are listed rather than summarised as "the rest".
+
+---
+
+## XML conformance: a lenient DTD parser, and a denominator that asked
+## the wrong questions
+
+Was 1706 pass, 524 fail (out of 2230 in profile). Now **1744 pass, 126
+fail (out of 1870 in profile)**. Two halves, and they are different
+kinds of change — one fixed the parser, the other fixed the question.
+
+**The parser: `[70]`–`[76]`, `[28]` and `[69]` were barely checked.**
+`parseEntityDecl` SKIPPED TO THE NEXT `>` for every shape but a quoted
+entity value, and `parseDoctype` scanned over anything at all between
+the root Name and the internal subset. So all of these were accepted
+as well-formed:
+
+- `<!ENTITY foo PUBLIC "some public id">` — `[75]`'s PUBLIC form
+  requires a SystemLiteral;
+- `<!ENTITY e PUBLIC "whatever""e.ent">` — and the space between the
+  two literals;
+- `<!ENTITY ent PUBLIC"PublicID" "nop.ent">` — and the space after
+  `PUBLIC`;
+- `<!ENTITY e "whatever" -- a comment -->` — a declaration ends at
+  `S? '>'`;
+- `<!ENTITY foo SYSTEM "foo.eps"NDATA eps>` — `[76]` begins with `S`;
+- `<!ENTITY %pe "…">` — `[72]` requires the space after `%`;
+- `<!ENTITY ge CDATA "…">` — `CDATA` is not an `[73]` EntityDef;
+- `<!ENTITY % pe SYSTEM "n.ent" NDATA unknot>` — `[74]` admits no
+  NDataDecl;
+- `<!DOCTYPE doc -- a comment -- []>` — `[28]` admits `(S ExternalID)?`
+  between the Name and the subset and nothing else;
+- `% pe;` — `[69]` is `'%' Name ';'`, with no space.
+
+Every one is a document the parser said YES to. That is the direction
+that hides: a checker which ACCEPTS malformed input reports nothing,
+while one that rejects valid input announces itself on the next run.
+
+**The denominator: 372 cases were being scored that this parser is not
+asked about.**
+
+- **313 for editions 1–4 only.** The suite marks each case with the
+  EDITIONS of XML 1.0 it is about, and the runner ignored the
+  attribute. The Fifth Edition REPLACED Appendix B's enumerated
+  BaseChar / CombiningChar / Digit / Extender classes with the ranges
+  this parser uses, so `EDITION="1 2 3 4"` asks a question the Fifth
+  Edition does not ask. All 313 were `not-wf` cases scored as
+  failures.
+- **59 Namespaces-in-XML cases.** `rmt-ns10-004` is
+  `<a:foo xmlns:a="…"/>` with an undeclared prefix: namespace-ill-formed
+  and XML-well-formed. This parser is NON-NAMESPACE by design and its
+  header says so, so it accepted them correctly and was marked wrong.
+  The namespace layer is `XML/Namespaces.lean` and is measured
+  separately.
+
+Neither group is folded into PASSES. They are reported in buckets of
+their own, beside the XML 1.1 and non-UTF-8 buckets that were already
+there — the parser is not being asked, so neither a pass nor a failure
+is the truth about it. Nine cases that had been passing by accident
+moved out of the score with the rest of their edition, which is why
+the pass count fell while the parser got stricter.
+
+📊 MEASURED: **1744 pass, 126 fail (out of 1870 in profile)**; out of
+profile and reported: 24 optional-behaviour, 55 XML 1.1, 56 not UTF-8,
+313 editions 1–4, 59 namespaces.
+
+The 126 remaining are 84 documents accepted that should be rejected
+and 42 rejected that should be accepted. Most of both need the same
+missing feature: the EXTERNAL DTD SUBSET. `<!DOCTYPE doc SYSTEM
+"p61fail1.dtd">` puts the error in a file the parser never opens, and
+`valid/ext-sa/*` puts the entity definitions there. The system
+identifier is now recorded on `Doctype.systemId` — recorded, not
+fetched, because fetching needs I/O and the parser is a pure function.
+
+---
+
+## XML: an entity's replacement text is CONTENT, not characters
+
+The parser refused any entity whose replacement text held a `<`:
+"entity replacement text contains markup; unsupported". That refusal
+was honest — better than splicing markup in as text — and it rejected
+documents the specification calls well-formed. §4.4.2 (Included) says
+the replacement text is processed as though it were part of the
+document at the reference, so it is REPARSED as `[43] content` and its
+nodes spliced in.
+
+The rule that makes this work is §4.5, and getting it wrong costs a
+test either way:
+
+* a CHARACTER reference is expanded when the replacement text is
+  BUILT, so `<!ENTITY e "&#60;foo></foo>">` has the replacement text
+  `<foo></foo>` and reparsing gives an ELEMENT (`valid/sa/024`);
+* a GENERAL-entity reference is BYPASSED there and included at the
+  reference site instead, so `<!ENTITY e "&lt;foo>">` still has the
+  replacement text `&lt;foo>` and reparsing gives the TEXT `<foo>`
+  (`valid/sa/088`).
+
+A first attempt expanded everything and reparsed the result. That
+turned `&lt;` into markup and lost `valid/sa/088`. A second attempt
+kept everything raw and reparsed that. That left `&#60;` as a
+reference and lost `valid/sa/024`. The two cases are a matched pair,
+and the only version that holds both is the specification's own:
+normalise the EntityValue at declaration — character references in,
+general-entity references left alone.
+
+`parseTextContent` also has to STOP before a markup-carrying
+reference, or `<doc>a&e;b</doc>` goes down the character path and is
+rejected on the `<` that the character path is right to reject.
+
+📊 MEASURED: **1766 pass, 104 fail (out of 1870 in profile)**, from
+1744. Every `valid/sa` and `valid/not-sa` case that had been rejected
+now passes.
+
+The 104 remaining need EXTERNAL entities — `valid/ext-sa/*` puts the
+entity text in a separate file, and `o-p61fail1` and its neighbours
+put the ERROR in the `.dtd` the DOCTYPE names. `Doctype.systemId`
+records the identifier; nothing fetches it yet.
+
+---
+
+## XML: external entities and the external DTD subset — 1819 pass, 51 fail
+
+The parser read no external resource at all. `Doctype.systemId`
+recorded the identifier and nothing fetched it, so
+`<!DOCTYPE doc SYSTEM "p61fail1.dtd">` put the ERROR in a file the
+parser never opened, and `valid/ext-sa/*` put the entity DEFINITIONS
+there.
+
+`parseXMLWith` takes a `Resolver` — `String → Option String`, a
+system identifier to its text. A PARAMETER, not a registry: the parser
+stays a total function of explicit inputs and the I/O lives in the
+runner, which reads the document's own directory. `parseXML` is
+`parseXMLWith (fun _ => none)`, spelled out so "read nothing" stays a
+choice somebody made rather than a default nobody noticed.
+
+Four pieces:
+
+1. **An external general entity** (`<!ENTITY e SYSTEM "001.ent">`) has
+   its text fetched at declaration and enters the table like an
+   internal one. `[78] extParsedEnt` allows a leading
+   `[77] TextDecl`, which is stripped — left in place it reads as a PI
+   whose target is `xml`, which `parsePi` rejects.
+
+2. **The external subset** (`[30] extSubset`) is parsed after the
+   internal one, because §2.8 reads them in that order and §4.2 lets
+   the FIRST declaration of a name win.
+
+3. **Conditional sections** (`[61]`) — `INCLUDE` recurses, `IGNORE`
+   skips to the matching `]]>`, and both NEST. They are an
+   external-subset production, so `<![` in the internal subset stays
+   the error it was.
+
+4. **Parameter entities**, in their own table. §4.1 makes `%foo;` and
+   `&foo;` different names, so one table would have conflated them.
+
+`parseSubset` replaced `parseIntSubset`: the internal subset, the
+external subset and an INCLUDE section admit the same declarations and
+differ only in where they END (`]`, end-of-entity, `]]>`) and whether
+a conditional section is allowed. One loop with a `SubsetEnd`
+parameter, rather than three that drift apart.
+
+🔴 The piece that is not a loop: §4.4.8 lets a parameter-entity
+reference stand INSIDE a markup declaration in the external subset.
+`<!ELEMENT child1 (a ,%choice1;,c )>` puts one in the middle of a
+content model, where the declaration parser meets a `%` it has no
+production for and rejects the document. `peScan` expands references
+throughout the subset text in one left-to-right pass, collecting
+parameter entities as declarations go by. A forward reference is left
+unexpanded rather than guessed at; the declaration parser then reports
+it.
+
+📊 MEASURED: **1819 pass, 51 fail (out of 1870 in profile)**, from
+1766. 12 of the 51 are documents rejected that should be accepted, 39
+accepted that should be rejected.
+
+No regression: csv2rdf 270 pass, 0 fail (out of 270), csv2json 270
+pass, 0 fail (out of 270), JSON Schema 770 pass, 0 fail (out of 770
+decided), MathML 56 pass, 0 fail (out of 56), schematron 8 pass, 0
+fail (out of 8), ShEx 1075 pass, 104 fail (out of 1179 decided).
+
+---
+
+## XML: `[9] EntityValue` and `[10] AttValue` are productions
+
+Two more families, both in the accept direction.
+
+**An entity value was a run of characters.** `normalizeEntityValue`
+copied everything through but a character reference, so
+`<!ENTITY foo "&">` was well-formed (`not-wf-sa-113`, `-114`), and so
+was `<!ENTITY e "<![CDATA[Tim & Michael]]>">` — CDATA is not
+recognised inside an entity value, so that `&` is as bare as any
+other (`not-wf-sa-159`). `[9]` admits `[^%&"]`, a PEReference or a
+Reference, and its characters must be `[2] Char` (`not-wf-sa-175`).
+§4.4.8 also puts a parameter-entity reference in an entity value out
+of bounds in the INTERNAL subset (`not-wf-sa-160`, `-162`).
+
+**An attribute DEFAULT is an attribute value**, and none of its
+constraints was checked. `expandEntityValue` already decides every
+one of them — declared, non-recursive, no `<` — so the check is a
+call rather than a new rule. The word in WFC: Entity Declared is
+"already": an entity declared AFTER the ATTLIST does not count
+(`not-wf-sa-180`). The check runs in the internal subset only, since
+the WFC is conditional on the document being standalone and an
+external subset may declare in a part not yet read.
+
+**And one denominator fix.** `valid/ext-sa/007`, `008` and `014` hold
+their entity text in UTF-16. The parser is UTF-8 only and says so, so
+the reference came back undeclared and the document was rejected — a
+transcoding gap scored as a parser failure. A case whose NAMED entity
+file will not decode now joins the non-UTF-8 bucket, where the
+non-UTF-8 documents already were. Only files the document names
+count: a stray undecodable file in the directory says nothing about
+the case.
+
+📊 MEASURED: **1840 pass, 22 fail (out of 1862 in profile)**, from
+1819 pass, 51 fail (out of 1870). Out of profile and reported: 24
+optional-behaviour, 55 XML 1.1, 64 not UTF-8, 313 editions 1–4, 59
+namespaces.
+
+The 22 left are a long tail with no shared cause: 15 accepted that
+should be rejected (`[32]` SDDecl, `[41]` Attribute, `[77]` TextDecl,
+`[28a]` and a handful of one-off errata cases) and 7 rejected that
+should be accepted (four byte-order cases, `ext02`, `o-p28pass5`,
+`valid/not-sa/023`).
+
+---
+
+## RML-Core: a suite that had no runner — 60 pass, 0 fail (out of 60)
+
+`RML/Mapping.lean` held term generation and templates and nothing
+else: no mapping reader, no source reader, no evaluator, no runner.
+Five modules close that.
+
+- `RML/JsonPath.lean` — the JSONPath SUBSET an `rml:iterator` and an
+  `rml:reference` need, with the accepted grammar stated in full. A
+  path outside it does not parse and selects NOTHING; the corpus
+  writes one malformed path and it is a negative case.
+- `RML/Value.lean` — a source value and the datatype it carries by
+  itself. A JSON source is TYPED and RML says so: a reference to `10`
+  produces `"10"^^xsd:integer`. A record cannot be a
+  `String → Option String` lookup, because the type is already gone
+  by the time the term is built.
+- `RML/Model.lean` — the mapping as a value, kept apart from the
+  graph it is read out of and from the evaluation that runs it. A
+  mapping graph is arbitrary RDF and reading it fails in many ways;
+  evaluation is a total function. Mixing them makes "this mapping is
+  malformed" and "this record has no value" the same kind of answer.
+- `RML/FromGraph.lean` — the reader.
+- `RML/Eval.lean` — the evaluator. Sources are SUPPLIED, not read:
+  reading a file needs I/O, and deciding what a mapping means does
+  not.
+- `Harness/RmlRun.lean` (`lake exe l4rml`).
+
+📊 MEASURED: **60 pass, 0 fail, 0 comparison-gave-up (out of 60
+compared)**; 15 NEGATIVE cases not attempted (this slice has no
+mapping validator, so it makes no claim about them); 1 fixture not
+read.
+
+That last one is the corpus's, not the parser's: `RMLTC0027b`'s
+`output.nq` writes `<http://example.com/Person/Emily Smith>`, and an
+`IRIREF` may not contain a space. The runner names the file and the
+reason rather than reporting a bare parse failure.
+
+### The comparison is one graph isomorphism over the whole DATASET
+
+A dataset is not a bag of graphs to compare one at a time: a blank
+node may appear in the default graph AND in a named one, and matching
+each graph separately would let two different datasets pass. Every
+quad is encoded as a triple whose predicate carries the graph name —
+both parts percent-encoded, so the encoding is injective — and the
+two encoded graphs are compared once. Blank nodes then have to line up
+ACROSS graphs, which is what dataset isomorphism means.
+
+### Eight defects, and what each one looked like
+
+Every one of them produced a graph of the RIGHT SHAPE:
+
+1. `defaultTermType` reads the FORM only, so a subject map written
+   `rml:subjectMap [ rml:reference "$.FirstName" ]` defaulted to a
+   LITERAL and produced no subject. POSITION decides this, and only
+   the caller knows the position (`asIri` / `asLiteral`).
+2. `rml:baseIRI` was not read, so a template producing `Carlos` was
+   not an IRI and generated nothing.
+3. A join condition was stored as a reference STRING, so
+   `rml:childMap [ rml:template … ]` lost its template.
+4. The `rml:subject` SHORTCUT was read in a branch of its own, which
+   dropped the predicate-object maps with it.
+5. `rml:subjectMap [ rml:termType rml:BlankNode ]` states a term type
+   and NO form, meaning a fresh blank node per record. `generateTerm`
+   had no form to work from.
+6. A `rml:languageMap` went through the IRI default, so
+   `{$.language}-{$.region}` produced `http://example.com/en-GB`
+   where the tag `en-GB` was meant. A `rml:datatypeMap` is the
+   opposite case and does want an IRI.
+7. A TEMPLATE over a multi-valued reference produces one term per
+   COMBINATION. Taking the first lost half of `RMLTC0025c` — with
+   the right predicate and the right objects on the half that
+   survived.
+8. Graph maps UNION across levels, they do not override. Treating a
+   predicate-object map's graph as a replacement put one quad in one
+   graph where the corpus expects it in two.
+
+### Scope
+
+RML-Core only. `rml-io`, `rml-cc`, `rml-fnml` and `rml-star` are laid
+out differently and need modules this port does not have — function
+maps, RDF-star terms, collections and containers, non-file sources.
+Pointing the runner at them reports almost everything NOT READ, which
+is the truth about them and not a score.
+
+---
+
+## RIF Core: a second suite that had no runner — 24 pass, 2 fail (out of 26 decided)
+
+`RIF/Core.lean` modelled a RIF rule as RDF TRIPLES. That could not
+state what the corpus asks: no membership, no subclass, no positional
+atoms, no built-ins, so `ex:a # ex:D` and
+`pred:literal-not-identical("1"^^xs:integer "1"^^xs:string)` were
+both unsayable. It is REPLACED rather than kept beside the new
+modules — two models of one thing is exactly the confusion its own
+header warned about, and nothing else in the tree imported it.
+
+Five modules and a runner:
+
+- `RIF/Syntax.lean` — the abstract syntax. A constant is a LEXICAL
+  FORM plus a SYMBOL SPACE, not an RDF term: RIF has `rif:iri`,
+  `rif:local` and every XSD datatype as symbol spaces, and
+  `pred:literal-not-identical` compares the PAIR.
+- `RIF/Ps.lean` — the Presentation Syntax parser, grammar stated in
+  full. 80 of the corpus's 80 documents parse.
+- `RIF/Builtins.lean` — the built-in library, three-valued.
+- `RIF/Engine.lean` — bounded forward chaining, local-constant
+  scoping, and Core SAFENESS.
+- `Harness/RifRun.lean` (`lake exe l4rif`), which also carries the
+  RDF-compatibility mapping: a triple is a frame, `rdf:type` is
+  membership, `rdfs:subClassOf` is subclass.
+
+📊 MEASURED: **24 pass, 2 fail (out of 26 decided)**; 13 UNDECIDED,
+1 not read, 6 import-rejection cases not attempted.
+
+### UNDECIDED is the whole point here
+
+RIF-DTB defines **197 built-ins**. This slice decides a named subset.
+A rule whose body needs one of the others cannot fire, so the closure
+is INCOMPLETE, and an entailment read off it is a guess. `entails`
+returns `.undecided`, and the runner counts those apart — 13 of them,
+all the date/time, duration, list and binary families.
+
+The same rule covers an IMPORT under an entailment regime this port
+does not implement. Reading an OWL-Direct import as plain RDF made
+`Non-Annotation_Entailment` entail a triple that OWL keeps inside an
+annotation — a wrong answer produced with complete confidence, which
+is the failure mode this whole discipline exists to catch.
+
+### Seven defects, six of them found by a case that said the opposite
+
+1. `(* … *)` is an ANNOTATION, not a comment. Treating `(` as an open
+   paren made every annotated document unparsable.
+2. `-` is a name character, so `ex:a->1` scanned as the name `ex:a-`.
+   A frame written without spaces is ordinary RIF.
+3. A conclusion file is a BARE FORMULA with no prologue, and its
+   prefixes come from the premise beside it — or, where the premise
+   only imports a graph, from that graph's own `@prefix` lines.
+4. `pred:is-literal-T` asks about the VALUE SPACE, not the datatype
+   IRI: `"1"^^xs:integer` IS a literal of `xs:decimal`. Comparing
+   IRIs made 24 of the corpus's assertions false and the rule they
+   guarded never fired.
+5. `1` and `true` are the same `xs:boolean` VALUE. Comparing lexical
+   forms made `pred:boolean-less-than("0" "1")` false.
+6. A local constant is DOCUMENT-scoped: the premise's `_p` and the
+   conclusion's are different symbols. Spelling them the same made
+   the premise entail the conclusion, which `Local_Predicate` and
+   `Local_Constant` say must not happen.
+7. SAFENESS is part of being a RIF Core document and a parser cannot
+   see it. Boundness PROPAGATES in two ways the first version missed:
+   `?x = ?y` binds `?y` once `?x` is, and `pred:iri-string` binds
+   either side from the other. One pass over the body called two
+   ordinary documents unsafe.
+
+Named residue: `EBusiness_Contract` and
+`RDF_Combination_Constant_Equivalence_4` are decided and WRONG — the
+second needs RDF constant equivalence (a plain literal and an
+`xs:string` literal denoting one thing), which is a semantics
+question rather than a missing built-in.
+
+No regression: csv2rdf 270 pass, 0 fail (out of 270), csv2json 270
+pass, 0 fail (out of 270), JSON Schema 770 pass, 0 fail (out of 770
+decided), RML-Core 60 pass, 0 fail (out of 60), schematron 8 pass, 0
+fail (out of 8).
+
+## XSLT 1.0 and a real XPath 1.0 engine (2026-08-23)
+
+Landed `L4Factoidal/XPath/{Data,Expr,Eval}.lean` — the XPath 1.0 data
+model, grammar and evaluator — and `L4Factoidal/XSLT/Transform.lean`,
+which reads a stylesheet, instantiates it and serialises the result
+tree. Runner: `lake exe l4xslt`, over the 88 vendored cases of
+`third_party/testing/xslt` (a subset of `w3c/xslt30-test`).
+
+**Score: 84 pass, 3 fail (out of 87 decided), 1 refused (out of 88
+manifest entries).** For comparison the F* engine scores 87 pass, 0
+fail, 1 skip on the same corpus.
+
+### Why a second XPath module rather than extending `XPath/Mini.lean`
+
+`Mini` addresses a node by a `/tag[i]/tag[j]` PATH STRING built from
+ELEMENTS ONLY. That is the right model for Schematron, whose findings
+name a node to a human. It cannot carry XSLT: `text()`, `comment()`,
+`processing-instruction()` and `node()` address nodes that path has no
+name for. Extending `Mini` would have changed the node identity
+Schematron already depends on, so `Full` is a second model in its own
+namespace (`L4Factoidal.XPath.Full`) and `Mini` is untouched.
+
+The namespace split was forced by the library root failing to import:
+both models need a type called `Step` and a function called `eval`,
+and they are different types and different functions. That failure is
+the good outcome — the alternative is two `Step`s shadowing each
+other.
+
+### Twelve defects, and what each of them produced
+
+Every one produced a document of the RIGHT SHAPE with the wrong
+content. None produced an error.
+
+1. **`::` scanned into the name.** `:` is a Name character, so
+   `self::a` tokenised as ONE name that the node-test reader took for
+   a child element called `self::a`. The pattern parsed cleanly and
+   matched nothing. `[5] QName` carries at most one colon; the
+   tokenizer now stops before a second.
+2. **Insertion sort skipped past equal keys.** `xsl:sort` is stable
+   (§10). Skipping while `y ≤ x` put a node after its equals; the fix
+   skips only while `y` is STRICTLY smaller. `sort-001` sorts `Hello`
+   and `617-939-5938`, both NaN, and asks for them in document order
+   in the ascending AND the descending pass — 11 sort cases at once.
+3. **`|` split inside predicates.** Splitting `match="*[self::a|
+   self::b]"` on every `|` gave two fragments, neither of which
+   parses, so the template matched nothing while the stylesheet
+   looked fine. The splitter now tracks brackets and quotes.
+4. **A name-only template has no pattern.** Running the empty string
+   through the pattern parser made it unreadable and refused the whole
+   stylesheet for a template that matches nothing by design.
+5. **`data-type` and `order` are ATTRIBUTE VALUE TEMPLATES.** Taking
+   `data-type="{$typer}"` literally made it neither `number` nor
+   `text`, and the engine fell back to a text sort: a correctly
+   ordered list under the wrong ordering.
+6. **A FilterExpr's predicate saw a one-element context.** Encoding
+   `(a|b|c)[last()]` as a `self::node()` step with the predicate
+   attached gave every node `last() = 1`, so the filter kept
+   everything. `Expr.filter` now evaluates the predicate against the
+   whole filtered set.
+7. **A comment split one text node into two.** §3.4 strips a
+   whitespace-only text node from the stylesheet. A comment between
+   two runs of character data splits what is one text node in the
+   prepared stylesheet, the first half often whitespace-only.
+   Stripping before merging deleted indentation the transform is
+   supposed to emit.
+8. **An empty text node is not a node.** Keeping one made an element
+   with no content serialise as `<td></td>` rather than `<td/>` — the
+   same infoset, a different document under the canonical comparison
+   the suite makes.
+9. **`exclude-result-prefixes` was ignored.** Every literal result
+   element carried every namespace declaration in scope on it,
+   including ones the stylesheet had explicitly excluded.
+10. **`xsl:element` with an unprefixed name said nothing about its
+    namespace.** §7.1.2 puts such a name in the DEFAULT namespace,
+    which may be NONE; emitting no declaration let the element
+    inherit the enclosing result element's default namespace and
+    become a different element.
+11. **A redeclared prefix moved to the end of the context.** That
+    list is the order the result element's declarations are written
+    in, so a stylesheet that redeclares a prefix to the same URI
+    produced the right declarations in the wrong order.
+12. **A node-set from a second document was walked against the
+    first.** `document('')//ped:test` carries addresses that only
+    mean something against the stylesheet's own tree; reading them
+    against the source tree silently selected nothing.
+
+Two arithmetic rules were also written out rather than left to
+whichever `/` Lean's `Int` denotes: `Int.fdiv` for `floor`/`ceiling`
+and `Int.tdiv` for `mod` and `div`. Lean's `/` on `Int` is Euclidean,
+which floors for a positive divisor — right for `floor` by accident,
+wrong for `mod`, whose remainder takes the sign of the DIVIDEND
+(§3.5).
+
+### Three features that are NOT XPath 1.0, and are implemented anyway
+
+Each is marked as an out-of-version extension where it appears, so no
+reader takes it for 1.0. Each is implemented because the F* engine
+this module ports implements it and because the alternative — ignoring
+it — is certainly wrong.
+
+- **The value comparisons `eq ne lt le gt ge`** (XPath 2.0). Two
+  numbers compare numerically; anything else compares as strings by
+  codepoint, so `'20' lt '180.3'` is FALSE. That is what
+  `boolean-026` and `boolean-027` ask for and no more; widening it to
+  the 2.0 type system would be inventing behaviour no test states.
+- **The double literal `1e3`** (XPath 2.0). Without it the tokenizer
+  produced the number `1.0` followed by a name `e2` and the whole
+  expression failed to parse. `Num.ofString` — XPath 1.0's
+  `number()` — still says NaN for `"1e3"`, because changing that
+  would change what `number(.)` says about a string; the exponent
+  lives in a separate `Num.ofLexeme` used by the TOKENIZER only.
+- **`xsl:copy-of copy-namespaces="no"`** (XSLT 2.0). Ignoring the
+  attribute would copy namespaces where the test asks for them to be
+  dropped, and emit a document of the right shape carrying
+  declarations nobody asked for.
+
+### What the runner refuses, and why that is a third bucket
+
+`transform` returns `Outcome.refused` with a reason for an XSLT
+element outside the implemented set, a match pattern it cannot parse,
+or an expression it cannot evaluate. The runner counts those apart —
+never as a pass, never as a failure. One case remains:
+
+- `select-5901` — `document('select-59.xml')`. `XPath.Eval` does no
+  I/O: `Ctx.docs` is a map the CALLER supplies, and the runner fills
+  it by scanning the stylesheet text for each `document('literal')`
+  and loading the file beside the stylesheet. `select-59.xml` is not
+  in the corpus — the vendoring renamed each environment's source
+  file — so the runner names the missing URI in the refusal. That is
+  a corpus fact, not an engine gap, and a supplied-but-absent
+  document is a refusal rather than an empty tree the stylesheet
+  would quietly transform into nothing.
+
+### The three residual failures, named
+
+- `copy-3102` — namespace declarations in a different ORDER. The
+  suite's expected files are not self-consistent about this: sorting
+  by prefix (what C14N does) fixes this case and breaks
+  `conflict-resolution-1301` and `copy-3701`, whose expected files
+  keep declaration order with the default namespace NOT first.
+  Declaration order matches the most of them.
+- `node-1601` — the order of the `namespace::` axis, which XPath 1.0
+  leaves implementation-defined. The expected file's order is neither
+  declaration order, nor its reverse, nor alphabetical.
+- `namespace-4801` — `xsl:copy` of a node from the stylesheet's OWN
+  document. Defect 12 fixed the path evaluation; the copy still reads
+  its namespace context from the primary document, because `Rt` holds
+  one document. Fixing it means threading the document through
+  `Item`.
+
+### A comparison artifact worth writing down
+
+49 of the 84 decided cases first landed in the whitespace bucket for
+ONE reason: the vendored expected files carry CRLF line endings, and
+every XML processor — this project's parser included — applies §2.11
+line-end normalisation on input. Comparing engine output against the
+RAW BYTES of the expected file therefore differed on every line of
+every document that has one. Applying §2.11 to the expected text is
+reading it as XML rather than as bytes; it is not a loosening of the
+comparison. The runner's remaining `pass-loose` bucket applies the
+same whitespace collapse to both sides.
+
+No regression: `lake build` green over 511 targets, which runs every
+`#guard` in the tree.
+
+## GRDDL (2026-08-23)
+
+Landed `L4Factoidal/GRDDL/Discovery.lean` — a port of
+`formal/fstar/GRDDL.Discovery.fst` — and `Harness/GrddlRun.lean`
+(`lake exe l4grddl`) over the 68 tests of the vendored W3C GRDDL
+suite. GRDDL was blocked on XSLT and became reachable the moment the
+engine landed: a GRDDL transformation IS an XSLT stylesheet.
+
+**Score: 19 pass, 22 fail (out of 41 decided); 10 name no
+transformation this stage can follow, 17 need a document the vendored
+docroot does not carry, 0 refused (out of 68 manifest entries).** The
+F* runner scores 18 pass, 50 fail (out of 68) on the same corpus,
+counting every non-pass as a failure.
+
+### What the runner buckets apart, and why
+
+A GRDDL result is a GRAPH, compared by isomorphism — blank-node
+labels are not part of what one means. Beyond pass and fail there are
+three buckets, each carrying the name of what is missing:
+
+- **no transformation found** — the source names no transformation
+  this stage can follow and is not itself RDF/XML, so there is
+  nothing to glean;
+- **unavailable** — a document the test needs is not mirrored under
+  `docroot/`. The IRI is printed. This runner makes no network
+  request, and a case that would need one is not a failure of the
+  engine;
+- **refused** — a stylesheet the engine declined, or output that is
+  not well-formed RDF/XML, with the reason. This is now ZERO.
+
+### Three engine gaps the corpus found, all in XSLT
+
+1. **`xsl:message` was unimplemented**, so six cases refused. §13
+   sends its content to a message stream, never to the result tree,
+   so it contributes no nodes; `terminate="yes"` ends processing,
+   which is a refusal rather than a partial document.
+2. **`xsl:import` and `xsl:include` were unimplemented**, so ten
+   `inline-rdf` cases refused with nothing said about why. Both are
+   implemented, with import PRECEDENCE (§2.6.2) carried on every
+   template and `xsl:call-template` resolved by precedence rather
+   than by document order. As with `document()`, the imported trees
+   are supplied by the CALLER: `XSLT.importHrefs` says which hrefs a
+   stylesheet wants, the runner fetches them from the docroot, and
+   nothing in the engine opens a file.
+3. **A `call-template` naming no template failed silently deep inside
+   instantiation.** It is now named up front, which is what turned
+   those ten cases from an opaque refusal into an honest
+   "unavailable": the stylesheet imports
+   `http://www.w3.org/2003/g/xml-attributes`, which the vendoring did
+   not capture.
+
+### One GRDDL defect, worth its own line
+
+The transform's output describes the SOURCE — `rdf:about=""` denotes
+it — so a relative reference in that output resolves against the
+source's EFFECTIVE base, which a root `xml:base` or an XHTML
+`<base href>` may move. Using the fetch IRI instead named the wrong
+subject while producing exactly the right NUMBER of triples: six
+cases differed in one IRI and nothing else.
+
+### Seven of the 22 failures are corpus drift, and the runner says so
+
+Several vendored inputs were re-fetched from a W3C server that had
+upgraded its own links to `https`, while the expected-output files
+beside them still say `http`. A transform can then be exactly right
+and still produce a different IRI. The runner reports which failures
+differ ONLY by that scheme — as a SUB-COUNT of the failures, never as
+a separate bucket, because the two graphs really are different
+graphs.
+
+The remaining 15 are real: multi-transformation merges that come up
+short (`three-transforms` produces 1 of 3, `four-transforms` 2 of 4,
+`multiprofile` 5 of 8), which is the one-level-not-a-fixpoint limit
+`Discovery.lean`'s header states.
+
+## ShExC: 442 match, 0 mismatch, 0 declined (out of 442)
+
+`L4Factoidal/ShEx/Compact.lean` reads the ShEx compact syntax.
+`Harness/ShExCRun.lean` (`lake exe l4shexc`) is a DIFFERENTIAL runner
+over `third_party/testing/shex/schemas/`: every fixture there ships a
+`.shex` and a ShExJ `.json` twin of the same schema, so the corpus is
+its own oracle. The compact reader builds a tree, `FromJson.lean`
+builds a tree from the JSON, and `SchemaEq.lean` compares them.
+
+📊 MEASURED: **442 match, 0 mismatch, 0 declined (out of 442 `.shex`
+files)**. The ShEx validation suite is unchanged at **1075 pass, 104
+fail (out of 1179 decided)**, 3 not read — the two readers now agree
+without either moving.
+
+### Why a differential and not an expectation file
+
+A ShExC parser has no separate ground truth: the schema IS the
+answer. Comparing the two front doors turns the corpus into the
+oracle and points at a disagreement without either side having to be
+blessed. The runner keeps four buckets — match, mismatch, declined,
+no reference — and a REFUSAL is never scored as a mismatch: a
+construct outside the implemented grammar is visibly unparsed, never
+a schema that validates the wrong graphs.
+
+That separation is what made the work tractable. The first run read
+365 match, 53 mismatch, 24 declined. The 24 refusals named exactly
+two grammar holes; the 53 mismatches were four content defects. Had
+refusals been folded into the failures, one number would have covered
+six unrelated causes.
+
+### The defects, and what each produced
+
+Every one produced a schema of the RIGHT SHAPE with wrong content, or
+a refusal where an answer existed. Each is pinned in
+`L4Factoidal/ShEx/CompactTests.lean` beside the fixture that paid for
+it.
+
+1. **`//` was scanned as an empty regular expression.** The regex
+   scanner reached `/` first and read `//` as a PATTERN with no
+   characters, leaving the annotation's predicate and object as loose
+   tokens. Every annotated schema then died at the closing brace
+   ("expected '}', found //" — `1inversedotAnnot3`, `kitchenSink`,
+   `_all` and 11 more). `//` is now punctuation, tested before the
+   regex branch.
+2. **`@fr` had no token.** `@` was punctuation only, so a language
+   tag in a value set reached the shape-reference reader and refused
+   with "expected an IRI, found @" (9 fixtures). A shape label always
+   carries a colon or angle brackets and a language tag never does,
+   so one character of lookahead in the tokenizer separates them.
+   `@~` — EVERY language — is a language stem whose stem is empty,
+   and stays `punct "@"` because there is no tag to carry.
+3. **A wildcard stem range took the wrong kind.** `[. - "v1"]` is a
+   `LiteralStemRange` and `[. - @fr-be]` a `LanguageStemRange`; only
+   the exclusions say which. Assuming an `IriStemRange` built a range
+   over a family the excluded nodes cannot belong to, so the
+   exclusions did nothing. The kind now travels with each exclusion
+   and the range reads it off them.
+4. **`{` after a node constraint was always a shape definition.**
+   `ex:literal ["a" "b"]{2,3}` made `2` a predicate and refused the
+   whole schema (`kitchenSink`). A `{` followed by a number is a
+   repeat range; the guard file pins BOTH readings so the fix is not
+   a licence to drop shape definitions.
+5. **A shape definition's own annotations were left on the floor.**
+   `<S1> { … } // <p> <o>` — the statement reader then saw a loose
+   `//` where the next shape label belonged (4 fixtures).
+6. **Numeric facets were compared as spellings.** `MININCLUSIVE 05`,
+   `5`, `5.0` and `05.00E0` all denote five, and the ShExJ twin
+   writes whichever form its serialiser chose. `canonNumericLexeme`
+   now normalises on both sides — a disagreement about spelling was
+   being reported as a disagreement about the schema, and this one
+   defect accounted for 48 of the 53 mismatches.
+7. **A UCHAR was carried through verbatim.** `<http://a.example/p1>`
+   built a predicate spelled with the escape rather than `.../p1` — a
+   different IRI, so a different schema. In a regular expression the
+   rule is narrower: a UCHAR is a way of WRITING a character and is
+   decoded, while every other backslash escape belongs to the pattern
+   and is carried through untouched. Decoding all of them would turn
+   `\t` into a tab and change what the pattern matches; decoding none
+   left `a` where the twin has `a`.
+8. **A language tag kept its case.** RDF 1.1 Concepts §3.3 puts the
+   lowercase form in the value space: `"x"@en-UK` and `"x"@en-uk` are
+   one literal. Both readers now lowercase.
+
+### The rule this corpus keeps teaching
+
+Defects 3, 6, 7 and 8 all produced a well-formed schema that a
+consumer would accept and act on. Only a second reader of the same
+document caught them. Where a format has two serialisations, the
+differential between them is worth more than any expectation file we
+could write, because it needs no blessing and cannot go stale.
+
+## OWL DL: the class-expression reasoner, steps 2 and 3
+
+`L4Factoidal/OWL/ClassExpr.lean` (step 1) reads a class expression
+out of a graph. Two consumers read that one AST, which is what makes
+a disagreement between them about what a restriction MEANS impossible
+by construction:
+
+* `Materialise.lean` (step 2, `formal/fstar/Tableau.fst` §§5–9) —
+  POSITIVE-SOUND membership. It writes entailed `rdf:type` triples
+  and never detects unsatisfiability.
+* `Refute.lean` (step 3 wave 1, `formal/fstar/Tableau.Refute.fst`) —
+  the REFUTATION calculus. It answers "no model exists" and never
+  writes a triple.
+
+Tracked at https://github.com/danbri/factoidal/issues/548 .
+
+### Three values, and which one is missing from each side
+
+`Materialise.isMember` answers `some true` / `some false` / `none`.
+`Refute.refute` answers `some false` / `none` — and has no
+`some true` ON PURPOSE.
+
+The F* module does return `Some true` for a saturated clash-free
+branch, and its own header then tells callers to treat it exactly
+like `None`, because the calculus is incomplete. A value that no
+caller may act on is a trap: sooner or later something scores
+"consistent" on it. Wave 1 does not have the value to misuse.
+
+`none` is always sound on both sides. It means the caller falls back
+to the OWL RL closure, which decides fewer things and decides them
+right.
+
+### The positive-soundness gate, and what it refuses
+
+`cePositiveSound` decides which `some true` may be WRITTEN INTO the
+graph. It admits `named`, `hasValue`, `someOf`, `minCard`,
+`minQualCard` and Boolean combinations of those. It refuses:
+
+* `allOf` — a successor this graph has not seen could violate the
+  filler, so "every KNOWN successor is in C" does not entail `∀p.C`;
+* `maxCard`, `exactCard` and their qualified forms — a positive
+  membership needs `owl:sameAs` reasoning or a unique-name
+  assumption, and the module has neither;
+* `complement` — needs classical negation.
+
+The gate is STRUCTURAL: a refused shape anywhere inside a Boolean
+combination closes it. Withholding an entailment is sound; asserting
+one a model can falsify is not.
+
+### No unique-name assumption, stated twice because it is where
+refuters go wrong
+
+Two different IRIs may denote one individual unless the graph says
+`owl:differentFrom`. So:
+
+* a successor COUNT is a lower bound. `≥ k` may fire on it; `≤ k`
+  may not, except in the trivial `k = 0` case;
+* `≤ 1 p` with two named successors is NOT refuted. Adding one
+  `owl:differentFrom` triple between them refutes it. Both readings
+  are pinned in `RefuteTests.lean`, next to each other, because the
+  pair is the check — either alone can be passed by an engine that
+  has the rule backwards.
+
+### An existential witness is never counted
+
+`Materialise` and `Refute` both mint witnesses, and both keep them
+out of cardinality counts. A witness may coincide with an existing
+successor in some model; counting one fabricates a clash. A
+`hasValue` edge is different — it holds in every model — so it IS
+counted. `REdge.counts` carries the distinction in the type.
+
+Witness minting is deterministic (the blank node's name is a
+function of the individual and the property) and depth-capped. The
+determinism is what makes a second pass mint nothing new; without it
+a cyclic TBox grows the graph without end.
+
+### The defect step 2 found in step 1
+
+`ClassExpr.parseCeOfSubject` called `parseClassExpr`, which maps
+every IRI straight to `named` without reading anything. So a NAMED
+class expression — an IRI subject carrying `owl:onProperty` and
+`owl:someValuesFrom`, which OWL 2 RDF-Based semantics says denotes
+exactly `∃p.C` — came back as the opaque class itself, and every
+membership it entails went unwritten. The marker-reading body is now
+`parseCeMarkers`, shared by both entries.
+
+The defect was invisible until a consumer asked the function for
+something only it could answer. A parser with no consumer is a
+parser with no test.
+
+### A quadratic dedup, and the shape of that bug
+
+The materialisation pass deduplicated subjects with
+`acc.contains s` plus `acc ++ [s]` — quadratic in both halves, run
+over every subject of a CLOSED graph. On the 41 384-triple
+`type-consistency` premise that turned a two-minute probe run into
+one still going after fifteen minutes. A hash set makes it one pass.
+
+Worth naming because of how it presented: not as a wrong answer, not
+as a crash, but as a run that never came back. The measurement was
+the only thing that could have caught it, and only because there was
+a BEFORE number to compare against.
+
+`materialiseWithBudget` now caps the membership pass by (individual,
+class expression) pairs and REPORTS the cap. The probe scores a
+budget hit as a cap hit, so an absence verdict on a capped premise is
+a failure rather than a pass — the same rule the closure budget
+already follows.
+
+### The probe's `--dl` regime
+
+`lake exe l4owl-probe --dir third_party/testing/owl --dl` runs the
+materialisation pass between two closures and consults the refuter on
+both consistency judges. A refutation of a premise the catalog
+asserts CONSISTENT is scored as a FAILURE. A refuter measured only on
+the cases it is meant to close cannot be caught fabricating a
+contradiction; scoring both directions from one flag is what makes
+the number mean something.
+
+### The `--dl` regime, measured
+
+`lake exe l4owl-probe --dir third_party/testing/owl` with and
+without `--dl`, 2026-08-23:
+
+| Catalog | RL closure only | RL + materialisation + refuter |
+| --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 107 pass, 13 fail, 1 skip |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 82 pass, 5 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsupported (out of 412) | 318 pass, 90 fail, 4 unsupported |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsupported (out of 583) | 485 pass, 94 fail, 4 unsupported |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 67 pass, 60 fail, 1 skip |
+| **TOTAL** | **1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457)** | **1177 pass, 270 fail, 2 skip, 8 unsupported** |
+
+The F\* line for the one catalog that has one:
+`owl2_dl_inconsistency` is 126 pass, 1 fail (out of 127) on
+`type-inconsistency.rdf`. Wave 1 reaches 67 pass, 60 fail (out of
+127 decided). The 60 are what waves 2 and later are for.
+
+⚠️ `type-consistency.rdf` is UNCHANGED at 485 pass, 94 fail — and
+that is a net figure hiding a trade, which is exactly what
+anti-pattern #3 forbids leaving unsaid. `--dl` GAINS three
+positive-entailment cases in that catalog (`WebOnt-someValuesFrom-001`,
+`-003`, `somevaluesfrom2bnode`) and LOSES three consistency cases
+(`WebOnt-description-logic-018`, `-020`, `-021`), where the RL clash
+detector fires on the materialised graph. Those three are the named
+residue of this landing.
+
+### Three defects the corpus found in one afternoon
+
+**A spelling difference is not a value difference.** The refuter's
+first `provablyDistinct` said two literals are distinct when they
+share a datatype and differ in lexical form. That is false almost
+everywhere: `"1"` and `"01"` are one `xsd:integer`, `"1.0"` and
+`"1.00"` one `xsd:decimal`, and two `rdf:XMLLiteral`s differing only
+in insignificant whitespace are one value. `WebOnt-miscellaneous-202`
+asserts exactly that last case as CONSISTENT, with a functional
+property carrying two spellings of one XML literal — and the rule
+refuted it. Distinctness is now claimed only for `xsd:string`, where
+the lexical form IS the value.
+
+The general shape: a refuter that reads formatting as meaning
+invents contradictions out of whitespace, and it does so
+CONFIDENTLY, on a premise a human would call obviously satisfiable.
+
+**A witness must not be counted, including by consumers.** The
+materialisation pass writes its existential witness into the graph,
+and the RL clash detector downstream counts blank nodes like any
+other name. On three consistent `WebOnt-description-logic` premises
+that counted witness fired the detector against a bound the
+individual's REAL successors do not exceed. The pass now WITHHOLDS a
+witness where a max-cardinality bound or an `owl:FunctionalProperty`
+declaration could be breached.
+
+Stripping every witness edge from the output was tried first and
+measured WORSE — ten `type-inconsistency` passes and five across the
+profile catalogs lost to save three — because the closure does real
+work on the witnesses it can count soundly. The measurement is what
+settled it; the first fix was the more obviously "correct" one.
+
+**A vacuous truth is not an entailment.** `∀p.C` is `some true` for
+an individual with no known `p`-successor, and the blank-node
+membership pass wrote that membership into the graph, where the
+closure propagated it through `rdfs:subClassOf`. It is not entailed:
+an unseen successor could violate the filler. The positive-soundness
+gate now applies to the blank-node pass as well as the named one.
+The F\* module gates only its named pass; this is the stricter
+reading, and it is the one that keeps `materialise`'s output
+entailed by its input.
+
+### Wave 2, and the cost of it
+
+`lake exe l4owl-probe --dir third_party/testing/owl --dl`, 2026-08-23:
+
+| Catalog | RL closure only | Wave 1 | Wave 2 |
+| --- | --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 107 pass, 13 fail | 109 pass, 11 fail |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 82 pass, 5 fail | 82 pass, 5 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsupported (out of 412) | 318 pass, 90 fail | 318 pass, 90 fail |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsupported (out of 583) | 485 pass, 94 fail | 485 pass, 94 fail |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 67 pass, 60 fail | 80 pass, 47 fail |
+| **TOTAL** | **1131 pass, 316 fail** | **1177 pass, 270 fail** | **1192 pass, 255 fail (out of 1457)** |
+
+Wave 2 added the role box (bottom and top properties), the TBox rules
+(edge-proved membership, conjunction introduction, provably-empty
+named classes normalised to `owl:Nothing`), and
+`L4Factoidal/XSD/Facets.lean` — the OWL 2 datatype map as a decidable
+value space, which the two datatype clash rules read.
+
+⚠️ The `--dl` run takes **26 minutes 34 seconds**. The RL closure
+alone over the same corpus takes well under one. This is a named
+performance gap, not a hidden one, and it is why `--dl` is a flag and
+not the default.
+
+Where the time is, measured on `type-consistency.rdf` alone (the
+worst catalog):
+
+| Regime | Wall |
+| --- | --- |
+| RL closure only | 17 s |
+| `--dl --refute-budget 1` (materialisation, refuter effectively off) | 5 m 10 s |
+| `--dl` (default budget 16) | over 10 m |
+
+So the materialisation pass plus its second closure is about five
+minutes, and the refuter adds more. Both halves need work; neither is
+a single hot spot.
+
+### Four performance defects fixed in wave 2, each measured
+
+Named because each was found by a NUMBER and not by reading, and
+because the first fix in two of the four cases was the wrong one:
+
+1. **A per-branch search depth is a product, not a sum.** Giving each
+   branch the full depth lets a node with `d` disjuncts grow a tree
+   of `d^depth` states. The budget is now THREADED, so siblings draw
+   from one pool.
+2. **`labelsOf` was a `filter`-then-`flatMap` over the node list.**
+   Ids are unique, so it is a lookup; `clashNodes` calls it once per
+   node, which made it quadratic per round.
+3. **The successor lookups scanned the graph as a LIST.** They now
+   read the indexed store, which the tree already had.
+4. **The sub- and superproperty closures were fixpoints recomputed
+   per property per node per round.** They are computed once at
+   `initState`.
+
+Fixes 1, 3 and 4 each looked like the answer and each moved
+`type-inconsistency` by nothing at all. What actually moved it was
+finding, by a budget sweep, that ONE case
+(`WebOnt-description-logic-504`) accounted for 71 of the 76 seconds.
+The lesson is the one `skills/measuring-inference` already states:
+find which phase the time is in BEFORE fixing anything. Four
+plausible mechanisms became four work orders, and three of them were
+free.
+
+### The `--refute-budget` sweep
+
+📊 `type-inconsistency.rdf`, out of 127 decided:
+
+| Budget | Score | Wall |
+| --- | --- | --- |
+| 6 | 80 pass, 47 fail | 2.8 s |
+| 16 | 80 pass, 47 fail | 5.2 s |
+| 24 | 81 pass, 46 fail | 76 s |
+
+The default is 16. `--refute-budget 24` reproduces the 81, and the
+whole difference is `WebOnt-description-logic-504`. A cap that hides
+which test it costs is a silent cap; this one names it.
+
+## CORRECTION to the wave-2 performance section above
+
+The section "Four performance defects fixed in wave 2, each
+measured" is **wrong**, and so is the sentence that says three of the
+four bought nothing. What actually happened is worse and more useful.
+
+Three of those four edits **were never applied to the file.** The
+scripts that made them read the file, made every replacement in
+memory, and wrote it back at the END — so an `AssertionError` on a
+LATER replacement discarded every earlier one, after the script had
+already printed its progress. The build that followed compiled the
+UNCHANGED file, reported success, and the measurement that followed
+measured the unchanged file. Then the commit message said the fixes
+had landed.
+
+Verified afterwards by grepping the file for each change: the
+indexed successor lookups and the memoised role closures WERE
+present; the threaded search budget, the `labelsOf` lookup and the
+hoisted per-axiom label reads were NOT. A fourth item,
+`differentFromIdx`, was defined and never called — dead code
+described in a commit message as a fix.
+
+📊 With all of them actually applied, the whole `--dl` run goes from
+**26 minutes 34 seconds to 4 minutes 30 seconds** — a 5.9× speedup —
+and the score goes UP by one case. So the conclusion "three of the
+four bought nothing" was drawn from a measurement of code that did
+not contain them.
+
+### The rules this buys
+
+1. **A script that edits a file must write after EACH replacement,
+   or verify the write.** All-or-nothing batching plus per-step
+   progress printing is a lie generator: the output says four edits
+   landed, the file has one.
+2. **A green build is not evidence that an edit landed.** The
+   unchanged file also builds.
+3. **Before writing a performance claim into a commit message, GREP
+   THE FILE for the change.** One `grep -c` per claim. The wave-2
+   commit made five claims and three were false; one `grep -c` each
+   would have caught all three in under a minute.
+4. **A measurement is a measurement OF A BUILD.** Record which build,
+   and re-measure after any edit that was not verified to land.
+
+This is the same family as anti-pattern #27 (an agent commit landing
+on a newer tip silently drops module-list entries — the build exits 0
+and the feature is not built). Both are: the tooling reported success
+for work that did not happen.
+
+## Wave 3: the ≤-rule, and the run that got 5.9× faster
+
+📊 `lake exe l4owl-probe --dir third_party/testing/owl --dl`
+
+| Catalog | RL only | Wave 1 | Wave 2 | Wave 3 |
+| --- | --- | --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail | 118 pass, 8 fail | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 107 pass, 13 fail | 109 pass, 11 fail | 109 pass, 11 fail |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 82 pass, 5 fail | 82 pass, 5 fail | 82 pass, 5 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsup (out of 412) | 318 pass, 90 fail | 318 pass, 90 fail | 318 pass, 90 fail |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsup (out of 583) | 485 pass, 94 fail | 485 pass, 94 fail | 485 pass, 94 fail |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 67 pass, 60 fail | 80 pass, 47 fail | 81 pass, 46 fail |
+| **TOTAL** | **1131 pass, 316 fail** | **1177 pass, 270 fail** | **1192 pass, 255 fail** | **1193 pass, 254 fail (out of 1457)** |
+
+| | Wall |
+| --- | --- |
+| Wave 2 as committed | 26 m 34 s |
+| Wave 3, with the wave-2 fixes actually applied | 4 m 30 s |
+
+### The ≤-rule, and why the first version of it did nothing
+
+`clashForLabel`'s `maxCard` case counts only PROVABLY DISTINCT
+successors and never counts witnesses at all. A node with more
+successors than `≤ k p` allows, none of them forced apart, is not
+seen by it — and that is the shape of seventeen
+`WebOnt-description-logic` inconsistency fixtures. The SHIQ ≤-rule
+closes it: identify two successors not yet forced apart, pool their
+labels, and keep going.
+
+The first implementation REWROTE EDGES: redirect every `extra` edge
+mentioning the absorbed node, move its labels, drop its node. On an
+isolated hand-built graph it worked and `refute` returned
+`some false`. On the corpus it changed NOTHING.
+
+The reason: the `--dl` regime runs the materialisation pass FIRST,
+and that pass writes its own existential witnesses INTO the graph.
+By the time the refuter sees them they are graph-asserted blank
+nodes, not entries in `extra` — and an edge in the input graph cannot
+be rewritten. Every successor that mattered came from there.
+
+The fix is the F\* module's own answer for named individuals, applied
+to all of them: identification at READ TIME. `RState.ident` records
+(absorbed, representative) pairs; `labelsOf` pools the group's labels
+and `successorsOf` maps its results through the representative, so a
+merge REDUCES the count a `≤ k` bound is measured against without
+touching an edge.
+
+⚠️ Worth keeping: the hand-built guard passed for the rewriting
+version. A single synthetic graph proved the rule correct and said
+nothing about whether it would ever FIRE on the real input — which is
+the `measuring-inference` lesson about synthetic shapes lying about
+real vocabularies, in the one place I did not expect it.
+
+### Closure scaffolding is now inert
+
+`RLRules.lean` materialises `__rl_`-prefixed blank nodes as support
+triples for blank-node conclusion matching, with an encoding
+deliberately looser than the class expression they resemble. The
+refuter was parsing them as real class expressions. The F\* module
+guards against exactly this and says reading them literally
+MANUFACTURES refutations of consistent premises; the guard is now
+ported. It changed no score on this corpus, which is what a
+soundness guard that is not yet being violated looks like.
+
+### Wave 3b — the one line the ≤-rule was waiting on
+
+After the ≤-rule landed, `type-inconsistency.rdf` moved by ONE case.
+Following hazard #27's own rule — instrument whether the rule fires
+before assuming it is incomplete — a scratch driver ran
+`WebOnt-description-logic-003` through the real pipeline and printed
+the state:
+
+```
+premise triples: 36
+closed: 136 triples, 3 rounds
+materialised: 144 triples
+reclosed: 166 triples
+axioms: 67, nodes: 23
+quiet after 1 rounds
+pendingMerge: (some 6)
+  merge bw_f1 <- bw_f3 => open'
+  merge bw_f1 <- bw_f2 => open'
+  … all six open'
+refute 16: none
+```
+
+The rule FIRED — six candidate pairs — and every branch stayed open.
+The pooled labels of the merged nodes did not contain the
+contradiction, because one filler had never been put on any node at
+all.
+
+`ensureWitnesses` tested whether `i` had `k` `p`-successors. It has
+to test whether `i` has `k` `p`-successors CARRYING THE FILLER. The
+difference is invisible while every existential's filler is a named
+class, because the materialisation pass emits `(_:bw rdf:type C)`
+for those. For an anonymous filler — `∃f2.¬p1`, where `¬p1` is a
+blank node — it emits the EDGE ONLY. The count then said
+"discharged", no witness was minted, and `¬p1` was never a label
+anywhere.
+
+One line, seven cases:
+
+📊 `type-inconsistency.rdf`, out of 127 decided: 81 pass, 46 fail →
+**88 pass, 39 fail**. TOTAL 1193 → **1200 pass, 247 fail (out of
+1457)**, in 4 m 33 s. No catalog regressed.
+
+The shape worth keeping: an existential rule that counts EDGES
+instead of MEMBERSHIPS is right on every example whose filler is
+named, and silently drops the obligation on every example whose
+filler is not. Both hand-built guards in `RefuteTests.lean` used
+named fillers. The corpus case that exposed it used an anonymous one,
+and the failure it produced was not a wrong answer — it was a rule
+one layer up firing correctly and finding nothing.
+
+### Wave 3c — the budget the threading paid for, and four graph rules
+
+Once the budget was actually THREADED, its cost became close to
+linear in it, so the default could be raised. The old per-branch
+form could not afford that: at 24 it took 76 seconds.
+
+📊 `type-inconsistency.rdf`, out of 127 decided:
+
+| Budget | Score | Wall |
+| --- | --- | --- |
+| 16 | 88 pass, 39 fail | 1.9 s |
+| 24 | 90 pass, 37 fail | 2.2 s |
+| 40 | 90 pass, 37 fail | 2.8 s |
+| 64 | 92 pass, 35 fail | 3.5 s |
+| 200 | 92 pass, 35 fail | 6.6 s |
+| 400 | 92 pass, 35 fail | 9.6 s |
+
+64 is the new default — where the curve flattens. Above it nothing
+more closes: the rest need RULES, not budget. `WebOnt-description-
+logic-003` was one of them, and the instrumented run showed why —
+all six merge branches clashed, and only the budget stood between
+that and a verdict.
+
+Four graph-level violations added, each a shape with no model and no
+expansion needed:
+
+* **G6** — `owl:Thing owl:equivalentClass owl:Nothing`. Direct
+  Semantics requires a non-empty domain and interprets `owl:Thing`
+  as the whole of it.
+* **G7** — two DIFFERENT properties declared
+  `owl:propertyDisjointWith` sharing a subject-object pair. (G3
+  already had the self-disjoint case, which the RL marker misses for
+  the opposite reason.)
+* **G8** — two members of one `owl:AllDisjointProperties` sharing a
+  pair.
+* **G9** — an `owl:AsymmetricProperty` with a pair in both
+  directions, or an `owl:IrreflexiveProperty` with a reflexive pair.
+
+Each is pinned in `RefuteTests.lean` NEXT TO the nearest satisfiable
+graph. The pairing is the check: either half alone can be passed by
+an engine that has the rule backwards.
+
+### 📊 Where the OWL probe stands
+
+`lake exe l4owl-probe --dir third_party/testing/owl [--dl]`,
+2026-08-23:
+
+| Catalog | RL closure only | `--dl` |
+| --- | --- | --- |
+| profile-RL.rdf | 117 pass, 9 fail (out of 126) | 118 pass, 8 fail |
+| profile-EL.rdf | 102 pass, 18 fail, 1 skip (out of 121) | 110 pass, 10 fail, 1 skip |
+| profile-QL.rdf | 82 pass, 5 fail (out of 87) | 83 pass, 4 fail |
+| type-positive-entailment.rdf | 315 pass, 93 fail, 4 unsup (out of 412) | 318 pass, 90 fail, 4 unsup |
+| type-consistency.rdf | 485 pass, 94 fail, 4 unsup (out of 583) | 485 pass, 94 fail, 4 unsup |
+| type-inconsistency.rdf | 30 pass, 97 fail, 1 skip (out of 128) | 94 pass, 33 fail, 1 skip |
+| **TOTAL** | **1131 pass, 316 fail, 2 skip, 8 unsupported (out of 1457)** | **1208 pass, 239 fail, 2 skip, 8 unsupported** |
+
+4 m 50 s. The F\* line for `type-inconsistency.rdf` is 126 pass, 1
+fail (out of 127); the Lean tree reaches 94 pass, 33 fail.
+
+⚠️ `type-consistency.rdf` is unchanged in both columns and still
+hides the same trade Addendum 4 named: three positive-entailment
+cases gained, three consistency cases lost
+(`WebOnt-description-logic-018`, `-020`, `-021`).
+
+## HDT: the container reader, and a fixture pair that nothing measured
+
+`third_party/testing/hdt/` has held two HDT v1 files since 2026-07-28.
+They were written by the reference implementation, hdt-cpp 1.3.3, and
+the directory's README records a published SHA-256 for each. The F\*
+tree reads them. The Lean tree had no reader, so the fixtures
+contributed no Lean number at all.
+
+`L4Factoidal/HDT/Container.lean` is the port of
+`formal/fstar/HDT.Container.fst`. It parses the container skeleton:
+the Global control information (`$HDT` cookie, format IRI, properties,
+CRC16), the Header control information and its N-Triples metadata
+text, the Dictionary control information and the byte boundaries of
+its four Plain-Front-Coding sections, and the Triples control
+information. Every control block's CRC16 is checked.
+
+### Three F\* definitions have no work to do here
+
+The F\* module is 644 lines; the Lean module is 502. The difference is
+not compression — it is three definitions that exist only to work
+around the F\* tree's I/O boundary.
+
+| F\* definition | Why it exists there | Why it is absent here |
+|---|---|---|
+| `hdt_file_size`, `hdt_probe_fail_pow`, `hdt_size_bsearch` | `Parquet.Footer.parquet_read_range_hex` does not report a file size, so the size is discovered by an exponential probe and a binary search over read attempts | `IO.FS.readBinFile` returns a `ByteArray` and `.size` is a field |
+| `hdt_bytes_of_hex`, `collect_bytes` | that boundary hands back a hex STRING, which must be decoded before anything can index it | `readBinFile` gives bytes |
+| `nat_xor` | bitwise XOR built out of `/`, `%` and `*`, because `FStar.UInt32`'s stdint externals have no js_of_ocaml realisation | `UInt16.xor` is a primitive |
+
+The container parsing itself is ported rule for rule.
+
+### One deliberate difference, and it is a correction
+
+`bytes_to_string_acc` in F\* maps each byte through
+`Parser.NTriples.safe_char_of_int`: one character per byte, Latin-1
+style. In OCaml that reproduces the file's bytes, because an OCaml
+string IS a byte string. A Lean `String` is UTF-8, so the same
+per-byte mapping re-encodes every byte above 0x7F as two bytes and
+corrupts UTF-8 header metadata. `bytesToString` decodes the range as
+UTF-8 first and falls back to the per-byte mapping only when the range
+is not valid UTF-8. On ASCII input — every control block — the two
+agree byte for byte. Neither fixture has non-ASCII header metadata, so
+this difference is not yet exercised by a test.
+
+### The measurement
+
+`lake exe l4hdt` (Harness/HdtProbe.lean), from the repository root:
+
+**HDT container: 2 pass, 0 fail (out of 2).**
+
+A pass count of 2 is weak evidence on its own. The stronger check is
+`tools/hdt-tree-differential.sh`, which runs both trees' probes with
+`--verbose` and diffs the output. Both print the same skeleton: every
+control block's byte offsets, format IRI, property string and CRC16
+(stored AND computed), the header data range, the four PFC sections'
+boundaries, string counts, packed byte counts and block sizes, the
+triples data offset, and the header triple count from each tree's own
+N-Triples parser.
+
+**HDT container, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 28
+skeleton lines identical per fixture. One line of wording differs (the
+F\* probe names its parser module, the Lean probe does not) and the
+script normalises it rather than leaving a difference to appear every
+run.
+
+Both fixtures report `format=<http://purl.org/HDT/hdt#HDTv1>`, 22
+header triples, `order=1`, and dictionary string counts of
+(shared 0, subjects 1, predicates 1, objects 1) for
+`rdf-mt-test002.hdt` and (39, 45, 22, 134) for
+`rml-core-ontology.hdt`.
+
+### The two lemmas
+
+`L4Factoidal/HDT/ContainerTheorems.lean` ports
+`lemma_parse_control_info_rejects_bad_cookie` and
+`lemma_bad_global_cookie_rejects_container`. The module is a READER,
+so the writer/reader round-trip property that applies to companion-file
+modules has nothing to say about it. What its consumers rely on is
+that a corrupted container is refused rather than accepted as some
+other structure. Both hold by unfolding, and `#print axioms` reports
+`[propext, Classical.choice, Quot.sound]` for each — no `sorry`, no
+`axiom`, no `native_decide`.
+
+### Still absent
+
+`HDT.Dictionary` (519 F\* lines, the PFC dictionary decode and the
+ID↔term mapping) and `HDT.Triples` (316 lines, the bitmap triples
+decode). Until those land, the Lean tree can say what an HDT file
+contains but cannot read a triple out of one. `bin/hdt-probe/check.sh`
+already pins the F\* side of both stages, so the target numbers are
+known before the port starts.
+
+## HDT stage 2: the PFC dictionary, and a byte/character correction
+
+`L4Factoidal/HDT/Dictionary.lean` ports
+`formal/fstar/HDT.Dictionary.fst`: CRC8 and CRC32C over the payloads
+stage 1's CRC16 does not reach, log-array integer unpacking, Plain
+Front Coding block decode, both access patterns (`decodeSection` for a
+full dump, `pfcExtract` / `pfcLocate` for lookup), the four-section ID
+space, and the dictionary-string ↔ `Term` mapping.
+
+### Four F\* definitions are absent
+
+`nat_sub` joins the three that stage 1 dropped. The F\* module defines
+a saturating subtraction because its byte offsets are `nat` and Z3
+cannot re-derive the container invariants that keep the differences
+non-negative. Lean's `Nat` subtraction already truncates at zero, so
+`a - b` IS `nat_sub a b`. `bit_divisor` also shrinks: the F\* module
+enumerates the eight shift cases to hand Z3 a positive literal, where
+Lean writes `2 ^ shift`.
+
+### One correction: the common prefix is measured in BYTES
+
+`pfc_read_suffix` in F\* takes the front-coded common prefix with
+`FStar.String.sub prev 0 plen`. `plen` is a byte count read from the
+file; `FStar.String.sub` counts CHARACTERS. The two agree on ASCII and
+diverge above 0x7F. `pfcReadSuffix` splices `prev.toUTF8.extract 0 plen`
+with the suffix bytes and decodes the result, which is what the format
+specifies.
+
+Both vendored fixtures are pure ASCII in every dictionary section, so
+no test distinguishes the two. The F\* module's own header records the
+same ASCII-only scope. This is written down as a difference, not
+claimed as a fixed defect: nothing has exercised it.
+
+The same ASCII-only caveat applies to `pfcLocate`'s binary search,
+which assumes the block heads are in the format's byte-wise order
+while Lean's `String` `<` compares codepoint sequences.
+
+### A bracketed IRI is accepted, in both trees
+
+`termOfString "<http://example.org/a>"` returns the IRI
+`<http://example.org/a>` — brackets included — rather than rejecting
+it. `isIri` (port of `RDF.Term.is_iri`) is the minimal gate the whole
+tree applies: non-empty and contains a colon. HDT stores IRIs
+unbracketed and hdt-cpp never writes a bracketed one, and the
+string↔term round trip still holds for it, so this is recorded in the
+module's `#guard`s rather than guarded against.
+
+### The measurement
+
+`lake exe l4hdt --verbose` now prints the three stage-2 blocks in the
+same line shapes as `bin/hdt-probe/hdt_probe.ml`, and
+`tools/hdt-tree-differential.sh` diffs them along with the container
+skeleton.
+
+**HDT container, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 42
+container and dictionary lines identical per fixture, up from 28.
+
+Per fixture, matching the pins in `bin/hdt-probe/check.sh`:
+
+| | rdf-mt-test002 | rml-core-ontology |
+|---|---|---|
+| shared: decoded / expected / term-parse | 0 / 0 / 0 | 39 / 39 / 39 |
+| subjects | 1 / 1 / 1 | 45 / 45 / 45 |
+| predicates | 1 / 1 / 1 | 22 / 22 / 22 |
+| objects | 1 / 1 / 1 | 134 / 134 / 134 |
+| all four CRCs per section | OK | OK |
+| per-section ID round trip | 3 pass, 0 fail (out of 3) | 240 pass, 0 fail (out of 240) |
+| role-level round trip | 3 pass, 0 fail (out of 3) | 279 pass, 0 fail (out of 279) |
+
+The role-level figure is where the shared-section arithmetic is
+exercised: 84 subject IDs (39 shared + 45 subjects), 22 predicate IDs,
+173 object IDs (39 shared + 134 objects).
+
+Build-time `#guard`s check CRC8 and CRC32C against their published
+catalogue check values over the nine bytes `123456789` — 0xF4 for
+CRC-8/SMBUS and 0xE3069283 for CRC-32/ISCSI. Those check the
+parameters, not the code's agreement with itself.
+
+### Still absent
+
+`HDT.Triples` (316 F\* lines): the BitmapTriples decode — the two
+bitmaps, the two log-array sequences, and rank/select over them. The
+Lean tree can say what an HDT file's dictionary holds but cannot
+enumerate a triple. The F\* probe's stage 3 already pins the target
+numbers: for `rml-core-ontology.hdt`, 343 id-triples decoded with 0
+unresolved, and enumeration equal to the source `.nt` as sorted
+N-Triples.
+
+## HDT stage 3: BitmapTriples, and the enumeration matches the source
+
+`L4Factoidal/HDT/Triples.lean` ports `formal/fstar/HDT.Triples.fst`.
+With it the HDT group is complete: 1,479 F\* lines across three
+modules, all ported.
+
+### The structure
+
+The Triples section holds four sub-structures in the order hdt-cpp
+writes them: bitmap(Y), bitmap(Z), log-array(Y), log-array(Z). ArrayY
+holds one predicate ID per (subject, predicate) pair in subject-major
+order, and BitmapY[i]=1 marks the last such pair for its subject.
+ArrayZ holds one object ID per triple in the same order, and
+BitmapZ[i]=1 marks the last object of its (subject, predicate) pair.
+Subject IDs are the dictionary's `Role.subject` space.
+
+So the file is a two-level SPO forest, and `childrenRange` is the one
+primitive that decodes a range at either level.
+
+`rank1` and `select1` are linear scans with no auxiliary index.
+Everything above them reaches a bitmap only through `rank1`, `select1`
+and `childrenRange` — never through `bitAt` or raw byte offsets,
+except inside those three definitions. Replacing the scans with
+superblock and block popcount counters changes those three and nothing
+else.
+
+### Differences from the F\*
+
+`nat_sub` is absent, as in stage 2. `walk_y_positions` and
+`hdt_enumerate_subjects` accumulate with `acc @ new`, which is
+quadratic in the triple count; both accumulate reversed here and
+reverse once.
+
+### The measurement
+
+`tools/hdt-tree-differential.sh` now passes each fixture's source
+document to both probes and diffs the stage-3 blocks too.
+
+**HDT reader, F\* vs Lean 4: 2 agree, 0 differ (out of 2)** — 54
+container, dictionary and triples lines identical per fixture, up from
+42.
+
+| | rdf-mt-test002 | rml-core-ontology |
+|---|---|---|
+| all six triples-section CRCs | OK | OK |
+| triple count (ArrayZ entries) | 1 | 343 |
+| (s,p) pairs (ArrayY entries) | 1 | 335 |
+| num subjects (BitmapY ones) | 1 | 84 |
+| dictionary role max, independently | 1 | 84 |
+| bitmapY `rank1(select1 k) = k+1` | 1 pass, 0 fail (out of 1) | 84 pass, 0 fail (out of 84) |
+| bitmapZ same | 1 pass, 0 fail (out of 1) | 335 pass, 0 fail (out of 335) |
+| id-triples decoded (unresolved) | 1 (0) | 343 (0) |
+| enumeration vs source, sorted N-Triples | MATCH | MATCH |
+
+The last row is the strongest check either tree makes. It enumerates
+every triple out of the HDT file, resolves all three IDs through the
+dictionary, serialises the result and the source `.nt` as canonical
+N-Triples, sorts, and compares. A single term, ID or bit decoded
+wrongly fails it. The differential script refuses to report agreement
+for a fixture whose Lean run did not reach that MATCH, so a run that
+stopped early cannot pass as a clean one.
+
+The `num subjects` row is a cross-check rather than a restatement:
+the count comes from BitmapY's ones, and the row below it comes from
+the dictionary section sizes, which are independent.
+
+### What HDT still does not do here
+
+The reader is complete; the write path is not ported and neither tree
+has one — `bin/hdt-probe/` reads, and `third_party/testing/hdt/
+mini_rdf2hdt.cpp` is how the fixtures were made. Stage 5 of the
+program plan (indexed rank/select behind the same three names) is
+open in both trees.
+
+## XSD.IEEE754: checked against a correctly-rounded implementation, not against itself
+
+`L4Factoidal/XSD/IEEE754.lean` ports `formal/fstar/XSD.IEEE754.fst`:
+decimal lexical to IEEE-754 value, for `xsd:double`, `xsd:float` and
+`rdf:JSON` numbers. Every definition is exact big-integer rational
+arithmetic; no floating point appears anywhere in the module.
+
+### Three F\* definitions shrink
+
+`pow2` and `pow10` become `2 ^ n` and `10 ^ n` — the F\* recursions
+exist to carry a `pos` refinement. `bitlen` becomes `Nat.log2 n + 1`
+for `n > 0`, the same function its recursion computes. `mul_pos` is
+absent: it keeps a `pos` type through a multiplication without per-site
+SMT nudging, and Lean's `Nat` multiplication carries no such
+obligation.
+
+### The test is the point
+
+A test that restates the rounding algorithm proves nothing about it.
+`IEEE754Tests.lean` holds 66 lexicals converted by CPython's `float()`
+— a correctly-rounded `strtod` — with the bit patterns read out by
+`struct.pack('>d', …)` and `struct.pack('>f', …)`, and compares them
+against this module's output through `fvalToBits64` / `fvalToBits32`.
+
+**66 rows match, bit for bit, in binary64 and binary32. 0 differ.**
+
+The table is chosen for the cases where an implementation goes wrong,
+not for round numbers:
+
+| Case | Why |
+|---|---|
+| `9007199254740992` … `95` | the 2^53 boundary: four consecutive integers pin the ties-to-even direction where doubles stop being exact |
+| `16777216`, `16777217`, `16777219` | the 2^24 boundary, same question for binary32 |
+| `1.0000000000000001` vs `…02` | one-ulp neighbours: one rounds down, one up |
+| `5e-324`, `2.5e-324`, `2.4e-324` | the smallest subnormal and its exact halfway point — ties-to-even at the bottom of the grid |
+| `2.2250738585072011e-308` | the decimal that hung PHP's `strtod` in 2011, and its normal neighbour |
+| `1.8e308`, `1e400` | overflow to infinity, at two magnitudes |
+| `1e-46` | underflow to zero, below the subnormal grid |
+| `1000`, `1e3`, `0.001e6`, `100000e-2` | one value, four lexicals |
+| 60-digit exact expansion of a double | a long digit string that must not lose the tie |
+| `-0.0`, `INF`, `-INF`, `NaN` | signed zero, both infinities, the value equal to nothing |
+
+`fvalToBits64` and `fvalToBits32` exist only for that comparison.
+Nothing in the port uses them.
+
+### Two engine defects found, filed not fixed
+
+https://github.com/danbri/factoidal/issues/552, present identically in
+BOTH trees, so neither is a port regression:
+
+1. `FILTER(?v = "1.0"^^xsd:double)` returns **zero** rows against data
+   holding `"1"^^xsd:double` and `"1.0"^^xsd:double`, where SPARQL 1.1
+   §17.3 requires two. `FILTER(?v = 1.0e0)` on the same data returns
+   two. A numeric literal TOKEN becomes a numeric expression node and
+   is promoted; a typed-literal node stays a term and never reaches
+   `numericCompare`. Repo anti-pattern #6 at a place nothing had
+   checked.
+2. `=` on two `xsd:double` operands compares EXACT DECIMAL values
+   (`parseDoubleToScaled`), not IEEE-754 values, so
+   `"9007199254740992"^^xsd:double = "9007199254740993"^^xsd:double`
+   is false where the specification makes it true — both lexicals
+   denote 2^53. `XSD.IEEE754.doubleValueEq` decides this correctly and
+   is checked against CPython on exactly that pair, but only the
+   D-entailment regime calls it. Two parts of the engine disagree
+   about which doubles are the same value.
+
+The primitives are right in both trees; what is missing is the wiring.
+`literalValueEqNumeric` and `valueCompare ∘ literalPromote` both answer
+`"1"^^xsd:double = "1.0"^^xsd:double` correctly when called directly.
+
+## SHACL: the 1.2 suite was vendored and never run
+
+`l4shacl` takes a manifest path, so the SHACL 1.2 suite was always
+reachable. Its default is the SHACL 1.0 `data-shapes-test-suite`, and
+that is the only row the dashboard carried. Pointing it at the other
+manifests, with `tools/lean-shacl-scores.sh`:
+
+| Suite | Lean 4 | F\* |
+|---|---|---|
+| shacl 1.0 core | 98 pass, 0 fail (out of 98) | 98 pass (out of 98) |
+| shacl 1.2 core | 103 pass, 30 fail (out of 133) | 138 pass (out of 138) |
+| shacl 1.2 node-expr | 0 pass, 2 fail (out of 2) | 142 pass (out of 142) |
+| shacl 1.2 sparql | 22 pass, 3 fail (out of 25) | 25 pass (out of 25) |
+| shacl 1.2 rules | 0 pass, 0 fail (out of 0) | 88 pass (out of 88) |
+
+⚠️ `out of 2` and `out of 0` are not pass rates. The probe did not READ
+those tests: the shnex tests are typed `sht:EvalNodeExpr` and link
+entries with `mf:entries`, while `Harness/ShaclProbe.lean` recognises
+`sht:Validate` and walks `mf:include`; the rules directory has no
+`manifest.ttl` at all, only `manifest-rules.ttl`, whose tests use
+`srt:` types. Pointed at the right file the probe reports
+`zero_tests=1` in its `HARNESS-DIAG` line, so the diagnostic that
+exists to catch this did fire.
+
+The script labels the unread rows as unread, because printing `out of
+0` beside `out of 88` without saying so is anti-pattern #3.
+
+Three separable pieces of work, filed as
+https://github.com/danbri/factoidal/issues/553:
+
+1. 30 real failures on shacl 1.2 core, read correctly and answered
+   wrongly — 13 in `core/node`, 11 in `core/property`, 3 in
+   `core/targets`, 2 in `core/misc`, 1 in `core/validation-reports`.
+   `sh:targetWhere` and `sh:conformanceDisallows` look like
+   unimplemented SHACL 1.2 features rather than bugs in existing code.
+   The core denominator is also 133 against the F\* tree's 138, so five
+   more are unread even in the row that mostly works.
+2. 3 failures on shacl 1.2 sparql.
+3. node-expr and rules need `SHACL.NodeExpr` (713 F\* lines) and
+   `SHACL.Rules` (438) ported AND the probe extended. Doing the harness
+   half first gives a large honest failure count instead of a silent
+   zero, which is the better intermediate state.
+
+## A batch of five: Dep, RDFS delta evaluation, and three accessor modules
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `Dep.Reachability` | 170 | `L4Factoidal/Dep/Reachability.lean` |
+| `RDFS.Closure.SemiNaive` | 421 | `L4Factoidal/RDFS/SemiNaive.lean` |
+| `RDF.Dataset.Graphs` | 27 | `L4Factoidal/RDF/DatasetGraphs.lean` |
+| `SPARQL.Update.Analysis` | 31 | `L4Factoidal/SPARQL/UpdateAnalysis.lean` |
+| `SPARQL.Query.Analysis` | 53 | `L4Factoidal/SPARQL/QueryAnalysis.lean` |
+
+### `Dep.Reachability`
+
+The verified reachability core the module-liveness tool calls instead
+of an unverified Python breadth-first search. Its point is that the
+theorem's premises — `isClosed` and `contains` — are DECIDABLE and the
+driver re-checks them on the algorithm's real output, so neither the
+fuel bound nor the closure implementation is trusted.
+
+`reaches` is a `Type`-valued GADT in F\* because the proof recurses on
+the derivation term; in Lean it is a `Prop`-valued inductive proved by
+`induction`. `no_root_reaches`'s `FStar.Classical.impl_intro` and
+`introduce … with` block disappear, because `¬P` IS `P → False` in
+Lean. `#print axioms` reports `[propext, Quot.sound]` for both
+theorems.
+
+The `#guard`s check that `isClosed` REJECTS a set that is not closed.
+Without that, the checks that the algorithm's output passes `isClosed`
+would prove nothing about whether the re-check has teeth.
+
+### `RDFS.SemiNaive`
+
+Delta evaluation: apply a rule only where at least one premise is new,
+`Δout = (ΔB1 ⋈ B2_full) ∪ (B1_full ⋈ ΔB2)`. Both terms are needed;
+dropping either loses derivations.
+
+Every row of `RDFS.Closure` has the shape `Graph → Triple → List Triple`
+with the searched graph first, so one combinator (`rowDelta`) states the
+delta term once for all six rows. The F\* module writes it out by hand
+for each of its twelve.
+
+`closureSemiNaiveChecked` runs the delta loop and then applies one full
+naive `step`. If that adds nothing, the result is a fixed point of the
+naive step containing the input, and since the naive closure is the
+least such fixed point the two are equal. If it adds something, the
+result is discarded and `closureFix` runs. **A hole in the delta
+reasoning costs a slow run, never a wrong answer.**
+
+**Measured**, `lake exe l4rdfs-semi`:
+
+**delta vs naive closure: 6 agree, 0 differ (out of 6)** — subclass
+chains and property hierarchies at 20, 50 and 100 input triples,
+closures of 210 to 5,056 triples.
+
+**delta loop reached the fixpoint without the fallback: 6 of 6.** This
+second line is the one that matters: a run where the fallback fired
+would still report `agree`, because the fallback returns the naive
+answer. Reporting only the first line would be a vacuous pass.
+
+⚠️ **Speed is NOT measured, and the module exists for speed.** Three
+timing attempts all reported 0 ms for both closures while the process
+spent 90 s of CPU on a run whose largest input is 100 triples. The
+clock and the forcing technique both work — a standalone binary using
+the same `clockAfter` reports 5723 ms for a 20-million-step fold — so
+what is unestablished is where the 90 s goes. `isNaiveFixpoint` and
+`sameGraph` are both superlinear in the closure size and either could
+dominate, but that is a hypothesis, not a measurement. The harness
+prints no speed column, because one that always reads 0 reads as
+"instant" when the truth is "not measured". Tracked in
+https://github.com/danbri/factoidal/issues/554.
+
+### The three accessor modules
+
+`RDF.Dataset.Graphs` is `FROM NAMED`'s universe as a pair list plus a
+named-graph lookup. Its F\* `graph_ref` is `iri` with a comment saying
+the type also carries the `_:<label>` blank-node graph-name convention;
+Lean's `NamedGraph.name` is already `Subject`, so the convention is in
+the type rather than in a comment on a string.
+
+`SPARQL.Update.Analysis` is `updateHasLoad`, which the HTTP layer
+consults before rejecting an update with 501. `SPARQL.Query.Analysis`
+is `bgpsInQuery`, which the explain dump walks. Both were migrated out
+of OCaml in the F\* tree per iron rule #1 and stay that way here.
+
+`SPARQL.QueryAnalysis`'s `#guard`s compare rendered forms rather than
+values: `TriplePattern` derives `Repr` and not `BEq`. The order check
+asserts BOTH that `collectBgpsAux` returns last-seen-first AND that
+`bgpsInQuery` returns source order, so a reverse that silently stopped
+happening would fail.
+
+## A batch of four: manifests, blank-node scoping, format labels, JSON escaping
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `RDF.Canonical.Manifest` | 38 | `L4Factoidal/RDF/CanonicalManifest.lean` |
+| `RDF.Dataset.Merge` | 69 | `L4Factoidal/RDF/DatasetMerge.lean` |
+| `RDF.Format` | 103 | `L4Factoidal/RDF/Format.lean` |
+| `SPARQL.JSON.Escape` | 97 | `L4Factoidal/SPARQL/JsonEscape.lean` |
+
+### `RDF.Dataset.Merge`: a difference the type system absorbs
+
+`rename_graph_name` in F\* takes a plain string and tests for a `"_:"`
+prefix, because the F\* `named_graph`'s name slot is IRI-typed and
+blank-node graph labels ride inside it as the literal string
+`"_:<label>"` — the Parser.NQuads convention, also used by TriG and
+JSON-LD. Lean's `NamedGraph.name` is `Subject`, which is `iri | bnode`,
+so a blank-node graph name IS a blank node and the prefix goes straight
+on its label. The string-prefix test disappears, and with it the chance
+of a graph name that merely LOOKS like a blank node being renamed.
+
+The `#guard`s state the bug the module exists for — the Jena ARQ probe's
+graph-09 and graph-10b, where `_:x` from two separately loaded files
+joined — as a check that `_:x` from two documents does NOT collide after
+renaming, and that `_:x` used twice WITHIN one document still does.
+Both directions are needed: a rename that freshened every occurrence
+would pass the first and fail the second.
+
+### `RDF.Format`: two tables that must not be one
+
+`format_of_extension` takes a LEADING DOT (`".ttl"`); `format_of_string`
+takes a bare label (`"ttl"`). The F\* name `format_of_string` is
+`formatOfLabel` here, because both functions take a string and only
+their guards say they are not interchangeable. Those guards are
+explicit: `formatOfExtension "ttl"` is `none` and
+`formatOfLabel ".ttl"` is `none`.
+
+The F\* module uses an `if`/`else if` chain rather than a `match` on
+string literals because KaRaMeL's C extraction rejects the latter
+(warning 250). Lean has no such constraint; the chain is kept so the two
+trees' tables are one diff apart rather than a restructure apart.
+
+### `SPARQL.JSON.Escape`: the byte-versus-codepoint trap, twice
+
+The F\* module's header records what its first implementation got wrong,
+and both failures are the same distinction:
+
+1. Escape pairs mirrored relative to a final `rev` — `"n\\"` instead of
+   `"\\n"`. The npm bundle was the first strict-JSON consumer and
+   crashed on it.
+2. Pass-through bytes at or above 0x80 double-encoded, because the walk
+   read BYTES while the extracted `string_of_list` re-encoded each list
+   element as a UTF-8 CODEPOINT. `"café"` became `"cafÃ©"`.
+
+F\* fixed both by slicing maximal runs of non-special bytes with
+`fs_byte_sub`, which is byte-transparent.
+
+The Lean tree has no `Parser.FastString` counterpart by design, so this
+walks `String.toUTF8` and builds a `ByteArray`, decoding once at the
+end. A byte at or above 0x80 is copied into the output buffer and never
+passes through `Char`, so failure 2 cannot occur; the escape strings are
+byte literals, so failure 1 cannot occur. The `#guard`s check both
+anyway, and they check the BYTE LENGTH of `"café"` and `"日本語"` rather
+than the rendered string — a double-encoding that round-trips through
+`Char` can still print plausibly.
+
+One more guard states a rule that is easy to get wrong in the other
+direction: 0x7F DEL is NOT escaped. "Control character" and "byte below
+0x20" are different sets, and only the second one is the rule.
+
+## A batch of three: the two circuit breakers and the annotation filter
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `SPARQL.Eval.Limits` | 128 | `L4Factoidal/SPARQL/EvalLimits.lean` |
+| `SPARQL.Eval.TimeBudget` | 133 | `L4Factoidal/SPARQL/TimeBudget.lean` |
+| `OWL.DirectMapping.Filter` | 71 | `L4Factoidal/OWL/DirectMappingFilter.lean` |
+
+### `EvalLimits`: both properties proved, not demoted
+
+The F\* module proves the row cap's two properties, and so does this
+one — `takeCapped_length_le_cap` is what makes the breaker a breaker,
+and `takeCapped_unlimited_id` is what makes a disabled cap free. Both
+carry `[propext, Quot.sound]`.
+
+One restatement: the F\* helper lemma puts an `if taken >= max_rows`
+inside its conclusion. Here `taken < c.maxRows` is a hypothesis and the
+at-cap case is its own lemma. Same content, and Lean's `omega` closes
+the arithmetic without the `if` in the way.
+
+The `#guard`s state the sentinel in the direction that is easiest to get
+backwards: a cap of 0 is UNLIMITED, not "keep nothing". Getting it wrong
+turns "no cap" into "every query returns empty".
+
+### `TimeBudget`: the Lean tree's realisation surface here is EMPTY
+
+The F\* module carries one `assume val now_ms : unit -> ML int`. It is
+its only OCaml realisation, acceptable under iron rule #11(a) as pure
+I/O, with its own stub patch (`202_now_ms.sh`).
+
+This module mentions no clock at all. `mkBudgetSecs`, `mkBudgetMs` and
+`pollAt` take the current reading as an ARGUMENT; the caller reads
+`IO.monoMsNow` once, at the edge. That is the rule `SPARQL/Expr.lean`'s
+`EvalEnv.now` already states for §17.4.5.1 `NOW()` — "read once, at the
+edge, and passed in; never an ambient clock call" — applied to the same
+kind of dependency. So the F\* tree's one `assume val` here has no Lean
+counterpart, and the budget logic is a total function of its inputs.
+
+The F\* `ML`-effect `poll` becomes `pollAt`; a caller writes
+`pollAt b (← IO.monoMsNow)`.
+
+The `#guard`s pin the sentinel round-trip that matters: `mkBudgetSecs
+now 0` must be `noBudget` and NOT a deadline equal to `now`. A deadline
+equal to `now` is already expired, so getting it backwards turns "no
+timeout" into "already timed out". They also pin the tolerated
+backward jump the F\* header describes: a clock that goes backwards
+un-expires the budget rather than trapping it.
+
+### `DirectMappingFilter`: the declarations survive the filter
+
+Triples whose predicate is declared `rdf:type owl:AnnotationProperty`
+(or the legacy `owl:OntologyProperty`) are excluded before an
+OWL-Direct closure sees the graph.
+
+The DECLARATION triples themselves survive, because their predicate is
+`rdf:type` and `rdf:type` is never itself so declared. The mapping
+specification excludes annotation ASSERTIONS, not the declarations that
+identify them, and a filter written as "drop every triple mentioning an
+annotation property" gets this wrong. It is a `#guard`.
+
+The F\* module's scope note is carried over verbatim in substance: this
+is the "declared in the same graph being filtered" case, which is what
+the vendored RIF Core corpus exercises. The built-in OWL 2 annotation
+properties that need no declaration, and the `owl:annotated*`
+reification triples, are NOT handled — no corpus test exercises them
+and adding them speculatively is anti-pattern #4.
+
+### And one module that will not be ported
+
+`RDF.List.Helpers` (195 lines) is tail-recursive replacements for
+`FStar.List.Tot`'s `append` and `concatMap`, which overflow the OCaml
+stack on long lists — issue #94 on the Turtle path, and the 2026-04-26
+BGP filter-map incident. Lean's `List.append` already has a
+tail-recursive `@[implemented_by]`, so the module's reason for existing
+is absent. It joins `Parser.FastString.*` in the by-design column.
+
+## RDFS-Plus, and a rule row that would have gone missing quietly
+
+`L4Factoidal/RDFS/RDFSPlus.lean` ports
+`formal/fstar/RDF.Entailment.RDFSPlus.fst` (93 lines): RDFS plus a small
+practical OWL subset — `owl:sameAs` (symmetry, transitivity,
+substitution into subject, object and predicate position),
+`owl:inverseOf`, `owl:SymmetricProperty`, `owl:TransitiveProperty`,
+`owl:FunctionalProperty`, `owl:InverseFunctionalProperty`,
+`owl:equivalentClass`, `owl:equivalentProperty`.
+
+The claim level is carried over unchanged: every row has a proved
+licensing and truth-preservation lemma in the F\* tree, and **no
+chain-level completeness is claimed for this tier**. `owl:sameAs`
+introduces equality reasoning, and the Herbrand construction behind the
+ρdf completeness theorem does not survive quotienting by sameAs
+classes.
+
+### The row that had no Lean counterpart
+
+The F\* step calls `owl_rule_inverseOf_domain_range_flip`, which
+`L4Factoidal/OWL/RLClosure.lean` did not have. It is now there as
+`inverseOfDomRngFlipFor`, next to prp-inv1 and prp-inv2 — that is its
+home when the rest of `OWL.Closure` lands, not the RDFS-Plus module.
+
+The row is not in OWL 2 RL/RDF Table 9. It is sound under both Direct
+and RDF-Based Semantics because the extension of an inverse property
+pair is the transposition of the other's, and without it the closure
+derives the INSTANCE-level consequences but not the schema triple. W3C
+SPARQL entailment `sparqldl-11` is what catches the absence.
+
+Dropping it silently was the real risk: the closure would still reach a
+fixed point, still pass every `#guard` about sameAs and transitivity,
+and derive fewer schema triples than the F\* one. The `#guard` that
+`{ :parent owl:inverseOf :child . :parent rdfs:domain :Person }` yields
+`:child rdfs:range :Person` is what makes the row load-bearing.
+
+### `eq-ref` stays out, and a check keeps it out
+
+`x owl:sameAs x` for every node is deliberately absent — a noise row
+that manufactures one triple per node without feeding any downstream
+rule, excluded for the same reason `RDFS.Closure`'s step excludes rdfs6
+and rdfs10. Two `#guard`s assert it does NOT appear. An exclusion with
+no check for it is an exclusion that comes back.
+
+Every `#guard` is paired with a check that the closure is strictly
+larger than its input, so none of them can pass by deriving nothing.
+
+## RDF.Pretty and SPARQL.Explain — and a measurement I got wrong
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `RDF.Pretty` | 235 | `L4Factoidal/RDF/Pretty.lean` |
+| `SPARQL.Explain` | 104 | `L4Factoidal/SPARQL/Explain.lean` |
+
+### What `RDF.Pretty` deliberately does NOT carry
+
+The F\* module used to hold `term_to_ntriples`, a SECOND N-Triples term
+renderer that wrote a literal's lexical form verbatim. It was described
+as "for display, not wire", and every consumer treated its output as
+wire: `factoidal --dump` and the COTTAS store's object column both went
+through it. That is issue #339 (dump emitted output the project's own
+parser rejected) and issue #443 (import then query DESTROYED any literal
+containing a quote, a newline or a backslash).
+
+The F\* tree DELETED the function rather than fixing it, because making
+it escape would have made it byte-identical to
+`nq_term_to_string`, and a second name for one rendering is what let the
+two drift. This port carries the same absence, and a `#guard` states the
+remaining renderer's verbatim behaviour explicitly — so nobody "fixes"
+it into a second serialiser.
+
+### `SPARQL.Explain` is absent for a DIFFERENT reason than in F\*
+
+The F\* header says the estimator loop that builds explain rows from a
+store is still in OCaml, "blocked on time-budget infra in F\*". That
+block is now gone in the Lean tree — `SPARQL.TimeBudget` is ported. The
+loop is still absent here, but because `SPARQL11.Store` is not ported.
+Different reason, same shortfall, and worth writing down rather than
+inheriting the F\* sentence unexamined.
+
+## ❌ A measurement error, and the correction
+
+Earlier in this session I wrote, in the gap document and in a GitHub
+comment: "An audit of the whole not-covered list found no other false
+negative." **That was wrong.**
+
+The audit matched squashed MODULE NAMES. That method cannot see a
+CONSOLIDATION — one Lean module covering two F\* modules under a third
+name — and cannot see a rename that changes more than punctuation. It
+found `DID.Key` and stopped, and I reported its silence as evidence.
+
+A second audit compared DEFINITION NAMES: every `let` / `val` / `type`
+of each not-covered F\* module against every `def` / `abbrev` /
+`structure` / `inductive` / `theorem` in the Lean tree, normalised for
+case and underscores. It found four more, 1,298 F\* lines:
+
+| F\* module | Lines | Actually covered by |
+|---|---|---|
+| `RDF.Entailment.Simple` | 182 | `L4Factoidal/RDF/Entailment.lean` |
+| `RDF.Entailment.Regime` | 271 | the same file |
+| `Parser.CSVResults` | 610 | `L4Factoidal/SPARQL/ResultsCsvTsv.lean` |
+| `RDF.Pretty` | 235 | ported this session |
+
+The first two are the consolidation case exactly: one Lean module covers
+simple entailment AND the D / RDF / RDFS regimes, which the F\* tree
+splits across two files. Its own header says so; a name-based audit
+could not read it.
+
+⚠️ One narrow behavioural gap inside that coverage: the F\* `match_term`
+takes a POSITION-AWARE literal comparison
+(`leq : inside_tt -> literal -> literal -> bool`), because a directional
+language string is opaque — case-sensitive — only INSIDE a triple term.
+Lean's `entailsWith` has no position flag. The coverage is substantive
+but not complete, and the difference is what the W3C
+`opaque-dir-language-string` fixtures exercise.
+
+**The rule this pays for:** an audit that finds nothing is evidence
+about the AUDIT before it is evidence about the code. State the method
+next to the result, and pick a method that can see the failure you are
+looking for. Module-name matching cannot see a consolidation, so its
+silence about consolidations meant nothing.
+
+## ❌❌ The coverage figure was wrong twice, and the second method was in the tree
+
+Two corrections in one day, both because the AUDIT was wrong rather than
+because code landed. Recorded together so the next reader can tell which
+number they are looking at.
+
+| Reported | Method | Real |
+|---|---|---|
+| 120 of 220 | squashed module-name matching | 125 |
+| 125 of 220 | + definition-name matching | **130** |
+
+### What each method could not see
+
+**Module names** cannot see a CONSOLIDATION — one Lean module covering
+two F\* modules under a third name — nor a substantive rename.
+`L4Factoidal/RDF/Entailment.lean` covers BOTH `RDF.Entailment.Simple`
+and `RDF.Entailment.Regime`, and its own header says so in its first
+sentence. `Parser.CSVResults` became `SPARQL.ResultsCsvTsv`.
+
+**Definition names** are closer but still a proxy. They missed
+`RDF.Entailment.Simple` too: Lean writes `termMatch` and `matchSubject`
+where F\* writes `match_term` and `match_subj`.
+
+### The method that works, and it was sitting there
+
+**A Lean module's header names the F\* module it ports.** Extracting
+every `formal/fstar/X.fst` mention from every Lean header and reading
+the sentence around each settles it directly. Five more engine modules,
+3,015 F\* lines:
+
+| F\* module | Lines | What the Lean header says |
+|---|---|---|
+| `RDF.Entailment.RDFS.RhoDFClosure` | 1996 | "Ports the rule set of" |
+| `RDF.IRI` | 530 | "Port of" |
+| `Parser.SRX` | 291 | "Port of … (parsing)" |
+| `Parser.JSONResults` | 160 | "Port of … (parsing)" |
+| `SPARQL11.IRI.Resolve` | 38 | both F\* modules delegate to one core |
+
+It settled two the OTHER way as well, which a ratio-based audit would
+have scored as near-misses: `SPARQL.FullText` is not covered and
+`SPARQL/Parser.lean` says "no Lean" in as many words; `JSONLD.Frame` is
+not covered and `JSONLD/Expand.lean` merely lists it as a sibling. And
+`Parser.JSONLD` is claimed only as "Port of the toRdf half", so it stays
+in the not-covered column rather than being counted on a guess.
+
+### Two fixes, not one
+
+1. `tools/lean-port-gap.py` now GENERATES the classified summary
+   (engine / proof / by-design). It was hand-typed, and it drifted three
+   times in one session — once per batch of ports, because every landing
+   meant editing four numbers by hand and the classification was never
+   recomputed.
+2. The rule is written into `skills/workflow-gotchas-debugging`
+   (hazard #28) and CLAUDE.md (anti-pattern #28): an audit that finds
+   nothing is evidence about the AUDIT's reach before it is evidence
+   about the code.
+
+### Where that leaves the port
+
+**130 of 220 F\* modules have a Lean counterpart.** Not covered: 63
+engine modules / 46,503 lines, 21 proof modules / 24,529 lines (the
+wrong measure for that column — the Lean tree has its own theorem
+layer), 6 by-design / 1,853 lines.
+
+## SPARQL.FullText — the module the Lean tree said it did not have
+
+`L4Factoidal/SPARQL/FullText.lean` ports
+`formal/fstar/SPARQL.FullText.fst` (223 lines): the `text:query`
+extension, slice 1 — exact token match, no scoring. `SPARQL/Parser.lean`
+recorded its absence in as many words ("whose encoding lives in
+`SPARQL.FullText.fst` — no Lean"). That sentence is now stale in the
+right direction.
+
+**No ranking claim.** There is no `score_bm25` and no `rank_results`;
+a caller applies `limit` in dataset order only. That is slice 1's scope.
+
+### A wrong reason, corrected before it landed
+
+The module header first said: "Lean has `String.toLower`, which is not
+the same function — it is Unicode-aware", and a `#guard` asserted the
+two folds DISAGREE on `"ÉCOLE"`.
+
+The guard failed. **Measured: Lean's `String.toLower` is ASCII-only.**
+`"ÉCOLE".toLower` is `"École"` — `Char.toLower` maps `A`–`Z` and nothing
+else — so it agrees with the F\* fold exactly on that input.
+
+The explicit fold stays, for a smaller and true reason: the tokeniser's
+floor is part of slice 1's contract and should not move because a
+standard-library function's folding scope widened in a later toolchain.
+The `#guard` now pins the AGREEMENT rather than asserting a difference
+that does not exist.
+
+Worth recording because the failure mode was the same one hazard #28 is
+about: I wrote a confident claim about a function's behaviour and gave
+it a check that would have passed either way had I stated it loosely.
+It only failed because the assertion was sharp.
+
+### Why the object argument is a tagged literal
+
+jena-text's `(property "term" limit)` is ordinary SPARQL collection
+syntax, which the parser desugars into an `rdf:first`/`rdf:rest` chain
+in a SIBLING pattern joined to the main triple — not a second triple
+pattern in the BGP a per-triple evaluation hook sees. Resolving that
+generically needs a pattern-level rewrite pass, and it is not what real
+magic-property engines do: Jena's ARQ intercepts the argument list
+during algebra compilation, before it could become literal `rdf:first`
+matching against data with no such triples.
+
+So the parser recognises `text:query` before the generic collection
+desugaring runs and encodes the resolved query into one tagged literal.
+The field and limit ride in the LEXICAL FORM, delimited by U+001F, so
+the user's raw search term is never parsed or escaped — only split out
+of its two delimiter-bounded neighbours. A `#guard` round-trips a term
+containing commas, semicolons and quotes to state that.
+
+### The guards that state what "exact token match" means
+
+- `"ell"` must NOT match `"Hello"`. That is the difference between this
+  and a `CONTAINS` filter.
+- An empty query matches anything; an empty candidate matches nothing.
+- Order and repetition do not matter, which makes it a token-SET test.
+- A literal of any other datatype decodes to nothing — the marker
+  datatype is the gate, and without it the codec would read a user's
+  ordinary string literal as a query.
+
+## SPARQL.Update.Sandbox — the policy, with checks that state the threat
+
+`L4Factoidal/SPARQL/UpdateSandbox.lean` ports
+`formal/fstar/SPARQL.Update.Sandbox.fst` (323 lines). Migrated in the
+F\* tree out of `factoidal_http.ml` per iron rules #1 and #15: the policy
+is semantics, the HTTP status codes are glue.
+
+### The hand-rolled string scan disappears
+
+The F\* `replace_all_aux` walks the haystack character by character with
+`FStar.String.length` and `.sub`, and its own comment says that matches
+the previous byte-level OCaml "only when the haystack is ASCII — which
+is the case for our auth template". Lean's `String.replace` does the
+whole substitution, and `splitOn` gives the prefix, so 60 lines of scan
+become two definitions. On ASCII templates the two trees agree; on a
+non-ASCII template Lean's is codepoint-correct where the OCaml was
+byte-based, and neither tree has a test for that.
+
+`templatePrefix` scans for the literal `{authid}` ANYWHERE, not for the
+first `{`. The F\* module pins the stray-brace case with `assert_norm`;
+here it is a `#guard`:
+`templatePrefix "https://e.org/{x}/{authid}/graph"` is
+`"https://e.org/{x}/"`, not `"https://e.org/"`.
+
+### The `#guard`s say what the sandbox is FOR
+
+A policy module's tests are worth little if they only check the happy
+path, so each one states a way out of the sandbox and asserts it is
+closed:
+
+- an unwrapped template is WRAPPED, not rejected — that is the rewriting
+  half of the policy, and a port that only rejected would still pass a
+  "rejects other graphs" test;
+- a template already wrapped in the sandbox graph is NOT double-wrapped;
+- a VARIABLE graph target is rejected — a wrapper that could bind to any
+  graph is not a wrapper that targets the sandbox;
+- `DEFAULT`, `NAMED` and `ALL` are each rejected separately, because each
+  is a different way to reach outside;
+- `ADD`, `MOVE` and `COPY` check BOTH ends. A check on the destination
+  alone would let data be copied OUT of another graph, and that is the
+  one a plausible implementation gets wrong;
+- `LOAD` is rejected here as well as at the HTTP layer — two gates, on
+  purpose;
+- an update stops at the FIRST rejection, so an update whose second
+  operation is out of bounds does not have its first applied;
+- an accepted update keeps its operations IN ORDER. The accumulator is
+  reversed, and an unreversed one would pass every single-operation
+  check above.
+
+## Two more: the OWL test-type classifier and the regime dispatch
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `OWL.Tests.Manifest` | 28 | `L4Factoidal/OWL/TestsManifest.lean` |
+| `RDF.Entailment.RegimeDispatch` | 53 | `L4Factoidal/RDFS/RegimeDispatch.lean` |
+
+### `TestsManifest`
+
+Five test-type IRIs, classified. The `#guard`s state the two ways a
+loose classifier goes wrong: the namespace ALONE is not a test type, and
+an unknown suffix inside the namespace is not either. A "starts with the
+namespace" check accepts both, and would count every ontology term in
+that namespace as a test.
+
+### `RegimeDispatch`, and one narrowing worth stating
+
+`x-rdfscore` selects the ρdf closure, `x-rdfsplus` selects the RDFS-Plus
+closure, and everything else falls through.
+
+The claim levels are carried over unchanged. `x-rdfscore`'s definition
+IS a theorem — on fragment data the answers are exactly the ρdf-entailed
+consequences, sound and complete. `x-rdfsplus` makes **no chain-level
+completeness claim**: every OWL row runs under proved licensing and
+truth lemmas, but `owl:sameAs` equality breaks the Herbrand construction
+behind the completeness theorem.
+
+⚠️ The fall-through is NARROWER than the F\*'s. F\* falls through to
+`OWL.Closure.entailment_closure_for_query`, which owns the W3C-named
+regimes ("RDFS", "OWL-RL", …) and performs the comprehension-witness
+strip. The Lean fall-through is `OWL.RL.closure` directly: there is no
+witness scaffolding to strip (the F\* banner notes the two new closures
+mint none either), but the W3C-named regimes are not yet split out, so a
+caller asking for `"RDFS"` gets the OWL RL closure. Stated here rather
+than left to be found.
+
+### A guard I wrote and then deleted
+
+The first version had two `#guard`s of the shape `P || !P` — written to
+say "the fall-through may or may not derive this". They are tautologies:
+they pass whatever the code does, which is the opposite of a check.
+
+They are replaced by one that has content: `x-rdfscor` (a near-miss for
+`x-rdfscore`) must produce a DIFFERENT closure size from `x-rdfscore`.
+If the regime match were a prefix test rather than equality, the two
+would be equal and the guard would fail.
+
+## RDF.Vocabulary.Axioms — a table generated, not retyped
+
+`L4Factoidal/RDF/VocabularyAxioms.lean` ports
+`formal/fstar/RDF.Vocabulary.Axioms.fst` (258 lines): the finite RDF and
+RDFS axiomatic triple tables from RDF 1.1 Semantics, as literal triple
+lists, auditable line by line against the specification without
+executing anything.
+
+### The two tables were extracted mechanically
+
+The 46 rows were parsed out of the F\* source — every
+`{ s = S_IRI …; p = …; o = T_IRI … }` — and re-emitted as Lean, not
+retyped. A table whose whole purpose is line-by-line auditability
+against a specification is the worst possible place for a transcription
+slip, and 46 rows by hand is where one happens.
+
+`#guard`s pin both counts (8 RDF, 38 RDFS, 46 total) and check for
+duplicates. A dropped row is the failure mode a table like this has, and
+nothing else in the tree would notice one.
+
+### ⚠️ The table is NOT wired into any closure, and that is a measured
+decision
+
+Seeding the RDFS closure with `finiteAxiomaticTriples` was attempted in
+the F\* tree and DISABLED after measurement. Every suite stayed
+byte-exact except OWL 2 profile-RL ConsistencyTests: **76 pass, 0 fail →
+75 pass, 1 fail**, with `New-Feature-ObjectQCR-002` becoming an
+unexpected inconsistency.
+
+The seeded schema axioms inflate the closure's `rdf:type` set through
+rdfs2 and rdfs3 far enough to trip the sound-but-narrow N=1
+qualified-cardinality complementOf scaffolding (issue #236) into a
+spurious cls-com clash. That is an unsoundness, not an improvement, so
+the seed is off in both trees.
+
+If re-attempting: the RDF-versus-RDFS regime split still applies. The
+bare closure under the "RDF" regime must NOT receive the RDFS rows —
+RDF Semantics scopes the two axiomatic sets to different entailment
+regimes.
+
+### The infinite families stay rule-generated
+
+`rdf:_1 rdf:type rdf:Property` and the rest of the `rdf:_n` families are
+excluded, per the specification's own note on infinitude. The
+container-membership rule emits what it needs for whatever finite set of
+`rdf:_n` IRIs appears in a given graph, and rule generation is CORRECT
+for an infinite family. A `#guard` checks `rdf:_1` does NOT appear in
+the table — a table claiming to enumerate an infinite set would be
+duplicating the rule as well as being wrong.
+
+## The COTTAS block starts: the presence bitmap, with the I/O at the edge
+
+`L4Factoidal/Cottas/PresenceBitmap.lean` ports
+`formal/fstar/RDF.CottasStore.PresenceBitmap.fst` (257 lines) together
+with the parts of `RDF.CottasStore.OnDiskIndex.fst` that decide what the
+`.presence` bytes MEAN. (Only the presence module is claimed as covered;
+`OnDiskIndex` also carries the dictionary header and much else.)
+
+### Where the ten `assume val`s went
+
+`OnDiskIndex.fst` declares **ten** `assume val` I/O primitives —
+`mmap_companion_open`, `read_companion_u32_le`, `read_companion_byte`
+and the rest — and every read in the F\* presence module goes through
+them, served by OCaml glue that mmaps the companion at boot.
+
+None has a Lean counterpart. `IO.FS.readBinFile` returns a `ByteArray`
+and every definition here is a pure function of it; reading happens once,
+at the edge, in `openBitmap`. **The Lean tree's realisation surface for
+this module is EMPTY where the F\* tree's is ten declarations plus their
+glue.** Same shape as the HDT container, where the file-size probe and
+hex decode had nothing to do.
+
+### The safe-direction defaults ARE the contract
+
+A prune is an optimisation, so its correctness is one-sided: a `false`
+must mean "no row here"; a `true` may be wrong, in the safe direction.
+Every default is carried over:
+
+| Situation | Answer |
+|---|---|
+| `rg` or `tok` out of range | `false` |
+| byte read off the end | `true` |
+| companion did not open | `true` |
+| header invalid | `true` |
+| column unbound | `true` |
+
+The asymmetry in the first two rows is the interesting part and the
+`#guard`s state it. An out-of-range INDEX is a caller contract violation
+— a token id no dictionary produced — and `false` is correct, because no
+row can hold a token that does not exist. An out-of-range READ means the
+FILE is short, which says nothing about the data, so the only safe
+answer is to include. A port that made the two agree would be wrong in
+one of them, and would still pass a test that only exercised valid
+input.
+
+### The `#guard`s build a bitmap rather than describing one
+
+`mkPresence` writes the header and packs the bits, so the format is
+stated by construction. One guard then checks the WHOLE 3×5 grid —
+every set bit reads back and no unset bit does — which is where a
+bit-order or row-major error shows up. Checking four known-set positions
+would not catch a transposed index.
+
+### The soundness theorem, and what it does NOT establish
+
+`rgContainsToken_sound` is the contrapositive the call site needs: given
+that the bitmap agrees with the ground truth, a `false` means the token
+really is absent. It depends on **no axioms at all**.
+
+⚠️ The F\* module is explicit that the same lemma is proved *in the form
+stated* while the real obligation is elsewhere: nothing shows
+`BuiltCorrectly` HOLDS of any particular `.presence` file. That needs a
+ghost projection from the on-disk bytes to each row group's token set,
+plus a writer-side lemma that the builder respects it. Neither tree has
+either. The statement is what callers rely on; the producer-side
+obligation is open in both, and this port does not close it.
+
+## The COTTAS prune chain, complete: compound bitmap and plan pruning
+
+| F\* module | Lines | Lean |
+|---|---|---|
+| `RDF.CottasStore.CompoundPresenceBitmap` | 362 | `L4Factoidal/Cottas/CompoundPresenceBitmap.lean` |
+| `SPARQL.Plan.Pruning` | 256 | `L4Factoidal/Cottas/PlanPruning.lean` |
+
+With `PresenceBitmap` these three are the whole row-group prune path:
+875 F\* lines, and about 900 more lines of OCaml `Hashtbl` mirrors that
+the F\* modules were written to retire.
+
+### Why the compound bitmap exists, stated as a check
+
+A row group can hold predicate `p` in one row and object `o` in another
+and never both in the same row. The three per-column gates cannot see
+that; the joint `(p, o)` bitmap can.
+
+The `#guard` says exactly that, on a fixture built for it. Row group 0
+holds predicate 1 and object 4 individually, so every per-column gate
+passes, and the compound gate rejects the pair:
+
+```
+#guard predicateCanMatch (some hpp) 0 (some 1)              -- present
+#guard objectCanMatch (some hp) 0 (some 4)                  -- present
+#guard !compoundPoCanMatch (some hc) 0 (some 1) (some 4)    -- not together
+#guard !rgCanMatch 0 … (some hc)                            -- ruled out
+#guard  rgCanMatch 0 … none                                 -- NOT ruled out
+```
+
+The last two lines are the pair that matters: the same query, with and
+without the compound handle, gives different answers. A port that
+dropped the compound conjunct would pass every per-column check while
+losing the entire benefit, and only that contrast catches it.
+
+### The byte order is the algorithm
+
+The pair record stores `objId` in bytes 0..3 and `predId` in bytes 4..7,
+so the whole little-endian u64 is `(predId << 32) ||| objId` — which
+means ascending u64 order IS lexicographic `(predId, objId)` order, and
+a binary search over the packed region works with no decoding at all.
+`#guard`s pin that: `pairCode 1 2 < pairCode 1 5 < pairCode 3 4`, and
+`pairCode 0 4294967295 < pairCode 1 0` for the carry boundary.
+
+### Decisive `false` versus safe `true`, again
+
+Two answers are decisive and everything else over-includes:
+
+- an EMPTY row-group pair list is `false` — the writer said there are no
+  pairs here;
+- a completed search with no hit is `false`.
+
+A TRUNCATED file over-includes. The `#guard`s put those side by side —
+the same query answering `false` on the full file and `true` on the
+truncated one — because collapsing the two is the plausible mistake and
+it is invisible on valid input.
+
+### The identity property is a theorem, not a hope
+
+`filterCandidatesByPrune` with nothing bound and no companion open is
+the IDENTITY on its input. Turning the optimisation off must not change
+an answer, and that is now proved rather than assumed.
+
+### The inherited gap, unchanged
+
+Both soundness lemmas hold GIVEN that the on-disk file agrees with the
+ground truth, and neither tree shows that of any actual file. The writer
+is in OCaml; the producer-side proof needs a ghost projection from bytes
+to each row group's contents plus a lemma that the builder respects it.
+This chain inherits that gap and does not widen it.
+
+## The presence writer, and a theorem I nearly shipped that proved nothing
+
+`L4Factoidal/Cottas/PresenceWriter.lean` ports
+`formal/fstar/RDF.CottasStore.PresenceWriter.fst` (242 lines): the
+`.presence` serialiser, migrated in the F\* tree out of the OCaml glue
+because the file-format header is a rule-#11 decision.
+
+### The Lean port is WIDER than the F\*, for a concrete reason
+
+The F\* module writes the HEADER and leaves the BITMAP to OCaml. Its own
+comment gives the reason: a parliament-sized `.presence` is about
+12.5 MB, and materialising that as an F\* `list FStar.Char.char` would
+allocate millions of cons cells. So it ships two entry points and the
+round-trip lemma covers only the small one.
+
+`ByteArray` is a packed buffer with no cons-cell cost, so there is no
+reason to split the cases. `buildPresence` writes the whole file,
+bitmap included.
+
+### ❌ And then a theorem that assumed its own conclusion
+
+That widening put the writer and the reader in one tree as pure
+functions, which makes the producer-side obligation PROVABLE for the
+first time — `PresenceBitmap`'s soundness lemma holds only given
+`BuiltCorrectly`, and neither tree proves it because the F\* writer is
+OCaml.
+
+So the module ended with a theorem under the heading "the producer-side
+obligation, closed":
+
+```lean
+theorem buildPresence_correct …
+    (hagree : ∀ rg tok, rg < numRgs → tok < numTokens →
+                rgContainsToken h rg tok = occurs rg tok) :
+    BuiltCorrectly h occurs
+```
+
+It type-checked. It is worthless. `BuiltCorrectly h occurs` unfolds to
+exactly `hagree` with its bounds re-indexed through two other
+hypotheses, and the proof body was `exact hagree …`. The theorem assumes
+what it claims.
+
+It is DELETED, not weakened. A theorem that assumes its conclusion is
+worse than none, because it makes the commit message and this document
+say an open obligation is discharged — and the next reader stops looking
+for the real proof.
+
+Caught by re-reading the statement against the definition before writing
+the commit message. Not by the type checker, which was happy, and not by
+any test. Now hazard #29 and anti-pattern #29.
+
+### What is established, and what would close the gap
+
+**Established:** the `#guard`s check that the writer and the reader
+agree at EVERY in-range position, at four shapes including `1 × 17` and
+`8 × 8` — both of which cross byte boundaries — and that the fixtures
+set and clear real bits, so the agreement is not vacuous. Plus the
+serialise/parse round trip, and refusal of a wrong magic, a wrong
+version, and a short bitmap.
+
+**Not established:** the same statement for all sizes. That needs a
+bit-packing lemma — byte `bitIndex / 8` of `buildBitmapBytes` has bit
+`bitIndex % 8` set exactly when `occurs` holds there — which means
+reasoning about a `UInt8` fold of `|||` against powers of two.
+
+**What the port DID change:** the proof is now POSSIBLE rather than
+structurally blocked. Both sides are pure functions in one tree instead
+of split across an OCaml writer. That is a different sentence from "the
+obligation is closed", and collapsing the two is what produced the bad
+theorem.
+
+### One asymmetry worth naming
+
+The READER over-includes on a short file — the safe answer at query
+time. The PARSER refuses one. Both are right for their job: a query must
+not lose rows, and a caller round-tripping a file wants to know it is
+truncated. `#guard`s state both.
+
+## RDF.CottasStore.CompoundPresenceWriter → `L4Factoidal/Cottas/CompoundPresenceWriter.lean`
+
+The `.po.presence` serialiser: the writer whose reader is
+`Cottas/CompoundPresenceBitmap.lean`.
+
+**Wider than the F\* module, for the `PresenceWriter` reason.** F\*
+writes the 20-byte `COPO` header and leaves the row-group offset index
+and the packed pair codes to the OCaml glue, because building them as
+an F\* list costs millions of cons cells at corpus scale. `ByteArray`
+has no such cost, so `buildCompoundPresence` writes the whole file.
+
+**The offset convention is corrected, not carried over.** The F\*
+module's `parse_compound_presence` reads the last offset entry as a
+COUNT OF PAIRS. The OCaml writer and the F\* reader both use BYTE
+OFFSETS from the start of the file, so the F\* parser returns `None` on
+every `.po.presence` file the project writes, and its round-trip lemma
+covers no real file. Only `serialize_compound_presence_header` is on
+the shipping path, which is why it survived. Filed as
+<https://github.com/danbri/factoidal/issues/555>. The Lean module uses
+byte offsets and carries a `#guard` that computes the F\* rule on a
+real file and shows the requested count exceeds the file size.
+
+**The reader's precondition moves from a comment to a proof.** The
+binary search in `rgCouldContainPair` needs each row group's pair list
+sorted ascending by `pairCode`. In F\* that is a caller obligation,
+written in a comment as "NOT enforced here". Here
+`buildCompoundPresence` sorts and de-duplicates, and
+
+```lean
+theorem sortPairs_sorted (l : List (Nat × Nat)) : sortedByCode (sortPairs l) = true
+```
+
+proves the output satisfies it. `#print axioms` reports
+`[propext, Quot.sound]`. The two supporting lemmas are
+`allCodesGt_weaken` and `allCodesGt_insertPair`; strict `<` in
+`allCodesGt` makes duplicate-freedom part of the same statement.
+
+**Not proved: writer-reader agreement.** As in `PresenceWriter`, the
+`#guard`s check `rgCouldContainPair` against the ground-truth pair set
+over the whole `predDictSize × objDictSize` grid at four shapes. That
+is computational evidence, not a proof for all shapes, and the module
+says so. No theorem taking the agreement as a hypothesis was written —
+see anti-pattern #29.
+
+**Cross-check.** A `#guard` compares `buildCompoundPresence` byte for
+byte against `CompoundPresenceBitmap.mkCompound`, the reader module's
+own independently written fixture builder.
+
+## `L4Factoidal/Cottas/SortByKey.lean` — not a port
+
+An insertion sort keyed by a `Nat`, with `sortByKey_sorted`. It exists
+because two COTTAS writers need the same property: the reader binary-
+searches a region, so the writer must emit that region strictly
+ascending by a key. `CompoundPresenceWriter` keys pairs by `pairCode`,
+`OffsetsWriter` keys subject ids by themselves. The order is STRICT, so
+one predicate states ascending order and duplicate-freedom together.
+
+`CompoundPresenceWriter.sortPairs_sorted` was proved standalone first
+and now delegates here; the proof exists once.
+
+## RDF.CottasStore.OffsetsWriter → `L4Factoidal/Cottas/OffsetsWriter.lean`
+
+The `.p.offsets` serialiser: `(row group, predicate)` to the sorted
+subject ids of that bucket.
+
+**Same three changes as `CompoundPresenceWriter`, plus one more.**
+
+1. It writes the whole file rather than only the 16-byte `COTO` header.
+2. It uses BYTE offsets. `parse_offsets` in F\* reads the last index
+   entry as a COUNT OF SUBJECT IDS, while the OCaml writer sets
+   `cur = data_offset0 = 16 + 8 * (num_rgs * num_preds + 1)` and
+   advances by `4 * bucket_length` — its own comment says "byte offset
+   where row-list starts". So the F\* parser returns `None` on every
+   `.p.offsets` file the project writes. This confirms point 3 of
+   <https://github.com/danbri/factoidal/issues/555>, which asked
+   whether this module carried the same fault as
+   `CompoundPresenceWriter`. It does.
+3. Each bucket is sorted and de-duplicated by the writer, and
+   `buildOffsets_bucketsSorted` proves it, via the shared
+   `sortByKey_sorted`.
+4. **An out-of-range subject id fails the write instead of truncating
+   it.** F\*'s `serialize_u32_list` returns `[]` at the first entry at
+   or above 2^32, which drops every remaining payload byte while the
+   header still declares the full count. The result is a short file
+   that no reader can parse, produced with no error at write time.
+   `buildOffsets` returns `none` for the whole file.
+
+**Checked, not proved.** `#guard`s cover the round trip at five shapes,
+each bucket read back at its own `(rg, pred)` coordinates (a
+multiset-only check would pass on symmetric buckets), out-of-range
+coordinates, a truncated payload, the three COTTAS magic numbers being
+distinct, and the F\* count rule applied to a real file. Writer-reader
+agreement is not proved, as in `PresenceWriter`.
+
+## RDF.CottasStore.SubjectOffsetsWriter → `L4Factoidal/Cottas/SubjectOffsetsWriter.lean`
+
+The `.s.offsets` file: one contiguous global row range per subject.
+Simpler than `.p.offsets` because `BaseWriter` sorts rows by
+`(s, p, o, g)` subject-primary, so a subject occupies ONE range and a
+`(start, end)` pair per subject is exact.
+
+**This module does NOT carry the offset-unit fault of
+<https://github.com/danbri/factoidal/issues/555>.** Its element count
+comes from the header field `num_subjects`, never from a payload entry,
+so the question the other two writers get wrong does not arise here.
+Its F\* round-trip lemma covers the files the project writes.
+
+**Proved:** `unflattenRanges_flattenRanges`, the Lean counterpart of
+`lemma_unflatten_flatten`. `#print axioms` reports `[propext]`. The
+byte-level round trip is `#guard`-checked at four shapes and is not
+proved — that needs inverse lemmas for `readU32Le` and `readU64Le` over
+`ByteArray`, which no module in this tree has yet.
+
+**One change:** an endpoint at or above 2^64 fails the whole write.
+F\*'s shared `serialize_u64_list` returns `[]` at the first such entry,
+dropping the rest of the payload while the header still declares the
+full subject count.
+
+**A distinction the guards pin:** an empty range and an absent subject
+are different answers. Subject 1 in the fixture owns no rows and gives
+`some 0`; subject 3 is not in the file and gives `none`. An end before
+its start counts as empty rather than as an underflow, matching
+`row_positions_count_from_bounds` in
+`RDF.Store.Columnar.OffsetIndex`.
+
+## RDF.CottasStore.LazyDict → `L4Factoidal/Cottas/LazyDict.lean`
+
+The populate-on-demand column dictionary: four indexed views over one
+COTTAS column's distinct tokens (id → term, id → raw token, key → id,
+raw token → id), all populated together on the first lookup.
+
+**Ten `assume val`s become zero.** In F\* the container is
+`assume new type lazy_dict (a : Type0)` and every operation is an
+`assume val` in the `ML` effect, realised in OCaml as four `Hashtbl.t`,
+a populate thunk, a loaded flag and a mutex. Here `buildLoaded` and all
+four lookups are pure functions over `Std.HashMap`, and the only `IO`
+is `ensure`, which reads one `IO.Ref` and populates once. The
+build-time `#guard`s therefore cover the dictionary's whole meaning;
+what they do not cover is exactly the ref, and the module says so.
+
+**No abstract type needed.** F\* pins `lazy_dict` to `Type0` and keeps
+it abstract because a concrete record field propagated universe
+constraints into `SPARQL11.Store`'s mutually recursive `eval_*` block
+("Error 89: incompatible universe sets", issue #254, reverted in
+f442c13). Lean has no such constraint.
+
+**No mutex.** Two concurrent first touches would each run the populate
+thunk. That wastes work without changing the answer, since the thunk is
+a function of the file's bytes. Stated in the module header as the line
+to revisit under real concurrency.
+
+**Proved:** `lookupIdInList_mem` — a hit names a pair really in the
+list. `[propext, Quot.sound]`. The F\* originals carry no such lemma.
+
+## RDF.CottasStore.LazyDictRegistry → `L4Factoidal/Cottas/LazyDictRegistry.lean`
+
+Path-keyed lookup of a store's four column dictionaries. Five
+`assume val`s become zero.
+
+**Its F\* reason for existing does not apply here.** The F\* module is a
+universe workaround: putting `lazy_dict` fields on
+`cottas_ondisk_handle` propagated universe parameters into
+`SPARQL11.Store`'s mutual block. Lean has no such constraint, so the
+Lean `LazyDict` could sit in a handle record directly.
+
+**Its FUNCTION does apply.** Several parts of the engine open the same
+store by path and should share already-populated dictionaries. So the
+module is kept, and the keying — the whole of its content — is a pure
+`Registry β` whose `#guard`s run at `β := Nat`. The process-global ref
+and the four typed accessors are the only `IO`.
+
+The guards pin that a path is matched WHOLE: a prefix of a registered
+path, a path with one as a prefix, and a case variant are all misses.
+They also pin that re-registering replaces, which is what makes
+`unregisterLazyDicts` the fix for a store rewritten under the same
+path — the hazard the header names.
+
+## RDF.Store.Columnar.OffsetIndex → `L4Factoidal/Cottas/OffsetIndex.lean`
+
+The `.p.offsets` reader: per `(row group, predicate)`, the ascending
+row positions inside that row group whose predicate token is that
+predicate. Built on the handle `Cottas/OffsetsWriter.lean` opens, so
+the two halves share one header parser and cannot drift apart about the
+layout. The F\* reader composes `OnDiskIndex.fst`'s
+`read_companion_u32_le` / `read_companion_u64_le` /
+`mmap_companion_open` `assume val`s over an mmap.
+
+**⚠️ The F\* soundness predicate is weaker than its own comment.**
+`offsets_built_correctly`'s comment says a correctly built file's
+"count successful u32 reads at start_off..start_off+4*(count-1) yield
+exactly that ground-truth list". The predicate says only
+`cv.cv_count = length (rows_with_pred rg p)`. A file whose counts are
+right and whose row positions are all wrong satisfies it.
+
+`OffsetsBuiltCorrectly` is the faithful port of the predicate, so
+`rowPositionsFor_count_sound` is the same theorem the F\* module has.
+`OffsetsBuiltCorrectlyStrong` states what the comment describes. Three
+`#guard`s make the difference visible: the fixture satisfies both, and
+a second ground truth with the SAME counts and different positions
+satisfies the count predicate and fails the strong one.
+
+**Non-vacuity.** The soundness theorem's hypotheses are checked
+satisfiable by a `#guard` over the fixture's whole grid, so the theorem
+is about a file that exists.
+
+**`empty` versus `noInfo`.** `empty` is the decisive answer the index
+exists for — skip the row group. `noInfo` is the over-include. A guard
+pins that a truncated file gives `noInfo` and never `empty`: collapsing
+those two would turn a read failure into a skip and drop rows.
+
+## RDF.Store.Columnar.SubjectOffsetIndex → `L4Factoidal/Cottas/SubjectOffsetIndex.lean`
+
+The `.s.offsets` reader, on the handle `SubjectOffsetsWriter` opens.
+One contiguous global row range per subject.
+
+`rangeForSubject_count_sound` depends on NO axioms. Its hypotheses are
+checked satisfiable by a `#guard` that compares the fixture's four
+ranges against a ground truth, including the empty subject the theorem
+is about.
+
+**One constructor fewer than F\*.** The F\* `subject_range_decision`
+keeps "out-of-range subject id" distinct from "no info" while noting
+that today's only caller treats them the same. Here it is one
+constructor, with the reason written down: nothing in the tree consumes
+the distinction, and `rangeForSubject` still separates the two cases,
+so a future caller can have them back without changing the type.
+
+A guard also pins that the fixture's four ranges tile the row space
+with no gap and no overlap, which is what the subject-primary global
+sort means and what makes one range per subject exact.
+
+## RDF.Store.LazyTermCache → `L4Factoidal/Cottas/LazyTermCache.lean`
+
+The two-direction term-id cache: id → typed value and canonical key →
+id. Six `assume val`s and one abstract type become none. Same
+pure-core-plus-one-`IO.Ref` shape as `LazyDict`.
+
+`LazyDict` has four directions because the COTTAS runtime needs raw
+parquet column tokens beside typed values; HDT needs two, because its
+Front-Coded dictionary IS the canonical form.
+
+**Unused in both trees, and the F\* header says why.** Issue #253 was
+scoped to replace `ballyhoo_hdt_runtime.sh`'s term-id allocator and
+closed a different way on 2026-07-06: that patch is deleted and
+`Parser.BallyhooHDT` calls the verified HDT readers directly, with no
+cache in the path. The module stays as a candidate memoisation seam.
+The port carries the same status.
+
+**`size` does not populate here, and `LazyDict.size` does.** The F\*
+comments differ — this one says "0 before populate; fixed positive nat
+after" and `LazyDict`'s says nothing — and the port follows each. Two
+functions with the same name and different triggering behaviour is a
+trap, so both modules now say which one they are.
+
+## RDF.CottasStore.OnDiskIndex → `L4Factoidal/Cottas/OnDiskIndex.lean`
+
+The `.dict` reader and the companion-set boot helpers. Seven
+`assume val`s become none.
+
+The module's presence half is not duplicated: `PresenceBitmap.fst`
+opens this module and calls its `presence_test_bit`, and the Lean port
+put that function in `Cottas/PresenceBitmap.lean`, which this module
+imports.
+
+**The `ids` array is a permutation, and the fixture makes it one.**
+`ids` is sorted so `token(ids[i])` ascends, and the binary search reads
+`ids[mid]` before decoding. A fixture whose `ids` were the identity
+would pass even for a reader that searched by id, so `mkDict` builds
+one whose `ids` genuinely permutes: five tokens given in id order and
+sorted into a different order on disk. A `#guard` then finds every
+token at its own id and rejects four near-misses, including `"zebras"`
+and `"apple "`.
+
+**Codepoint order and byte order, stated rather than assumed.** The
+writer producing `ids` compares bytes; this reader compares codepoints
+through Lean's `compare`. UTF-8 preserves codepoint order under
+bytewise comparison, which is why the search works at all. Two
+`#guard`s pin that on non-ASCII pairs, and a third round-trips a
+five-token non-ASCII dictionary.
+
+**A token slice that is not valid UTF-8 is refused.** F\*'s
+`read_companion_string` is an `assume val` and nothing states what it
+does with a corrupt slice. `dictDecodeToken` goes through
+`String.fromUTF8?`.
+
+**Proved:** `presenceBitIndexBounded`, the F\* lemma
+`presence_bit_index_bounded` — every bit index this reader computes for
+an in-bounds `(rg, tok)` fits the extent the writer sized its buffer
+to. `[propext, Quot.sound]`.
+
+**The token-count cross-check.** `companionStatusOk` requires the
+`.dict` and `.presence` headers to agree on the token count, because
+they describe one column. A guard pins that a five-token dictionary
+beside a four-token bitmap is refused.
+
+## RDF.CottasStore.PageCache → `L4Factoidal/Cottas/PageCache.lean`
+
+The LRU page cache: an assoc list with age stamps, keyed by
+`(row group, column)`, evicting the smallest age past capacity.
+
+**One cache instead of two.** The F\* module carries the same LRU
+bookkeeping twice — `pcache_*` over `cottas_column` and `dpcache_*`
+over `list string` — and its own comment gives a call-site reason
+rather than a design one: "Kept as a separate small type instead of
+parameterizing `page_cache` over a type variable, to avoid touching
+every existing `page_cache`-typed call site for an unrelated change."
+Here it is polymorphic, so both are instantiations and the bounds
+lemmas are proved once instead of twice.
+
+**Three of `PageCache.Bounds.fst`'s four lemmas are proved here**:
+`replaceEntry_length`, `pcacheGet_length` and
+`pcachePut_capacity_bound`. The third is the one with content, and the
+F\* module says what it buys: an edit that drops the eviction step
+becomes a verification error rather than a production memory spike.
+Supporting lemmas: `findOldest_isSome`, `findOldest_mem`,
+`dropEntry_length_of_mem`, `entriesAfter_length_le`, `capEntries_le`.
+`pcachePut_capacity_bound` reports
+`[propext, Classical.choice, Quot.sound]`; `pcacheGet_length` reports
+`[propext]`.
+
+The fourth F\* lemma, `walk_candidate_rgs_search_limited_bound`, is
+about the LIMIT-pushdown walker in `RDF.CottasStore.fst` (2,825 lines),
+which is not ported. It is not here, and
+`RDF.CottasStore.PageCache.Bounds` stays counted as NOT covered for
+that reason.
+
+**Not ported:** the cache-wrapped decode wrappers, which call
+`Parquet.Footer`. The Lean tree has no Parquet reader.
+
+**The eviction guard tests the policy, not just the size.** `(0,0)`
+goes in, then `(0,1)`; reading `(0,0)` back makes `(0,1)` least
+recently used, so a third insert must evict `(0,1)`. A cache evicting
+by insertion order would drop `(0,0)` and still pass a size-only test.
+A second guard runs twenty puts into a cache of three and checks both
+the bound and that the survivors are the three most recent.
+
+## RDF.CottasStore.DictWriter → `L4Factoidal/Cottas/DictWriter.lean`
+
+The `.dict` serialiser, whose reader is `Cottas/OnDiskIndex.lean`. The
+two were ported separately and the `#guard`s check them against each
+other: every token of a `serializeDict` output decodes at its own id
+and encodes back through `dictEncodeToken`.
+
+**The byte-versus-codepoint defect class cannot arise here.** The F\*
+module's own comment records that it carried
+<https://github.com/danbri/factoidal/issues/445> latently until
+`RDF.Bytes.fst` stopped agreeing with `String.length` by accident — the
+two coincided only for ASCII. Same class as
+<https://github.com/danbri/factoidal/issues/551> in `HDT.Dictionary`.
+In Lean the writer works from `String.toUTF8` and the reader from
+`String.fromUTF8?`, so there is no length to pick wrongly. Guards
+round-trip `"é"`, `"ü"`, `"中"` and `"日本語"` through the whole file,
+and pin `tokByteLen "日本語" = 9` against `"日本語".length = 3`.
+
+**No live callers in either tree.** The F\* header says the import path
+uses `BaseWriter.serialize_cottas_v2`, not this format. Nothing in the
+Lean tree calls it either.
+
+**⚠️ The sortedness invariant stays a CALLER obligation**, as in F\*.
+`ids[i] = i` is correct only for tokens stored in ascending order. That
+differs from `OffsetsWriter` and `CompoundPresenceWriter`, where the
+same kind of invariant moved into the writer and was proved — the
+difference is the key type. Those sort by `Nat` and
+`Cottas/SortByKey.lean` proves that sort correct; sorting by `String`
+needs the trichotomy and transitivity of `String`'s `compare`, which
+nothing in this tree has proved. `sortTokens` is provided and
+`#guard`-checked, not proved, and that proof is what would close the
+gap.
+
+## SHACL.Rules → `L4Factoidal/SHACL/Rules.lean`, and a suite that now runs
+
+The `.srl` rule-language evaluator: SHACL 1.2 Rules. `RULE` / `DATA`
+blocks translate to SPARQL CONSTRUCT queries and a bottom-up fixpoint
+applies them until nothing is added.
+
+`Harness/ShaclRulesRun.lean` (`lake exe l4shacl-rules`) reads the four
+sub-manifests. The Lean tree had never run this suite: the `l4shacl`
+probe does not recognise the `srt:` test types and the rules manifests
+link entries with `mf:entries` rather than `mf:include`, so it walked
+in and reported "out of 0" —
+<https://github.com/danbri/factoidal/issues/553>.
+
+📊 Measured 2026-08-23:
+
+| Sub-suite | Lean | F\* |
+|---|---|---|
+| `rules/syntax` | 51 pass, 11 fail (out of 62) | 62 pass, 0 fail (out of 62) |
+| `rules/wellformed` | 7 pass, 0 fail (out of 7) | 7 pass, 0 fail (out of 7) |
+| `rules/stratification` | 8 pass, 0 fail (out of 8) | 8 pass, 0 fail (out of 8) |
+| `rules/eval` | 11 pass, 0 fail (out of 11) | 11 pass, 0 fail (out of 11) |
+| **total** | **77 pass, 11 fail (out of 88)** | **88 pass, 0 fail (out of 88)** |
+
+**All 11 failures are one cause, and it is not in this module.** The
+Lean SPARQL 1.2 parser does not accept reifying triple patterns
+`<< s p o >>` or annotation blocks `{| … |}`. Its own header already
+declared that absence; what was missing was a number, and this is it.
+Filed with the reproduction and the eleven file names as
+<https://github.com/danbri/factoidal/issues/556>.
+
+**⚠️ Two approximations carried over from F\* with its own words.**
+`srlStratifiable` is "a conservative approximation" — it flags
+new-term recursion and negation over derived data, and the F\* comment
+says a full negative-cycle analysis over the predicate graph "is future
+work". `filterSafe` checks only the FIRST `FILTER` in a body. Both are
+ported unchanged, because changing them would change which tests pass,
+and that is a decision about the engine rather than about the port.
+Both are marked in the module header.
+
+## SHACL.NodeExpr → `L4Factoidal/SHACL/NodeExpr.lean`, and the second unread suite
+
+SHACL 1.2 node expressions (SHACL-AF §5, the `shnex:` vocabulary). The
+evaluator reads the expression node straight off the graph and
+dispatches on which `shnex:` predicate it carries.
+
+📊 `lake exe l4shacl-nodeexpr` (`Harness/ShaclNodeExprRun.lean`),
+measured 2026-08-23: **140 pass, 0 fail, 2 unsupported (out of 142)**,
+against F\*'s 142 pass, 0 fail (out of 142). The two unsupported are
+`sht:Validate` entries in `constraints/` — ordinary validation tests
+that belong to `l4shacl`. They are COUNTED rather than dropped, so the
+denominator is the suite's own and F\*'s 142 is 140 + 2.
+
+**One function where F\* has five.** The F\* evaluator is a mutual block
+of five with a lexicographic measure `%[fuel; tag; length]`: the list
+walks recurse at the same fuel while `eval_ne` recurses at `fuel - 1`.
+Here the four helpers are not recursive — `eval_ne_list` is a
+`flatMap`, `eval_ne_flatmap` a `flatMap` with a different focus,
+`eval_ne_keyed` a `map`, `eval_ne_argvals` a `flatMap … |>.take 1` —
+each calling `evalNe` only at the already-decremented fuel, and
+`eval_ne_intersect` becomes a fold over already-computed lists. So the
+measure is `fuel` alone.
+
+**Adapted to the Lean SHACL API.** `node_conforms` in F\* calls
+`collect_shape_violations` against a materialised
+`shacl_class_closure`; the Lean validator exposes neither. `nodeConforms`
+re-targets the named shape at the single value node, clears every other
+shape's targets and asks `validate` whether the result conforms — the
+same judgment by a different route. `instancesOf` filters subjects by
+`isShaclInstance`, which walks `rdfs:subClassOf` without materialising
+triples.
+
+### 🧹 Two harness bugs of mine, caught by the first run
+
+Both produced WRONG numbers that looked plausible, so both are recorded.
+
+1. **The suites were parsed in RDF 1.1 mode.** Six files failed to
+   parse with "triple term `<<( )>>` requires RDF 1.2 mode", and each
+   counted as one failure, so the run read 138 where the suite has 142
+   — an under-reported denominator, which is the shape anti-pattern #25
+   is about. `parseTurtle` takes a `mode` argument and both runners now
+   pass `.rdf12`.
+2. **The comparison key dropped the base direction.** `keyOf` rendered
+   datatype and language tag but not `direction`, so
+   `"hello"@en--ltr` and `"hello"@en` compared equal. Three tests
+   (`langdir`, `hasLangdir`, `strlangdir`) were reported as failures
+   whose "expected" and "got" strings looked nearly identical — the
+   tell. With direction rendered, all three pass.
+
+The rule both point at: a harness that renders terms for comparison
+must render every field the data model distinguishes, and must parse
+the fixtures in the mode the suite is written for. A denominator below
+the reference tree's is a bug in the harness until proved otherwise.
+
+## OWL2.SyntaxDL → `L4Factoidal/OWL/SyntaxDL.lean`
+
+The OWL 2 DL species checker: given the RDF graphs of a W3C OWL 2 test
+case's documents, decide `test:DL` against `test:FULL`. Purely
+syntax-directed — no reasoning, no closure. Nine per-triple checks plus
+punning, non-simple properties under cardinality, and the document
+header discipline.
+
+**The scope note is carried across because it is measured, not
+aspirational.** The F\* header records that the checks are the subset of
+the Mapping to RDF Graphs reverse mapping and the Structural
+Specification global restrictions "that the corpus actually
+discriminates on, validated check-by-check against all 489
+species-annotated cases in `third_party/testing/owl/all.rdf` (323
+species-DL, 166 species-FULL-only)". Two graph-identical premise pairs
+carry opposite verdicts, which is why `speciesIsDl` takes the
+conclusion document as well as the premise.
+
+**Every check gets a MINIMAL PAIR in the `#guard`s**: a graph that
+passes and the same graph perturbed so exactly one check fires. A
+checker tested only on violations would not distinguish "rejects
+everything" from "rejects the right thing". The pairs cover reserved
+subjects, undeclared predicates, the `rdf:type` object rule, the
+`owl:onProperty` filler, an object property with a literal object,
+datatype usability, `rdf:List` node arity, punning, and the header
+rule — including that a BLANK NODE typed both `owl:Class` and
+`owl:Restriction` is legitimate, which is what the `"I"` key prefix in
+the punning check protects.
+
+The last pair is the difference between the two entry points: a
+header-less graph with a clean body is rejected by `speciesIsDl` and
+accepted by `speciesIsDlFunctional`, because a successful
+functional-syntax parse proves the `Ontology(…)` header.
+
+**Not yet measured against the corpus.** The F\* module's 489-case
+validation is not re-run here — that needs the OWL test-case manifest
+reader, which the Lean tree does not have. The `#guard`s check the
+checks; they do not reproduce the corpus number, and this note says so
+rather than letting the F\* figure read as the Lean one's.
+
+## SPARQL.Plan.AccessPath → `L4Factoidal/Cottas/AccessPath.lean`
+
+The per-row-group access-path chooser: `skip`, `offsetJump cv`, or
+`fullScan`. Built on the two modules ported just before it —
+`Cottas/OffsetIndex.lean` for the index and `Cottas/PlanPruning.lean`
+for the bounds record.
+
+`skip` is the decisive answer and the one that must be right;
+`fullScan` is the over-include and is always sound. A `#guard` walks
+every route to `fullScan` — no handle, unbound predicate, out-of-range
+row group, truncated file — and none of them reaches `skip`, because a
+`skip` on missing information would drop rows.
+
+**`chooseAccessPath_skip_sound` states the chain the F\* module leaves
+as a comment.** There, the soundness argument is prose pointing at
+`OffsetIndex.row_positions_for_count_sound`: a `skip` comes only from
+`CD_Empty`, which comes only from a zero count, which that lemma turns
+into "no matching row". Here it is one theorem with those steps
+discharged, on `[propext, Quot.sound]`.
+
+## SPARQL.Plan.Streamable → `L4Factoidal/SPARQL/PlanStreamable.lean`
+
+The parse-stream fast-path recogniser: which queries can be answered by
+folding over the parser's output without ever building a term graph.
+The F\* header carries the measurement that motivates it — a one-row
+`COUNT(*)` over 888,949 triples peaked at 731 MiB RSS on the
+materialise path and 44 MiB on the streaming one.
+
+**Two soundness conditions are carried across in force, and each gets
+its own `#guard`.**
+
+The DOMAIN SPLIT: a plain `?s ?p ?o` queries only the default graph and
+`GRAPH ?g { ?s ?p ?o }` only the union of named graphs, so on N-Quads
+input the two count DISJOINT subsets of the document and neither counts
+every line. Four guards pin `streamInDomain` on both plans against both
+kinds of item.
+
+PAIRWISE DISTINCTNESS on the named-graph shape: `GRAPH ?g { ?g ?p ?o }`
+and `GRAPH ?g { ?s ?p ?s }` carry an implicit equality that a
+position-by-position bound match does not honour, so streaming them
+would silently OVER-count. Four guards pin each rejection —
+`?g` in the subject, `?g` in the object, a repeated `?s`, a repeated
+predicate variable.
+
+**`StreamBound` is stated locally.** The F\* module reuses
+`triple_pattern_bound` from the algebra; the Lean algebra has no such
+record, so the three fields are declared here with the same shape.
+
+## RML.Sources → `L4Factoidal/RML/Sources.lean`
+
+The RML logical-source iterator model: source rows, the CSV logical
+source (an RFC 4180 tokenizer plus the header-row binding model), and
+the iterate / reference entry points for both JSON and CSV.
+
+**The JSONPath half was already here.** `RML/JsonPath.lean` ports the
+same subset, surveyed from the same corpus, so this module calls it
+rather than restating the grammar. `jsonIterate` and
+`jsonReferenceValues` are thin wrappers.
+
+**The CSV tokenizer stays local, for the F\* module's own reason.** The
+SPARQL 1.1 CSV/TSV RESULTS format is a different dialect — bare IRIs
+and typed-literal lexical conventions belong to that format, not to
+arbitrary tabular data — so reusing it would import conventions RML
+does not have.
+
+**Two data-error rules that must NOT be best-effort**, both from the
+vendored suites, both making the whole source empty rather than
+partially usable, and both pinned by `#guard`:
+
+* an invalid iterator path (`"$.students[*]]"`, RMLTC0002g) gives NO
+  iterations, not a best-effort parse of the well-formed prefix;
+* a data row whose field count differs from the header's
+  (RMLSTC0010a/b) invalidates the WHOLE source — no rows at all —
+  rather than truncating or padding that row.
+
+"Returns fewer rows" and "returns no rows" are easy to confuse and only
+one is right, so both guards state the count.
+
+**The scanner is structural where F\* uses fuel.** The F\* version
+indexes a string by position with `fuel = length + 1`; here the
+character list decreases structurally, and matching `'"' :: '"' :: rest`
+as one pattern makes the doubled-quote escape a structural step too.
+Same tokenizer, no fuel argument.
+
+**The dialect layer is kept separate.** `csvParseRows` is the normative
+RML and csv2rdf path and takes no dialect; `csvParseRowsDialect` adds
+the CSVW §8 `trim` and `skipColumns`. A guard pins that the two agree
+when the dialect is the default, which is what makes the no-dialect
+path byte-for-byte unchanged.
+
+## Parser.BallyhooHDT → `L4Factoidal/HDT/Store.lean`
+
+The store boundary between a SPARQL backend and the three verified HDT
+reader stages. The F\* header records what it retired: this file used to
+shell out to an external `hdtSearch` CLI through 555 lines of
+unverified OCaml (`ballyhoo_hdt_runtime.sh`, the #253 debt), and stage
+4 deleted that runtime.
+
+**The port goes one step further on I/O.** The F\* reader still reaches
+file bytes through `Parquet.Footer`'s byte-range primitive;
+`HDT/Container.lean` reads the file once with `IO.FS.readBinFile`. So
+`openGraphStore` is the only `IO` in the whole Lean HDT stack, and
+`search`, `estimate`, every `encode*` and every `decode*` are pure
+functions of a `ByteArray`.
+
+**The decode sentinels are carried across unchanged and pinned.** Every
+id reaching a decode came from a successful encode or a navigation
+result, so the failure branches are unreachable in practice — but they
+must be total, and the sentinels
+(`urn:factoidal:hdt-decode-error`, a `hdt-decode-error` blank node)
+make a failure VISIBLE rather than silently dropped. Guards check that
+all three differ from each other and that id 0 is refused before the
+dictionary is consulted.
+
+**A row missing any position yields no triple**, rather than being
+completed with a sentinel: the sentinels are for a decode that was
+attempted and failed, not for an absent position. That distinction has
+its own guard.
+
+Measured after the port: `lake exe l4hdt` still reports 2 pass, 0 fail
+(out of 2) over the vendored `.hdt` fixtures.
+
+## RDF.Turtle.Serialize → `L4Factoidal/Syntax/TurtleSerialize.lean`
+
+The Turtle pretty-printer: a `@prefix` header, `;`-joined predicate
+lists, `,`-joined object lists, one block per subject. The Lean tree
+had NO Turtle serialiser at all before this — the false-positive audit
+in the same landing is what surfaced that, since the module had been
+counted as covered by `JSON.Serialize`.
+
+**The abbreviations are the correctness surface, and both are checked
+against the parser.** A prefixed name is emitted only when
+`Syntax.validatePnLocal` — the parser's own validator, not a second
+approximation of the grammar — accepts the local part; otherwise the
+full `<iri>` form goes out. The `a` keyword is used for `rdf:type` in
+PREDICATE position only, and a guard pins that `rdf:type` in OBJECT
+position still prints as an IRI.
+
+**The round trip is CHECKED here and could not be in F\*.** The F\*
+banner records the attempt and its outcome: the literal path goes
+through byte primitives that stay opaque to the solver, so not even
+`nq_escape_literal "a" == "a"` reduces, and wire correctness is pinned
+at the CLI level instead. In Lean `escapeLiteral` is an ordinary
+computable function, so `#guard`s run
+`parseTurtle (turtleOfGraphAuto g) = g` on four concrete graphs —
+including one whose literal carries a quote AND a backslash, and one
+whose IRI cannot be compacted so the `<…>` fallback is exercised.
+
+That is evidence at four shapes, not a theorem for all graphs, and the
+module header says which it is.
+
+**Numeric and boolean literals are not sugared**, as in F\* —
+correctness over sugar. The datatype IRI is still abbreviated, since
+that is pure compaction.
+
+## `RDF.Store.Loader` → `L4Factoidal/RDF/StoreLoader.lean`
+
+The store-loading front door: pick a parser from the file extension,
+parse the bytes, and hand back a graph or a reason it failed. It is
+small because everything below it is already ported — the value is the
+dispatch table and the failure cases, which the Lean tree did not have
+in one place before.
+
+**The measurement note that belongs with this landing.** The alias
+table previously mapped `RDF.Store.Loader` onto `JSONLD.Loader`, which
+loads a JSON-LD document and shares nothing with this module but the
+last name component. That entry was one of seven wrong matches the
+2026-08-23 heuristic audit removed (anti-pattern #31). This port makes
+the alias real.
+
+## `Math.Expr` — a port that was WRITTEN and then DELETED
+
+A 510-line `L4Factoidal/Math/Expr.lean` was written for
+`formal/fstar/Math.Expr.fst`: the exact-rational value type, the
+arithmetic, exact power and root, decimal parsing, the symbolic AST and
+a fuel-bounded evaluator. It built on its own and its `#guard`s passed.
+
+The FULL-TREE build then failed:
+
+```
+import L4Factoidal.Math.Simplify failed, environment already contains
+'L4Factoidal.Math.mAdd' from L4Factoidal.Math.Expr
+```
+
+`L4Factoidal/MathML/Core.lean` already carries the same maths core —
+the same five-constructor `Expr` AST, `normRat`/`addRat`/`mulRat`/
+`divRat`/`cmpRat`, `powNat`, `exactRootNat`/`exactRootRat`,
+`factorialInt`, `asInt` and `eval` — embedded in the MathML namespace,
+and `Math/Simplify.lean` carries a THIRD arithmetic
+(`MVal := Option (Int × Int)`) beside it.
+
+**The new file was deleted rather than landed.** A second copy of the
+arithmetic is what anti-patterns #4 and #15 are about. The alias table
+now records `Math.Expr` → `MathML.Core` as a PARTIAL cover, naming the
+two pieces that are absent from the Lean tree entirely: `parse_decimal`
+and the reasoned `MV_Undef` failure value (`MathML.Core` uses a bare
+`Option`, so a caller cannot tell "not a number" from "divided by
+zero"). The layering inversion and the suggested fix are
+<https://github.com/danbri/factoidal/issues/557>.
+
+## `RDF.Store.Capabilities` → `L4Factoidal/RDF/StoreCapabilities.lean`
+
+The store capability seam: one record of functions in place of the
+backend tag six dispatchers used to match on. `StoreCaps` is the read
+seam, `StoreWriteCaps` the write seam, `Store` the pair, `DatasetCaps`
+the graph-scoped composition, and `unionCaps` the read-only federation.
+
+**The split is kept, and it is the reason this port could land at
+all.** The F\* module carries only the types, the in-memory builder and
+the union combinator; the COTTAS-on-disk builder and the delta overlay
+live in sibling modules so this one reaches no file or memory-map call.
+Those two siblings are NOT ported here, because each needs a module the
+Lean tree still lacks — `RDF.CottasStore` and
+`RDF.Store.Columnar.DeltaMerge`.
+
+**Three types moved to the home the F\* tree gives them.**
+
+* `ColNeed` is now in `RDF/Graph.lean`, matching `RDF.Graph.Executable`.
+* `PatternBound` is now in `SPARQL/Algebra.lean`, matching
+  `SPARQL11.Algebra`. `SPARQL/PlanStreamable.lean`'s `StreamBound` had
+  been a second copy of the same three fields — its own comment said so
+  ("the Lean algebra has no such record") — and is now an abbreviation
+  of `PatternBound`. One record, two readers, as in F\*.
+* `DeltaEntry` and its payload bytes are now in
+  `Storage/DeltaLog.lean`. That module had been ported framing-only, so
+  the write seam had no entry type to refer to. Sections 3 and 4 of
+  `RDF.Store.Columnar.DeltaLog.fst` — length-prefixed strings, terms,
+  subjects, triples, graph names and the five-constructor payload — are
+  now there with round-trip `#guard`s that all carry a NON-EMPTY tail,
+  so a parser that consumed the wrong number of bytes fails the check
+  instead of passing on a buffer that ended where it stopped.
+
+**Two limits are inherited from F\* and both are refusals.** A triple
+term serialises to a bare tag byte and `parseTerm` refuses tag 3, so it
+cannot round-trip through the delta log; the F\* banner says the same.
+A `rdf:dirLangString` literal serialises its language tag but not its
+direction, so the parsed literal has a tag and no direction, which
+`literalWf` rejects — the record is refused rather than accepted with
+the direction silently dropped. Both are pinned by `#guard`.
+
+**The `Option` fields mean opposite things and the module says so.**
+`distinctPredicates` is a pure fast path: `none` costs time.
+`solveSelective` STANDS IN for `solve`: a caller that reads `none` for
+one member of a composition and skips that member drops rows. The
+guards check that the selective answer equals the plain answer at three
+different `ColNeed` values.
+
+**The union's LIMIT pushdown is the per-member form, not the naive
+one.** Solving every member in full and then truncating returns the
+same list at a different cost: a member with real on-disk pushdown would
+be made to decode its whole result before the union threw it away. Each
+member is asked for its remaining budget only, and a later member is not
+touched at all once the budget is spent.
+
+**The empty-member rule for DISTINCT predicates is checked.** A union
+of two non-empty in-memory members cannot enumerate cheaply and says
+`none`. A union whose non-advertising members are all EMPTY can, and
+returns the empty list — the case a blanket refusal used to get wrong.
+
+## `RDF.Store.Columnar.DeltaMerge` → `L4Factoidal/RDF/StoreDeltaMerge.lean`
+
+Merge-on-read: fold a replayed delta log into one graph's diff, then
+compose that diff with a base read result at query time. No I/O — the
+module consumes already-replayed batches and already-decoded base rows.
+
+**The theorem is the deliverable.**
+`mergeOnRead_matches_applyEntries` says that reading base-plus-delta
+returns exactly the triples that applying the SAME entries directly to
+the base graph would have produced, for any bound. It is proved for the
+whole vocabulary a delta entry can express — INSERT DATA, DELETE DATA,
+CLEAR and DROP on one graph, in sequence — by an induction over the
+entry list carrying a per-triple membership invariant.
+
+It is stated as MEMBERSHIP, not list equality, and that is the right
+statement rather than a weakening: both sides are graphs, a graph is a
+set of triples, and the two lists genuinely differ in order because
+`mergeOnRead` appends the delta's additions after the surviving base
+rows while the reference model keeps each triple where it first landed.
+A basic graph pattern has no order guarantee in SPARQL.
+
+**Four supporting results had to be proved first, and three of them
+belong to lower modules, so they landed there.**
+
+* `RDF/Core.lean`: `Triple.eqb_symm` and the four symmetry lemmas under
+  it (`langTagEq`, `langTagOptionEq`, `Subject.eqb`, `Literal.eqb`,
+  `Term.eqb`). The tree had reflexivity and transitivity but not
+  symmetry. The F\* module proves the same lemmas about the same
+  functions and records the same reason: the merge proof compares a
+  QUERY value against a STORED one in one place and two STORED values in
+  another, and bridging those needs a genuine equivalence relation.
+* `RDF/Graph.lean`: `mem_append`, `mem_graph_add`, `mem_graph_remove`
+  and `mem_filter_congr` — what membership becomes after each set
+  operation, in terms of the ENGINE equality. A `List.mem` fact says
+  nothing about `Graph.mem`, which compares with `Triple.eqb`.
+* `SPARQL/Algebra.lean`: `boundMatches`, `tripleMatchesBound`,
+  `boundMatches_congr` and `mem_tripleMatchesBound`.
+
+**`Graph.remove` moved from `SPARQL/Update.lean` to `RDF/Graph.lean`**,
+beside `Graph.add` and `Graph.mem`. The F\* tree keeps `graph_remove`
+with the other two; having it in an update module put a set operation
+somewhere a store proof could not reach without importing the SPARQL
+update stack.
+
+**`tripleMatchesBound` is `List.filter`, not the F\* accumulator.** The
+F\* source uses an accumulator plus a final reverse and its comment gives
+the reason — on the extracted OCaml, a three-million-row bucket
+overflowed the stack when the recursion built its result after the
+recursive call. Lean has no such problem and the two return the same
+list in the same order.
+
+**One proof-engineering note worth carrying forward.** The state
+invariant was first written as `if dr.cleared then … else …`, a branch
+whose CONDITION mentions the record. Every step of the induction
+rewrites that record, and the rewrite motive then fails to typecheck
+because the `Decidable` instance is pinned to the old record. Rewriting
+the invariant as one boolean expression — `composedMem` — removed the
+dependence and the induction went through. Same truth table, and the
+module says so at the definition.
+
+## `RDF.Store.Capabilities.Delta` → `L4Factoidal/RDF/StoreCapabilitiesDelta.lean`
+
+`overlay`: a base read seam plus one graph's resolved delta, as a read
+seam of the same type. No new constructor, no new field.
+
+**An empty delta is a no-op by construction** — the empty branch returns
+the wrapped seam with one flag flipped. Checked field by field against
+the unwrapped base.
+
+**Two capabilities behave differently under a live delta, for opposite
+reasons, and the module states both.** `distinctPredicates` becomes
+`none`: the base's dictionary pages were written at compaction time and
+cannot mention a predicate that exists only in the delta, so enumerating
+from them would DROP a GROUP BY row. `solveSelective` stays `some` and
+ignores `need`: it stands in for `solve`, and a caller that skips a
+`none` member drops rows, so it must answer — correctly, if without
+acceleration.
+
+**The estimate is not claimed exact, and a guard shows it.** With one
+tombstone the overlay estimates 2 where the exact count is 1. That is
+the approximation the flag permits, pinned rather than left implicit.
+
+## `RML.VirtualSource` → `L4Factoidal/RML/VirtualSource.lean`
+
+RML as a queryable store rather than a materialised graph: a
+`StoreCaps` over a decoded mapping and its already-read source
+documents, answering a bound triple pattern without re-running the full
+materialising evaluation per query.
+
+Three of the four pushdown levels are ported as the F\* module has
+them — structural narrowing by constant subject or constant predicate,
+record-level subject pushdown, and no pushdown for a bound object or a
+join. Scope is the default graph only, as there: a triple routed to a
+named graph is DROPPED rather than misrouted, and
+`supportsNamedGraphs` is `false` so the flag says so.
+
+**A deliberate divergence, and the reason for it.**
+`RML/Eval.lean`'s `quadsOfMap` was split into `quadsOfRecords`, which
+takes records ALREADY PAIRED with their index, and `quadsOfMap`, which
+is that applied to every record. The virtual source filters the paired
+list, so a surviving record keeps the index it had in the source.
+
+The F\* module filters the record list and then re-indexes it
+(`List.Tot.mapi` inside `eval_triples_map`), and the index becomes the
+blank node's label (`row_seed = tm_id ^ "#r" ^ idx`, then
+`T_BNode row_seed`). So the blank node generated by source record `k`
+is labelled from `k` under an unbound pattern and from its position
+among the SURVIVING records under a bound one. Every blank node the
+record generates moves — the subject when the subject map is a blank
+node, and any object-position blank node, since one seed goes to every
+term map in the record.
+
+That has a wrong-answer consequence the module's own design does not
+survive: it says a join-shaped query is answered by joining two triple
+patterns over the same store at the SPARQL level, and under
+re-indexing the second pattern's bound blank node cannot match. Filed
+as <https://github.com/danbri/factoidal/issues/558>. This port keeps the
+original index, and two `#guard`s pin the labels a bound query returns
+so the difference is a recorded decision rather than an accident.
+
+**The safety property is checked, not assumed.** `pushdownIsInvisible`
+asks whether a bound solve equals the unbound solve filtered by the
+same bound, and it is checked at seven bounds including one that matches
+nothing. Alongside it, `rmlSolveTrace` shows the pushdown really does
+iterate fewer records: one record of three for a bound subject against a
+template subject map.
+
+RML core suite after the `quadsOfMap` split: 60 pass, 0 fail (out of
+60) — unchanged.
+
+## `JSONLD.Frame` → `L4Factoidal/JSONLD/Frame.lean`
+
+The JSON-LD 1.1 Framing algorithm: expand, flatten to a node map, match
+nodes against the frame, embed the matched references, wrap in
+`@graph`, compact against the frame's context.
+
+📊 **jsonld-frame: 29 pass, 63 fail (out of 92)**, against the F\* tree's
+recorded 28 pass, 64 fail (out of 92). A new harness,
+`Harness/JsonLdFrameRun.lean` (`l4jsonld-frame`), reads the real
+`frame-manifest.jsonld` and compares with the same RFC 8785 rule every
+other JSON-LD runner in this project uses. Run it from the repository
+root; `lake exe` runs from `formal/lean4`, where the corpus is not.
+
+The remaining 63 need what neither tree implements: `@default`,
+`@omitDefault`, `@requireAll` OR-matching, the other `@embed` modes,
+`@reverse`, `@included`, named graphs, and value-object matching inside
+a property frame.
+
+**The frame is expanded under a different grammar, and the Lean
+expander did not have it.** `ActiveContext.frameExpansion` was already a
+field — carried so the port's shape matched the F\* source — but nothing
+read it. `JSONLD/Expand.lean` now does, in two places: an `@id` that is
+an array of IRIs or the empty object is a frame PATTERN rather than an
+invalid value, and the five framing directives survive as raw members
+instead of being dropped as keyword lookalikes. Without the second,
+the frame's own `@explicit` never reaches the algorithm, so a pair of
+`#guard`s frames the same document with and without it and shows the
+outputs differ.
+
+`expandDocument` takes `frameExpansion` with a default of `false`, so
+every existing call site is unchanged, and only the FRAME is expanded
+with it set — never the input being framed. That asymmetry is the
+algorithm's.
+
+**The top-level `@graph` follows `omitGraph`, not the result's shape.**
+The option defaults to FALSE under `json-ld-1.0` processing and TRUE
+under 1.1, which is why the suite's expected outputs are split between
+the two shapes — 35 of 92 carry a top-level `@graph` and 56 do not.
+Compaction with `compactArrays` collapses `{"@graph": [node]}` to the
+bare node and drops the key, so under 1.0 the wrapper has to be put
+back. Measuring this was what found it: wrapping unconditionally scored
+15 pass, 63 fail (out of 92); reading the option scored 29.
+
+Regression check after the expander change: toRdf 467 pass, 0 fail
+(out of 467); the other five json-ld-api manifests 791 pass, 0 fail,
+2 local-override (out of 793) — both unchanged.
+
+## `RDFS.SchemaSplit` → `L4Factoidal/RDFS/SchemaSplit.lean`
+
+Close the class and property hierarchy once, on the schema alone, then
+push the result at the instance data — instead of letting the two
+transitivity rows re-derive the whole transitive closure on every round
+of the general loop.
+
+**The side condition, and why it is needed.** RDFS is reflective: a
+graph that says `:p rdfs:subPropertyOf rdfs:subClassOf` and `:A :p :B`
+makes an ordinary DATA triple inject a schema edge, and any design that
+closes the schema first and never revisits it loses that derivation.
+Three clauses block the first-order routes. The F\* banner carries the
+row-by-row enumeration behind them and it is not repeated here — anyone
+extending the rule table has to re-run it there.
+
+**The enumeration is not load-bearing at runtime, and that is the part
+worth carrying over.** The dispatcher does not trust it: it runs the
+fast path, then CHECKS that the loop derived no schema edge the
+pre-computed closure did not already carry, and takes the general loop
+if that fails. `schemaStableCheck` is the stated hypothesis of the
+equivalence claim, not the runtime gate. All three fallbacks — a dense
+schema fragment, a walk that exhausted its budget, a failed post-hoc
+check — go to the untouched general loop.
+
+**Three theorems, matching the F\* module's.**
+`schemaStableCheck_sound` and `_complete` say the detector decides
+exactly the declarative condition; completeness is what rules out a
+detector that is merely `false`, which would make the fast branch dead
+code. `emitEdge_shape` and `emitFromNode_shape` pin that every emitted
+triple carries the WALKED predicate and the WALKED source — a wrong
+predicate would silently move data into the schema fragment and a wrong
+subject would fabricate an edge nothing licenses.
+`scBfs_visited_grows` says the walk never drops a node it justified.
+
+**The equivalence claim is checked the same way the F\* module checks
+it — by measurement, not proof.** `agrees` compares
+`closureFixDispatch` against `closureFix` as SETS at seven graphs,
+including the reflective witness that VIOLATES the side condition,
+where the post-hoc check is what has to catch the injection. Three more
+guards keep it from passing vacuously: the closure really does derive
+rows on the test graph, the dispatcher really does take its fast branch
+there, and the derived subclass conclusion is present in its answer.
+
+**What the Lean tree splits differently.** The F\* dispatcher wraps
+`rdfs_closure_with_reflexivity`, whose reflexivity harvest sits in the
+same module as the twelve rows. In Lean the six recursive rows are
+`RDFS.Closure` and the harvest is in `RDFS.FullClosure`, so the
+dispatcher here wraps `RDFS.closureFix` — the ρdf core closure — and the
+F\* module's two-pass reflexivity shape has no counterpart to reproduce.
+
+Regression check: 914 pass, 0 fail, 30 unsupported (out of 944) on the
+rdf-turtle and sparql11 manifests — unchanged.
+
+## `SPARQL.Protocol.Client` → `L4Factoidal/SPARQL/ProtocolClient.lean`
+
+The client half of SPARQL 1.1 Protocol §2.1: build a query request by
+any of the three dispatch methods, and turn a parsed HTTP response into
+a typed result. It parses nothing itself — it DISPATCHES to the result
+and graph parsers the tree already has.
+
+**`ResponseFormat` and `mediaTypeToFormat` landed in
+`SPARQL/Protocol.lean`**, which is where the F\* tree keeps them. That
+module's own header had listed content negotiation as NOT PORTED, with
+the reason that the protocol tests assert on status class rather than
+media type. That reason holds for the SERVER direction. A client needs
+the other direction — read the media type a server actually sent, pick
+the parser — so the half the client needs is now there and the header
+says which half is still absent.
+
+**Sniffing the query form is a bias, not a decision, and the module
+proves it cannot become one.** `sniffQueryKind` skips the prologue and
+returns the first form keyword, without tracking literals or comments,
+so it can be wrong. It feeds only the Accept header's q-value ORDER, and
+a `#guard` checks that BOTH orderings list every media type this client
+can parse — so a wrong guess costs ordering, never a 406. Response
+handling goes by the response's actual `Content-Type`.
+
+**The three failure shapes are kept distinct and checked apart**: a
+malformed body is `parseError`, an unrecognised media type is
+`unknownContentType` carrying the raw body, and a non-2xx status is
+`httpError` carrying status and body so the server's own error detail
+survives. Collapsing any two would hide which one happened. The status
+test is on the CLASS, pinned at 199, 204, 299 and 300.
+
+One guard is there because §2.1.2 is easy to get wrong: direct POST puts
+the query in the BODY but still sends the graph-URI parameters in the
+QUERY STRING.
+
+Regression: 601 pass, 0 fail, 30 unsupported (out of 631) on the
+sparql11 manifest — unchanged.
+
+## `RIF.Core.Translation` → `L4Factoidal/RIF/Translation.lean`
+
+RIF Core to SPARQL algebra: the RIF/RDF/OWL combination spec's
+desugaring (`o[p->v]`, `o # c`, `sub ## sup`), the positional-atom
+encoding, conditions to basic graph patterns, rule heads to CONSTRUCT
+templates.
+
+**This gives the Lean tree a SECOND route to RIF answers, and the
+checks use it.** The F\* tree answers RIF by translating to SPARQL and
+running the SPARQL engine; the Lean tree already answers it by direct
+forward chaining (`RIF.Engine`). So this port replaces nothing. The
+last block of `#guard`s runs one rule both ways — the engine's closure,
+and the translated body pattern evaluated against the same facts with
+the head instantiated — and compares the answers. A bug shared by both
+routes would defeat that, so it is evidence rather than proof; what it
+catches is a translation that quietly loses a conjunct or mis-places an
+argument, which is exactly what the encoding below invites.
+
+**The positional-atom encoding is internal bookkeeping, and every rule
+in it is pinned.** Arity 2 is the direct triple. Arity 0 and 1 have no
+subject-object pair, arity ≥ 3 has no triple at all, so those reify
+through a fixed subject or an anchor blank node with one
+`urn:rif-uniterm:argᵢ` satellite per argument. Three properties are
+checked rather than asserted:
+
+* the arity-1 argument goes in OBJECT position, so a body variable binds
+  the genuine value and a literal argument needs no encoding at all;
+* the anchors are FUNCTIONS OF THE VALUE — equal values reach the same
+  label, different values and different datatypes do not — which is what
+  makes the assertion side and the query side agree;
+* two distinct atom occurrences get distinct anchor variables, without
+  which two atoms in one body would be forced to describe one fact.
+
+**Partiality stays hard where it means something.** A literal subject is
+genuinely ill-typed in the three RDF-shaped atoms and stays `none`; in
+the positional atom's own subject slot it is not ill-typed and takes the
+deterministic blank node. A failure inside a conjunction rejects the
+whole body, because a body that silently loses a conjunct matches too
+much. `translateProgramDiag` reports WHICH rule failed rather than
+leaving a caller to count.
+
+`PatternTerm`, `PatternSubject` and `TriplePattern` gained
+`DecidableEq` in `SPARQL/Algebra.lean` — needed to compare a translated
+pattern against an expected one at all.
+
+Regression: sparql11 601 pass, 0 fail, 30 unsupported (out of 631) —
+unchanged. The rif-core runner is unaffected by construction: its root
+imports `RIF.Engine`, not this module.
+
+## `RDF.Entailment.Simple.Spec` → `L4Factoidal/RDF/EntailmentSimpleSpec.lean`
+
+Simple entailment, transcribed from RDF 1.1 Semantics §4 (INSTANCE) and
+§5.3 (the interpolation lemma), computing nothing and calling nothing.
+
+**Why the tree now has two definitions of one relation, and what the
+second one buys.** `RDF.Entailment` already defines `SimpleEntails`
+through `Triple.instance?`, a total FUNCTION that computes the
+substituted triple — the right shape for the decision procedure to be
+proved against, and what the tree's soundness theorem talks about. This
+module states the same relation the way the specification states it: a
+RELATION, one clause per term kind. Without it, "the decision procedure
+is sound" is a statement about a definition this project wrote. With
+`spec_iff_simpleEntails` proved, that definition is tied to a
+transcription a reader can check against the specification's own
+sentences with no algorithm in the way.
+
+**Three theorems.** `tripleInst_iff` relates the relational and computed
+forms one triple at a time (through `subjInst_iff` and `termInst_iff`,
+which recurse into RDF 1.2 triple terms). `spec_iff_simpleEntails`
+lifts it to graphs. `spec_iff_instanceSubgraphForm` proves the collapse
+the specification's own wording invites: "a subgraph of A is an
+instance of B" names an INTERMEDIATE graph, and the form a refinement
+proof uses does not. Right to left is immediate; left to right has to
+BUILD that graph, and the witness is `b.filterMap (Triple.instance? m)`
+— the image of `b` itself. The F\* tree proves the same equivalence in
+a sibling module, so it is checked in both trees rather than assumed in
+either.
+
+**The side condition is kept out of the specification.** `LitExact`
+names the literals where the tree's two coarser literal branches —
+case-insensitive language tags, and `rdf:XMLLiteral` by canonical XML —
+cannot fire. Both are D-entailment behaviours and neither is licensed by
+SIMPLE entailment, so they belong to a soundness proof's hypothesis and
+not to the transcription.
+
+## `RDF.Entailment.RDF.Spec` → `L4Factoidal/RDF/EntailmentRdfSpec.lean`
+
+Rung two of the entailment ladder, transcribed from RDF 1.1 Semantics
+§8: the two-row rule table, the axiomatic triples, and what it means
+for a graph to be RDF-closed. Like the simple-entailment transcription
+it computes nothing about the engine.
+
+**The datatype set stays a parameter.** §8 defines RDF entailment
+"recognizing D", with `rdf:langString` and `xsd:string` always in D.
+Fixing D would make the rdfD1 row unstatable without prejudging which
+datatypes an implementation recognises.
+
+**rdfD1 is specified and NOT implemented, on purpose.** Neither tree
+implements it. It is here so the rule table is COMPLETE in the document
+and the gap is visible — a table with a row quietly missing reads as a
+table with no gap. Its conclusion MINTS a fresh blank node, so the
+relation carries the label as an explicit parameter plus a freshness
+condition rather than hiding it in an existential: a rule that may
+invent a name is not a function of its premise alone.
+
+**rdfD1 is also why `RdfClosed` names only rdfD2.** A graph closed
+under a rule that mints fresh blank nodes is not finite. The
+specification text handles this the same way, by taking the closure
+"towards E".
+
+**Three bridges named rather than left implicit**, so a proof can cite
+them instead of re-noticing a disjunct: `finiteRdfAxioms_sound` (the
+transcribed table is sound for the semantic-side recognizer — soundness
+only, since the `rdf:_n` family is infinite and is handled by a schema
+rather than by enumeration), `rdfD2_stepLicensed`, and
+`rdfClosed_absorbs_rdfD2`.
+
+The finite table is REUSED from `RDF.VocabularyAxioms` rather than
+copied. One `#guard` pins the thing about rdfD2 that is easy to get
+backwards: the conclusion's subject is the premise's PREDICATE.
+
+## `RDF.Entailment.RDFS.Spec` → `L4Factoidal/RDF/EntailmentRdfsSpec.lean`
+
+Rung three: RDF 1.1 Semantics §9's thirteen-row rule table, the
+axiomatic triples, the two condition-level consequences that are NOT
+rows, RDFS-closedness, and the ρdf fragment. The definitions compute
+nothing about the engine.
+
+**The quantifier order is the content.** `RdfsLicensed g t` reads its
+premises off `g`, the INPUT graph, never off a growing accumulator.
+That is what makes per-row soundness compose through a fixed-point
+driver, and it is strictly stronger than "licensed by the output".
+
+**Four rows are specified and NOT implemented**: rdfs4a, rdfs4b, rdfs8
+and rdfs13 are absent from both trees' core closures. Writing them down
+is what makes the gap visible. The two bnode-minting rows are excluded
+from `RdfsClosed` for the reason rung two excludes rdfD1 — a graph
+closed under a name-minting rule is not finite.
+
+**Two consequences are named apart because they are not rows.** §9
+states reflexivity of the subclass and subproperty extensions as
+SEMANTIC CONDITIONS, which makes `xxx rdfs:subClassOf xxx` hold for any
+ENDPOINT of a subclass triple, with no `rdf:type` premise — a different
+route from rdfs10's. Naming it is what lets a reflexivity harvest carry
+a licence instead of being a witness of unsoundness.
+`RdfsMemberSubproperty` is the third of the family: RDFS-entailed by the
+EMPTY graph, but not itself axiomatic.
+
+**The engine appears only in the theorems, and only in one direction.**
+`rdfs11For_derives` and `rdfs5For_derives` prove that every conclusion
+those two rows emit is a derivation the table licenses, and
+`rdfs11_licensed` carries one of them up to `RdfsLicensed`. They are
+the transitivity pair — the rows whose two premises are linked through
+`subjTerm`, which is where a transcription is most likely to diverge
+from the table.
+
+`subjTerm_of_toSubject?` is the bridge the proofs need: the row's own
+generalized-RDF side condition arrives as a `Term.toSubject?` success
+and the specification states it as a `subjTerm` equation.
+
+**The remaining obligation is named in the file.** rdfs7, rdfs2, rdfs3
+and rdfs9 have no licence theorem yet; each needs its own extraction of
+a DECLARATION premise from the fold, rather than the two-triples-of-one-
+shape pattern the transitivity pair follows.
+
+A `#guard` pins the generalized-RDF side condition itself: rdfs11 does
+NOT fire when the middle term is a literal, which is the clause an
+implementation is most likely to drop.
+
+Regression: rdf-turtle 313 pass, 0 fail (out of 313) — unchanged.
+
+## `RDF.Entailment.Simple.ModelTheory` → `L4Factoidal/RDF/Semantics.lean`
+
+The model-theoretic side of the entailment ladder, and the
+INTERPOLATION LEMMA proved in both directions.
+
+The three `*.Spec` modules transcribe the SYNTACTIC characterisations.
+This module supplies the structures those characterisations are
+supposed to be about — interpretations, denotation, satisfaction,
+entailment, ICEXT — so the two sides are related by proof instead of by
+assertion.
+
+**RDF 1.1 Semantics §5.2 is the DEFINITION**: "A graph G simply entails
+a graph E when every interpretation which satisfies G also satisfies
+E." §5.3's "a subgraph of G is an instance of E" is a LEMMA about it,
+not the definition, and `interpolationLemma` proves the `iff` rather
+than assuming it. `simpleEntails_iff_mt` then carries the tree's own
+decision procedure across: when it says yes, it is saying something
+about every interpretation.
+
+**The enlargements are named, and the completeness proof is where they
+had to be checked.** The interpretation record is a SUPERSET of the
+genuine simple interpretations — `iext` totalised over the domain
+rather than typed on IP, `iLit` total, assignments total. Each enlarges
+the class, which makes a SOUNDNESS result stronger and a COMPLETENESS
+result harder. `interpolationComplete` is where that bill comes due,
+and it is paid: the Herbrand record is buildable in the enlarged type.
+
+**`iTt` is the quarantine point.** An RDF 1.2 triple term has no
+denotation in either baseline's model theory, so the Herbrand
+interpretation gives it a CONSTANT — which would make two distinct
+triple terms denote one resource. That is why both graphs carry a
+triple-term-free hypothesis, and why the hypothesis is on the theorem
+rather than hidden in the construction.
+
+**The interpretation core comes from `OWL.Semantics.fst`**, which is
+NOT thereby covered: its thirty-odd OWL semantic-condition bundles are
+absent, and only the core plus `icext` is here. The alias table records
+`RDF.Entailment.Simple.ModelTheory` alone.
+
+`subjTerm_of_toSubject?` moved from `EntailmentRdfsSpec` to
+`EntailmentSimpleSpec`, beside `subjTerm`, since three modules now need
+it.
+
+## `OWL.Semantics` → `L4Factoidal/OWL/Semantics.lean`
+
+The semantic conditions the OWL RL rules read, each cited to its OWL 2
+RDF-Based Semantics table row, plus the semantic sequences (`SeqIs`)
+those rows are indexed by. The interpretation structure itself landed
+with `RDF.Semantics` in the previous commit; this completes the module.
+
+**Every condition is the WEAKEST reading its row implies.** Only-if
+halves and IP/IC membership side conditions are dropped unless the row
+is itself an iff. Dropping a condition ENLARGES the interpretation
+class, and a soundness result over a larger class is stronger — so a
+rule proved sound against these is sound against genuine OWL 2
+RDF-Based interpretations.
+
+Three rows ARE full iffs, because two engine rules read opposite halves
+of one condition: `sameAsIdentity`, `hasValue` (cls-hv1 forward, cls-hv2
+backward) and `inverseOf` (prp-inv1, prp-inv2). Weakening any of those
+would leave the second rule of its pair unlicensed.
+
+**The pilot bundle is proved satisfiable BOTH ways, and that is the
+point.** A bundle nothing satisfies makes every `EntailsUnder`
+statement about it vacuously true. So does a bundle satisfied only by
+the interpretation whose IEXT is everywhere true, which satisfies every
+graph and would leave `PilotEntails` as the everything-relation.
+`trivial_satisfies_pilot` rules out the first; `separating_satisfies_
+pilot` with `separating_rejects` and `pilot_not_everything` rule out the
+second.
+
+The separating interpretation needs its own shape, and the reason is
+recorded: `CondSameAsIdentity` is an IFF, so an everywhere-true IEXT
+fails it. IEXT of the resource `owl:sameAs` denotes is the diagonal and
+every other resource relates everything — which needs `owl:sameAs` to
+denote something no other IRI does. That is the only place in the file
+where two IRIs have to be told apart.
+
+The F\* tree keeps these witnesses in `RDF.Semantics.HypothesisWitness`,
+written after a draft theorem whose hypothesis was FALSE verified
+cleanly and proved nothing.
+
+**Five predicates did NOT come across, and the reason is structural.**
+The F\* module carries `ig_wf_pred`, `ig_wf_sp`, `ig_wf_subj`,
+`ig_wf_obj` and `ig_wf_po` — hypotheses about the shape of its
+string-keyed `indexed_graph` bucket snapshot, each needing a key
+injectivity side condition. The Lean tree's index is `OWL.RL.Index`, a
+`Std.HashMap`-backed structure whose lookups are total functions with
+their own lemmas. Transcribing predicates about a data structure this
+tree does not have would be a second copy of nothing.
+
+## `RDF.Entailment.RDFS.ModelTheory` → `L4Factoidal/RDF/EntailmentRdfsModelTheory.lean`
+
+The RDF and RDFS semantic conditions, and every rule row proved TRUE
+under them.
+
+**This is what turns the transcribed tables into a specification.** The
+two `*.Spec` modules give the syntactic rule tables of §8 and §9. On
+their own they are a transcription nobody has checked against the
+semantics. `rdfsLicensed_true` closes the loop: every triple the
+licensing relation licenses is true in every interpretation that meets
+the conditions and satisfies the premises. An engine proved to emit only
+LICENSED triples is thereby proved to emit only TRUE ones — which is the
+whole point of having proved two of `RDFS.Closure`'s rows licensed in
+the previous landing.
+
+**Twenty-one lemmas, one per case of the licensing relation.** Thirteen
+rule rows, rdfD2, the two axiom families, and the three consequences
+that are not rows. Each concludes under the SAME assignment the premises
+hold under, because no row here mints a fresh blank node — which is
+exactly why the bnode-minting rows were excluded from `RdfsClosed` two
+landings ago.
+
+**Two composition theorems make it usable.**
+`rdfsStepLicensed_holds` says a pass that emits only licensed triples
+preserves truth; `rdfsStepLicensed_entails` turns that into
+`RdfsEntails`. That is the shape a fixed-point driver composes, and it
+is why the licensing relation reads its premises off the INPUT graph
+rather than off a growing accumulator.
+
+**The conditions are the weakest readings**, as at the OWL rung:
+only-if halves and IP/IC membership side conditions dropped where the
+specification's sentence is an implication rather than an equality.
+`CondSubClassOfIc` and `CondSubPropertyOfIp` are the exceptions the
+endpoint-reflexivity consequences need, and they are exactly §9's own
+"x and y are in IC" clause.
+
+`CondDomain` and `CondRange` are REUSED from `OWL.Semantics` rather
+than restated: §9 and OWL 2 RDF-Based Semantics Table 5.8 state the
+same condition, and the F\* tree shares them the same way.
+
+## `RDF.Semantics.HypothesisWitness` → `L4Factoidal/RDF/SemanticsHypothesisWitness.lean`
+
+Satisfiability witnesses for the hypotheses the refinement theorems
+restrict on.
+
+**A theorem whose hypothesis is UNSATISFIABLE proves nothing and
+verifies cleanly.** That is not hypothetical: the first draft of an
+RDFS closure-soundness theorem in the F\* tree assumed a property of
+every graph that is FALSE, and the prover reported all verification
+conditions discharged. Until that was caught the guard against a repeat
+was a paragraph of prose. This module makes it machine-checked in the
+Lean tree too.
+
+**Each bundle gets TWO witnesses, because there are two ways to say
+nothing.** A bundle satisfied by NOTHING makes `EntailsUnder` over it
+the everything-relation by vacuity. A bundle satisfied only by the
+everywhere-true IEXT makes it the everything-relation for the opposite
+reason, because every interpretation in the class satisfies every
+graph. `trivial_rdf_conditions` and `trivial_rdfs_conditions` rule out
+the first; `separating_rdf_conditions`, `separating_rdfs_conditions`,
+`separating_rejects`, `rdf_entails_not_everything` and
+`rdfs_entails_not_everything` rule out the second.
+
+The separating interpretation has two truth values, every IRI denoting
+`true` and every literal `false`, with IEXT holding when the predicate
+is `true` and either the object is `true` or the subject is `false`.
+Every condition's conclusion is reachable under it, and a triple with an
+IRI subject and a LITERAL object is not — which is the graph it refuses.
+
+**Both axiom conditions rest on one checked fact**: every triple in the
+transcribed axiomatic tables has an IRI object. That is decided by
+evaluation over the tables rather than argued, so a future table edit
+that added a literal-object row would fail here rather than silently
+weaken the witness.
+
+**The data-side predicates get a NON-EMPTY witness**, and
+`witnessExact_nonempty` says so. `GraphExact` excludes two specific
+literal shapes, so a witness that avoided them by accident — the empty
+graph above all — would not show the predicate is satisfied by anything
+interesting.
+
+**Where the honest answer is a gap, it is recorded.** The F\* module
+reaches only a DEGENERATE witness for two hypotheses and labels them.
+Neither has a counterpart here: the index predicates do not exist in
+this tree (`OWL.Semantics`'s header records why), and the chain
+predicate belongs to `RDF.Entailment.RDFS.ChainWf`, which is not ported.
+A witness module whose gaps are invisible is the same failure as a
+theorem whose hypothesis is invisible.
+
+## `RDF.Entailment.Simple.Boundary` → `L4Factoidal/RDF/EntailmentSimpleBoundary.lean`
+
+The document-in, verdict-out path, and label independence.
+
+**What the module does NOT claim, stated first in its own header**: it
+does not claim the N-Triples parser implements the N-Triples grammar.
+That needs a declarative grammar semantics — "document D denotes graph
+G", transcribed from the Recommendation — and a proof that the parser
+computes it. Neither tree has one. Nothing here substitutes for it, and
+the composition theorem exists precisely to ISOLATE the parser as the
+one remaining unproven link.
+
+**Label independence is the part with mathematical content.** A
+parser's abstract graph is determined only up to its choice of
+blank-node labels: `_:b0` from a document and `_:genid1` from a
+generated-label path are the same graph, and RDF 1.1 Concepts §3.4 says
+so. If the verdict could depend on those labels, no theorem about
+abstract graphs would transfer to documents.
+
+**Injectivity is required and is not decoration.** Relabelling by an
+ARBITRARY map can only specialise the pattern — a non-injective map
+merges blank nodes, and a merged pattern is harder to satisfy — so
+`spec_rename_specialises` needs no inverse. The converse does, and the
+injectivity is supplied as a RECORDED INVERSE rather than an abstract
+property, because the transported substitution is the original composed
+with that inverse and the left-inverse equation is what makes it work.
+
+**One deliberate weakening from the F\* statement, and it is named in
+the file.** The F\* theorem is about its shipping BOOLEAN, because that
+tree has the decision procedure's completeness. This tree has soundness
+only, so the theorem here is about the RELATION and a `#guard` checks
+the boolean's invariance on a concrete relabelled pair — evidence, not
+the theorem.
+
+`Graph.renameBnodes` is reused rather than redefined; the F\* module
+defines its own only because its tree keeps that operation elsewhere.
+
+## `RDF.Entailment.RDFS.DatatypeClash` → `L4Factoidal/RDF/EntailmentRdfsDatatypeClash.lean`
+
+D-inconsistency detection under RDFS D-entailment, for the two shapes
+that are decidable: an ill-formed literal under a recognised datatype,
+and a range declaration onto a recognised datatype used with a literal
+of a different one.
+
+**The recognised-datatype gate is the whole design.** An unrecognised
+datatype's lexical form is not checked at all — that is the rdf-mt
+suite's own framing, where a test passes when the implementation is
+"configured to recognize all the datatypes in the list of recognized
+datatypes". Four `#guard`s pin the gate in both directions, because a
+detector that ignored it would report clashes the semantics does not
+require.
+
+**Rule (b) gates on the RANGE's target only, not on the literal's own
+datatype.** The fact being decided is membership in `C`'s value space,
+and `C` is recognised — which is why a fixture whose only recognised
+datatype is `xsd:integer`, with a plain-literal object typed
+`xsd:string`, is still a clash.
+
+**The whole graph is threaded through, and that is not stylistic.**
+Searching the shrinking recursion suffix instead would silently miss a
+clash whenever the matching literal triple sorts BEFORE the
+`rdfs:range` declaration — exactly the order the rdf-mt range-clash
+fixtures come in. The F\* source records that its own single-parameter
+version failed its vacuity guards for this reason; a `#guard` here
+checks the reversed order directly.
+
+**Incomplete BY DESIGN, and the file says so.** A graph whose only
+inconsistency is a malformed `rdf:XMLLiteral` under a datatype the
+literal checker does not model is reported as "not proven
+inconsistent" — correctly, not silently — and a caller must not paper
+that over as a pass.
+
+`literalIllFormed` is reused verbatim from `RDF.Datatypes` rather than
+re-derived: it already carries the whitespace-strict numeric lexical
+grammar the XSD whitespace-facet tests probe.
+
+## Not ported by design: the four F* index-key-repair modules
+
+`RDF.Indexed.KeyInjectivity` (963 F\* lines),
+`RDF.Entailment.RDFS.SepFree` (697), `RDF.Indexed.Completeness` (651)
+and `RDF.Entailment.RDFS.ChainWf` (368) — 2,679 lines together — have
+no Lean counterpart and will not get one.
+
+**What they repair.** The F\* index builds its bucket key by
+concatenating strings with a U+001F separator. That key is not
+injective, because `is_iri` admits U+001F, and
+`RDF.Semantics.HypothesisWitness.theorem_sp_key_not_injective`
+exhibits the collision. `KeyInjectivity` recovers injectivity from a
+one-sided U+001F-free side condition and discharges
+`ig_wf_sp (build_indexed g)` from it. `SepFree` proves row by row that
+every RDF and RDFS closure rule sends a U+001F-free graph to a
+U+001F-free graph, because the one-graph discharge does not carry
+through a closure CHAIN. `ChainWf` folds the rows into one step lemma
+and inducts it over `closure_iter`. `RDF.Indexed.Completeness` proves
+the bucket-coverage direction from three interface axioms about
+`FStar.String.compare`, because the keys are strings and the buckets
+are sorted by string order.
+
+**Why none of it applies here.** `OWL/RLClosureIndexed.lean` keys its
+five buckets on STRUCTURED values in a `Std.HashMap` — `Subject`,
+`WfIri`, `Term`, `Subject × WfIri`, `WfIri × Term`. There is no
+separator character, no composite string key, and no string ordering
+in the picture. The well-formedness statement is an equation between a
+lookup and a filter:
+
+```lean
+def BucketWf {κ : Type} [BEq κ] [Hashable κ]
+    (m : Std.HashMap κ (List Triple)) (key : Triple → κ) (g : Graph) : Prop :=
+  ∀ k, (m.getD k []).reverse = g.filter (fun u => key u == k)
+```
+
+`Index.Wf.ofGraph (g : Graph) : Wf (ofGraph g) g` holds for every
+graph with no hypothesis; `Wf.withSubjPred_eq` and its four siblings
+give soundness and completeness as one equality; `closureI_toGraph`
+lifts it to a per-fuel LIST equality between the indexed closure and
+the list closure. Porting the four modules would add four files
+proving nothing the tree does not already have, under weaker
+hypotheses.
+
+**The one thing that would change this.** If the Lean tree adopts a
+serialised or string-keyed index — for an on-disk store, or a wasm
+export with a flat key space — the injectivity obligation returns and
+these four F\* modules are the design to follow. Recorded at
+<https://github.com/danbri/factoidal/issues/559>.
+
+`tools/lean-port-gap.py` now classifies all four as
+"F\*-only machinery with no Lean counterpart by design", and tests
+that class BEFORE the proof suffixes, since `RDF.Indexed.Completeness`
+ends in `.Completeness`.
+
+## RDF.Store.Combine — folding several datasets into one
+
+`formal/fstar/RDF.Store.Combine.fst` (85 lines) →
+`L4Factoidal/RDF/StoreCombine.lean`.
+
+The F\* fold regroups `dataset_backend` named graphs by IRI, and has to
+inspect the `graph_backend` tag to keep unions FLAT: when a bucket
+already holds a `GB_Union` it appends to that union's member list, and
+when the bucket holds a single backend it wraps both into a fresh
+two-element union.
+
+The Lean seam has no tag. `unionCaps : List StoreCaps → StoreCaps` takes
+a member list, so the fold collects the list per IRI and calls
+`unionCaps` once at the end. Flatness comes from collecting before
+combining, not from an arm that maintains it.
+
+**Copied verbatim: the no-wrapper rule.** A one-element input list is
+returned unchanged, and a bucket with one member becomes that member.
+`unionCaps [c]` is NOT `c` — it overwrites `flags`, setting
+`supportsUpdate := false` and `estimateIsExact := false`. Wrapping a
+lone in-memory store would silently demote it from an exact estimate to
+an approximate one and from writable to read-only. Two `#guard`s pin
+that, one for the whole dataset and one for a single-member bucket.
+
+**Order proved, not asserted.** `combineNamed_solve` states that the
+rows for any name are every input's rows for that name, concatenated in
+input order, and it holds for names no input carries (both sides empty).
+`combineDatasetCaps_default_solve` states the same for the default
+graph, and all three arms of the combiner satisfy it — the empty list
+because `unionCaps []` solves to nothing, the one-element list because
+`flatMap` over a singleton is that element's own rows.
+
+**One deliberate keep from the F\* fold:** duplicate names WITHIN one
+input dataset all contribute. `datasetCapsLookupNamed` returns a first
+match, so a dataset carrying the same name twice would otherwise lose
+its second entry on combination. `capsForName` filters rather than
+looks up, and the theorems are stated in those terms.
+
+## SPARQL.Diagnostics — trace strings, minus the backend tag
+
+`formal/fstar/SPARQL.Diagnostics.fst` (78 lines) →
+`L4Factoidal/SPARQL/Diagnostics.lean`.
+
+`queryFormString` is a direct port. The other two renderers diverge, and
+the file's header states the trade.
+
+The F\* `graph_backend_kind_string` prints a constructor name —
+`GB_List`, `GB_HDT`, `GB_Union[...]` — so a person can match a trace
+line to the `--data` / `--data-cottas` / `--data-hdt` flag that produced
+it. There is no such constructor in the Lean tree: `StoreCaps` replaced
+the backend tag with a record of functions, which is the change the seam
+exists to make.
+
+`storeCapsKindString` renders `StoreCapsFlags` instead —
+`Store[+named +update +stream +exact -decodefail]`. That is the
+information the tag stood in for, stated as what the store CAN DO rather
+than what it IS. What it loses: two stores with identical flags render
+identically, so an HDT file and a bare COTTAS base are not
+distinguishable from a trace line. A `#guard` pins that sameness, so a
+later reader meets it as a recorded trade rather than as a defect.
+
+The reason the F\* module gives for keeping these renderers beside the
+types they describe — a missing case fails the totality check instead of
+printing nothing — carries over unchanged to Lean's exhaustiveness
+check.
+
+## SPARQL11.Algebra.BGPRefinement — what an answer of evalBgp MEANS
+
+`formal/fstar/SPARQL11.Algebra.BGPRefinement.fst` (2,234 lines) →
+`L4Factoidal/SPARQL/BgpRefinement.lean`. Layer 2 of the query-rung
+reduction: substitute a solution back into the basic graph pattern and
+every triple lands inside the graph.
+
+```lean
+theorem evalBgp_instantiates_into_graph (b : Bgp) (g : Graph) {mu : Binding}
+    (h : mu ∈ evalBgp b g) : ∀ t ∈ instBgp b mu, Graph.mem t g = true
+```
+
+**No second substitution was written.** The F\* `instantiate_tp` /
+`instantiate_bgp` live in `SPARQL11.Algebra.fst`; the Lean tree already
+had them as `instSubject` / `instObject` / `instTriple` in
+`SPARQL.Update` (the INSERT-template instantiator) and
+`constructPredicate` in `SPARQL.Query`. `instTriple fresh mu tp` at
+`fresh := id` IS `instantiate_tp tp mu`, so `instBgp` is one line over
+it and every lemma is stated about the shipping function. A private copy
+would have let the two drift, and the theorem would then be about the
+copy. `fresh` exists because SPARQL 1.1 Update §4.1.3 makes a blank node
+written in a TEMPLATE fresh per solution; a basic graph pattern being
+matched has no such rule, so `id` is the correct instance rather than a
+convenience.
+
+**The conclusion is `Graph.mem`, and `t ∈ g` is FALSE.** `Graph.mem`
+compares with `Triple.eqb`, the engine equality; list membership
+compares structurally. Two places in the matcher keep a term that is
+only `eqb`-equal to the graph's own:
+
+* `tryBindTerm`'s var case, when the variable is ALREADY bound — the
+  binding is not updated, so the substitution returns the first term
+  bound to that variable;
+* `tryBindTerm`'s literal case — the pattern's own literal is kept and
+  only compared.
+
+A pattern writing a language tag `en` against a graph holding `EN`
+matches, because `langTagEq` is case-insensitive, and the instantiated
+triple is then not a member of the graph list. Four `#guard`s pin that
+case in both directions, with a length pin so neither quantified guard
+is vacuous.
+
+The F\* module takes the other route: `bgp_frag` demands exact literal
+constants, so the two literals coincide and the F\* conclusion can be
+structural. This port proves the theorem for EVERY basic graph pattern
+with no fragment predicate. The two agree where both apply; this one
+also covers patterns the F\* fragment excludes.
+
+**Triple terms are proved, not excluded** — the `tripleTerm` arms of
+every lemma are discharged, including the one where an instantiated
+object position must be read back as a subject.
+
+Supporting lemmas, all proved: `Extends` (a match only ADDS bindings)
+with `refl`/`trans`/`bind`; `tryBindSubject_extends`,
+`tryBindTerm_extends`, `tpMatch_extends`, `evalBgpFrom_extends`;
+`instSubject_mono`, `constructPredicate_mono`, `instObject_mono`,
+`instTriple_mono`; `toTerm_toSubject?`, `toSubject?_of_eqb_toTerm`,
+`constructPredicate_of_instObject`; `tryBindSubject_inst`,
+`tryBindTerm_inst`, `tpMatch_inst`.
+
+**What this is FOR.** `SPARQL11.EntailmentRegime.RDFS` (1,115 lines,
+not ported) composes layer 2 with the ρdf closure to get the RDFS
+entailment regime theorem. This is the half of its input that does not
+mention entailment.
+
+## SPARQL11.EntailmentRegime.RDFS — layer 3, the composed regime theorem
+
+`formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst` (1,115 lines) →
+`L4Factoidal/SPARQL/EntailmentRegimeRdfs.lean`. It proves no new
+entailment content: it JOINS the two layers at the graph
+`RDFS.closure g fuel`, which is what the F\* banner says layer 3 is for.
+
+* Layer 1: `RDFS.closure_sound` / `RDFS.closure_complete_of_saturated`.
+* Layer 2: `SPARQL.evalBgp_instantiates_into_graph`.
+
+**Soundness is unconditional** — no fragment predicate, no saturation
+hypothesis, no groundness hypothesis:
+
+```lean
+theorem rdfsRegime_bgp_sound (g : Graph) (q : Bgp) (fuel : Nat) {mu : Binding}
+    (h : mu ∈ evalBgp q (RDFS.closure g fuel)) :
+    ∀ t ∈ instBgp q mu, RdfsLicenses g t
+```
+
+`RdfsLicenses g t` is `∃ u, RDFS.Derives g u ∧ u.eqb t = true`. The
+existential is the exact strength both layers deliver: layer 2 lands at
+`Graph.mem` and `RDFS.closure_complete_of_saturated` does too, and both
+compare with `Triple.eqb`.
+
+**The exact fragment is a COROLLARY, not the scope.**
+`rdfsRegime_bgp_sound_exact` gives `RDFS.Derives g t` outright when the
+closure is `GraphExact` and the answer triple is `TripleExact`. Reaching
+it needed three new lemmas, all proved here:
+`literalExact_eqb_eq`, `termExact_eqb_eq`, `tripleExact_eqb_eq` — the
+engine equality collapses to record equality exactly where `LitExact`
+holds, since `Literal.eqb` is coarser in only two places
+(`rdf:XMLLiteral` canonical-XML comparison, case-insensitive language
+tags) and `LitExact` rules out both. The F\* module instead SCOPES its
+whole statement to `graph_frag` / `bgp_frag`.
+
+**Completeness is CONDITIONAL and the gap is not closed here.**
+`EvalBgpCompleteAt q c mu` — "the evaluator returns `mu` whenever `mu`'s
+instantiation of `q` sits inside `c`" — is a hypothesis, not a lemma.
+The F\* tree closed its version in its own part 9; this port has not.
+`rdfsRegime_bgp_complete_conditional` and
+`rdfsRegime_ask_complete_conditional` both carry it, and the file says
+so in its header rather than leaving a reader to infer it.
+
+**Saturation is a hypothesis for a reason.** `RDFS.closure` is
+fuel-bounded, so with the fuel exhausted the closure is not the RDFS
+closure and completeness is false. Every completeness statement carries
+`step (closure g fuel) = closure g fuel`. Soundness carries no such
+hypothesis: a short closure derives less, and less is still sound. A
+`#guard` pins the zero-fuel case returning nothing.
+
+**Anti-vacuity.** Every theorem here is an implication about answers, so
+guards showing an empty evaluator would satisfy all of them and say
+nothing. The pins therefore state positive counts: the query returns 0
+rows on the raw graph and 1 over the closure, ASK is false then true, the
+instantiation has length 1, and a class the graph never mentions still
+returns nothing — the last one being what says the engine is not
+answering everything.
+
+## RDF.Entailment.RDFS.FixedPoint — the length test, and why Lean can close it
+
+`formal/fstar/RDF.Entailment.RDFS.FixedPoint.fst` (1,566 lines) →
+`L4Factoidal/RDFS/FixedPoint.lean`.
+
+`closure` stops when one round leaves the graph LENGTH unchanged. A
+length test is not obviously a fixed-point test: a round that both ADDS
+a triple and DROPS one leaves the length alone while the content
+changes, and every completeness result downstream rests on that stopping
+rule meaning what it says.
+
+**The F\* module could not close it.** Its banner records the finding:
+the length test is faithful there only modulo a key-injectivity gap, and
+that gap is WIDER than the index-key one, because `graph_dedup_sort`'s
+key folds literal content through an ad hoc `"^^"` join rather than a
+control-character separator. So it proves saturation-stability in the
+form its machinery supports and stops at the length-test theorem, with
+section 8 giving the combinatorial fact that blocks it.
+
+**Why this tree can.** The blockage follows from one design decision.
+The F\* round ends in `graph_dedup_sort` — a full re-sort by string key
+with key-duplicates dropped, so a round can add and drop at once.
+`RDFS.step` is `addAll g (stepConclusions g)`, and `addAll` folds
+`Graph.add`, which appends or does nothing: it never drops, never
+reorders, never consults a key. A round cannot lose a triple, so the
+length can only stay equal by nothing having been added — and that IS
+the fixed point.
+
+What the module carries:
+
+- `StepSaturated` — the semantic fixed point, membership-wise in the
+  engine equality, with no length bookkeeping in it.
+- `ConclusionsPresent` — the rule-by-rule form.
+- `lengthTest_faithful` — the three are ONE condition, in both
+  directions, with no key-injectivity hypothesis, no canonicity
+  hypothesis and no fragment. This is the F\* module's theorem (a).
+- `step_extensive` — unconditional. The F\* version needs a
+  `no_dup_keys` canonicity hypothesis for the final dedup-sort; there is
+  no dedup-sort here for it to attach to.
+- `closure_eq_of_stepSaturated` — the loop cannot walk past a fixed
+  point, at any fuel.
+- `closure_complete_of_stepSaturated` — what the faithfulness BUYS: the
+  stopping rule the engine runs is the condition the completeness
+  theorem needs.
+
+**Not claimed:** that the F\* proof is wrong. The obligation is absent
+under a different `add`. If this tree adopts a key-sorted dedup for the
+closure round, the obligation returns and the F\* module is the account
+to follow. Recorded at
+<https://github.com/danbri/factoidal/issues/560>; sibling finding at
+<https://github.com/danbri/factoidal/issues/559>.
+
+**Anti-vacuity.** A fixed-point module is satisfied vacuously by a graph
+on which no rule fires, so the pins use a graph where rdfs9 DOES fire:
+the length test fails on the input, the round adds exactly one triple,
+the second round is the fixed point, more fuel changes nothing, and the
+derived triple is present. A zero-fuel pin shows an unsaturated closure,
+which is why the completeness statements carry the hypothesis.
+
+## Parser.RIFXML — the RIF Core XML serialization
+
+`formal/fstar/Parser.RIFXML.fst` (1,349 lines) →
+`L4Factoidal/RIF/Xml.lean`. Two stages, as in the F\* source:
+`XML.parseXML` builds the tree, and this module walks it into the
+`RIF.Syntax` AST. The XML scanner is untouched.
+
+**A namespace of its own.** `L4Factoidal.RIF.Xml`, not
+`L4Factoidal.RIF`. The presentation-syntax front end `RIF.Ps` already
+declares `parseTerm` and `parseConst`, and the root import failed on the
+clash. Keeping the two front ends in separate namespaces is also what a
+reader wants. `L4Factoidal.XML` is not opened either: both namespaces
+declare a `Document`, so the XML side is written `XML.Node` /
+`XML.Attribute` throughout.
+
+**Element names match on the LOCAL name**, as in the F\* source: the
+suite emits `Atom` and `rif:Atom` interchangeably. That accepts a
+document putting RIF names in the wrong namespace; the F\* module makes
+the same trade, and what these tests score is rule structure.
+
+**One deliberate divergence, and it is a correctness gap that this port
+does NOT close.** The F\* parser decodes an `rdf:PlainLiteral` constant —
+whose lexical space packs `text@lang` — into a language-tagged or
+`xsd:string` RDF literal. This port keeps the packed form. Two reasons,
+both about tree consistency rather than the specification:
+
+1. `RIF/Ps.lean` already produces the packed form. Decoding in one front
+   end and not the other would make the same RIF document parse to
+   different terms depending on which syntax it arrived in.
+2. `Tm.const` carries a lexical form and a symbol space with NO
+   language-tag slot, so a language-tagged literal is not representable
+   in the RIF AST at all.
+
+The fix belongs in `RIF.Translation.termOfConst`, the one place both
+front ends pass through and the place that already builds an RDF
+`Literal` (which does have `langTag`). Recorded, with the consequence
+spelled out, at <https://github.com/danbri/factoidal/issues/561>.
+
+**Fuel.** The walkers are fuel-bounded because the
+`firstChildWithLocalName` indirection defeats the termination checker —
+in Lean for the same reason as in F\*. The same generous budget is
+carried so the difference stays a nuisance rather than a semantic
+choice.
+
+**Pins.** A fact document, a `Forall`-wrapped `Implies`, an `Import`
+carrying its profile, an empty `Group`, and a bare `<Group>` fragment
+with no `Document` wrapper. Two negative pins — text that is not XML,
+and XML that is not RIF — because a parser that accepted everything
+would satisfy every positive pin. Each positive pin states what it got
+rather than that it got something.
+
+## RIF.Core.Conformance — safeness and import rejection
+
+`formal/fstar/RIF.Core.Conformance.fst` (801 lines) →
+`L4Factoidal/RIF/Conformance.lean`, in the namespace
+`L4Factoidal.RIF.Conformance` alongside `RIF.Xml`.
+
+Two families of decision:
+
+- **Safeness** — W3C RIF Core §6.1: rule argument-safeness plus the
+  no-free-variables condition.
+- **Import rejection** — the RIF-RDF/OWL combination spec's per-import
+  validity conditions: a variable frame property under OWL-Direct,
+  forbidden `rif:iri` / `rdf:PlainLiteral` datatypes in an imported
+  graph, incomparable entailment profiles, an empty OWL-Direct import,
+  a constant used in two roles across the imports closure, and the two
+  OWL-Direct vocabulary-separation violations.
+
+**Structural, over the XML tree.** It reasons about `External`, `Equal`,
+`Or` and `Exists` — constructs the evaluator gives no semantics to — and
+only needs to know THAT they are present and how they interact with
+bound-ness. It also has to keep working on documents `RIF.Xml` REFUSES:
+the `Multiple_Context_Error` fixture's imported document carries a
+multi-slot frame in head position, which the single-atom-head rule
+rejects, and a conformance verdict must not depend on the rule being
+evaluable. The one exception is the vocabulary-separation check, which
+reads parsed `Atom`s because it is about the content of ground frame
+facts rather than the document's shape.
+
+**The `And` case is a FIXPOINT, not a fold.** An `Equal` chain
+`?x = ?y, ?y = ?z` needs more than one pass to settle: `?y` becomes
+bound only after `?x` does, and `?z` only after `?y`. A `#guard` pins a
+three-link chain, so a later simplification to a single fold fails
+visibly.
+
+**Narrowness stated rather than implied**, for the three checks that are
+narrower than the condition they are named after:
+`importedGraphIsEmpty` is not an OWL 2 DL well-formedness checker,
+`owlDirectSeparationInconsistent` is not an OWL 2 DL consistency
+checker, and `noFreeVariables` compares used against declared variables
+GLOBALLY rather than per-`Forall`-scope — a document declaring `?x` in
+one rule and using a different `?x` free in another would pass. No
+fixture has that shape; the limit is written down rather than left to be
+found.
+
+**Pins in BOTH directions.** A conformance checker answering `true` for
+everything passes every positive fixture, so each check has a negative
+pin beside it: an unsafe rule whose head names an unbound variable, a
+free variable never declared, a fact carrying a variable, a `b` position
+refused an unbound argument, and an incomparable profile pair.
+
+**Two Lean-specific traps hit on the way.** `local` is a reserved
+keyword, so the builtin-pattern parameter is `localNm`. A `/-- … -/` doc
+comment cannot attach to a `mutual` block — it has to be `/-! … -/`.
+
+## Measurement: four renamed ports were missing from the alias table
+
+Found 2026-08-23 by the opposite method to the one that found the
+bare-leaf inflation. Every not-covered module was searched for by file
+name inside the Lean tree, and each of the seven hits was READ in
+context. Four were ports whose Lean header says so:
+
+| F\* module | Lean counterpart |
+|---|---|
+| `Parser.JSONLD` | `JSONLD.ToRdf` |
+| `RDF.CottasStore.PageCache.Bounds` | `Cottas.PageCache` |
+| `SPARQL.Protocol.RoundTrip` | `SPARQL.ResultsTheorems` |
+| `OWL.RL.Refinement` | `OWL.RLTheorems` |
+
+Three hits were NOT ports and stay counted as not covered:
+`OWL.Semantics.Soundness` (named under `RLTheorems`' own "What is NOT
+proved"), `RDF.Entailment.RDFS.Completeness` (the F\* module proves
+model-theoretic completeness through a Herbrand interpretation; the Lean
+`complete_of_saturated` is the syntactic statement — different
+theorems), and the `Parser.JSONLD` mention inside `JSON/Serialize.lean`,
+which cites its writer shape rather than claiming a port.
+
+Both directions of the measurement error have now bitten in one session:
+a matching rule too loose, then an alias table too sparse. Run the
+name search before quoting a coverage number, and read each hit rather
+than counting it.
+
+## Parser.BallyhooCOTTAS — the eager-load COTTAS dataset store
+
+`formal/fstar/Parser.BallyhooCOTTAS.fst` (241 lines) →
+`L4Factoidal/Cottas/Ballyhoo.lean`.
+
+**The eleven `assume val`s become a record of functions.** The F\* module
+declares an abstract `cottas_handle` and eleven assumed operations over
+it — open, close, summary, named graphs, four encoders, four decoders,
+`search` — each realised in OCaml glue. Lean's port has no `assume val`
+and no axiom: the operations are fields of `StoreOps`, supplied by
+whoever builds the store. This is the same move `RDF.StoreCapabilities`
+already made for the backend tag.
+
+Two things follow, both gains:
+
+1. The derived functions get ordinary equations, so they can be
+   REASONED about. The F\* module's own comments record that three of
+   them were lifted out of glue (issue #448 wave 2) precisely so their
+   relationship to `search` would be stated rather than implicit. Here
+   the relationship is definitional and the comments become theorems:
+   `estimate_eq_search_length`, `predicatePresent_iff`,
+   `graphCandidates_present` and `graphCandidates_complete` — the last
+   two saying the candidate filter is exact in BOTH directions, so a
+   caller that skipped a graph it returns would drop rows and a caller
+   that trusted it would miss none.
+2. A test can build a `StoreOps` from a list of quads with no file and
+   no glue, which is exactly what the pins do.
+
+**The decoders return `Option`, and the F\* ones do not.**
+`cottas_decode_subject : … -> Tot subject` is total in F\* because its
+OCaml realisation RAISES on an unknown reference and F\* cannot see that.
+A reference the dictionary does not hold has no subject, so the Lean
+type says so, and `rowToQuad` drops such a row exactly as it already
+drops a row with an unbound position.
+
+**The three-state graph bound is kept, and so is its reason.**
+`GraphBound` is `unbound` / `default` / `named`, not `Option GraphRef`:
+the optional form conflated "no constraint on the graph column" with
+"the caller means the default graph", which let a plain basic graph
+pattern over the default graph union in every named graph's rows. Three
+`#guard`s pin that the three states give three different answers.
+
+**The documented sharp edge is pinned rather than reproduced silently.**
+On the eager-load path an UNKNOWN graph IRI encodes to `unbound` — no
+constraint — rather than to an empty result. That is the F\* behaviour
+on the same path, it is the dead-code path there too, and a `#guard`
+records it so a later reader meets it as a known edge instead of a bug.
+
+## Tableau.CountingOracle — the counting fragment, decided not delegated
+
+`formal/fstar/Tableau.CountingOracle.fst` (1,663 lines) →
+`L4Factoidal/OWL/CountingOracle.lean`.
+
+The refutation tableau decides OWL 2 DL consistency for everything
+except finite-model cardinality COUNTING, where the contradiction is a
+linear system over the sizes of named classes. This module is that
+fragment: recognised, extracted, encoded, and — for the systems the
+corpus produces — decided inside the verified boundary.
+
+**The single `assume val` becomes a PARAMETER.** F\* assumes
+`z3_check_sat : string -> nat -> Tot z3_verdict`, realised by glue that
+returns `Z3_Unknown` in its Phase 0. Lean has no `assume val` and no
+axiom, so `SatOracle` is a function a caller supplies and `noOracle` is
+the Phase-0 stub written out. This is not a workaround: an assumed value
+is a fact the proof rests on, a parameter is an input the theorems
+quantify over. `classSizeUnsat` never consults the oracle, and its
+soundness theorem holds for every oracle, because the decision is the
+Farkas validator rather than the solver.
+
+**What is proved.** `farkasSound`: when `farkasCheck` accepts a
+multiplier vector, NO integer assignment satisfies the system. The
+supporting arithmetic — `zeros_len`, `vscale_len`, `vadd_len`,
+`comb_len`, `linDot_zeros`, `linDot_vscale`, `linDot_vadd`, `comb_dot`,
+`weighted_ge` — is all proved, with no Mathlib: `Int.mul_add`,
+`Int.mul_assoc`, `Int.add_mul`, `Int.mul_le_mul_of_nonneg_left`, and
+`omega` after generalising each product to an atom (`omega` rejects
+nonlinear terms, which is why the products are generalised first).
+`classSizeUnsat_sound` lifts it to the system built from a graph.
+
+**What is NOT proved, and the header says so in the same words the F\*
+banner does.** That UNSAT of the class-size system IMPLIES the closure
+is inconsistent under Direct Semantics. The FIBER / BIJECTION /
+DISJOINT-UNION / ONEOF arguments licensing each row are prose in both
+trees. `classSizeUnsat g = true` reads "the linear system this module
+builds from `g` has no integer solution, and that is proved" — NOT "`g`
+is inconsistent, and that is proved". A reader who took the theorem for
+a consistency result would be taking prose for a proof.
+
+**One structural improvement over the F\* layout.** F\* has two copies
+of the class-size relation readers — one emitting SMT text (§6b), one
+emitting `lin_constraint` records (§8b) — and a comment saying they
+mirror each other. Here the readers (`fiberOf`, `bijOf`, `unionPairOf`,
+`classHasOneOf`) are written ONCE and both the SMT encoder and the
+linear-system builder call them, so the two describe one system by
+construction rather than by inspection.
+
+**dl-909 is still not decided, on purpose.** Its class-size system is
+genuinely satisfiable — the all-empty assignment with `|only-d| ≥ 1` is
+a model — so no certificate exists and the checker returns false.
+Deriving `|finite| ≥ 1` would need an unsound nonemptiness rule.
+
+**Pins in both directions.** The min-2-above-max-1 clash extracts two
+axioms that SHARE one count variable (the pin that would fail if the
+key were per-triple); a datatype facet and an authored `owl:complementOf`
+each take a graph OUT of the fragment; an engine-generated `__rl_`
+complement does NOT, which is the pin stopping the reject scan from
+over-reaching; a graph with no counting construct is rejected. For the
+validator: the certificate for `x = 0` with `x ≥ 1` is accepted, one
+with a negative multiplier on a `≥` row is refused, one whose combined
+coefficients are not zero is refused, and the searcher finds nothing for
+a satisfiable system.
+
+## Two more not ported by design: MemLemmas and ColumnSeq
+
+Added to the by-design column 2026-08-23, alongside the four
+index-key-repair modules already there.
+
+**`OWL.Semantics.MemLemmas` (442 F\* lines)** is membership-preservation
+infrastructure for the F\* `bucket_tree` build. About half of it IS that
+index machinery — `tree_ok`, `lemma_tree_ok_lookup`,
+`lemma_slt_tree_ok`, `lemma_build_bucket_ok`, and five
+`lemma_build_indexed_wf_*` instantiations. The other half is lemmas
+about `List.Tot.sortWith`, `partition` and `rev`, which exist ONLY
+because that build sorts and partitions.
+
+The Lean index does neither. `Index.ofGraph` folds `HashMap.insert`;
+`BucketWf` is an equation between a lookup and a filter; `Wf.ofGraph`
+holds for every graph with no hypothesis. There is nothing for a
+membership-preservation lemma to preserve through, and
+`OWL/RLTheorems.lean` proves the same OWL RL soundness results with none
+of it.
+
+**`RDF.CottasStore.ColumnSeq` (163 F\* lines)** is `assume new type
+cottas_column` plus O(1) accessors, realised in OCaml as
+`string option array`, with a list bridge. Its own banner gives the
+reason: the F\*-pure decoders in `Parquet.Footer` produce
+`list (option string)`, every walk cons-cell-chases through the heap,
+and F\* needs an array-shaped abstract type to retire the OCaml perf
+shim.
+
+Lean has `Array` natively and totally. `Array.size`, `arr[i]?` and
+`Array.toList` are the entire module — no abstract type, no assumed
+accessor, no bridge.
+
+Both recorded on <https://github.com/danbri/factoidal/issues/559>, which
+now carries all six modules and the one condition that reverses each: a
+serialised or string-keyed index for the first five, a decoder needing
+an abstract column handle for `ColumnSeq`.
+
+## SPARQL payload-token lemmas — an F* impossibility that is an induction here
+
+`L4Factoidal/SPARQL/TokenizerLemmas.lean`. Groundwork for
+`SPARQL11.Parser.AskBgpRoundTrip`, and NOT a completed port of it — see
+"What is not done" below.
+
+**What F\* reports.** `SPARQL11.Parser.AskBgpRoundTrip.fst`'s banner
+declares its string round-trip stage IMPOSSIBLE, with the cause named:
+`FStar.String.sub`'s ulib specification exposes only a length
+refinement, no lemma relating its output characters to the input's
+content, so no lemma can be STATED connecting a printed payload back to
+the token extract via `substring`. It adds that this blocks every
+payload-carrying token, and that the companion `TokenRoundTrip` module's
+flagged gap has the same cause one level lower.
+
+**Why Lean is not blocked.** `SPARQL/Tokenizer.lean` never goes through
+an opaque substring: `scanIriBody`, `scanWhile` and `scanVarName`
+consume a `List Char` and return one, and `String.ofList` is applied
+once at the very end. The relationship between a printed payload and the
+scanned token is an equation about `List.append`, proved by induction on
+the payload with no library obligation.
+
+Proved: `scanWhile_append`, `scanIriBody_append`, `skipWs_of_ne_ws`,
+`processIriEscapes_id`, `nextToken_iri`, `nextToken_var`. Each states
+the RESIDUE as well as the token, because a lemma pinning only the token
+would not compose into a walk over a whole query.
+
+The side conditions are the printer's obligations and carry the content:
+an IRI body may hold no `>` and no `\`, its first character must be one
+the `<` disambiguation reads as an IRIREF rather than as less-than, and
+a variable name is drawn from what `scanVarName` accepts. Four `#guard`s
+pin those on concrete input, including `< 3` scanning as less-than and
+`<a>b>` ending at the FIRST `>`.
+
+**What is not done, and why the coverage number did not move.** Three
+pieces remain before the F\* module counts as ported: the ASK-fragment
+predicate and printer; a `tokenizeLoop` chaining lemma (the fuel is
+seeded from the whole input length, so composing per-token steps needs a
+decreasing-measure argument); and the token-level parse back to the AST,
+which is the part the F\* module DID complete. Recorded at
+<https://github.com/danbri/factoidal/issues/562>.
+
+Two Lean notes for a later reader. `conv_lhs`, `by_contra`, `tauto` and
+`ring` are Mathlib tactics and this tree has no Mathlib — use
+`conv => lhs; unfold f`, an explicit `cases h : e`, `Or.inl`, and the
+`Int` lemmas plus `omega` after generalising each product to an atom.
+And `::` binds tighter than `++`, so `'?' :: name ++ rest` is
+`('?' :: name) ++ rest`; a rewrite stated about `'?' :: (name ++ rest)`
+will not fire until `List.cons_append` has normalised the goal.
+
+## The ASK string round-trip — the stage F* reports as impossible
+
+`L4Factoidal/SPARQL/TokenizeChain.lean` and
+`L4Factoidal/SPARQL/AskRoundTrip.lean`, on top of
+`TokenizerLemmas.lean`.
+
+```lean
+theorem tokenize_printAsk (b : FragBgp) (h : FragBgpOk b) :
+    tokensOf (tokenize (printAsk b)) = expectedTokens b
+```
+
+Printing a fragment `ASK { s p o . … }` query and tokenizing the result
+gives back the tokens it was printed from — the stage
+`SPARQL11.Parser.AskBgpRoundTrip.fst` reports as IMPOSSIBLE, for a
+`FStar.String.sub` interface reason `TokenizerLemmas.lean`'s header
+records in full.
+
+**The two halves are complementary, and neither tree has both.** The F\*
+module's own stage list marks (1) the fragment predicate, (2) the
+printer, (3) the fuel-cost formula, and (b)–(d) the token-level parse
+back to the AST as DONE, and (a) the string round-trip plus (e) the full
+string-to-AST theorem as IMPOSSIBLE. This tree now has (1), (2) and (a);
+it does NOT have (b)–(d) or (e). So the module is not ported, and the
+coverage number does not move — what changed is which half is missing.
+
+**Fuel stopped mattering first.** `tokenizeLoop_fuel` proves that above
+the input length the fuel does not change the answer, and it needs no
+knowledge of `nextToken`: the loop already carries its own progress
+guard (`if rest.length ≥ cs.length then stop`), so a recursive call
+always shrinks the list and a strong induction on that length is enough.
+`tokenizeLoop_cons` is then a plain unfolding, and the walk over a
+printed query is an induction with no arithmetic side conditions.
+
+**The printer emits no whitespace** — `ASK{<a><b><c>.}`. Every token
+boundary in the fragment is unambiguous without one, so the proof needs
+no reasoning about `skipWs` beyond "the next character is not
+whitespace". A space-inserting printer would be equally correct and
+would add an offset to every step.
+
+**`nextToken_ask` needs TWO side conditions**, and the second is easy to
+miss: the character after the keyword may not be a name character (or
+the keyword would be longer) and may not be `:` (or the whole thing is a
+prefixed name, not a keyword). The first does not imply the second,
+because `:` is not a name character.
+
+**The side conditions are pinned as failures, not just as hypotheses.**
+An IRI body containing `>` prints to text that tokenizes to something
+SHORTER than expected — the token closes early — and a body starting
+with a digit makes `<` scan as the less-than operator. Both are `#guard`s
+asserting the round trip FAILS, so neither hypothesis can be mistaken
+for bookkeeping.
+
+Recorded at <https://github.com/danbri/factoidal/issues/562>.
+
+## SPARQL11.Parser.TokenRoundTrip — a WIDER fragment than the F* one
+
+`formal/fstar/SPARQL11.Parser.TokenRoundTrip.fst` (1,391 lines) →
+`L4Factoidal/SPARQL/TokenRoundTrip.lean`, with
+`L4Factoidal/SPARQL/SkipWsLemmas.lean` underneath.
+
+```lean
+theorem tokenize_printTokens (ts : List Token) (h : ∀ t ∈ ts, TokOk t) :
+    tokensOf (tokenize (String.ofList (printTokens ts))) = ts ++ [Token.eof]
+```
+
+**The fragment is wider, in both directions the F\* module names as out
+of reach.** The F\* fragment is the single-character delimiters and the
+single- and two-character operators. Its own FINDING says the
+payload-free KEYWORDS were left out because the lexer reaches them
+through `scan_word` + `keyword_of_word`, so its combinator lemmas do not
+transfer; and the companion `AskBgpRoundTrip.fst` later reports that the
+real obstruction is one level lower, in `FStar.String.sub`'s interface,
+and blocks every PAYLOAD-carrying token too. Neither obstruction exists
+here, so this fragment adds `iri`, `var`, `a` and `ASK` to the twenty
+single-character tokens.
+
+**Twenty tokens, one theorem.** `tokChar : Token → Option Char` is the
+table, and `nextToken_tokChar` is a single induction over it rather than
+twenty near-identical lemmas. The tokenizer's if-chain is decided per
+character by `simp`, which is what makes one proof cover all of them.
+
+**The separator needed a fuel argument of its own.** Every token is
+printed with a space after it — the same disambiguation the F\* module
+uses — so the walk has to step over a leading space at each turn. That
+is `nextToken_cons_ws`, and it rests on `skipWsComments_fuel`: `skipWs`
+seeds its fuel from the remaining input length, so dropping a character
+changes the fuel as well as the list. The proof needs
+`scanToEol_length` (a comment scan returns a suffix) to make the `#`
+branch well-founded.
+
+**The separator is pinned as load-bearing, not assumed.** Three
+`#guard`s show what happens without it: `<a>` lexes as one IRI token,
+`!=` as one `ne` token, and `! =` as two. A printer that omitted the
+space would not round-trip, and the pins say so rather than the prose.
+
+**`ParserTheorems.lean`'s header was stale and is updated in the same
+landing** (iron rule #14). It said the round-trip theorem "is not
+stated" because the port ships no printer; two fragment printers and
+their round trips now exist. The sentence still holds for the statement
+it is about — both stop at the TOKENS, and neither says the parser
+recovers an AST — and the header now says which is which.
+
+## RIF.Core.Refinement — and a round semantics that differs
+
+`formal/fstar/RIF.Core.Refinement.fst` (364 lines) →
+`L4Factoidal/RIF/EngineTheorems.lean`. The two properties the RDFS
+closure already has, stated for `RIF.closure`:
+
+- `closure_extensive` — the fixpoint never drops an input fact, at any
+  round bound.
+- `step_licensed` — every fact one round emits is the head-instantiation
+  of SOME rule of the program under SOME substitution the body matched.
+
+**A real difference in the engines, not in the proofs.** The F\*
+`one_round_aux` fires the rules IN SEQUENCE against the graph it is
+building, so a later rule sees the earlier rules' new triples WITHIN THE
+SAME ROUND — `RIF.Core.Eval`'s own comment flags that order-dependence,
+and the F\* refinement module needs the "two-graph src/seed" idiom
+because of it: its licensing statement quantifies over a snapshot
+EXTENDING the round's input.
+
+`RIF.step` here folds over the rules accumulating into `acc`, but every
+rule matches against the round's ORIGINAL `facts`. So a round is a
+function of its input alone, rule order does not change what it derives,
+and licensing is a SINGLE-graph statement naming the round's own input.
+
+**The difference is pinned, not asserted.** For `A(x) → B(x)` and
+`B(x) → C(x)` over `A(a)`, one round here derives `B(a)` and nothing
+else — under sequential firing the same round would also derive `C(a)`.
+Two `#guard`s show rule ORDER does not change that, one shows `C(a)`
+arrives on the second round (so the difference is per-round, not in the
+limit), and one shows a single round is genuinely not enough, which is
+what makes the others say something.
+
+**What licensing does NOT say**, stated in the file: that a derived fact
+is TRUE under any semantics. It says the engine only emits
+head-instantiations of its own rules — a PROVENANCE property. Truth
+needs a model theory the RIF port does not carry, and calling this
+soundness would be reading provenance as truth.
+
+**One reusable piece.** `mem_foldl_append` — membership in an
+append-accumulating `List.foldl` is membership in the seed or in one
+item's contribution — is what keeps both licensing inductions short.
+`step_eq_fold` first rewrites `step` into that shape, naming each rule's
+contribution (`ruleContrib`) and blocked flag (`ruleBlocked`) so the
+rewrite is one `congr` rather than a case analysis.
+
+---
+
+## `SPARQL11.Expression.Refinement` → `SPARQL/ExprRefinement.lean` (2026-08-23)
+
+**Not already covered, despite the overlap.** `SPARQL/ExprTheorems.lean`
+already proves the §17.2.2 rows and the §17.3 truth tables. It states
+them about the engine's own `ebv`, `boolAnd`, `boolOr` and `boolNot`.
+The F\* module does something else: it writes a SECOND transcription of
+each W3C table, from the specification text, and then proves the engine
+equal to it. That second transcription is what was missing, so the two
+Lean modules are kept side by side.
+
+**What the second transcription buys.** F\* issue #365 recorded two
+places where the engine and the table had drifted apart: a non-empty
+`rdf:langString` literal read as truthy (the table's String row is the
+un-tagged case only), and `.and`/`.or`/`.not` folding a type error into
+a definite Boolean instead of propagating it. The F\* tree found both by
+comparing the engine against `ebv_spec`/`spec_and`, then aligned the
+engine. The Lean port was made from the aligned engine, so
+`ebvSpec_agrees` and `specAnd_agrees` hold with no carve-out — and
+`ebvSpec_langString`, `eval_and_true_error_agrees`,
+`eval_or_false_error_agrees` and `eval_not_error_agrees` pin the four
+former divergence witnesses so a later edit cannot reopen them.
+
+**The evaluator-arm theorems are unconditional.** `eval_and_matches_spec`
+and its two siblings take no hypothesis about the operands, so no row of
+the table can be lost through a hypothesis that never holds — the
+vacuous-theorem check the F\* tree applies to the same statements.
+
+**§17.4.1.7 needed new groundwork.** The plain-string equality lemma
+needs `strCompare a b = 0 ↔ a = b`; the Lean tree only had reflexivity
+in one direction. The chain is `intCompare_eq_zero_iff` →
+`listCharCompare_eq_zero_iff` (induction, with `Char.ext` over
+`UInt32.toNat` injectivity for the head character) →
+`strCompare_eq_zero_iff` (via `String.ofList_toList`), plus the Boolean
+forms `intCompare_beq_zero` and `strCompare_beq_zero` that the operator
+mapping actually applies. The F\* side gets the same fact from
+`SO.string_compare_zero_iff_eq`.
+
+**Out of scope here as in the F\* source.** General cross-lexical value
+equality over decimals and doubles ("1.0" = "1.00") needs a spec for
+what the scaled-value parse computes. The two reflexivity theorems
+included need no such spec: the parse is a total function of the lexical
+form and is applied twice to one string.
+
+Coverage after this landing: 189 of 220 F\* modules covered, 31 not
+covered.
+
+---
+
+## `RDF.Entailment.Simple.Refinement` → `RDF/EntailmentSimpleRefinement.lean` (2026-08-23)
+
+**An engine gap came out first.** The F\* module proves the shipping
+backtracking search COMPLETE for the specification. Stating that in Lean
+found the statement false of the port: `matchObject` bound a top-level
+blank node but fell straight to `termMatch` for an RDF 1.2 triple term,
+and `termMatch` compares a triple term's subject and interior object by
+identity. So `a p <<( a p _:b )>>` matched only a premise carrying the
+same interior label, and `simpleEntails` answered `false` on a pair the
+substitution `_:b` to `c` relates. The F\* `match_term`
+(`RDF.Entailment.Simple.fst:94`) always recursed; the port had dropped
+the recursion. The arm now recurses, and
+`entailsSimple_tripleTerm_interior_bnode` pins the witness.
+
+**Sound and complete, both unconditional — unlike the F\* source.** The
+F\* soundness half carries a `graph_exact` side condition, with
+`simple_entails_not_sound_unconditionally` as the witness that it cannot
+be dropped. The cause is named in that module's banner: the shipping
+`literal_eq` folds language-tag case and compares two
+`rdf:XMLLiteral`-typed literals by exclusive canonical XML, so it is
+strictly coarser than literal term equality. This tree's
+`literalStrictEq` is `==` on `Literal`, whose `BEq` comes from
+`DecidableEq`, so it IS literal term equality and neither half needs a
+side condition. Reporting the F\* condition here would name a
+restriction the Lean statement does not carry. The coarser comparisons
+live in the regime variants (`literalValueEq D`), whose specification is
+model-theoretic and is not ported.
+
+**Two properties of the search, proved apart.** Completeness cannot go
+through "the search finds the witness mapping", which is false — the
+search commits to the first candidate that works and may return a
+different mapping than the given substitution describes. So:
+
+1. `searchInstance_isSome` — the route the witness substitution picks
+   out succeeds, so `List.findSome?` returns SOMETHING. It claims
+   `isSome` and nothing about which mapping.
+2. `searchInstance_certifies` — whatever it returns, `instanceCert`
+   re-checks successfully.
+
+`entailsWith_complete` composes them.
+
+**The idiom that carries a step's match to the end.** Each matcher's
+soundness lemma is stated for EVERY later mapping, not only for the one
+it returns: `∀ m', Extends m' m1 → ps.instance? m'.toFun = some gs`.
+That quantifier is what lets an early triple's match survive the
+bindings the later triples add, and it removes the need for a separate
+"the label stays bound" invariant. `Mapping.lookup` reads the first
+entry, so a prepend could shadow; the search never prepends a label it
+already holds, which is what makes `Extends.cons` provable.
+
+Coverage after this landing: 190 of 220 F\* modules covered, 30 not
+covered.
+
+---
+
+## `SPARQL11.Algebra.Spec` → `SPARQL/AlgebraSpec.lean` (2026-08-23)
+
+A declarative statement of the SPARQL 1.1 algebra, transcribed from
+§18.3, §18.4 and §18.5, that computes almost nothing and mentions no
+function and no type of `SPARQL/Algebra.lean`. Its only
+project-internal import is `RDF/Core.lean`, and that single import line
+is the mechanical independence check — the same one the F\* source
+states about its `open` list.
+
+**Two layers, kept apart.** §18.5 defines each operator twice: as a SET
+of solution mappings and by a cardinality clause. Part 3 states the set
+layer, part 4 the bag layer. Distinct is why they must stay apart — its
+set layer is "the same elements", so all of its content is in
+`distinctCardSpec`, and letting the set layer stand in for the
+definition would lose the operator.
+
+**The representation is not the meaning.** A solution mapping is a
+partial function carried as an association list, because that is what
+the evaluator produces and nothing should translate at the refinement
+boundary. `SMapEq` says two lists denote one mapping; every definition
+is stated over `sval` rather than over the domain list, so it is
+insensitive to layout by construction, and `compatible_congr_left`,
+`merge_unique` and `mult_congr` check that.
+
+**One lemma pins a REPRESENTATION hazard rather than a definition.**
+`compatible_refl` looks trivial. It is worth stating because the F\*
+evaluator's `sm_compatible` is not reflexive on a duplicate-key list
+(`lemma_sm_compatible_not_refl_with_dup_keys`, 2026-07-29). Proving
+reflexivity of the SPECIFICATION relation is what places that
+difference on the representation and not on the definition. `smapWf`
+names the well-formed representations, and two `#guard`s show a
+duplicate-key list is badly formed yet denotes a perfectly good
+mapping.
+
+**Merge is a relation, not a function.** `IsMerge mu1 mu2 mu` avoids
+committing any downstream statement to a list layout;
+`mergeCanonical_isMerge` supplies the witness that keeps it from being
+vacuous, and `merge_unique` says the merge is determined up to
+`SMapEq`.
+
+**Term identity is transcribed, not delegated.** `termIdEq` is written
+out from RDF 1.1 Concepts §3.3 — same lexical form character by
+character, same datatype IRI, same language tag NOT case-folded, same
+base direction — rather than using the derived `DecidableEq`, so the
+transcription can be diffed against the specification text.
+`termIdEq_sound` and `termIdEq_complete` tie it back.
+
+**What is not here.** The refinement proof itself
+(`SPARQL11.Algebra.Refinement.fst`, 2497 lines) is a separate module
+and is not ported. Without it this file is a statement, not a result
+about the evaluator.
+
+Coverage after this landing: 191 of 220 F\* modules covered, 29 not
+covered.
+
+---
+
+## `RDF.NTriples.RoundTrip` → `Syntax/NTriplesRoundTrip.lean` (2026-08-23, PARTIAL)
+
+**Counted as NOT covered.** The module carries the serialiser-injectivity
+half and the print-safe IRI fragment; the F\* source also reaches an IRI
+round trip, and this does not. Aliasing it would move the coverage
+number without carrying the result.
+
+**Two different blockers, easy to confuse.** The F\* source's Finding 1
+is that its parser is unreachable for ANY input: every byte goes through
+five `assume val` FastString primitives and the axiom set has no
+base-VALUE fact, so `fs_byte_at "<" 0 == 0x3C` fails. Its Finding 2(b)
+is that the F\* serialiser routes every literal through
+`nq_escape_literal`, blocking literals on the serialiser side — which is
+why the F\* fragment is IRIs and blank nodes only.
+
+Neither transfers. `readIriRefBody` and `escapeLiteral` are ordinary
+Lean functions over `List Char`; they reduce and the module's `#guard`s
+run them. What stops the Lean round trip is that `readIriRefBody` has
+ten match arms, two carrying six- and ten-character escape patterns, and
+Lean's per-arm equation-lemma generation for it exhausts the container's
+memory. Measured: `#check @readIriRefBody.eq_11`, in a file whose only
+other content is the import, is killed by the OOM killer. The step lemma
+elaborates in about 34 seconds and several gigabytes in isolation and
+does not survive being placed next to any other declaration.
+
+Filed as <https://github.com/danbri/factoidal/issues/565> with the
+refactor — split the scanner into a shallow-match one-character step
+function plus a driver — that unblocks it. That touches a shipping
+parser with its own test surface, so it is separate work.
+
+**Why a fragment at all, and this part IS proved.** `RDF.isIri` asks
+only for a non-empty string containing a colon, so `a:b>c` is a
+well-formed `WfIri` and is not print-safe: serialising it emits
+`<a:b>c>` and the parser stops at the first `>`, recovering `a:b` and
+leaving `c>` unread. A `#guard` runs that witness. No unrestricted
+round-trip statement is true whatever proof machinery arrives, and
+`iriPrintSafe` names the IRIs on which the two sides agree.
+
+Coverage after this landing: unchanged at 191 of 220 covered, 29 not
+covered.
+
+---
+
+## `RDF.Entailment.RDFS.Completeness` → `RDFS/RhoDfCompleteness.lean` (2026-08-23)
+
+**The converse half of the RDFS rung.** `RDF/EntailmentRdfsModelTheory.lean`
+proves every rule row TRUE under the semantic conditions. This module
+proves the other direction on a named fragment: on a ρdf-CLOSED graph,
+ρdf entailment and simple entailment pick out the same pairs.
+
+**Saturation is the whole argument.** The canonical model is the
+Herbrand interpretation of the closed graph, reused unchanged from the
+simple rung. Each of the six ρdf conditions is discharged the same way:
+read the two Herbrand premises back as triples of `c`, name the ρdf
+rule instance whose conclusion is wanted, and let `RhoDfClosed c` put
+that conclusion in `c`. That third move is where closedness does the
+work, and it is why the theorem is about closed graphs rather than
+arbitrary ones.
+
+**Two conditions of the fragment, each earned by one rule.** `rdfs3`
+moves a term from object into subject position, so it cannot fire on a
+literal or triple term; `rdfs7` moves a term into a predicate slot, so
+a `rdfs:subPropertyOf` object must be an IRI. Only `herb_cond_range`
+and `herb_cond_subPropertyOf` take the fragment hypothesis — the other
+four do not, and their statements say so.
+
+**Naming.** `RDF/EntailmentRdfsSpec.lean` already has `RhoDfGraph`,
+which says the ρdf vocabulary never occurs outside the predicate slot.
+That is a different condition. This module's predicate is
+`RhoDfModelFragGraph`, and the header says why the two exist.
+
+**Finding C-1 is carried as theorems, not as prose.** The F\* module
+records that "RDFS entailment = simple entailment of the RDFS closure"
+is false and cannot be repaired by narrowing the fragment. The first
+witness is now a pair: `rdfsEntails_subclassSelfLoop` (from
+`[X rdfs:subClassOf Y]`, RDFS entails `[X rdfs:subClassOf X]`, through
+`CondSubClassOfIc` then `CondSubClassOfRefl`) and
+`rhoDf_not_entails_subclassSelfLoop` (the same pair is not
+ρdf-entailed, by the Herbrand countermodel). The second theorem depends
+on `herbrand_rhoDfConditions`, so the countermodel is admissible rather
+than merely asserted.
+
+Coverage after this landing: 192 of 220 F\* modules covered, 28 not
+covered.
+
+**A measurement note belongs with this landing.** The alias was added,
+the count did not move, and the reason was a `git stash` cycle that had
+dropped the edit to `tools/lean-port-gap.py`. See the tenth correction
+in `docs/designissues/2026-08-23-lean-port-gap.md`, and the extended
+rule 2 in `skills/counting-coverage/SKILL.md`.
+
+---
+
+## `SPARQL11.Algebra.Refinement` layer 1 → `SPARQL/AlgebraRefinement.lean` (2026-08-23)
+
+**Partial by design, and the count does not move.** The F\* module is
+2,497 lines. This is its first layer. `SPARQL11.Algebra.Refinement`
+stays on the not-covered list and no alias was added — see the ninth
+correction in `docs/designissues/2026-08-23-lean-port-gap.md`.
+
+**In:** UNION at the set and bag layers, unconditionally. FILTER at both
+layers under `FExprCongr`. The compatibility bridge and its witness.
+**Out:** JOIN, LEFTJOIN, EXTEND, PROJECT, DISTINCT, the BGP vertical.
+
+**FILTER needs a hypothesis, and the hypothesis is the F\* source's own
+finding FC-1.** The evaluator applies the condition to each ROW of the
+list; §18.5 applies it to the MAPPING. Those agree only if the
+condition cannot tell two lists denoting one mapping apart. It is a
+hypothesis here rather than a theorem because this module's `FExpr` is
+§18.5's abstract predicate, exactly as the specification states it.
+
+**The compatibility bridge is where the two sides genuinely differ.**
+`Binding.compatible` decides agreement with `Term.eqb`, which bottoms
+out in `Literal.eqb` — language-tag case folded, `rdf:XMLLiteral`
+lexical forms compared by exclusive canonical XML. `Compatible` demands
+`t1 = t2`. So the engine's test is strictly COARSER:
+`compatible_of_Compatible` holds, its converse does not, and
+`compatible_not_Compatible_of_coarse` is the witness. Same shape as
+finding SR-2 in the F\* source and finding SE-1 on the
+simple-entailment vertical.
+
+**A second hypothesis the F\* banner predicts.** `compatible_of_Compatible`
+needs `noRepeats (sdom mu1)`. `Binding.compatible` tests EVERY pair in
+the list; `sval` sees only the first binding for a variable. A
+duplicate-key list therefore makes the two disagree, and the
+specification's own header says exactly this about `sm_compatible` in
+the F\* tree — it pins the difference on the REPRESENTATION.
+
+**Why the concrete witness pair is a `#guard`, not a `decide`.**
+`langTagEq` calls `String.toLower`, which is `String.mapAux`, and the
+kernel does not reduce it: `decide` gets stuck at
+`(String.mapAux Char.toLower "en" "en".startPos).1.1.toList`. So the
+theorem is stated over ABSTRACT literals with the conflation as a
+hypothesis, and two `#guard`s carry the satisfiability evidence on the
+compiled evaluator. They are what stop the theorem being vacuous, and
+they run on every `lake build`. The abstract form is also stronger: it
+holds of every pair the engine conflates, not only of `"x"@en` versus
+`"x"@EN`.
+
+**One reusable piece.** `binding_lookup_eq_sval` — the engine's
+`Binding.lookup` and the specification's `sval` are the same partial
+function, written with different argument order and `=` against `==`.
+Every later join lemma will need it.
+
+---
+
+## `RDF.Entailment.RDFS.Refinement` — the RS-1 witness (2026-08-24)
+
+**Partial, and the count does not move.** The F\* module is 1,613 lines
+and about 95 declarations, most of them `rdfs_rule_*_licensed`. The
+Lean tree already carries that per-row pattern in
+`RDFS/ClosureTheorems.lean` and `RDFS/FullClosureTheorems.lean`, but
+against `RDF.Entailment.RDFS.RhoDFClosure` and against a
+proof-theoretic derivation relation, so those files do NOT cover this
+module. No alias was added.
+
+What is ported here is the finding RS-1 vertical:
+`RDFS/ReflexivityWitness.lean`.
+
+**The fact the fix rests on.** The pre-fix `rdfs_reflexivity_axioms`
+emitted `C rdfs:subClassOf C` for every `C` typed `owl:Class`. rdfs10
+fires on `rdfs:Class`, not `owl:Class`, so the emission was not
+RDFS-entailed. `selfloop_not_axiomatic` states that the self-loop is in
+no axiom table of either vocabulary, for every IRI and every datatype
+map and container slice, so no later edit can justify the emission by
+declaring the triple axiomatic.
+
+**The statement needs no side condition, and the reason is worth
+recording.** Both open axiom families emit only `rdf:type`,
+`rdfs:domain` and `rdfs:range` rows, so neither can produce a
+`rdfs:subClassOf` triple at all. The F\* source's note that "every
+axiomatic `rdfs:subClassOf` row has distinct endpoints" applies only to
+the fixed table. `containerAxioms_pred` and `datatypeAxioms_pred` say
+this in one line each.
+
+**What the same fact costs in each tree.** The F\* proof carries
+`--fuel 50 --ifuel 2 --z3rlimit 600 --split_queries always
+--using_facts_from '*,-RDFS.Closure.emit_once_term'` and about thirty
+lines of comment. Its own record: z3 returned "unknown because
+(incomplete quantifiers)" at 75 of a 240 rlimit; the budget later went
+600 to 1200; and one unrelated symbol had to have its facts EXCLUDED,
+because its definition equation in the SMT context tipped a borderline
+`assert_norm` block — raising rlimit to 1200 and fuel to 100 did not
+recover it.
+
+The Lean proof is a case split on a finite table. No budget, no query
+splitting, no fact filtering. The two proofs establish the same fact
+and differ only in what the host makes hard. That is instance five of
+the pattern in
+`docs/designissues/2026-08-24-what-the-lean-port-found.md`, and the
+first one where the difficulty is in the PROOF rather than in the code.
+
+**One trap.** `decide` refuses a goal with a free variable, so
+`(owlClassReflTriple c).p = rdfType` must be reduced through
+`selfloop_pred` to the closed `rdfsSubClassOf = rdfType` first.
+
+---
+
+## `SPARQL11.Algebra.strip_rewrite_internal_vars` + `OWL.QueryEval` wiring → `SPARQL/RewriteVarStrip.lean` (2026-08-24)
+
+**A gap found INSIDE a module the tool counts as covered.**
+`SPARQL11.Algebra` is aliased to `SPARQL.Algebra` and counts as
+covered, but `strip_rewrite_internal_vars` and its two helpers were not
+in the Lean tree. An alias is a statement about a module, and a module
+is not one result. Rule 6 of `skills/counting-coverage` says covered
+means the result is carried; for a module this large, the honest
+reading is that the alias covers the module's PRINCIPAL result, and
+individual functions can still be missing. Worth a systematic check
+later, and noted here so the 192 figure is read correctly.
+
+**What is ported.** `isRewriteInternalVar` (the seven prefixes),
+`stripRewriteInternalVarsMu`, `stripRewriteInternalVars`, and the three
+`OWL.QueryEval` wrappers with the rewrite as a PARAMETER.
+
+**The constraint CLAUDE.md states in prose is now a theorem.** CLAUDE.md
+says the strip "must stay at the top level" because inner Select_All
+sub-selects re-expose the anchor var for the enclosing JOIN, and
+stripping inside decorrelates it.
+`strip_inside_join_admits_spurious_row` is that, machine-checked: two
+rows disagreeing on `_sv_1` do not join, and after stripping they do,
+so the stripped join returns a row the unstripped join does not.
+Moving the strip inward does not lose a column — it changes which rows
+come back.
+
+**`OWL.QueryEval` stays not covered, and no alias was added.**
+`OWL.QueryRewrite` is 1,799 lines and unported, so the wrappers take
+the rewrite as a parameter. The Lean side cannot run an OWL-rewritten
+query. What IS carried is the composition and the strip placement,
+which is the part CLAUDE.md flags as load-bearing.
+
+**One trap.** `String.startsWith` does not reduce in the kernel — same
+family as `String.mapAux`. `rfl` and `decide` both fail on
+`isRewriteInternalVar "_sv_1" = true`. The tree's own `strStartsWith`
+(`SPARQL/Expr.lean`, `listIsPrefix` over `toList`) does reduce, and
+switching to it made the classification theorem and the join witness
+close by `rfl`.
+
+---
+
+## The IRIREF scanner refactor — unblocking the N-Triples round trip (2026-08-24)
+
+`Syntax/IriScan.lean`. Groundwork for
+<https://github.com/danbri/factoidal/issues/565> and therefore for
+`RDF.NTriples.RoundTrip`.
+
+**The blocker, restated.** `Lexing.readIriRefBody` is a ten-arm
+recursive match, two arms carrying six- and ten-character literal
+patterns. Lean's well-founded recursion generates one equation lemma
+per arm, and generating them exhausts the container's memory. No
+equations means no rewriting, so the round trip cannot be stated about
+it at all.
+
+**The fix, and why it works.** Move the deep patterns out of the
+recursion. `iriNextStep` does all the pattern matching and does NOT
+recurse, so its match compiles to a plain case tree. `scanIriBody`
+recurses on a three-constructor `IriStep`, so its equations are three
+small ones — `scanIriBody_close`, `scanIriBody_fail`,
+`scanIriBody_emit`, all proved here. Those three are exactly what
+`readIriRefBody` cannot give.
+
+**Termination is now one lemma.** `iriNextStep_emit_shorter`: an `emit`
+step consumed at least one character. It is provable arm by arm
+precisely because `iriNextStep` does not recurse.
+
+**Two `let`s had to go.** `split` cannot see through a `let` compiled
+to `have`, so the escape arms' `let cp := ...` blocked the termination
+proof. The `\u` and `\U` tails are now one shared `iriEmitAt` helper —
+shorter, and `iriEmitAt_emit` reduces both arms of the big proof to one
+line each. The plain-character arm's `let cp := c.toNat` was inlined.
+
+**Not yet swapped in.** `Syntax.Lexing` still uses `readIriRefBody`.
+Ten `#guard`s check that `scanIriBody` and `readIriRefBody` agree on
+the same input — including both escape forms, both malformed escape
+forms, an unterminated body, a forbidden character and the empty
+input — but a full equality would need the equations that cannot be
+generated, which is the whole problem. Swapping the shipping lexer over
+is a separate landing so that a transcription error meets the 325
+`#guard`s of the syntax tests on its own commit.
+
+**Axiom note.** Both theorems report `[propext, Quot.sound]` — narrower
+than the usual three, with no `Classical.choice`.
+
+---
+
+## The IRIREF scanner swap (2026-08-24)
+
+Step 1 of the three on
+<https://github.com/danbri/factoidal/issues/565>. `Syntax.Lexing`'s
+`readIriRefBody` is now the split scanner, so its equation lemmas can be
+generated — `readIriRefBody_close`, `readIriRefBody_fail`,
+`readIriRefBody_emit`, all in `Syntax/IriScan.lean`. That is what the
+N-Triples round trip needs and what the ten-arm version could not
+supply.
+
+**How it was gated, and why the obvious gate was not enough.** The old
+scanner was kept for one commit as `readIriRefBodyLegacy` and the two
+were `#guard`ed against each other over 36 inputs — every escape width,
+every forbidden codepoint, malformed escapes, a surrogate, raw control
+characters, unterminated and empty input — agreeing on answer, error
+position AND error message. The next commit deleted the oracle and kept
+its certified answers as 39 literals.
+
+The reason for that ceremony: of the 325 `#guard`s in `SyntaxTests`,
+`TurtleTests` and `RdfXmlTests`, exactly one touches an escape inside an
+IRIREF, and it is a rejection case. No test in any suite decodes a `\u`
+or `\U` inside `<…>`. An earlier status message in this session claimed
+those 325 guards would catch a transcription error here. They would
+not. Filed as
+<https://github.com/danbri/factoidal/issues/567>.
+
+**A negative control was run.** Setting one expected offset to a wrong
+value makes the build error, so the pinned table is not vacuous. Worth
+doing whenever a table of expectations replaces a differential check —
+otherwise the table's silence proves nothing.
+
+**One deliberate difference.** The old scanner was STRUCTURAL recursion
+on the input list; the new one is well-founded recursion on `cs.length`,
+because the step classifier returns a `rest` Lean cannot see as a
+structural subterm. Behaviour is unchanged, but definitional unfolding
+differs, so a proof that relied on the old one reducing by `rfl` needs
+one of the three equations instead.
+
+**Traps paid for again.** `/-- … -/` cannot attach to a `#guard` (use
+`/-! … -/`); `"\u{1F600}"` is not a valid Lean literal here (use
+`String.singleton (Char.ofNat 0x1F600)`); and `private` in Lean 4 is
+module-scoped, so an oracle consumed by a sibling module cannot be
+private.
+
+---
+
+## The N-Triples IRI round trip — step 2 of #565 (2026-08-24)
+
+The scanner split unblocked what `Syntax/NTriplesRoundTrip.lean`'s own
+header had recorded as unprovable. That header is now corrected in
+place, with the record of why it was true kept.
+
+**Proved.** `readIriRefBody_printSafe`: on the print-safe fragment the
+scanner reads back exactly the characters the serialiser wrote, stops
+at the closing `>`, reports the offset just past it, and leaves nothing
+unread. `readIriRef_toNTriples` at the token entry point, and
+`readSubject_toNTriples` one step further out — through the parser's
+re-validation, so the term recovered is the term serialised rather than
+merely the same characters. `mkIri_val` is the re-validation step:
+`WfIri` is a subtype, so the proof component is irrelevant.
+
+The induction is the three lines the module predicted. A safe character
+always takes the `emit` arm, because `IriSafeChar` excludes both `>`
+(through the forbidden-codepoint set, which contains `0x3E`) and `\`.
+
+📊 **The coverage count did NOT move, and that is correct.**
+`RDF.NTriples.RoundTrip` also carries the object-position term round
+trip and `checkpoint_a_closed_triple_round_trip`, a whole-triple
+statement. Neither is here, so no alias was added and the module stays
+on the not-covered list. Checked before writing that: the tool has no
+alias for it, so the still count is a genuine not-covered rather than a
+dropped edit — the failure mode the tenth correction records.
+
+**Traps.** `String` is byte-array backed in this toolchain, so
+`c.toString ++ String.ofList tl = String.ofList (c :: tl)` does not hold
+by `rfl` and needs `String.ext`. And `i.val.toList.length =
+i.val.length` IS `rfl`, so `by simp` on it fails with "no progress" —
+`simp` cannot make progress on a goal that is already closed by
+reflexivity.
+
+---
+
+## `RDF.NTriples.RoundTrip` — COVERED (2026-08-24)
+
+📊 **192 → 193 of 220.** The commit is this one; the enabling commits
+are `d09e828b224`, `fbbd2c4628a`, `80ee4521da2` (the scanner split) and
+`cf5ca30bfe9` (the IRI round trip).
+
+Generalising the scanner lemma over a TRAILING REMAINDER is what
+unlocked the rest: in a serialised triple each IRI is followed by more
+line, so a theorem returning rest `[]` cannot be chained.
+`readIriRefBody_printSafe` now takes a tail, and subject, predicate and
+object positions follow in three lines each.
+
+**The closed-triple round trip is stronger than the F\* one.** F\*'s
+`checkpoint_a_closed_triple_round_trip` is stated for ONE CONCRETE
+TRIPLE — `"x:"`, `"y:"`, `"z:"`, recovered position literal `16`, as its
+own banner says. `readTriple11_closed_roundTrip` quantifies over any
+three print-safe IRIs. The offset is existentially quantified because
+it is parser bookkeeping; the recovered TRIPLE and the unread REMAINDER
+are both pinned, and `tripleToNTriples_closed` shows the input really is
+the shipping serialiser's output rather than a hand-built lookalike.
+
+**Why covered while carrying about a third of the declarations.** The
+F\* module's other dozen results are UTF-8 byte-walking lemmas —
+`lemma_build_string_*`, `nth_byte_index_iri`,
+`lemma_utf8_enc_char_iri_safe`, the `lemma_scan_iri_end_*` family. They
+exist because `FStar.String` is byte-indexed through axiomatised
+primitives, so reading one character means reasoning about one to four
+bytes and their lead and continuation ranges. `List Char` needs none of
+them. Instance twelve of the pattern in
+`docs/designissues/2026-08-24-what-the-lean-port-found.md`, and the same
+reason the fourteen by-design modules want no counterpart.
+
+**Traps.** `skipWs` goes through `List.span.loop`, which does not reduce
+under `simp` without `isNtWs` unfolded IN THE HYPOTHESIS as well as the
+goal — `simp only [isNtWs, ...] at h` first. And an existential witness
+cannot be supplied by `refine ⟨_, ?_⟩` before the goal is reduced;
+reduce first, then `exact ⟨_, rfl⟩`.
+
+---
+
+## `SPARQL11.Parser.AskBgpRoundTrip` — the parser direction pinned, not proved (2026-08-24)
+
+The text-to-tokens half was already there (`tokenize_printAsk`). The
+F\* module's top-level result is the whole round trip: parsing the
+printed query recovers `GP_BGP b`, general over any fragment BGP with a
+trailing token stream and enough fuel — the same trailing-remainder
+shape the N-Triples work needed.
+
+**Checked that it is true before deciding how to state it.** Running
+the shipping `parseSparql` on `printAsk` of a one-triple BGP recovers a
+one-pattern BGP and the ASK form. Three `#guard`s pin that on every
+build, so the statement to be proved is known true rather than hoped
+for.
+
+**Not proved, and the chain is named.** Six layers, each conditional on
+the next, matching the fifteen lemmas the F\* module spends on it:
+`pPrologue` no-op, `resolveIriTokens` identity on absolute IRIs,
+`pAskBody`, `pGroupGraphPattern`, `pTriplesBlock`, and fuel accounting.
+Layer 5 is the work: the Lean `pTriplesBlock` calls
+`pSubjectWithExtras` and `pPredObjList`, which fan out into property
+paths, collections, blank-node property lists and annotations — the F\*
+counterparts are `lemma_parse_subject_with_extras_1`,
+`lemma_parse_pred_obj_list_1`, `lemma_parse_object_list_simple_1`,
+`lemma_parse_object_with_extras_1`, `lemma_parse_annotations_dot`,
+`lemma_ggp_add_triple_acc` and `lemma_ggp_join_acc_empty`.
+
+That is a multi-session job, not a landing. `SPARQL11.Parser.AskBgpRoundTrip`
+stays not covered and no alias was added.
+
+**The doc-comment trap, hit a third time.** `/-- … -/` cannot attach to
+a `#guard`. It is in these notes twice already and still cost a build
+cycle. When adding guards, write `/-! … -/` first and never the other.
+
+---
+
+## `OWL.QueryRewrite` layer 1 → `OWL/QueryRewriteCore.lean` (2026-08-24)
+
+Partial. The F\* module is 1,799 lines, 961 of them code, 83 top-level
+declarations. This is the layer underneath the rewrite: node identity
+for anonymous nodes, the RDF-collection walk through a BGP, and the two
+flat extractors. `OWL.QueryRewrite` stays not covered and no alias was
+added.
+
+**What is here.** `markerKey` / `subjectMarkerKey` / `sameAnonNode`
+(a marker bnode reaches the rewriter either as a real
+`PatternTerm.bnode` or as a variable the runner renamed to
+`_bnode_<id>`, and both must key the same), `bgpFindFirstObj`,
+`walkCollectionAcc` / `walkCollection` fuel-bounded by the BGP length,
+and `extractFlatIntersection` / `extractFlatUnion`.
+
+**One property worth having before anything is built on this.**
+`walkCollection_mem` and `extractFlatIntersection_mem`: every operand
+the walk returns is the object of a triple already in the BGP. That is
+what stops the rewrite emitting a class the query never mentioned — the
+kind of claim a rewriter needs before it can be trusted to preserve
+answers. It rests on `bgpFindFirstObj_mem`, which is the same statement
+one layer down.
+
+**Why the walk is fuel-bounded.** Each step consumes one
+`rdf:first`/`rdf:rest` pair, so the BGP length bounds it, exactly as in
+the F\* source. A truncated or malformed collection returns what it
+collected rather than failing, and the caller decides — `#guard`s pin
+both the well-formed and the truncated case.
+
+**Known narrowness, unchanged.** CLAUDE.md records the shipping rewrite
+as sound-but-narrow at
+<https://github.com/danbri/factoidal/issues/236>. This layer only
+decides what the operands are; it does not touch that.
+
+**What remains for the module.** The rewrite itself, the `GraphPattern`
+traversal that finds candidate `?x rdf:type _:c` triples, the UNION
+construction for `owl:unionOf`, and the Phase 4 nested cases. Also
+`OWL.QueryEval` (51 lines), whose composition and strip placement are
+already ported in `SPARQL/RewriteVarStrip.lean` with the rewrite as a
+parameter — porting the rewrite fills that parameter and covers both
+modules.
+
+**Namespace note.** `strStartsWith` lives in `L4Factoidal.SPARQL`
+(`SPARQL/Expr.lean`), `rdfFirst`/`rdfRest`/`rdfNil` in
+`L4Factoidal.RDFS`, and `owlIntersectionOf`/`owlUnionOf` in
+`L4Factoidal.OWL.RL` — not `L4Factoidal.OWL`. Three separate opens.
+
+---
+
+## `OWL.QueryRewrite` layer 2 → `OWL/QueryRewriteFlat.lean` (2026-08-24)
+
+Layer 1 decided what the operands of a flat class expression are. This
+decides what happens to the BGP. Still partial — the `GraphPattern`
+traversal, the UNION ladder and the Phase 4 nested cases remain — so no
+alias, and coverage stays 193 of 220.
+
+**Three kinds of triple, and every triple is exactly one.** Marker
+bookkeeping (`owl:intersectionOf`, `owl:unionOf`, `rdf:type owl:Class`,
+and the collection's `rdf:first`/`rdf:rest` cells) is deleted, because
+it describes the class expression rather than the data. A consumer
+(`?x rdf:type _:c`) is replaced by one triple per operand. Everything
+else is kept.
+
+**The property this layer owes.** `rewriteBgpIntersection_mem`: every
+output triple is either an input triple, or `⟨s, rdf:type, o⟩` for an
+`s` that already appeared as a consumer subject and an `o` that is one
+of the operands. With layer 1's `extractFlatIntersection_mem` — every
+operand is itself an object in the BGP — that says **the rewrite
+invents no IRI**.
+
+That is not answer-preservation. Answer-preservation needs the
+entailment regime, and is exactly where the narrowness recorded at
+<https://github.com/danbri/factoidal/issues/236> lives (the anchor
+multiplies rows per P-edge and drops vacuous-truth individuals). It is
+the weaker claim that has to hold first, and it is the one a reader can
+check against the module's own definition of the three kinds.
+
+`rewriteBgpStripMarker_mem` is the union branch's counterpart: the
+residue every branch shares is a sub-BGP of the input.
+
+**Reusable.** `mem_foldl_append` — membership in a left fold that only
+appends — carries both proofs. The RIF port needed the same shape; it
+is worth hoisting if a third caller appears.
+
+**Ten `#guard`s on the worked example** from the module header, plus an
+unrelated triple that must survive untouched, plus the no-marker case.
+Two of them assert the NEGATIVE: after rewriting, no triple is
+bookkeeping and none is a consumer. Those are what would catch a
+partial deletion.
+
+---
+
+## `OWL.QueryRewrite` layer 3 → `OWL/QueryRewritePattern.lean` (2026-08-24)
+
+The UNION ladder, the marker scan, and the `QueryPattern` traversal.
+With this the FLAT path — Phase 3 in the F\* source, `owl:intersectionOf`
+and `owl:unionOf` over named classes — is complete end to end: find the
+markers, extract the operands, rewrite the BGP, assemble the branches.
+
+Phase 4's nested class expressions and the restriction combinators
+(`owl:someValuesFrom`, `owl:allValuesFrom`, the cardinality family,
+`owl:complementOf`) are not here, so the module stays not covered and
+no alias was added. Coverage remains 193 of 220.
+
+**Why the union branch gets a DISTINCT sub-select.** SPARQL `UNION` is
+bag-semantic; OWL `unionOf` is set-theoretic. One `?x` matching two
+operands would contribute two rows. The wrapper dedupes the CE-expanded
+portion without forcing DISTINCT on the user's outer projection, which
+would break bag-semantic queries that never mentioned OWL.
+
+That placement is the same discipline as the internal-variable strip,
+and the two now sit on opposite sides of the same rule: the wrap
+belongs at the CE-emission site, the strip at the FINAL projection.
+`SPARQL/RewriteVarStrip.lean` proves the strip half
+(`strip_inside_join_admits_spurious_row`); this layer implements the
+wrap half.
+
+**Only 2+ branches are wrapped.** A zero-branch union collapses to
+`empty` and a one-branch union to the BGP itself; neither can
+duplicate, so wrapping would be dead AST. Two `#guard`s pin both
+special cases, because they are the ones a later simplification would
+quietly drop.
+
+**What is proved.** `unionLadder_leaves`: the left-deep ladder contains
+exactly the branches it was given, in order. A fold that builds a
+left-deep tree is easy to write so it drops the head or re-associates,
+and neither shows up in a spot check.
+`rewritePattern_bgp_noMarker`: a BGP with no flat marker comes back
+unchanged — the "safe to apply unconditionally" claim the F\* banner
+asserts, for the fragment the traversal reaches.
+
+**One deliberate hole, named in the code.** `rewritePattern` does NOT
+descend into `.subSelect`, because that carries a whole `Query` and
+needs the Query-level pass. The F\* source puts it in the same place.
+
+---
+
+## `OWL.QueryRewrite` layer 4 → `OWL/QueryRewriteRestriction.lean` (2026-08-24)
+
+The restriction classifier the nested (Phase 4) path needs: given a
+marker key, which kind of restriction is it, and is its filler itself a
+class expression?
+
+The EXPANSION that consumes this is not here. In the F\* source that is
+`expand_ce_subject`, 460 lines, and CLAUDE.md records the known
+narrowness living inside it —
+<https://github.com/danbri/factoidal/issues/236>: the N=1 qualified
+`CE_MaxCardinality` rewrite emits an anchor triple that MULTIPLIES rows
+per P-edge and drops vacuous-truth individuals. So `OWL.QueryRewrite`
+stays not covered, no alias, coverage 193 of 220.
+
+**The discipline this layer encodes, and why it is not obvious.** Not
+every restriction is a rewrite target:
+
+* `owl:someValuesFrom` with a NAMED-class filler is NOT — the OWL-RL
+  closure's canonical-bnode materialisation is the correct path, and a
+  query rewrite would compete with it (`simple2`).
+* `owl:someValuesFrom` with a class-expression filler IS (`simple5`,
+  `simple8`).
+* `owl:allValuesFrom` always is, whatever the filler.
+
+`svf_namedFiller_not_target` proves the first line rather than leaving
+it to the reader — it is the one a later simplification would drop,
+because "handle all restrictions uniformly" looks like a tidy-up.
+
+**`restrictionHasNestedFiller` is where three notions of class
+expression have to agree**: a flat marker, another restriction, or an
+`owl:complementOf` bnode. Any of the three makes a filler nested.
+
+**Vocabulary added.** `owl:cardinality`,
+`owl:minQualifiedCardinality` and `owl:qualifiedCardinality` were
+absent from `OWL/Vocabulary.lean`; `owl:maxCardinality`,
+`owl:maxQualifiedCardinality` and `owl:minCardinality` were already
+there. The three complete the family the classifier tries.
+
+**Two traps.** Editing a vocabulary file and then running `lake env
+lean` on a dependant reads the STALE `.olean` — build the dependency
+first or the new names read as unknown. And a blanket
+`open L4Factoidal.OWL.RL` collides with `L4Factoidal.RDFS` on
+`rdfType`; the earlier layers already use a selective open, and this
+one now does too.
+
+---
+
+## `OWL.QueryRewrite` layer 5 → `OWL/QueryRewriteExpand.lean` (2026-08-24)
+
+The recursive class-expression expander, counterpart of the F\*
+source's `expand_ce_subject`. Three arms are here — intersection,
+union, existential restriction — plus the leaf. `owl:allValuesFrom`,
+the three cardinality arms and `owl:complementOf` are not.
+
+**The boundary is a design decision, not a transcription choice, and it
+is the owner's.** CLAUDE.md records the shipping cardinality rewrite as
+sound-but-narrow at
+<https://github.com/danbri/factoidal/issues/236>: the N=1 qualified
+`CE_MaxCardinality` rewrite emits an anchor triple that MULTIPLIES rows
+per P-edge and drops vacuous-truth individuals.
+
+Porting it faithfully reproduces that narrowness. Fixing it in Lean
+makes the two trees stop computing the same thing — the one property
+the differential method rests on, and the reason every finding in
+`2026-08-24-what-the-lean-port-found.md` is checkable. Neither is mine
+to pick, so this layer stops at the boundary and says why in the module
+header.
+
+**The fall-through is proved sound, not assumed.**
+`expandCeSubject_unhandled_is_leaf`: an unported arm produces the
+pre-rewrite triple. That is the F\* source's own discipline, stated at
+its fuel-exhaustion case — *"at worst this is the pre-rewrite
+behaviour … Sound — never adds solutions."* Proving it means an
+unported arm degrades to the identity rather than to something wrong,
+which is what makes stopping at the boundary safe rather than merely
+convenient.
+
+**Two modules share one convention, and a `#guard` checks it.** The
+existential arm's fresh variable is `_sv_<marker key>`, and
+`SPARQL.isRewriteInternalVar` is what strips it from the final
+projection. Neither module works if the prefixes drift, so
+`isRewriteInternalVar (svVarName "r") == true` runs on every build.
+That is worth more than either module's own tests: it is the seam.
+
+**Status of the module.** Five layers in — operands, BGP rewrite, union
+ladder and traversal, restriction classifier, expander. The flat path
+is complete; the nested path is complete except for the arms above.
+`OWL.QueryRewrite` stays not covered, coverage 193 of 220.
+
+---
+
+## `SPARQL/JoinRefinement.lean` — layer 2 of `SPARQL11.Algebra.Refinement`
+
+Layer 1 did UNION and FILTER, and built the bridge between the engine's
+`Binding.compatible` and §18.3's `Compatible`. This layer is what that
+bridge was for: JOIN.
+
+**The engine's merge prepends, so the bridge is a relation.**
+`Binding.merge` puts each new binding at the FRONT, so its result is not
+`mu1 ++ mu2` and the list order is the engine's, not the
+specification's. §18.3 states merge as a relation on `sval` for exactly
+this reason. `merge_isMerge` is the lemma the whole layer rests on, and
+it is where the prepending is handled: the induction generalises over
+the LEFT mapping, because the engine grows that side.
+
+The statement is `∀ (mu2 mu1 : SMap)` in that order. `mu2` first is not
+a style choice — Lean's structural recursion needs the argument it
+recurses on to come first, and the recursive call in the `none` arm
+passes a DIFFERENT left mapping (`(w, t) :: mu1`).
+
+**Two directions, two hypotheses, neither a weakening.**
+`join_spec_complete` needs `noRepeats (sdom m)` on the left mappings:
+the engine tests every pair in the list while `sval` reads only the
+first, so a duplicate-key list makes the two disagree.
+`join_spec_sound` needs an exactness hypothesis as well, because
+`Literal.eqb` folds language-tag case, which makes the engine's test
+strictly coarser than §18.3's. Layer 1's
+`compatible_not_Compatible_of_coarse` is the witness that dropping it
+is not available. Each hypothesis names the fragment on which the
+shipping engine DECIDES the specification's relation.
+
+**Commutativity is stated about `Occurs`, not about list equality.**
+§18.3's merge is symmetric on compatible arguments, so `join o1 o2` and
+`join o2 o1` answer the same SET. They do not answer the same LIST,
+because `Binding.merge` is order-sensitive. A theorem claiming list
+equality would be false; one claiming set equality is what §18.5 says.
+
+**Status of the module.** Two layers in — UNION and FILTER, then JOIN.
+`SPARQL11.Algebra.Refinement` is 2,497 F\* lines and stays not covered.
+Coverage 193 of 220.
+
+---
+
+## `RDF/ListHelpers.lean` — `RDF.List.Helpers`, and a by-design entry that was half wrong
+
+The F\* module gives tail-recursive `append`, `concatMap` and `assoc`
+with equivalence proofs against the standard library. Its header names
+the two stack-overflow incidents that paid for it: the Turtle parser
+path (<https://github.com/danbri/factoidal/issues/94>) and the BGP
+filter-map path, 2026-04-26.
+
+**Lean core already ships two of the three.** `List.appendTR` and
+`List.flatMapTR` exist, each tagged with a `@[csimp]` lemma
+(`List.append_eq_appendTR`, `List.flatMap_eq_flatMapTR`). A `@[csimp]`
+lemma rewrites the definition at CODE GENERATION time, so the compiled
+program runs the tail-recursive version while every proof still sees the
+structural one. No call site changes. The F\* tree has no such
+mechanism, so the same work there is a module of hand-written functions,
+hand-written equivalence lemmas, and an edit at every call site.
+
+**`appendTr_eq_core` is the sharper result.** `List.appendTR as bs` is
+`as.reverse.reverseAux bs` — reverse the left list, then `reverseAux` it
+onto the right. That is the F\* `append_aux` accumulator strategy, arm
+for arm. Two independent implementations reached one function, and the
+theorem says so rather than a comment claiming it.
+
+`concatMapTr` and `List.flatMapTR` are NOT the same algorithm: the F\*
+version accumulates a reversed list, the Lean core version accumulates
+into an `Array`. Both equal `flatMap`, which is what
+`concatMapTr_eq_core` states. The difference is allocation, not result.
+
+**Why it was ported although the coverage tool called it by design.**
+`RDF.List.Helpers` was in `BY_DESIGN_EXACT` in `tools/lean-port-gap.py`.
+The reasoning was right about the cause and wrong about the conclusion.
+The three F\* functions run on the SPARQL and RIF hot path, so a
+differential comparison of the two trees needs both sides to exist. The
+transcription is arm for arm against the F\* source; the two core-library
+theorems are extra checks the port buys, not substitutes for it.
+
+The by-design entry is now removed with the reason recorded in the tool.
+Coverage moved 193 to 194, and this landing is the cause.
+
+`assocTr` is stated over `BEq`, because Lean's `List.lookup` is
+`BEq`-based while F\*'s `assoc` takes an `eqtype`. The F\* header says
+`assoc_tr` exists for naming symmetry rather than for stack safety, and
+that reading carries over: `List.lookup` is already tail-recursive.
+
+Eleven `#guard` checks, five `#print axioms` lines, all `[propext]` or
+`[propext, Quot.sound]`. `lake build` green at 792 jobs.
+
+---
+
+## `OWL/QueryRewriteJoins.lean` — layer 6, and a comment turned into a theorem
+
+`rewrite_query` runs `normalise_joins` before the class-expression
+rewriter. The reason is in the F\* source: the SPARQL parser splits a
+basic graph pattern at every period, so
+
+    ?x a [ owl:intersectionOf (:A :B) ] .
+
+parses to a tree of small `GP_BGP` leaves under `GP_Join`, with the
+class-expression marker and its `rdf:first`/`rdf:rest` chain in
+different leaves. The rewriter works one BGP at a time and finds
+nothing until the leaves are folded back together.
+
+**The claim the F\* source makes in a comment.** The header says the
+flattening "preserves SPARQL semantics (GP_Join of two BGPs =
+BGP-concat)". That is a statement about §18.5 evaluation, sitting next
+to a function on the shipping OWL query path, proved in neither tree.
+
+**What this layer proves.** `evalBgp_append` is the list identity:
+
+    evalBgp (b1 ++ b2) g = (evalBgp b1 g).flatMap (evalBgpFrom g b2)
+
+Exact — same list, same order, same multiplicities — because
+`evalBgpFrom` seeds the second half with each row of the first. Four
+`*_extends` theorems say the seed survives: `tryBindTerm`,
+`tryBindSubject`, `tpMatch` and `evalBgpFrom` each agree with the input
+mapping on every variable the input already bound. So coalescing never
+overwrites a binding the left BGP made.
+
+**What it does not prove, and why that is stated.** The full claim is
+
+    Occurs mu (evalBgp (b1 ++ b2) g)
+      ↔ Occurs mu (join (evalBgp b1 g) (evalBgp b2 g))
+
+`evalBgp_append` reduces the left side to a seeded run of `b2`; the
+right side runs `b2` from the empty mapping and filters with
+`Binding.compatible` afterwards. Bridging them needs a lemma comparing
+seeded and unseeded `tpMatch` on one graph triple, and `tpMatch` threads
+the mapping through subject, predicate and object in sequence, so a
+pattern with a repeated variable does not decompose into per-position
+facts. Tracked as
+<https://github.com/danbri/factoidal/issues/568>. Nothing in the module
+assumes it.
+
+Both sides use `Term.eqb` — `tryBindTerm`'s bound-variable arm and
+`Binding.compatible` — so the `Literal.eqb` coarseness recorded as
+finding A5 applies equally to both and is not the obstacle.
+
+**Traps paid for here.** `QueryPattern` lives in `SPARQL/Expr.lean`,
+which imports `SPARQL/Algebra.lean`, not the other way round; importing
+only `SPARQL.JoinRefinement` leaves `QueryPattern` unknown, and
+`autoImplicit` turns the unknown name into an implicit variable so the
+error reads "expected type QueryPattern is not of the form `C ...`"
+rather than "unknown identifier". `unfold f at h` leaves the outer
+`match` unreduced, so `rw [h_lookup] at h` finds nothing until a
+`dsimp only at h` fires the iota reduction. `QueryPattern` derives no
+`BEq`, so the `#guard` checks go through two small projections
+(`bgpSize`, `isJoin`) instead of comparing patterns.
+
+**Status of the module.** Six layers in. `OWL.QueryRewrite` is 1,799 F\*
+lines and stays not covered. Coverage 194 of 220.
+
+---
+
+## `RDF/StoreCapabilitiesCottas.lean` — `RDF.Store.Capabilities.Cottas`, and the first laws `StoreCaps` has ever carried
+
+The F\* module builds the read-only capability record for a COTTAS file
+on disk. Its own banner states the property that makes it reviewable:
+"zero new logic, one-to-one mapping" — every field wraps the entry point
+the matching `GB_CottasOnDisk` dispatcher arm already called.
+
+**The purity doctrine.** The F\* module reaches `RDF.CottasStore`, which
+is `assume val` I/O: mmap, file ranges, dictionary pages. Those are not
+assumptions in the Lean tree. `CottasReadOps` is the record of the eight
+entry points the builder wraps, taken as a parameter, and `capsOfCottas`
+is the wiring over it.
+
+**`StoreCaps` carried no laws at all.** `RDF/StoreCapabilities.lean` has
+no theorems, so nothing in the tree said what a backend record must
+satisfy — not the union combinator, not the in-memory builder, not the
+dataset seam. A claim about a wiring layer is exactly the kind that
+decays: a later edit adds a `take`, a swap or a default and the comment
+still says zero.
+
+`StoreCapsLawful` states five laws — `limitAgrees`, `countIsSolve`,
+`estimateExact`, `selectiveAgrees`, `presenceSound` — and
+`capsOfCottas_lawful` derives all five from facts about the reader and
+nothing else. That is what "zero new logic" means, said so a later edit
+breaks the build instead of the comment.
+
+**Two backends, one statement.** `capsOfIndexed_lawful` proves the same
+contract for the in-memory builder that was already in the tree, with no
+hypotheses. Checking two backends against ONE statement is the point of
+having the statement.
+
+**Which laws are vacuous where, said out loud** (hazard #24). For the
+COTTAS record `estimateExact` is discharged by the flag, because the
+builder advertises `estimateIsExact := false` — correct for a reader
+whose bounds-present branch approximates, and it means the contract
+constrains nothing about that record's `estimate`. For the in-memory
+record `selectiveAgrees` is discharged by `solveSelective := none`.
+`presenceSound` has teeth for both.
+
+**One faithfulness decision.** The F\* source notes that the
+`backend_predicate_present` dispatcher ignores the graph scope, and that
+the wrapper "matches that exactly rather than fixing it". The Lean
+`CottasReadOps.predicatePresent` therefore takes no scope either.
+Changing it would have been a silent behaviour edit dressed as a port.
+
+Nine `#guard` checks, one of them the satisfiability evidence hazard #24
+asks for before a theorem with hypotheses is trusted. `lake build` green
+at 796 jobs. Coverage 194 to 195 of 220; this landing is the cause.
+
+---
+
+## `OWL/QueryRewriteNested.lean` + `OWL/QueryEval.lean` — layer 7 and the entry point
+
+Layer 7 is the part of `OWL.QueryRewrite` that finds markers ANYWHERE
+in a BGP, including inside another marker's filler, plus the nested BGP
+rewrite and `rewriteQueryPattern`. `OWL/QueryEval.lean` is the 51-line
+F\* wiring module that composes the rewrite with the three top-level
+evaluators.
+
+**One marker type, two Lean types.** The F\* `ce_combinator` is one type
+carrying the flat combinators and the restriction family. The Lean
+layers had split it into `CeCombinator` and `Restriction`, which is
+better for the classifier and useless for the marker list, so
+`MarkerKind` puts them back together.
+
+**Three passes, in the F\* order.** `findFlatMarkersAcc`, then
+`addRestrictionMarkersAcc` over the BGP, then `addInnerRestrictionsAcc`
+walking transitively into fillers with fuel of BGP length plus one.
+`owl:someValuesFrom` is added only when its filler is itself nested,
+because a named filler is already handled by the closure;
+`owl:allValuesFrom` and `owl:complementOf` are added unconditionally,
+and the F\* source gives the reason for complement — the closure has no
+canonical materialisation for class complement, so the rewriter is the
+only path.
+
+**The OR that has to stay an OR.** `isNestedBookkeeping` strips a triple
+when its subject is a marker and its predicate is class-expression meta,
+OR when its subject is on some marker's `rdf:first`/`rdf:rest` chain.
+The F\* source records why this is not an `else if`: a nested class
+expression can have the parser reuse one blank node as BOTH a marker and
+a list cell. Two `#guard` checks pin the case where the two readings
+differ — `isNestedBookkeeping [("d", …)] ["d"] dualRoleTriple` is `true`
+while the same triple with an empty chain list is `false`, and
+`isCeMetaPred rdfFirst _` is `false`, so an `else if` on `isMarker`
+would have kept the triple. A later edit that makes it an `else if`
+fails the build.
+
+**`OWL.QueryRewrite` is still NOT covered, and that is the right
+answer.** Layer 5 deliberately holds back the universal restriction, the
+three cardinality arms and `owl:complementOf` in `expandCeSubject`,
+because porting them faithfully reproduces the
+<https://github.com/danbri/factoidal/issues/236> narrowness and fixing
+them makes the two trees stop computing the same thing. That is an owner
+decision. An alias for `OWL.QueryRewrite` was added, measured, and
+REMOVED for exactly that reason: coverage is an explicit decision, and
+seven layers of machinery is not the same as a complete module.
+`OWL.QueryEval` IS covered, and it is the cause of 195 to 196.
+
+**Traps paid for here.** All five earlier rewrite layers share ONE
+namespace, `L4Factoidal.OWL.QueryRewriteCore`, whatever the file is
+called; opening a namespace named after the file fails. `cases tp.p` on
+a projection inside a `foldl` body makes `generalize` produce an
+ill-typed motive — prove the branch condition constant as its own lemma
+(`isAnyTopConsumer_nil`) and rewrite with it instead. `QueryPattern`
+derives no `BEq`, so a `#guard` comparing two patterns has to project
+first.
+
+**Status.** Coverage 195 to 196 of 220. The remaining not-covered list
+is 24 modules: 7 engine (14,997 lines), 3 proof (7,975), 14 by design
+(8,993).
+
+---
+
+## `OWL.QueryRewrite` completed — four arms, five leftovers, and two port defects
+
+The module is now covered. Getting there took three things, and the
+third is the one worth reading.
+
+**1. The four held-back expander arms are ported.** Universal
+restriction, the three cardinality kinds and `owl:complementOf` are
+transcribed from the F\* source, including their stated limits: minimum
+cardinality over-approximates for N >= 2; maximum cardinality falls
+back to the leaf for N >= 2 and for unqualified N = 1; exact
+cardinality emits the minimum side only for N >= 1; universal
+restriction supports a named-class or union filler and nothing else;
+complement targets DISJOINTNESS rather than absence, because a
+`FILTER NOT EXISTS` would be closed-world.
+
+**The `maxQualifiedCardinality` 1 narrowness is REPRODUCED, not
+repaired.** The anchor triple multiplies rows per P-edge and drops
+individuals for which max-1 holds vacuously
+(<https://github.com/danbri/factoidal/issues/236>). A repair here would
+make the two trees compute different things, and the differential
+comparison is what makes every finding in
+`docs/designissues/2026-08-24-what-the-lean-port-found.md` checkable.
+Repairing it is a separate decision, better taken with both trees in
+hand than during a transcription. An earlier note in this file recorded
+the port as blocked on that decision; it was not — faithful
+transcription is the port's job, and repair is the deviation that needs
+sign-off.
+
+`expandCeSubject_unhandled_is_leaf` was DELETED rather than weakened. It
+said the unported arms produce the leaf, which is now false. Three
+theorems replace it and are true of the finished expander: a restriction
+with no IRI-valued `owl:onProperty`, a complement whose target is not a
+named class, and running out of fuel each produce the pre-rewrite
+triple.
+
+**2. Five definitions the rewriter never calls are ported anyway.**
+`concatBgps` and `combinatorOfPred` have no call site in the F\* module;
+`tpIsCeMarkerPredicate`, `bgpHasCeMarker` and `patternHasCeMarker` are a
+diagnostic cluster used only by each other, and `rewrite_query`'s
+comment records that the last of them "no longer drives a top-level
+sm_distinct flip". Skipping a definition because a reader judges it
+unimportant leaves an unrecorded hole; the judgement is written down
+instead.
+
+**3. The audit that made coverage a decision found two port defects.**
+Before claiming the module covered, every `let` in its 1,799 lines was
+matched to a Lean definition by hand. Thirty names differ in spelling
+and each was resolved individually — vocabulary IRIs that live in
+`OWL/Vocabulary.lean`, renames such as `ps_marker_key` to
+`subjectMarkerKey`, and `rewrite_query_for_owl_direct`, which is an
+alias of `rewrite_query`.
+
+It also found this, which no build failure and no existing test would
+have:
+
+* `rewriteBgpFlat` applied only the FIRST flat marker of either kind.
+  The F\* `rewrite_bgp_flat` applies EVERY intersection marker in order,
+  then the first union marker. A BGP with two intersection markers, or
+  an intersection followed by a union, was rewritten differently in the
+  two trees.
+* The `someValuesFrom` arm accepted any `PatternTerm` as
+  `owl:onProperty` and put it in the predicate position. The F\* arm
+  matches `Some (PT_IRI p_iri)` and falls back to the leaf. `patternIri`
+  is now the guard on every arm that reads `owl:onProperty`.
+
+Both are fixed and both carry a `#guard`. The lesson is recorded as
+group E in the findings document: a module that builds, proves its
+theorems and passes its own tests can still have drifted, because its
+tests were written from the same misreading. The only thing that checks
+a transcription is reading the source again, definition by definition.
+
+**Status.** Coverage 196 to 197 of 220. Not covered is 23 modules:
+6 engine (13,198 lines), 3 proof (7,975), 14 by design (8,993).
+
+---
+
+## `SPARQL/StoreBackend.lean`, `StorePlan.lean`, `StoreFastPath.lean` — three of four layers of `SPARQL11.Store`
+
+The F\* module is the backend-neutral store layer: the algebra stays the
+semantic source of truth and this layer dispatches physical
+triple-pattern access.
+
+**Layer 1, the seam.** `GraphBackend`, `capsOfBackend`, and the six
+`backend_*` forwarders. The F\* banner states the discipline —
+"`caps_of_backend` is the ONE dispatch point a new backend touches",
+and each dispatcher "is now a one-line forwarder through
+`caps_of_backend`'s single dispatch point". Six theorems say that, so a
+backend cannot grow a second dispatch path without one of them failing.
+
+The purity doctrine applies at the backend types: an HDT store, a
+COTTAS dataset and a COTTAS on-disk store are handles into `assume val`
+I/O, so each becomes the operations it offers. `BackendReadOps` is
+`search`, `estimate` and `predicatePresent`, which is all the two DEAD
+arms need — the F\* banner names them dead itself ("GB_HDT, and the dead
+in-memory GB_COTTAS path … no live construction site, same for
+GB_List"). They are ported anyway, for the reason the previous landing
+gives: dropping an arm on the reader's judgement leaves an unrecorded
+hole.
+
+`capsOfReadOps_lawful` and `capsOfList_lawful` put both dead arms under
+`StoreCapsLawful`, and here `estimateExact` is NOT vacuous — these arms
+advertise an exact estimate, so the law constrains them where it did
+not constrain the COTTAS record.
+
+**Layer 2, planning.** `patternBoundFor` grounds a triple pattern under
+a solution mapping. Three of its rules are RDF, not optimisation, and
+each is a theorem: a triple-term SUBJECT pattern never grounds, a
+variable bound to a literal never grounds a PREDICATE, and a
+triple-term OBJECT grounds only when all three positions do. A bound
+that is too tight silently drops rows, which is why these are stated
+rather than trusted.
+
+`chooseBest_perm` is the planner's correctness obligation: the chosen
+pattern together with the returned rest has the same length as the
+input, so the planner reorders work and never adds or drops a pattern.
+The F\* source states the cost intent in a comment; the safety property
+was unstated in both trees.
+
+**Layer 3, the fast paths.** Streaming `COUNT(*)` and LIMIT pushdown,
+with their detectors. Every rejection is load-bearing, because falling
+through to the materialise path is always correct and matching a subtly
+different shape is not. Six theorems pin the rejections a later
+widening would be tempted to drop, including the one the F\* source
+argues at length: `GRAPH ?g { tp }` with a VARIABLE graph is refused,
+because an unbound `?g` ranges over every named graph, so a non-grouped
+`COUNT(*)` over that shape is a SUM over N backends — a different
+evaluation shape, not a mechanical widening.
+
+`evalLimitSingleTp_bounded` says the LIMIT path never returns more rows
+than the limit, however the backend behaves, because the result is
+truncated after the pattern match as well as before it.
+
+**A vacuity check that was worth running** (hazard #29).
+`detectStreamingCountStar_rejects_distinct` closes its last case by
+`rfl`, which looks like a theorem that does not use its hypothesis. It
+does: with the hypothesis removed from the statement, the same script
+fails on the un-reduced `if q.modifier.distinct …` chain. The check was
+run explicitly and the result is recorded next to the theorem, together
+with the `#guard` that the detector returns `some` on a clean query —
+the other half, which rules out a detector that is constantly `none`.
+
+**One representation difference, stated.** The F\* `q_having` is an
+`option` and its detectors test `Some?`; the Lean `Query.having` is a
+`List Expr` and the same test is "not empty". Both mean "the query has
+a HAVING clause" and the rejection fires on the same queries.
+
+**Status.** `SPARQL11.Store` stays NOT covered. Twenty-four of its 44
+`let`s are matched; the remainder is one more layer — the dataset seam
+(`dataset_caps_of_backend`, `lookup_named_backend`,
+`materialize_dataset_backend`, the backend constructors),
+`eval_pattern_backend`, `eval_fulltext_tp_backend`, the GROUP BY
+streaming family, and the two query entry points. Coverage stays 197 of
+220.
+
+---
+
+## `SPARQL/StoreDataset.lean` — layer 4, and `SPARQL11.Store` complete
+
+The dataset seam, the backend-routed pattern evaluator, the GROUP BY
+streaming family, and the two query entry points.
+
+**Where the two trees genuinely differ, stated rather than hidden.** The
+F\* `eval_pattern_backend` recurses structurally through FILTER,
+LEFTJOIN and BIND, and materialises the dataset only for the three arms
+it cannot do natively — FILTER/LEFTJOIN carrying an EXISTS, LATERAL, and
+property paths. The Lean tree cannot, and the reason is architectural.
+`QueryPattern.lowerWith` compiles a FILTER condition into a CLOSURE over
+the active graph and a LATERAL right operand into a function of the left
+row; those closures are how the Lean algebra states §18.6's EXISTS, and
+they are built at lowering time. A backend-routed evaluator here either
+rebuilds the whole lowering or delegates.
+
+This module delegates. BGP, JOIN, UNION, MINUS, `GRAPH <constant>` and
+the empty pattern are backend-native; every other arm materialises and
+runs the algebra evaluator. **What that costs is performance on those
+shapes, not correctness** — the delegate is the algebra evaluator, which
+is the semantic source of truth in both trees, and it is the same device
+the F\* source uses for its own hard arms, applied to more of them. Four
+theorems pin which arms are native so the list cannot drift silently.
+
+**The cross-check.** `evalBgpBackend_allVars_list` proves that on a list
+backend, an all-variable one-pattern BGP evaluated through the backend
+equals the same BGP evaluated by the algebra. It is one pattern because
+the planner reorders longer BGPs, and all-variable because a bound
+position makes the backend pre-filter — proving that pre-filter never
+drops a row the match would keep is a separate lemma about
+`boundMatches` against `tpMatch`.
+
+**Two backends the Lean tree cannot construct, and three it does not
+need.** `cottas_ondisk_dataset_backend` discovers its named graphs by
+READING the store; `cottas_with_delta_dataset_backend` reads and parses
+a delta log under the `ML` effect. Under the purity doctrine the read
+is a parameter, so both take the graph list they would have discovered.
+`indexed_graph_backend_for` and its two siblings build only the index
+BUCKETS a pattern needs; they have no Lean counterpart by design, for
+the reason already recorded for the `RDF.Indexed.KeyInjectivity` group —
+the Lean index is a `Std.HashMap` keyed on structured values, so there
+are no six buckets to choose between.
+
+**A dead definition, ported.** `eval_select_query_backend_bgp` has NO
+call site in the F\* module: it sits inside the mutually recursive group
+and is never invoked. It is ported anyway, with that fact written down,
+on the same discipline as the unreferenced definitions of
+`OWL.QueryRewrite`. Folding it into the materialise arm would have LOST
+its behaviour rather than preserved it: it returns `none` when the query
+needs grouping, and the Lean materialise arm does not need that escape
+because `selectPost` runs the whole post-WHERE pipeline.
+
+**ASK cannot read an empty answer as `false`.** When the answer is empty
+AND any backend reports a decode failure, `evalAskBackend` returns
+`none`. The F\* source explains: a column that fails to decode
+contributes zero rows silently, so "genuinely empty" and "could not
+read" are indistinguishable downstream, and ASK would turn a read
+failure into a wrong answer with a clean exit.
+`evalAskBackend_none_on_decode_failure` is that as a theorem.
+
+**The audit's own reach was a finding** (hazard #28). The first pass
+matched only `^let` and reported 24 of 44 names covered. It could not
+see the mutually recursive `and`-bound group, which is where
+`eval_pattern_backend`, both query entry points and the fuelled BGP
+evaluator live — the four largest definitions in the module. The
+corrected regex matches `let`, `let rec` and `and`, finds 50 names, and
+the alias in `tools/lean-port-gap.py` carries it so the next reader
+audits with a method that can see what it is looking for.
+
+**A trap that cost a build cycle.** A compound `cd formal/lean4 &&
+python3 - <<EOF` run from a shell already IN `formal/lean4` fails at the
+`cd`, so the edit never applies — and the `lake build` that follows
+reports SUCCESS, because it built the unchanged file. The tell is that a
+name the edit was supposed to add is still unknown one command later.
+Verify an edit landed (`grep -c`) before trusting the build that follows
+it.
+
+**Status.** `SPARQL11.Store` is covered. Coverage 197 to 198 of 220.
+Not covered is 22 modules: 5 engine (11,746 lines), 3 proof (7,975),
+14 by design (8,993).
+
+---
+
+## `SPARQL/AskBgpRoundTrip.lean` — the impossibility, resolved at its cause
+
+`SPARQL11.Parser.AskBgpRoundTrip.fst` is proof-only and marks its
+headline result IMPOSSIBLE. Its header names the cause exactly:
+
+> `FStar.String.sub`'s specification in this ulib snapshot exposes ONLY
+> a length refinement, no lemma relating its output characters to the
+> input string's content — so no lemma can be stated, let alone proved,
+> connecting a printed payload string back to the token.
+
+and notes the obstruction blocks EVERY payload-carrying token, with a
+sibling module's own flagged gap having the same cause one level lower.
+
+**The wall is the host library's string interface, and nothing else.**
+The Lean tokenizer works on `List Char` end to end: `scanIriBody` and
+`scanVarName` are ordinary list recursions. So the lemma F\* cannot
+STATE is here an ordinary induction, and both payload scans the F\*
+header names are proved:
+
+* `scanIriBody_printed` — scanning a printed IRIREF body returns the IRI
+  text and the rest of the input.
+* `scanWhileVar_printed` and `scanVarName_printed` — the same for a
+  variable name.
+
+That is finding A1 made concrete. It is not about RDF, not about
+SPARQL, and not about the parser.
+
+**The hypotheses are RDF facts, not proof conveniences.**
+`scanIriBody_printed` needs the IRI text to carry no `>` and no
+backslash: `>` ends the IRIREF and a backslash starts an escape, so an
+IRI carrying either does not print and scan back to itself. That is
+§19.8 [139]'s own character rule. Two `#guard` checks exhibit a text
+that fails it, so the side condition cannot be mistaken for decoration.
+`scanVarName_printed` needs [143] VAR1's character class, checked the
+same way.
+
+**One faithfulness decision.** The F\* fragment predicate excludes one
+specific IRI — the full-text query predicate — because that predicate
+routes the object grammar through a bespoke argument form. The Lean
+version takes the excluded list as a PARAMETER rather than hard-coding
+an IRI into a syntactic fragment, and a `#guard` exercises the
+exclusion.
+
+**What is proved and what is checked, said plainly.** The payload
+lemmas are proved. The end-to-end string round trip is CHECKED by
+`#guard` on three concrete queries — printed, tokenized, compared
+against the expected tokens, and parsed back to an AST. The general
+theorem needs two mechanical steps first: fuel normalisation for
+`tokenizeLoop`, and a per-token consumption lemma so its no-progress
+guard can be shown never to fire. Both are written up in
+<https://github.com/danbri/factoidal/issues/569>.
+
+**Coverage is NOT claimed.** `SPARQL11.Parser.AskBgpRoundTrip` stays
+not covered while its headline theorem is a check rather than a proof,
+and its roughly thirty token-level parse lemmas are about the F\*
+parser's own internals. Coverage stays 198 of 220. Marking it covered
+because the module exists and builds would be exactly the name
+resemblance `skills/counting-coverage` forbids.
+
+---
+
+## `Syntax/NQuadsStreaming.lean` — layer 1 of `RDF.NQuads.Streaming`
+
+The F\* module answers a precise version of the owner's question: a
+consumer folds over ARBITRARY byte-chunk boundaries — as bytes arrive
+off a socket, with no guarantee a boundary lands on a line boundary —
+and the claim is that this gives the same dataset as parsing the whole
+input at once.
+
+**The wall the F\* module walked around, and why Lean has none.** Its
+banner records a decision taken DURING the work, not going in: build
+the splitter on `FStar.String.list_of_string` at the CODEPOINT level
+rather than on `Parser.FastString`'s byte-indexed `fs_byte_sub`.
+Proving "slice at k, slice from k, concatenate, get the input back"
+through `fs_byte_sub` needs a bridging lemma routing through
+`utf8_decode_all (utf8_bytes s)`, and recovering `s` from that
+composition is the SINGLE-DECODER ROUND TRIP theorem
+`Parser.FastString.Spec.fst`'s own banner documents as ATTEMPTED and
+PARKED after three tries
+(<https://github.com/danbri/factoidal/issues/374>).
+
+The Lean parser works on `List Char` throughout. The split is a list
+split and `splitCompleteLines_reconstruct` is a short induction. There
+is no byte layer to bridge and nothing to park — the same shape as
+findings A1 and A9c.
+
+**Three theorems, each a property the fold depends on.**
+`splitCompleteLines_reconstruct` says nothing is lost at a boundary.
+`splitCompleteLines_carry_no_newline` says the carry is a genuine
+partial line, never a whole one held back.
+`splitCompleteLines_complete_ends_newline` says what reaches the parser
+is whole lines.
+
+**Fuel is never threaded across a boundary.** `parseFrom` computes it
+from the list it is given — the same `length + 1` discipline
+`parseNQuads` uses for a whole document — so each call gets its own
+provably-sufficient budget. `parseFrom_fuel_is_local` states that.
+
+**What is proved and what is checked.** `streamParse_single_chunk` is
+proved: it is the case that needs no line-boundary concatenation lemma.
+The mid-boundary behaviour is CHECKED — two lines streamed as two
+chunks split mid-line, as three chunks with both boundaries mid-line,
+and with a boundary exactly on the newline, each giving the dataset the
+batch parse gives.
+
+The homomorphism itself is NOT proved. It needs
+`lemma_parse_nquads_acc_concat_line_general`'s Lean counterpart, and
+the scaffolding around that lemma is the bulk of the F\* module's 3,438
+lines. Tracked as <https://github.com/danbri/factoidal/issues/570>.
+
+**A build-time cost worth naming.** Every `#guard` runs at build time,
+and a streaming check with N chunks makes N parser calls. A first
+version used realistic `http://example.org/...` IRIs and a
+one-chunk-per-character case; `lake env lean` on that single file did
+not finish in ten minutes. The checks now use short `<a:1>`-style IRIs
+and at most three chunks, which exercises exactly the same boundary
+cases. A `#guard` that takes minutes is a test nobody will keep.
+
+**Coverage is NOT claimed.** `RDF.NQuads.Streaming` stays not covered
+while its headline theorem is unproved. Coverage stays 198 of 220.
+
+---
+
+## `Syntax/LexShift.lean` — the lemma two open proofs were both waiting on
+
+Two remaining proofs needed the same fact, and neither could finish
+without it: the N-Quads streaming homomorphism
+(<https://github.com/danbri/factoidal/issues/570>) and the SPARQL
+ASK-BGP string round trip
+(<https://github.com/danbri/factoidal/issues/569>). Both reduce to
+"parsing `a ++ b` factors through the state parsing `a` reached", and
+in both the only obstacle is that the parser threads a character
+POSITION so an error can say where it happened. Positions inside `b`
+are then offset by `a.length`.
+
+**The reusable fact:** shifting the starting position shifts the
+reported position and changes nothing else.
+
+`Shifts f` states it once — running `f` from `pos + d` leaves the same
+remaining input and reports `d` more. `skipWs`, `skipToEol`,
+`skipComment` and `skipEol` each satisfy it, by ordinary induction on
+the input list. `Shifts.comp` composes them, and
+`skipWsCommentEol_shifts` is the three-step tail the quad-line loop runs
+after every quad.
+
+**`parseQuadLinesAcc_shift` is the payoff.** The whole quad-line loop
+shifts: fuel and the dataset are untouched, and only the reported
+position moves. It takes the quad reader's own shift property as an
+explicit HYPOTHESIS (`QuadReaderShifts`) rather than assuming it, so the
+residual for BOTH open issues is now one named lemma about
+`readNQuad11` and `readNQuad12` — not an open-ended homomorphism.
+
+**Four traps paid for here, all about `simp` and matches.**
+
+1. `Shifts` is a DEFINITION, so `simp` cannot use `skipWs_shifts`
+   directly. The four `*_shift` corollaries restate the same facts as
+   bare equations, which is the form `simp` needs. Without them the
+   rewrite silently does not fire and the `split` that follows splits on
+   an un-rewritten scrutinee.
+2. `rw` will not rewrite the SCRUTINEE of a match. The quad step is
+   `match mode with | .rdf11 => readNQuad11 pos cs | …`, so the proof
+   has to `cases mode` first and let the match reduce; a hypothesis
+   stated over `(match mode with …)` applied to arguments does not match
+   the goal's `match mode with … applied` form either.
+3. `split` on `match step with | .error … | .ok …` numbers its cases in
+   DEFINITION order, so `h_1` is the error case. Writing the branches in
+   the other order gives an inaccessible `ParseError` where a `Nat` was
+   expected, which is a confusing way to learn the ordering.
+4. A recursive call that looks like it should unify and does not is
+   usually carrying the wrong ARGUMENT, not the wrong shape: the ok
+   branch continues with `addQuad ds t g`, not `ds`, and passing `ds`
+   produced a page of unification output about positions that were
+   already correct.
+
+**Coverage is unchanged at 198 of 220.** This module is scaffolding for
+two ports, not a port of its own — there is no F\* module named
+`LexShift`. Counting it would be inventing coverage.
+
+---
+
+## `Cottas/BaseWriterPrims.lean` — layer 1 of `RDF.CottasStore.BaseWriter`
+
+The F\* module is the native writer for the COTTAS base Parquet file.
+Its banner says why it exists: until it landed, store creation and
+compaction shelled out to pycottas/DuckDB and only the delta log had a
+native writer. Iron rule 11 puts the byte assembly in the formal source
+— `serialize_cottas : list cottas_quad -> Tot (list u8)` — leaving the
+OCaml side with an atomic write and nothing else.
+
+This layer is the bottom of it: zigzag, LEB128, little-endian integers,
+bit widths, bit packing, padding.
+
+**An encoder is only correct against a decoder**, so where the Lean
+tree carries the decoder the round trip is PROVED rather than checked:
+`zigzagDecode_encodeNat` and `zigzagDecode_encodeInt` for both zigzag
+forms, `uvarintDecode_encode_small` for the single-byte LEB128 case.
+
+**The polarity that matters.** LEB128 sets the high bit on every byte
+EXCEPT the last: the high bit means CONTINUE. HDT's VByte in
+`Storage/Bytes.lean` sets it on the LAST byte instead. Both formats
+live in this tree and differ by exactly that bit. Getting it backwards
+decodes every multi-byte number wrongly while single-byte values keep
+working, which is the failure mode that survives casual testing.
+`uvarintDecode_encode_small` and `uvarintEncode_single_byte` are proved
+at exactly that boundary, and `#guard` pins 127, 128, 16383 and 16384.
+
+**What is checked rather than proved.** The general multi-byte LEB128
+round trip needs a bound of the form `n < 128 ^ (fuel + 1)` threaded
+through the recursion. That is its own piece of work, and the module
+says so rather than leaving the reader to infer it from the absence of
+a theorem. The bit-packing side is checked too, because its decoder is
+in `Parquet.Footer`, which is not ported.
+
+**A `sorry` was written and removed rather than landed.** The first
+draft of the general round trip left a `sorry` in the multi-byte case.
+It is deleted, not weakened and not admitted: the repo policy is no
+`sorry`, and a theorem that cannot be proved yet is a `#guard` plus a
+sentence saying so.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered — this is
+one layer of about five (Thrift field writers, the
+DELTA_LENGTH_BYTE_ARRAY encoder, dictionary encoding, the Parquet page
+and metadata builders). Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterThrift.lean` — layer 2 of `RDF.CottasStore.BaseWriter`
+
+Parquet's file metadata is a Thrift struct in the COMPACT protocol, so
+every field the writer emits goes through one of these. Each has a
+matching read in `Parquet.Footer`, and the F\* source names the decoder
+next to each writer.
+
+**Fifteen is the boundary in two rules, and it lands on opposite
+sides.** A FIELD header is one byte when the id is 1 to 15 more than
+the previous one — a delta of exactly 15 still fits. A LIST header is
+one byte for a count BELOW 15 — a count of exactly 15 does not fit and
+moves to a plain varint after a `0xF_` byte. Reading the two as the
+same rule is the mistake `fieldHeader_short_at_15`,
+`fieldHeader_long_at_16` and `listHeader_long_at_15` exist to catch,
+with `#guard`s on both at once.
+
+**Zigzag or plain, per field.** `i32` and `i64` values are ZIGZAG
+varints. A binary field's LENGTH is a PLAIN varint, and so is a
+long-form list count. Mixing them produces values that are right only
+when they are zero, which is exactly the kind of defect a small test
+misses.
+
+**The issue this layer must not reintroduce.**
+<https://github.com/danbri/factoidal/issues/445>: a binary field's
+length prefix is the UTF-8 BYTE length, never the codepoint count. The
+two coincide for ASCII, which is why the original defect survived. The
+Lean writer takes `s.toUTF8.toList.length`, and a `#guard` on `"é"`
+pins the case where the two differ — one codepoint, two bytes.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: two layers
+of about five. Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterColumn.lean` — layer 3 of `RDF.CottasStore.BaseWriter`
+
+The column encoders. The F\* banner explains the format choice:
+DELTA_LENGTH_BYTE_ARRAY for every column, not RLE_DICTIONARY, because
+DLBA is correct for ANY cardinality and is the simpler encoder to get
+bit-exact on a first pass. Dictionary encoding for the low-cardinality
+columns is a size optimisation, not a correctness requirement.
+
+**`min_delta` is the TRUE block minimum, and that is not a detail.** A
+longer value followed by a shorter one gives a NEGATIVE delta.
+Subtracting the true minimum is what makes every adjusted value
+non-negative so it can be bit-packed at all; encoding `min_delta = 0`
+would produce a value the packer cannot represent.
+`dlbaDeltas_negative_when_shrinking` exhibits the shrinking case as a
+theorem rather than leaving it to a reader to imagine.
+
+**Two adjacent header fields, two different encoders.** `first_value`
+is zigzagged as a NAT, `min_delta` as an INT. They sit next to each
+other in the block header, and using one encoder for both is right only
+when the value is zero.
+
+**`packedBits_whole_bytes`** says the packed bit list is a whole number
+of bytes: the values are padded to `miniblocks * 32` and each
+contributes `bitWidth` bits, so the total is a multiple of 8 whatever
+the width. That is what lets `packBitsToBytes` consume the list exactly,
+with no leftover — the function's own precondition, now proved rather
+than assumed by every call site.
+
+**The definition-level section is always one run.** Every row's term is
+present — a default-graph quad stores the `DEFAULT` sentinel, never a
+Parquet null — so it is one RLE run of `value_count` copies of level 1
+behind a little-endian 32-bit length. The empty case is genuinely empty
+rather than a zero-length run, which a reader would otherwise try to
+decode.
+
+**A guard caught a mistake in its own expected value.** The first
+`defLevelSection 3` check expected `[3, 0, 0, 0, …]`, reading the
+32-bit prefix as the VALUE count. It is the BYTE length of the run
+section, which is 2. The check failed at build time and the expected
+value was corrected — which is the point of pinning bytes rather than
+lengths.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: three
+layers of about five, with dictionary encoding and the Parquet page and
+metadata builders left. Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterDict.lean` — layer 4 of `RDF.CottasStore.BaseWriter`
+
+Dictionary encoding, and the choice between it and DLBA. The predicate
+and graph columns of a COTTAS file repeat heavily, so RLE_DICTIONARY is
+much smaller for them; the F\* source keeps BOTH encoders and picks per
+column by MEASURING, which is the only way to be right for a column
+whose cardinality is not known in advance.
+
+The pipeline is: values, sort, dedup, index, per-row lookup through a
+balanced tree, maximal runs.
+
+**Dedup only works on a SORTED list, and that is now a checked fact.**
+`dedupSortedStr` compares adjacent elements and nothing else, so on
+unsorted input it silently keeps duplicates — and a dictionary with
+duplicates gives two indices for one value, which no reader can detect.
+`dedup_unsorted_keeps_duplicates` exhibits exactly that, as a theorem
+rather than a warning in a comment.
+
+**`groupRuns` collapses ADJACENT equal indices only**, which is what
+RLE means. `groupRuns_nonAdjacent_stays_split` pins `[1, 2, 1]` staying
+three runs against `[1, 1, 1]` becoming one.
+
+**Three places in this writer put the two varint kinds side by side.**
+A run header is `(run_length << 1) | 0` as a PLAIN varint; a Thrift
+binary length is a PLAIN varint; an `i32` value is a ZIGZAG one. And a
+PLAIN dictionary entry is neither — it is a little-endian 32-bit
+length, the opposite of DLBA's varint length block. Each is `#guard`ed
+with its own bytes.
+
+**The measurement goes both ways.** `encodeColumnChooseSmaller` builds
+both encodings and keeps the shorter, and `#guard` covers a repeating
+column choosing the dictionary AND an all-distinct column choosing
+DLBA, so the comparison cannot silently become a constant.
+`encodeColumnChooseSmaller_is_one_of` says the answer is always one of
+the two the sizer built.
+
+**A banned tactic, caught and removed.** One theorem was first written
+with `native_decide`, which this tree forbids. The kernel does not
+reduce `String` comparison, so `decide` cannot close it either — so the
+fact is a `#guard` with a sentence saying why, not a theorem with an
+escape hatch.
+
+**Status.** `RDF.CottasStore.BaseWriter` stays NOT covered: four layers
+of five, with the Parquet page, schema, row-group and file-metadata
+builders left. Coverage stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterFile.lean` — layer 5 of `RDF.CottasStore.BaseWriter`
+
+The Parquet file structure: page headers, schema, column metadata and
+chunks, row groups, file metadata, and the whole-file assembly.
+
+**The layout, as a theorem.** A Parquet file is
+`PAR1 | pages | metadata | metadata length (LE u32) | PAR1`. The
+trailing length comes BEFORE the closing magic, and that is what lets a
+reader seek to the metadata rather than scan for it.
+`serializeCottas_shape` states the five parts in order, because a file
+that loses either magic or the length is unreadable by any tool rather
+than subtly wrong.
+
+**Offsets are cumulative, and that is the part that breaks.** Each
+column chunk records where its data page starts. `buildRowGroup`
+threads a running offset through the four columns and hands the next
+one out; `buildRowGroups` chains that across row groups starting at
+`magicHeader.length`, because the pages begin after `PAR1`, not at
+zero. An offset short by those four bytes gives a file every byte of
+which is correct except where it says the data is.
+`magicHeader_length` and `rowGroup_nextOffset` pin both halves.
+
+**Two schema details found by cross-checking, not by reasoning.** The
+F\* source records both, and both are `#guard`ed here so a later
+tidy-up cannot drop them as redundant:
+
+* A schema leaf carries `converted_type = UTF8` (field 6). Without it
+  DuckDB presents the column as BLOB rather than VARCHAR — found by a
+  `parquet_scan` cross-check.
+* Field 1 of the file metadata stamps 445, not the Parquet-conventional
+  1, so the reader can reject a store this writer did not produce. An
+  owner decision at
+  <https://github.com/danbri/factoidal/issues/445>: no migration path,
+  no back-compatible reader.
+
+**Two Lean traps.** `meta` is a reserved token, so the row-group
+record's field is `metaBytes`. And `String.toUTF8` does not reduce in
+the kernel, so `magicHeader` is a literal byte list with a `#guard`
+tying it back to `"PAR1"` — a computed form makes every fact about the
+header uncheckable at build time, which is how the first draft ended up
+unable to prove that four bytes are four bytes.
+
+**Status, from a definition-level audit.** 124 F\* names, 61 unmatched
+by spelling. Most resolve as renames or as accumulator variants the
+Lean port folds into their non-accumulator forms. Twenty do NOT: the
+eight writer-v2 builders that actually EMIT an RLE_DICTIONARY page
+(layer 4 has the sizing and the choice; layer 5 wires only the v1 DLBA
+path into `serializeCottas`), `build_dictionary_page_header`, and
+eleven hex round-trip lemmas about the version field.
+`RDF.CottasStore.BaseWriter` therefore stays NOT covered, and coverage
+stays 198 of 220.
+
+---
+
+## `Cottas/BaseWriterFileV2.lean` — layer 6, and `RDF.CottasStore.BaseWriter` complete
+
+Layer 5 wired the v1 path, which writes DELTA_LENGTH_BYTE_ARRAY for
+every column. The F\* banner records what that cost:
+
+> v1 always writes DELTA_LENGTH_BYTE_ARRAY: correct for any cardinality
+> but pays the full string bytes on every row, every column, even for
+> p/g whose whole point is massive repetition.
+
+v2 adds the RLE_DICTIONARY emit path and closes a roughly sixty-fold
+size premium against pycottas.
+
+**Two columns are FORCED, two are measured, and the asymmetry is the
+design.** `p` and `g` repeat by construction — the graph column is
+mostly one `DEFAULT` sentinel — so measuring them would only confirm
+the obvious. `s` and `o` can be all-distinct, and then the dictionary
+is bigger. `rowGroupV2_forces_p_and_g` states the forcing so it cannot
+be tidied into "encode every column the same".
+
+**The offset field that is two fields.** A dictionary-encoded chunk
+carries field 9 (the DATA page) and field 11 (the DICTIONARY page). The
+dictionary comes first, so field 11 is the chunk start and field 9 is
+that plus the dictionary page length. The F\* source records this as bug
+history: a reader treating them as one offset reads the index stream as
+if it were the dictionary. A DLBA chunk has no field 11 at all, which
+is why these are two builders rather than one with a flag, and
+`columnMetadataV2_dlba_delegates` says the DLBA case calls the v1
+builder unchanged.
+
+**A `#guard` that asserted something false.** The first draft claimed
+v2 is smaller than v1, full stop. It is not: on a two-row file of short
+strings the dictionary page's own header outweighs the saving. The
+check now runs BOTH ways — smaller on eight repeating rows of long
+strings, and NOT smaller on the two-row case — so the claim in the
+module is the one that is true.
+
+**A vacuous theorem, caught and replaced.** `chunkStart + dictPageLen ≥
+chunkStart` is true whatever the hypothesis says, and Lean's unused-
+variable warning is what exposed it (hazard #29). It is replaced by
+`columnMetadataV2_dlba_delegates`, which says something a later edit
+could break.
+
+**Coverage IS claimed, from a definition-level audit.** 124 F\* names,
+53 unmatched by spelling, every one resolved by hand: 25 accumulator
+variants folded into their non-accumulator forms (the F\* accumulators
+exist for OCaml stack safety, which Lean core's `@[csimp]` rewrites
+handle — finding A11), 10 renames or stdlib substitutions, 4 per-column
+projections that are `rows.map (·.s)` in Lean, and 14 `lemma_*` hex
+round-trip lemmas that have no Lean counterpart BY DESIGN — their
+subject is `Parquet.Footer`'s hex-string reader, the layer finding A4
+is about, and the Lean tree reads bytes rather than hex. The byte-level
+fact those lemmas establish is `#guard`ed here.
+
+The audit and its reasoning are written into the alias in
+`tools/lean-port-gap.py`, so the claim is checkable rather than
+asserted. Coverage 198 to 199 of 220.
+
+## RDF.CottasStore, layer 1 — the handle and the dictionary boundary
+
+`Cottas/OnDiskStore.lean` ports the part of `RDF.CottasStore` that needs
+no file: the handle record, the canonical dictionary keys, the
+term/token conversions in both directions, and the predicate-presence
+and named-graph answers the handle gives from its own fields.
+
+**Ten `assume val`s, and what each became.** Two are real I/O
+(`cottas_ondisk_open`, `cottas_ondisk_close`) and are not in this layer.
+The other eight are the two directions of one dictionary
+(`ondisk_id_to_*_token_global`, `ondisk_lookup_*_id_global`), assumed in
+F\* only because a lazily-opened handle keeps its assoc-lists empty and
+the OCaml runtime answers from a hash table. They are now the fields of
+`TokenTables`, taken as a parameter.
+
+The F\* source states the correctness requirement as a comment:
+
+> "Soundness: the assume-val outcome must be observably equivalent to
+> `revmap_lookup h.coh_*_raw_revmap tok` on a fully-populated handle."
+
+Nothing in F\* can check that — an `assume val` has no body to compare
+against. Here it is `TokenTables.AgreesWith`, `tablesOfHandle` is the
+instance that satisfies it, and `buildQpRow_agrees` is the consequence:
+under agreement the fast path and the assoc-list path build the same
+row.
+
+**One finding.** `idToRawToken` and `idToRawTokenViaGlobal` are the same
+id→token step by two routes, and they DIVERGE out of range.
+`idToRawToken` returns the `\x00`-prefixed sentinel, which matches no
+row, so the query returns nothing. `idToRawTokenViaGlobal` returns
+`none`, which `cellMatch` reads as NO CONSTRAINT, so the query returns
+every row on that column. Opposite answers, and neither signature says
+so. Every F\* caller short-circuits an unresolvable bound before this
+point, so it is not live today.
+`idToRawTokenViaGlobal_outOfRange_differs` states it so a later edit
+meets a theorem instead of rediscovering it.
+
+Proved: `listNth_eq_getElem?` (the engine's index helper is the standard
+one), `namedGraphsAux_nth` (a graph's reference IS its dictionary
+position), `graphCellMatch_default` (a default-graph bound matches the
+`"DEFAULT"` cell and nothing else — issue 267's fix as an iff),
+`idToRawToken_outOfRange`, `tokenToSubject_partial_falls_back` (a cell
+with a trailing byte is a rejection, not a truncation).
+
+Not yet ported: the row-group filters and counts, the row-group and
+candidate walks, and the public search/estimate/count entry points.
+Coverage is NOT claimed for `RDF.CottasStore` yet.
+
+## RDF.CottasStore, layer 2 — the row-group filters and counts
+
+`Cottas/OnDiskFilter.lean` ports the five near-identical walks over one
+row group: `filter_zipped_rows_seq`, `filter_zipped_rows_tok_seq`,
+`count_zipped_rows_seq`, `filter_zipped_rows` and `count_zipped_rows`.
+The F\* comments state three relations between them — "identical match
+logic", "same as `filter_zipped_rows` but counts only", "legacy
+list-shape filter retained" — and nothing checks any of them. Five
+near-identical recursions is the shape where an edit lands in four.
+
+Proved: `countSeq_eq_filterTokSeq_length_start` (the count IS the length
+of the filter's answer), `filterSeq_eq_map_filterTokSeq_start` (the
+reference-shaped filter is the token-shaped one with `buildQpRow`
+mapped over it), `countList_eq_filterListTok_length` and
+`filterList_eq_map_filterListTok` (the same pair for the list shape),
+`filterTokSeq_sound` (every row returned matches all four bounds).
+
+**A wrong claim caught before landing, and how.** The first draft's
+header warned that the indexed and list shapes recover differently from
+a misaligned row group: the indexed walk skips a short column's index
+and CONTINUES, the list walk stops dead. Its evidence was a pair of
+`#guard`s — a three-cell column for one shape against a one-cell list
+for the other. That is two functions on two different inputs, which
+cannot show a difference between the functions.
+
+The claim is false. A column's size is fixed, so `i < c.size` is
+monotone in `i`: once any column is exhausted the indexed walk skips
+every remaining index, so it contributes rows for exactly the indices
+below the shortest column, which is the set the list walk reaches.
+`filterTokSeq_eq_filterListTok_start` proves the two shapes return the
+same list when the indexed walk is given `rowGroupRowCount` — misaligned
+row group included. The `#guard`s now compare the two shapes on ONE
+input.
+
+Coverage for `RDF.CottasStore` is still NOT claimed: the row-group and
+candidate walks and the public search/estimate/count entry points remain.
+
+## RDF.CottasStore, layer 3 — the walks over row groups
+
+`Cottas/OnDiskWalk.lean` ports the row-group loops. The F\* source has
+two ways of choosing which row groups to visit — a contiguous range
+driven by fuel, and an explicit candidate list from
+`plan_candidate_rgs` — and about a dozen near-identical recursions
+across search, estimate, token-shaped, cached and global variants.
+
+The column read is I/O (`pcache_decode_in_row_group` and its global and
+table-indexed siblings, `assume val` underneath). `ColumnReader` is that
+read taken as a parameter: row-group index and column index to an
+optional column.
+
+Proved: `allRgs_eq_range` (the F\* count-up-then-reverse loop is
+`List.range`), `walkRange_eq_walkCandidates` (the unpruned range scan
+and the candidate walk over every row group are one walk — the
+assumption the whole pruning design rests on, since if they disagreed
+then turning pruning on would change results rather than only time),
+`walkRangeCount_eq_length` and `walkCandidatesCount_eq_length`,
+`walkCandidatesTok_sound` (layer 2's per-row-group soundness carried
+through the loop).
+
+**Fuel is observable, not decoration.** The F\* range walk stops when
+either the fuel or the row-group count runs out. Lean does not need the
+fuel to terminate, so a port could drop it — but a caller passing fuel
+below the row-group count gets a partial scan with no error, which the
+`#guard`s now pin.
+
+⚠️ **Filed rather than fixed:** a row group whose columns fail to decode
+is skipped and the walk continues, so a corrupt row group and an empty
+one give the same answer and no caller can tell them apart. The F\*
+comment says "skipped (silently empty)". Transcribed as-is, exhibited by
+a `#guard`, and raised for a decision at
+<https://github.com/danbri/factoidal/issues/571> — changing the recovery
+is a behaviour change on the shipping query path, not a refactor.
+
+Coverage for `RDF.CottasStore` is still NOT claimed: the LIMIT-pushdown
+walks, the candidate planning, and the public search/estimate/count
+entry points remain.
+
+## RDF.CottasStore, layer 4 — LIMIT pushdown
+
+`Cottas/OnDiskLimit.lean` ports the second family of walks, the one a
+`LIMIT`-bearing query uses: `filter_zipped_rows_limited_tok_seq`,
+`walk_candidate_rgs_search_limited` and their siblings.
+
+`RDF/StoreCapabilities.lean` already states the law such a path must
+satisfy — `StoreCapsLawful.limitAgrees`, "a limited read returns the
+prefix the unbounded read would have returned" — and nothing in the F\*
+tree connects the limited family to the unlimited one at all.
+`walkCandidatesLimitedTok_prefix` is that connection: the limited
+walk's answer, flipped into row order, is the unlimited walk's answer
+flipped and truncated. Early exit is a refinement of the full scan, so a
+`LIMIT` query cannot return a row the unlimited query would not, nor
+stop before it has `limit` of them.
+
+Supporting results: `filterTokSeq_append` and `walkCandidatesTok_append`
+(a walk started from a non-empty accumulator appends to it and never
+inspects it), `filterLimitedTok_count` (the count the F\* walks carry
+alongside the list IS the list's length, so it is not a second source of
+truth an edit can desynchronise), `filterLimitedTok_flag` (the early-exit
+flag holds exactly when the count reached the limit — the fact that
+makes the walk's stop branch and its recurse branch agree).
+
+**A branch that decides nothing.** The F\* end-of-row-group arm returns
+`(acc_rev, acc_count, acc_count >= limit)`, but that arm is reachable
+only when the same test already failed one guard earlier, so the flag it
+computes is always `false`. Transcribed as written; `filterLimitedTok_end`
+states that the computation is dead. Deleting it would be a change to
+the F\* source, which this port does not make.
+
+Every statement here is about the FLIPPED list. Both families accumulate
+in reverse, and stating the prefix property on the accumulator instead
+would turn "the first `limit` rows" into "the last `limit` rows".
+
+Coverage for `RDF.CottasStore` is still NOT claimed: candidate planning
+(`plan_candidate_rgs`, the dictionary cache, the compound predicate-object
+prune, the subject-range prune) and the public search/estimate/count
+entry points remain.
+
+## RDF.CottasStore, layer 5 — candidate-row-group planning
+
+`Cottas/OnDiskPlan.lean` ports `plan_candidate_rgs` and everything under
+it: the dictionary cache and its populate loop, `list_string_mem`, the
+per-column candidate computation, and the sorted merge intersection.
+The dictionary-page read is I/O and becomes `DictReader`, a parameter.
+
+**"Never wrong answers", as a theorem.** The F\* source states the
+safety rule twice in comments — a row group absent from the dictionary
+cache is INCLUDED, a "safe fallback that may cost a wasted data-page
+decode, never wrong answers". That is the claim the entire pruning
+design rests on, and the one a later edit is most likely to break, since
+making the planner one notch more selective looks like a pure speed win
+right up until it drops a row group that held a match.
+`planCandidateRgs_complete` proves it under one hypothesis,
+`DictReaderSound`: a dictionary page, when present, lists every token its
+column holds in that row group. It may list more, and it may be absent;
+it may not omit. That is the Parquet dictionary-page contract, and
+stating it rather than assuming it is what makes the conclusion
+checkable.
+
+**Two facts the F\* source needs and does not establish.**
+
+1. `list_nat_intersect_sorted` is a merge, so it is correct only on
+   ascending inputs — unsorted inputs silently drop elements. Nothing in
+   the F\* tree says its inputs are sorted.
+   `computeCandidateRgs_eq_filter` proves the per-column planner IS
+   `(List.range rgCount).filter`, which gives sortedness for free
+   (`computeCandidateRgs_sorted`).
+2. The planner intersects REPEATEDLY, so the second intersection's left
+   input is a previous intersection's output.
+   `intersectSortedRgLists_sublist` proves the result is a sublist of the
+   left input, so sortedness survives the chain. Without it the merge is
+   being fed something it is only correct on by accident.
+
+`planCandidateRgs_unbounded` closes the loop with layer 3: with no bound
+on any column the plan is every row group, which
+`walkRange_eq_walkCandidates` already showed is the unpruned scan.
+
+Only completeness of the intersection is proved, not soundness. That is
+deliberate: dropping a needed row group is a wrong answer, keeping an
+unneeded one is a wasted decode. The safety claim needs the first.
+
+Coverage for `RDF.CottasStore` is still NOT claimed: the compound
+predicate-object prune, the subject-range prune, and the public
+search/estimate/count entry points remain.
+
+## RDF.CottasStore, layer 6 — the public entry points
+
+`Cottas/OnDiskSearch.lean` ports `cottas_ondisk_search_tok`,
+`cottas_ondisk_search_limited_tok`, `cottas_ondisk_estimate_tok`, the
+bound builder and the row-to-quad conversions. The store's I/O surface
+becomes `StoreIo`, one record.
+
+`searchTok_eq_fullScan` is what every layer below was for: under prunes
+that only drop row groups holding no match, the pruned search returns
+exactly what an unpruned scan of every row group returns. `PruneSound`
+names the property a future prune has to satisfy, and nothing else about
+it has to be re-argued. Supported by `walkCandidatesTok_sublist_eq`,
+which is where `Nodup` earns its place — it is what rules out a skipped
+row-group index reappearing later in the candidate list.
+
+Also proved: `searchTok_sound` (soundness survives the entry point) and
+`searchLimitedTok_prefix` (LIMIT at the entry point is the unlimited
+search truncated).
+
+The compound predicate-object prune and the subject-offset prune are
+modelled as opaque `List Nat → List Nat` parameters rather than
+transcribed. That is deliberate: `compound_po_dict_encode` resolves ids
+through the `.p.dict` sorted-rank id space, NOT through
+`ondisk_lookup_*_id_global`'s first-occurrence-order space, and the F\*
+source documents at length that mixing them prunes the one row group
+holding the pair — a wrong zero, not a slow query. Keeping the prune
+opaque keeps that choice outside the port instead of transcribing an
+id-space confusion into a second tree.
+
+## RDF.CottasStore, layer 7 — exact counting, distinct predicates, the subject-range prune
+
+`Cottas/OnDiskCount.lean`.
+
+⚠️ **The selective exact-count is not the full count.**
+`count_selective_matches_seq` was added so `COUNT(*)` over `{ ?s a ?o }`
+stops decoding the subject and object columns it never reads. The F\*
+source presents it as the same quantity computed cheaper. The full count
+requires all four cells to decode before counting a row; the selective
+count requires only the graph cell, because `bound_col_match` on an
+absent bound returns `true` without inspecting anything. A row with a
+null in an UNBOUND column is therefore counted by one and dropped by the
+other. `countSelective_eq_countSeq` proves the equality under the
+conditions that make them agree — four columns of equal length, every
+cell present — and a `#guard` pair exhibits the divergence on a row that
+violates the second. Raised at
+<https://github.com/danbri/factoidal/issues/572>.
+
+`collectDistinct_none_of_missing` states the opposite recovery from
+layer 3's: one missing dictionary page aborts the WHOLE distinct-predicate
+answer rather than contributing zero predicates for that row group. The
+F\* banner asks for exactly that, and the contrast with the row-group
+walk is deliberate in the source.
+
+**A finding that turned out not to be one.** The subject-range overlap
+test reduces, on an empty range `[s, s)`, to `s < cumEnd && cumStart < s`
+— true for any row group strictly containing `s`. Checking the caller
+before writing that up: `cottas_ondisk_subject_candidate_rgs` returns
+`Some []` when the subject's range count is zero, three lines before it
+would call the loop. So the loop never sees an empty range, and this is a
+caller-enforced precondition, not a defect.
+`rangeOverlaps_empty_reports_overlap` records it as such, because the
+precondition appears nowhere in the loop's own type.
+
+Two `#guard`s in this module's first draft asserted false things, both
+mine: one put a predicate token in the subject bound position, and one
+expected the empty-range case to prune to nothing. Both were caught by
+the build, and the second is what sent me to read the caller.
+
+## RDF.CottasStore, layers 8 and 9 — selective decode, and the count-exact fast paths
+
+`Cottas/OnDiskSelective.lean` ports the row-index-selective search: it
+decodes an unbound column's values only at the indices that already
+matched on the cheap columns. The F\* entry point's banner states the
+differential gate's premise outright — "identical row/row-group ORDER to
+`cottas_ondisk_search_tok` … `need` only changes which UNBOUND columns
+get decoded, never which rows match or their order" — and that is two
+claims, both proved: `matched_iff_rowSelected` (the selective gate holds
+exactly where `rowSelected` returns a row) and
+`selectiveRows_need_invariant` (narrowing `need` changes neither the row
+count nor the graph values nor the order).
+
+The accumulator in `buildSelectiveRows_graph_invariant` is deliberately
+allowed to DIFFER between the two walks as long as it already agrees on
+`g`. That generalisation is not decoration: the two walks build rows
+whose other three positions genuinely differ, and an induction demanding
+identical accumulators cannot get past its own first step.
+
+`Cottas/OnDiskCountExact.lean` ports the last eight definitions: the
+predicate- and subject-offset-index fast paths, the eligibility guard,
+the summation, the four-way dispatcher, and the selective row's
+conversion to a triple. `offsetIndex_paths_disjoint` proves the F\*
+comment that justifies trying both fast paths in sequence.
+`sumOffsetCounts_none_of_fullScan` proves that one unusable row group
+abandons the whole sum, because a partial sum would silently undercount
+— the same all-or-nothing discipline as `collectDistinct_none_of_missing`
+in layer 7.
+
+**A vacuous theorem, caught and deleted.** A draft of layer 8 carried a
+`matchedIndicesSeq_eq_filterTokSeq` whose right-hand side reduced to its
+own left-hand side, closed by `rfl`. It proved nothing while reading
+like the module's headline result — anti-pattern #29's exact shape, in
+its worst form. It was deleted rather than weakened, and
+`matched_iff_rowSelected` is the statement that carries the content.
+
+## Coverage: 199 → 200
+
+`RDF.CottasStore` is now covered, and the alias in
+`tools/lean-port-gap.py` carries the audit method beside the result.
+Every one of the 125 names matched by
+`^(let (rec )?|and |assume val |noeq type |type )` was resolved BY HAND.
+A name-shape pre-pass matched 51 of the 125; that number is recorded as
+evidence about the PASS, not about the code (hazard #28). The count
+moved by exactly one module and by exactly 2,825 lines, which is this
+module's own length — no other classification shifted.
+
+Remaining: 3 engine (`Parquet.Footer`, `RDF.NQuads.Streaming`,
+`SPARQL11.Parser.AskBgpRoundTrip`), 3 proof, 14 by design.
+
+## SPARQL11.Parser.AskBgpRoundTrip — the theorem F\* calls impossible
+
+`SPARQL/AskBgpRoundTripString.lean` proves
+`askBgp_string_roundtrip`: printing a query in the ASK-BGP fragment and
+tokenizing the result gives back exactly the tokens the query denotes.
+
+The F\* module reaches this statement and stops. Its banner marks stage
+(a) IMPOSSIBLE and proves the impossibility with a counter-probe: in that
+ulib snapshot `FStar.String.sub` exposes a length refinement and nothing
+relating its output characters to its input, so no lemma can be STATED
+connecting a printed payload back to the token's extract — which blocks
+every payload-carrying token, not just this fragment's.
+
+The Lean lexer scans `List Char`. `scanIriBody` and `scanVarName` have
+ordinary equation lemmas, and the connection is an ordinary induction.
+The obstruction was never about RDF or SPARQL; it was one library's
+interface to one datatype. Separating those two kinds of fact is what the
+two-tree design is for, and this is the clearest case of it so far.
+
+**How the proof goes.** The printed query is cut into chunks, one per
+token, each carrying its LEADING separator — forced, because `nextToken`
+calls `skipWs` first, so a trailing space would be left unconsumed and
+`LexesTo` would be false. `tokenizeLoop_chunks` folds the lexer along
+the chunk list; `chunkChars_query` shows the chunks concatenate to the
+printed string; `chunksOk_query` discharges the per-chunk obligations.
+
+**And a second defect, from writing the side condition.**
+`LexesTo` quantifies over what follows a chunk, so the theorem needs to
+say exactly which IRI bodies round-trip. §19.8 [139] admits any body
+without `>`, `\`, or a control character. This lexer additionally
+requires an acceptable FIRST character, so `<1abc>` — a valid IRIREF —
+lexes as four tokens. Both trees carry it, and the committed binary
+rejects the query while accepting the same query with an alpha-initial
+IRI. Filed as <https://github.com/danbri/factoidal/issues/573>;
+`iriFirstOk` is the honest side condition until it is fixed, and a
+`#guard` pins that the engine really does mis-lex the case.
+
+Neither this defect nor issue 572 came from running a test. The test
+corpora contain no digit-initial IRI. They came from having to state a
+theorem precisely enough to prove it.
+
+## Coverage: 200 → 201
+
+Engine modules 3 → 2, lines down by exactly 852 — this module's own
+length. Remaining: 2 engine (`Parquet.Footer`, `RDF.NQuads.Streaming`),
+3 proof, 14 by design.
+
+## Parser locality — the wall both trees hit, and a coverage entry that was wrong
+
+`Syntax/Locality.lean` starts the Lean counterpart of
+`Parser.NTriples.Locality`, and its landing corrects a defect in
+`tools/lean-port-gap.py`.
+
+**The tooling defect.** `Parser.NTriples.Locality` was classified
+by-design — "no Lean counterpart because the reason it exists is absent
+in Lean" — and it was the ONLY entry in that set with no reason recorded
+beside it. Every other one carries its argument. This one could not,
+because the argument is false.
+
+The F\* module's banner says why it exists: two theorems,
+`theorem_stream_eq_batch` and the N-Triples round trip, both need "a
+reader behaves identically on `complete ^ carry` at any position inside
+`complete` as it does on `complete` alone", and F\* cannot reach that
+cheaply because Z3 has no associativity theory for
+`FStar.String.strcat` over symbolic operands.
+
+The Lean tree does not escape that obligation. A list-based reader can
+still read past the end of a prefix: `List.span isBnodeChar` stops at
+end-of-input on `_:abc` and consumes the `d` on `_:abcd`. So
+`readBlankNodeLabel` is NOT local without a stopped-short side
+condition, and two `#guard`s exhibit the pair. What differs is the
+register — list suffixes rather than byte offsets, so the proofs are
+structural inductions — which is a reason the Lean version is smaller,
+not a reason it is unnecessary.
+
+Reclassified as PROOF (the module's own header calls it PROOF-ONLY and
+it is not in `build-ocaml.sh`), with the argument written down. Coverage
+does not move: 201 either way. Only the reason changed, and now there is
+one.
+
+**What is proved.** The pilot the F\* program itself chose — the IRI
+scanner: `iriEmitAt_local`, `iriEmitAt_ne_close`, and
+`iriNextStep_close_local` (a step that closed an IRIREF closes at the
+same place on longer input).
+
+**What is not, named.** `iriNextStep_emit_local` and everything above
+it: `readIriRefBody`, `readIriRef`, `readBlankNodeLabel`, `readLiteral`,
+and the `readNQuad11` composition. Without those,
+`RDF.NQuads.Streaming`'s streaming-equals-batch theorem cannot be stated
+in this tree either, which is why that module stays uncovered. The emit
+case is not blocked on an idea — it is the close case's analysis with
+the two escape arms surviving instead of discarded — but it is left
+unproved rather than half-proved, because a named gap is checkable and a
+weakened theorem is not. Tracked at
+<https://github.com/danbri/factoidal/issues/570>.
+
+⚠️ A `#guard` in that module also pins that the step is NOT local when
+input runs out mid-escape: `\u00` alone fails, `A` emits. That is
+the side condition earning its place in the statement.
+
+## Locality, continued — and a definition of mine that was false
+
+Four more results in `Syntax/Locality.lean`, and a correction to the
+module landed one commit earlier.
+
+**The correction.** That landing defined locality with the side
+condition "the reader stopped with a non-empty remainder". The
+definition is FALSE. `readBlankNodeLabel` pushes a trailing `.` BACK
+into its remainder, because §19.8 forbids a label ending in a dot. So on
+`_:ab.` it answers `("ab", 4, ['.'])` — remainder non-empty — while its
+span still ran to the end of the input. One more character gives
+`("ab.c", 6, [])`, a different label.
+
+Measured, not reasoned:
+
+```
+readBlankNodeLabel 0 "_:ab."      = .ok ("ab",   4, ['.'])
+readBlankNodeLabel 0 "_:ab." ++ "c" = .ok ("ab.c", 6, [])
+```
+
+The general lesson is now in the module header: no condition on a
+reader's OUTPUT can express "it stopped because of something it saw",
+because a reader may hand back characters it chose not to keep. The
+condition belongs on the INPUT and is per-reader. `ReaderLocal` is gone;
+`BnodeStopsInside` replaced it for this reader, and `readIriRefBody`
+turned out to need no condition at all — a successful IRI parse means
+the closing `>` was seen.
+
+The proof is what found this. The `droppedList = []` branch would not
+close, and the reason it would not close was that the statement was
+wrong.
+
+**Newly proved.** `iriNextStep_emit_local` — the gap named in the
+previous landing, now closed: the same case analysis as the close case
+with the two escape arms surviving instead of discarded, plus the
+plain-character arm where the equation compiler leaves `c ≠ '\'` as two
+negative facts about the tail rather than one about the head.
+`readIriRefBody_local` and `readIriRef_local` — the recursion above it,
+via three non-dependent arm equations, because the shipping definition's
+`match h : iriNextStep pos cs with` binds the step's own equation for
+its termination argument and a dependent match cannot have its scrutinee
+rewritten. `span_append_of_stopped` and `readBlankNodeLabel_local`.
+
+**Still open**, and unchanged in kind: the literal, datatype and
+language-tag readers, and the `readNQuad11` composition, without which
+`RDF.NQuads.Streaming`'s streaming-equals-batch theorem cannot be
+stated. <https://github.com/danbri/factoidal/issues/570>.
+
+## Locality, third round — and the wall that stops it
+
+`Syntax/LocalityLiteral.lean` adds `readLangTagRun_local`. That is the
+only new result, and the reason is worth recording.
+
+⚠️ **`readStringLiteralBody` cannot be unfolded in this container.** It
+has nineteen arms, two of which match on four and eight `hexVal`
+scrutinees at once. Any tactic that unfolds it forces those apart.
+Measured three ways — functional induction with `simp_all`, a single
+`rw` then `simp_all`, and a per-arm `Except.map` helper with `simp only`
+— peaking at 10.5 to 12 GB and taking SIGKILL, or timing out while still
+climbing. The memory climbs steadily from the start in every case, so it
+is the unfolding, not a runaway in one branch.
+
+This is <https://github.com/danbri/factoidal/issues/565> again, one
+reader over. That issue was the same shape for `readIriRefBody` — ten
+arms, equation generation exhausted memory — and the fix was
+`Syntax/IriScan.lean`: a non-recursive step classifier plus a three-arm
+recursion whose equations are provable. `readIriRefBody_local` exists
+today only because that refactor already happened. Filed as
+<https://github.com/danbri/factoidal/issues/574>.
+
+**What that blocks.** `readNQuad11` locality composes from the
+sub-readers. Proved so far: `readIriRefBody_local`, `readIriRef_local`,
+`readBlankNodeLabel_local` (with `BnodeStopsInside`),
+`readLangTagRun_local`, `span_append_of_stopped`. Blocked:
+`readStringLiteralBody`, `readStringLiteralQuoted`, hence `readLiteral`,
+`readObject11`, `readNQuad11`, hence
+`RDF.NQuads.Streaming`'s streaming-equals-batch theorem
+(<https://github.com/danbri/factoidal/issues/570>).
+
+`readDatatype_local` is not blocked in principle — it delegates to
+`readIriRef`, already proved — but it is downstream of the literal
+reader in the only composition that needs it, so landing it alone would
+be a lemma with nothing to feed. It goes in with the rest once 574
+clears.
+
+**Why the module is split.** `LocalityLiteral.lean` exists for a build
+reason, not a conceptual one: the elaboration above was heavy enough to
+kill `Syntax.Locality` when attempted inside it.
+
+## The string-literal reader, split — issue 574 cleared
+
+`readStringLiteralBody` is now a non-recursive step (`strLitNextStep`)
+plus a three-arm recursion, the shape `Syntax/IriScan.lean` gave the
+IRIREF body for
+<https://github.com/danbri/factoidal/issues/565>. This clears
+<https://github.com/danbri/factoidal/issues/574>.
+
+**Why it was needed.** As one nineteen-arm recursion, unfolding this
+reader forced apart the `\u` and `\U` arms' four- and eight-way `hexVal`
+matches. Measured at 10.5 to 12 GB before SIGKILL, three ways. Split, the
+step-locality lemma proves in seconds.
+
+**How it is gated.** The committed nineteen-arm definition is kept as
+`readStringLiteralBodyLegacy`, a private differential oracle with no
+callers, and 27 `#guard`s compare the two across every arm: plain text,
+immediate close, text after the close, all eight ECHARs, both UCHAR
+forms, bad hex, truncated escapes, an unknown escape, a trailing
+backslash, a surrogate codepoint, raw newline and carriage return, and
+unterminated input. Three further guards pin decoded VALUES, so the
+table is not merely self-consistent.
+
+⚠️ Both sides are compared through `toOption`, so a difference in an
+error MESSAGE would not be caught — the failing arms are pinned by both
+sides agreeing on `none`, not on which error. That is stated next to the
+table.
+
+The oracle should be deleted once the table has run green for a while,
+the same lifecycle the IRIREF swap used.
+
+**What the split cost, and what repaid it.** The recursion is now on
+`cs.length`, so it no longer reduces by `rfl` — eleven concrete
+`rfl` proofs in `SyntaxTheorems.lean` had to be redone. Three arm
+equations (`readStringLiteralBody_close` / `_fail` / `_emit`) plus nine
+literal-shaped `@[simp]` lemmas restore the property, and the two UCHAR
+theorems and the surrogate-rejection theorem now go through the arm
+equations explicitly. Those equations are the point: the nineteen-arm
+version had NO usable equations, which is what 574 was.
+
+**Gate.** `lake build` green at 850 jobs. W3C suites through the changed
+lexer: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87 pass, 0 fail
+(out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+## String-literal locality, and the hex4 / hex8 factoring — 2026-08-24
+
+`Syntax/LocalityLiteral.lean` now carries the string-literal reader's
+locality, which the module header used to say was blocked. A reader is
+LOCAL when a run that stopped inside its input answers the same on
+longer input, with the remainder grown by exactly what was appended.
+That is what a streaming N-Quads fold needs from every reader: a chunk
+boundary must not change how the text before it parses.
+
+Proved, all with axioms `[propext, Classical.choice, Quot.sound]` or
+less, no `sorry`, no user `axiom`, no `native_decide`:
+
+* `strLitNextStep_emit_local`, `strLitNextStep_close_local`
+* `readStringLiteralBody_local`, `readStringLiteralQuoted_local`
+* `readLangTagRun_local` (kept, unchanged)
+
+### What was in the way, and what moved it
+
+The step/recursion split landed earlier cleared
+<https://github.com/danbri/factoidal/issues/574> for the RECURSION. It
+did not clear it for the STEP. `strLitNextStep`'s `\u` arm matched on
+four `hexVal` results at once and its `\U` arm on eight, so a proof
+that reached those arms split into 16 and 256 cases, with the other
+seventeen arms already split around them. `simp_all` over that reached
+10.5-12 GB and took SIGKILL.
+
+`hex4` and `hex8` (in `Syntax/Lexing.lean`) decode the digits into one
+`Option Nat`, so each arm now splits two ways. The refactor changes no
+behaviour, and the check on that is the `#guard` table already in the
+file: 27 inputs run through both the split reader and
+`readStringLiteralBodyLegacy`, at build time. ✅ Build green at 850
+jobs with the table in it.
+
+The second obstacle was not memory. Lean's equation compiler turns
+overlapping patterns into a case tree, so an arm reached only because
+the earlier arms failed does not carry those failures as hypotheses:
+the plain-character arm gives `c` and `rest` and nothing saying `c` is
+not a quote. `strLitNextStep_plain` and `strLitNextStep_badEscape`
+state the guards and prove them by `unfold` then `split`. `grind`
+closes the case `simp_all` leaves, because it instantiates a
+hypothesis carrying binders.
+
+### Gate
+
+✅ Lean W3C runner, re-measured after the change:
+
+* N-Triples 70 pass, 0 fail (out of 70)
+* N-Quads 87 pass, 0 fail (out of 87)
+* Turtle 313 pass, 0 fail (out of 313)
+
+### What this does not yet reach
+
+`RDF.NQuads.Streaming` (3,438 F\* lines) is still not covered. The chain
+from here is `readDatatype` -> `readLiteral` -> `readObject11` ->
+`readNQuad11` -> the restart lemma for `parseQuadLinesAcc` -> the
+stream-equals-batch theorem.
+
+⚠️ `readLiteral` will carry side conditions, and they are real, not
+bookkeeping. In RDF 1.1 mode the reader branches on what follows the
+closing quote: `@` starts a language tag, `^^` starts a datatype,
+anything else ends the literal as `xsd:string`. If the remainder after
+the quote is empty, or is exactly `['^']`, then appending text CHANGES
+which branch fires. The theorem must exclude those two shapes. Both are
+excluded in practice by the line terminator, which is why the streaming
+use is not blocked by them.
+
+Worth recording about the F\* side: `RDF.NQuads.Streaming` does not
+prove reader locality at all. It takes `line_witness` values as
+hypotheses and shifts them with `lemma_*_shift`, because
+`parse_nquads_acc` walks a `string` with an integer offset and a
+restart at an offset needs those shifts. The Lean parser walks a
+`List Char`, so a restart is the same function on a suffix, and
+locality is provable outright instead of assumed. That is the
+differential experiment paying out: the witness machinery is a property
+of F\*'s string representation, not of N-Quads.
+
+## Line-level reader locality — 2026-08-24
+
+`Syntax/LocalityLine.lean` carries locality up from the lexical readers
+to the pieces a whole statement is built from. Nine theorems, axioms
+`[propext, Classical.choice, Quot.sound]` or less, no `sorry`, no user
+`axiom`, no `native_decide`:
+
+`skipWs_local`, `readLangTag_local`, `readDatatype_local`,
+`readLiteral11_local`, `readBlankNodeLabel_local'`, `readSubject_local`,
+`readPredicate_local`, `readObject11_local`, `readGraphLabel_local`.
+
+### The side conditions, and why each one is real
+
+Three exclusions appear, and none is bookkeeping — each names an input
+where the reader genuinely answers differently on longer input.
+
+⚠️ **Empty remainder.** A whitespace run or a language-tag run that
+reached the end of its input keeps running into whatever is appended.
+
+⚠️ **A remainder of exactly `['.']`.** `readBlankNodeLabel` on `_:ab.`
+reads the label `ab` and leaves `['.']`; on `_:ab.c` it reads the label
+`ab.c` and leaves nothing. The dot belongs to the label unless something
+after it stops the run.
+
+⚠️ **A remainder of exactly `['^']`.** RDF 1.1 `readLiteral` branches on
+what follows the closing quote — `@` for a language tag, `^^` for a
+datatype, anything else ends the literal as `xsd:string`. One more `^`
+turns the third branch into the second.
+
+All three are met by a reader looking at a line that still has its
+terminator, which is the case the streaming N-Quads fold needs.
+
+### Guarding against an unsatisfiable hypothesis
+
+Per the discipline that a hypothesis nothing can meet proves nothing,
+the module ends with `#guard`s over an ordinary object slot
+(`"x" .` plus a newline): the remainder is non-empty, is not `['.']`,
+is not `['^']`, and the reader returns the same term, the same end
+position and a remainder longer by exactly the appended text. They run
+at build time.
+
+### Gate
+
+✅ Build green at 852 jobs, guards included.
+✅ Lean W3C runner: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87
+pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+### Next
+
+`readOptGraphLabel_local` and `readNQuad11_local`, then the restart
+lemma for `parseQuadLinesAcc`, then the stream-equals-batch theorem that
+covers `RDF.NQuads.Streaming`
+(<https://github.com/danbri/factoidal/issues/570>).
+
+`readNQuad11_local` should need only `rest ≠ []`: the line ends at `.`,
+so every intermediate remainder still holds that terminator and meets
+the three exclusions above.
+
+## A whole N-Quads statement is local — 2026-08-24
+
+`readOptGraphLabel_local` and `readNQuad11_local` close the reader chain.
+Axioms `[propext, Classical.choice, Quot.sound]`, no `sorry`, no user
+`axiom`, no `native_decide`.
+
+`readNQuad11_local` carries ONE side condition, `rest ≠ []`, and the
+line terminator is what discharges everything else. A statement ends at
+`.`; if anything at all follows that dot, then each earlier remainder
+still holds it, so none of them is empty, `['.']`, `['_']` or `['^']` —
+the four shapes the readers underneath exclude. The proof derives all
+eleven of those facts from `rest ≠ []` and the `'.' :: rest` match, then
+rewrites the longer run stage by stage.
+
+⚠️ The condition is not bookkeeping. Measured, not reasoned out:
+
+```
+<http://a/s> <http://a/p> <http://a/o> _:g.      parses, graph _:g, remainder []
+<http://a/s> <http://a/p> <http://a/o> _:g.x     FAILS: expected '.' terminator
+```
+
+One more character and the blank-node label swallows the dot, so the
+statement loses its terminator. That guard pair is the refutation of
+`readNQuad11_local` without `rest ≠ []`, and it is in the module as two
+`#guard`s next to two more showing a terminated line grows its remainder
+by exactly the appended text.
+
+### Gate
+
+✅ Build green at 852 jobs with all guards.
+✅ Lean W3C runner: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87
+pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+### Next
+
+The restart lemma for `parseQuadLinesAcc` (fuel monotonicity plus the
+per-line locality above), then `splitCompleteLines` and the
+stream-equals-batch theorem, which is what covers `RDF.NQuads.Streaming`
+(<https://github.com/danbri/factoidal/issues/570>).
+
+## Every reader hands back a suffix — 2026-08-24
+
+`Syntax/LocalitySuffix.lean`. The locality modules say a reader answers
+the same on longer input; this one says WHERE the answer sits — the
+remainder is a suffix of the input — and `readNQuad11_dot` says more:
+the statement's terminating `.` is still findable in the input,
+immediately before the remainder.
+
+That last one is what the streaming fold needs. A chunk is cut after its
+last newline, so the text handed to the parser ends with a newline. If a
+statement's remainder were empty the input would end with the `.`
+instead, and `readNQuad11_dot` refutes it. Without that,
+`readNQuad11_local` cannot be applied at all, because its side condition
+is exactly "the remainder is not empty".
+
+The step functions carry the argument: every arm of `iriNextStep` and
+`strLitNextStep` consumes a prefix of fixed length, so the remainder is
+`cs.drop w`, and a drop is a suffix. `iriNextStep_emit_drop` and
+`strLitNextStep_emit_drop` state that; the rest is transitivity.
+
+⚠️ The blank-node reader is the one place where the suffix is not
+immediate. Its trailing-dot branch hands back `'.' :: afterBody`, and
+that dot came out of the LABEL rather than out of the input at that
+position, so the proof splits the label at its last character to find
+it again.
+
+Nineteen theorems, axioms `[propext, Classical.choice, Quot.sound]` or
+less, no `sorry`, no user `axiom`, no `native_decide`.
+
+✅ Build green at 854 jobs.
+
+### Next
+
+`parseQuadLinesAcc` fuel monotonicity (a run that already succeeded
+cannot notice more fuel), then the line-boundary concatenation lemma
+that `Syntax/NQuadsStreaming.lean`'s header names as the one thing
+missing, then the homomorphism
+`finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`
+(<https://github.com/danbri/factoidal/issues/570>).
+
+## Streaming: the offset is threaded, and fuel is independent — 2026-08-24
+
+Two steps toward the homomorphism
+`finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`,
+which `Syntax/NQuadsStreaming.lean`'s header names as the one thing it
+was missing (<https://github.com/danbri/factoidal/issues/570>).
+
+### `StreamState` now carries the absolute offset
+
+⚠️ A change from the F\* design, taken deliberately. `RDF.NQuads.Streaming`'s
+`feed_chunk` calls `parse_nquads_acc complete 0` — every chunk restarts
+the offset at zero — and pays for it with the `lemma_*_shift` family,
+which is a large part of its 3,438 lines.
+
+Two reasons to thread it instead, and the first is a defect the F\*
+design has: a parse error in the fifth chunk should name its place in
+the DOCUMENT, not in whatever buffer the consumer happened to assemble.
+The second is that with the offset threaded, the streaming run and the
+batch run hand the same positions to the same readers, so no shift
+lemma is needed to compare them.
+
+`NQuadsStreaming` has no consumers outside the library, so the change
+is contained. Its 20 build-time `#guard`s, including the three that
+split a document mid-line, still pass.
+
+### Fuel independence
+
+`parseQuadLinesAcc11_fuel_indep`: two runs with different fuel agree as
+long as each budget exceeds the input length. That is what lets the
+streaming run, whose fuel comes from one chunk, be compared with the
+batch run, whose fuel comes from the whole document.
+
+The proof needs to know each round consumes at least one character, and
+that now follows from the suffix module: `readNQuad11_len` reads it off
+`readNQuad11_dot`, since `'.' :: rest` being a suffix of the input makes
+`rest` strictly shorter.
+
+ⓘ Stated for `.rdf11`, which is the mode the F\* module's own theorem is
+about. The RDF 1.2 reader admits triple terms in the object slot and
+needs its own `readNQuad12_dot` before the same argument runs.
+
+### Gate
+
+✅ Build green at 854 jobs.
+✅ Lean W3C runner: N-Triples 70 pass, 0 fail (out of 70); N-Quads 87
+pass, 0 fail (out of 87); Turtle 313 pass, 0 fail (out of 313).
+
+### Next
+
+Locality for `skipToEol` / `skipComment` / `skipEol`, then the
+line-boundary concatenation lemma, then the homomorphism.
+
+## Skip locality, and positions that count characters — 2026-08-24
+
+Two modules, both prerequisites for the line-boundary concatenation
+lemma (<https://github.com/danbri/factoidal/issues/570>).
+
+### `Syntax/LocalitySkips.lean`
+
+A chunk handed to the streaming parser ends with a newline. These
+lemmas turn that into the side conditions the readers need:
+
+* `span_snd_ne_nil_of_last` — a span stops when the last character
+  fails its test, so a whitespace run never runs off the end of a
+  chunk;
+* `getLast?_of_suffix` — a non-empty suffix keeps the last character,
+  so "still ends with a newline" survives every reader;
+* `skipToEol_local`, `skipComment_local`, `skipEol_local`.
+
+⚠️ Each locality lemma carries a side condition and each is real. A
+`skipToEol` that ran off the end keeps running. A `skipComment` on an
+empty input can be turned into a comment by appending a `#`. A
+`skipEol` on exactly `['\r']` becomes a CRLF pair when a `\n` arrives.
+
+### `Syntax/LocalityCount.lean`
+
+Every reader's returned position is its starting position plus the
+number of characters it took, stated as
+`p' + rest.length = pos + cs.length` so `omega` can use it. Eighteen
+theorems, from the two step functions up to `readNQuad11_counts`.
+
+This is what makes the streaming module's threaded offset CORRECT
+rather than merely plausible. `feedChunk` advances its stored offset by
+`complete.length`; these theorems say the parser's own position
+advanced by exactly that much. Without them the stored offset would be
+an assumption, and a parse error in a later chunk could name the wrong
+place — which is the defect the threading was meant to fix.
+
+It is also the Lean counterpart of the F\* module's `lemma_*_shift`
+family: both exist so a restart can be lined up with a run that never
+stopped. The F\* version shifts byte offsets through `Parser.FastString`;
+here the position is a plain character count over a `List Char`.
+
+### Gate
+
+✅ Build green at 858 jobs.
+
+### Next
+
+The concatenation lemma itself: parsing `complete ++ carry`, where
+`complete` ends with a newline, equals parsing `complete` and then
+parsing `carry` from where it stopped. Every piece it needs is now in
+place — per-line locality, the terminator's position, fuel
+independence, skip locality, and positions that count characters.
+
+## The line-boundary concatenation lemma — 2026-08-24
+
+`Syntax/NQuadsConcat.lean`. `Syntax/NQuadsStreaming.lean`'s header names
+ONE thing as missing: that parsing `a ++ b`, where `a` ends in a
+newline, equals parsing `b` from the state parsing `a` reached. That is
+the F\* module's `lemma_parse_nquads_acc_concat_line_general`, and the
+bulk of its 3,438 lines. `parseQuadLines11_concat` is it.
+
+Axioms `[propext, Classical.choice, Quot.sound]`, no `sorry`, no user
+`axiom`, no `native_decide`. ✅ Build green at 860 jobs.
+
+ⓘ Stated in ok-form: it assumes the `complete` half parses. That is the
+direction the streaming fold needs, since the fold has already run that
+half and holds its dataset.
+
+⚠️ The converse is NOT proved, and it is not free. "If the combined run
+succeeds then the `complete` half does" needs the fact that no reader
+consumes a raw newline. That is true of this grammar — IRIs forbid raw
+control characters, literals forbid a raw newline, and inline
+whitespace is space and tab only — but there is no proof of it in the
+tree. Without the converse, the streaming parser could in principle
+reject a document the batch parser accepts; the ok-form lemma rules out
+the other way round, which is the direction that would give a WRONG
+dataset rather than an error.
+
+### What each round of the proof needs
+
+The proof walks one round of the parser at a time over four branches
+(blank or comment line, LF, CR, statement). Every round needs four
+things, and each comes from a module below this one:
+
+* the round answers the same on the longer input — `skipWs_local`,
+  `skipComment_local`, `skipEol_local`, `readNQuad11_local`;
+* what is left still ends with a newline — `getLast?_of_suffix` over
+  the suffix lemmas;
+* the position advanced by exactly what was consumed —
+  `Syntax.LocalityCount`, which is what makes the two runs line up;
+* the remaining fuel is still enough —
+  `parseQuadLinesAcc11_fuel_indep`.
+
+### Next
+
+The homomorphism itself,
+`finish (chunks.foldl feedChunk initialState) = parseNQuads (…)`, by an
+induction over the chunk list carrying: the text consumed so far ends
+with a newline, the stored offset is its length, and parsing it from
+zero gives the stored dataset (<https://github.com/danbri/factoidal/issues/570>).
+
+## Streaming equals batch — 2026-08-24
+
+`Syntax/NQuadsHomomorphism.lean`: `streamParse11_eq_batch` — whatever
+dataset the chunk fold produces, parsing the whole document at once
+produces the same one. Proved by the fold invariant
+(`foldl_feedChunk_inv`): the text consumed so far ends at a line
+boundary, the stored offset equals its length, and parsing it from
+position zero yields the stored dataset; each `feedChunk` step extends
+the invariant by `parseQuadLines11_concat`.
+
+Axioms `[propext, Classical.choice, Quot.sound]`; no `sorry`, no user
+`axiom`, no `native_decide`. `NQuadsStreaming.lean`'s "not proved here"
+header section is replaced by a pointer to the proof.
+
+Stated for a fold that ends without error. Equating the ERROR cases
+needs the converse concatenation direction recorded in
+`NQuadsConcat.lean`'s header.
+
+Remaining for `RDF.NQuads.Streaming` coverage: the generic-consumer
+half (`stream_consume` / `batch_consume` and their agreement theorem),
+next.
+
+## The generic N-Quads consumer — 2026-08-24
+
+`Syntax/NQuadsFold.lean` ports the consumer half of
+`RDF.NQuads.Streaming.fst`: a caller supplies
+`consume : α → Triple → Option Subject → α` and receives every quad,
+chunked (`streamConsume`) or whole (`batchConsume`), with no `Dataset`
+built. `streamConsume11_eq_batch` is the agreement theorem.
+
+Per the abstraction steer (CLAUDE.md, Standing decisions), fuel
+independence and the line-boundary concatenation lemma are stated once
+here over `α`. They are the proofs from `NQuadsStreaming.lean` /
+`NQuadsConcat.lean` with `Dataset` generalised to `α` and `addQuad` to
+`consume`; the proof text is otherwise unchanged, because those proofs
+never inspect the accumulator. `parseQuadLinesAcc_eq_fold` ties the
+shipping parser to the fold at `consume = addQuad`, so the dataset case
+is an instantiation.
+
+Six `#guard`s run a counting consumer chunked and whole, with chunk
+boundaries mid-line, and check the graph-label slot reaches the
+consumer.
+
+Axioms `[propext, Classical.choice, Quot.sound]` on all five theorems;
+no `sorry`, no user `axiom`, no `native_decide`.
+✅ Build green at 864 jobs; Lean W3C runner unchanged (N-Triples 70
+pass, 0 fail (out of 70); N-Quads 87 pass, 0 fail (out of 87); Turtle
+313 pass, 0 fail (out of 313)).
+
+Next: the `skills/counting-coverage` definition-level audit of
+`RDF.NQuads.Streaming.fst` against the Lean modules, before any
+coverage number moves.
+
+## The parent7 query path answers correctly — 2026-08-24
+
+`OWL/QueryMaterialise.lean` + wiring in `OWL/QueryEval.lean`, pinned by
+`OWL/QueryEvalRegimeTests.lean`.
+
+Measured before: the W3C entailment test parent7 returned 0 rows
+through `evalSelectOwl`; the correct answer is one row (`:Dudley`).
+Cause: the rewrite's shape search expects a canonical restriction node
+in the data, which the F\* closure materialises (over-broadly, filtered
+by the anchor — <https://github.com/danbri/factoidal/issues/236>) and
+the Lean closure never did.
+
+Repair: `augmentForQuery` adds, per maximum-qualified-cardinality-one
+shape in the query, one canonical node with its four shape triples and
+one membership triple per individual `Mat.isMember` PROVES (the
+filler-bound rule). Every added membership is entailed; unprovable
+memberships are not added. Measured on the fixture: five triples
+added, member set exactly `{Dudley}` — no `Bob` (successor of unknown
+class), no over-typing.
+
+Measured after: 1 row, `?parent = :Dudley`, through the full pipeline
+(Turtle parse → RL closure → SPARQL parse → rewrite → eval). The pin
+runs that pipeline at build time and requires exactly one row, which
+rules out both wrong answers (0 rows, extra rows) at once.
+
+✅ Build green at 868 jobs. Lean W3C runner unchanged.
+
+ⓘ Backport candidate for the F\* tree, per the owner's ruling that the
+trees should behave the same: replace the closure's over-typing +
+anchor filtering with proof-gated query-time materialisation.
+
+## OWL entailment regimes wired into the Lean runner — 2026-08-24
+
+`Harness/Run.lean`: a test naming `OWL-Direct` or `OWL-RDF-Based` now
+runs — OWL 2 RL closure (`RL.closureFix`) of every fixture graph, then
+the OWL query path (`QueryEval.evalSelectOwl` / `evalAskOwl` /
+`evalConstructOwl`, which includes the query-time canonical
+materialisation) — instead of being declared unsupported wholesale.
+This is the blindness that hid the parent7 defect: the regime tests
+existed, and the runner refused all thirty.
+
+📊 sparql11 `entailment` suite, Lean runner:
+
+* before: 40 pass, 0 fail, 30 unsupported (out of 70)
+* after: **59 pass, 7 fail, 4 unsupported (out of 70)**
+
+The 4 unsupported name the RIF regime only. The 7 failures are real
+and now visible; F\* passes all 70. The failure shapes:
+
+* three tests expect entailed members of restrictions the rewrite's
+  BGP expansion cannot reach (`min 1` through `owl:equivalentClass`,
+  `some Female`, `paper-sparqldl-Q3`);
+* two tests get EXTRA rows binding closure-introduced blank nodes
+  (`_:anon_*`) — answers under the regimes must not expose blank nodes
+  the queried graph does not have;
+* `sparqldl-11` needs `rdfs:domain`/`owl:Thing` schema answers;
+  `simple 2` under investigation.
+
+Each is a work item against the F\* score, not a regression: every one
+of these tests reported "unsupported" yesterday.
+
+## Entailment regimes: 7 failures repaired, suite green — 2026-08-24
+
+📊 sparql11 `entailment` suite, Lean runner:
+
+* before: 59 pass, 7 fail, 4 unsupported (out of 70)
+* after: **66 pass, 0 fail, 0 skip, 4 unsupported (out of 70)**
+
+The 4 unsupported name the RIF regime only; every OWL/RDFS regime test
+passes. F\* passes 70 of 70 (it implements the RIF regime). The
+repairs, in dependency order:
+
+1. **`Mat.typeCEsOf` expands named types** (`OWL/Materialise.lean`,
+   `namedSuperCEs`): an asserted type that is a NAMED class is
+   followed through `rdfs:subClassOf` and `owl:equivalentClass` (both
+   directions) to the class expressions provably above it. Sound:
+   `i ∈ C` with `C ⊑ D` or `C ≡ D` gives `i ∈ D`. This is what lets
+   `Mat.isMember` prove `:Alice ∈ (≥ 1 :hasChild)` from
+   `:Alice a :Parent` + `:Parent ≡ (∃ :hasChild . owl:Thing)`
+   (parent4), and `:paper1 ∈ (∃ :publishedAt . ¬:Workshop)` from
+   `:ConferencePaper ⊑ (∃ :publishedAt . :Conference)` +
+   `:Conference owl:disjointWith :Workshop` (paper-sparqldl-Q3).
+2. **Unqualified `minCardinality` N ≥ 1 stops rewriting to the edge
+   pattern** (`OWL/QueryRewriteExpand.lean`): the edge pattern
+   `subj p ?v` missed members whose membership is type-derived with no
+   asserted edge, and over-approximated N ≥ 2. The branch now
+   re-emits the ORIGINAL pattern (type triple + the marker's shape
+   triples); `QueryMaterialise.augmentForQuery` guarantees the queried
+   graph holds a realising node whose members are exactly the
+   `Mat.isMember`-proved individuals, so the original pattern matches
+   with exact counting.
+3. **`∃ p. F` with a nested filler gets comprehension witness edges**
+   (`OWL/QueryMaterialise.lean`): that query form IS rewritten to the
+   edge pattern, so membership triples are invisible to it. For each
+   individual whose membership only the type route proves, the
+   augmentation adds `i p _:w` and `_:w a c'` — the existential the
+   type asserts, read back as a blank node. Added only when the known
+   successors do not already prove membership, so no row is doubled.
+   Named-filler `∃ p. F` is never rewritten and keeps being served by
+   the membership triples (parent2).
+4. **`inverseOfDomRngFlipFor` is now IN the closure**
+   (`OWL/RLClosure.lean`): the rule was defined, documented — its doc
+   comment even names `sparqldl-11` — and never registered in
+   `conclusionsList`. Registered, with full soundness threading: four
+   `Derives` rows (`invFlipDomRng`/`invFlipRngDom` and their reverse
+   readings) in `RLRules.lean`, `inverseOfDomRngFlipFor_sound`, the
+   dispatch case in `conclusionsFrom_sound`, four simulation cases in
+   `complete_of_saturated` (`RLTheorems.lean`), and the store mirror +
+   agreement lemma in `RLClosureIndexed.lean`. With the flip,
+   `:child rdfs:domain :Parent` + `:child owl:inverseOf :parent`
+   yields `:parent rdfs:range :Parent`, and scm-cls + scm-rng2 lift it
+   to `owl:Thing` — the two expected sparqldl-11 rows.
+
+Also in this batch (`Harness/Run.lean`): answers drop rows binding
+blank nodes the queried graph does not contain (the closure's witness
+nodes are not legal answer terms), and variables in CLASS position
+(object of `rdf:type` / `rdfs:domain` / `rdfs:range` /
+`owl:equivalentClass`, either side of `rdfs:subClassOf`) bind class
+names only. Individual-position blank-node answers stay (owlds02).
+No `eraseDups` anywhere: expected files contain duplicate rows
+(bind07, sparqldl-10) — answers are bags.
+
+## RIF entailment regime wired: suite complete — 2026-08-24
+
+📊 sparql11 `entailment` suite, Lean runner:
+
+* before: 66 pass, 0 fail, 0 skip, 4 unsupported (out of 70)
+* after: **70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)** — parity
+  with the F\* runner.
+
+New library module `L4Factoidal/RIF/Saturate.lean` — the FUNCTION of
+the F\* `RIF.Core.Tests.saturate_with_program` / 
+`materialise_import_graph` pair:
+
+* `factsOfTriple` (RIF-RDF Compatibility §3: frame always; `rdf:type`
+  also membership; `rdfs:subClassOf` also subclass) and its REVERSE
+  `tripleOfGAtom` — derived frames, memberships and subclass atoms
+  come back as triples, `pos` atoms have no RDF form, and a constant
+  survives only if its lexical form passes `isIri` / `literalWf`.
+* `saturateGraph`: facts → `Engine.closure` fixpoint (100 rounds, the
+  F\* `default_fuel`) → derived triples appended, deduplicated.
+  Rule-local constants are qualified first, so a rule's `_x` cannot
+  capture a data blank node.
+
+`Harness/Run.lean` glue, mirror of the F\* runner's consumer side:
+the four SPARQL entailment tests name RIF-XML rule documents the
+SPARQL suite does not bundle; they resolve by `mf:name` against the
+vendored mirror `third_party/testing/rif/tc/`. DOCTYPE/entity
+preprocessing, `Import` location→local-file resolution, and the
+profile dispatch (`RDF`/`RDFS` → `RDFS.closureFix`, `OWL-*` →
+`OWL.RL.closureFix`, `Simple`/none → plain triples) before
+saturation; evaluation is then the PLAIN query path.
+
+## SPARQL 1.2 reified triples + annotation blocks — 2026-08-24
+
+Issue #556. Port of `parse_reified_triple_pattern`, `parse_reifier_id`
+and `parse_annotations` from `SPARQL11.Parser.fst` into
+`L4Factoidal/SPARQL/Parser.lean`: bare reified triples
+`<< s p o (~ reifier)? >>` in subject and object position, and the
+`~ VarOrReifierId?` / `{| predicateObjectList |}` annotation sequence
+after a simple-predicate object. Same desugaring as the F\*: a reified
+triple denotes its reifier (named by `~`, else a fresh blank node),
+which takes the triple's place in the enclosing position and carries
+one extra pattern `reifier rdf:reifies <<( s p o )>>`; the triple is
+NOT itself asserted. Components reuse the restricted triple-term
+parsers (no collections; predicate var/IRI/`a` only); annotations are
+reachable only from `pObjectListSimple`, never `pObjectListPath`. All
+of it is v12-gated at the tokenizer (the five tokens exist only under
+the v12 flag), so the 1.1 grammar is untouched.
+
+📊 Scores (Lean runner `l4w3c`):
+
+* sparql12 syntax-triple-terms-positive: before 21 pass, 74 fail,
+  18 unsupported (out of 113) → after **95 pass, 0 fail,
+  18 unsupported (out of 113)**.
+* sparql12 syntax-triple-terms-negative: **63 pass, 0 fail,
+  2 unsupported (out of 65)** — unchanged, no regression.
+* sparql12 eval-triple-terms: before 15 pass, 26 fail (out of 41) →
+  after **38 pass, 3 fail (out of 41)**. The 3 remaining failures are
+  the UpdateEvaluationTests; the update PARSER accepts all three
+  fixtures at `.v12` (probed directly), but
+  `Harness/Run.lean`'s `runUpdateEvaluation` calls
+  `parseSparqlUpdate` without a version argument, defaulting to
+  `.v11` — a harness gap, not a grammar gap (the query path already
+  passes `.v12` for rdf12-mode suites).
+* sparql11 syntax-query: **94 pass, 0 fail (out of 94)** — unchanged.
+
+## sparql12 complete — 2026-08-24
+
+📊 sparql12 family, Lean runner: **254 pass, 0 fail, 0 skip, 0
+unsupported (out of 254)** — from 76 pass, 158 fail, 20 unsupported
+this morning. Landings, in order: suite mode plumbing (fixtures,
+queries, updates, expected graphs parse as 1.2), the reified-triple/
+annotation grammar port (issue #556), the update-runner 1.2 mode, the
+evaluator fixes (ill-formed `xsd:boolean` has no value; `STRLANG`
+requires a non-empty tag — both defects shared by the F\* engine
+behind a lenient runner comparison, issue #577), and the un-suffixed
+`PositiveUpdateSyntaxTest`/`NegativeUpdateSyntaxTest` type names in
+the dispatcher.
+
+## Common Logic + IKL bootstrap (`CL/*.lean`, 2026-08-25)
+
+The first LEAN-FIRST component: there is no F\* original. Owner
+direction (2026-08-25): implement IKL and Common Logic "in parallel
+expressions for both F\* and Lean 4. It is ok to do Lean first." The
+F\* twin is the follow-up item on
+<https://github.com/danbri/factoidal/issues/580>; every `CL` definition
+uses inductive datatypes, structural recursion through explicit list
+helpers, and explicit fuel where recursion is not on a direct suffix,
+so the transcription is mechanical.
+
+| Lean 4 | Source of truth | Notes |
+|---|---|---|
+| `L4Factoidal/CL/Syntax.lean` | ISO/IEC 24707 clause 6.1, Annex A; IKL guide "IKL Overview" | terms/sequences/sentences with IKL `(that S)` as one `Term` constructor; `isPureCL` characterises the ISO/IEC 24707 subset |
+| `L4Factoidal/CL/Clif.lean` | ISO/IEC 24707 Annex A.2.2; IKL guide | CLIF lexer (quoted strings, enclosed names, sequence markers), fuel-bounded S-expression parser and reader, serialiser, 17 round-trip `#guard`s |
+| `L4Factoidal/CL/Semantics.lean` | ISO/IEC 24707 §6.2–6.3; IKL guide + Appendix B | unsegregated-universe interpretations, `Prop`-valued satisfaction, `EntailsUnder`; IKL `iProp` + `IklRespectsThat`, with the cancelling-parentheses law `sat_assert_that` proved |
+| `L4Factoidal/CL/Examples.lean` | IKL guide sentences (transcribed + adapted) | 20 build-time `#guard`s; four satisfaction theorems over a finite interpretation |
+
+Not covered (named in each module header and on the issue):
+`cl:text`/`cl:module`/`cl:imports` and importation semantics,
+`cl:comment`, `/* */` lexical comments, IKL numeric quantifiers and
+special name forms, role sets, datatype/string/number theories,
+propositional identity (`=p`) and the guide's structural axioms, and
+any completeness result.

@@ -90,6 +90,39 @@ if [ ! -d "$RT_SRC/runtime" ]; then
 fi
 
 # ---------------------------------------------------------------------
+say "step 1b — patch the runtime's string_to_list_core for wasm32"
+# Upstream defect, present at v4.33.1 AND on leanprover/lean4 master
+# (checked 2026-08-25): runtime/object.cpp's string_to_list_core — the
+# body of lean_string_data, i.e. String.data / String.toList —
+# terminates the List Char it builds with `lean_box_uint32(0)`. On
+# 64-bit targets that folds to the scalar lean_box(0), the correct
+# representation of List.nil, so no shipped Lean build ever misbehaves.
+# On wasm32 (sizeof(void*) == 4) lean_box_uint32 HEAP-ALLOCATES a ctor
+# object (tag 0, 0 fields, 4 scalar bytes) — which is NOT a scalar.
+# Lean-COMPILED consumers read that object's pointer tag (0 = List.nil)
+# and work anyway, so span/take/foldl over such a list all pass — but
+# lean_string_mk (String.mk / String.ofList) walks the list with
+# `while (!lean_is_scalar(o))`, never meets a scalar terminator, reads
+# a garbage tail out of the fake nil's scalar area and runs off across
+# the heap until a word with the low bit set stops it: measured
+# 2026-08-25 as a 3,267,424,256-byte std::string allocation
+# (std::bad_alloc) from `_init_..._closed__48` under lean_obj_once.
+# lean_box(0) is List.nil's representation on EVERY target; patch the
+# one line. The guard makes this idempotent across cached work dirs;
+# a fresh patch application invalidates the cached object.o.
+OBJ_CPP="$RT_SRC/runtime/object.cpp"
+if grep -q 'obj_res  r = lean_box_uint32(0);' "$OBJ_CPP"; then
+  sed -i.bak 's|obj_res  r = lean_box_uint32(0);|obj_res  r = lean_box(0); /* wasm32 patch (build-wasm.sh step 1b): List.nil must be the scalar lean_box(0); lean_box_uint32 heap-allocates on 32-bit, and lean_string_mk then never sees a list terminator */|' \
+    "$OBJ_CPP"
+  rm -f "$OBJ_CPP.bak" "$RT_OBJ/object.o"
+  echo "  patched string_to_list_core (object.o invalidated)"
+else
+  grep -q 'wasm32 patch (build-wasm.sh step 1b)' "$OBJ_CPP" \
+    && echo "  already patched" \
+    || { echo "  PATCH ANCHOR NOT FOUND — upstream object.cpp changed; re-audit string_to_list_core"; exit 1; }
+fi
+
+# ---------------------------------------------------------------------
 say "step 2 — wasm build configuration headers"
 # CMake normally generates these.
 #
@@ -137,7 +170,17 @@ gen_one() {
 }
 export -f gen_one
 export CORE_C LEAN_SRC
-{ echo "$LEAN_SRC/Init.lean"; find "$LEAN_SRC/Init" -name '*.lean'; } \
+# Init always; plus the Std subset the library imports (Std.Data.HashMap
+# / HashSet arrived with RLClosureIndexed and the COTTAS lazy dicts —
+# their initializers pull the Std/Data + Std/Classes import closure).
+# Std.Time / Std.Net / Std.Internal.UV are NOT regenerated: their C
+# references libuv definitions the wasm link has only declarations for.
+STD_DIRS=""
+for d in "$LEAN_SRC/Std/Data" "$LEAN_SRC/Std/Classes" "$LEAN_SRC/Std/Do"; do
+  [ -d "$d" ] && STD_DIRS="$STD_DIRS $d"
+done
+{ echo "$LEAN_SRC/Init.lean"; find "$LEAN_SRC/Init" -name '*.lean'; \
+  [ -n "$STD_DIRS" ] && find $STD_DIRS -name '*.lean'; true; } \
   | xargs -P 8 -I{} bash -c 'gen_one "$@"' _ {}
 echo "  core C files: $(ls "$CORE_C"/*.c | wc -l | tr -d ' ')"
 
@@ -185,12 +228,23 @@ RT_SRCS="debug thread mpz utf8 object apply exception interrupt memory stackinfo
          compact init_module io hash byteslice platform alloc allocprof sharecommon
          stack_overflow process object_ref mpn mutex"
 # c++20: runtime/object.cpp uses std::memory_order::relaxed and std::bit_cast.
-# uv.h is needed for DECLARATIONS only (io.cpp includes it).
+# uv.h is needed for DECLARATIONS only (io.cpp includes it). The
+# header is STAGED into an isolated include dir rather than adding its
+# system directory to the include path: on Linux the header lives in
+# /usr/include, and putting -I/usr/include on an Emscripten compile
+# line makes glibc headers shadow the wasm sysroot's
+# (bits/wordsize.h fatal error in step 5).
 UVINC=""
 for d in /opt/homebrew/include /usr/local/include /usr/include; do
-  [ -f "$d/uv.h" ] && { UVINC="-I $d"; break; }
+  if [ -f "$d/uv.h" ]; then
+    mkdir -p "$WORK/uv-include"
+    cp "$d/uv.h" "$WORK/uv-include/"
+    [ -d "$d/uv" ] && cp -r "$d/uv" "$WORK/uv-include/"
+    UVINC="-I $WORK/uv-include"
+    break
+  fi
 done
-[ -n "$UVINC" ] || { echo "uv.h not found (brew install libuv) — needed for declarations only"; exit 1; }
+[ -n "$UVINC" ] || { echo "uv.h not found (apt-get install libuv1-dev / brew install libuv) — needed for declarations only"; exit 1; }
 for s in $RT_SRCS; do
   [ -s "$RT_OBJ/$s.o" ] && continue
   em++ -std=c++20 $CFLAGS -I "$RT_SRC" $UVINC -c "$RT_SRC/runtime/$s.cpp" -o "$RT_OBJ/$s.o"
@@ -206,10 +260,22 @@ echo "  runtime objects: $(ls "$RT_OBJ"/*.o | wc -l | tr -d ' ') (incl. mimalloc
 say "step 6 — compile our library's C, the shim and the stub"
 rm -f "$LIB_OBJ"/*.o
 # Wasm/Main.c is the NATIVE CLI driver: it defines `main` and pulls in
-# lean_setup_args. It must never be linked into the wasm module.
+# lean_setup_args. It must never be linked into the wasm module — and
+# neither may ANY Harness executable root: every Harness_* unit
+# carries its own `_lean_main` (the runners l4w3c, l4shacl, l4rif, …),
+# and linking two of them is a duplicate-symbol error. The wasm module
+# is the LIBRARY plus Wasm_{Abi,Exports}; executables stay native.
 while IFS= read -r f; do
-  b="$(echo "${f#$LEAN_DIR/.lake/build/ir/}" | sed 's|/|_|g; s|\.c$||')"
+  rel="${f#$LEAN_DIR/.lake/build/ir/}"
+  b="$(echo "$rel" | sed 's|/|_|g; s|\.c$||')"
   [ "$b" = "Wasm_Main" ] && continue
+  case "$b" in Harness_*) continue;; esac
+  # Lake never deletes the ir of a module that was deleted or renamed;
+  # a stale .c whose .lean source is gone duplicates symbols with the
+  # module that replaced it (RIF/Core.c vs RIF/Syntax.c). Compile only
+  # C whose source module still exists.
+  src="$LEAN_DIR/${rel%.c}.lean"
+  [ -f "$src" ] || { echo "  (skipping stale ir: $rel — no $src)"; continue; }
   emcc $CFLAGS -c "$f" -o "$LIB_OBJ/$b.o"
 done < <(find "$LEAN_DIR/.lake/build/ir" -name '*.c')
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_shim.c"  -o "$LIB_OBJ/l4_shim.o"
@@ -241,7 +307,7 @@ em++ -O3 -DNDEBUG -fwasm-exceptions \
   "$LIB_OBJ"/*.o "$CORE_OBJ"/*.o "$RT_OBJ"/*.o \
   -o "$WORK/l4factoidal.mjs" \
   -sMODULARIZE=1 -sEXPORT_ES6=1 \
-  -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_free_result,_malloc,_free \
+  -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_call_c,_l4_free_result,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString \
   -sALLOW_MEMORY_GROWTH=1 \
   -sSTACK_SIZE=8MB \
@@ -257,4 +323,40 @@ cp "$WORK/l4factoidal.wasm" "$ASSETS/l4factoidal.wasm"
 ls -l "$ASSETS"
 echo
 echo "wasm bytes: $(wc -c < "$ASSETS/l4factoidal.wasm")"
+# ---------------------------------------------------------------------
+say "step 9 — companion npm package + Pages mirror + provenance"
+NPMLEAN="$LEAN_DIR/../../npm/factoidal-lean"
+MIRROR="$LEAN_DIR/../../docs/npm/lean"
+if [ -d "$NPMLEAN" ]; then
+  cp "$ASSETS/l4factoidal.js" "$ASSETS/l4factoidal.mjs" "$ASSETS/l4factoidal.wasm" "$NPMLEAN/"
+  WASM_SHA=$(sha256sum "$ASSETS/l4factoidal.wasm" | cut -d' ' -f1)
+  GIT_SHA=$(git -C "$LEAN_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
+  EMCC_VER=$(emcc --version | head -1)
+  LEAN_TC=$(cat "$LEAN_DIR/lean-toolchain")
+  PKG_VER=$(python3 -c "import json;print(json.load(open('$NPMLEAN/package.json'))['version'])")
+  python3 - "$NPMLEAN/version.json" <<PYEOF
+import json, sys, datetime
+json.dump({
+  "version": "$PKG_VER",
+  "gitSha": "$GIT_SHA",
+  "builtAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+  "leanToolchain": "$LEAN_TC",
+  "emscripten": "$EMCC_VER",
+  "abiVersion": "1",
+  "wasmSha256": "$WASM_SHA",
+  "wasmBytes": $(stat -c %s "$ASSETS/l4factoidal.wasm" 2>/dev/null || stat -f %z "$ASSETS/l4factoidal.wasm"),
+  "claims": {
+    "source": "formal/lean4 (L4Factoidal): no sorry, no user axioms, no native_decide; W3C behaviour pinned by build-time #guard",
+    "suitesAtBuildSha": "see docs/test-results and formal/lean4/PORT_NOTES.md at gitSha"
+  }
+}, open(sys.argv[1], "w"), indent=2)
+PYEOF
+  mkdir -p "$MIRROR"
+  cp "$NPMLEAN"/l4factoidal.js "$NPMLEAN"/l4factoidal.mjs "$NPMLEAN"/l4factoidal.wasm \
+     "$NPMLEAN"/version.json "$NPMLEAN"/package.json "$NPMLEAN"/README.md "$NPMLEAN"/LICENSE "$MIRROR/" 2>/dev/null || true
+  echo "  companion + mirror updated (wasm sha256 $WASM_SHA)"
+else
+  echo "  (npm/factoidal-lean absent — companion step skipped)"
+fi
+
 echo "done."

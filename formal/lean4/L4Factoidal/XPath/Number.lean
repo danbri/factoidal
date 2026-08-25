@@ -105,7 +105,7 @@ def div (a b : Num) : Num :=
         -- places, then truncate: the bounded-precision point.
         let extra := 18
         let (a', b', _) := align m1 s1 m2 s2
-        .finite (a' * pow10 extra / b') extra
+        .finite (Int.tdiv (a' * pow10 extra) b') extra
 
 /-- Is this the number zero? Used by boolean conversion. -/
 def isZero : Num → Bool
@@ -139,6 +139,114 @@ def ofString (s : String) : Num :=
     let digits := ip ++ fp
     let m : Int := digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat : Int)) 0
     .finite (if neg then -m else m) fp.length
+
+/-- A numeric LITERAL that may carry an exponent: `1e3`, `1.0e2`,
+    `1.5E-2`.
+
+    XPath 1.0 has no exponent in either its number LEXEME or its
+    `number()` function, so `ofString "1e3"` is NaN and stays NaN —
+    that is the 1.0 rule and changing it would change what
+    `number(.)` says about a string. This is the XPath 2.0 double
+    literal, used by the TOKENIZER only, and it is separate for
+    exactly that reason. -/
+def ofLexeme (s : String) : Num :=
+  let cs := s.toList
+  let idx := cs.findIdx? (fun c => c == 'e' || c == 'E')
+  match idx with
+  | none   => ofString s
+  | some i =>
+      let mant := ofString (String.ofList (cs.take i))
+      let rest := cs.drop (i + 1)
+      let (negE, digits) := match rest with
+        | '-' :: r => (true, r)
+        | '+' :: r => (false, r)
+        | r        => (false, r)
+      if digits.isEmpty || !(digits.all (fun c => '0' ≤ c && c ≤ '9')) then .nan
+      else
+        let e : Nat := (String.ofList digits).toNat!
+        match mant with
+        | .finite m sc =>
+            if negE then .finite m (sc + e)
+            else if e ≥ sc then .finite (m * pow10 (e - sc)) 0
+            else .finite m (sc - e)
+        | other => other
+
+end Num
+end L4Factoidal.XPath
+
+namespace L4Factoidal.XPath
+namespace Num
+
+/-- §4.2 `string()` on a number.
+
+    The four rules that are easy to get wrong, each of which changes
+    the CHARACTERS a stylesheet emits:
+    * NaN is the three letters `NaN`, and Infinity is spelled out —
+      not `INF`, which is the XML Schema lexeme for a DIFFERENT
+      specification;
+    * an integer carries NO decimal point, so `2` and never `2.0`;
+    * a negative zero prints as `0`;
+    * a fraction keeps only the digits it needs, so `1.50` prints as
+      `1.5`. -/
+def toXString : Num → String
+  | .nan    => "NaN"
+  | .posInf => "Infinity"
+  | .negInf => "-Infinity"
+  | .finite m s =>
+      if m == 0 then "0"
+      else
+        let neg := m < 0
+        let digits := (toString (if neg then -m else m)).toList
+        let digits := if digits.length ≤ s then
+            (List.replicate (s + 1 - digits.length) '0') ++ digits
+          else digits
+        let ip := digits.take (digits.length - s)
+        let fp := digits.drop (digits.length - s)
+        let fp := (fp.reverse.dropWhile (· == '0')).reverse
+        let body := if fp.isEmpty then String.ofList ip
+                    else String.ofList ip ++ "." ++ String.ofList fp
+        if neg then "-" ++ body else body
+
+/-- §4.4 `floor()`.
+
+    `Int.fdiv` — flooring division — is named EXPLICITLY. Lean's `/`
+    on `Int` is Euclidean division, which floors for a positive
+    divisor and would work here by accident; `Int.tdiv` truncates
+    toward zero and would not. Writing the intended rounding rather
+    than relying on which of the three `/` denotes is what keeps
+    `floor`, `ceiling` and `mod` from silently disagreeing about
+    negative numbers, which is the only place they differ at all. -/
+def floorN : Num → Num
+  | .finite m s => if s == 0 then .finite m 0 else .finite (Int.fdiv m (pow10 s)) 0
+  | other => other
+
+/-- §4.4 `ceiling()`. -/
+def ceilingN : Num → Num
+  | .finite m s =>
+      if s == 0 then .finite m 0 else .finite (-(Int.fdiv (-m) (pow10 s))) 0
+  | other => other
+
+/-- §4.4 `round()`: the nearest integer, HALF TO POSITIVE INFINITY.
+    `round(-0.5)` is `0`, not `-1` — the asymmetry the specification
+    states and that a naive "add a half and truncate" gets right only
+    on one side of zero. -/
+def roundN (x : Num) : Num :=
+  match x with
+  | .finite _ 0 => x
+  | .finite _ _ => floorN (add x (.finite 5 1))
+  | other       => other
+
+/-- `mod`: the remainder with the sign of the DIVIDEND, as in Java and
+    as XPath §3.5 states — not the always-non-negative modulus. -/
+def modN : Num → Num → Num
+  | .finite m1 s1, .finite m2 s2 =>
+      let (a, b, s) := align m1 s1 m2 s2
+      -- `Int.tdiv` TRUNCATES toward zero, which is what gives the
+      -- remainder the sign of the dividend. Lean's `/` on `Int` is
+      -- Euclidean and would make every remainder non-negative, so
+      -- `-5 mod 3` would be `1` rather than the `-2` §3.5 states.
+      if b == 0 then .nan else .finite (a - b * (Int.tdiv a b)) s
+  | _, _ => .nan
 
 end Num
 end L4Factoidal.XPath

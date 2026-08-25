@@ -850,7 +850,15 @@ Core (RDF/SPARQL evaluation):
   RDF.Graph.Executable.fst        4152 lines
 
 Query planning (on-disk backend infrastructure):
-  RDF.CottasStore.fst             1528 lines, 10 assume val
+  RDF.CottasStore.fst             2929 lines,  3 assume val (2026-08-24: was 10.
+   Eight of the ten were the two directions of one token dictionary, not
+   I/O; they are now the fields of `cottas_token_tables`, with the
+   `Type0` predicate `token_tables_agree_with` replacing the prose
+   soundness comment, `tables_of_handle_agree` proving the
+   populated-handle instance, and `build_qp_row_agrees` deriving the
+   caller-visible consequence. The three left are `cottas_ondisk_open`,
+   `cottas_ondisk_close`, and `ondisk_token_tables_global` -- all I/O.
+   Line count re-measured with wc -l; the old "1528" had drifted.)
   RDF.CottasStore.OnDiskIndex.fst  407 lines,  7 assume val
   SPARQL11.Store.fst               780 lines
   (RDF.CottasStore.OnDiskRuntime.fst — 117 lines, 15 assume val — DELETED

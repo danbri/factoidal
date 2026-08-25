@@ -48,7 +48,7 @@ private def bnodeT : Term := .bnode "b0"
 -- A stem RANGE exclusion removes a term the stem would have admitted.
 #guard matchesValueSetValue (.stemRange .iri (.plain "http://ex/") []) (iriT "http://ex/a")
 #guard !(matchesValueSetValue
-          (.stemRange .iri (.plain "http://ex/") [.iri "http://ex/a"]) (iriT "http://ex/a"))
+          (.stemRange .iri (.plain "http://ex/") [.value (.iri "http://ex/a")]) (iriT "http://ex/a"))
 
 -- An EMPTY value set is unconstrained.
 #guard matchesValues [] (litT "anything")
@@ -92,5 +92,81 @@ private def sch : Schema :=
   { shapes := [{ id := "http://ex/S", expr := .nodeConstraint { nodeKind := some .iri } }] }
 #guard (sch.lookup "http://ex/S").isSome
 #guard (sch.lookup "http://ex/missing").isNone
+
+/-! ## §5.4.3: a datatype constraint checks the LEXICAL SPACE
+
+Checking only that the datatype IRI matches accepted
+`"1.0"^^xsd:integer` and `"NaN"^^xsd:decimal` — 144 entries of the
+validation suite, every one a NEGATIVE test. A validator that accepts
+everything passes every positive test, which is why a gap like this
+shows up only in the negative half. -/
+
+private def xsdI (local' : String) : String :=
+  "http://www.w3.org/2001/XMLSchema#" ++ local'
+
+#guard inXsdLexicalSpace (xsdI "integer") "1" == some true
+#guard inXsdLexicalSpace (xsdI "integer") "1.0" == some false
+#guard inXsdLexicalSpace (xsdI "integer") "1E0" == some false
+#guard inXsdLexicalSpace (xsdI "decimal") "NaN" == some false
+#guard inXsdLexicalSpace (xsdI "decimal") "1E0" == some false
+#guard inXsdLexicalSpace (xsdI "double") "1E0" == some true
+#guard inXsdLexicalSpace (xsdI "double") "NaN" == some true
+#guard inXsdLexicalSpace (xsdI "negativeInteger") "0" == some false
+#guard inXsdLexicalSpace (xsdI "negativeInteger") "-1" == some true
+#guard inXsdLexicalSpace (xsdI "nonPositiveInteger") "1" == some false
+#guard inXsdLexicalSpace (xsdI "byte") "1234" == some false
+#guard inXsdLexicalSpace (xsdI "boolean") "true" == some true
+#guard inXsdLexicalSpace (xsdI "boolean") "yes" == some false
+#guard inXsdLexicalSpace (xsdI "string") "anything at all" == some true
+-- A datatype this module does not decide imposes NO check, and says
+-- so with `none` rather than a silent `true`.
+#guard inXsdLexicalSpace "http://a.example/bloodType" "ab" == none
+
+/-! ## The digit facets count digits of the VALUE
+
+Leading zeros of the integer part and trailing zeros of the fraction
+are not digits of the value, so `007.700` has two total and one
+fractional. -/
+
+#guard totalDigitsOf "007.700" == some 2
+#guard fractionDigitsOf "007.700" == some 1
+#guard totalDigitsOf "1.2345" == some 5
+#guard fractionDigitsOf "1.2345" == some 4
+#guard totalDigitsOf "0" == some 0
+-- A lexical form that is not a decimal FAILS the facet rather than
+-- being coerced.
+#guard totalDigitsOf "1_2345" == none
+#guard fractionDigitsOf "1E2" == none
+
+/-! ## A stem range's EXCLUSIONS depend on the range's kind
+
+`{"type": "LiteralStemRange", "stem": "v", "exclusions": ["v1"]}`
+excludes the LITERAL `"v1"`. The port read every bare-string exclusion
+as an IRI, so literal and language exclusions matched nothing and the
+node they were meant to remove was admitted. -/
+
+#guard matchesValueSetValue
+         (.stemRange .literal (.plain "v") [.value (.literal "v1" none none)]) (litT "v9")
+#guard !(matchesValueSetValue
+           (.stemRange .literal (.plain "v") [.value (.literal "v1" none none)]) (litT "v1"))
+-- A NESTED STEM excludes a whole prefix, not one value.
+#guard !(matchesValueSetValue
+           (.stemRange .iri (.plain "http://ex/v") [.stem "http://ex/v1"])
+           (iriT "http://ex/v1abc"))
+#guard matchesValueSetValue
+         (.stemRange .iri (.plain "http://ex/v") [.stem "http://ex/v1"])
+         (iriT "http://ex/v2abc")
+
+/-! ## An ordering facet resolves the exponent first
+
+An `xsd:double` writes its value in E-notation and the facet it is
+compared against may not. Without resolving it the comparison was
+undecidable, and an undecidable comparison reports the facet
+UNSATISFIED — so twelve positive tests failed on values that satisfy
+their facet. -/
+
+#guard compareDecimal "1.0E2" "100" == some Ordering.eq
+#guard compareDecimal "1.5E1" "10" == some Ordering.gt
+#guard compareDecimal "0.0e0" "0" == some Ordering.eq
 
 end L4Factoidal.ShEx

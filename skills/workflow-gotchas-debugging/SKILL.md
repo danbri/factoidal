@@ -1091,3 +1091,378 @@ Rules:
 Standing pin: `tests/local/cli_literal_escape_roundtrip.sh` — six literal
 classes across the `--dump` and store paths, with an anti-vacuity arm that
 corrupts the dump the exact way the bug did and requires the pin to go red.
+
+## Hazard #26 — a batching edit script reports success for edits it discarded (2026-08-23)
+
+**Symptom.** A `python3` heredoc makes five edits to one file, prints
+`ok` after each, exits 0. The build that follows is green. The
+measurement that follows is taken. The commit message describes five
+fixes. Three of them are not in the file.
+
+**Mechanism.** The script reads the file once, applies every
+replacement to the string IN MEMORY, and writes at the END:
+
+```python
+s = open(p).read()
+s = s.replace(a1, b1, 1); print("ok")     # in memory only
+assert a2 in s; s = s.replace(a2, b2, 1)  # <-- raises here
+open(p, 'w').write(s)                     # never reached
+```
+
+An `AssertionError` on ANY later replacement discards every earlier
+one — after the progress lines have already been printed. Nothing
+distinguishes this from success: the file still parses, the build
+still passes, and the suite still runs.
+
+**Cost, 2026-08-23.** The Lean OWL wave-2 commit claimed five
+performance fixes. Three were absent (the threaded search budget,
+the `labelsOf` lookup, the hoisted per-axiom label reads); a sixth
+item was defined and never called. The measurement taken against
+that build said the fixes "bought nothing", and that conclusion went
+into `PORT_NOTES.md`, the parity ledger and a GitHub issue as a
+methodology lesson about premature optimisation. With the edits
+ACTUALLY applied the same suite went from 26 m 34 s to 4 m 30 s — a
+5.9× speedup — and the score went UP by one case. The wrong lesson
+had to be retracted from three documents.
+
+**Rules.**
+
+1. **Write after each replacement, or verify the write.** One
+   `open(p,'w').write(s)` per edit, or a final `assert b1 in
+   open(p).read()` per claim.
+2. **A green build is not evidence that an edit landed.** The
+   unchanged file also builds. This is anti-pattern #27's family:
+   the tooling reports success for work that did not happen.
+3. **`grep -c` the file for every claim before writing it into a
+   commit message.** Five claims, five greps, under a minute. It
+   would have caught all three.
+4. **A measurement is a measurement OF A BUILD.** If an edit was not
+   verified to land, the number that follows is about the old code.
+   Re-measure.
+
+**Related.** Hazard #18 (a container recycle silently un-happens an
+uncommitted edit) and anti-pattern #27 (a landing drops module-list
+entries; the build exits 0 and the feature is not built) are the same
+shape: success reported for work that did not happen.
+
+## Hazard #27 — a hand-built guard proves a rule CORRECT and says nothing about whether it FIRES (2026-08-23)
+
+**Symptom.** A new engine rule is written, a `#guard` is built by
+hand to exercise it, the guard passes, the rule is landed. The corpus
+score does not move by a single case.
+
+**Cost, 2026-08-23.** The Lean OWL ≤-rule (identify two successors of
+a node over its cardinality bound) was implemented by REWRITING
+EDGES: redirect every tableau-internal edge mentioning the absorbed
+node. A hand-built graph reproducing `WebOnt-description-logic-003`
+refuted correctly. On the corpus the rule fired zero times, because
+the `--dl` regime runs a materialisation pass FIRST and that pass
+writes its own existential witnesses INTO the graph — where an edge
+cannot be rewritten at all. Every successor that mattered came from
+there.
+
+**Rule.** A synthetic input built from the rule's own preconditions
+tests the rule's LOGIC. It cannot test whether the real pipeline ever
+presents those preconditions. For a rule meant to move a suite score,
+the guard is necessary and the SCORE is the evidence — and if the
+score does not move, instrument whether the rule fired at all before
+assuming it is merely incomplete.
+
+This is `skills/measuring-inference`'s "synthetic shapes lie about
+real vocabularies", in the place it is least expected: not the data,
+the PIPELINE. The upstream stage had changed the shape of the input
+the rule was written against.
+
+## Hazard #28 — an audit that finds nothing is evidence about the AUDIT first (2026-08-23)
+
+**What happened.** `tools/lean-port-gap.py` measures how much of the F\*
+tree the Lean 4 port covers, by matching F\* module names against Lean
+module names. One false negative turned up by hand: `DID.Key` had been
+covered by `L4Factoidal/VC/DidKey.lean` all along and the alias table
+did not know.
+
+So I audited the rest — by squashed MODULE NAME. It found nothing more.
+I wrote, in the gap document and in a GitHub comment: "An audit of the
+whole not-covered list found no other false negative."
+
+**What was actually true.** Four more modules were already covered,
+1,298 F\* lines:
+
+| F\* module | Lines | Actually covered by |
+|---|---|---|
+| `RDF.Entailment.Simple` | 182 | `L4Factoidal/RDF/Entailment.lean` |
+| `RDF.Entailment.Regime` | 271 | the same file |
+| `Parser.CSVResults` | 610 | `L4Factoidal/SPARQL/ResultsCsvTsv.lean` |
+| `RDF.Pretty` | 235 | — |
+
+The reported coverage was 120 of 220. The real figure was 125 of 220.
+The gap document, the PORT_NOTES sections and a GitHub status comment
+all carried the wrong number for the length of the session.
+
+**Why the method could not have worked.** Module-name matching cannot
+see two things, and both were present:
+
+1. **A consolidation.** One Lean module covers simple entailment AND
+   the D / RDF / RDFS regimes, which the F\* tree splits across two
+   files. No name relates `RDF.Entailment.Simple` to `RDF.Entailment`
+   more strongly than it relates a dozen unrelated modules.
+2. **A rename that changes more than punctuation.** `Parser.CSVResults`
+   became `SPARQL.ResultsCsvTsv`. Squashing case and dots does not
+   bridge that.
+
+The audit was silent about exactly the two failure modes it was
+structurally blind to, and I read its silence as coverage.
+
+**What found them.** Comparing DEFINITION NAMES rather than module
+names: every `let` / `val` / `type` of each not-covered F\* module
+against every `def` / `abbrev` / `structure` / `inductive` / `theorem`
+in the Lean tree, normalised for case and underscores, ranked by the
+fraction of the F\* module's definitions that have a Lean counterpart.
+`RDF.Entailment.Simple` scores low on that test too (the Lean names are
+`termMatch` and `matchSubject` where F\* has `match_term` and
+`match_subj`) — it was caught by reading the Lean module's own header,
+which says in its first sentence which two things it covers.
+
+### The rules
+
+1. **An audit that finds nothing is a claim about the audit's REACH
+   before it is a claim about the code.** Say what the method can and
+   cannot see, next to the result. "Checked by squashed module name;
+   this cannot detect consolidations or substantive renames" would have
+   made the residual risk visible instead of silently absorbed.
+2. **Pick a method that can see the failure you are looking for.** The
+   question was "is this module's CONTENT present somewhere in the Lean
+   tree". Module names are a proxy for that and a weak one. Definition
+   names are closer. The module's own header is closer still, and it is
+   what actually settled it.
+3. **A correction to a measurement is not done when the number is
+   fixed.** The wrong number had already been written into a design doc,
+   PORT_NOTES and a GitHub comment. All three need the correction, and
+   the correction needs to say what the old claim was — otherwise the
+   next reader cannot tell which of the two numbers they are looking at.
+4. Same family as hazard #26 (a green build is not evidence an edit
+   landed) and hazard #27 (a passing guard is not evidence a rule
+   fires). In all three, a check produced a reassuring result while
+   being structurally incapable of detecting the thing it was trusted
+   for.
+
+## Hazard #29 — a theorem that assumes its own conclusion type-checks fine (2026-08-23)
+
+**What happened.** Porting `RDF.CottasStore.PresenceWriter` to Lean put
+the `.presence` WRITER and the `.presence` READER in one tree as pure
+functions of a `ByteArray`. Both trees' soundness lemma for the
+row-group prune holds only GIVEN `BuiltCorrectly` — the on-disk bitmap
+agrees with the ground truth — and neither tree proves that premise,
+because in the F\* tree the writer is OCaml.
+
+So the port ended with a theorem, under a section heading reading "the
+producer-side obligation, closed":
+
+```lean
+theorem buildPresence_correct …
+    (hagree : ∀ rg tok, rg < numRgs → tok < numTokens →
+                rgContainsToken h rg tok = occurs rg tok) :
+    BuiltCorrectly h occurs
+```
+
+It type-checked. It is worthless. `BuiltCorrectly h occurs` unfolds to
+`∀ rg tok, rg < h.header.numRgs → tok < h.header.numTokens →
+rgContainsToken h rg tok = occurs rg tok`, and two other hypotheses said
+`h.header.numRgs = numRgs` and `h.header.numTokens = numTokens`. The
+hypothesis IS the conclusion with its bounds re-indexed. The proof body
+was `exact hagree …`.
+
+**What it would have cost.** The commit message, the design doc and a
+`PORT_NOTES` section would all have said an open proof obligation was
+discharged. Anyone later reading "the producer-side obligation is
+closed" would have stopped looking for the real proof. The reader's own
+`rgContainsToken_sound` would then have appeared to rest on a proved
+premise when it rests on nothing.
+
+**How it was caught.** By re-reading the statement against the
+definition of `BuiltCorrectly` before writing the commit message — not
+by the type checker, which was perfectly happy, and not by any test.
+
+### The rules
+
+1. **A hypothesis that restates the conclusion is not a hypothesis.**
+   Before claiming a theorem discharges an obligation, unfold the
+   conclusion and check no premise contains it. `Prop`-valued
+   definitions make this easy to miss, because the two read differently
+   at the source level while being the same statement.
+2. **The proof body is the tell.** `exact h` for some hypothesis `h`,
+   where the theorem claims to establish something substantive, means
+   the work is in the hypothesis and the caller has to supply it.
+3. **Delete it; do not weaken it.** A theorem that assumes its
+   conclusion is worse than no theorem, because it makes prose claim the
+   obligation is met. What replaced it here is a paragraph naming what
+   would actually close the gap (a bit-packing lemma over a `UInt8` fold
+   of `|||`) and what is established instead (computational evidence at
+   four shapes, including two that cross byte boundaries).
+4. **State the difference the port DID make, separately from the one it
+   did not.** Here: the proof is now POSSIBLE — both sides are pure
+   functions in one tree instead of split across an OCaml writer — and
+   it is not done. Those are two different sentences and collapsing them
+   is what produced the bad theorem in the first place.
+5. Same family as hazard #24's vacuous theorems (unsatisfiable
+   hypotheses), #26 (a green build is not evidence an edit landed), #27
+   (a passing guard is not evidence a rule fires), #28 (an audit that
+   finds nothing is evidence about the audit) and #30 (a tool that
+   reads a cached input reports the cache). In all of them a check
+   returned a reassuring result while being structurally incapable of
+   detecting what it was trusted for.
+
+## Hazard #30 — a measurement tool that reads a cached input reports the cache, not the tree (2026-08-23)
+
+`tools/lean-port-gap.py` answers one question: which F\* modules have a
+Lean counterpart. It read both module lists from two text files in the
+session scratchpad.
+
+The F\* list stayed right, because `formal/fstar/` had not changed. The
+Lean list was a snapshot taken earlier in the session, so the tool
+reported a module as NOT COVERED minutes after its Lean file landed in
+the tree. The number the tool exists to produce was wrong, and nothing
+in its output said the input was old.
+
+The second failure mode is worse and had not fired yet: the scratchpad
+directory is per-session and is deleted with the container, so on a
+fresh session the tool would have crashed, or — if someone recreated
+the files from an older checkout — reported an older answer with no
+warning.
+
+### The rule
+
+**A measurement tool derives its inputs from the repository on every
+run.** If a tool needs a list of files, it walks for them. A cached
+input is acceptable only when the tool verifies the cache is current
+and fails loudly when it is not.
+
+Two supporting habits:
+
+- **Fail on an empty walk.** `lean-port-gap.py` now exits non-zero if
+  either walk returns zero modules. A wrong working directory then
+  produces an error rather than "0 of 0 covered".
+- **Write reports to a temp path, not the repository root**, unless the
+  report is a tracked artefact. A generated file that lands in the tree
+  turns up in the next `git status` and gets committed by accident.
+
+This is the same family as hazards #25, #26, #27, #28 and #29: a check
+returned a reassuring result while being structurally unable to detect
+what it was trusted for. Here the check was arithmetic over a list, and
+the list was the stale part.
+
+## Hazard #31 — a name-similarity heuristic silently inflates a coverage count (2026-08-23)
+
+`tools/lean-port-gap.py` decided that an F\* module had a Lean
+counterpart if an explicit alias matched, OR if the last name component
+matched, OR if the last two matched. The bare last-component rule is
+the problem.
+
+Adding `L4Factoidal/HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines,
+not ported, not close to ported — disappear from the not-covered list,
+because both names end in `Store`. The count went UP by two when one
+module landed, and the second increment was a module that had not been
+touched.
+
+Auditing the rest found fourteen modules resting on a bare-leaf match.
+Seven were wrong: `SPARQL11.Store` ← `HDT.Store`, `RIF.Core.Tests` ←
+any of fifteen `*.Tests` modules, `RDF.Store.Loader` ←
+`JSONLD.Loader`, `Math.Expr` ← `SPARQL.Expr`, `SPARQL.Protocol.Client`
+← `HTTP.Client`, and two `*.Serialize` modules ← `JSON.Serialize`.
+
+The count had been over by five for the whole session before this
+landing, and the heuristic predates it.
+
+### The worse half: a broken alias hidden by the heuristic
+
+Two aliases pointed at `RDF.Serialize`, a Lean module that DOES NOT
+EXIST. The alias silently did nothing, the leaf rule matched
+`JSON.Serialize` instead, and both modules counted as covered. A lookup
+table whose misses are absorbed by a fallback cannot report its own
+breakage.
+
+### The rules
+
+1. **Coverage is an explicit decision, not a name resemblance.** Only
+   an alias, or a match on the last TWO name components, counts. A
+   bare last-component match is a suggestion to audit, never a result.
+2. **A lookup miss must be loud.** The tool now prints every alias
+   whose target module is absent, before the report. A silent
+   fallback behind a table is how a broken entry survives.
+3. **A count that moves without a cause is a bug report.** One module
+   landed and the number rose by two. That is the signal; chase it
+   before writing the number down.
+4. **Audit by reading the target's own header.** Each alias kept after
+   this audit was verified against the Lean module's own "Port of
+   `formal/fstar/<X>.fst`" line, or — for the three RIF modules, which
+   carry no such line — by subject matter, which is the weaker
+   evidence class and is labelled as such in the table.
+
+This is the third measurement defect in this tool in one day (hazards
+#28, #30, #31). All three shared a shape: the tool answered, the answer
+looked reasonable, and nothing in the output said which evidence it
+rested on.
+
+---
+
+## Hazard #32 — two sessions in ONE worktree: `git commit -a` absorbs the other session's in-flight edits (2026-08-24)
+
+### Symptom
+
+An agent finished a change, verified it, then ran `git status` to stage
+its own commit and got **`nothing to commit, working tree clean`** — with
+its edits present in the files. `git log -- <the changed file>` named a
+commit about an unrelated subject, authored minutes earlier. The agent
+had no commit of its own to report.
+
+### Root cause
+
+Two agent sessions were running against the SAME container and the SAME
+checkout of `claude/autoexec-scratchpad-assess-37oeok`. The other session
+was landing Lean work every ten minutes, some of it with a whole-tree
+`git commit -a`. Every such commit swept up whatever the first session
+had written so far.
+
+Measured on 2026-08-24: one F-star change and its glue patch and its two
+doc edits were split across three commits belonging to a Lean porting
+session — `2a2d50ddee2`, `3d9b9c47188`, `c4ff99d94e5` — none of whose
+messages mention the on-disk store.
+
+Two costs, and the second is the larger one:
+
+1. The change has no commit of its own, so its message, its rationale and
+   its score line are absent from history. A later `git log --oneline`
+   cannot find it, and a bisect blames a Lean parser commit for an F-star
+   backend change.
+2. **A `-a` commit can capture a half-written edit.** The absorbing
+   commit lands whatever is on disk at that second, verified or not. A
+   session that has changed three files out of five and is still editing
+   gets its middle state committed, and the branch carries source that
+   nothing has type-checked.
+
+### Detection
+
+- `git status` reports clean when you know you have unstaged work.
+- `git log -1 --format=%ad --date=iso` shows a commit minutes old that
+  you did not make.
+- `git log --oneline -S '<an identifier you just introduced>' -- <file>`
+  names someone else's commit.
+- `git reflog` shows commits interleaved with your own timeline.
+
+### The rules
+
+1. **Check for a co-tenant BEFORE the first edit.** `git log -1
+   --date=iso` at session start, and again before committing. A commit
+   timestamp inside your own session window that you did not author means
+   you are sharing the checkout.
+2. **Share a branch, never a working directory.** A second session in the
+   same container works in its own `git worktree`. This is the same rule
+   `skills/subagent-prompting` already applies to subagents; it applies
+   to sibling sessions for the same reason.
+3. **Never `git commit -a` in a shared checkout** — stage the paths you
+   changed by name. `-a` is a claim that every modified file in the tree
+   is yours, and in a shared checkout that claim is false.
+4. **Report what actually happened.** If your work landed inside another
+   session's commit, say so and give that SHA. Do not synthesise a commit
+   that "represents" the change, and do not report a SHA that does not
+   contain it.

@@ -4,14 +4,27 @@ SPARQL 1.1 tokenizer and the parser's top-level contract.
 
 SCOPE, stated up front so nothing here reads as more than it is. A
 parser's interesting property is a round trip — `parseSparql
-(printQuery q) = .ok q` — and this port ships NO query PRINTER, so
-that theorem is not stated. Stating it against `Query.toSse` would be
-FALSE: SSE is an ALGEBRA notation, not SPARQL surface syntax, and it
-is deliberately lossy (`sse_expr`'s aggregate arm drops the function
-name and the DISTINCT flag; `sse_ggp`'s VALUES arm drops every row).
-The `#guard`s in `ParserTests.lean` and the corpus run in
-`Harness/SparqlSyntaxProbe.lean` are what establish the parser's
-behaviour; what follows are the properties provable without a printer.
+(printQuery q) = .ok q` — and this port ships no printer for a GENERAL
+query, so that theorem is not stated here. Stating it against
+`Query.toSse` would be FALSE: SSE is an ALGEBRA notation, not SPARQL
+surface syntax, and it is deliberately lossy (`sse_expr`'s aggregate
+arm drops the function name and the DISTINCT flag; `sse_ggp`'s VALUES
+arm drops every row). The `#guard`s in `ParserTests.lean` and the
+corpus run in `Harness/SparqlSyntaxProbe.lean` are what establish the
+parser's behaviour; what follows are the properties provable without a
+printer.
+
+UPDATED 2026-08-23: two FRAGMENT printers and their round trips DO now
+exist, and a reader who stopped at the paragraph above would miss them.
+
+* `SPARQL/TokenRoundTrip.lean` — `tokenize_printTokens`: printing a
+  token list from a defined fragment and lexing the text recovers the
+  list plus the trailing end-of-input.
+* `SPARQL/AskRoundTrip.lean` — `tokenize_printAsk`: printing a fragment
+  `ASK { s p o . … }` query and lexing it recovers the expected tokens.
+
+Both stop at the TOKENS. Neither says the parser recovers an AST, so
+the sentence above still holds for the statement it is about.
 
 WHY SO FEW `decide` PROOFS — a measurement, not a preference, and one
 the next session should not have to repeat. `decide` discharges a goal

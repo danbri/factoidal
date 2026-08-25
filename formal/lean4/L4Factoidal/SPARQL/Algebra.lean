@@ -68,6 +68,76 @@ shadow later ones (matching the F* representation exactly). -/
 
 abbrev VarName := String
 
+/-! ## The constants a triple pattern pins
+
+Port of `triple_pattern_bound` from `formal/fstar/SPARQL11.Algebra.fst`.
+A physical store answers a pattern by its BOUND positions: whichever of
+subject, predicate and object the pattern fixes to a constant. Variables
+are `none`.
+
+It lives in the algebra, as in the F\* source, so that every store
+reader and every planner sees the same record without importing a plan
+module. `SPARQL.PlanStreamable`'s `StreamBound` is now an abbreviation
+of this record — it had been a second copy of the same three fields,
+written when the Lean algebra had no such type. -/
+structure PatternBound where
+  s : Option Subject := none
+  p : Option WfIri := none
+  o : Option Term := none
+  deriving Repr, DecidableEq, Inhabited
+
+/-- No position bound: the all-variables pattern. -/
+def patternBoundAll : PatternBound := {}
+
+/-- Does this triple match the bound? Each bound position compares with
+the ENGINE equality of its own kind, so a bound literal object matches
+by literal equality (language-tag case, XMLLiteral canonical form) and
+not by exact field identity. Port of the per-position test inside
+`triple_matches_bound_acc`. -/
+def boundMatches (b : PatternBound) (t : Triple) : Bool :=
+  (match b.s with | none => true | some s => Subject.eqb s t.s) &&
+  (match b.p with | none => true | some p => p == t.p) &&
+  (match b.o with | none => true | some o => Term.eqb o t.o)
+
+/-- The bound test respects the engine equality on triples. Needed
+wherever a proof crosses between "does the store hold this triple"
+(`Graph.mem`, which compares two stored triples) and "does the bound
+match it" (which compares a QUERY value against a stored one). -/
+theorem boundMatches_congr (b : PatternBound) (a c : Triple) (h : Triple.eqb a c = true) :
+    boundMatches b a = boundMatches b c := by
+  simp only [Triple.eqb, Bool.and_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨hs, hp⟩, ho⟩ := h
+  have hs' : a.s = c.s := Subject.eqb_eq hs
+  unfold boundMatches
+  rw [hs', hp]
+  cases b.o with
+  | none => rfl
+  | some o =>
+      have : Term.eqb o a.o = Term.eqb o c.o := by
+        cases h1 : Term.eqb o a.o with
+        | true => simp [Term.eqb_trans h1 ho]
+        | false =>
+            cases h2 : Term.eqb o c.o with
+            | true =>
+                exact absurd
+                  (Term.eqb_trans h2 (by rw [Term.eqb_symm]; exact ho)) (by rw [h1]; simp)
+            | false => rfl
+      simp [this]
+
+/-- The triples of `ts` that match `b`, in their original order.
+
+The F\* source writes this as an accumulator plus a final reverse, and
+its comment gives the reason: on the extracted OCaml a three-million-row
+bucket overflowed the stack when the recursion built its result AFTER
+the recursive call. `List.filter` has no such problem, and the two
+return the same list in the same order. -/
+def tripleMatchesBound (b : PatternBound) (ts : Graph) : Graph :=
+  ts.filter (boundMatches b)
+
+theorem mem_tripleMatchesBound (b : PatternBound) (g : Graph) (t : Triple) :
+    Graph.mem t (tripleMatchesBound b g) = (Graph.mem t g && boundMatches b t) :=
+  RDF.mem_filter_congr (boundMatches_congr b) t g
+
 /-- A solution mapping (also called a binding row). -/
 abbrev Binding := List (VarName × Term)
 
@@ -159,14 +229,14 @@ inductive PatternTerm where
   | bnode      (b : BNodeId)
   | literal    (l : WfLiteral)
   | tripleTerm (s p o : PatternTerm)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 inductive PatternSubject where
   | var        (v : VarName)
   | iri        (i : WfIri)
   | bnode      (b : BNodeId)
   | tripleTerm (s p o : PatternTerm)
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-- A triple pattern: subject, predicate, object — SPARQL 1.1 allows
 a variable in any position (§18.1.6). -/
@@ -174,7 +244,7 @@ structure TriplePattern where
   s : PatternSubject
   p : PatternTerm
   o : PatternTerm
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-- A Basic Graph Pattern (§18.1.7): a list of triple patterns. -/
 abbrev Bgp := List TriplePattern

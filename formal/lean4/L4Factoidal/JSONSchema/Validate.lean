@@ -23,6 +23,7 @@ whether the validator is honest:
 -/
 import L4Factoidal.JSON.Value
 import L4Factoidal.Regex.XPath
+import L4Factoidal.Syntax.IriResolve
 
 namespace L4Factoidal.JSONSchema
 
@@ -231,32 +232,182 @@ def percentDecode (s : String) : String :=
         | []        => []
   String.ofList (go s.length s.toList)
 
-/-- The registry a `$ref` to ANOTHER document resolves against: an
-    absolute URI (without its fragment) to that document's root. -/
+/-- The registry a `$ref` resolves against: an absolute URI to the
+    schema published at it. Two kinds of key live here — a DOCUMENT
+    base (`http://example.com/a.json`) and an ANCHOR
+    (`http://example.com/a.json#foo`), the second being what a
+    plain-fragment `$id` mints. -/
 abbrev Registry := List (String × Json)
 
-/-- Resolve a `$ref`. `#` is the root itself; `#/a/b` is a pointer into
-    it; an absolute URI is looked up in the registry and then
-    pointed into. -/
-def resolveRefIn (reg : Registry) (root : Json) (r : String) : Option Json :=
-  let r := percentDecode r
-  if r == "#" then some root
-  else if r.startsWith "#/" then resolvePointer root (pointerTokens r)
+/-! ### `$id` and the base URI
+
+Draft-07 §8.2: an `$id` sets the base URI for everything BELOW it, and
+that base is what a relative `$ref` beneath it resolves against. The
+base changes at every `$id`, so it is a property of a POSITION in the
+document, not of the document.
+
+Two rules make this more than string concatenation:
+
+* **`$id` composes with the NEAREST enclosing base, not the document's.**
+  `a.json` containing `b/c.json` containing `d.json` publishes
+  `http://example.com/b/d.json` — the suite tests exactly that
+  ("$id must be resolved against nearest parent, not just immediate
+  parent").
+* **A sibling `$ref` cancels the `$id`.** §8.3 makes every keyword
+  beside a `$ref` inert, `$id` included, so a `{"$id": …, "$ref": …}`
+  resolves its ref against the OUTER base ("$ref prevents a sibling
+  $id from changing the base uri").
+-/
+
+/-- Does a reference carry its own scheme? Then it is absolute and no
+    base applies. Written out rather than reusing an IRI predicate
+    because a URN (`urn:uuid:…`) must count, and it has no authority
+    component for a naive check to find. -/
+def hasScheme (r : String) : Bool :=
+  match r.splitOn ":" with
+  | pre :: _ :: _ =>
+      !pre.isEmpty &&
+      pre.all (fun c => c.isAlpha || c.isDigit || c == '+' || c == '-' || c == '.') &&
+      (pre.toList.head?.map Char.isAlpha).getD false
+  | _ => false
+
+/-- Everything before the first `#`. -/
+def stripFragment (u : String) : String :=
+  match u.splitOn "#" with
+  | b :: _ => b
+  | []     => u
+
+/-- The fragment, `#` included, or `""`. -/
+def fragmentOf (u : String) : String :=
+  match u.splitOn "#" with
+  | _ :: rest => if rest.isEmpty then "" else "#" ++ String.intercalate "#" rest
+  | []        => ""
+
+/-- Resolve a reference against a base URI. An absolute reference wins
+    outright; an empty one IS the base; anything else goes through RFC
+    3986 §5.3. A URN base takes the absolute path, which is why the
+    scheme test comes first: RFC 3986 relative resolution against
+    `urn:uuid:…` is not defined, and the suite only ever writes the
+    URN in full. -/
+def resolveAgainst (base ref : String) : String :=
+  if ref.isEmpty then base
+  else if hasScheme ref then ref
+  else if base.isEmpty then ref
+  else if hasScheme base && !(base.startsWith "http") &&
+          !(base.startsWith "file") && !(base.startsWith "ftp") then
+    -- A non-hierarchical scheme (a URN) has no path to resolve into.
+    ref
+  else L4Factoidal.Syntax.resolveIri base ref
+
+/-- The `$id` of a schema object, unless a sibling `$ref` cancels it. -/
+def idOf (schema : Json) : Option String :=
+  match schema with
+  | .object _ =>
+      if (field? "$ref" schema).isSome then none
+      else match field? "$id" schema with
+        | some (.string i) => some i
+        | _                => none
+  | _ => none
+
+/-- The base URI in force INSIDE a schema object, given the one in
+    force outside it. A plain-fragment `$id` (`"#foo"`) is an ANCHOR:
+    it names this position, it does not move the base. -/
+def baseInside (base : String) (schema : Json) : String :=
+  match idOf schema with
+  | none   => base
+  | some i => if i.startsWith "#" then base else stripFragment (resolveAgainst base i)
+
+/-- Every `$id` in a document, each paired with the schema it labels,
+    keyed by the ABSOLUTE URI it publishes.
+
+    The walk is over the whole JSON value rather than over schema
+    positions only. That over-collects in principle — a `const` whose
+    value happens to be an object with an `$id` member would be
+    registered — and the trade is deliberate: missing an `$id` makes a
+    later `$ref` unresolvable and the test UNDETERMINED, while an
+    extra registry entry is only reachable by a `$ref` that names it.
+
+    `fuel` bounds the walk. A JSON document is finite, but the
+    recursion goes through `List.flatMap` and Lean's structural
+    checker cannot see it shrink; a fuel bound is the total way to say
+    so, the same choice `CSVW.Common.commonTriples` records. -/
+def collectIds : Nat → String → Json → Registry
+  | 0,        _,    _ => []
+  | fuel + 1, base, j =>
+      match j with
+      | .object ms =>
+          let here : Registry := match idOf j with
+            | none   => []
+            | some i =>
+                if i.startsWith "#" then [(base ++ i, j)]
+                else
+                  let abs := resolveAgainst base i
+                  let b := stripFragment abs
+                  let f := fragmentOf abs
+                  (b, j) :: (if f == "" || f == "#" then [] else [(b ++ f, j)])
+          let base' := baseInside base j
+          here ++ ms.flatMap (fun (_, v) => collectIds fuel base' v)
+      | .array vs => vs.flatMap (collectIds fuel base)
+      | _         => []
+
+/-- Resolve a `$ref` written at base URI `base`.
+
+    Returns the schema AND the base URI in force inside it, because a
+    ref crosses into the referenced schema's own scope: a `#/…`
+    pointer written there means a pointer into ITS document, not into
+    the one that pointed at it. Returning only the schema is what
+    "naive replacement of `$ref` with its destination is not correct"
+    is about. -/
+def resolveRefFrom (reg : Registry) (root : Json) (base : String) (r : String)
+    : Option (Json × String) :=
+  let lookup := fun (u : String) => (reg.find? (fun (k, _) => k == u)).map (·.2)
+  -- The document in force at `base`: the schema registered there, or
+  -- the top-level document when nothing is.
+  let scopeDoc := (lookup base).getD root
+  if r.isEmpty || r == "#" then some (scopeDoc, base)
+  else if r.startsWith "#/" then
+    (resolvePointer scopeDoc (pointerTokens (percentDecode r))).map (fun s => (s, base))
+  else if r.startsWith "#" then
+    -- A plain fragment is an ANCHOR in the current scope.
+    (lookup (base ++ r)).map (fun s => (s, base))
   else
-    -- Split the URI from its fragment, then find the document.
-    let (base, frag) := match r.splitOn "#" with
-      | [b]       => (b, "")
-      | b :: rest => (b, "#" ++ String.intercalate "#" rest)
-      | []        => (r, "")
-    match (reg.find? (fun (u, _) => u == base)).map (·.2) with
-    | none => none
-    | some doc =>
-        if frag == "" || frag == "#" then some doc
-        else if frag.startsWith "#/" then resolvePointer doc (pointerTokens frag)
-        else none
+    let abs := resolveAgainst base (stripFragment r)
+    let frag := fragmentOf r
+    if frag == "" || frag == "#" then
+      (lookup abs).map (fun s => (s, abs))
+    else if frag.startsWith "#/" then
+      match lookup abs with
+      | none     => none
+      | some doc => (resolvePointer doc (pointerTokens (percentDecode frag))).map
+                      (fun s => (s, abs))
+    else
+      (lookup (abs ++ frag)).map (fun s => (s, abs))
+
+/-- The pre-`$id` resolver, kept for the callers that have no base and
+    no registry. -/
+def resolveRefIn (reg : Registry) (root : Json) (r : String) : Option Json :=
+  (resolveRefFrom reg root "" r).map (·.1)
 
 def resolveRef (root : Json) (r : String) : Option Json :=
   resolveRefIn [] root r
+
+/-- A COUNT keyword's bound — `minLength`, `maxItems`,
+    `maxProperties` and their kin — compared against a measured count.
+
+    The bound is a JSON NUMBER, and draft-07 does not require it to be
+    written as an integer: `{"maxItems": 2.0}` is `2`, and the suite
+    says so in six places ("… validation with a decimal"). Demanding a
+    denominator of 1 made every one of them UNDETERMINED — no verdict
+    on a schema that is perfectly ordinary.
+
+    The comparison stays EXACT: the count is scaled by the bound's
+    denominator instead of the bound being converted to a float.
+    `2.0` is `(20, 10)` and `3 ≤ 2.0` is decided as `30 ≤ 20`. -/
+def countAgainst (v : Json) (count : Nat) (ok : Int → Int → Bool) : VResult :=
+  match instRat v with
+  | some (n, d) => if d == 0 then .unsupported
+                   else if ok ((count : Int) * (d : Int)) n then .pass else .fail
+  | none        => .unsupported
 
 /-- Draft-07 keywords that carry no assertion: annotations, and the
     `definitions` container whose members are only reached through a
@@ -270,12 +421,16 @@ def annotationKeywords : List String :=
 /-- Validate one instance against one schema, in the context of the
     document `root`. `true`/`false` schemas are the boolean forms from
     draft 2019-09 onward. -/
-partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
+partial def validateIn (reg : Registry) (root : Json) (base : String) (fuel : Nat)
     (schema inst : Json) : VResult :=
   match fuel with
   | 0 => .unsupported
   | fuel + 1 =>
-  let rec' := validateIn reg root fuel
+  -- The base a SUBSCHEMA of this object sees. `baseInside` returns
+  -- `base` unchanged when a sibling `$ref` cancels the `$id`, so the
+  -- §8.3 rule holds here without a second test.
+  let base' := baseInside base schema
+  let rec' := validateIn reg root base' fuel
   match schema with
   | .bool true  => .pass
   | .bool false => .fail
@@ -304,9 +459,12 @@ partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
         else if k == "$ref" then
           (match v with
            | .string r =>
-               (match resolveRefIn reg root r with
-                | some sub => rec' sub inst
-                | none     => .unsupported)
+               -- The ref is resolved at THIS object's base (a sibling
+               -- `$id` cannot have moved it), and the referenced
+               -- schema is then validated in ITS OWN scope.
+               (match resolveRefFrom reg root base r with
+                | some (sub, subBase) => validateIn reg root subBase fuel sub inst
+                | none                => .unsupported)
            | _ => .unsupported)
         else if k == "type" then checkType v inst
         else if k == "const" then (if jsonEq v inst then .pass else .fail)
@@ -320,15 +478,13 @@ partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
         else if k == "exclusiveMaximum" then ratKeyword v inst (fun x b => ratLt x b)
         else if k == "multipleOf" then ratKeyword v inst isMultiple
         else if k == "minLength" then
-          (match inst, instRat v with
-           | .string s, some (n, 1) => if (s.toList.length : Int) ≥ n then .pass else .fail
-           | .string _, _ => .unsupported
-           | _, _ => .pass)
+          (match inst with
+           | .string s => countAgainst v (s.toList.length) (fun c b => c ≥ b)
+           | _ => .pass)
         else if k == "maxLength" then
-          (match inst, instRat v with
-           | .string s, some (n, 1) => if (s.toList.length : Int) ≤ n then .pass else .fail
-           | .string _, _ => .unsupported
-           | _, _ => .pass)
+          (match inst with
+           | .string s => countAgainst v (s.toList.length) (fun c b => c ≤ b)
+           | _ => .pass)
         else if k == "pattern" then
           (match inst, v with
            | .string s, .string pat =>
@@ -338,15 +494,13 @@ partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
            | .string _, _ => .unsupported
            | _, _ => .pass)
         else if k == "minItems" then
-          (match inst, instRat v with
-           | .array a, some (n, 1) => if (a.length : Int) ≥ n then .pass else .fail
-           | .array _, _ => .unsupported
-           | _, _ => .pass)
+          (match inst with
+           | .array a => countAgainst v (a.length) (fun c b => c ≥ b)
+           | _ => .pass)
         else if k == "maxItems" then
-          (match inst, instRat v with
-           | .array a, some (n, 1) => if (a.length : Int) ≤ n then .pass else .fail
-           | .array _, _ => .unsupported
-           | _, _ => .pass)
+          (match inst with
+           | .array a => countAgainst v (a.length) (fun c b => c ≤ b)
+           | _ => .pass)
         else if k == "uniqueItems" then
           (match inst, v with
            | .array a, .bool true =>
@@ -385,15 +539,13 @@ partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
                  | _          => .unsupported))
            | _, _ => .pass)
         else if k == "minProperties" then
-          (match inst, instRat v with
-           | .object o, some (n, 1) => if (o.length : Int) ≥ n then .pass else .fail
-           | .object _, _ => .unsupported
-           | _, _ => .pass)
+          (match inst with
+           | .object o => countAgainst v (o.length) (fun c b => c ≥ b)
+           | _ => .pass)
         else if k == "maxProperties" then
-          (match inst, instRat v with
-           | .object o, some (n, 1) => if (o.length : Int) ≤ n then .pass else .fail
-           | .object _, _ => .unsupported
-           | _, _ => .pass)
+          (match inst with
+           | .object o => countAgainst v (o.length) (fun c b => c ≤ b)
+           | _ => .pass)
         else if k == "properties" then
           (match inst, v with
            | .object _, .object ps =>
@@ -487,14 +639,12 @@ partial def validateIn (reg : Registry) (root : Json) (fuel : Nat)
     that refers to itself by absolute URI resolves without the caller
     supplying it. -/
 def validateWith (reg : Registry) (schema inst : Json) : VResult :=
-  let selfReg := match field? "$id" schema with
-    | some (.string i) =>
-        let base := match i.splitOn "#" with
-          | b :: _ => b
-          | []     => i
-        [(base, schema)]
-    | _ => []
-  validateIn (selfReg ++ reg) schema 64 schema inst
+  -- EVERY `$id` in the document is registered, not only the top one:
+  -- a `$ref` may name a subschema's `$id` directly, and a relative
+  -- `$ref` beneath an `$id` resolves against it.
+  let selfReg := collectIds 64 "" schema
+  let base := baseInside "" schema
+  validateIn (selfReg ++ reg) schema base 64 schema inst
 
 /-- Validate an instance against a whole schema DOCUMENT. -/
 def validate (schema inst : Json) : VResult := validateWith [] schema inst

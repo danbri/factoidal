@@ -19,6 +19,7 @@ cannot call portably; a `Unit` parameter (passed as `lean_box(0)`) keeps
 it an ordinary function.
 -/
 import Wasm.Abi
+import Wasm.Dispatch
 
 /-- C symbol `l4_version`. -/
 @[export l4_version]
@@ -31,3 +32,12 @@ Never throws: decoding failures come back as `{"error":"…"}`. -/
 @[export l4_bgp_query]
 def l4BgpQueryExport (dataJson : String) (bgpJson : String) : String :=
   L4Wasm.bgpQuery dataJson bgpJson
+
+/-- C symbol `l4_call`. The single dispatch entry (`Wasm/Dispatch.lean`):
+`op` names the method, `argsJson` is a JSON array of strings (positional
+arguments), and the result is one `{"ok":…}` envelope matching the F*
+npm entry's for that op. Never throws: every failure comes back as
+`{"ok":false,"error":"…"}`. -/
+@[export l4_call]
+def l4CallExport (op : String) (argsJson : String) : String :=
+  L4Wasm.call op argsJson

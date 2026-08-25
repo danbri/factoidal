@@ -77,7 +77,9 @@ extern_lib libl4hacl pkg := do
 -- even when no wasm toolchain is present.
 @[default_target] lean_lib l4wasm where
   srcDir := "."
-  roots := #[`Wasm.Abi, `Wasm.Exports]
+  roots := #[`Wasm.Abi, `Wasm.Exports, `Wasm.Dispatch,
+             `Wasm.Ops.Support, `Wasm.Ops.Parse, `Wasm.Ops.Query,
+             `Wasm.Ops.Reason, `Wasm.Ops.Canon, `Wasm.Ops.CL]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See
@@ -106,6 +108,11 @@ extern_lib libl4hacl pkg := do
 -- which keeps toRdf and is left alone. Run the built binary from the
 -- REPOSITORY ROOT: it resolves the corpus relative to the CWD.
 @[default_target] lean_exe «l4jsonld-api» where root := `Harness.JsonLdApiProbe
+
+-- Real-corpus runner for the W3C json-ld-framing suite (Harness/
+-- JsonLdFrameRun.lean), the manifest neither probe above covers. Run
+-- the built binary from the REPOSITORY ROOT.
+@[default_target] lean_exe «l4jsonld-frame» where root := `Harness.JsonLdFrameRun
 
 -- Corpus census for the W3C OWL 2 test catalogs (Harness/OwlProbe.lean):
 -- reads the RDF/XML catalogs with the Lean XML parser and reports, with
@@ -156,6 +163,33 @@ extern_lib libl4hacl pkg := do
 
 @[default_target] lean_exe «l4shex» where root := `Harness.ShExRun
 
+-- ISO Schematron conformance runner: Schematron/FromXml reads the
+-- .sch, XPath/Mini supplies Validate's `select` and `evalTest`.
+@[default_target] lean_exe «l4schematron» where root := `Harness.SchematronRun
+
+-- RML-Core test cases: mapping.ttl + source + output.nq, compared by
+-- DATASET isomorphism (Harness/RmlRun.lean).
+@[default_target] lean_exe «l4rml» where root := `Harness.RmlRun
+
+-- RIF Core conformance: syntax and entailment cases from the W3C
+-- suite (Harness/RifRun.lean).
+@[default_target] lean_exe «l4rif» where root := `Harness.RifRun
+
+-- XSLT 1.0 conformance over the vendored w3c/xslt30-test subset:
+-- XSLT/Transform runs the stylesheet, the result tree is serialised
+-- and compared with the suite's own assert-xml file (Harness/XsltRun.lean).
+@[default_target] lean_exe «l4xslt» where root := `Harness.XsltRun
+
+-- ShExC differential: every schemas/*.shex read by ShEx/Compact and
+-- compared with the ShExJ twin the same directory ships
+-- (Harness/ShExCRun.lean).
+@[default_target] lean_exe «l4shexc» where root := `Harness.ShExCRun
+
+-- GRDDL conformance over the vendored W3C GRDDL suite: GRDDL/Discovery
+-- finds the transformations, XSLT/Transform runs them, RdfXml reads the
+-- output, and graphs are compared by isomorphism (Harness/GrddlRun.lean).
+@[default_target] lean_exe «l4grddl» where root := `Harness.GrddlRun
+
 -- Real-corpus probe for the SPARQL query parser: walks the W3C sparql11
 -- .rq files without a manifest, using the suites' naming convention.
 -- See L4Factoidal/SPARQL/Parser.lean and Harness/SparqlSyntaxProbe.lean.
@@ -172,6 +206,12 @@ extern_lib libl4hacl pkg := do
 -- SHACL Core probe over the W3C shacl test suite (Harness/ShaclProbe.lean).
 @[default_target] lean_exe «l4shacl» where root := `Harness.ShaclProbe
 
+-- SHACL 1.2 rules suite (Harness/ShaclRulesRun.lean, L4Factoidal/SHACL/Rules.lean).
+@[default_target] lean_exe «l4shacl-rules» where root := `Harness.ShaclRulesRun
+
+-- SHACL 1.2 node-expr suite (Harness/ShaclNodeExprRun.lean, L4Factoidal/SHACL/NodeExpr.lean).
+@[default_target] lean_exe «l4shacl-nodeexpr» where root := `Harness.ShaclNodeExprRun
+
 -- Property-based probe: seeded generators + algebra/round-trip invariants
 -- (Harness/PropProbe.lean, L4Factoidal/Testing/).
 @[default_target] lean_exe «l4prop» where root := `Harness.PropProbe
@@ -179,3 +219,16 @@ extern_lib libl4hacl pkg := do
 -- Differential harness: the same (data, query) through the F* native
 -- binary and the Lean evaluator (Harness/Differential.lean).
 @[default_target] lean_exe «l4diff» where root := `Harness.Differential
+
+-- HDT v1 container reader over the vendored hdt-cpp fixtures
+-- (Harness/HdtProbe.lean). Directory-driven, not manifest-driven: the
+-- HDT format has no W3C test suite, so the corpus is the two files in
+-- third_party/testing/hdt/ with their published SHA-256 digests. Run
+-- from the REPOSITORY ROOT.
+@[default_target] lean_exe «l4hdt» where root := `Harness.HdtProbe
+
+-- Delta (semi-naive) RDFS closure against the naive one: agreement and
+-- wall-clock, on the subclass-chain shape issue #340 is about
+-- (Harness/RdfsSemiNaive.lean). The module exists for speed, so this
+-- measures speed as well as agreement.
+@[default_target] lean_exe «l4rdfs-semi» where root := `Harness.RdfsSemiNaive

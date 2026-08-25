@@ -61,6 +61,10 @@
     "./l4": {
       "types": "./l4.d.ts",
       "default": "./l4.js"
+    },
+    "./l4-core": {
+      "types": "./l4-core.d.ts",
+      "default": "./l4-core.js"
     }
   },
   "files": [
@@ -74,6 +78,8 @@
     "fn.d.ts",
     "l4.js",
     "l4.d.ts",
+    "l4-core.js",
+    "l4-core.d.ts",
     "lib/",
     "browser.js",
     "browser.d.ts",

@@ -345,4 +345,137 @@ Lean's standard foundations; no `sorry`, no user `axiom`, no
 #print axioms parseXML
 #print axioms isNamespaceWellFormed
 
+/-! ## `[70]`–`[76]` EntityDecl, `[28]` doctypedecl, `[69]` PEReference
+
+Each `#guard` below pins a document the parser said YES to. A
+well-formedness checker that ACCEPTS malformed input reports nothing;
+one that rejects valid input at least announces itself, which is why
+the accept direction is the one that hides. -/
+
+private def wf (src : String) : Bool := isWellFormed src
+
+-- [75]: the PUBLIC form requires a SystemLiteral after the
+-- PubidLiteral (not-wf-sa-054), and the space between them
+-- (not-wf-sa-061).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY foo PUBLIC \"some public id\">\n]>\n<doc></doc>")
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY e PUBLIC \"whatever\"\"e.ent\">\n]>\n<doc></doc>")
+-- ...and the space after `PUBLIC` itself (o-p75fail1).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY ent PUBLIC\"PublicID\" \"nop.ent\">\n]>\n<doc/>")
+#guard wf "<!DOCTYPE doc [\n<!ENTITY e PUBLIC \"whatever\" \"e.ent\">\n]>\n<doc></doc>"
+
+-- A declaration ends at `S? '>'` and nothing else (not-wf-sa-057).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY e \"whatever\" -- a comment -->\n]>\n<doc></doc>")
+
+-- [76] NDataDecl begins with S (not-wf-sa-069, o-p76fail1).
+#guard !(wf ("<!DOCTYPE doc [\n<!NOTATION eps SYSTEM \"eps.exe\">\n" ++
+             "<!ENTITY foo SYSTEM \"foo.eps\"NDATA eps>\n]>\n<doc></doc>"))
+#guard wf ("<!DOCTYPE doc [\n<!NOTATION eps SYSTEM \"eps.exe\">\n" ++
+           "<!ENTITY foo SYSTEM \"foo.eps\" NDATA eps>\n]>\n<doc></doc>")
+
+-- [72] PEDecl requires the space after `%` (o-p72fail2), and [74]
+-- PEDef admits no NDataDecl (o-p74fail1).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY %pe \"<!---->\">\n]>\n<doc/>")
+#guard wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n]>\n<doc/>"
+#guard !(wf ("<!DOCTYPE doc [\n<!NOTATION unknot PUBLIC \"Unknown\">\n" ++
+             "<!ENTITY % pe SYSTEM \"nop.ent\" NDATA unknot>\n]>\n<doc/>"))
+
+-- [73] EntityDef is an EntityValue or an ExternalID; `CDATA` is
+-- neither (o-p73fail1).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY ge CDATA \"replacement text\">\n]>\n<doc/>")
+
+-- [28] admits `(S ExternalID)?` between the Name and the subset, and
+-- nothing else — a comment there is not part of the production
+-- (not-wf-sa-056).
+#guard !(wf "<!DOCTYPE doc -- a comment -- []>\n<doc></doc>")
+#guard wf "<!DOCTYPE doc []>\n<doc></doc>"
+#guard wf "<!DOCTYPE doc SYSTEM \"doc.dtd\">\n<doc></doc>"
+#guard wf "<!DOCTYPE doc PUBLIC \"pub\" \"doc.dtd\" []>\n<doc></doc>"
+
+-- [69] PEReference is `'%' Name ';'`: no space, and a Name is
+-- required (o-p69fail2).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n% pe;\n]>\n<doc/>")
+#guard wf "<!DOCTYPE doc [\n<!ENTITY % pe \"<!---->\">\n%pe;\n]>\n<doc/>"
+
+/-! ## §4.4.2 Included: an entity's replacement text is CONTENT
+
+The parser used to REFUSE any entity whose replacement text held a
+`<`: "entity replacement text contains markup; unsupported". That was
+an honest refusal rather than a wrong splice, and it still rejected
+documents the specification calls well-formed — the whole
+`valid/ext-sa` family and several `valid/sa` cases.
+
+The replacement text is now reparsed as `[43] content` and the nodes
+spliced in at the reference. -/
+
+#guard wf "<!DOCTYPE doc [<!ENTITY e \"<foo/>\">]><doc>&e;</doc>"
+#guard wf "<!DOCTYPE doc [<!ENTITY e \"<foo/>\">]><doc>a&e;b</doc>"
+-- WFC: Parsed Entity — the fragment must parse as content in full.
+#guard !(wf "<!DOCTYPE doc [<!ENTITY e \"<foo>\">]><doc>&e;</doc>")
+#guard !(wf "<!DOCTYPE doc [<!ENTITY e \"</foo>\">]><doc>&e;</doc>")
+
+/-! ## §4.5: which references are expanded to build the replacement text
+
+A CHARACTER reference is expanded when the replacement text is built;
+a GENERAL-entity reference is bypassed and included at the reference
+site instead. That difference is what decides whether a `<` in the
+text is MARKUP, and collapsing the two gets one of this pair wrong
+whichever way it falls. -/
+
+-- `&#60;` is expanded here, so the replacement text IS `<foo></foo>`
+-- and reparsing gives an ELEMENT (valid/sa/024).
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (foo)><!ELEMENT foo (#PCDATA)>" ++
+           "<!ENTITY e \"&#60;foo></foo>\">]><doc>&e;</doc>")
+-- `&lt;` is a general entity and is bypassed, so the replacement text
+-- is still `&lt;foo>` and reparsing gives the TEXT `<foo>`
+-- (valid/sa/088).
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+           "<!ENTITY e \"&lt;foo>\">]><doc>&e;</doc>")
+-- A character reference inside markup is expanded too (valid/sa/087).
+#guard wf ("<!DOCTYPE doc [<!ENTITY e \"<foo/&#62;\">" ++
+           "<!ELEMENT doc (foo)><!ELEMENT foo EMPTY>]><doc>&e;</doc>")
+-- CDATA inside an entity survives (valid/sa/114).
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+           "<!ENTITY e \"<![CDATA[&foo;]]>\">]><doc>&e;</doc>")
+
+/-! ## `[9] EntityValue` is a production, not a run of characters
+
+`normalizeEntityValue` copied every character through except a
+character reference, so a bare `&` and a `%` in the internal subset
+were accepted. Each of these is a document the parser said YES to. -/
+
+-- A bare `&` must begin a Reference (not-wf-sa-113, -114). CDATA is
+-- NOT recognised inside an entity value, so the `&` there is as bare
+-- as any other (not-wf-sa-159).
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY foo \"&\">\n]>\n<doc></doc>")
+#guard !(wf "<!DOCTYPE doc [\n<!ENTITY % foo \"&\">\n]>\n<doc></doc>")
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ENTITY e \"<![CDATA[Tim & Michael]]>\">]><doc>&e;</doc>"))
+#guard wf "<!DOCTYPE doc [\n<!ENTITY foo \"&amp;\">\n]>\n<doc></doc>"
+
+-- §4.4.8: a parameter-entity reference may appear in an entity value
+-- only in the EXTERNAL subset (not-wf-sa-160, -162).
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ENTITY % e \"\"><!ENTITY foo \"%e;\">]><doc></doc>"))
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ENTITY % e1 \"\"><!ENTITY % e2 \"%e1;\">]><doc></doc>"))
+
+/-! ## An attribute DEFAULT is an `[10] AttValue`
+
+The well-formedness constraints on an attribute value apply to a
+default value too, and none of them was checked. -/
+
+-- WFC: Entity Declared, and "already" is the word — an entity
+-- declared AFTER the ATTLIST does not count (not-wf-sa-180).
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ATTLIST doc a CDATA \"&e;\"><!ENTITY e \"v\">]><doc></doc>"))
+#guard wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)><!ENTITY e \"v\">" ++
+           "<!ATTLIST doc a CDATA \"&e;\">]><doc></doc>")
+-- ...and an undeclared one is an error (not-wf-sa-078).
+#guard !(wf ("<!DOCTYPE doc [<!ELEMENT doc (#PCDATA)>" ++
+             "<!ATTLIST doc a CDATA \"&foo;\">]><doc></doc>"))
+-- WFC: No Recursion (not-wf-sa-079, -080).
+#guard !(wf ("<!DOCTYPE doc [<!ENTITY e1 \"&e2;\"><!ENTITY e2 \"&e3;\">" ++
+             "<!ENTITY e3 \"&e1;\"><!ELEMENT doc (#PCDATA)>" ++
+             "<!ATTLIST doc a CDATA \"&e1;\">]><doc></doc>"))
+
 end L4Factoidal.XML.Tests

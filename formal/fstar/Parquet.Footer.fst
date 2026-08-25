@@ -1,5 +1,29 @@
 module Parquet.Footer
 
+(* ============================================================================
+ * BROKEN BY DESIGN DECISION -- DO NOT PORT THIS MODULE AS IT STANDS.
+ *
+ * This module encodes footer bytes through a hexadecimal string layer.
+ * The owner ruled on 2026-08-24 that the layer is to be removed rather
+ * than reproduced:
+ *
+ *   "DO NOT PORT THAT TERRIBLE HEX CRAP"
+ *   "Fix it upstream in F-star and do not worry about legacy. You can
+ *    defer that for now, just mark the F-star file as broken and link to
+ *    GitHub. Do it right in Lean."
+ *
+ * Status:
+ *   - The Lean 4 tree implements the byte format DIRECTLY. It does not
+ *     transcribe this layer.
+ *   - Legacy read compatibility is deferred. There are no users.
+ *   - Repair of this file is tracked at
+ *     https://github.com/danbri/factoidal/issues/566
+ *
+ * Do not treat a Lean module that differs from this one as a port defect.
+ * The difference is the decision.
+ * ========================================================================== *)
+
+
 module U32 = FStar.UInt32
 
 type parquet_footer = {

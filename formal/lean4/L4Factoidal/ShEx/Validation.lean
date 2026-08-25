@@ -11,6 +11,7 @@ CLOSED) builds on it and is the next increment.
 -/
 import L4Factoidal.ShEx.Schema
 import L4Factoidal.RDF.Core
+import L4Factoidal.ShEx.XsdLexical
 
 namespace L4Factoidal.ShEx
 
@@ -73,6 +74,18 @@ def matchesStem (kind : VsvKind) (s : Stem) (t : Term) : Bool :=
   | some _, .wildcard => true
   | some v, .plain p  => v.startsWith p
 
+/-- Does an exclusion remove this term? A nested STEM excludes a whole
+    prefix, not one value — `IriStemRange` with an `IriStem` exclusion
+    is how ShEx writes "everything under `…/v` except everything under
+    `…/v1`". -/
+def matchesExclusion (k : VsvKind) (e : Exclusion) (t : Term) : Bool :=
+  match e with
+  | .value ov => matchesObjectValue ov t
+  | .lang tag => (match t with
+                  | .literal l => l.val.langTag == some tag
+                  | _          => false)
+  | .stem p   => matchesStem k (.plain p) t
+
 /-- §5.4.5 value set membership. An EXCLUSION removes a term the stem
     would otherwise have admitted. -/
 def matchesValueSetValue (v : ValueSetValue) (t : Term) : Bool :=
@@ -80,7 +93,7 @@ def matchesValueSetValue (v : ValueSetValue) (t : Term) : Bool :=
   | .object ov => matchesObjectValue ov t
   | .stem k s  => matchesStem k s t
   | .stemRange k s excl =>
-      matchesStem k s t && !(excl.any (fun e => matchesObjectValue e t))
+      matchesStem k s t && !(excl.any (fun e => matchesExclusion k e t))
   | .language tag =>
       match t with
       | .literal l => l.val.langTag == some tag
@@ -98,7 +111,15 @@ private def splitOnDot (l : List Char) : List (List Char) :=
 /-- Compare two decimal lexemes EXACTLY, without a float. `none` when
     either side is not a plain decimal — the caller then treats the
     facet as unsatisfied rather than guessing an ordering. -/
-def compareDecimal (a b : String) : Option Ordering :=
+def compareDecimal (a0 b0 : String) : Option Ordering :=
+  -- An `xsd:double` writes its value in E-notation, and the facet it
+  -- is compared against may not. Folding the exponent into the digits
+  -- FIRST is what lets `1.0E2` be compared with `100`; without it the
+  -- parse below failed, the comparison returned `none`, and the facet
+  -- was reported unsatisfied — twelve entries of the suite, every one
+  -- a POSITIVE test that a correct value was rejected.
+  let a := L4Factoidal.CSVW.resolveExponent a0
+  let b := L4Factoidal.CSVW.resolveExponent b0
   let parse (s : String) : Option (Bool × List Char × List Char) :=
     let neg := s.startsWith "-"
     let body := if neg || s.startsWith "+" then s.toList.drop 1 else s.toList
@@ -144,13 +165,78 @@ def matchesNumericFacets (nc : NodeConstraint) (t : Term) : Bool :=
         cmpOk nc.maxExclusive lex (fun o => o == .lt)
     | _ => false
 
+/-- §5.4.3, second half: a `datatype` constraint requires the literal's
+    LEXICAL FORM to be in that datatype's lexical space, not merely
+    that the datatype IRI matches.
+
+    Checking only the IRI accepted `"1.0"^^xsd:integer`,
+    `"NaN"^^xsd:decimal` and `"+1"^^xsd:negativeInteger` — 144 entries
+    of the validation suite, every one of them a node the schema says
+    must NOT satisfy the shape. A validator that accepts everything
+    passes every positive test, which is why the negative half of a
+    suite is where a gap like this shows.
+
+    A datatype whose lexical space `inXsdLexicalSpace` does not decide
+    imposes no check, and that stays visible as a `none` rather than
+    becoming a silent `true`. -/
+def matchesDatatypeLexical (dt : String) (t : Term) : Bool :=
+  match t with
+  | .literal l =>
+      (match inXsdLexicalSpace dt l.val.lexicalForm with
+       | some ok => ok
+       | none    => true)
+  | _ => false
+
+/-- §5.4.5 `pattern`: an XPath regular expression, matched the way
+    `fn:matches` matches — a search, with `^` and `$` as anchors and
+    the `flags` string passed through. A node that is not a literal or
+    an IRI has no string to match. -/
+def matchesPattern (nc : NodeConstraint) (t : Term) : Bool :=
+  match nc.pattern with
+  | none     => true
+  | some pat =>
+      let flags := nc.flags.getD ""
+      match t with
+      | .literal l => L4Factoidal.Regex.regexMatch l.val.lexicalForm pat flags
+      | .iri i     => L4Factoidal.Regex.regexMatch i.val pat flags
+      -- A BLANK NODE matches on its label. That is not obvious — a
+      -- label is not part of the graph's meaning — but the suite
+      -- states it: `1nonliteralPattern` gives a `pattern` under a
+      -- `nonliteral` node kind and expects a blank node to match.
+      | .bnode b   => L4Factoidal.Regex.regexMatch b pat flags
+      | _          => false
+
+/-- §5.4.6 `totalDigits` / `fractionDigits`. A literal whose lexical
+    form is not a decimal FAILS the facet rather than being coerced,
+    which is the rule the ordering facets already follow. -/
+def matchesDigitFacets (nc : NodeConstraint) (t : Term) : Bool :=
+  if nc.totalDigits.isNone && nc.fractionDigits.isNone then true
+  else match t with
+    | .literal l =>
+        let lex := l.val.lexicalForm
+        (match nc.totalDigits with
+         | none   => true
+         | some d => match totalDigitsOf lex with
+                     | some n => (n : Int) ≤ d
+                     | none   => false) &&
+        (match nc.fractionDigits with
+         | none   => true
+         | some d => match fractionDigitsOf lex with
+                     | some n => (n : Int) ≤ d
+                     | none   => false)
+    | _ => false
+
 /-- §5.4 node-constraint satisfaction: every present facet must hold.
     An EMPTY constraint is satisfied by any node. -/
 def satisfiesNodeConstraint (nc : NodeConstraint) (t : Term) : Bool :=
   (match nc.nodeKind with | some k => matchesNodeKind k t | none => true) &&
-  (match nc.datatype with | some d => matchesDatatype d t | none => true) &&
+  (match nc.datatype with
+   | some d => matchesDatatype d t && matchesDatatypeLexical d t
+   | none   => true) &&
   matchesLengthFacets nc t &&
   matchesValues nc.values t &&
-  matchesNumericFacets nc t
+  matchesNumericFacets nc t &&
+  matchesPattern nc t &&
+  matchesDigitFacets nc t
 
 end L4Factoidal.ShEx

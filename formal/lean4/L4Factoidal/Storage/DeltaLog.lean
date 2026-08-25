@@ -21,8 +21,11 @@ cryptographic cost on every append for a property appends do not
 need.
 -/
 import L4Factoidal.Storage.Bytes
+import L4Factoidal.RDF.Core
 
 namespace L4Factoidal.Storage
+
+open L4Factoidal.RDF
 
 /-- `'DLE1'` little-endian. -/
 def deltaEntryMagic : UInt32 := 0x31454C44
@@ -133,5 +136,250 @@ def parseEpoch (bs : List UInt8) : Option EpochMarker :=
     compacted at `baseEpoch`? Only records STRICTLY NEWER than the
     base survive. -/
 def shouldReplay (baseEpoch recordEpoch : UInt32) : Bool := recordEpoch > baseEpoch
+
+/-! ## The delta entry itself
+
+The framing above carries an opaque payload. This section gives the
+payload its type and its bytes — the port of sections 3 and 4 of
+`RDF.Store.Columnar.DeltaLog.fst`, which the first landing of this
+module left out. An UPDATE's effect on the store is one of five
+things, and each is what a replay re-applies. -/
+
+/-- What one committed UPDATE operation did.
+
+    `clear` takes `none` for the default graph; `drop` and `create`
+    always name a graph, so they carry a bare `Iri`. -/
+inductive DeltaEntry where
+  | add    (t : Triple) (graph : Option Iri)
+  | remove (t : Triple) (graph : Option Iri)
+  | clear  (graph : Option Iri)
+  | drop   (graph : Iri)
+  | create (graph : Iri)
+  deriving Repr, DecidableEq
+
+def deTagAdd    : UInt8 := 0
+def deTagRemove : UInt8 := 1
+def deTagClear  : UInt8 := 2
+def deTagDrop   : UInt8 := 3
+def deTagCreate : UInt8 := 4
+
+def subjTagIri   : UInt8 := 0
+def subjTagBnode : UInt8 := 1
+
+/-! ### Length-prefixed strings
+
+A u32 little-endian BYTE length, then the UTF-8 bytes. The length
+counts bytes, not characters, which is what makes the parse a plain
+`take`/`drop` and keeps it independent of Lean's `String` internals. -/
+
+def bytesOfString (s : String) : List UInt8 := s.toUTF8.toList
+
+def stringOfBytes? (bs : List UInt8) : Option String :=
+  String.fromUTF8? ⟨bs.toArray⟩
+
+def serializeLString (s : String) : List UInt8 :=
+  let b := bytesOfString s
+  writeU32LE (UInt32.ofNat b.length) ++ b
+
+def parseU8 (bs : List UInt8) : Option (UInt8 × List UInt8) :=
+  match bs with
+  | []      => none
+  | b :: rest => some (b, rest)
+
+def parseLString (bs : List UInt8) : Option (String × List UInt8) :=
+  match readU32LE bs 0 with
+  | none => none
+  | some n =>
+      let n := n.toNat
+      let body := (bs.drop 4).take n
+      if body.length != n then none
+      else (stringOfBytes? body).map (fun s => (s, (bs.drop 4).drop n))
+
+/-! ### Terms, subjects, triples
+
+Two limits are inherited from the F\* module rather than repaired
+here, and both are REFUSALS, never silent corruption.
+
+**Triple terms.** `serializeTerm` emits a bare tag byte for an RDF 1.2
+triple term and `parseTerm` refuses tag 3, so a triple term written to
+a delta log cannot be read back. The F\* banner says the same and
+points at its own follow-up phase. Nothing in either tree claims a
+triple term round-trips through the log.
+
+**Base direction.** A `rdf:dirLangString` literal serialises its
+language tag but not its direction, so the parsed literal has a tag
+and no direction. `literalWf` rejects exactly that combination, so
+`parseTerm` returns `none`. The direction is not dropped into a
+wrong-but-accepted literal; the record is refused. -/
+
+def serializeTerm (t : Term) : List UInt8 :=
+  match t with
+  | .iri i   => termTagIri :: serializeLString i.val
+  | .bnode b => termTagBnode :: serializeLString b
+  | .literal l =>
+      termTagLiteral :: (serializeLString l.val.lexicalForm ++
+        serializeLString l.val.datatype.val ++
+        (match l.val.langTag with
+         | none     => [(0 : UInt8)]
+         | some tag => (1 : UInt8) :: serializeLString tag))
+  | .tripleTerm _ _ _ => [termTagTripleTerm]
+
+private def mkLiteral? (lex dt : String) (tag : Option String) : Option Term :=
+  if h : isIri dt then
+    let l : Literal := { lexicalForm := lex, datatype := ⟨dt, h⟩,
+                         langTag := tag, direction := none }
+    if hw : literalWf l then some (.literal ⟨l, hw⟩) else none
+  else none
+
+def parseTerm (bs : List UInt8) : Option (Term × List UInt8) := do
+  let (tag, afterTag) ← parseU8 bs
+  if tag == termTagIri then
+    let (i, rest) ← parseLString afterTag
+    if h : isIri i then some (.iri ⟨i, h⟩, rest) else none
+  else if tag == termTagBnode then
+    let (b, rest) ← parseLString afterTag
+    some (.bnode b, rest)
+  else if tag == termTagLiteral then
+    let (lex, afterLex) ← parseLString afterTag
+    let (dt, afterDt)   ← parseLString afterLex
+    let (flag, afterFlag) ← parseU8 afterDt
+    if flag == 0 then
+      (mkLiteral? lex dt none).map (fun t => (t, afterFlag))
+    else if flag == 1 then do
+      let (tagStr, rest) ← parseLString afterFlag
+      (mkLiteral? lex dt (some tagStr)).map (fun t => (t, rest))
+    else none
+  else none
+
+def serializeSubject (s : Subject) : List UInt8 :=
+  match s with
+  | .iri i   => subjTagIri :: serializeLString i.val
+  | .bnode b => subjTagBnode :: serializeLString b
+
+def parseSubject (bs : List UInt8) : Option (Subject × List UInt8) := do
+  let (tag, afterTag) ← parseU8 bs
+  if tag == subjTagIri then
+    let (i, rest) ← parseLString afterTag
+    if h : isIri i then some (.iri ⟨i, h⟩, rest) else none
+  else if tag == subjTagBnode then
+    let (b, rest) ← parseLString afterTag
+    some (.bnode b, rest)
+  else none
+
+def serializeTriple (t : Triple) : List UInt8 :=
+  serializeSubject t.s ++ serializeLString t.p.val ++ serializeTerm t.o
+
+def parseTriple (bs : List UInt8) : Option (Triple × List UInt8) := do
+  let (s, afterS) ← parseSubject bs
+  let (p, afterP) ← parseLString afterS
+  if h : isIri p then do
+    let (o, rest) ← parseTerm afterP
+    some ({ s := s, p := ⟨p, h⟩, o := o }, rest)
+  else none
+
+/-! ### Graph names
+
+A graph name is a plain `Iri`, NOT a `WfIri`. The F\* module says why:
+the default graph and the graph-management targets are not required to
+satisfy the IRI grammar, so there is no well-formedness check on the
+parse side either. -/
+
+def serializeGraphOpt (g : Option Iri) : List UInt8 :=
+  match g with
+  | none   => [(0 : UInt8)]
+  | some i => (1 : UInt8) :: serializeLString i
+
+def parseGraphOpt (bs : List UInt8) : Option (Option Iri × List UInt8) := do
+  let (tag, after) ← parseU8 bs
+  if tag == 0 then some (none, after)
+  else if tag == 1 then do
+    let (i, rest) ← parseLString after
+    some (some i, rest)
+  else none
+
+/-! ### The payload -/
+
+def serializeDeltaEntryPayload (e : DeltaEntry) : List UInt8 :=
+  match e with
+  | .add t g    => deTagAdd :: (serializeTriple t ++ serializeGraphOpt g)
+  | .remove t g => deTagRemove :: (serializeTriple t ++ serializeGraphOpt g)
+  | .clear g    => deTagClear :: serializeGraphOpt g
+  | .drop g     => deTagDrop :: serializeLString g
+  | .create g   => deTagCreate :: serializeLString g
+
+def parseDeltaEntryPayload (bs : List UInt8) : Option (DeltaEntry × List UInt8) := do
+  let (tag, afterTag) ← parseU8 bs
+  if tag == deTagAdd then do
+    let (t, afterT) ← parseTriple afterTag
+    let (g, rest)   ← parseGraphOpt afterT
+    some (.add t g, rest)
+  else if tag == deTagRemove then do
+    let (t, afterT) ← parseTriple afterTag
+    let (g, rest)   ← parseGraphOpt afterT
+    some (.remove t g, rest)
+  else if tag == deTagClear then do
+    let (g, rest) ← parseGraphOpt afterTag
+    some (.clear g, rest)
+  else if tag == deTagDrop then do
+    let (g, rest) ← parseLString afterTag
+    some (.drop g, rest)
+  else if tag == deTagCreate then do
+    let (g, rest) ← parseLString afterTag
+    some (.create g, rest)
+  else none
+
+/-! ### Batches
+
+One committed UPDATE request's worth of entries. `seq` is the commit
+order and `epoch` is the base-file generation the batch was written
+against — the epoch guard above decides whether a replay applies it. -/
+
+structure DeltaBatch where
+  seq : Nat
+  epoch : Nat
+  ops : List DeltaEntry
+  deriving Repr, DecidableEq
+
+/-! ### Build-time checks
+
+Every round trip is checked with a NON-EMPTY tail, so a parser that
+consumed the wrong number of bytes fails the check instead of passing
+on a buffer that happened to end exactly where it stopped. -/
+
+private def tail : List UInt8 := [0xAA, 0xBB, 0xCC]
+
+private def rtEntry (e : DeltaEntry) : Bool :=
+  parseDeltaEntryPayload (serializeDeltaEntryPayload e ++ tail) == some (e, tail)
+
+private def exIri : WfIri := ⟨"http://example.org/s", by decide⟩
+private def exP   : WfIri := ⟨"http://example.org/p", by decide⟩
+
+#guard rtEntry (.clear none)
+#guard rtEntry (.clear (some "http://example.org/g"))
+#guard rtEntry (.drop "http://example.org/g")
+#guard rtEntry (.create "")
+#guard rtEntry (.add ⟨.iri exIri, exP, .iri exIri⟩ none)
+#guard rtEntry (.add ⟨.bnode "b0", exP, .bnode "b1"⟩ (some "http://example.org/g"))
+#guard rtEntry (.remove ⟨.iri exIri, exP, .literal (Literal.string "plain")⟩ none)
+#guard rtEntry (.remove ⟨.iri exIri, exP, .literal (Literal.langString "hi" "en")⟩ none)
+
+/-! A multi-byte UTF-8 lexical form round-trips: the length prefix
+counts BYTES, and a character count would be wrong here. -/
+
+#guard rtEntry (.add ⟨.iri exIri, exP, .literal (Literal.string "héllo — ☃")⟩ none)
+#guard (serializeLString "é").length == 6      -- 4 length bytes + 2 UTF-8 bytes
+
+/-! A triple term is REFUSED, not misread. -/
+
+#guard (parseTerm (serializeTerm (.tripleTerm (.iri exIri) exP (.iri exIri)))).isNone
+
+/-! An unknown entry tag is refused. -/
+
+#guard (parseDeltaEntryPayload [9, 0, 0, 0, 0]).isNone
+
+/-! A TRUNCATED length-prefixed string is refused rather than
+    returning a short string: the prefix claims 9 bytes and 3 follow. -/
+
+#guard (parseLString (writeU32LE 9 ++ [97, 98, 99])).isNone
 
 end L4Factoidal.Storage

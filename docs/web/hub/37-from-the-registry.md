@@ -22,16 +22,12 @@ the public npm registry**, via a CDN that serves npm packages
 verbatim, and runs it side by side with the same-origin copy.
 
 **This page needs network access.** Every other hub page works
-completely offline (same-origin only, by CSP — see the note at the
-bottom of every other post's page source). This one's whole point is
-the opposite: it fetches real code from `cdn.jsdelivr.net` /
-`unpkg.com`, and that fetch is only allowed on this post's [live
-twin](../../hub-live/37-from-the-registry/) — the default page below
-runs the identical cells, but its Content-Security-Policy has no
-carve-out for this or any other post, so the load is blocked and
-every cell reports "registry unreachable" instead of failing
-outright. That is not a bug in this page; it is what "same-origin hub
-pages do not [need the network]" *means*, made visible.
+completely offline (same-origin only, by CSP). This one's whole point
+is the opposite: it fetches real code from `cdn.jsdelivr.net` /
+`unpkg.com`, so this post's Content-Security-Policy allows exactly
+those two hosts and nothing else external. No other post carries the
+carve-out. If both CDNs are unreachable, every cell reports "registry
+unreachable" instead of failing outright.
 
 ## Loading the published package
 
@@ -160,10 +156,10 @@ return { agree: JSON.stringify(a) === JSON.stringify(b), siteRows: a, registryRo
   fork or a tampered mirror. It says nothing new about whether the
   *engine* is correct; that is every other post's and every W3C
   suite's job.
-- **The CDN load only runs in live mode, by design.** This is the one
-  page in the hub whose whole purpose requires third-party code
-  execution, and it is walled off from every other page's
-  Content-Security-Policy rather than loosening the shared one — see
+- **The CDN carve-out is this page's alone.** This is the one page in
+  the hub whose whole purpose requires third-party code execution; its
+  CSP allows the two npm CDN hosts (per-post front matter flag), and
+  every other page's policy is unchanged — see
   `docs/_includes/hub.njk`'s CSP comment for the exact carve-out.
 
 ## Related

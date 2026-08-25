@@ -57,6 +57,8 @@ import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.ResultsXml
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv
+import L4Factoidal.OWL.QueryEval
+import L4Factoidal.RIF.Saturate
 
 open L4Factoidal.RDF
 open L4Factoidal.RDF.Canonical
@@ -145,21 +147,23 @@ def fixedNow : String := "2026-08-22T00:00:00Z"
 
 def fmtParseError (e : ParseError) : String := s!"{e.msg} (offset {e.pos})"
 
-/-- Parse one data fixture by extension (port of `load_dataset`). -/
-def parseDataFile (path text : String) : Except String Dataset :=
+/-- Parse one data fixture by extension (port of `load_dataset`).
+`mode` is the suite's RDF version: the sparql12 suites' fixtures carry
+triple terms and reifiers, which `.rdf11` rejects. -/
+def parseDataFile (path text : String) (mode : Mode := .rdf11) : Except String Dataset :=
   let base := "file://" ++ path
   let ofGraph (r : Except ParseError Graph) : Except String Dataset :=
     match r with
     | .ok g    => .ok { default := g, named := [] }
     | .error e => .error (fmtParseError e)
-  if path.endsWith ".nt" then ofGraph (parseNTriples text .rdf11)
-  else if path.endsWith ".nq" then (parseNQuads text .rdf11).mapError fmtParseError
-  else if path.endsWith ".trig" then (parseTriG text (some base) .rdf11).mapError fmtParseError
+  if path.endsWith ".nt" then ofGraph (parseNTriples text mode)
+  else if path.endsWith ".nq" then (parseNQuads text mode).mapError fmtParseError
+  else if path.endsWith ".trig" then (parseTriG text (some base) mode).mapError fmtParseError
   else if path.endsWith ".rdf" then
     match RdfXml.parseRdfXml text (some base) with
     | .ok g    => .ok { default := g, named := [] }
     | .error e => .error s!"{e}"
-  else ofGraph (parseTurtle text (some base) .rdf11)
+  else ofGraph (parseTurtle text (some base) mode)
 
 /-- Merge two datasets: default graphs by union, named graphs
 appended (a later `qt:graphData` binding wins a name collision by
@@ -169,20 +173,21 @@ def mergeDatasets (a b : Dataset) : Dataset :=
 
 /-- Read and parse every fixture of a test. `.error o` carries the
 outcome to report (skip for a missing file, fail for a parse error). -/
-def loadFixtures (tc : TestCase) : IO (Except Outcome (Dataset × List (Iri × Graph))) := do
+def loadFixtures (tc : TestCase) (mode : Mode := .rdf11) :
+    IO (Except Outcome (Dataset × List (Iri × Graph))) := do
   let mut ds : Dataset := Dataset.empty
   for df in tc.dataFiles do
     match ← readOpt df with
     | none      => return .error (.skip s!"file missing: {df}")
     | some text =>
-      match parseDataFile df text with
+      match parseDataFile df text mode with
       | .error e => return .error (.fail s!"data parse error in {basename df}: {e}")
       | .ok d    => ds := mergeDatasets ds d
   for (iri, path) in tc.graphData do
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
     | some text =>
-      match parseDataFile path text with
+      match parseDataFile path text mode with
       | .error e => return .error (.fail s!"graph data parse error in {basename path}: {e}")
       | .ok d    =>
         if h : isIri iri = true then
@@ -193,7 +198,7 @@ def loadFixtures (tc : TestCase) : IO (Except Outcome (Dataset × List (Iri × G
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
     | some text =>
-      match parseDataFile path text with
+      match parseDataFile path text mode with
       | .error e => return .error (.fail s!"service data parse error in {basename path}: {e}")
       | .ok d    => services := services ++ [(endpoint, d.default)]
   return .ok (ds, services)
@@ -206,7 +211,7 @@ inductive Expected where
 
 /-- Decode the expected file by extension (the `.srx/.srj/.tsv/.csv`
 and `.ttl` branches of `run_query_eval_test`). -/
-def parseExpected (rf text : String) : Except String Expected :=
+def parseExpected (rf text : String) (mode : Mode := .rdf11) : Except String Expected :=
   let ofResult (label : String) (csv : Bool) (r : Except ResultsError QueryResult) :
       Except String Expected :=
     match r with
@@ -218,7 +223,7 @@ def parseExpected (rf text : String) : Except String Expected :=
   else if rf.endsWith ".tsv" then ofResult "TSV" false (parseTsv text)
   else if rf.endsWith ".csv" then ofResult "CSV" true (parseCsv text)
   else if rf.endsWith ".ttl" then
-    match parseTurtle text (some ("file://" ++ rf)) .rdf11 with
+    match parseTurtle text (some ("file://" ++ rf)) mode with
     | .error e => .error s!"Turtle: {fmtParseError e}"
     | .ok g    =>
       if isRsResultSet g then
@@ -283,12 +288,128 @@ def recognizedDatatypesOf (names : List String) : Except String (List WfIri) := 
     else throw s!"recognized datatype is not an IRI: {n}"
   return withMinimalD ds
 
-/-- One `QueryEvaluationTest` / `CSVResultFormatTest`. -/
-def runQueryEvaluation (tc : TestCase) : IO RunResult := do
+/-! ## The RIF entailment regime (sparql11 entailment rif01/03/04/06)
+
+Mirror of the F* runner's consumer-side glue
+(`bin/w3c-runner/w3c_runner.ml`, `rif_rules_path_for` /
+`rif_load_imports` / the `"RIF"` regime branch): the SPARQL test
+suite does not bundle the RIF-XML rule documents, so they are
+resolved by `mf:name` against the vendored mirror under
+`third_party/testing/rif/tc/`. Saturation itself is library code
+(`L4Factoidal.RIF.Saturate`). -/
+
+/-- The vendored RIF Test Cases mirror, from any supported working
+directory. -/
+def rifTcBase : IO (Option String) := do
+  let candidates := [
+    "third_party/testing/rif/tc",
+    "../../third_party/testing/rif/tc",
+    "../../../third_party/testing/rif/tc" ]
+  candidates.findM? (fun c => System.FilePath.isDir (System.FilePath.mk c))
+
+/-- Test directory + premise filename by `mf:name` — the four-entry
+table is exhaustive for the SPARQL 1.1 entailment manifest. -/
+def rifPremiseFor (name : String) : Option (String × String) :=
+  if name == "RIF Logical Entailment (referencing RIF XML)" then
+    some ("Logical_entailment_referencing_RIF_XML", "rif01-premise.rif")
+  else if name == "RIF Core WG tests: Frames" then
+    some ("Frames", "Frames-premise.rif")
+  else if name == "RIF Core WG tests: Modeling Brain Anatomy" then
+    some ("Modeling_Brain_Anatomy", "Modeling_Brain_Anatomy-premise.rif")
+  else if name == "RIF Core WG tests: RDF Combination Blank Node" then
+    some ("RDF_Combination_Blank_Node", "RDF_Combination_Blank_Node-premise.rif")
+  else none
+
+/-- Drop the `<!DOCTYPE … ]>` block and inline the `<!ENTITY n "v">`
+substitutions it declares (`&n;` → `v`). The vendored premises use
+entity references for the RIF/XSD/RDF namespaces; the XML parser
+takes the document without its DTD. -/
+def rifXmlPreprocess (raw : String) : String :=
+  let replaceAll (s pat rep : String) : String :=
+    String.intercalate rep (s.splitOn pat)
+  match raw.splitOn "<!DOCTYPE" with
+  | [only] => only
+  | before :: rest =>
+      let restStr := String.intercalate "<!DOCTYPE" rest
+      match restStr.splitOn "]>" with
+      | inner :: after =>
+          let doc := before ++ String.intercalate "]>" after
+          let ents := ((inner.splitOn "<!ENTITY").drop 1).filterMap (fun e =>
+            match e.splitOn "\"" with
+            | namePart :: value :: _ => some (namePart.trim, value)
+            | _ => none)
+          ents.foldl (fun acc (n, v) => replaceAll acc ("&" ++ n ++ ";") v) doc
+      | [] => raw
+  | [] => raw
+
+/-- Load one resolved import file by extension (`.rdf` RDF/XML,
+otherwise Turtle) and close it under the profile its `Import` names —
+the F* `materialise_import_graph` dispatch. -/
+def rifLoadImport (path : String) (profile : Option String) : IO Graph := do
+  let some text ← readOpt path | return []
+  let g := if path.endsWith ".rdf"
+           then (L4Factoidal.Syntax.RdfXml.parseRdfXml text (some ("file://" ++ path))).toOption.getD []
+           else (parseTurtle text (some ("file://" ++ path))).toOption.getD []
+  let entNs := "http://www.w3.org/ns/entailment/"
+  return (match profile with
+    | some p =>
+        if p == entNs ++ "RDF" || p == entNs ++ "RDFS" then
+          L4Factoidal.RDFS.closureFix g
+        else if (p.splitOn "OWL").length > 1 then
+          L4Factoidal.OWL.RL.closureFix g
+        else g
+    | none => g)
+
+/-- Resolve one `Import` location URL to a local file in `dir`:
+basename, tried bare, then `.rdf`, then `.ttl`. -/
+def rifResolveImport (dir url : String) : IO (Option String) := do
+  let bn := (url.splitOn "/").getLast?.getD url
+  let candidates :=
+    if bn.endsWith ".rdf" || bn.endsWith ".ttl" then [bn]
+    else [bn ++ ".rdf", bn ++ ".ttl", bn]
+  let found ← candidates.findM? (fun c =>
+    System.FilePath.pathExists (System.FilePath.mk (dir ++ "/" ++ c)))
+  return found.map (fun c => dir ++ "/" ++ c)
+
+/-- The RIF regime's dataset: premise rules + imports + saturation.
+`.error` carries the outcome when the premise cannot be used. -/
+def rifSaturateDataset (tc : TestCase) (ds : Dataset) :
+    IO (Except Outcome Dataset) := do
+  let some base ← rifTcBase
+    | return .error (.unsupported "RIF premise mirror not vendored (third_party/testing/rif/tc)")
+  let some (sub, fname) := rifPremiseFor tc.name
+    | return .error (.unsupported s!"no vendored RIF rules for test {tc.name}")
+  let dir := base ++ "/" ++ sub
+  let some raw ← readOpt (dir ++ "/" ++ fname)
+    | return .error (.unsupported s!"RIF premise missing: {dir}/{fname}")
+  let xml := rifXmlPreprocess raw
+  let some doc := L4Factoidal.RIF.Xml.parseRifProgram xml
+    | return .error (.fail "RIF-XML premise did not parse")
+  let mut imported : Graph := []
+  for (url, profile) in doc.imports do
+    match ← rifResolveImport dir url with
+    | some path => imported := imported ++ (← rifLoadImport path profile)
+    | none => pure ()
+  let merged := ds.default ++ imported
+  let saturated := L4Factoidal.RIF.Saturate.saturateGraph "rules" doc.rules merged
+  return .ok { ds with default := saturated }
+
+/-- One `QueryEvaluationTest` / `CSVResultFormatTest`. `mode` is the
+suite's RDF version; a `.rdf12` suite parses its queries with the
+SPARQL 1.2 grammar. -/
+def runQueryEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult := do
   -- Entailment-regime tests: pick the regime now; the closure is
   -- applied to the fixtures once they are loaded.
+  -- The F* runner's preference order puts the OWL regimes first.
+  -- OWL-Direct and OWL-RDF-Based both evaluate as: OWL 2 RL closure of
+  -- every fixture graph, then the OWL query path (rewrite +
+  -- query-time canonical materialisation, `OWL/QueryEval.lean`).
+  let owlRegime : Bool :=
+    tc.entailmentRegimes.contains "OWL-RDF-Based"
+      || tc.entailmentRegimes.contains "OWL-Direct"
+  let rifRegime : Bool := tc.entailmentRegimes.contains "RIF"
   let regime? : Option Regime ←
-    if tc.entailmentRegimes.isEmpty then pure none
+    if tc.entailmentRegimes.isEmpty || owlRegime || rifRegime then pure none
     else match pickRegime tc.entailmentRegimes with
       | some r => pure (some r)
       | none => return .ofOutcome (.unsupported
@@ -297,23 +418,72 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
     | return .ofOutcome (.skip "mf:action carries no qt:query")
   let some qtext ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
-  match parseSparql qtext (some ("file://" ++ qf)) with
+  let sv : SparqlVersion := if mode == .rdf12 then .v12 else .v11
+  match parseSparql qtext (some ("file://" ++ qf)) sv with
   | .error e => return .ofOutcome (.fail s!"SPARQL parse: {fmtParseError e}")
   | .ok q =>
-  match ← loadFixtures tc with
+  match ← loadFixtures tc mode with
   | .error o => return .ofOutcome o
   | .ok (ds0, services) =>
   -- SPARQL 1.1 Entailment Regimes: answers are simple-entailment
   -- answers over the regime's closure of the active graph, with the
   -- minimal datatype map (the suite names no recognised datatypes).
-  let ds := match regime? with
-            | some r => closeDataset r (withMinimalD []) ds0
-            | none   => ds0
+  let dsE : Except Outcome Dataset ←
+    if rifRegime then rifSaturateDataset tc ds0
+    else pure (.ok (
+      if owlRegime then
+        { default := L4Factoidal.OWL.RL.closureFix ds0.default,
+          named := ds0.named.map (fun ng =>
+            { ng with graph := L4Factoidal.OWL.RL.closureFix ng.graph }) }
+      else match regime? with
+      | some r => closeDataset r (withMinimalD []) ds0
+      | none   => ds0))
+  let ds ← match dsE with
+    | .error o => return .ofOutcome o
+    | .ok d => pure d
+  -- SPARQL 1.1 Entailment Regimes: an answer may not bind a blank node
+  -- the QUERIED graph does not contain (the closure mints witness
+  -- nodes, and those are not legal answer terms). The original
+  -- dataset's blank-node ids are the allowed set.
+  let origBnodes : List BNodeId :=
+    let ofGraph (g : Graph) : List BNodeId :=
+      g.flatMap (fun t =>
+        (match t.s with | .bnode b => [b] | _ => []) ++
+        (match t.o with | .bnode b => [b] | _ => []))
+    ofGraph ds0.default ++ ds0.named.flatMap (fun ng => ofGraph ng.graph)
+  -- OWL Direct Semantics additionally restricts a variable standing in
+  -- a CLASS position (object of rdf:type, either side of
+  -- rdfs:subClassOf, object of rdfs:domain / rdfs:range /
+  -- owl:equivalentClass) to CLASS NAMES: an anonymous class expression
+  -- is not in the ontology's signature, so a blank node is not a legal
+  -- binding there. Individual positions keep their blank nodes — the
+  -- suite's own `owlds02` ("bnodes are not existentials with answer")
+  -- expects one.
+  let classPosVars : List VarName :=
+    (L4Factoidal.OWL.QueryMaterialise.bgpsOf q.pattern).flatMap (fun b =>
+      b.flatMap (fun tp =>
+        match tp.p with
+        | .iri pi =>
+            (if pi == L4Factoidal.OWL.RL.rdfType
+                || pi == L4Factoidal.OWL.RL.rdfsDomain
+                || pi == L4Factoidal.OWL.RL.rdfsRange
+                || pi == L4Factoidal.OWL.RL.owlEquivalentClass then
+               match tp.o with | .var v => [v] | _ => []
+             else []) ++
+            (if pi == L4Factoidal.OWL.RL.rdfsSubClassOf then
+               (match tp.s with | .var v => [v] | _ => []) ++
+               (match tp.o with | .var v => [v] | _ => [])
+             else [])
+        | _ => []))
+  let rowAllowed (row : List (VarName × Term)) : Bool :=
+    row.all (fun vt => match vt.2 with
+      | .bnode b => origBnodes.contains b && !classPosVars.contains vt.1
+      | _ => true)
   let some rf := tc.resultFile
     | return .ofOutcome (.skip "no mf:result")
   let some rtext ← readOpt rf
     | return .ofOutcome (.skip s!"result file missing: {rf}")
-  match parseExpected rf rtext with
+  match parseExpected rf rtext mode with
   | .error e => return .ofOutcome (.fail s!"expected-result parse error: {e}")
   | .ok expected =>
   -- EXISTS needs no hook: `evalSelect` / `evalAsk` / `evalConstruct`
@@ -322,7 +492,9 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
   let ordered := q.modifier.orderBy.isSome
   match q.form, expected with
   | .select _, .rows erows csv =>
-      let arows := (evalSelect env ds q).2
+      let arows := if owlRegime then
+                     (L4Factoidal.OWL.QueryEval.evalSelectOwl env ds q).filter rowAllowed
+                   else (evalSelect env ds q).2
       let n := erows.length + arows.length
       return (match compareSelectRows ordered csv erows arows with
         | .equal    => { outcome := .pass, rowsCompared := n }
@@ -331,11 +503,13 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
             { outcome := .fail s!"solution-bijection budget exceeded ({erows.length} expected rows, {arows.length} actual)",
               budgetExceeded := true, rowsCompared := n })
   | .ask, .boolean b =>
-      let a := evalAsk env ds q
+      let a := if owlRegime then L4Factoidal.OWL.QueryEval.evalAskOwl env ds q
+               else evalAsk env ds q
       return (if a == b then { outcome := .pass, rowsCompared := 1 }
               else { outcome := .fail s!"ASK boolean mismatch: expected {b}, got {a}", rowsCompared := 1 })
   | .construct _, .graph g =>
-      let got := evalConstruct env ds q
+      let got := if owlRegime then L4Factoidal.OWL.QueryEval.evalConstructOwl env ds q
+                 else evalConstruct env ds q
       let r := isoResult
         s!"CONSTRUCT graph not isomorphic to the expected one (got {got.length} triples, expected {g.length})"
         (Graph.isomorphicOutcome got g)
@@ -350,12 +524,14 @@ def runQueryEvaluation (tc : TestCase) : IO RunResult := do
 /-- `PositiveSyntaxTest11` / `NegativeSyntaxTest11`: the query file is
 `mf:action` itself (a file IRI), parsed with its own `file:` IRI as
 BASE. -/
-def runSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+def runSyntaxTest (positive : Bool) (tc : TestCase) (mode : Mode := .rdf11) :
+    IO RunResult := do
   let some qf := (match tc.action with | some a => some a | none => tc.queryFile)
     | return .ofOutcome (.skip "no query file in mf:action")
   let some text ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
   let res := parseSparql text (some ("file://" ++ qf))
+              (if mode == .rdf12 then .v12 else .v11)
   return .ofOutcome (
     if positive then
       match res with
@@ -390,21 +566,21 @@ def runSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
 
 /-- Read `data` files into the default graph and `graphData` files
 into named graphs (the F* `load_dataset` + `load_triples` fold). -/
-def loadUpdateStore (dataFiles : List String) (graphData : List (String × String)) :
-    IO (Except Outcome Dataset) := do
+def loadUpdateStore (dataFiles : List String) (graphData : List (String × String))
+    (mode : Mode := .rdf11) : IO (Except Outcome Dataset) := do
   let mut ds : Dataset := Dataset.empty
   for df in dataFiles do
     match ← readOpt df with
     | none      => return .error (.skip s!"file missing: {df}")
     | some text =>
-      match parseDataFile df text with
+      match parseDataFile df text mode with
       | .error e => return .error (.fail s!"data parse error in {basename df}: {e}")
       | .ok d    => ds := mergeDatasets ds d
   for (iri, path) in graphData do
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
     | some text =>
-      match parseDataFile path text with
+      match parseDataFile path text mode with
       | .error e => return .error (.fail s!"graph data parse error in {basename path}: {e}")
       | .ok d    =>
         if h : isIri iri = true then
@@ -421,20 +597,21 @@ def quadCount (ds : Dataset) : Nat :=
   ds.default.length + (ds.named.map (fun ng => ng.graph.length)).sum
 
 /-- One `UpdateEvaluationTest`. -/
-def runUpdateEvaluation (tc : TestCase) : IO RunResult := do
+def runUpdateEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult := do
   let some qf := tc.queryFile
     | return .ofOutcome (.skip "mf:action carries no ut:request")
   let some text ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
-  match parseSparqlUpdate text (some ("file://" ++ qf)) with
+  match parseSparqlUpdate text (some ("file://" ++ qf))
+          (if mode == .rdf12 then .v12 else .v11) with
   | .error e => return .ofOutcome (.fail s!"Update parse: {fmtParseError e}")
   | .ok u =>
   if u.hasNonSilentLoad then
     return .ofOutcome (.skip "non-silent LOAD not yet implemented (no HTTP fetch)")
-  match ← loadUpdateStore tc.dataFiles tc.graphData with
+  match ← loadUpdateStore tc.dataFiles tc.graphData mode with
   | .error o => return .ofOutcome o
   | .ok input =>
-  match ← loadUpdateStore tc.updateResultData tc.updateResultGraphData with
+  match ← loadUpdateStore tc.updateResultData tc.updateResultGraphData mode with
   | .error o => return .ofOutcome o
   | .ok expected =>
   let env : EvalEnv := { now := some fixedNow, base := u.base }
@@ -451,12 +628,14 @@ def runUpdateEvaluation (tc : TestCase) : IO RunResult := do
 /-- `PositiveUpdateSyntaxTest11` / `NegativeUpdateSyntaxTest11`: the
 request file is `mf:action` itself, parsed with its own `file:` IRI
 as BASE. -/
-def runUpdateSyntaxTest (positive : Bool) (tc : TestCase) : IO RunResult := do
+def runUpdateSyntaxTest (positive : Bool) (tc : TestCase) (mode : Mode := .rdf11) :
+    IO RunResult := do
   let some qf := (match tc.action with | some a => some a | none => tc.queryFile)
     | return .ofOutcome (.skip "no update file in mf:action")
   let some text ← readOpt qf
     | return .ofOutcome (.skip s!"file missing: {qf}")
   let res := parseSparqlUpdate text (some ("file://" ++ qf))
+              (if mode == .rdf12 then .v12 else .v11)
   return .ofOutcome (
     if positive then
       match res with
@@ -790,14 +969,16 @@ def runTest (mode : Mode) (assumedBase : Option String) (manifestDir : String)
                  triplesCompared := quadCount ds }
 
   /- ### SPARQL 1.1 Query (sparql11 suites) — see the section above. -/
-  | "QueryEvaluationTest" | "CSVResultFormatTest" => runQueryEvaluation tc
-  | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc
-  | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc
+  | "QueryEvaluationTest" | "CSVResultFormatTest" => runQueryEvaluation tc mode
+  | "PositiveSyntaxTest11" | "PositiveSyntaxTest" => runSyntaxTest true tc mode
+  | "NegativeSyntaxTest11" | "NegativeSyntaxTest" => runSyntaxTest false tc mode
 
   /- ### SPARQL 1.1 Update (sparql11 suites) — see the section above. -/
-  | "UpdateEvaluationTest"       => runUpdateEvaluation tc
-  | "PositiveUpdateSyntaxTest11" => runUpdateSyntaxTest true tc
-  | "NegativeUpdateSyntaxTest11" => runUpdateSyntaxTest false tc
+  | "UpdateEvaluationTest"       => runUpdateEvaluation tc mode
+  | "PositiveUpdateSyntaxTest11" | "PositiveUpdateSyntaxTest" =>
+      runUpdateSyntaxTest true tc mode
+  | "NegativeUpdateSyntaxTest11" | "NegativeUpdateSyntaxTest" =>
+      runUpdateSyntaxTest false tc mode
 
   /- ### RDF 1.1 Semantics (rdf-mt) — see "RDF 1.1 Semantics" above. -/
   | "PositiveEntailmentTest" => runEntailmentTest mode true tc
