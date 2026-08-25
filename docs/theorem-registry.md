@@ -2468,3 +2468,37 @@ counts do not compare directly — split by what each tool could see:
 Project assume-val total: unchanged (this landing adds proof-only F*
 + a non-`assume val` OCaml consumer, `bin/depcheck`, per iron rule
 #11's "consumer tools ... belong in `bin/<consumer>/`").
+
+## 9. Unified model theory ([#598](https://github.com/danbri/factoidal/issues/598))
+
+Stage 1 (landed 2026-08-25): RDF core semantics + datasets embedded
+into the CL/IKL theory layer (`formal/lean4/L4Factoidal/Unified/`),
+proved adequate in BOTH directions against the native Lean
+formalization. Design:
+[`docs/designissues/2026-08-25-unified-semantics-lean.md`](designissues/2026-08-25-unified-semantics-lean.md)
+(stage 1 correction notes there record the deviations: colon-free
+bound-name spelling, tagged lift domain, unscoped named-graph bodies).
+All rows below are Lean 4 (`L4Factoidal.Unified`), no `sorry` / user
+`axiom` / `partial` / `native_decide`; axiom audit on every gate
+theorem: `propext`, `Classical.choice`, `Quot.sound` only.
+
+| Theorem | Module | Native anchor | Status | Fragment / hypotheses |
+|---|---|---|---|---|
+| `unified_adequate_simple` — `Entails [rdfToTheory g] (rdfToTheory h) ↔ RDF.SimpleEntailsMt g h` | `Unified/RdfAdequacy.lean` | `RDF.SimpleEntailsMt` (`RDF/Semantics.lean`) | ✅ PROVED (2026-08-25) — full iff | NONE — no triple-term-freedom hypothesis (both sides read RDF 1.2 triple terms as the same uninterpreted function) |
+| `unified_adequate_simple_decided` — `... ↔ RDF.simpleEntails g h = true` | `Unified/RdfAdequacy.lean` | `RDF.simpleEntails_iff_mt` + `RDF.SimpleRefinement.simpleEntails_iff_spec` | ✅ PROVED (2026-08-25) | `GraphTtFree g`, `GraphTtFree h` (where the native Herbrand construction applies; hypotheses shown non-degenerately satisfiable in `Unified/Witnesses.lean`) |
+| `rdfToTheory_merge` — merge is conjunction: `EntailEquiv [rdfToTheory (mergeGraphs g h)] [rdfToTheory g, rdfToTheory h]` | `Unified/RdfAdequacy.lean` | `Graph.prefixBnodes` renaming (`RDF/Graph.lean`, `RDF/DatasetMerge.lean`), `RDF.tripleHolds_agree` | ✅ PROVED (2026-08-25) — satisfaction-equivalence (stronger than mutual entailment) | — |
+| `rdfToTheory_union_entails_left` / `_right` / `_merge` — shared-scope union entails each part and the merge | `Unified/RdfAdequacy.lean` | same | ✅ PROVED (2026-08-25) | — |
+| `union_shared_scope_strict` — the converse REFUTED: separate closures do not entail the shared-label union (witness pair, decision-procedure separation `simpleEntails_merge_union_false` by `decide`) | `Unified/RdfAdequacy.lean` | `RDF.simpleEntails` | ✅ PROVED (2026-08-25) — strictness witness | concrete witness pair `unionG`/`unionH` |
+| `satisfies_rdfToTheory_restrict` / `satisfies_rdfToTheory_lift` — the transport pair's satisfaction transfer, both directions, both interpretations | `Unified/RdfTransport.lean` | `RDF.Satisfies` (`RDF/Semantics.lean`) | ✅ PROVED (2026-08-25) — full iff each | — |
+| `bnodeName_ne_iri` — bound-name freshness against EVERY well-formed IRI string, unconditional | `Unified/RdfEmbed.lean` | `RDF.isIri` | ✅ PROVED (2026-08-25) | — (colon-free spelling makes the design doc's freshness obligation hypothesis-free) |
+| `datasetToTheory_asserts_default` — the dataset sentence entails its default graph's translation | `Unified/DatasetEmbed.lean` | `RDF.Dataset` (`RDF/Graph.lean`) | ✅ PROVED (2026-08-25) | — |
+| `datasetToTheory_no_named` — a named-graph-free dataset translates to exactly its default graph's sentence | `Unified/DatasetEmbed.lean` | — | ✅ PROVED (2026-08-25) — definitional equation | — |
+| `dataset_decoration_asserts_nothing` — a named-graph-only dataset does NOT entail its named graph's content (RDF 1.1 Concepts §4: datasets carry no entailment semantics) | `Unified/Witnesses.lean` | separating model `namesOnlyInterp` | ✅ PROVED (2026-08-25) — refutation witness | concrete `decorationDataset` |
+| `rdfToTheory_satisfiable` / `datasetToTheory_satisfiable`, `unified_entails_not_everything`, `unified_entails_instance`, `propAlphaInvariant_satisfiable` / `_entails_not_everything` / `alphaKeyed_distinguishes` | `Unified/Witnesses.lean` | `RDF/SemanticsHypothesisWitness.lean` discipline | ✅ PROVED (2026-08-25) | non-vacuity guards: every stage 1 relation shown neither empty nor the everything-relation |
+
+NOT claimed at stage 1: D-entailment (`unified_adequate_d`,
+`DSchema.lean` — design doc §4.1, deferred to its own landing), any
+RDFS/OWL/SPARQL row (stages 2+), and the N-Quads round-trip corollary
+(blocked on the general parser round-trip theorem,
+[#576](https://github.com/danbri/factoidal/issues/576) — the native
+theorem exists only for the empty graph).

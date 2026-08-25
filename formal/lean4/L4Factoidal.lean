@@ -391,3 +391,9 @@ import L4Factoidal.CL.Examples
 import L4Factoidal.CL.FiniteSat
 import L4Factoidal.CL.ToRdf
 import L4Factoidal.CL.IklRegime
+import L4Factoidal.Unified.Theory
+import L4Factoidal.Unified.RdfEmbed
+import L4Factoidal.Unified.RdfTransport
+import L4Factoidal.Unified.RdfAdequacy
+import L4Factoidal.Unified.DatasetEmbed
+import L4Factoidal.Unified.Witnesses

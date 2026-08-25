@@ -8,6 +8,54 @@ No code lands with this document. Every Lean signature and theorem
 statement below is a proposal; each one becomes real only in the stage
 that proves it, under that stage's gate.
 
+### Stage 1 correction notes (2026-08-25)
+
+Stage 1 landed (`formal/lean4/L4Factoidal/Unified/`, registry section
+9 in [`docs/theorem-registry.md`](../theorem-registry.md)). Four
+points of this document were wrong in Lean's eyes and are corrected by
+the implementation; the sections below are NOT edited in place, so
+read them with these notes:
+
+1. **§2.3 bound-name spelling.** The `_:` spelling cannot support the
+   hypothesis-free gate theorem: `RDF.isIri` accepts `"_:x"` as a
+   well-formed IRI, so a graph containing the IRI `_:x` next to the
+   blank node `x` would have that IRI captured by the closure, and
+   `unified_adequate_simple` as stated (no freshness hypothesis) is
+   FALSE under that spelling. Landed instead: colon-free injective
+   bound names (`bnodeName b = "_" ++ escape b`, `:` → `%c`,
+   `%` → `%p`). Every well-formed IRI contains a colon, so freshness
+   holds unconditionally (`bnodeName_ne_iri`) and the gate theorem
+   needs no side condition.
+2. **§4.1 `liftInterp` "dom preserved".** Impossible as stated:
+   `CL.fn` receives only the DENOTATIONS of the `literalValueOf`
+   arguments, and with `dom = r.idom` the lexical form and datatype
+   IRI that `r.iLit` needs cannot be recovered (`iStr`/`iName` need
+   not be injective). Landed domain: `Option String × r.idom` — the
+   second component is the RDF denotation (what the transfer lemma
+   equates), the first tags name/string denotations with their
+   source string for the operator to decode. `rel` reads only the
+   second component.
+3. **§2.4 decoration formula.** The formula
+   `atom (name "urn:cl:def:names") [term n, that (rdfToTheory G)]`
+   contradicts this same section's scoping bullet: re-closing `G`
+   inside `that` shadows the dataset-wide binding and loses the
+   blank-node sharing the bullet establishes. Landed:
+   `that (rdfBody G)` — the unscoped body — under the dataset-level
+   closure.
+4. **§6.1 DatasetEmbed "N-Quads round-trip corollaries".** No native
+   theorem to compose with yet: the tree's round-trip theorem covers
+   only the empty graph (`Syntax/SyntaxTheorems.lean`). Deferred to
+   [https://github.com/danbri/factoidal/issues/576](https://github.com/danbri/factoidal/issues/576).
+
+Two clarifications that are refinements, not corrections: `EntailEquiv`
+landed as per-interpretation satisfaction-equivalence (stronger than
+mutual entailment, and what the merge proof delivers), and the merge
+operation the §4.1 statement calls `RDF.merge` landed as
+`Unified.mergeGraphs` (union after `Graph.prefixBnodes`
+standardizing-apart; the native tree has the renaming but no named
+merge operation). Stage 1 landed without `DSchema.lean` /
+`unified_adequate_d`, which go with the D-entailment landing.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
