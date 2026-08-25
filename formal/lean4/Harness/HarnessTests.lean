@@ -465,6 +465,13 @@ private def iklAsk (extend : Bool) (text : String) : Bool :=
 -- The narrowing (issue 581): an `ist` LINK decoration does not
 -- assert its proposition, so the regime does not merge its content.
 #guard iklAsk true "(ist c (that (Dead OBL)))" == false
+-- Conjunction uniformity (review disposition, 2026-08-25): a
+-- top-level `(and A B)` is ONE asserted proposition, and the x-ikl
+-- default merges that one graph's translatable atoms exactly as it
+-- does a single-atom assertion — the untranslatable conjunct stays
+-- record-only, invisible either way.
+#guard iklAsk false "(and (Dead OBL) (forall (x) (P x)))" == false
+#guard iklAsk true "(and (Dead OBL) (forall (x) (P x)))" == true
 
 /-! ## Axiom audit
 

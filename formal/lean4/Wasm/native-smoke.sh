@@ -262,27 +262,32 @@ check "clParse unclosed paren -> error" clParse "$TMP/cl-parse-bad.json" \
 # alpha-normalized canonical CLIF (issue 589):
 # echo -n '(Dead OBL)' | sha256sum
 # Graph-decoration translation (issue 581): count = graph-content
-# triples + decorations (ist link + rdf:reifies bridge here); the
-# graph holds record + content, nothing flattens into the default
-# graph. 5 occurrences of the graph IRI: link object, bridge subject,
+# triples + decorations (ist link + rdfProjection here); the graph
+# holds record + content, nothing flattens into the default graph.
+# rdf:reifies must NOT appear (a reifier is an occurrence token,
+# reserved for future report nodes — review disposition 2026-08-25).
+# 5 occurrences of the graph IRI: link object, projection subject,
 # record subject + graph label, content graph label.
 DEADOBL_G='urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0'
 args "$TMP/cl-ds.json" "$IKL" "urn:cl:"
 check "clToDataset proposition -> named graph" clToDataset "$TMP/cl-ds.json" \
   'r["ok"] is True and r["count"] == 3 and r["skipped"] == 0
    and "<urn:cl:c> <urn:cl:ist> <'"$DEADOBL_G"'> ." in r["nquads"]
-   and "<'"$DEADOBL_G"'> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( <urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> )>> ." in r["nquads"]
+   and "<'"$DEADOBL_G"'> <urn:cl:def:rdfProjection> <<( <urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> )>> ." in r["nquads"]
+   and "reifies" not in r["nquads"]
    and "<'"$DEADOBL_G"'> <urn:cl:def:sentence> \"(Dead OBL)\" <'"$DEADOBL_G"'> ." in r["nquads"]
    and "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <'"$DEADOBL_G"'> ." in r["nquads"]
    and r["nquads"].count("<'"$DEADOBL_G"'>") == 5'
 
-# Top-level `and` distributes into two ASSERTED propositions:
-# (Dog Rex) -> asserts + bridge + content (3), the quantified
-# conjunct -> asserts only, its body skipped and counted (1).
+# A top-level `and` is ONE asserted proposition (review disposition
+# 2026-08-25 — no distribution): one asserts decoration, one graph
+# holding the (Dog Rex) content atom, the quantified conjunct skipped
+# and counted. count = asserts (1) + content (1); no projection (the
+# sentence is not a single atom).
 args "$TMP/cl-ds-skip.json" '(and (Dog Rex) (forall (x) (P x)))' "urn:cl:"
-check "clToDataset skips are counted" clToDataset "$TMP/cl-ds-skip.json" \
-  'r["ok"] is True and r["count"] == 4 and r["skipped"] == 1
-   and r["nquads"].count("<urn:cl:kb> <urn:cl:def:asserts>") == 2'
+check "clToDataset conjunction is one proposition, skips counted" clToDataset "$TMP/cl-ds-skip.json" \
+  'r["ok"] is True and r["count"] == 2 and r["skipped"] == 1
+   and r["nquads"].count("<urn:cl:kb> <urn:cl:def:asserts>") == 1'
 
 args "$TMP/cl-ds-bad.json" "$IKL" "nocolon"
 check "clToDataset bad base -> error" clToDataset "$TMP/cl-ds-bad.json" \

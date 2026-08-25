@@ -48,6 +48,21 @@ Nothing else: one pass, no recursion into propositions asserted only
 inside other propositions, no quantifiers, no negation. Named subsets
 and their exact semantics are DEFERRED, tracked in issue 581; do not
 build on the details of this default.
+
+## Encoding commitment (review disposition, owner-relayed 2026-08-25)
+
+RDF semantics does not identify a graph name with the graph it names:
+RDF 1.1 datasets leave the relation between a graph name and its
+graph uninterpreted. Factoidal's `x-ikl-*` regime family additionally
+interprets the proposition IRI BOTH as the proposition's identifier
+(the term link decorations and the `urn:cl:def:asserts` decoration
+point at) AND, syntactically, as the name of the named graph holding
+the proposition's RDF projection (its translatable atoms plus its
+sentence record, `CL/ToRdf.lean`). That double reading is a
+deliberate extra semantic commitment of this regime, not an RDF
+entailment: nothing in RDF semantics licenses treating membership in
+the graph named by an IRI as content of the proposition that IRI
+identifies.
 -/
 
 import L4Factoidal.CL.ToRdf

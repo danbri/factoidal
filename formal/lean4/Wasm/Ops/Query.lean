@@ -63,8 +63,8 @@ def queryParsedDataset (ds : Dataset) (sparql : String) : String :=
 
 /-- `queryDataset(nquads, sparql)`. The N-Quads argument is read in
 RDF 1.2 mode: the engine's own ops emit RDF 1.2 canonical N-Quads —
-`clToDataset`'s `rdf:reifies` bridge decoration carries a `<<( … )>>`
-triple term (`CL/ToRdf.lean`, issue 581) — so the query op must read
+`clToDataset`'s `urn:cl:def:rdfProjection` decoration carries a
+`<<( … )>>` triple term (`CL/ToRdf.lean`, issue 581) — so the query op must read
 back what the op family writes. RDF 1.2 N-Quads is a superset of the
 1.1 grammar; `Mode.rdf11` stays the default everywhere else. -/
 def queryDataset (nq sparql : String) : String :=

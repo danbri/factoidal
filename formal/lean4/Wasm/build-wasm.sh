@@ -261,7 +261,8 @@ say "step 6 — compile our library's C, the shim and the stub"
 rm -f "$LIB_OBJ"/*.o
 # Wasm/Main.c is the NATIVE CLI driver: it defines `main` and pulls in
 # lean_setup_args. It must never be linked into the wasm module — and
-# neither may ANY Harness executable root: every Harness_* unit
+# neither may Wasm/Cli.c (the l4factoidal CLI, its own `main`) nor ANY
+# Harness executable root: every Harness_* unit
 # carries its own `_lean_main` (the runners l4w3c, l4shacl, l4rif, …),
 # and linking two of them is a duplicate-symbol error. The wasm module
 # is the LIBRARY plus Wasm_{Abi,Exports}; executables stay native.
@@ -269,6 +270,7 @@ while IFS= read -r f; do
   rel="${f#$LEAN_DIR/.lake/build/ir/}"
   b="$(echo "$rel" | sed 's|/|_|g; s|\.c$||')"
   [ "$b" = "Wasm_Main" ] && continue
+  [ "$b" = "Wasm_Cli" ] && continue
   case "$b" in Harness_*) continue;; esac
   # Lake never deletes the ir of a module that was deleted or renamed;
   # a stale .c whose .lean source is gone duplicates symbols with the
