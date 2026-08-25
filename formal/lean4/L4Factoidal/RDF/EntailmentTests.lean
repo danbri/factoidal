@@ -11,6 +11,7 @@ results are guards, never `decide`).
 -/
 import L4Factoidal.RDF.Entailment
 import L4Factoidal.RDF.EntailmentTheorems
+import L4Factoidal.RDF.EntailmentRdfsDatatypeClash
 import L4Factoidal.RDFS.FullClosureTheorems
 
 namespace L4Factoidal.RDF.EntailmentTests
@@ -249,6 +250,44 @@ def rdf7t : WfIri := iri! "http://www.w3.org/1999/02/22-rdf-syntax-ns#_7"
 #guard (fullClosure D0 [rdf1] [⟨.iri exA, exP, .iri exB⟩]).length > 60
 #guard (let c := fullClosure D0 [rdf1] [⟨.iri exA, exP, .iri exB⟩]
         (fullStep c).length == c.length)
+
+/-! ## Quote-polarity pins (issue 602, W3C rdf12 rdf-semantics)
+
+One shared witness — an ill-typed recognised literal INSIDE a used
+triple term — and one `#guard` per semantics-relevant fold, each named
+with the W3C fixture that anchors its polarity. A future change of any
+fold's interior treatment fails the build with the decision in view
+(https://github.com/danbri/factoidal/issues/602, proposed guard 2). -/
+
+def qpBadLit : WfLiteral :=
+  ⟨{ lexicalForm := "bad", datatype := xsdInteger,
+     langTag := none, direction := none }, by decide⟩
+
+def qpTt : Term := .tripleTerm (.iri exA) exP (.literal qpBadLit)
+
+def qpTtGraph : Graph := [⟨.iri exA, exFoo, qpTt⟩]
+
+-- `malformed-literal`: the interior ill-typed literal IS mentioned,
+-- and makes the graph D-inconsistent (WD §5 + §7.1).
+#guard termIllTypedMention [xsdInteger] qpTt
+#guard hasIllFormedLiteral [xsdInteger] qpTtGraph
+#guard regimeInconsistent .rdf [xsdInteger] qpTtGraph
+-- WD §7.1 last sentence: unrecognised type IRI — no inconsistency.
+#guard !(termIllTypedMention [] qpTt)
+#guard !(regimeInconsistent .rdf [] qpTtGraph)
+-- `rdfs:range` constrains ASSERTED triples only: no range clash from a
+-- triple-term interior, even with the range declaration present.
+#guard !(hasRangeClash [xsdInteger]
+  (⟨.iri exFoo, rdfsRange, .iri xsdInteger⟩ :: qpTtGraph))
+-- `malformed-literal-bnode-neg`: a blank node cannot be bound TO an
+-- ill-typed recognised literal, but a triple term is bindable at its
+-- own level (its interior defect already fired the inconsistency arm).
+#guard !(Regime.bindable .d [xsdInteger] (.literal qpBadLit))
+#guard Regime.bindable .d [xsdInteger] qpTt
+-- The two detectors in this tree agree on the quote polarity
+-- (`hasIllFormedRecognizedLiteral` answered the OPPOSITE until
+-- 2026-08-25 — issue 602's silent double standard).
+#guard hasIllFormedRecognizedLiteral qpTtGraph [xsdInteger]
 
 /-! ## Axiom audit -/
 

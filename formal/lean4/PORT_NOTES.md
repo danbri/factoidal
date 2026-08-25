@@ -4140,7 +4140,7 @@ unsupported (out of 631)`.
 | `Parser.RDFXML.fst` the `Some "Triple"` arm of `process_property_element` | `Syntax/RdfXml.lean` `propertyEltBody`'s `some "Triple"` arm | same version gate, same "exactly one element child making exactly one triple, else a syntax error" |
 | `Parser.RDFXML.fst` `annot_reifier_opt` / `annot_of` / `reif_of` | `Syntax/RdfXml.lean` `annotReifier`, `annotTriples`, `reifyAll` | the F\* uses an `rdf:annotationNodeID` value verbatim as a blank-node label; this port sends it through `nodeIdLabel`, the same map `rdf:nodeID` uses, so the two attributes name the same node |
 | `make_plain_literal lex lang dir` | `Syntax/RdfXml.lean` `mkPlainLiteral` (+ `RDF/Core.lean` `Literal.dirLangString`) | a direction with no language tag is ill-formed under `literalWf`, so it is dropped rather than made unrepresentable |
-| `w3c_runner.ml` `read_manifest`'s LENIENT-WITH-REPORT manifest parse (issue #334) | *(no counterpart)* | `Harness/Manifest.lean` parses strictly; the `rdf12/rdf-semantics` manifest's undeclared `test:` prefix therefore zeroes that one suite, reported as `0 out of 0` with `no_manifest=1` rather than hidden |
+| `w3c_runner.ml` `read_manifest`'s LENIENT-WITH-REPORT manifest parse (issue #334) | `Harness/Manifest.lean` `parseTurtleRecover` / `parseManifestTextLenient` (2026-08-25) | until 2026-08-25 the Lean side parsed strictly and the `rdf12/rdf-semantics` manifest's undeclared `test:` prefix zeroed that one suite (`0 out of 0`, `no_manifest=1`) — the zero-test-pressure mechanism of [issue 602](https://github.com/danbri/factoidal/issues/602); now recovered with a printed `MANIFEST-RECOVERY` warning per undeclared prefix, first score 19 pass, 11 fail, 0 skip, 17 unsupported (out of 47) |
 
 ### Assumption report (append)
 
@@ -13740,3 +13740,81 @@ and the search is unchanged. `Wasm/native-smoke.sh` 43 pass, 0 fail
 (out of 43), seven new cases: consistent / inconsistent / budget-out
 (fuel named in the reason) / cyclic-TBox-settles / entails-via-closure
 / countermodel / entails-budget-out.
+
+## D-semantics repair: triple-term-interior ill-typed literals + rdf-semantics suite pressure (2026-08-25)
+
+Repair of <https://github.com/danbri/factoidal/issues/602> under the
+decided spec anchor: RDF 1.2 Semantics W3C Working Draft (7 April
+2026, <https://www.w3.org/TR/rdf12-semantics/>, a WD, not a REC) — §5
+`I(E) = IT(I(E.s), I(E.p), I(E.o))` composed with §7.1 "any triple
+containing the literal must be false", as encoded by the W3C rdf12
+`malformed-literal` test. The EXECUTABLE's interior collection was
+correct; the totalized model theory (`RDF.DInterpCond`) was the
+defective layer. Failing-pin-first: the pin
+`dEntailsMt_tt_illtyped` was run against the pre-repair semantics and
+failed (the superseded `dEntailsMt_tt_gap` proved its negation), then
+the semantics was repaired until it passed.
+
+What changed:
+
+* `RDF/Entailment.lean`: canonical collector pair
+  `Term.mentionedLiterals` (interiors included, D-inconsistency) /
+  `assertedLiterals` (top level only, `rdfs:range`), each citing its
+  WD clause; `termIllTypedMention`; no catch-all `_` over `Term` in
+  verdict folds (`hasRangeClash`, `Regime.bindable` written out).
+* `RDF/EntailmentRdfsDatatypeClash.lean`
+  `hasIllFormedRecognizedLiteral` now uses the canonical collector —
+  it was the OPPOSITE polarity from `hasIllFormedLiteral` in the same
+  tree, silently. F\* side tracked in
+  <https://github.com/danbri/factoidal/issues/604>.
+* `Unified/DSchema.lean`: `DInterpCond` clause 2 and
+  `dExclusionSchema` generalised from literals to terms with ill-typed
+  mentions (`dExclusionTerm`, blank nodes universally bound);
+  `unified_adequate_d` unchanged in statement, reproved; NEW
+  `RDF.regimeEntails_d_sound_mt` (unconditional soundness of the
+  executable D-regime) and `unified_adequate_d_decided_sound` (the
+  decided corollary's sound half, no `GraphTtFree`); the complete half
+  is the registry's named open lemma (D-Herbrand literal quotient +
+  bindable-restricted search completeness). `dEntailsMt_tt_gap`
+  REMOVED; its content survives as
+  `topLevel_exclusion_insufficient_for_tt` over the superseded
+  `DInterpCondTopLevel` (strictness: `ttSep_not_dCond`).
+* `Harness/Manifest.lean`: lenient-with-report manifest parse
+  (`parseTurtleRecover` / `parseManifestTextLenient`, the F\* runner's
+  issue-334 policy) — undeclared prefixes recovered into
+  `urn:x-manifest-recovery:<pfx>#` with a printed `MANIFEST-RECOVERY`
+  line. This restores the rdf12 rdf-semantics suite, which had
+  reported 0 pass, 0 fail (out of 0), `no_manifest=1` since it landed
+  (upstream undeclared `test:` prefix).
+
+📊 MEASURED (same HEAD, `lake exe l4w3c`):
+
+```
+rdf-semantics: 19 pass, 11 fail, 0 skip, 17 unsupported (out of 47)   -- FIRST READING
+entailment: 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)
+rdf-mt: 39 pass, 0 fail, 0 skip, 0 unsupported (out of 39)
+sparql11 manifest-all: 631 pass, 0 fail, 0 skip, 0 unsupported (out of 631)
+rdf11 six + rdf12 nine suites: 1355 pass, 0 fail, 0 skip, 0 unsupported (out of 1355)
+```
+
+rdf-semantics first-reading decomposition: `malformed-literal`,
+`malformed-literal-control`, `malformed-literal-accepted` PASS (the
+repair's anchor tests). The 17 unsupported are xsd:float / xsd:double
+/ rdf:JSON value models this tree does not carry (refused by name).
+Of the 11 fails: `malformed-literal-no-spurious` and
+`malformed-literal-bnode-neg` are NegativeEntailmentTests whose action
+graph the SAME suite declares D-inconsistent (`malformed-literal`,
+`mf:result false`) — under the WD's classical entailment an
+inconsistent premise entails everything, so those two expectations
+contradict the suite's own inconsistency verdict (upstream question,
+to be raised on w3c/rdf-tests); the remaining 9 (`literal-type`,
+`opaque-literal`, `opaque-language-string`±control,
+`opaque-dir-language-string-control`, `annotation`,
+`annotation-unfolded`, `triple-terms-propositions`, `reifies-range`)
+are pre-existing engine gaps first exposed by this suite loading, not
+regressions. F\* committed binary, same day:
+`w3c_runner entailment` 70 pass, 0 fail (out of 70).
+
+Method hazard write-up: hazard #33 in
+`skills/workflow-gotchas-debugging/SKILL.md` (iron rule 14, same
+landing).

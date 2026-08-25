@@ -349,6 +349,57 @@ def parseManifestText (manifestPath text : String) :
   | .error e => .error s!"manifest parse error at offset {e.pos}: {e.msg}"
   | .ok g    => .ok (extractTestCases (dirname manifestPath) g, assumedTestBase g)
 
+/-! ## Lenient manifest parse — upstream-defect recovery, loudly
+
+The rdf12 `rdf-semantics` manifest uses the prefix `test:` without
+declaring it (upstream w3c/rdf-tests commit `2b35822`, 2025-06-28 —
+`trs:literal-type`'s `test:approval test:NotClassified`). Under the
+strict parse above the WHOLE suite reported 0 pass, 0 fail (out of 0),
+`no_manifest=1`, in every umbrella run — the zero-test-pressure
+mechanism of https://github.com/danbri/factoidal/issues/602. The F\*
+runner's policy is lenient-with-report
+(https://github.com/danbri/factoidal/issues/334); this is that policy
+here: retry with the one undeclared prefix bound to a recovery
+namespace, and RETURN the recovery as a warning line the runner must
+print. The recovery namespace `urn:x-manifest-recovery:<pfx>#` cannot
+collide with any vocabulary the extractor reads (those are all
+absolute `http(s)` IRIs), so recovered statements are carried but
+never mistaken for `mf:` / `rdft:` data. A recovered parse error's
+offset refers to the AUGMENTED text (one prepended line per recovered
+prefix). -/
+
+/-- Bounded retry around `parseTurtle`: each round prepends a binding
+for the one prefix the `undefined prefix:` error names. Any other
+error, or fuel exhaustion, surfaces unchanged. -/
+def parseTurtleRecover (base : String) :
+    Nat → String → List String →
+      Except L4Factoidal.Syntax.ParseError Graph × List String
+  | 0, text, ws => (parseTurtle text (some base), ws)
+  | fuel + 1, text, ws =>
+      match parseTurtle text (some base) with
+      | .ok g => (.ok g, ws)
+      | .error e =>
+          let tag := "undefined prefix: "
+          if e.msg.startsWith tag then
+            let pfx := e.msg.drop tag.length
+            let ns := s!"urn:x-manifest-recovery:{pfx}#"
+            let warn := s!"MANIFEST-RECOVERY: undeclared prefix '{pfx}:' bound to <{ns}> — upstream manifest defect, tolerated loudly (https://github.com/danbri/factoidal/issues/334 policy; suite pressure restored by https://github.com/danbri/factoidal/issues/602)"
+            parseTurtleRecover base fuel
+              (s!"@prefix {pfx}: <{ns}> .\n" ++ text) (ws ++ [warn])
+          else (.error e, ws)
+
+/-- Like `parseManifestText`, with undeclared-prefix recovery. The
+second component is the warning lines (empty when the strict parse
+succeeded); callers MUST surface them. -/
+def parseManifestTextLenient (manifestPath text : String) :
+    Except String (List TestCase × Option String) × List String :=
+  let base := "file://" ++ manifestPath
+  match parseTurtleRecover base 4 text [] with
+  | (.error e, ws) =>
+      (.error s!"manifest parse error at offset {e.pos}: {e.msg}", ws)
+  | (.ok g, ws) =>
+      (.ok (extractTestCases (dirname manifestPath) g, assumedTestBase g), ws)
+
 /-- `mf:include` — the sub-manifests an umbrella manifest
 (`sparql11/manifest-all.ttl`) points at, as local paths in collection
 order. The F* runner follows these; so does `Harness.Main`. -/
@@ -367,13 +418,19 @@ def parseManifestIncludes (manifestPath text : String) : List String :=
   | .ok g    => manifestIncludes (dirname manifestPath) g
 
 /-- Load a manifest off disk. `none` when the file is absent
-(the caller counts that as `no_manifest`). -/
+(the caller counts that as `no_manifest`). Uses the LENIENT parse and
+prints each recovery warning — loud by design, `--quiet`
+notwithstanding: a silently recovered manifest is how the rdf12
+rdf-semantics suite ran at 0 tests for two months unnoticed. -/
 def loadManifest (path : System.FilePath) :
     IO (Option (Except String (List TestCase × Option String))) := do
   match ← readOpt path with
   | none      => return none
   | some text =>
       let abs ← IO.FS.realPath path
-      return some (parseManifestText abs.toString text)
+      let (res, warns) := parseManifestTextLenient abs.toString text
+      for w in warns do
+        IO.println s!"  ({w} — in {abs})"
+      return some res
 
 end Harness

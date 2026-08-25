@@ -2,68 +2,81 @@
 L4Factoidal.Unified.DSchema — D-entailment in the unified LBase/IKL
 theory: the datatype-map schema `dSchema`, the native model-theoretic
 anchor `RDF.DEntailsMt`, the adequacy theorem `unified_adequate_d`,
-and the separating model that shows the ill-typed exclusion schema is
-not redundant.
+the soundness half of the decided corollary
+(`unified_adequate_d_decided_sound`), and the separating models that
+show each exclusion ingredient is not redundant.
 
 D-entailment landing of
 https://github.com/danbri/factoidal/issues/598 (design document
 `docs/designissues/2026-08-25-unified-semantics-lean.md` §2.5, §4.1,
 §5.1; RDF 1.1 Semantics §7,
-https://www.w3.org/TR/rdf11-mt/#datatype-entailment).
+https://www.w3.org/TR/rdf11-mt/#datatype-entailment), REPAIRED per
+https://github.com/danbri/factoidal/issues/602 (see "Triple terms"
+below).
 
 ## The schema (design document §2.5, decided treatment of §5.1)
 
-CL totalises denotation, so RDF 1.1 Semantics §7.1's "an ill-typed
-literal cannot denote anything" is encoded, not transcribed:
+CL totalises denotation, so "an ill-typed literal cannot denote
+anything" is encoded, not transcribed:
 
 * **value identification** — for every literal pair the tree's
   D-value equality `RDF.literalValueEq D` accepts, the sentence
   `eq (embed l1) (embed l2)` (§7: "literals with the same value are
   interchangeable");
-* **ill-typed exclusion** — for every literal `RDF.literalIllFormed D`
-  rejects, the sentence
-  `neg (ex [x, r] (atom r [x, embed l]))`: no true predication has
-  the ill-typed literal's individual in object position. A translated
-  graph containing such a literal in object position contradicts its
+* **ill-typed exclusion** — for every TERM whose mentioned literals
+  (`RDF.termIllTypedMention D`, triple-term interiors included)
+  contain an ill-typed recognised literal, the sentence
+  `neg (ex [x, r, b…] (atom r [x, embed t]))`: no true predication has
+  the term's individual in object position, at any value of the term's
+  blank nodes. A translated graph USING such a term contradicts its
   own exclusion axiom, so the theory entails everything
   (`unified_d_illtyped_entails_all`) — the §7.2 verdict, the one
   `RDF.Regime.inconsistent` computes.
 
-## The native anchor, introduced here
+## Triple terms — the spec anchor (issue 602)
 
-The native tree had NO model-theoretic D-entailment before this
-landing: `RDF/EntailmentTheorems.lean` deliberately gives the
-`literalValueEq` regime variants no soundness theorem, and
-`RDF/Semantics.lean` stops at `SimpleEntailsMt`. Per the design
-document §4.1 ("the model-theoretic D-entailment the stage also
-introduces natively if it is not yet stated"), `RDF.DInterpCond` and
-`RDF.DEntailsMt` are defined below, in the `RDF` namespace, as
-`EntailsUnder` over the interpretations that (a) identify
-value-equal recognised literals and (b) exclude ill-typed recognised
-literals from every property extension's object position. This is
-the fragment of §7's D-interpretation conditions that the tree's
-executable machinery (`RDF/Datatypes.lean`) expresses; completeness
-against the full §7 interpretation class (value-space structure,
-`rdfs:range` interactions) is NOT claimed — the `rdfs:range` clash
-rule is stage 2 material (`RDF/EntailmentRdfsDatatypeClash.lean`).
+The exclusion schema covers triple-term INTERIORS. Anchor: RDF 1.2
+Semantics, W3C Working Draft 7 April 2026,
+https://www.w3.org/TR/rdf12-semantics/ — §5 gives a ground triple term
+the compositional denotation `I(E) = IT(I(E.s), I(E.p), I(E.o))`, and
+§7.1 says an ill-typed recognised literal "cannot denote anything. In
+this case, any triple containing the literal must be false. Thus, any
+triple, and hence any graph, containing an ill-typed literal will be
+D-unsatisfiable." An interior literal's denotation reaches the
+containing triple term's through the compositional clause, so
+"containing" covers interiors — encoded by the W3C rdf12
+`rdf-semantics` test `malformed-literal` ("Malformed literals are
+allowed in triple terms, but cause inconsistency"). Status caveat:
+that document is a Working Draft, not a Recommendation, and RDF 1.1
+Semantics has no triple-term clause at all; the anchor decision is
+recorded on issue 602.
 
-## The decided corollary is NOT here — a recorded gap
+History: this module first shipped with a top-level-only exclusion
+(clause 2 reached `i.iLit` directly and nothing else), read the
+executable's interior collection as the DEFECT, and pinned the
+disagreement as `dEntailsMt_tt_gap`. That attribution was wrong — the
+executable agreed with the WD and its test suite; the totalized model
+theory did not. The superseded bundle survives below as
+`DInterpCondTopLevel`, with the separation theorems that show the
+interior clause is the exact ingredient the repair added.
 
-The executable D procedure exists (`RDF.regimeEntails .d`), but the
-native characterisation theorem that `unified_adequate_simple_decided`
-composed with for the simple regime (`simpleEntails_iff_mt`) has no
-D analogue in the tree. Worse, the correspondence FAILS without
-triple-term-freedom hypotheses: the executable inconsistency check
-collects literals INSIDE RDF 1.2 triple terms (`Term.literals`
-recurses through `tripleTerm`), while the model theory — native
-`iTt` and the unified `urn:cl:def:tripleTerm` operator alike — reads
-a triple term as an uninterpreted function of its components'
-denotations, so an ill-typed literal inside a triple term produces no
-contradiction. `dEntailsMt_tt_gap` below machine-checks the
-disagreement on a witness pair the `#guard`s pin. The decided
-corollary therefore waits for a native D-interpolation lemma (with
-`GraphTtFree` hypotheses), tracked in the design document's
-correction notes.
+## The decided corollary — sound half landed, complete half named
+
+`unified_adequate_d_decided_sound`: an executable `true`
+(`RDF.regimeEntails .d`) now implies schema entailment,
+UNCONDITIONALLY — no `GraphTtFree` hypothesis, because the repaired
+clause 2 covers exactly the occurrences the executable collects, and
+value-equal matching is sound under clause 1 even inside triple terms
+(`termMatch` compares interior literals with the regime's `leq`).
+The COMPLETENESS direction (model-theoretic entailment implies
+executable `true`) is NOT claimed and is not a triple-term matter:
+it needs (a) a D-Herbrand interpretation quotienting literals by
+`literalValueEq D` (clause 1 forces value-equal literals to share a
+denotation, so the plain term model does not qualify), and (b) a
+completeness lemma for `searchInstance` under the regime's restricted
+`Regime.bindable` (the existing `entailsWith_complete` requires
+`bindable` universally true). Recorded as the registry's named open
+lemma for this section.
 
 No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
@@ -74,33 +87,203 @@ import L4Factoidal.RDF.Entailment
 
 namespace L4Factoidal.RDF
 
-/-- The D-interpretation condition bundle (RDF 1.1 Semantics §7, the
-fragment the tree's executable datatype machinery expresses):
+/-- The D-interpretation condition bundle (RDF 1.1 Semantics §7 plus
+the RDF 1.2 Semantics WD triple-term clause — module header):
 
 1. literals the D-value equality `literalValueEq D` identifies denote
    the same resource (§7's lexical-to-value mapping, observed through
    value equality — the comparison `Regime.literalEq` matches with);
-2. an ill-typed recognised literal (`literalIllFormed D`) is in no
-   property extension's object position — the totalised reading of
-   §7.1's "cannot denote anything" (`Interp.iLit` is total, so the
-   exclusion carries the unsatisfiability instead of a partial map).
+2. a term that MENTIONS an ill-typed recognised literal
+   (`termIllTypedMention D` — the term itself, or a triple-term
+   interior at any depth) is in no property extension's object
+   position, under every blank-node assignment — the totalised reading
+   of WD §7.1's "cannot denote anything" composed through §5's
+   `I(E) = IT(I(E.s), I(E.p), I(E.o))` (`Interp.iLit` and `Interp.iTt`
+   are total, so the exclusion carries the unsatisfiability instead of
+   a partial map).
 
-Literals occur in object position only (RDF 1.1 Concepts §3.1;
-`Subject` has no literal constructor), so clause 2 reaches every
-occurrence the term model can give a literal — except INSIDE an
-RDF 1.2 triple term, where `iTt` reads the literal's denotation as an
-uninterpreted function argument (see the module header's gap note). -/
+Literals and triple terms occur in object position only (RDF 1.1/1.2
+Concepts §3.1; `Subject` has neither constructor), so clause 2 reaches
+every occurrence the term model can give them. -/
 def DInterpCond (D : List WfIri) (i : Interp) : Prop :=
   (∀ l1 l2 : WfLiteral, literalValueEq D l1.val l2.val = true →
      i.iLit l1 = i.iLit l2) ∧
-  (∀ l : WfLiteral, literalIllFormed D l.val = true →
-     ∀ p x : i.idom, ¬ i.iext p x (i.iLit l))
+  (∀ t : Term, termIllTypedMention D t = true →
+     ∀ (a : BnodeAssignment i.idom) (p x : i.idom),
+       ¬ i.iext p x (denotTerm i a t))
 
-/-- **D-entailment, model-theoretically** (RDF 1.1 Semantics §7):
-entailment over the D-interpretations. The native anchor of
-`Unified.unified_adequate_d`. -/
+/-- **D-entailment, model-theoretically** (RDF 1.1 Semantics §7 +
+the WD triple-term reading): entailment over the D-interpretations.
+The native anchor of `Unified.unified_adequate_d`. -/
 def DEntailsMt (D : List WfIri) (g h : Graph) : Prop :=
   EntailsUnder (DInterpCond D) g h
+
+/-- A used term with an ill-typed mention makes the graph
+D-unsatisfiable, natively (WD §5 + §7.1; the `malformed-literal`
+verdict): the premise entails everything. -/
+theorem dEntailsMt_illtyped_native (D : List WfIri) {g : Graph}
+    {t : Triple} (ht : t ∈ g)
+    (ho : termIllTypedMention D t.o = true)
+    (h : Graph) : DEntailsMt D g h := by
+  intro i hi hsat
+  obtain ⟨a, ha⟩ := hsat
+  exact absurd (ha t ht) (hi.2 t.o ho a _ _)
+
+/-! ## Soundness of the executable D-procedure
+
+`RDF.regimeEntails .d` answers `inconsistent ∨ instance-found`. Both
+disjuncts are sound for `DEntailsMt`, with no side condition — the
+issue-602 repair is what makes the inconsistent disjunct's interior
+collection sound, and clause 1 is what makes value-equal literal
+matching sound (also inside triple terms, where `termMatch` recurses
+with the regime's `leq`). -/
+
+/-- A `termMatch` under `literalValueEq D` preserves denotation in
+every interpretation satisfying clause 1. -/
+theorem termMatch_valueEq_denot (D : List WfIri) (i : Interp)
+    (h1 : ∀ l1 l2 : WfLiteral, literalValueEq D l1.val l2.val = true →
+       i.iLit l1 = i.iLit l2)
+    (a : BnodeAssignment i.idom) :
+    ∀ {u v : Term}, termMatch (literalValueEq D) u v = true →
+      denotTerm i a u = denotTerm i a v := by
+  intro u
+  induction u with
+  | iri x =>
+      intro v h
+      cases v <;> simp only [termMatch, beq_iff_eq] at h <;> try simp at h
+      subst h; rfl
+  | bnode b =>
+      intro v h
+      cases v <;> simp only [termMatch, beq_iff_eq] at h <;> try simp at h
+      subst h; rfl
+  | literal l =>
+      intro v h
+      cases v <;> simp only [termMatch] at h <;> try simp at h
+      simp only [denotTerm]
+      exact h1 _ _ h
+  | tripleTerm s p o ih =>
+      intro v h
+      cases v <;> simp only [termMatch, Bool.and_eq_true, beq_iff_eq] at h
+        <;> try simp at h
+      obtain ⟨⟨hs, hp⟩, ho⟩ := h
+      subst hs; subst hp
+      simp only [denotTerm, ih ho]
+
+/-- Denotation of an instantiated subject under the composed
+assignment. -/
+theorem denot_instance_subject (i : Interp) (a : BnodeAssignment i.idom)
+    (σ : BNodeId → Term) {s : Subject} {s' : Subject}
+    (h : s.instance? σ = some s') :
+    denotSubject i (fun b => denotTerm i a (σ b)) s =
+      denotSubject i a s' := by
+  cases s with
+  | iri x =>
+      simp only [Subject.instance?, Option.some.injEq] at h
+      subst h; rfl
+  | bnode b =>
+      simp only [Subject.instance?] at h
+      exact (denot_toSubject? i a h).symm
+
+/-- Denotation of an instantiated term under the composed
+assignment. -/
+theorem denot_instance_term (i : Interp) (a : BnodeAssignment i.idom)
+    (σ : BNodeId → Term) :
+    ∀ {u u' : Term}, u.instance? σ = some u' →
+      denotTerm i (fun b => denotTerm i a (σ b)) u = denotTerm i a u' := by
+  intro u
+  induction u with
+  | iri x =>
+      intro u' h
+      simp only [Term.instance?, Option.some.injEq] at h
+      subst h; rfl
+  | bnode b =>
+      intro u' h
+      simp only [Term.instance?, Option.some.injEq] at h
+      subst h; rfl
+  | literal l =>
+      intro u' h
+      simp only [Term.instance?, Option.some.injEq] at h
+      subst h; rfl
+  | tripleTerm s p o ih =>
+      intro u' h
+      simp only [Term.instance?] at h
+      cases hs : s.instance? σ with
+      | none => rw [hs] at h; simp at h
+      | some s' =>
+          cases ho : o.instance? σ with
+          | none => rw [hs, ho] at h; simp at h
+          | some o' =>
+              rw [hs, ho] at h
+              simp only [Option.some.injEq] at h
+              subst h
+              simp only [denotTerm, denot_instance_subject i a σ hs, ih ho]
+
+/-- A passing certificate carries satisfaction of the conclusion, in
+every interpretation meeting clause 1. -/
+theorem holdsAll_of_instanceCert_valueEq (D : List WfIri) (i : Interp)
+    (h1 : ∀ l1 l2 : WfLiteral, literalValueEq D l1.val l2.val = true →
+       i.iLit l1 = i.iLit l2)
+    {m : Mapping} {g h : Graph}
+    (hc : instanceCert (literalValueEq D) m g h = true)
+    {a : BnodeAssignment i.idom} (ha : HoldsAll i a g) :
+    HoldsAll i (fun b => denotTerm i a (m.toFun b)) h := by
+  intro t ht
+  simp only [instanceCert, List.all_eq_true] at hc
+  have hct := hc t ht
+  revert hct
+  cases hinst : t.instance? m.toFun with
+  | none => intro hct; simp at hct
+  | some t' =>
+    intro hct
+    simp only [List.any_eq_true] at hct
+    obtain ⟨u, hu, hm⟩ := hct
+    obtain ⟨hsi, hoi, hpe⟩ := SimpleRefinement.instance?_parts hinst
+    simp only [tripleMatch, Bool.and_eq_true, beq_iff_eq] at hm
+    obtain ⟨⟨hus, hup⟩, humatch⟩ := hm
+    have hg := ha u hu
+    have hps : t.p = u.p := (hup.trans hpe).symm
+    have hsub : denotSubject i (fun b => denotTerm i a (m.toFun b)) t.s
+        = denotSubject i a u.s := by
+      rw [denot_instance_subject i a m.toFun hsi, ← hus]
+    have hobj : denotTerm i (fun b => denotTerm i a (m.toFun b)) t.o
+        = denotTerm i a u.o := by
+      rw [denot_instance_term i a m.toFun hoi,
+          ← termMatch_valueEq_denot D i h1 a humatch]
+    unfold TripleHolds at hg ⊢
+    rw [hps, hsub, hobj]
+    exact hg
+
+/-- `entailsWith` under `literalValueEq D` is sound for satisfaction
+transfer, for ANY bindability filter (the filter only prunes the
+search; the certificate is what carries the claim). -/
+theorem entailsWith_valueEq_sound (D : List WfIri) (bnd : Term → Bool)
+    {g h : Graph}
+    (he : entailsWith (literalValueEq D) bnd g h = true)
+    (i : Interp)
+    (h1 : ∀ l1 l2 : WfLiteral, literalValueEq D l1.val l2.val = true →
+       i.iLit l1 = i.iLit l2)
+    (hsat : Satisfies i g) : Satisfies i h := by
+  obtain ⟨a, ha⟩ := hsat
+  unfold entailsWith at he
+  revert he
+  cases hsr : searchInstance (literalValueEq D) bnd g h [] with
+  | none => intro he; simp at he
+  | some m =>
+      intro he
+      exact ⟨_, holdsAll_of_instanceCert_valueEq D i h1 he ha⟩
+
+/-- **Soundness of the executable D-regime**, unconditional: when
+`regimeEntails .d` answers `true`, the model theory agrees. The
+converse (completeness) is NOT claimed — module header. -/
+theorem regimeEntails_d_sound_mt (D : List WfIri) {g h : Graph}
+    (he : regimeEntails .d D g h = true) : DEntailsMt D g h := by
+  have he' : (hasIllFormedLiteral D g ||
+      entailsWith (literalValueEq D) (Regime.bindable .d D) g h) = true := he
+  rcases Bool.or_eq_true_iff.mp he' with hinc | hent
+  · obtain ⟨t, ht, htm⟩ := hasIllFormedLiteral_iff.mp hinc
+    exact dEntailsMt_illtyped_native D ht htm h
+  · intro i hi hsat
+    exact entailsWith_valueEq_sound D _ hent i hi.1 hsat
 
 end L4Factoidal.RDF
 
@@ -113,15 +296,38 @@ namespace L4Factoidal.Unified
 def dValueId (l1 l2 : RDF.WfLiteral) : CL.Sentence :=
   .eq (embedTerm (.literal l1)) (embedTerm (.literal l2))
 
-/-- The ill-typed exclusion sentence for a literal (design document
-§2.5's `neg (ex [x, r] (atom r [x, literalTerm s d]))`): no
-individual stands in any relation to the ill-typed literal's
-individual in object position. The bound names `"x"` and `"r"` are
-colon-free, so they capture no IRI name and no `urn:cl:def:`
-operator name (the `FreshVal` discipline of `Unified/RdfTransport`). -/
+/-- The bound-name list of a term's exclusion sentence: the relation
+and object variables, then the term's blank nodes under the colon-free
+spelling. All colon-free, so nothing captures an IRI name or a
+`urn:cl:def:` operator name (the `FreshVal` discipline of
+`Unified/RdfTransport`). -/
+def dExclusionNames (t : RDF.Term) : List String :=
+  "x" :: "r" :: (RDF.termBnodes t).map bnodeName
+
+theorem dExclusionNames_no_colon (t : RDF.Term) :
+    ∀ n ∈ dExclusionNames t, ':' ∉ n.toList := by
+  intro n hn
+  simp only [dExclusionNames, List.mem_cons] at hn
+  rcases hn with rfl | rfl | hn
+  · decide
+  · decide
+  · obtain ⟨b, _, rfl⟩ := List.mem_map.mp hn
+    exact bnodeName_no_colon b
+
+/-- The ill-typed exclusion sentence for a TERM (the WD §5 + §7.1
+composition — module header): no individual stands in any relation to
+the term's individual in object position, at any value of the term's
+blank nodes. Generalises the design document §2.5 literal sentence
+`neg (ex [x, r] (atom r [x, literalTerm s d]))` to triple terms with
+ill-typed interiors (issue 602). -/
+def dExclusionTerm (t : RDF.Term) : CL.Sentence :=
+  .neg (.ex ((dExclusionNames t).map .plain)
+    (.atom (.name "r") [.term (.name "x"), .term (embedTerm t)]))
+
+/-- The literal instance of the exclusion sentence — the shape the
+§5.1 separating model reasons about. -/
 def dExclusion (l : RDF.WfLiteral) : CL.Sentence :=
-  .neg (.ex [.plain "x", .plain "r"]
-    (.atom (.name "r") [.term (.name "x"), .term (embedTerm (.literal l))]))
+  dExclusionTerm (.literal l)
 
 /-- The value-identification half of the D schema: one `dValueId` row
 per literal pair `literalValueEq D` accepts. -/
@@ -129,15 +335,16 @@ def dValueSchema (D : List RDF.WfIri) : Schema := fun s =>
   ∃ l1 l2 : RDF.WfLiteral,
     RDF.literalValueEq D l1.val l2.val = true ∧ s = dValueId l1 l2
 
-/-- The exclusion half: one `dExclusion` row per ill-typed recognised
-literal. -/
+/-- The exclusion half: one `dExclusionTerm` row per term with an
+ill-typed recognised mention (triple-term interiors included — the
+literal rows are the `t = .literal l` instances). -/
 def dExclusionSchema (D : List RDF.WfIri) : Schema := fun s =>
-  ∃ l : RDF.WfLiteral, RDF.literalIllFormed D l.val = true ∧ s = dExclusion l
+  ∃ t : RDF.Term, RDF.termIllTypedMention D t = true ∧ s = dExclusionTerm t
 
-/-- **The D-interpretation schema** (design document §2.5): value
-identification plus ill-typed exclusion. Deliberately silent about
-ill-typed individuals beyond the exclusion rows — §5.1's soundness
-requirement. -/
+/-- **The D-interpretation schema** (design document §2.5 + the
+issue-602 repair): value identification plus ill-typed exclusion.
+Deliberately silent about ill-typed individuals beyond the exclusion
+rows — §5.1's soundness requirement. -/
 def dSchema (D : List RDF.WfIri) : Schema :=
   schemaUnion (dValueSchema D) (dExclusionSchema D)
 
@@ -175,35 +382,84 @@ theorem satisfies_dValueId_iff (i : CL.Interp) (l1 l2 : RDF.WfLiteral) :
     CL.Satisfies i (dValueId l1 l2) ↔ litDenot i l1 = litDenot i l2 := by
   simp only [dValueId, CL.Satisfies, CL.Sat, litDenot]
 
-/-- The exclusion sentence, characterised: no relation extension holds
-of any pair ending in the literal's individual. -/
+/-- The exclusion sentence for a TERM, characterised: no relation
+extension holds of any pair ending in the term's individual, at any
+blank-node assignment (read through `restrictInterp`, which is what
+gives the free-standing sentence an RDF-side denotation to speak
+about). -/
+theorem satisfies_dExclusionTerm_iff (i : CL.Interp) (t : RDF.Term) :
+    CL.Satisfies i (dExclusionTerm t) ↔
+      ∀ (xv rv : i.dom) (a : RDF.BnodeAssignment i.dom),
+        ¬ i.rel rv [xv, RDF.denotTerm (restrictInterp i) a t] := by
+  have hν : ∀ f : String → i.dom,
+      FreshVal i (overrideOn i.iName (dExclusionNames t) f) :=
+    fun f => freshVal_overrideOn i (dExclusionNames_no_colon t) f
+  have hsat : ∀ f : String → i.dom,
+      CL.Sat i (overrideOn i.iName (dExclusionNames t) f) (fun _ => [])
+          (.atom (.name "r") [.term (.name "x"), .term (embedTerm t)]) ↔
+        i.rel (overrideOn i.iName (dExclusionNames t) f "r")
+          [overrideOn i.iName (dExclusionNames t) f "x",
+           RDF.denotTerm (restrictInterp i)
+             (fun b => overrideOn i.iName (dExclusionNames t) f (bnodeName b))
+             t] := by
+    intro f
+    simp only [CL.Sat, CL.denotSeq, CL.denotTerm,
+               denot_embedTerm_restrict i
+                 (fun b => overrideOn i.iName (dExclusionNames t) f (bnodeName b))
+                 (hν f) t (fun _ _ => rfl)]
+    rfl
+  unfold dExclusionTerm CL.Satisfies
+  simp only [CL.Sat]
+  rw [satExists_plains]
+  constructor
+  · intro hn xv rv a hrel
+    apply hn
+    have hxm : "x" ∈ dExclusionNames t := List.mem_cons_self ..
+    have hrm : "r" ∈ dExclusionNames t :=
+      List.mem_cons_of_mem _ (List.mem_cons_self ..)
+    have hdx : bnodeNameDecode "x" = none := by decide
+    have hdr : bnodeNameDecode "r" = none := by decide
+    refine ⟨fun n => (bnodeNameDecode n).elim
+      (if n == "x" then xv else rv) a, ?_⟩
+    rw [hsat]
+    have hx : overrideOn i.iName (dExclusionNames t)
+        (fun n => (bnodeNameDecode n).elim (if n == "x" then xv else rv) a)
+        "x" = xv := by
+      simp [overrideOn, hxm, hdx]
+    have hrv : overrideOn i.iName (dExclusionNames t)
+        (fun n => (bnodeNameDecode n).elim (if n == "x" then xv else rv) a)
+        "r" = rv := by
+      simp [overrideOn, hrm, hdr]
+    have hagree : RDF.denotTerm (restrictInterp i)
+        (fun b => overrideOn i.iName (dExclusionNames t)
+          (fun n => (bnodeNameDecode n).elim (if n == "x" then xv else rv) a)
+          (bnodeName b)) t
+        = RDF.denotTerm (restrictInterp i) a t := by
+      refine RDF.denot_term_agree (restrictInterp i) (fun b hb => ?_)
+      have hmem : bnodeName b ∈ dExclusionNames t :=
+        List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+          (List.mem_map.mpr ⟨b, hb, rfl⟩))
+      simp only [overrideOn, hmem, bnodeNameDecode_bnodeName, Option.elim]
+      rfl
+    rw [hx, hrv]
+    exact Eq.mpr (congrArg (fun y => i.rel rv [xv, y]) hagree) hrel
+  · rintro hall ⟨f, hf⟩
+    rw [hsat] at hf
+    exact hall _ _ _ hf
+
+/-- The literal instance, in the shape the separating-model section
+uses: the blank-node assignment is irrelevant to a literal's
+denotation. -/
 theorem satisfies_dExclusion_iff (i : CL.Interp) (l : RDF.WfLiteral) :
     CL.Satisfies i (dExclusion l) ↔
       ∀ xv rv : i.dom, ¬ i.rel rv [xv, litDenot i l] := by
-  have hfresh : ∀ xv rv : i.dom,
-      FreshVal i (CL.updateInd (CL.updateInd i.iName "x" xv) "r" rv) :=
-    fun xv rv => freshVal_updateInd
-      (freshVal_updateInd (freshVal_iName i) (by decide) xv) (by decide) rv
-  have hr : ∀ xv rv : i.dom,
-      CL.updateInd (CL.updateInd i.iName "x" xv) "r" rv "r" = rv := by
-    intro xv rv
-    simp [CL.updateInd]
-  have hx : ∀ xv rv : i.dom,
-      CL.updateInd (CL.updateInd i.iName "x" xv) "r" rv "x" = xv := by
-    intro xv rv
-    simp [CL.updateInd]
-  simp only [dExclusion, CL.Satisfies, CL.Sat, CL.SatExists]
+  rw [show dExclusion l = dExclusionTerm (.literal l) from rfl,
+      satisfies_dExclusionTerm_iff]
   constructor
-  · intro hn xv rv hrel
-    apply hn
-    refine ⟨xv, rv, ?_⟩
-    simp only [CL.denotSeq, CL.denotTerm,
-               denot_embedLiteral_fresh i (hfresh xv rv) l, hr, hx]
-    exact hrel
-  · rintro hall ⟨xv, rv, hatom⟩
-    simp only [CL.denotSeq, CL.denotTerm,
-               denot_embedLiteral_fresh i (hfresh xv rv) l, hr, hx] at hatom
-    exact hall xv rv hatom
+  · intro h xv rv
+    exact h xv rv (fun _ => i.domWit)
+  · intro h xv rv a
+    exact h xv rv
 
 /-! ## Transport: the schema and the native condition bundle
 correspond through the stage 1 interpretation pair -/
@@ -215,16 +471,68 @@ theorem litDenot_lift (r : RDF.Interp) (l : RDF.WfLiteral) :
   simp only [litDenot, embedTerm, CL.denotTerm]
   exact liftFn_litArgs r (freshVal_iName _) l
 
+/-- Projection of the round-trip denotation: denotation under
+`restrictInterp (liftInterp r)` projects (second component) to the
+native denotation under the projected assignment — subjects. -/
+theorem denotSubject_restrictLift_proj (r : RDF.Interp)
+    (a : RDF.BnodeAssignment (restrictInterp (liftInterp r)).idom)
+    (s : RDF.Subject) :
+    (RDF.denotSubject (restrictInterp (liftInterp r)) a s).2 =
+      RDF.denotSubject r (fun b => (a b).2) s := by
+  cases s with
+  | iri x =>
+      show ((liftInterp r).iName x.val).2 = r.iIri x
+      rw [liftInterp_iName_iri]
+  | bnode b => rfl
+
+/-- … and terms (the triple-term arm is `liftFn_tt`, the literal arm
+`litDenot_lift`). -/
+theorem denotTerm_restrictLift_proj (r : RDF.Interp)
+    (a : RDF.BnodeAssignment (restrictInterp (liftInterp r)).idom) :
+    ∀ t : RDF.Term,
+      (RDF.denotTerm (restrictInterp (liftInterp r)) a t).2 =
+        RDF.denotTerm r (fun b => (a b).2) t
+  | .iri x => by
+      show ((liftInterp r).iName x.val).2 = r.iIri x
+      rw [liftInterp_iName_iri]
+  | .bnode _ => rfl
+  | .literal l => by
+      show (litDenot (liftInterp r) l).2 = r.iLit l
+      rw [litDenot_lift]
+  | .tripleTerm s p o => by
+      have hs := denotSubject_restrictLift_proj r a s
+      have ho := denotTerm_restrictLift_proj r a o
+      have hp : ((restrictInterp (liftInterp r)).iIri p).2 = r.iIri p := by
+        show ((liftInterp r).iName p.val).2 = r.iIri p
+        rw [liftInterp_iName_iri]
+      have htt := liftFn_tt r
+        (show (liftInterp r).dom from
+          RDF.denotSubject (restrictInterp (liftInterp r)) a s)
+        (show (liftInterp r).dom from
+          (restrictInterp (liftInterp r)).iIri p)
+        (show (liftInterp r).dom from
+          RDF.denotTerm (restrictInterp (liftInterp r)) a o)
+      have h2 : (RDF.denotTerm (restrictInterp (liftInterp r)) a
+          (.tripleTerm s p o)).2
+          = r.iTt (RDF.denotSubject (restrictInterp (liftInterp r)) a s).2
+              ((restrictInterp (liftInterp r)).iIri p).2
+              (RDF.denotTerm (restrictInterp (liftInterp r)) a o).2 :=
+        congrArg Prod.snd htt
+      rw [h2, hs, ho, hp]
+      rfl
+
 /-- A lifted D-interpretation satisfies the D schema. -/
 theorem liftInterp_satisfiesSchema_d (D : List RDF.WfIri) (r : RDF.Interp)
     (hr : RDF.DInterpCond D r) :
     SatisfiesSchema (liftInterp r) (dSchema D) := by
-  rintro s (⟨l1, l2, hlv, rfl⟩ | ⟨l, hif, rfl⟩)
+  rintro s (⟨l1, l2, hlv, rfl⟩ | ⟨t, htm, rfl⟩)
   · rw [satisfies_dValueId_iff, litDenot_lift, litDenot_lift, hr.1 l1 l2 hlv]
-  · rw [satisfies_dExclusion_iff]
-    intro xv rv hrel
-    rw [litDenot_lift] at hrel
-    exact hr.2 l hif rv.2 xv.2 hrel
+  · rw [satisfies_dExclusionTerm_iff]
+    intro xv rv a hrel
+    have hrel2 : r.iext rv.2 xv.2
+        (RDF.denotTerm (restrictInterp (liftInterp r)) a t).2 := hrel
+    rw [denotTerm_restrictLift_proj r a t] at hrel2
+    exact hr.2 t htm (fun b => (a b).2) rv.2 xv.2 hrel2
 
 /-- The restriction of a schema-satisfying CL interpretation is a
 D-interpretation. -/
@@ -236,10 +544,10 @@ theorem restrictInterp_dCond (D : List RDF.WfIri) (i : CL.Interp)
     have h := hi _ (Or.inl ⟨l1, l2, hlv, rfl⟩)
     rw [satisfies_dValueId_iff] at h
     exact h
-  · intro l hif p x hrel
-    have h := hi _ (Or.inr ⟨l, hif, rfl⟩)
-    rw [satisfies_dExclusion_iff] at h
-    exact h x p hrel
+  · intro t htm a p x hrel
+    have h := (satisfies_dExclusionTerm_iff i t).mp
+      (hi _ (Or.inr ⟨t, htm, rfl⟩))
+    exact h x p a hrel
 
 /-! ## The gate theorem -/
 
@@ -267,14 +575,26 @@ theorem unified_adequate_d (D : List RDF.WfIri) (g h : RDF.Graph) :
     exact (satisfies_rdfToTheory_restrict i h).mpr
       (hMt (restrictInterp i) (restrictInterp_dCond D i hsch) h1)
 
-/-! ## Ill-typed premises entail everything (RDF 1.1 Semantics §7.2) -/
+/-- **The decided corollary, sound half** — unconditional (module
+header): an executable `true` implies schema entailment. The
+completeness direction is the registry's named open lemma
+(D-Herbrand literal quotient + `bindable`-restricted search
+completeness). -/
+theorem unified_adequate_d_decided_sound (D : List RDF.WfIri)
+    (g h : RDF.Graph) (he : RDF.regimeEntails .d D g h = true) :
+    EntailsSchema condTrue (dSchema D) [rdfToTheory g] (rdfToTheory h) :=
+  (unified_adequate_d D g h).mpr (RDF.regimeEntails_d_sound_mt D he)
 
-/-- A translated graph with an ill-typed recognised literal in object
-position contradicts its own exclusion axiom: no schema-satisfying
+/-! ## Ill-typed premises entail everything (WD §5 + §7.1; RDF 1.1
+Semantics §7.2 for the top-level case) -/
+
+/-- A translated graph USING a term with an ill-typed recognised
+mention (top-level literal, or triple-term interior at any depth)
+contradicts its own exclusion axiom: no schema-satisfying
 interpretation satisfies it. -/
 theorem dSchema_illtyped_unsat (D : List RDF.WfIri) {g : RDF.Graph}
-    {t : RDF.Triple} {l : RDF.WfLiteral} (ht : t ∈ g)
-    (ho : t.o = .literal l) (hif : RDF.literalIllFormed D l.val = true)
+    {t : RDF.Triple} (ht : t ∈ g)
+    (ho : RDF.termIllTypedMention D t.o = true)
     (i : CL.Interp) (hsch : SatisfiesSchema i (dSchema D)) :
     ¬ CL.Satisfies i (rdfToTheory g) := by
   intro hsat
@@ -283,31 +603,34 @@ theorem dSchema_illtyped_unsat (D : List RDF.WfIri) {g : RDF.Graph}
   have hν : FreshVal i (overrideOn i.iName (graphBnodeNames g) f) :=
     freshVal_overrideOn i (graphBnodeNames_no_colon g) f
   have hatom := hf t ht
-  have hexcl := (satisfies_dExclusion_iff i l).mp
-    (hsch _ (Or.inr ⟨l, hif, rfl⟩))
-  simp only [tripleAtom, ho, CL.Sat, CL.denotSeq,
-             denot_embedLiteral_fresh i hν l] at hatom
-  exact hexcl _ _ hatom
+  have hexcl := (satisfies_dExclusionTerm_iff i t.o).mp
+    (hsch _ (Or.inr ⟨t.o, ho, rfl⟩))
+  simp only [tripleAtom, CL.Sat, CL.denotSeq, CL.denotTerm,
+             denot_embedTerm_restrict i
+               (fun b => overrideOn i.iName (graphBnodeNames g) f (bnodeName b))
+               hν t.o (fun _ _ => rfl)] at hatom
+  exact hexcl _ _ _ hatom
 
 /-- The everything-relation on a D-clashing premise: the unified
-counterpart of `RDF.Regime.inconsistent`'s short-circuit (§7.2, "an
+counterpart of `RDF.Regime.inconsistent`'s short-circuit ("an
 inconsistent graph entails any graph"). -/
 theorem unified_d_illtyped_entails_all (D : List RDF.WfIri) {g : RDF.Graph}
-    {t : RDF.Triple} {l : RDF.WfLiteral} (ht : t ∈ g)
-    (ho : t.o = .literal l) (hif : RDF.literalIllFormed D l.val = true)
+    {t : RDF.Triple} (ht : t ∈ g)
+    (ho : RDF.termIllTypedMention D t.o = true)
     (c : CL.Sentence) :
     EntailsSchema condTrue (dSchema D) [rdfToTheory g] c := by
   intro i _ hsch hsat
   exact absurd (hsat _ (List.mem_singleton.mpr rfl))
-    (dSchema_illtyped_unsat D ht ho hif i hsch)
+    (dSchema_illtyped_unsat D ht ho i hsch)
 
-/-- The same verdict natively, through the adequacy theorem. -/
+/-- The same verdict natively, through the adequacy theorem (also
+provable directly — `RDF.dEntailsMt_illtyped_native`). -/
 theorem dEntailsMt_illtyped (D : List RDF.WfIri) {g : RDF.Graph}
-    {t : RDF.Triple} {l : RDF.WfLiteral} (ht : t ∈ g)
-    (ho : t.o = .literal l) (hif : RDF.literalIllFormed D l.val = true)
+    {t : RDF.Triple} (ht : t ∈ g)
+    (ho : RDF.termIllTypedMention D t.o = true)
     (h : RDF.Graph) : RDF.DEntailsMt D g h :=
   (unified_adequate_d D g h).mp
-    (unified_d_illtyped_entails_all D ht ho hif _)
+    (unified_d_illtyped_entails_all D ht ho _)
 
 /-! ## Witness data
 
@@ -416,8 +739,8 @@ half. -/
 theorem dSchema_exclusion_does_work :
     EntailsSchema condTrue (dSchema dWitD)
       [rdfToTheory dBadGraph] (rdfToTheory dTargetGraph) :=
-  unified_d_illtyped_entails_all dWitD (List.mem_singleton.mpr rfl) rfl
-    dBadLit_illFormed _
+  unified_d_illtyped_entails_all dWitD (List.mem_singleton.mpr rfl)
+    (by decide) _
 
 /-! ## Non-vacuity of the schema and the native bundle -/
 
@@ -436,13 +759,12 @@ def noRelInterp : CL.Interp where
 under it never holds by schema-vacuity. -/
 theorem noRel_satisfiesSchema_d (D : List RDF.WfIri) :
     SatisfiesSchema noRelInterp (dSchema D) := by
-  rintro s (⟨l1, l2, _, rfl⟩ | ⟨l, _, rfl⟩)
+  rintro s (⟨l1, l2, _, rfl⟩ | ⟨t, _, rfl⟩)
   · rw [satisfies_dValueId_iff]
     exact rfl
-  · rw [satisfies_dExclusion_iff]
-    intro xv rv hrel
+  · rw [satisfies_dExclusionTerm_iff]
+    intro xv rv a hrel
     exact hrel
-
 
 theorem noRel_satisfies_empty :
     CL.Satisfies noRelInterp (rdfToTheory ([] : RDF.Graph)) := by
@@ -473,9 +795,10 @@ def noExtInterp : RDF.Interp where
   iext := fun _ _ _ => False
 
 /-- `DInterpCond` is satisfiable for every recognised set:
-`DEntailsMt` never holds by condition-vacuity. -/
+`DEntailsMt` never holds by condition-vacuity — the repaired clause 2
+included. -/
 theorem noExt_dCond (D : List RDF.WfIri) : RDF.DInterpCond D noExtInterp :=
-  ⟨fun _ _ _ => rfl, fun _ _ _ _ h => h⟩
+  ⟨fun _ _ _ => rfl, fun _ _ _ _ _ h => h⟩
 
 /-- Native D-entailment is not the everything-relation. -/
 theorem dEntailsMt_not_everything (D : List RDF.WfIri) :
@@ -526,17 +849,49 @@ theorem dNum_not_simple : ¬ RDF.SimpleEntailsMt dNumG dNumH := by
   rw [show RDF.simpleEntails dNumG dNumH = false from by decide] at hb
   exact Bool.false_ne_true hb
 
-/-! ## The executable-procedure gap, machine-checked
+/-! ## Triple-term agreement, and the superseded top-level-only bundle
 
-`RDF.regimeEntails .d` answers `true` on a premise whose ill-typed
-literal sits INSIDE an RDF 1.2 triple term (its inconsistency check
-recurses through `Term.literals`); the model theory reads the triple
-term as an uninterpreted function and builds a countermodel. The
-future decided corollary needs `GraphTtFree` hypotheses — exactly as
-`unified_adequate_simple_decided` does. -/
+`dTtGraph` is the issue-602 witness: the only ill-typed literal sits
+INSIDE a used triple term. Under the repaired semantics both layers
+now answer TRUE on `dTtGraph ⊨ dNumG` — `dEntailsMt_tt_illtyped` is
+the model theory's verdict (the pin this repair flipped: it FAILED
+against the pre-repair semantics, whose `dEntailsMt_tt_gap` proved its
+negation), and the `#guard` below pins the executable's.
+
+The pre-repair clause 2 survives as `DInterpCondTopLevel`, to prove
+the interior clause is NOT redundant: `ttSepInterp` meets the
+top-level bundle while satisfying `dTtGraph`, so under the superseded
+reading the `malformed-literal` inconsistency was underivable — the
+disagreement `dEntailsMt_tt_gap` pinned, restated with the defect on
+the side the WD anchor puts it. -/
 
 def dTtGraph : RDF.Graph :=
   [⟨.iri dA, dP, .tripleTerm (.iri dA) dQ (.literal dBadLit)⟩]
+
+/-- **The flipped pin** (W3C rdf12 `malformed-literal` shape): a used
+triple term with an ill-typed interior literal makes the premise
+D-inconsistent, so it entails everything — including `dNumG`. -/
+theorem dEntailsMt_tt_illtyped : RDF.DEntailsMt dWitD dTtGraph dNumG :=
+  RDF.dEntailsMt_illtyped_native dWitD (List.mem_singleton.mpr rfl)
+    (by decide) dNumG
+
+/-- The SUPERSEDED bundle: value identification plus top-level-only
+exclusion (clause 2 reaches `iLit` directly and nothing else). This
+was `DInterpCond` before the issue-602 repair. -/
+def DInterpCondTopLevel (D : List RDF.WfIri) (i : RDF.Interp) : Prop :=
+  (∀ l1 l2 : RDF.WfLiteral, RDF.literalValueEq D l1.val l2.val = true →
+     i.iLit l1 = i.iLit l2) ∧
+  (∀ l : RDF.WfLiteral, RDF.literalIllFormed D l.val = true →
+     ∀ p x : i.idom, ¬ i.iext p x (i.iLit l))
+
+/-- The repaired bundle refines the superseded one (the literal
+instance of clause 2). -/
+theorem dInterpCond_topLevel {D : List RDF.WfIri} {i : RDF.Interp}
+    (h : RDF.DInterpCond D i) : DInterpCondTopLevel D i :=
+  ⟨h.1, fun l hl p x =>
+    h.2 (.literal l)
+      (by simp [RDF.termIllTypedMention, RDF.Term.mentionedLiterals, hl])
+      (fun _ => i.idomWit) p x⟩
 
 /-- Everything is true of a triple-term individual; ill-typed literal
 individuals are excluded; so `dTtGraph` is satisfied while `dNumG`'s
@@ -549,20 +904,53 @@ def ttSepInterp : RDF.Interp where
   iTt := fun _ _ _ => true
   iext := fun _ _ y => y = true
 
-theorem ttSep_dCond : RDF.DInterpCond dWitD ttSepInterp :=
+theorem ttSep_topLevelCond : DInterpCondTopLevel dWitD ttSepInterp :=
   ⟨fun _ _ _ => rfl, fun _ _ _ _ h => Bool.false_ne_true h⟩
 
-/-- The model theory does NOT read a triple-term-interior ill-typed
-literal as a clash — the executable procedure does (`#guard` below). -/
-theorem dEntailsMt_tt_gap : ¬ RDF.DEntailsMt dWitD dTtGraph dNumG := by
+/-- `ttSepInterp` violates the repaired clause 2 at the witness triple
+term — the inclusion `dInterpCond_topLevel` is strict. -/
+theorem ttSep_not_dCond : ¬ RDF.DInterpCond dWitD ttSepInterp := by
+  intro h
+  exact h.2 (.tripleTerm (.iri dA) dQ (.literal dBadLit)) (by decide)
+    (fun _ => true) true true rfl
+
+/-- **The interior clause is not redundant**: under the superseded
+top-level-only bundle, the `malformed-literal` inconsistency is
+underivable — the content the removed `dEntailsMt_tt_gap` pinned,
+now stated about the variant it was actually evidence against. -/
+theorem topLevel_exclusion_insufficient_for_tt :
+    ¬ RDF.EntailsUnder (DInterpCondTopLevel dWitD) dTtGraph dNumG := by
   intro h
   have hsat : RDF.Satisfies ttSepInterp dTtGraph := by
     refine ⟨fun _ => true, fun t ht => ?_⟩
     obtain rfl := List.mem_singleton.mp ht
     exact rfl
-  obtain ⟨a, ha⟩ := h ttSepInterp ttSep_dCond hsat
+  obtain ⟨a, ha⟩ := h ttSepInterp ttSep_topLevelCond hsat
   have hbad := ha _ (List.mem_singleton.mpr rfl)
   exact Bool.false_ne_true hbad
+
+/-! ## The W3C fixture shape, pinned
+
+`malformed-literal` (rdf12 rdf-semantics): action
+`:a1 :p1 <<( :a :b "c"^^xsd:integer )>>`, regime "RDF", recognised
+`xsd:integer`, `mf:result false` — the action graph is D-inconsistent.
+(The suite's `malformed-literal-control` is the TOP-LEVEL assertion of
+the same literal, covered by the `dBadGraph` family above.) The third
+`#guard` pins WD §7.1's last sentence instead: an unrecognised type
+IRI is not ill-typed, so with `D = []` the same graph is
+consistent. -/
+
+def wdMalformedLit : RDF.WfLiteral :=
+  ⟨{ lexicalForm := "c", datatype := RDF.xsdInteger,
+     langTag := none, direction := none }, by decide⟩
+
+def wdMalformedGraph : RDF.Graph :=
+  [⟨.iri dA, dP, .tripleTerm (.iri dA) dQ (.literal wdMalformedLit)⟩]
+
+theorem wdMalformed_dEntailsMt (h : RDF.Graph) :
+    RDF.DEntailsMt [RDF.xsdInteger] wdMalformedGraph h :=
+  RDF.dEntailsMt_illtyped_native _ (List.mem_singleton.mpr rfl)
+    (by decide) h
 
 /-! ## Build-time checks -/
 
@@ -575,33 +963,48 @@ section Checks
 #guard RDF.literalValueEq dWitD dOneLit.val dOne2Lit.val
 #guard !(RDF.simpleEntails dNumG dNumH)
 
-/- Verdict agreement with the executable regime procedure where the
-model theory and the procedure are both defined: the ill-typed
-premise entails everything, the value instance holds, the empty graph
-entails nothing. -/
+/- Verdict agreement with the executable regime procedure: the
+ill-typed premise entails everything, the value instance holds, the
+empty graph entails nothing. -/
 
 #guard RDF.regimeEntails .d dWitD dBadGraph dTargetGraph
 #guard RDF.regimeEntails .d dWitD dNumG dNumH
 #guard !(RDF.regimeEntails .d dWitD ([] : RDF.Graph) dTargetGraph)
 
-/- The gap: the procedure short-circuits on the triple-term-interior
-ill-typed literal; `dEntailsMt_tt_gap` refutes the same pair
-model-theoretically. -/
+/- AGREEMENT on the issue-602 witness (formerly pinned as a gap): the
+executable short-circuits on the triple-term-interior ill-typed
+literal, and `dEntailsMt_tt_illtyped` now proves the model theory
+gives the same verdict. `regimeEntails_d_sound_mt` covers every such
+pair at once. -/
 
 #guard RDF.regimeEntails .d dWitD dTtGraph dNumG
+
+/- The W3C `malformed-literal` shape: D-inconsistent under the
+fixture's regime ("RDF") and recognised list; consistent when the
+datatype is not recognised (`malformed-literal-control`). -/
+
+#guard RDF.regimeInconsistent .rdf [RDF.xsdInteger] wdMalformedGraph
+#guard RDF.regimeInconsistent .d [RDF.xsdInteger] wdMalformedGraph
+#guard !(RDF.regimeInconsistent .rdf [] wdMalformedGraph)
 
 /-! Axiom audit — expected at most `propext` / `Classical.choice` /
 `Quot.sound` (Lean's own foundations). No `sorryAx`, nothing
 user-declared. -/
 
 #print axioms unified_adequate_d
+#print axioms unified_adequate_d_decided_sound
+#print axioms RDF.regimeEntails_d_sound_mt
 #print axioms unified_d_illtyped_entails_all
 #print axioms dEntailsMt_illtyped
+#print axioms RDF.dEntailsMt_illtyped_native
 #print axioms dValueSchema_alone_insufficient
 #print axioms dSchema_exclusion_does_work
 #print axioms dEntailsMt_value_instance
 #print axioms dNum_not_simple
-#print axioms dEntailsMt_tt_gap
+#print axioms dEntailsMt_tt_illtyped
+#print axioms wdMalformed_dEntailsMt
+#print axioms topLevel_exclusion_insufficient_for_tt
+#print axioms ttSep_not_dCond
 
 end Checks
 

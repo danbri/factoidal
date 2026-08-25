@@ -1324,7 +1324,8 @@ item next to the finite-slice lemma. -/
 theorem trivial_rdfsD_cond_nil (Dset : RDF.DatatypeSet) :
     RDF.RdfsDInterpCond Dset [] RDF.trivialInterp :=
   ⟨RDF.trivial_rdfs_conditions Dset,
-   ⟨fun _ _ _ => rfl, fun _ hl => by simp [RDF.literalIllFormed] at hl⟩,
+   ⟨fun _ _ _ => rfl,
+    fun t htm => absurd htm (by simp [RDF.termIllTypedMention_nil])⟩,
    RDF.dRangeCond_nil _⟩
 
 theorem rdfsDSchema_satisfiable_nil (Dset : RDF.DatatypeSet) :
@@ -1341,7 +1342,8 @@ theorem rdfsDSchema_satisfiable_nil (Dset : RDF.DatatypeSet) :
 theorem separating_rdfsD_cond_nil (Dset : RDF.DatatypeSet) :
     RDF.RdfsDInterpCond Dset [] RDF.separatingInterp :=
   ⟨RDF.separating_rdfs_conditions Dset,
-   ⟨fun _ _ _ => rfl, fun _ hl => by simp [RDF.literalIllFormed] at hl⟩,
+   ⟨fun _ _ _ => rfl,
+    fun t htm => absurd htm (by simp [RDF.termIllTypedMention_nil])⟩,
    RDF.dRangeCond_nil _⟩
 
 theorem rdfsDEntailsMt_not_everything_nil (Dset : RDF.DatatypeSet) :

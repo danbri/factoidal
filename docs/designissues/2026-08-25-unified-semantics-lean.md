@@ -163,6 +163,35 @@ Four notes in the same spirit as 1–7:
     `rdf:XMLLiteral` is recognised. `#guard`s pin the table mismatch
     in `Unified/RdfsSchema.lean`.
 
+### D-entailment repair note (2026-08-25, issue 602)
+
+11. **Correction note 6 mis-attributed the divergence, and §2.5's
+    exclusion schema was too narrow.** Note 6 (and
+    `dEntailsMt_tt_gap`) read the executable's triple-term-interior
+    literal collection as the defect. The decided spec anchor
+    ([https://github.com/danbri/factoidal/issues/602](https://github.com/danbri/factoidal/issues/602))
+    is the RDF 1.2 Semantics Working Draft (7 April 2026,
+    [https://www.w3.org/TR/rdf12-semantics/](https://www.w3.org/TR/rdf12-semantics/)
+    — a WD, not a Recommendation): §5's compositional triple-term
+    denotation `I(E) = IT(I(E.s), I(E.p), I(E.o))` with §7.1's "any
+    triple containing the literal must be false", as the W3C rdf12
+    `malformed-literal` test states ("Malformed literals are allowed
+    in triple terms, but cause inconsistency"). The EXECUTABLE was
+    right; the totalized model theory was the diverging layer. Landed:
+    `RDF.DInterpCond` clause 2 and `dExclusionSchema` now exclude
+    every term with an ill-typed MENTION (`RDF.termIllTypedMention`,
+    interiors included); `dEntailsMt_tt_gap` is removed — its content
+    survives as `topLevel_exclusion_insufficient_for_tt` over the
+    superseded bundle `DInterpCondTopLevel`, and the flipped pin is
+    `dEntailsMt_tt_illtyped` (agreement, both layers TRUE). The
+    decided corollary landed as its SOUND half,
+    `unified_adequate_d_decided_sound` — unconditional, no
+    `GraphTtFree` (note 6's prediction that the corollary needs
+    triple-term-freedom is withdrawn); the COMPLETE half is the
+    registry's named open lemma (D-Herbrand literal quotient by
+    `literalValueEq D` + `bindable`-restricted search completeness),
+    and is not a triple-term matter.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from

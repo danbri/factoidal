@@ -187,6 +187,39 @@ def caseNamed (n : String) : Option TestCase := miniCases.1.find? (fun tc => tc.
 -- rather than vanishing.
 #guard (caseNamed "delta").map (·.approval) == some ""
 
+/-! ## Lenient manifest recovery (issue 602)
+
+The rdf12 rdf-semantics manifest's shape: one entry uses an undeclared
+`test:` prefix. The strict parse refuses the whole file; the lenient
+parse recovers it with EXACTLY ONE warning, and the recovered entry
+keeps its `rdft:approval`-free record (the `test:approval` statement
+lands in the recovery namespace, which nothing reads). -/
+
+def undeclaredPrefixManifest : String :=
+"@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+
+<> rdf:type mf:Manifest ;
+   mf:entries ( <#t1> ) .
+
+<#t1> rdf:type mf:PositiveEntailmentTest ;
+   mf:name \"t1\" ;
+   mf:action <t1.ttl> ;
+   mf:result false ;
+   test:approval test:NotClassified .
+"
+
+#guard (match parseManifestText "/m/manifest.ttl" undeclaredPrefixManifest with
+        | .error _ => true
+        | .ok _    => false)
+#guard (match parseManifestTextLenient "/m/manifest.ttl" undeclaredPrefixManifest with
+        | (.ok (tcs, _), ws) =>
+            tcs.length == 1 && ws.length == 1 &&
+            (tcs.head?.map (·.name) == some "t1") &&
+            (tcs.head?.map (·.resultFalse) == some true) &&
+            (tcs.head?.map (·.approval) == some "")
+        | _ => false)
+
 /-! ## The sparql11 manifest shapes
 
 An umbrella manifest (`mf:include`, no entries), an entailment-regime
@@ -482,6 +515,7 @@ these definitions should reach even fewer. No `sorry`, no user
 smuggle in). -/
 
 #print axioms parseManifestText
+#print axioms parseManifestTextLenient
 #print axioms extractTestCases
 #print axioms collectList
 #print axioms Score.line
