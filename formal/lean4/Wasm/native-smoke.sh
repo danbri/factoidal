@@ -160,6 +160,55 @@ check "rdfsPlusClosure" rdfsPlusClosure "$TMP/rdfsplus.json" \
   'r["ok"] is True and "<http://e/b> <http://e/p> <http://e/v> ." in r["ntriples"]
    and isinstance(r["rounds"], int) and r["rounds"] >= 1'
 
+# --- Common Logic / IKL family ----------------------------------------
+IKL='(ist c (that (Dead OBL)))'
+args "$TMP/cl-parse.json" "$IKL"
+check "clParse ikl sentence" clParse "$TMP/cl-parse.json" \
+  'r["ok"] is True and r["sentences"] == 1 and r["pureCL"] is False
+   and r["normalized"] == "(ist c (that (Dead OBL)))"'
+
+args "$TMP/cl-parse-pure.json" '(married Jack Jill) (forall (x) (if (Boy x) (Human x)))'
+check "clParse pure CL text" clParse "$TMP/cl-parse-pure.json" \
+  'r["ok"] is True and r["sentences"] == 2 and r["pureCL"] is True'
+
+args "$TMP/cl-parse-bad.json" '(P a'
+check "clParse unclosed paren -> error" clParse "$TMP/cl-parse-bad.json" \
+  'r["ok"] is False and "unclosed" in r["error"]'
+
+args "$TMP/cl-ds.json" "$IKL" "urn:cl:"
+check "clToDataset proposition -> named graph" clToDataset "$TMP/cl-ds.json" \
+  'r["ok"] is True and r["count"] == 2 and r["skipped"] == 0
+   and "<urn:cl:c> <urn:cl:ist> <urn:cl:that:%28Dead%20OBL%29> ." in r["nquads"]
+   and "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <urn:cl:that:%28Dead%20OBL%29> ." in r["nquads"]
+   and r["nquads"].count("<urn:cl:that:%28Dead%20OBL%29>") == 2'
+
+args "$TMP/cl-ds-skip.json" '(and (Dog Rex) (forall (x) (P x)))' "urn:cl:"
+check "clToDataset skips are counted" clToDataset "$TMP/cl-ds-skip.json" \
+  'r["ok"] is True and r["count"] == 1 and r["skipped"] == 1'
+
+args "$TMP/cl-ds-bad.json" "$IKL" "nocolon"
+check "clToDataset bad base -> error" clToDataset "$TMP/cl-ds-bad.json" \
+  'r["ok"] is False and "not an IRI" in r["error"]'
+
+IKLDATA='<urn:cl:c> <http://e/label> "ctx" .
+'
+IKLQ='SELECT ?l ?g ?s WHERE { ?c <http://e/label> ?l . SERVICE <urn:ikl:kb> { ?c <urn:cl:ist> ?g } GRAPH ?g { ?s ?p <urn:cl:Dead> } }'
+args "$TMP/cl-q.json" "$IKLDATA" "$IKL" "$IKLQ"
+check "queryWithIklService service+graph join" queryWithIklService "$TMP/cl-q.json" \
+  'r["ok"] is True and r["kind"] == "select"
+   and r["srj"]["results"]["bindings"][0]["l"]["value"] == "ctx"
+   and r["srj"]["results"]["bindings"][0]["g"]["value"] == "urn:cl:that:%28Dead%20OBL%29"
+   and r["srj"]["results"]["bindings"][0]["s"]["value"] == "urn:cl:OBL"'
+
+args "$TMP/cl-q-ask.json" "$IKLDATA" "$IKL" \
+  'ASK { SERVICE <urn:ikl:kb> { <urn:cl:c> <urn:cl:ist> ?g } }'
+check "queryWithIklService ask over service" queryWithIklService "$TMP/cl-q-ask.json" \
+  'r["ok"] is True and r["kind"] == "ask" and r["boolean"] is True'
+
+args "$TMP/cl-q-bad.json" "$IKLDATA" '(P a' 'SELECT ?s WHERE { ?s ?p ?o }'
+check "queryWithIklService bad CLIF -> error" queryWithIklService "$TMP/cl-q-bad.json" \
+  'r["ok"] is False and "CLIF parse error" in r["error"]'
+
 # --- Dispatch reflection + unknown op ---------------------------------
 args "$TMP/empty.json"
 check "ops reflection" ops "$TMP/empty.json" \
@@ -167,7 +216,8 @@ check "ops reflection" ops "$TMP/empty.json" \
    and set(["parseToDatasetJson","queryDataset","updateDataset",
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
             "owlClosure","rhoDfClosure","rhoDfFragmentCheck",
-            "rdfsPlusClosure","ops"]) <= set(r["ops"])'
+            "rdfsPlusClosure","clParse","clToDataset",
+            "queryWithIklService","ops"]) <= set(r["ops"])'
 
 check "unknown op -> error" definitelyNotAnOp "$TMP/empty.json" \
   'r["ok"] is False and "unknown op" in r["error"]'

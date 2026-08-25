@@ -385,3 +385,5 @@ import L4Factoidal.CL.Syntax
 import L4Factoidal.CL.Clif
 import L4Factoidal.CL.Semantics
 import L4Factoidal.CL.Examples
+import L4Factoidal.CL.FiniteSat
+import L4Factoidal.CL.ToRdf

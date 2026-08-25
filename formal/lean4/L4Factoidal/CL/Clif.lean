@@ -451,6 +451,31 @@ def parseClifSentence (input : String) : Except ParseError Sentence :=
       | .ok (e, []) => readSentence (2 * toks.length + 2) e
       | .ok (_, t :: _) => .error ⟨"trailing input after sentence", t.pos⟩
 
+/-- Parse a whole CLIF text as a flat list of sentences (no `cl:text`
+wrapper — see the module header's not-covered list). `fuel` bounds the
+number of sentences; each successful `parseSExpr` consumes at least one
+token, so `toks.length + 1` never runs out before the input does. -/
+def parseClifSentencesAcc :
+    Nat → List Tok → List Sentence → Except ParseError (List Sentence)
+  | 0, ts, _ =>
+      .error ⟨"internal error: sentence fuel exhausted (should be unreachable)",
+              (ts.head?.map Tok.pos).getD 0⟩
+  | _ + 1, [], acc => .ok acc.reverse
+  | fuel' + 1, ts, acc =>
+      match parseSExpr (2 * ts.length + 2) ts with
+      | .error e => .error e
+      | .ok (e, rest) =>
+          match readSentence (2 * ts.length + 2) e with
+          | .error e' => .error e'
+          | .ok s => parseClifSentencesAcc fuel' rest (s :: acc)
+
+/-- Parse zero or more CLIF sentences from a string. The empty (or
+all-whitespace) input is the empty list, not an error. -/
+def parseClifText (input : String) : Except ParseError (List Sentence) :=
+  match lex input with
+  | .error e => .error e
+  | .ok toks => parseClifSentencesAcc (toks.length + 1) toks []
+
 /-- Parse one CLIF term from a string (exposed for tests and for the
 F* twin's differential tables). -/
 def parseClifTerm (input : String) : Except ParseError Term :=
@@ -594,5 +619,9 @@ def pureOf (input : String) : Option Bool :=
 -- (that S) is a term, not a sentence.
 #guard parses "(that (P a))" == false
 #guard parses "((that (P a)))" == true
+-- Multi-sentence texts: a flat list, whitespace-separated.
+#guard (parseClifText "(P a) (Q b)").toOption.map (·.length) == some 2
+#guard (parseClifText "").toOption.map (·.length) == some 0
+#guard (parseClifText "(P a) (Q").isOk == false
 
 end L4Factoidal.CL

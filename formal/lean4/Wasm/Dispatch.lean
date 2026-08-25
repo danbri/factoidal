@@ -25,6 +25,7 @@ import Wasm.Ops.Parse
 import Wasm.Ops.Query
 import Wasm.Ops.Reason
 import Wasm.Ops.Canon
+import Wasm.Ops.CL
 
 namespace L4Wasm
 
@@ -49,6 +50,9 @@ def opNames : List String :=
   , "rhoDfClosure"
   , "rhoDfFragmentCheck"
   , "rdfsPlusClosure"
+  , "clParse"
+  , "clToDataset"
+  , "queryWithIklService"
   , "ops" ]
 
 private def arity1 (op : String) (f : String → String) :
@@ -89,6 +93,9 @@ def call (op : String) (argsJson : String) : String :=
     | "rhoDfClosure"         => arity1 op rhoDfClosure args
     | "rhoDfFragmentCheck"   => arity1 op rhoDfFragmentCheck args
     | "rdfsPlusClosure"      => arity1 op rdfsPlusClosure args
+    | "clParse"              => arity1 op clParse args
+    | "clToDataset"          => arity2 op clToDataset args
+    | "queryWithIklService"  => arity3 op queryWithIklService args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"
 

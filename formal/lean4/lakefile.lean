@@ -79,7 +79,7 @@ extern_lib libl4hacl pkg := do
   srcDir := "."
   roots := #[`Wasm.Abi, `Wasm.Exports, `Wasm.Dispatch,
              `Wasm.Ops.Support, `Wasm.Ops.Parse, `Wasm.Ops.Query,
-             `Wasm.Ops.Reason, `Wasm.Ops.Canon]
+             `Wasm.Ops.Reason, `Wasm.Ops.Canon, `Wasm.Ops.CL]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See

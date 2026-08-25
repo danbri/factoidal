@@ -134,6 +134,7 @@ committed module now serves the ten-op dispatch ABI (`l4_call`) behind
 |---|---|---|
 | BGP-only surface (targeted imports) | 1,448,306 | the floor: runtime + Init + the BGP closure |
 | Full v1 dispatch surface | 3,510,827 | + five parsers, SPARQL 1.1/1.2 eval + update, four closures, RDFC-1.0 |
+| v1 + Common Logic / IKL ops (measured 2026-08-25, Linux) | 3,598,886 | + `clParse` / `clToDataset` / `queryWithIklService` (`Wasm/Ops/CL.lean`, `L4Factoidal/CL/`) — ~88 KB over the v1 surface |
 | `import L4Factoidal` umbrella | 4,534,258 | non-functional — its 374-module initializer chain dies under wasm32 |
 
 Decision the table settles: ONE module, no payload split. The v1
