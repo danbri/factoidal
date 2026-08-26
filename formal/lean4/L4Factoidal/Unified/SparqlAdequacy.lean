@@ -977,4 +977,144 @@ theorem bgp_eval_complete {b : Bgp} {g : RDF.Graph} {target : Binding}
 
 end Complete
 
+/-! ## Chaining the two halves to the engine -/
+
+/-- **Engine answers are unified answers.** Unconditional: no fragment
+guard, because the soundness half needs none. -/
+theorem unified_adequate_bgp_engine {b : SPARQL.Bgp} {g : RDF.Graph}
+    {mu : SPARQL.Binding} (h : mu ∈ SPARQL.evalBgp b g) :
+    Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu :=
+  bgp_matches_answers (bgp_eval_sound h)
+
+/-- **Unified answers are engine answers**, up to the two things the
+semantics cannot see (module header): a mapping that answers the query
+has a counterpart the evaluator returns, agreeing with it on every
+variable of the pattern by engine equality. -/
+theorem unified_bgp_answers_returned {b : SPARQL.Bgp} {g : RDF.Graph}
+    {mu : SPARQL.Binding} (hg : RDF.GraphTtFree g) (hb : BgpTtFree b)
+    (h : Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu) :
+    ∃ mu', mu' ∈ SPARQL.evalBgp b g ∧
+      ∀ v ∈ bgpVars b, ∃ u u', mu.lookup v = some u ∧
+        mu'.lookup v = some u' ∧ RDF.Term.eqb u' u = true :=
+  bgp_eval_complete hb ((unified_adequate_bgp b g mu hg hb).mpr h)
+
+/-- **The §18.3.1-clean corollary** (delimitation 1;
+https://github.com/danbri/factoidal/issues/607). On a pattern with no
+blank node the engine's constant reading of pattern blank nodes and
+the specification's pattern-instance-mapping reading cannot differ,
+because there is no pattern blank node to read either way. On that
+fragment the gate theorem is a claim about SPARQL 1.1, not only about
+this engine. Outside it, `unified_adequate_bgp` remains true of the
+engine and says nothing about §18.3.1. -/
+theorem unified_adequate_bgp_bnodeFree (b : SPARQL.Bgp) (g : RDF.Graph)
+    (mu : SPARQL.Binding) (hg : RDF.GraphTtFree g) (hb : BgpTtFree b)
+    (hbn : bgpBnodeFree b = true) :
+    BgpMatches mu b g ↔
+      Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu :=
+  unified_adequate_bgp b g mu hg hb
+
+/-! ## The entailment regimes
+
+The design document's `regime_sound` shape, once: a regime is a
+materialisation, so its answers are unified answers over the ORIGINAL
+graph whenever the closure it materialises is true in every model of
+the graph that satisfies the regime's schema. Each regime instance
+supplies that one fact. -/
+
+/-- **The regime theorem shape.** `hclosure` is the regime's own
+content: in every interpretation meeting the bundle and the schema
+that holds the graph under the Skolem assignment, the materialised
+graph holds too. -/
+theorem regime_sound_of_closureHolds {S : Schema} {conds : CL.Interp → Prop}
+    {g gc : RDF.Graph} {b : SPARQL.Bgp} {mu : SPARQL.Binding}
+    (hclosure : ∀ i : CL.Interp, conds i → SatisfiesSchema i S →
+      RDF.HoldsAll (restrictInterp i) (skAssign i) g →
+      RDF.HoldsAll (restrictInterp i) (skAssign i) gc)
+    (h : mu ∈ SPARQL.evalBgp b gc) :
+    Answers conds (bgpSchema S) [rdfToTheorySk g] (sparqlBgpToQuery b) mu := by
+  intro i hi hS hsat
+  rw [bgpSchema, satisfiesSchema_union_iff] at hS
+  have hg : RDF.HoldsAll (restrictInterp i) (skAssign i) g :=
+    (satisfies_rdfToTheorySk_restrict i g).mp (hsat _ (List.mem_singleton.mpr rfl))
+  have hgc : CL.Satisfies i (rdfToTheorySk gc) :=
+    (satisfies_rdfToTheorySk_restrict i gc).mpr (hclosure i hi hS.2 hg)
+  exact bgp_matches_answers (bgp_eval_sound h) i trivial hS.1
+    (fun s hs => by obtain rfl := List.mem_singleton.mp hs; exact hgc)
+
+/-- **`simple`**: the regime materialises nothing
+(`RDF.Regime.closure .simple = id`), so its answers are answers over
+the empty schema. -/
+theorem regime_sound_simple {g : RDF.Graph} {b : SPARQL.Bgp}
+    {mu : SPARQL.Binding} (D cmps : List RDF.WfIri)
+    (h : mu ∈ SPARQL.evalBgp b (RDF.Regime.closure .simple D cmps g)) :
+    Answers condTrue (bgpSchema emptySchema) [rdfToTheorySk g]
+      (sparqlBgpToQuery b) mu :=
+  regime_sound_of_closureHolds (fun _ _ _ hg => hg) h
+
+/-- **`x-rdfscore`** (`RDFS/RegimeDispatch.lean`'s ρdf closure): every
+answer over the closure is an answer over the graph under the ρdf
+schema. -/
+theorem regime_sound_rhoDf {g : RDF.Graph} {b : SPARQL.Bgp}
+    {mu : SPARQL.Binding} (fuel : Nat)
+    (h : mu ∈ SPARQL.evalBgp b (RDFS.closure g fuel)) :
+    Answers condTrue (bgpSchema rdfsCoreSchema) [rdfToTheorySk g]
+      (sparqlBgpToQuery b) mu := by
+  refine regime_sound_of_closureHolds (fun i _ hS hg t ht => ?_) h
+  exact RDF.rhoDf_derives_holds ((satisfiesSchema_rhoDf_iff i).mp hS) hg
+    (RDFS.closure_sound fuel g ht)
+
+/-- **`x-rdfscore`, the materialisation is answer-preserving**: under
+the ρdf schema, answering from the closure's Skolem reading and
+answering from the graph's are the SAME relation — the Skolem-level
+analogue of `RDF.rhoDfEntails_closure_iff`, and the property that
+makes a materialisation-based regime well defined. Both directions,
+no fragment hypotheses.
+
+This is NOT regime completeness against the running evaluator: that
+needs the closure to be SATURATED, which is the hypothesis the stage 2
+decided corollary carries (`rhoDfClosedCheck`). Recorded as a gap
+row. -/
+theorem regime_rhoDf_answers_closure_iff {g : RDF.Graph} {b : SPARQL.Bgp}
+    {mu : SPARQL.Binding} (fuel : Nat) :
+    Answers condTrue (bgpSchema rdfsCoreSchema)
+        [rdfToTheorySk (RDFS.closure g fuel)] (sparqlBgpToQuery b) mu ↔
+      Answers condTrue (bgpSchema rdfsCoreSchema) [rdfToTheorySk g]
+        (sparqlBgpToQuery b) mu := by
+  constructor
+  · intro h i hi hS hsat
+    rw [bgpSchema, satisfiesSchema_union_iff] at hS
+    have hg : RDF.HoldsAll (restrictInterp i) (skAssign i) g :=
+      (satisfies_rdfToTheorySk_restrict i g).mp (hsat _ (List.mem_singleton.mpr rfl))
+    have hgc : CL.Satisfies i (rdfToTheorySk (RDFS.closure g fuel)) :=
+      (satisfies_rdfToTheorySk_restrict i _).mpr (fun t ht =>
+        RDF.rhoDf_derives_holds ((satisfiesSchema_rhoDf_iff i).mp hS.2) hg
+          (RDFS.closure_sound fuel g ht))
+    exact h i hi (by rw [bgpSchema, satisfiesSchema_union_iff]; exact hS)
+      (fun s hs => by obtain rfl := List.mem_singleton.mp hs; exact hgc)
+  · intro h i hi hS hsat
+    refine h i hi hS (fun s hs => ?_)
+    obtain rfl := List.mem_singleton.mp hs
+    refine (satisfies_rdfToTheorySk_iff i g).mpr (fun t ht => ?_)
+    exact (satisfies_rdfToTheorySk_iff i _).mp
+      (hsat _ (List.mem_singleton.mpr rfl)) t (RDFS.closure_extensive fuel g ht)
+
+/-- **`RDFS`** (`RDF.Regime.closure .rdfs`, the full closure): every
+answer over the closure is an answer over the graph under the RDFS
+schema. Carries the two hypotheses `unified_rdfs_closure_sound`
+carries — the `rdf:_n` slice condition and `rdf:XMLLiteral ∈ D`
+(stage 2 correction note 10b). -/
+theorem regime_sound_rdfs {g : RDF.Graph} {b : SPARQL.Bgp}
+    {mu : SPARQL.Binding} (D cmps : List RDF.WfIri)
+    (hcmps : ∀ c ∈ cmps, RDF.IsRdfMemberIri c)
+    (hxml : RDF.rdfXMLLiteral ∈ D)
+    (h : mu ∈ SPARQL.evalBgp b (RDF.Regime.closure .rdfs D cmps g)) :
+    Answers condTrue (bgpSchema (rdfsSchema (fun x => x ∈ D)))
+      [rdfToTheorySk g] (sparqlBgpToQuery b) mu := by
+  refine regime_sound_of_closureHolds (fun i _ hS hg t ht => ?_) h
+  have hc := (satisfiesSchema_rdfs_iff i (fun x => x ∈ D)).mp hS
+  refine RDF.derivesFull_holds hc ?_ hg (RDFS.fullClosure_sound D cmps g ht)
+  exact RDF.axiomaticTriples_hold (skAssign i) D cmps hcmps hc.1.2
+    (fun a' t' ht' => hc.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2 a' t' ht')
+    hc.2.2.2.1 hc.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hxml
+
 end L4Factoidal.Unified
