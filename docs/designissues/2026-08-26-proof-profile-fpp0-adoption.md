@@ -152,6 +152,17 @@ This is the same failure the v1 design already guards against for the
 
 ## Milestones (from the handoff, adopted)
 
+**M0 and M1 LANDED 2026-08-26** (`7fc183a7c19`:
+`L4Factoidal/Proof/Syntax.lean`, `Proof/Checker.lean`,
+`Proof/Tests.lean`): the `Bundle` vocabulary, the four evidence levels
+in `CheckResult`, a total `checkBundle` with `checkBundle_sound` proved
+unconditionally, and 57 `#guard`s of which 20 are rejections with no
+defect accepted. Section 8a is implemented as REPORT, not rejection: a
+degenerate bundle is valid and carries `conclusionIsAssumption = true`
+beside `foundational steps: 0` counted over the SUPPORT of its
+conclusion. `Wasm/Ops/Proof.lean` and the `proofCheck` dispatch remain
+open.
+
 - **M0** freeze the model: FPP0 JSON/IKL vocabulary; F/V/R/A as part of
   checker output; canonical proposition identity via the existing CLIF
   parser and alpha normalization; DAG acyclicity, unique ids, digest
