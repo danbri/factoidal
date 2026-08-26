@@ -877,7 +877,7 @@
   [12/166] rdf-xml/rdf-containers-syntax-vs-schema-test004 ok
   [13/166] rdf-xml/rdf-containers-syntax-vs-schema-test006 ok
   [14/166] rdf-xml/rdf-containers-syntax-vs-schema-test007 ok
-  [15/166] rdf-xml/rdf-containers-syntax-vs-schema-test008 ok
+  [15/166] rdf-xml/rdf-containers-syntax-vs-schema-test008 ok (56ms)
   [16/166] rdf-xml/rdf-element-not-mandatory-test001 ok
   [17/166] rdf-xml/rdf-node-element-test001 ok
   [18/166] rdf-xml/rdf-ns-prefix-confusion-test0001 ok
@@ -1595,7 +1595,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: IRI-resolution-02
   PASS: IRI-resolution-07
   PASS: IRI-resolution-08
-  [suite time: 0.3s]
+  [suite time: 0.5s]
 
 --- rdf-turtle ---
   PASS: IRI_subject
@@ -1928,7 +1928,7 @@ Test base: third_party/testing/w3c/rdf/rdf11
   PASS: rdf-containers-syntax-vs-schema-test004
   PASS: rdf-containers-syntax-vs-schema-test006
   PASS: rdf-containers-syntax-vs-schema-test007
-  PASS: rdf-containers-syntax-vs-schema-test008
+  PASS: rdf-containers-syntax-vs-schema-test008 (56ms)
   PASS: rdf-element-not-mandatory-test001
   PASS: rdf-node-element-test001
   PASS: rdf-ns-prefix-confusion-test0001
