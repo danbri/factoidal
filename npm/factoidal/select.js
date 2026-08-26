@@ -83,14 +83,12 @@ function assertBackend(name, who) {
 // ALWAYS_IF_ENTRY/CAP_FLAG below and from capabilityTable()'s output,
 // for two different reasons (see l4-core.js's OPS comment for the full
 // text):
-//   - clToDataset, queryWithIklService: withheld by OWNER DECISION,
-//     2026-08-26 (issue #618) -- IKL has no notion of shapes or named
-//     profiles, so this stays off the npm surface. Do not add these to
-//     CAP_FLAG/ALWAYS_IF_ENTRY without fresh owner sign-off;
-//     test/select.test.js pins them absent. `clParse` is NOT part of
-//     this ruling (see l4-core.js's OPS comment's CORRECTION note) --
-//     it reads CLIF and never produces RDF, so it is wired above
-//     instead.
+//   - clToDataset, queryWithIklService: present in the compiled wasm
+//     but DELETED from the engine source, 2026-08-26 (issue #626), and
+//     already off the npm surface by owner decision (issue #618). The
+//     artifact is ahead of its source until it is rebuilt (issue
+//     #627). `clParse` is NOT part of that removal -- it reads CLIF
+//     and never produces RDF, so it is wired above instead.
 //   - ops, datasetOpen/Query/Update/Serialize/Close: not an owner
 //     ruling, just not yet wired (no typed-wrapper shape for a
 //     stateful handle exists in lib/api.js today).

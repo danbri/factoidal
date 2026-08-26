@@ -54,32 +54,26 @@ const NOT_SUPPORTED =
 // see ./select.js, which throws on `backend:'fstar'` for it rather
 // than answering from Lean silently.
 //
-// One family remains deliberately withheld, by OWNER DECISION:
+// The IKL-to-RDF projection ("direction B": `clToDataset`,
+// `queryWithIklService`) was removed from the engine source on
+// 2026-08-26 (https://github.com/danbri/factoidal/issues/626): both
+// ops went through the deleted `CL/ToRdf.lean`, whose content-addressed
+// proposition graph names (`urn:cl:that:sha256:<hex>`) were never
+// asked for. They had already been held off this JS surface by owner
+// decision (https://github.com/danbri/factoidal/issues/618 — "I don't
+// want npm code for direction b at this stage ... Take it out of npm
+// for now."), and there is now nothing to wire. The compiled wasm
+// artifact still CONTAINS both ops until it is rebuilt
+// (https://github.com/danbri/factoidal/issues/627) — it is ahead of
+// its source. The same #618 ruling is why an x-ikl-<suffix>
+// entailment-regime family is rejected in lib/api.js's query() and
+// fn.js's entail().
 //
-//   - IKL-to-RDF projection ("direction B": `clToDataset`,
-//     `queryWithIklService`): held back, 2026-08-26
-//     (https://github.com/danbri/factoidal/issues/618) — "I don't want
-//     npm code for direction b at this stage, unless for the shape of
-//     ikl which is the subset we get mapping rdf into ikl. But ikl
-//     doesn't have shapes or named profiles. Take it out of npm for
-//     now." Both ops go through `CL/ToRdf.lean`, whose naming and
-//     decoration conventions have no reversibility theorem behind them
-//     yet (https://github.com/danbri/factoidal/issues/620). The same
-//     ruling is why an x-ikl-<suffix> entailment-regime family is
-//     rejected in lib/api.js's query() and fn.js's entail(): IKL has no
-//     notion of shapes or named profiles, so the suffix family invents
-//     a taxonomy the specification does not have. These ops are NOT
-//     removed from the compiled wasm (no rebuild happened for this) —
-//     they are simply never dispatched to from this JS surface. Do not
-//     add them without a fresh owner sign-off; test/select.test.js pins
-//     them absent.
-//
-//     CORRECTION 2026-08-26: an earlier version of this comment listed
-//     `clParse` alongside these two and cited this same ruling as the
-//     reason for all three. That misattributed a decision the owner
-//     did not make -- `clParse` was unwired only because nobody had
-//     decided to wrap it, which is why it is wired above instead of
-//     here now.
+// CORRECTION 2026-08-26: an earlier version of this comment listed
+// `clParse` alongside those two and cited #618 as the reason for all
+// three. That misattributed a decision the owner did not make --
+// `clParse` was unwired only because nobody had decided to wrap it,
+// which is why it is wired above instead of here.
 //
 // A second group is withheld for an unrelated, non-owner reason:
 //

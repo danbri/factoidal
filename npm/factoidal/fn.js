@@ -355,7 +355,8 @@ function rejectIklRegime(regime, who) {
       `${who}: entail '${regime}' is not exposed through the npm API -- ` +
       'the x-ikl-* entailment regimes are not exposed through the ' +
       'npm API (owner decision 2026-08-26, danbri/factoidal#618); ' +
-      'the Lean CLI and the hub notebooks still carry them.');
+      'the Lean engine no longer defines the family either ' +
+      '(danbri/factoidal#626).');
   }
 }
 

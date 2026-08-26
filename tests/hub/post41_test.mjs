@@ -10,13 +10,12 @@
 // inputs before calling a dependent cell) are exercised exactly as the
 // browser runs them.
 //
-// As of danbri/factoidal#620, this post no longer projects CL/IKL into
-// RDF (no clToDataset/queryWithIklService/queryDataset cells) — those
-// conventions are unjustified until a rdf -> ikl -> rdf reversibility
-// theorem exists. Every surviving cell here is clParse, which only
-// reads CLIF and reports its structure; it never projects to RDF. See
-// docs/web/hub/39-propositions-as-first-class-citizens.md (withdrawn)
-// for the removed material.
+// This post projects no CL/IKL into RDF (no
+// clToDataset/queryWithIklService/queryDataset cells). Those ops and
+// the projection behind them are DELETED from the engine
+// (danbri/factoidal#626); the post that carried the material was
+// deleted with them. Every surviving cell here is clParse, which only
+// reads CLIF and reports its structure.
 //
 // Harness shape follows tests/hub/post38_test.mjs: `fn` here is the
 // node npm package with the Lean names layered on over the SAME

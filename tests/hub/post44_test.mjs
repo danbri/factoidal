@@ -5,10 +5,9 @@
 // incriminates Jon, once where a retelling mix-up produced the same
 // words -- in short question-and-answer steps. Every cell calls
 // clParse and nothing else: the post projects no RDF (no
-// clToDataset/queryWithIklService/queryDataset), per
-// danbri/factoidal#620, which withdrew
-// docs/web/hub/39-propositions-as-first-class-citizens.md for
-// carrying an unjustified IKL->RDF projection.
+// clToDataset/queryWithIklService/queryDataset). Those ops and the
+// projection behind them are DELETED from the engine
+// (danbri/factoidal#626).
 //
 // The pins record the two facts the page argues from: `pureCL` reads
 // true while the text quotes words and false from the first
@@ -68,8 +67,11 @@ test('post44: the committed wasm serves the clParse op the page calls', async ()
   assert.ok(ops.includes('clParse'), 'dispatch table is missing clParse');
 });
 
-// The page's hard constraint: clParse is the ONLY op it calls. A cell
-// reaching for an RDF projection would reintroduce withdrawn post 39.
+// The page's hard constraint: clParse is the ONLY op it calls. The
+// banned names below are the deleted projection ops
+// (danbri/factoidal#626); the committed wasm artifact still answers
+// them until it is rebuilt (danbri/factoidal#627), so the check is
+// still doing work.
 test('post44: no cell calls any op other than clParse', () => {
   const source = cells.join('\n');
   for (const banned of ['clToDataset', 'queryWithIklService', 'queryDataset']) {
