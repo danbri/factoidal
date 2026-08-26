@@ -1,0 +1,958 @@
+/-
+L4Factoidal.Unified.OwlRlSchema — the OWL 2 RL/RDF rule table as an
+axiom SCHEMA of the unified LBase/IKL theory, and the bridge from
+schema satisfaction to `OWL/RLSemantics.lean`'s `RlCond*` bundle.
+
+Stage 4 of https://github.com/danbri/factoidal/issues/598, design
+document `docs/designissues/2026-08-25-unified-semantics-lean.md` §4.4.
+
+## Row families and the mechanism each uses
+
+The table is built ROW-FAMILY-WISE, not as one monolith:
+
+* **Plain Horn rows** — a `DRule` each (`Unified/Datalog.lean`'s n-ary
+  `DAtom`), read as a universally closed implication by
+  `DRule.sentence`, and turned into an `RlCond*` by ONE generic lemma
+  (`hornRow`) plus a per-row valuation. The `RlRowId` enumeration
+  indexes them, so schema membership for a named row is `⟨row, rfl⟩` —
+  O(1), no list search.
+* **Guarded and table-indexed families** — one `DRule` per instance of
+  a decidable side condition (eq-ref at a non-reserved predicate,
+  cax-adc-dw at a distinct IRI pair, the three Table 7 datatype rows).
+* **List-valued rows** — prp-spo2 and prp-key quantify over a
+  collection; each becomes a sentence FAMILY, one Horn sentence per
+  list length `n`, with the `rdf:first`/`rdf:rest` walk and the chain
+  or shared-value premises flattened into `n`-many body atoms. The
+  seven other collection rows (cls-int1/2, cls-uni, cls-oo, scm-int,
+  scm-uni, cax-adc-dw) go through the reserved `urn:cl:def:listMember`
+  and `urn:cl:def:typedAllMembers` helper predicates that
+  `RLSemantics.lean` introduces, whose two Horn axioms each replace
+  the per-length family.
+* **Clash rows** — falsity-headed, so NOT `DRule`s (a `DatalogProgram`
+  is definite by construction). Each is a universally closed negated
+  conjunction, in the `dExclusionSchema` / `rangeClashSchema` pattern
+  of `Unified/DSchema.lean` and `Unified/RdfsSchema.lean`.
+* **Literal-object and comprehension rows** — cls-maxc2 and the three
+  comprehension rows mention a cardinality LITERAL (`embedTerm` of a
+  literal is a `funapp`, not a `DTerm`) or have an EXISTENTIAL head
+  (excluded by `DRule.definiteB`). They are written directly as CL
+  sentences.
+
+## Direction of the bridge
+
+`owlRlSchema_conditions` goes schema → `RlCond*`. That is the
+direction soundness needs, and it is the EASY direction: a `DRule`
+quantifies its predicate position over the whole domain, where the
+`RlCond*` row quantifies over IRIs, so the sentence is strictly
+stronger than the condition. The converse (every row true in the
+enriched Herbrand model) is what `Unified/OwlRlAdequacy.lean` needs for
+completeness and is proved there against `OWL/RLHerbrand.lean`.
+
+No `sorry`, no `axiom`, no `native_decide`, no `partial`.
+-/
+import L4Factoidal.Unified.Datalog
+import L4Factoidal.OWL.RLHerbrand
+
+namespace L4Factoidal.Unified
+
+open L4Factoidal.RDF
+open L4Factoidal.OWL
+open L4Factoidal.OWL.RL
+
+/-! ## Atom builders -/
+
+/-- A constant `DTerm` naming an IRI. -/
+def dk (w : RDF.WfIri) : DTerm := .c w.val
+
+/-- A binary predication: the property term in operator position. -/
+def dbin (p x y : DTerm) : DAtom := ⟨p, [x, y]⟩
+
+/-- An `rdf:type` predication (the object-language form of `icext`). -/
+def dtyp (x cc : DTerm) : DAtom := dbin (dk rdfType) x cc
+
+/-- The binary reading of a `DAtom` at a restricted interpretation is
+definitional: `DAtom.Holds` is `i.rel p [x, y]` and
+`restrictInterp i |>.iext` is the same expression. -/
+theorem holds_dbin (i : CL.Interp) (f : String → i.dom) (p x y : DTerm) :
+    (dbin p x y).Holds i f ↔
+      (restrictInterp i).iext (p.val i f) (x.val i f) (y.val i f) :=
+  Iff.rfl
+
+theorem dk_val (i : CL.Interp) (f : String → i.dom) (w : RDF.WfIri) :
+    (dk w).val i f = (restrictInterp i).iIri w := rfl
+
+/-- A valuation built from an association list; unlisted names take the
+domain witness. -/
+def vals (i : CL.Interp) : List (String × i.dom) → String → i.dom
+  | [], _ => i.domWit
+  | (k, v) :: r, n => if n = k then v else vals i r n
+
+/-- Apply one schema row, given schema satisfaction. -/
+theorem rlRowFires {i : CL.Interp} {S : Schema} (hS : SatisfiesSchema i S)
+    {r : DRule} (hmem : S r.sentence) (hwf : r.wfB = true)
+    (f : String → i.dom) (hb : ∀ a ∈ r.body, a.Holds i f) :
+    r.head.Holds i f :=
+  (satisfies_ruleSentence_iff i hwf).mp (hS _ hmem) f hb
+
+/-! ## The plain Horn rows -/
+
+/-- One identifier per plain Horn row of the OWL 2 RL/RDF tables
+(https://www.w3.org/TR/owl2-profiles/#Reasoning_in_OWL_2_RL_and_RDF_Graphs_using_Rules,
+Tables 4-9), plus the `[ext]` rows `RLRules.lean` adds and the two
+reserved helper-predicate axioms of `RLSemantics.lean`. -/
+inductive RlRowId where
+  | eqRefS | eqRefO | eqSym | eqTrans | eqRepS | eqRepP | eqRepO
+  | prpDom | prpRng | prpFp | prpIfp | prpSymp | prpTrp
+  | prpSpo1 | prpEqp1 | prpEqp2 | prpInv1 | prpInv2
+  | clsThing | clsNothing1 | clsInt1
+  | typedAllBase | typedAllStep | listMemBase | listMemStep
+  | clsInt2 | clsUni | clsSvf1 | clsSvf2 | clsAvf | clsHv1 | clsHv2
+  | clsOo | caxSco | caxEqc1 | caxEqc2
+  | scmClsSelf | scmClsEqc | scmClsThing | scmClsNothing
+  | scmSco | scmEqc1a | scmEqc1b | scmEqc2
+  | scmSpo | scmEqp1a | scmEqp1b | scmEqp2
+  | scmDom1 | scmDom2 | scmRng1 | scmRng2 | scmInt | scmUni
+  | eqDiffSym | pdwToDiff | caxDwToDiff | fpDiffToDiff | ifpDiffToDiff
+  | chainToTrans | prpRflS | prpRflO
+  | invFlipDomRng | invFlipRngDom | invFlipDomRngRev | invFlipRngDomRev
+  deriving DecidableEq, Repr
+
+/-- The `DRule` of each plain row. Variable names are colon-free and
+constants are IRIs (colon-carrying) — the `DRule.wfB` discipline of
+`Unified/Datalog.lean`. -/
+def rlRowRule : RlRowId → DRule
+  | .eqRefS => ⟨dbin (dk owlSameAs) (.v "x") (.v "x"),
+      [dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .eqRefO => ⟨dbin (dk owlSameAs) (.v "y") (.v "y"),
+      [dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .eqSym => ⟨dbin (dk owlSameAs) (.v "y") (.v "x"),
+      [dbin (dk owlSameAs) (.v "x") (.v "y")]⟩
+  | .eqTrans => ⟨dbin (dk owlSameAs) (.v "x") (.v "z"),
+      [dbin (dk owlSameAs) (.v "x") (.v "y"),
+       dbin (dk owlSameAs) (.v "y") (.v "z")]⟩
+  | .eqRepS => ⟨dbin (.v "p") (.v "t") (.v "o"),
+      [dbin (dk owlSameAs) (.v "s") (.v "t"),
+       dbin (.v "p") (.v "s") (.v "o")]⟩
+  | .eqRepP => ⟨dbin (.v "q") (.v "x") (.v "y"),
+      [dbin (dk owlSameAs) (.v "p") (.v "q"),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .eqRepO => ⟨dbin (.v "p") (.v "s") (.v "w"),
+      [dbin (dk owlSameAs) (.v "o") (.v "w"),
+       dbin (.v "p") (.v "s") (.v "o")]⟩
+  | .prpDom => ⟨dtyp (.v "x") (.v "c"),
+      [dbin (dk rdfsDomain) (.v "p") (.v "c"),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpRng => ⟨dtyp (.v "y") (.v "c"),
+      [dbin (dk rdfsRange) (.v "p") (.v "c"),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpFp => ⟨dbin (dk owlSameAs) (.v "y") (.v "z"),
+      [dtyp (.v "p") (dk owlFunctionalProperty),
+       dbin (.v "p") (.v "x") (.v "y"),
+       dbin (.v "p") (.v "x") (.v "z")]⟩
+  | .prpIfp => ⟨dbin (dk owlSameAs) (.v "x") (.v "z"),
+      [dtyp (.v "p") (dk owlInverseFunctionalProperty),
+       dbin (.v "p") (.v "x") (.v "y"),
+       dbin (.v "p") (.v "z") (.v "y")]⟩
+  | .prpSymp => ⟨dbin (.v "p") (.v "y") (.v "x"),
+      [dtyp (.v "p") (dk owlSymmetricProperty),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpTrp => ⟨dbin (.v "p") (.v "x") (.v "z"),
+      [dtyp (.v "p") (dk owlTransitiveProperty),
+       dbin (.v "p") (.v "x") (.v "y"),
+       dbin (.v "p") (.v "y") (.v "z")]⟩
+  | .prpSpo1 => ⟨dbin (.v "q") (.v "x") (.v "y"),
+      [dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q"),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpEqp1 => ⟨dbin (.v "q") (.v "x") (.v "y"),
+      [dbin (dk owlEquivalentProperty) (.v "p") (.v "q"),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpEqp2 => ⟨dbin (.v "p") (.v "x") (.v "y"),
+      [dbin (dk owlEquivalentProperty) (.v "p") (.v "q"),
+       dbin (.v "q") (.v "x") (.v "y")]⟩
+  | .prpInv1 => ⟨dbin (.v "q") (.v "y") (.v "x"),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpInv2 => ⟨dbin (.v "p") (.v "y") (.v "x"),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dbin (.v "q") (.v "x") (.v "y")]⟩
+  | .clsThing => ⟨dtyp (dk owlThing) (dk owlClass), []⟩
+  | .clsNothing1 => ⟨dtyp (dk owlNothing) (dk owlClass), []⟩
+  | .clsInt1 => ⟨dtyp (.v "y") (.v "c"),
+      [dbin (dk owlIntersectionOf) (.v "c") (.v "l"),
+       dbin (dk uTypedAll) (.v "y") (.v "l")]⟩
+  | .typedAllBase => ⟨dbin (dk uTypedAll) (.v "y") (.v "l"),
+      [dbin (dk rdfFirst) (.v "l") (.v "e"),
+       dbin (dk rdfRest) (.v "l") (dk rdfNil),
+       dtyp (.v "y") (.v "e")]⟩
+  | .typedAllStep => ⟨dbin (dk uTypedAll) (.v "y") (.v "l"),
+      [dbin (dk rdfFirst) (.v "l") (.v "e"),
+       dbin (dk rdfRest) (.v "l") (.v "m"),
+       dtyp (.v "y") (.v "e"),
+       dbin (dk uTypedAll) (.v "y") (.v "m")]⟩
+  | .listMemBase => ⟨dbin (dk uListMem) (.v "l") (.v "e"),
+      [dbin (dk rdfFirst) (.v "l") (.v "e")]⟩
+  | .listMemStep => ⟨dbin (dk uListMem) (.v "l") (.v "e"),
+      [dbin (dk rdfRest) (.v "l") (.v "m"),
+       dbin (dk uListMem) (.v "m") (.v "e")]⟩
+  | .clsInt2 => ⟨dtyp (.v "y") (.v "d"),
+      [dbin (dk owlIntersectionOf) (.v "c") (.v "l"),
+       dbin (dk uListMem) (.v "l") (.v "d"),
+       dtyp (.v "y") (.v "c")]⟩
+  | .clsUni => ⟨dtyp (.v "y") (.v "c"),
+      [dbin (dk owlUnionOf) (.v "c") (.v "l"),
+       dbin (dk uListMem) (.v "l") (.v "d"),
+       dtyp (.v "y") (.v "d")]⟩
+  | .clsSvf1 => ⟨dtyp (.v "u") (.v "x"),
+      [dbin (dk owlSomeValuesFrom) (.v "x") (.v "z"),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dbin (.v "p") (.v "u") (.v "v"),
+       dtyp (.v "v") (.v "z")]⟩
+  | .clsSvf2 => ⟨dtyp (.v "u") (.v "x"),
+      [dbin (dk owlSomeValuesFrom) (.v "x") (dk owlThing),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dbin (.v "p") (.v "u") (.v "v")]⟩
+  | .clsAvf => ⟨dtyp (.v "v") (.v "z"),
+      [dbin (dk owlAllValuesFrom) (.v "x") (.v "z"),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dtyp (.v "u") (.v "x"),
+       dbin (.v "p") (.v "u") (.v "v")]⟩
+  | .clsHv1 => ⟨dbin (.v "p") (.v "u") (.v "y"),
+      [dbin (dk owlHasValue) (.v "x") (.v "y"),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dtyp (.v "u") (.v "x")]⟩
+  | .clsHv2 => ⟨dtyp (.v "u") (.v "x"),
+      [dbin (dk owlHasValue) (.v "x") (.v "y"),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dbin (.v "p") (.v "u") (.v "y")]⟩
+  | .clsOo => ⟨dtyp (.v "y") (.v "c"),
+      [dbin (dk owlOneOf) (.v "c") (.v "l"),
+       dbin (dk uListMem) (.v "l") (.v "y")]⟩
+  | .caxSco => ⟨dtyp (.v "x") (.v "d"),
+      [dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
+       dtyp (.v "x") (.v "c")]⟩
+  | .caxEqc1 => ⟨dtyp (.v "x") (.v "d"),
+      [dbin (dk owlEquivalentClass) (.v "c") (.v "d"),
+       dtyp (.v "x") (.v "c")]⟩
+  | .caxEqc2 => ⟨dtyp (.v "x") (.v "c"),
+      [dbin (dk owlEquivalentClass) (.v "c") (.v "d"),
+       dtyp (.v "x") (.v "d")]⟩
+  | .scmClsSelf => ⟨dbin (dk rdfsSubClassOf) (.v "c") (.v "c"),
+      [dtyp (.v "c") (dk owlClass)]⟩
+  | .scmClsEqc => ⟨dbin (dk owlEquivalentClass) (.v "c") (.v "c"),
+      [dtyp (.v "c") (dk owlClass)]⟩
+  | .scmClsThing => ⟨dbin (dk rdfsSubClassOf) (.v "c") (dk owlThing),
+      [dtyp (.v "c") (dk owlClass)]⟩
+  | .scmClsNothing => ⟨dbin (dk rdfsSubClassOf) (dk owlNothing) (.v "c"),
+      [dtyp (.v "c") (dk owlClass)]⟩
+  | .scmSco => ⟨dbin (dk rdfsSubClassOf) (.v "c") (.v "e"),
+      [dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
+       dbin (dk rdfsSubClassOf) (.v "d") (.v "e")]⟩
+  | .scmEqc1a => ⟨dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
+      [dbin (dk owlEquivalentClass) (.v "c") (.v "d")]⟩
+  | .scmEqc1b => ⟨dbin (dk rdfsSubClassOf) (.v "d") (.v "c"),
+      [dbin (dk owlEquivalentClass) (.v "c") (.v "d")]⟩
+  | .scmEqc2 => ⟨dbin (dk owlEquivalentClass) (.v "c") (.v "d"),
+      [dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
+       dbin (dk rdfsSubClassOf) (.v "d") (.v "c")]⟩
+  | .scmSpo => ⟨dbin (dk rdfsSubPropertyOf) (.v "p") (.v "r"),
+      [dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q"),
+       dbin (dk rdfsSubPropertyOf) (.v "q") (.v "r")]⟩
+  | .scmEqp1a => ⟨dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q"),
+      [dbin (dk owlEquivalentProperty) (.v "p") (.v "q")]⟩
+  | .scmEqp1b => ⟨dbin (dk rdfsSubPropertyOf) (.v "q") (.v "p"),
+      [dbin (dk owlEquivalentProperty) (.v "p") (.v "q")]⟩
+  | .scmEqp2 => ⟨dbin (dk owlEquivalentProperty) (.v "p") (.v "q"),
+      [dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q"),
+       dbin (dk rdfsSubPropertyOf) (.v "q") (.v "p")]⟩
+  | .scmDom1 => ⟨dbin (dk rdfsDomain) (.v "p") (.v "d"),
+      [dbin (dk rdfsDomain) (.v "p") (.v "c"),
+       dbin (dk rdfsSubClassOf) (.v "c") (.v "d")]⟩
+  | .scmDom2 => ⟨dbin (dk rdfsDomain) (.v "p") (.v "c"),
+      [dbin (dk rdfsDomain) (.v "q") (.v "c"),
+       dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q")]⟩
+  | .scmRng1 => ⟨dbin (dk rdfsRange) (.v "p") (.v "d"),
+      [dbin (dk rdfsRange) (.v "p") (.v "c"),
+       dbin (dk rdfsSubClassOf) (.v "c") (.v "d")]⟩
+  | .scmRng2 => ⟨dbin (dk rdfsRange) (.v "p") (.v "c"),
+      [dbin (dk rdfsRange) (.v "q") (.v "c"),
+       dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q")]⟩
+  | .scmInt => ⟨dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
+      [dbin (dk owlIntersectionOf) (.v "c") (.v "l"),
+       dbin (dk uListMem) (.v "l") (.v "d")]⟩
+  | .scmUni => ⟨dbin (dk rdfsSubClassOf) (.v "d") (.v "c"),
+      [dbin (dk owlUnionOf) (.v "c") (.v "l"),
+       dbin (dk uListMem) (.v "l") (.v "d")]⟩
+  | .eqDiffSym => ⟨dbin (dk owlDifferentFrom) (.v "y") (.v "x"),
+      [dbin (dk owlDifferentFrom) (.v "x") (.v "y")]⟩
+  | .pdwToDiff => ⟨dbin (dk owlDifferentFrom) (.v "a") (.v "b"),
+      [dbin (dk owlPropertyDisjointWith) (.v "p") (.v "q"),
+       dbin (.v "p") (.v "x") (.v "a"),
+       dbin (.v "q") (.v "x") (.v "b")]⟩
+  | .caxDwToDiff => ⟨dbin (dk owlDifferentFrom) (.v "x") (.v "y"),
+      [dbin (dk owlDisjointWith) (.v "c") (.v "d"),
+       dtyp (.v "x") (.v "c"),
+       dtyp (.v "y") (.v "d")]⟩
+  | .fpDiffToDiff => ⟨dbin (dk owlDifferentFrom) (.v "y") (.v "z"),
+      [dtyp (.v "p") (dk owlFunctionalProperty),
+       dbin (.v "p") (.v "y") (.v "a"),
+       dbin (.v "p") (.v "z") (.v "b"),
+       dbin (dk owlDifferentFrom) (.v "a") (.v "b")]⟩
+  | .ifpDiffToDiff => ⟨dbin (dk owlDifferentFrom) (.v "a") (.v "b"),
+      [dtyp (.v "p") (dk owlInverseFunctionalProperty),
+       dbin (.v "p") (.v "x") (.v "a"),
+       dbin (.v "p") (.v "y") (.v "b"),
+       dbin (dk owlDifferentFrom) (.v "x") (.v "y")]⟩
+  | .chainToTrans => ⟨dtyp (.v "p") (dk owlTransitiveProperty),
+      [dbin (dk owlPropertyChainAxiom) (.v "p") (.v "l"),
+       dbin (dk rdfFirst) (.v "l") (.v "p"),
+       dbin (dk rdfRest) (.v "l") (.v "m"),
+       dbin (dk rdfFirst) (.v "m") (.v "p"),
+       dbin (dk rdfRest) (.v "m") (dk rdfNil)]⟩
+  | .prpRflS => ⟨dbin (.v "p") (.v "j") (.v "j"),
+      [dtyp (.v "p") (dk owlReflexiveProperty),
+       dbin (.v "q") (.v "j") (.v "y")]⟩
+  | .prpRflO => ⟨dbin (.v "p") (.v "j") (.v "j"),
+      [dtyp (.v "p") (dk owlReflexiveProperty),
+       dbin (.v "q") (.v "x") (.v "j")]⟩
+  | .invFlipDomRng => ⟨dbin (dk rdfsRange) (.v "q") (.v "c"),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dbin (dk rdfsDomain) (.v "p") (.v "c")]⟩
+  | .invFlipRngDom => ⟨dbin (dk rdfsDomain) (.v "q") (.v "c"),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dbin (dk rdfsRange) (.v "p") (.v "c")]⟩
+  | .invFlipDomRngRev => ⟨dbin (dk rdfsRange) (.v "p") (.v "c"),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dbin (dk rdfsDomain) (.v "q") (.v "c")]⟩
+  | .invFlipRngDomRev => ⟨dbin (dk rdfsDomain) (.v "p") (.v "c"),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dbin (dk rdfsRange) (.v "q") (.v "c")]⟩
+
+theorem rlRowRule_wf (row : RlRowId) : (rlRowRule row).wfB = true := by
+  cases row <;> rfl
+
+/-- The plain-Horn part of the schema. -/
+def owlRlHornSchema : Schema := fun s => ∃ row : RlRowId, s = (rlRowRule row).sentence
+
+theorem hornSchema_mem (row : RlRowId) : owlRlHornSchema (rlRowRule row).sentence :=
+  ⟨row, rfl⟩
+
+/-- Fire a named plain row at a valuation. -/
+theorem rlRowAt {i : CL.Interp} (hS : SatisfiesSchema i owlRlHornSchema)
+    (row : RlRowId) (f : String → i.dom)
+    (hb : ∀ a ∈ (rlRowRule row).body, a.Holds i f) :
+    (rlRowRule row).head.Holds i f :=
+  rlRowFires hS (hornSchema_mem row) (rlRowRule_wf row) f hb
+
+
+/-! ## From schema satisfaction to the plain `RlCond*` rows
+
+Each lemma instantiates the row's universally closed implication at a
+valuation that sends the rule's variables to the condition's
+parameters. `DAtom.Holds` at `restrictInterp i` and
+`RDF.Interp.iext` are the SAME expression (`holds_dbin`), so every body
+obligation closes by `assumption` and the head is the conclusion. -/
+
+section RowConditions
+
+variable {i : CL.Interp} (hS : SatisfiesSchema i owlRlHornSchema)
+include hS
+
+theorem cond_eqRefS : RlCondEqRefS (restrictInterp i) := by
+  intro p x y h1
+  refine rlRowAt hS .eqRefS (vals i [("p", (restrictInterp i).iIri p), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_eqRefO : RlCondEqRefO (restrictInterp i) := by
+  intro p x y h1
+  refine rlRowAt hS .eqRefO (vals i [("p", (restrictInterp i).iIri p), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_eqSym : RlCondEqSym (restrictInterp i) := by
+  intro x y h1
+  refine rlRowAt hS .eqSym (vals i [("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_eqTrans : RlCondEqTrans (restrictInterp i) := by
+  intro x y z h1 h2
+  refine rlRowAt hS .eqTrans (vals i [("x", x), ("y", y), ("z", z)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_eqRepS : RlCondEqRepS (restrictInterp i) := by
+  intro p s s' o h1 h2
+  refine rlRowAt hS .eqRepS (vals i [("s", s), ("t", s'), ("o", o), ("p", (restrictInterp i).iIri p)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_eqRepP : RlCondEqRepP (restrictInterp i) := by
+  intro p p' x y h1 h2
+  refine rlRowAt hS .eqRepP (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri p'), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_eqRepO : RlCondEqRepO (restrictInterp i) := by
+  intro p s o o' h1 h2
+  refine rlRowAt hS .eqRepO (vals i [("p", (restrictInterp i).iIri p), ("s", s), ("o", o), ("w", o')]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpDom : RlCondPrpDom (restrictInterp i) := by
+  intro p cc x y h1 h2
+  refine rlRowAt hS .prpDom (vals i [("p", (restrictInterp i).iIri p), ("c", cc), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpRng : RlCondPrpRng (restrictInterp i) := by
+  intro p cc x y h1 h2
+  refine rlRowAt hS .prpRng (vals i [("p", (restrictInterp i).iIri p), ("c", cc), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpFp : RlCondPrpFp (restrictInterp i) := by
+  intro p x y1 y2 h1 h2 h3
+  refine rlRowAt hS .prpFp (vals i [("p", (restrictInterp i).iIri p), ("x", x), ("y", y1), ("z", y2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_prpIfp : RlCondPrpIfp (restrictInterp i) := by
+  intro p x1 x2 y h1 h2 h3
+  refine rlRowAt hS .prpIfp (vals i [("p", (restrictInterp i).iIri p), ("x", x1), ("y", y), ("z", x2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_prpSymp : RlCondPrpSymp (restrictInterp i) := by
+  intro p x y h1 h2
+  refine rlRowAt hS .prpSymp (vals i [("p", (restrictInterp i).iIri p), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpTrp : RlCondPrpTrp (restrictInterp i) := by
+  intro p x y z h1 h2 h3
+  refine rlRowAt hS .prpTrp (vals i [("p", (restrictInterp i).iIri p), ("x", x), ("y", y), ("z", z)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_prpSpo1 : RlCondPrpSpo1 (restrictInterp i) := by
+  intro p1 p2 x y h1 h2
+  refine rlRowAt hS .prpSpo1 (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpEqp1 : RlCondPrpEqp1 (restrictInterp i) := by
+  intro p1 p2 x y h1 h2
+  refine rlRowAt hS .prpEqp1 (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpEqp2 : RlCondPrpEqp2 (restrictInterp i) := by
+  intro p1 p2 x y h1 h2
+  refine rlRowAt hS .prpEqp2 (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpInv1 : RlCondPrpInv1 (restrictInterp i) := by
+  intro p1 p2 x y h1 h2
+  refine rlRowAt hS .prpInv1 (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpInv2 : RlCondPrpInv2 (restrictInterp i) := by
+  intro p1 p2 x y h1 h2
+  refine rlRowAt hS .prpInv2 (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_clsThing : RlCondClsThing (restrictInterp i) := by
+  refine rlRowAt hS .clsThing (vals i []) ?_
+  intro a ha
+  simp only [rlRowRule, List.not_mem_nil] at ha
+
+theorem cond_clsNothing1 : RlCondClsNothing1 (restrictInterp i) := by
+  refine rlRowAt hS .clsNothing1 (vals i []) ?_
+  intro a ha
+  simp only [rlRowRule, List.not_mem_nil] at ha
+
+theorem cond_clsInt1 : RlCondClsInt1 (restrictInterp i) := by
+  intro cc y l h1 h2
+  refine rlRowAt hS .clsInt1 (vals i [("c", cc), ("y", y), ("l", l)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_typedAllBase : RlCondTypedAllBase (restrictInterp i) := by
+  intro y l e h1 h2 h3
+  refine rlRowAt hS .typedAllBase (vals i [("y", y), ("l", l), ("e", e)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_typedAllStep : RlCondTypedAllStep (restrictInterp i) := by
+  intro y l l' e h1 h2 h3 h4
+  refine rlRowAt hS .typedAllStep (vals i [("y", y), ("l", l), ("e", e), ("m", l')]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem cond_listMemBase : RlCondListMemBase (restrictInterp i) := by
+  intro l e h1
+  refine rlRowAt hS .listMemBase (vals i [("l", l), ("e", e)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_listMemStep : RlCondListMemStep (restrictInterp i) := by
+  intro l l' e h1 h2
+  refine rlRowAt hS .listMemStep (vals i [("l", l), ("m", l'), ("e", e)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_clsInt2 : RlCondClsInt2 (restrictInterp i) := by
+  intro cc y l ci h1 h2 h3
+  refine rlRowAt hS .clsInt2 (vals i [("c", cc), ("l", l), ("d", ci), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_clsUni : RlCondClsUni (restrictInterp i) := by
+  intro cc y l ci h1 h2 h3
+  refine rlRowAt hS .clsUni (vals i [("c", cc), ("l", l), ("d", ci), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_clsSvf1 : RlCondClsSvf1 (restrictInterp i) := by
+  intro p x u v yc h1 h2 h3 h4
+  refine rlRowAt hS .clsSvf1 (vals i [("x", x), ("z", yc), ("p", (restrictInterp i).iIri p), ("u", u), ("v", v)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem cond_clsSvf2 : RlCondClsSvf2 (restrictInterp i) := by
+  intro p x u v h1 h2 h3
+  refine rlRowAt hS .clsSvf2 (vals i [("x", x), ("p", (restrictInterp i).iIri p), ("u", u), ("v", v)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_clsAvf : RlCondClsAvf (restrictInterp i) := by
+  intro p x u v yc h1 h2 h3 h4
+  refine rlRowAt hS .clsAvf (vals i [("x", x), ("z", yc), ("p", (restrictInterp i).iIri p), ("u", u), ("v", v)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem cond_clsHv1 : RlCondClsHv1 (restrictInterp i) := by
+  intro p x u yv h1 h2 h3
+  refine rlRowAt hS .clsHv1 (vals i [("x", x), ("y", yv), ("p", (restrictInterp i).iIri p), ("u", u)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_clsHv2 : RlCondClsHv2 (restrictInterp i) := by
+  intro p x u yv h1 h2 h3
+  refine rlRowAt hS .clsHv2 (vals i [("x", x), ("y", yv), ("p", (restrictInterp i).iIri p), ("u", u)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_clsOo : RlCondClsOo (restrictInterp i) := by
+  intro cc l yi h1 h2
+  refine rlRowAt hS .clsOo (vals i [("c", cc), ("l", l), ("y", yi)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_caxSco : RlCondCaxSco (restrictInterp i) := by
+  intro c1 c2 x h1 h2
+  refine rlRowAt hS .caxSco (vals i [("c", c1), ("d", c2), ("x", x)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_caxEqc1 : RlCondCaxEqc1 (restrictInterp i) := by
+  intro c1 c2 x h1 h2
+  refine rlRowAt hS .caxEqc1 (vals i [("c", c1), ("d", c2), ("x", x)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_caxEqc2 : RlCondCaxEqc2 (restrictInterp i) := by
+  intro c1 c2 x h1 h2
+  refine rlRowAt hS .caxEqc2 (vals i [("c", c1), ("d", c2), ("x", x)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmClsSelf : RlCondScmClsSelf (restrictInterp i) := by
+  intro cc h1
+  refine rlRowAt hS .scmClsSelf (vals i [("c", cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmClsEqc : RlCondScmClsEqc (restrictInterp i) := by
+  intro cc h1
+  refine rlRowAt hS .scmClsEqc (vals i [("c", cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmClsThing : RlCondScmClsThing (restrictInterp i) := by
+  intro cc h1
+  refine rlRowAt hS .scmClsThing (vals i [("c", cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmClsNothing : RlCondScmClsNothing (restrictInterp i) := by
+  intro cc h1
+  refine rlRowAt hS .scmClsNothing (vals i [("c", cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmSco : RlCondScmSco (restrictInterp i) := by
+  intro c1 c2 c3 h1 h2
+  refine rlRowAt hS .scmSco (vals i [("c", c1), ("d", c2), ("e", c3)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmEqc1a : RlCondScmEqc1a (restrictInterp i) := by
+  intro c1 c2 h1
+  refine rlRowAt hS .scmEqc1a (vals i [("c", c1), ("d", c2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmEqc1b : RlCondScmEqc1b (restrictInterp i) := by
+  intro c1 c2 h1
+  refine rlRowAt hS .scmEqc1b (vals i [("c", c1), ("d", c2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmEqc2 : RlCondScmEqc2 (restrictInterp i) := by
+  intro c1 c2 h1 h2
+  refine rlRowAt hS .scmEqc2 (vals i [("c", c1), ("d", c2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmSpo : RlCondScmSpo (restrictInterp i) := by
+  intro p1 p2 p3 h1 h2
+  refine rlRowAt hS .scmSpo (vals i [("p", p1), ("q", p2), ("r", p3)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmEqp1a : RlCondScmEqp1a (restrictInterp i) := by
+  intro p1 p2 h1
+  refine rlRowAt hS .scmEqp1a (vals i [("p", p1), ("q", p2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmEqp1b : RlCondScmEqp1b (restrictInterp i) := by
+  intro p1 p2 h1
+  refine rlRowAt hS .scmEqp1b (vals i [("p", p1), ("q", p2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmEqp2 : RlCondScmEqp2 (restrictInterp i) := by
+  intro p1 p2 h1 h2
+  refine rlRowAt hS .scmEqp2 (vals i [("p", p1), ("q", p2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmDom1 : RlCondScmDom1 (restrictInterp i) := by
+  intro pd c1 c2 h1 h2
+  refine rlRowAt hS .scmDom1 (vals i [("p", pd), ("c", c1), ("d", c2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmDom2 : RlCondScmDom2 (restrictInterp i) := by
+  intro p1 p2 cc h1 h2
+  refine rlRowAt hS .scmDom2 (vals i [("p", p1), ("q", p2), ("c", cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmRng1 : RlCondScmRng1 (restrictInterp i) := by
+  intro pd c1 c2 h1 h2
+  refine rlRowAt hS .scmRng1 (vals i [("p", pd), ("c", c1), ("d", c2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmRng2 : RlCondScmRng2 (restrictInterp i) := by
+  intro p1 p2 cc h1 h2
+  refine rlRowAt hS .scmRng2 (vals i [("p", p1), ("q", p2), ("c", cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmInt : RlCondScmInt (restrictInterp i) := by
+  intro cc l ci h1 h2
+  refine rlRowAt hS .scmInt (vals i [("c", cc), ("l", l), ("d", ci)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_scmUni : RlCondScmUni (restrictInterp i) := by
+  intro cc l ci h1 h2
+  refine rlRowAt hS .scmUni (vals i [("c", cc), ("l", l), ("d", ci)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_eqDiffSym : RlCondEqDiffSym (restrictInterp i) := by
+  intro x y h1
+  refine rlRowAt hS .eqDiffSym (vals i [("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_pdwToDiff : RlCondPdwToDiff (restrictInterp i) := by
+  intro p1 p2 x o1 o2 h1 h2 h3
+  refine rlRowAt hS .pdwToDiff (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2), ("x", x), ("a", o1), ("b", o2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_caxDwToDiff : RlCondCaxDwToDiff (restrictInterp i) := by
+  intro c1 c2 x y h1 h2 h3
+  refine rlRowAt hS .caxDwToDiff (vals i [("c", (restrictInterp i).iIri c1), ("d", (restrictInterp i).iIri c2), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem cond_fpDiffToDiff : RlCondFpDiffToDiff (restrictInterp i) := by
+  intro p y1 y2 x1 x2 h1 h2 h3 h4
+  refine rlRowAt hS .fpDiffToDiff (vals i [("p", (restrictInterp i).iIri p), ("y", y1), ("a", x1), ("z", y2), ("b", x2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem cond_ifpDiffToDiff : RlCondIfpDiffToDiff (restrictInterp i) := by
+  intro p x1 x2 y1 y2 h1 h2 h3 h4
+  refine rlRowAt hS .ifpDiffToDiff (vals i [("p", (restrictInterp i).iIri p), ("x", x1), ("a", y1), ("y", x2), ("b", y2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem cond_chainToTrans : RlCondChainToTrans (restrictInterp i) := by
+  intro p l l' h1 h2 h3 h4 h5
+  refine rlRowAt hS .chainToTrans (vals i [("p", (restrictInterp i).iIri p), ("l", l), ("m", l')]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem cond_prpRflS : RlCondPrpRflS (restrictInterp i) := by
+  intro p j q y h1 h2
+  refine rlRowAt hS .prpRflS (vals i [("p", (restrictInterp i).iIri p), ("q", q), ("j", (restrictInterp i).iIri j), ("y", y)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_prpRflO : RlCondPrpRflO (restrictInterp i) := by
+  intro p j q x h1 h2
+  refine rlRowAt hS .prpRflO (vals i [("p", (restrictInterp i).iIri p), ("q", q), ("x", x), ("j", (restrictInterp i).iIri j)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invFlipDomRng : RlCondInvFlipDomRng (restrictInterp i) := by
+  intro p q cc h1 h2
+  refine rlRowAt hS .invFlipDomRng (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q), ("c", (restrictInterp i).iIri cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invFlipRngDom : RlCondInvFlipRngDom (restrictInterp i) := by
+  intro p q cc h1 h2
+  refine rlRowAt hS .invFlipRngDom (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q), ("c", (restrictInterp i).iIri cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invFlipDomRngRev : RlCondInvFlipDomRngRev (restrictInterp i) := by
+  intro p q cc h1 h2
+  refine rlRowAt hS .invFlipDomRngRev (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q), ("c", (restrictInterp i).iIri cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invFlipRngDomRev : RlCondInvFlipRngDomRev (restrictInterp i) := by
+  intro p q cc h1 h2
+  refine rlRowAt hS .invFlipRngDomRev (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q), ("c", (restrictInterp i).iIri cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+end RowConditions
+
+end L4Factoidal.Unified
