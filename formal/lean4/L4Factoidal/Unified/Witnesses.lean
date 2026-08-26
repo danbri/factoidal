@@ -23,10 +23,18 @@ What is checked, so that no stage 1 statement is vacuous:
   proposition domain genuinely distinguishes sentences (keyed on
   `alphaNorm`), and entailment over that condition bundle is not the
   everything-relation;
-* the dataset decoration ASSERTS NOTHING: a model satisfies a
+* the NAMING decoration ASSERTS NOTHING: a model satisfies a
   named-graph-only dataset while refuting the named graph's content
   (`dataset_decoration_asserts_nothing`) — the design document
-  §2.4's "asserts nothing about the world", machine-checked.
+  §2.4's "asserts nothing about the world", machine-checked. After
+  the https://github.com/danbri/factoidal/issues/609 item-3 repair
+  this is the statement about a named graph the default graph does
+  NOT decorate with `urn:cl:def:asserts`: `decorationDataset` has an
+  empty default graph, so `graphAsserted` is false for it and the
+  embedding contributes the naming decoration alone. An ASSERTED
+  named graph is a different matter — its content IS entailed, under
+  IKL coherence (`Unified/ClBridge.lean`,
+  `embedding_entails_content`).
 
 Anti-pattern #24 note for the gate theorems themselves:
 `unified_adequate_simple` is an unconditional iff (no premise to
@@ -92,9 +100,10 @@ theorem datasetToTheory_satisfiable (ds : RDF.Dataset) :
     ∃ i : CL.Interp, CL.Satisfies i (datasetToTheory ds) := by
   refine ⟨trivialCLInterp,
     (satisfies_datasetToTheory_iff trivialCLInterp ds).mpr
-      ⟨fun _ => (), fun t _ => ?_, fun ng _ => ?_⟩⟩
+      ⟨fun _ => (), fun t _ => ?_, fun ng _ => ?_, fun ng _ _ => ?_⟩⟩
   · simp [tripleAtom, CL.Sat, trivialCLInterp]
   · simp [namedGraphAtom, CL.Sat, trivialCLInterp]
+  · simp [assertedGraphAtom, CL.Sat, trivialCLInterp]
 
 /-! ## 2. The entailment relation is neither total nor empty -/
 
@@ -202,14 +211,18 @@ def namesOnlyInterp : CL.Interp where
 theorem namesOnly_satisfies_decoration :
     CL.Satisfies namesOnlyInterp (datasetToTheory decorationDataset) := by
   have hnil : datasetBnodeNames decorationDataset = [] := by decide
-  refine (satisfies_datasetToTheory_iff _ _).mpr ⟨fun _ => false, ?_, ?_⟩
+  refine (satisfies_datasetToTheory_iff _ _).mpr ⟨fun _ => false, ?_, ?_, ?_⟩
   · intro t ht
     exact absurd ht (by simp [decorationDataset])
   · intro ng hng
     simp only [decorationDataset, List.mem_singleton] at hng
     subst hng
-    simp [namedGraphAtom, CL.Sat, CL.denotTerm, CL.denotSeq, overrideOn,
+    simp [namedGraphAtom, graphProp, CL.Sat, CL.denotTerm, overrideOn,
           namesOnlyInterp, hnil]
+  · intro ng hng ha
+    simp only [decorationDataset, List.mem_singleton] at hng
+    subst hng
+    exact absurd ha (by decide)
 
 /-- **The decoration asserts nothing about the world** (design
 document §2.4): a named-graph-only dataset does not entail its named
