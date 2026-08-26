@@ -517,6 +517,16 @@ rule #17").
     (missing hub.njk wrappers, Turtle-vs-N-Quads calling-convention
     mismatches: two owner-reported live breakages, 2026-08-07/08).
     Full text: hazards #12 and #22 in the same skill.
+33. A `.ml` under `ocaml-output/` captured between `fstar.exe --codegen
+    OCaml` and `./ocaml-patches.sh` compiles and is missing every glue
+    realisation. Three Lean-titled commits swept such files into git on
+    2026-08-24; the shipping linux binary was rebuilt from them and lost
+    the COTTAS on-disk companion chain, the SPARQL extension-function
+    registry, the Parquet footer glue and the SHACL `sh:sparql` marker
+    for two days, with `git status` clean and every suite green. Commit
+    `.ml` only after a COMPLETE `extract`, stage it by explicit path,
+    and never let a commit carry files its subject does not name. Full
+    text: hazard #34 in `skills/workflow-gotchas-debugging`.
 
 ## Skills (operational details, on-demand)
 
