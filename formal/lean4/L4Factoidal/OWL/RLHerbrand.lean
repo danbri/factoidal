@@ -1557,4 +1557,236 @@ theorem rlHerb_conditions (hcons : ¬ Clash c) :
 
 end HerbConditions
 
+/-! ## The Herbrand model meets every clash-row condition
+
+The falsity-headed rows need no saturation hypothesis: each one decodes
+its premises straight back to graph triples and hands them to the
+matching `Clash` constructor, which `hcons` refutes. The three
+cardinality rows are discharged differently — their `owl:maxCardinality
+"0"` premise relates a term to a LITERAL, which fragment clause (a)
+forbids, so they hold vacuously in `rlHerb c`. That is a real
+restriction on what the completeness direction reaches, recorded as a
+boundary row rather than papered over. -/
+
+section HerbClashConditions
+
+variable {c : Graph} (hfrag : RlHerbFrag c) (hcons : ¬ Clash c)
+include hfrag hcons
+
+theorem rlHerb_clash_conditions : RlClashConditions (rlHerb c) where
+  eqDiff1 := by
+    rintro x y ⟨h1, h2⟩
+    obtain ⟨s1, o1, hm1, rfl, rfl⟩ := herb_decode (by decide) h1
+    obtain ⟨s2, o2, hm2, hx2, rfl⟩ := herb_decode (by decide) h2
+    have hs : s1 = s2 := subjTerm_injective hx2
+    subst hs
+    exact hcons (Clash.eqDiff1 hm1 hm2)
+  prpIrp := by
+    rintro p x ⟨hdecl, hd⟩
+    obtain ⟨s0, o0, hm0, hx0, hy0⟩ := herb_decode (by decide) hdecl
+    have hs0 : s0 = Subject.iri p := subjTerm_iri hx0.symm
+    subst hs0
+    have ho0 : o0 = Term.iri owlIrreflexiveProperty := hy0.symm
+    subst ho0
+    have hnp : rlReservedIri p = false :=
+      irw_of_subjIri (tin_s (frag_iris hfrag hm0))
+    obtain ⟨sx, ox, hm1, rfl, hy1⟩ := herb_decode hnp hd
+    have hm1' : (⟨sx, p, sx.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, hy1]
+      exact hm1
+    exact hcons (Clash.prpIrp hm0 hm1')
+  prpAsyp := by
+    rintro p x y ⟨hdecl, h1, h2⟩
+    obtain ⟨s0, o0, hm0, hx0, hy0⟩ := herb_decode (by decide) hdecl
+    have hs0 : s0 = Subject.iri p := subjTerm_iri hx0.symm
+    subst hs0
+    have ho0 : o0 = Term.iri owlAsymmetricProperty := hy0.symm
+    subst ho0
+    have hnp : rlReservedIri p = false :=
+      irw_of_subjIri (tin_s (frag_iris hfrag hm0))
+    obtain ⟨sx, o1, hm1, rfl, hy1⟩ := herb_decode hnp h1
+    obtain ⟨sy, o2, hm2, hx2, hy2⟩ := herb_decode hnp h2
+    have hm1' : (⟨sx, p, sy.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, ← hx2, hy1]
+      exact hm1
+    have hm2' : (⟨sy, p, sx.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, hy2]
+      exact hm2
+    exact hcons (Clash.prpAsyp hm0 hm1' hm2')
+  prpPdw := by
+    rintro p1 p2 x y ⟨hdecl, h1, h2⟩
+    obtain ⟨s0, o0, hm0, hx0, hy0⟩ := herb_decode (by decide) hdecl
+    have hs0 : s0 = Subject.iri p1 := subjTerm_iri hx0.symm
+    subst hs0
+    have ho0 : o0 = Term.iri p2 := hy0.symm
+    subst ho0
+    have hnp1 : rlReservedIri p1 = false :=
+      irw_of_subjIri (tin_s (frag_iris hfrag hm0))
+    have hnp2 : rlReservedIri p2 = false :=
+      irw_of_termIri (tin_o (frag_iris hfrag hm0))
+    obtain ⟨sx, o1, hm1, rfl, rfl⟩ := herb_decode hnp1 h1
+    obtain ⟨sx2, o2, hm2, hx2, rfl⟩ := herb_decode hnp2 h2
+    have hs : sx = sx2 := subjTerm_injective hx2
+    subst hs
+    exact hcons (Clash.prpPdw hm0 hm1 hm2)
+  prpNpa1 := by
+    rintro p w x y ⟨hsrc, hap, hti, hd⟩
+    obtain ⟨si, o2, hm2, rfl, hy2⟩ := herb_decode (by decide) hap
+    have ho2 : o2 = Term.iri p := hy2.symm
+    subst ho2
+    have hnp : rlReservedIri p = false :=
+      irw_of_termIri (tin_o (frag_iris hfrag hm2))
+    obtain ⟨sx, o4, hm4, rfl, rfl⟩ := herb_decode hnp hd
+    obtain ⟨si1, o1, hm1, hw1, hx1⟩ := herb_decode (by decide) hsrc
+    have e1 : si = si1 := subjTerm_injective hw1
+    subst e1
+    obtain ⟨si3, o3, hm3, hw3, hy3⟩ := herb_decode (by decide) hti
+    have e3 : si = si3 := subjTerm_injective hw3
+    subst e3
+    have hm1' : (⟨si, owlSourceIndividual, sx.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, hx1]
+      exact hm1
+    have hm3' : (⟨si, owlTargetIndividual, y⟩ : Triple) ∈ c := by
+      rw [hy3]
+      exact hm3
+    exact hcons (Clash.prpNpa1 hm1' hm2 hm3' hm4)
+  prpNpa2 := by
+    rintro p w x y ⟨hsrc, hap, htv, hd⟩
+    obtain ⟨si, o2, hm2, rfl, hy2⟩ := herb_decode (by decide) hap
+    have ho2 : o2 = Term.iri p := hy2.symm
+    subst ho2
+    have hnp : rlReservedIri p = false :=
+      irw_of_termIri (tin_o (frag_iris hfrag hm2))
+    obtain ⟨sx, o4, hm4, rfl, rfl⟩ := herb_decode hnp hd
+    obtain ⟨si1, o1, hm1, hw1, hx1⟩ := herb_decode (by decide) hsrc
+    have e1 : si = si1 := subjTerm_injective hw1
+    subst e1
+    obtain ⟨si3, o3, hm3, hw3, hy3⟩ := herb_decode (by decide) htv
+    have e3 : si = si3 := subjTerm_injective hw3
+    subst e3
+    have hm1' : (⟨si, owlSourceIndividual, sx.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, hx1]
+      exact hm1
+    have hm3' : (⟨si, owlTargetValue, y⟩ : Triple) ∈ c := by
+      rw [hy3]
+      exact hm3
+    exact hcons (Clash.prpNpa2 hm1' hm2 hm3' hm4)
+  clsNothing2 := by
+    intro x h
+    obtain ⟨s1, o1, hm1, -, hy1⟩ := herb_decode (by decide) h
+    have ho1 : o1 = Term.iri owlNothing := hy1.symm
+    subst ho1
+    exact hcons (Clash.clsNothing2 hm1)
+  clsCom := by
+    rintro c1 c2 x ⟨hdecl, h1, h2⟩
+    obtain ⟨sc1, o1, hm0, rfl, rfl⟩ := herb_decode (by decide) hdecl
+    obtain ⟨sx, o2, hm1, rfl, hy2⟩ := herb_decode (by decide) h1
+    obtain ⟨sx2, o3, hm2, hx3, hy3⟩ := herb_decode (by decide) h2
+    have hs : sx = sx2 := subjTerm_injective hx3
+    subst hs
+    have hm1' : (⟨sx, rdfType, sc1.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, hy2]
+      exact hm1
+    have hm2' : (⟨sx, rdfType, c2⟩ : Triple) ∈ c := by
+      rw [hy3]
+      exact hm2
+    exact hcons (Clash.clsCom hm0 hm1' hm2')
+  clsMaxc1 := by
+    rintro p x u y ⟨hmc, -, -, -⟩
+    exact absurd hmc (no_literal_object hfrag (by decide))
+  clsMaxqc1 := by
+    rintro p x u y cq ⟨hmqc, -, -, -, -, -⟩
+    exact absurd hmqc (no_literal_object hfrag (by decide))
+  clsMaxqc2 := by
+    rintro p x u y ⟨hmqc, -, -, -, -⟩
+    exact absurd hmqc (no_literal_object hfrag (by decide))
+  caxDw := by
+    rintro c1 c2 x ⟨hdecl, h1, h2⟩
+    obtain ⟨sc1, o1, hm0, rfl, rfl⟩ := herb_decode (by decide) hdecl
+    obtain ⟨sx, o2, hm1, rfl, hy2⟩ := herb_decode (by decide) h1
+    obtain ⟨sx2, o3, hm2, hx3, hy3⟩ := herb_decode (by decide) h2
+    have hs : sx = sx2 := subjTerm_injective hx3
+    subst hs
+    have hm1' : (⟨sx, rdfType, sc1.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, hy2]
+      exact hm1
+    have hm2' : (⟨sx, rdfType, c2⟩ : Triple) ∈ c := by
+      rw [hy3]
+      exact hm2
+    exact hcons (Clash.caxDw hm0 hm1' hm2')
+  caxAdc := by
+    rintro cc1 cc2 hne y l z ⟨hty, hmem, hl1, hl2, ht1, ht2⟩
+    obtain ⟨sy, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) hty
+    have ho1 : o1 = Term.iri owlAllDisjointClasses := hy1.symm
+    subst ho1
+    obtain ⟨sy2, o2, hm2, hx2, rfl⟩ := herb_decode (by decide) hmem
+    have hsy : sy = sy2 := subjTerm_injective hx2
+    subst hsy
+    have hlm1 := listMem_decode hfrag hl1
+    have hlm2 := listMem_decode hfrag hl2
+    obtain ⟨sz, o3, hm3, rfl, hy3⟩ := herb_decode (by decide) ht1
+    have ho3 : o3 = Term.iri cc1 := hy3.symm
+    subst ho3
+    obtain ⟨sz2, o4, hm4, hx4, hy4⟩ := herb_decode (by decide) ht2
+    have hsz : sz = sz2 := subjTerm_injective hx4
+    subst hsz
+    have ho4 : o4 = Term.iri cc2 := hy4.symm
+    subst ho4
+    have hne' : (Term.iri cc1) ≠ (Term.iri cc2) := by
+      intro h
+      exact hne (by injection h)
+    exact hcons (Clash.caxAdc hm1 hm2 hlm1 hlm2 hne' hm3 hm4)
+
+end HerbClashConditions
+
+/-! ## Decoding a satisfied ground atom back to closure membership
+
+The completeness direction's last step: an atom true in `rlHerb c` at a
+NON-RESERVED predicate is a triple of `c`. This is what turns
+`liftInterp (rlHerb (closure g fuel)) ⊨ φ` back into a closure
+membership fact in `Unified/OwlRlAdequacy.lean`. -/
+
+theorem rlHerb_atom_decode {c : Graph} {s : Subject} {p : WfIri} {o : Term}
+    (hp : rlReservedIri p = false)
+    (h : (rlHerb c).iext ((rlHerb c).iIri p) (subjTerm s) o) :
+    (⟨s, p, o⟩ : Triple) ∈ c := by
+  obtain ⟨s', o', hm, hx, hy⟩ := herb_decode hp h
+  have hs : s = s' := subjTerm_injective hx
+  subst hs
+  subst hy
+  exact hm
+
+/-- The same at the `TripleHolds` level, under the assignment that
+sends every blank-node label to its own term (the Herbrand domain IS
+the term algebra, so that assignment is the identity). -/
+def herbAssign (c : Graph) : BnodeAssignment (rlHerb c).idom := fun b => .bnode b
+
+theorem denotSubject_herbAssign (c : Graph) (s : Subject) :
+    denotSubject (rlHerb c) (herbAssign c) s = subjTerm s := by
+  cases s <;> rfl
+
+theorem denotTerm_herbAssign (c : Graph) {o : Term} (h : TermTtFree o) :
+    denotTerm (rlHerb c) (herbAssign c) o = o := by
+  cases o with
+  | iri _ => rfl
+  | bnode _ => rfl
+  | literal _ => rfl
+  | tripleTerm _ _ _ => exact absurd h (by simp [TermTtFree])
+
+theorem rlHerb_triple_decode {c : Graph} {t : Triple}
+    (hp : rlReservedIri t.p = false) (htt : TermTtFree t.o)
+    (h : TripleHolds (rlHerb c) (herbAssign c) t) : t ∈ c := by
+  have h' : (rlHerb c).iext ((rlHerb c).iIri t.p) (subjTerm t.s) t.o := by
+    rw [← denotSubject_herbAssign c t.s, ← denotTerm_herbAssign c htt]
+    exact h
+  have := rlHerb_atom_decode hp h'
+  simpa using this
+
+/-! ## Axiom audit -/
+
+#print axioms rlHerb_conditions
+#print axioms rlHerb_clash_conditions
+#print axioms rlHerb_atom_decode
+#print axioms rlHerb_triple_decode
+
 end L4Factoidal.OWL.RL
