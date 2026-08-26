@@ -1082,4 +1082,7 @@ theorem normalizeFrom_pureCL (start : Nat) (s : Sentence) :
       ∧ ∀ tl ∈ (normalizeFrom start s).2, tl.isPureCL = true :=
   ⟨normS_pure s [] [] start, fun tl h => normS_tailsPure s [] [] start tl h⟩
 
+#print axioms normalizeFrom_pureCL
+#print axioms thatWeight_that
+
 end L4Factoidal.CL

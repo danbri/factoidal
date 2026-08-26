@@ -12,6 +12,18 @@ was previously an open question regarding the existence of IKL
 interpretations".
 Tracking: https://github.com/danbri/factoidal/issues/580
 
+## Relation to `Unified/ClBridge.lean`
+
+`Unified/ClBridge.lean` landed `propModel` on the same day — the same
+construction, parameterised by `iN iS R F`, coherent under
+`∀ p, R p [] ↔ p`. `iklProp` here is the instance `R := fun x _ => x`,
+`F := fun x _ => x`, and it adds the LOCALITY theorem, which that copy
+does not have. The dependency runs `Unified` → `CL`, so this file
+cannot import the earlier copy. The right structure is the reverse:
+this construction belongs in `CL/` and `Unified/ClBridge` should
+import it. See the design note
+`docs/designissues/2026-08-26-ikl-normalization.md`, section 8.
+
 ## The construction
 
 The circularity to break is that satisfaction of `(that S)` consults
