@@ -69,26 +69,32 @@ function assertBackend(name, who) {
 // whenever capabilities().entry is true, for whichever engine's entry
 // actually defines that op. Cross-checked against the Lean side's own
 // dispatch-ABI reflection (`bin/linux-x86_64/l4factoidal ops`, and
-// l4.call('ops', []) at runtime) -- both list exactly these 13 of the
+// l4.call('ops', []) at runtime) -- both list exactly these 16 of the
 // engine's 21 ops as the ones lib/api.js's typed wrappers reach:
 // parseToDatasetJson, queryDataset, updateDataset, serializeNQuads,
 // serializeTurtle, canonicalizeToNQuads, owlClosure, owlIsConsistent,
 // owlEntails, rhoDfClosure, rhoDfFragmentCheck, rdfsPlusClosure,
-// clParse. `clParse` is the first Lean-only entry in
-// capabilityTable(): formal/fstar has no CL/IKL parser, so
-// engineSupports(fstarApi, 'clParse') is false on the very first
-// `typeof` guard below -- index.js never exports the name at all. The
-// other 8 are real ops on the resolved wasm with no typed-API wrapper
-// in l4-core.js, so they are correctly absent from
-// ALWAYS_IF_ENTRY/CAP_FLAG below and from capabilityTable()'s output,
-// for two different reasons (see l4-core.js's OPS comment for the full
-// text):
+// clParse, clSerialize, clAlphaNorm, clNormalize. These four CL/IKL
+// ops are the Lean-only entries in capabilityTable(): formal/fstar has
+// no CL/IKL parser, so engineSupports(fstarApi, <any of the four>) is
+// false on the very first `typeof` guard below -- index.js never
+// exports any of the four names at all. The other 5 are real ops on
+// the resolved wasm with no typed-API wrapper in l4-core.js, so they
+// are correctly absent from ALWAYS_IF_ENTRY/CAP_FLAG below and from
+// capabilityTable()'s output, for two different reasons (see
+// l4-core.js's OPS comment for the full text):
 //   - clToDataset, queryWithIklService: present in the compiled wasm
 //     but DELETED from the engine source, 2026-08-26 (issue #626), and
 //     already off the npm surface by owner decision (issue #618). The
 //     artifact is ahead of its source until it is rebuilt (issue
-//     #627). `clParse` is NOT part of that removal -- it reads CLIF
-//     and never produces RDF, so it is wired above instead.
+//     #627). `clParse`/`clSerialize`/`clAlphaNorm`/`clNormalize` are
+//     NOT part of that removal -- none of them reads or produces RDF,
+//     so all four are wired above instead.
+//   - clFiniteSat: DEFERRED, not excluded (owner decision, 2026-08-26)
+//     -- it takes a caller-supplied finite-interpretation JSON
+//     encoding that has no user yet, and a typed wrapper would freeze
+//     that shape before we know whether it is right. Reachable only
+//     through the raw dispatch ABI.
 //   - ops, datasetOpen/Query/Update/Serialize/Close: not an owner
 //     ruling, just not yet wired (no typed-wrapper shape for a
 //     stateful handle exists in lib/api.js today).
@@ -98,7 +104,7 @@ const ALWAYS_IF_ENTRY = new Set([
   'parse', 'query', 'update', 'serialize', 'canonicalize', 'graphs',
   'canonicalHash', 'coreRdfsClosure', 'coreRdfsCheck', 'rhoDfClosure',
   'rhoDfFragmentCheck', 'rdfsPlusClosure', 'owlClosure', 'owlIsConsistent',
-  'owlEntails', 'clParse',
+  'owlEntails', 'clParse', 'clSerialize', 'clAlphaNorm', 'clNormalize',
 ]);
 
 // Every other routable function's support is reported by a
@@ -465,6 +471,14 @@ function createSelector(options) {
     // Lean-only (see ALWAYS_IF_ENTRY's comment above): backend:'fstar'
     // throws, since index.js never exports clParse at all.
     clParse: (clifText, callOptions) => call('clParse', [clifText], callOptions),
+    // Lean-only, same reason as clParse.
+    clSerialize: (clifText, callOptions) => call('clSerialize', [clifText], callOptions),
+    clAlphaNorm: (clifText, callOptions) => call('clAlphaNorm', [clifText], callOptions),
+    clNormalize: (clifText, callOptions) => call('clNormalize', [clifText], callOptions),
+    // clFiniteSat is intentionally NOT given named sugar here (owner
+    // decision, 2026-08-26): deferred, reachable via call('clFiniteSat',
+    // [interpJson, clifText], callOptions) instead. See ALWAYS_IF_ENTRY's
+    // comment above.
   };
 }
 

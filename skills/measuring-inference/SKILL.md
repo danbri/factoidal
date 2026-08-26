@@ -147,6 +147,34 @@ Same family as the OWL cap-escapes (#326) and the vacuous negatives
 Fixing #326 is why a capped OWL test now reports `unsupported` instead of
 passing.
 
+> 🔴 **2026-08-26 (`owl2_dl_inconsistency`, per-test cap).** The
+> aggregated JSON records a cap trip as an ordinary `fail`. The runner
+> log prints `[owl_refuter_escape] tableau_consistent abandoned
+> (Owl_runner.Owl_closure_timeout); the clash search did not finish`,
+> but `docs/test-results/latest.json` carries only `pass`, `fail`,
+> `skip` and `oracle_assisted`. A reader of the dashboard cannot tell a
+> wrong answer from an unfinished search.
+>
+> The score is therefore load-dependent. `generate-report.sh` sets
+> `FACTOIDAL_OWL_CAP_SEC=20` for each test. In the full-suite run of
+> 2026-08-26 the `type-inconsistency.rdf` catalog scored **125 pass,
+> 2 fail (out of 127)**. Three consecutive runs of the SAME binary over
+> the SAME catalog on an idle machine scored **126 pass, 1 fail (out of
+> 127)**. The difference is `WebOnt-description-logic-502`, whose
+> tableau clash search sits near the 20-second boundary.
+> `WebOnt-description-logic-909` fails in all four runs.
+>
+> Cost: the extraction-drift repair gate of 2026-08-26 read RED on this
+> suite, and the decrease was investigated as a possible regression
+> from the restored extraction output. It was not one. The committed
+> `latest.json` for that run records 125 pass, 2 fail with no marker
+> that a cap tripped.
+>
+> Rule: before you attribute a suite decrease to a code change, run
+> that suite alone on an idle machine and compare. Any budget that can
+> be exhausted must be reported in the result; until it is, treat every
+> capped suite as load-sensitive.
+
 ## 9. A timer around a pure `let` in Lean measures nothing
 
 **Force the value between the two clock reads with an I/O action that

@@ -144,11 +144,43 @@ let pcache_decode_in_row_group (cache : page_cache) (path : Prims.string)
        | FStar_Pervasives_Native.Some v ->
            let c2 = pcache_put c1 key v capacity in
            ((FStar_Pervasives_Native.Some v), c2))
+(* Phase 2.5e (issue #118): cross-call cache storage cell + realisation
+   of the F*-pure `pcache_decode_in_row_group_global` assume val.
+
+   The cache logic (LRU eviction, monotone clock, key match) lives in
+   the F*-verified `pcache_get` / `pcache_put` / `pcache_decode_in_row_group`
+   functions above. This shim only threads the mutable storage ref
+   across calls. Rule #11(c). __PAGECACHE_GLOBAL_APPLIED__ *)
+let pcache_global_capacity : Z.t = Z.of_int 256
+
+let pcache_global_ref : page_cache ref =
+  ref (pcache_empty pcache_global_capacity)
+
+(* Stdlib.Int.t-typed counters; `open Prims` shadows `int` to `Z.t`
+   in this file, so qualify with Stdlib explicitly. *)
+let pcache_global_n_hits   : Stdlib.Int.t ref = Stdlib.ref 0
+let pcache_global_n_misses : Stdlib.Int.t ref = Stdlib.ref 0
+
 let pcache_decode_in_row_group_global (path : Prims.string)
-  (rg_index : Prims.nat) (col_index : Prims.nat) :
-  RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.PageCache.pcache_decode_in_row_group_global"
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option =
+  let cap = (!pcache_global_ref).pc_capacity in
+  let key_present =
+    let (v, _) = pcache_get !pcache_global_ref (rg_index, col_index) in
+    match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+  let (result, c') =
+    pcache_decode_in_row_group !pcache_global_ref path rg_index col_index cap in
+  pcache_global_ref := c';
+  (if key_present then Stdlib.incr pcache_global_n_hits
+   else Stdlib.incr pcache_global_n_misses);
+  let total : Stdlib.Int.t = Stdlib.(!pcache_global_n_hits + !pcache_global_n_misses) in
+  (if Stdlib.(total mod 32 = 0) then
+    Printf.eprintf "[pagecache-global-trace] hits=%d misses=%d entries=%d cap=%d
+%!"
+      !pcache_global_n_hits !pcache_global_n_misses
+      (Stdlib.List.length (!pcache_global_ref).pc_entries)
+      (Z.to_int cap));
+  result
 let pcache_decode_in_row_group_from_table (cache : page_cache)
   (table : Parquet_Footer.parquet_row_group_offset_table)
   (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
@@ -167,19 +199,65 @@ let pcache_decode_in_row_group_from_table (cache : page_cache)
        | FStar_Pervasives_Native.Some v ->
            let c2 = pcache_put c1 key v capacity in
            ((FStar_Pervasives_Native.Some v), c2))
+(* Issue #98/Mim3 follow-up (2026-07-05): table-threaded sibling of
+   pcache_decode_in_row_group_global above. Same cross-call storage
+   cell (pcache_global_ref), same LRU logic in F*-pure
+   pcache_decode_in_row_group_from_table; this shim only forwards the
+   F*-computed row-group-offset table and threads the mutable ref.
+   Rule #11(c). *)
 let pcache_decode_in_row_group_global_from_table
   (table : Parquet_Footer.parquet_row_group_offset_table)
-  (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat) :
-  RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.PageCache.pcache_decode_in_row_group_global_from_table"
+  (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : RDF_CottasStore_ColumnSeq.cottas_column FStar_Pervasives_Native.option =
+  let cap = (!pcache_global_ref).pc_capacity in
+  let key_present =
+    let (v, _) = pcache_get !pcache_global_ref (rg_index, col_index) in
+    match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+  let (result, c') =
+    pcache_decode_in_row_group_from_table !pcache_global_ref table path rg_index col_index cap in
+  pcache_global_ref := c';
+  (if key_present then Stdlib.incr pcache_global_n_hits
+   else Stdlib.incr pcache_global_n_misses);
+  let total : Stdlib.Int.t = Stdlib.(!pcache_global_n_hits + !pcache_global_n_misses) in
+  (if Stdlib.(total mod 32 = 0) then
+    Printf.eprintf "[pagecache-global-trace] hits=%d misses=%d entries=%d cap=%d
+%!"
+      !pcache_global_n_hits !pcache_global_n_misses
+      (Stdlib.List.length (!pcache_global_ref).pc_entries)
+      (Z.to_int cap));
+  result
+(* OPTIONAL/FILTER row-index-selective decode design (stage 2, issue
+   #295 tracks the acknowledged RLE_DICTIONARY-fast-path gap):
+   realisation of the F*-pure `pcache_decode_column_at_indices_global_
+   from_table` assume val. Fallback-only: decodes the full column via
+   the SAME table-threaded decoder every other `_from_table` caller
+   already uses, then filters to the requested indices. Correct for
+   every Parquet encoding; not yet accelerated for RLE_DICTIONARY (see
+   this file's own header comment and issue #295).
+   __PAGECACHE_INDEXED_APPLIED__ *)
 let pcache_decode_column_at_indices_global_from_table
   (table : Parquet_Footer.parquet_row_group_offset_table)
   (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat)
-  (indices : Prims.nat Prims.list) :
-  (Prims.nat * Prims.string) Prims.list FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.PageCache.pcache_decode_column_at_indices_global_from_table"
+  (indices : Prims.nat Prims.list)
+  : (Prims.nat * Prims.string) Prims.list FStar_Pervasives_Native.option =
+  match Parquet_Footer.probe_parquet_column_decode_in_row_group_from_table
+          table path rg_index col_index with
+  | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  | FStar_Pervasives_Native.Some lst ->
+    let arr = Array.of_list lst in
+    let len = Array.length arr in
+    let pick (i : Prims.nat) : (Prims.nat * Prims.string) option =
+      (* Z-domain comparisons: >=/< in this module scope may be
+      rebound over Z.t (Prims), so avoid bare int operators entirely. *)
+      if Z.geq i Z.zero && Z.lt i (Z.of_int len) then
+        (let iv = Z.to_int i in
+         match arr.(iv) with
+         | FStar_Pervasives_Native.Some tok -> Some (i, tok)
+         | FStar_Pervasives_Native.None -> None)
+      else None
+    in
+    FStar_Pervasives_Native.Some (List.filter_map pick indices)
 let rec indexed_decode_lookup (pairs : (Prims.nat * Prims.string) Prims.list)
   (i : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
   match pairs with
@@ -324,9 +402,54 @@ let dpcache_probe_dict_in_row_group_from_table (cache : dict_page_cache)
        | FStar_Pervasives_Native.Some v ->
            let c2 = dpcache_put c1 key v capacity in
            ((FStar_Pervasives_Native.Some v), c2))
+(* Tsade2 Phase E (issue #100 followup, 2026-07-06): cross-query
+   DICTIONARY cache storage cell + realisation of the F*-pure
+   `dpcache_probe_dict_in_row_group_global_from_table` assume val.
+
+   LRU eviction, monotone clock, key match all live in the F*-verified
+   `dpcache_get` / `dpcache_put` / `dpcache_probe_dict_in_row_group_from_table`
+   functions above (mirrors `pcache_*` exactly, different value type).
+   This shim only threads the mutable storage ref across calls and
+   honours the FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE kill switch. Rule
+   #11(c): no semantic decisions, no dictionary decode logic here --
+   that stays in Parquet_Footer. __PAGECACHE_GLOBAL_APPLIED__ *)
+let dpcache_global_capacity : Z.t = Z.of_int 1024
+
+let dpcache_global_ref : dict_page_cache ref =
+  ref (dpcache_empty dpcache_global_capacity)
+
+let dpcache_global_n_hits   : Stdlib.Int.t ref = Stdlib.ref 0
+let dpcache_global_n_misses : Stdlib.Int.t ref = Stdlib.ref 0
+
+let dpcache_global_disabled : bool =
+  match Stdlib.Sys.getenv_opt "FACTOIDAL_DISABLE_DICT_GLOBAL_CACHE" with
+  | Some "1" -> true
+  | _ -> false
+
 let dpcache_probe_dict_in_row_group_global_from_table
   (table : Parquet_Footer.parquet_row_group_offset_table)
-  (path : Prims.string) (rg_index : Prims.nat) (col_index : Prims.nat) :
-  Prims.string Prims.list FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.PageCache.dpcache_probe_dict_in_row_group_global_from_table"
+  (path : Prims.string)
+  (rg_index : Prims.nat) (col_index : Prims.nat)
+  : Prims.string Prims.list FStar_Pervasives_Native.option =
+  if dpcache_global_disabled then
+    Parquet_Footer.probe_parquet_column_dictionary_in_row_group_from_table
+      table path rg_index col_index
+  else begin
+    let cap = (!dpcache_global_ref).dpc_capacity in
+    let key_present =
+      let (v, _) = dpcache_get !dpcache_global_ref (rg_index, col_index) in
+      match v with FStar_Pervasives_Native.Some _ -> true | _ -> false in
+    let (result, c') =
+      dpcache_probe_dict_in_row_group_from_table !dpcache_global_ref table path rg_index col_index cap in
+    dpcache_global_ref := c';
+    (if key_present then Stdlib.incr dpcache_global_n_hits
+     else Stdlib.incr dpcache_global_n_misses);
+    let total : Stdlib.Int.t = Stdlib.(!dpcache_global_n_hits + !dpcache_global_n_misses) in
+    (if Stdlib.(total mod 32 = 0) then
+      Printf.eprintf "[dictcache-global-trace] hits=%d misses=%d entries=%d cap=%d
+%!"
+        !dpcache_global_n_hits !dpcache_global_n_misses
+        (Stdlib.List.length (!dpcache_global_ref).dpc_entries)
+        (Z.to_int cap));
+    result
+  end

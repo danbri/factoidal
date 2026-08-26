@@ -31,8 +31,7 @@ divergence is stated about it here, where it is true:
 ## Provenance of the witness (2026-08-26)
 
 `wDs` used to be a real output of `CL/ToRdf.lean` — an IKL-to-RDF
-projection whose proposition graph names were the content address
-`urn:cl:that:sha256:<hex>` of the alpha-normalized canonical CLIF.
+projection whose proposition graph names were content-addressed.
 That projection was Claude-invented, never asked for, and is deleted
 (https://github.com/danbri/factoidal/issues/626). The witness is now
 built here from plain IRIs. Nothing in this module ever depended on

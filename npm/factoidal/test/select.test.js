@@ -79,8 +79,8 @@ test('capabilityTable is derived from live capabilities(), not hand-written', as
   }
   // shaclValidate/shexValidate/tableauMaterialise/rmlMap/csvwToRdf/
   // jsonldToRdf/rifEval/xsltTransform are not in the Lean engine's
-  // 13-op typed-API surface (bin/linux-x86_64/l4factoidal ops lists 21
-  // raw ops; only 13 are wired to lib/api.js's typed wrappers) --
+  // 16-op typed-API surface (bin/linux-x86_64/l4factoidal ops lists 21
+  // raw ops; only 16 are wired to lib/api.js's typed wrappers) --
   // Lean must report false for every one of them.
   for (const fn of ['shaclValidate', 'shexValidate', 'tableauMaterialise',
     'rmlMap', 'csvwToRdf', 'jsonldToRdf', 'rifEval', 'xsltTransform']) {
@@ -94,6 +94,15 @@ test('capabilityTable: clParse is Lean-only -- lean true, fstar false', async (t
   const table = await select.capabilityTable();
   assert.equal(table.clParse.lean, true);
   assert.equal(table.clParse.fstar, false);
+});
+
+test('capabilityTable: clSerialize/clAlphaNorm/clNormalize are Lean-only too', async (t) => {
+  if (skipUnlessLean(t)) return;
+  const table = await select.capabilityTable();
+  for (const fn of ['clSerialize', 'clAlphaNorm', 'clNormalize']) {
+    assert.equal(table[fn].lean, true, `lean should support ${fn}`);
+    assert.equal(table[fn].fstar, false, `fstar should NOT support ${fn}`);
+  }
 });
 
 // ---------------------------------------------------------------------
@@ -330,6 +339,45 @@ test("backend 'slowcompareboth': clParse fails the capability precondition, not 
 });
 
 // ---------------------------------------------------------------------
+// clSerialize: same four-behaviour shape as clParse above, exercised
+// for one of the three newly-wired CL/IKL ops (owner instruction,
+// 2026-08-26 -- "wire into js functional api").
+// ---------------------------------------------------------------------
+
+test("backend 'lean': clSerialize answers with the serialize envelope, roundTripProved surfaced as false", async (t) => {
+  if (skipUnlessLean(t)) return;
+  if (await skipUnlessOp(t, 'clSerialize')) return;
+  const sel = select.createSelector({ backend: 'lean' });
+  const r = await sel.clSerialize(PURE_CL_TEXT);
+  assert.equal(r.engine, 'lean');
+  assert.equal(r.backend, 'lean');
+  assert.equal(r.value.ok, true);
+  assert.equal(r.value.sentences, 1);
+  assert.equal(r.value.roundTripProved, false);
+  assert.equal(typeof r.value.clif, 'string');
+});
+
+test("backend 'fstar': clSerialize throws (never falls back to Lean) -- formal/fstar has no CL/IKL parser", async () => {
+  const sel = select.createSelector({ backend: 'fstar' });
+  await assert.rejects(() => sel.clSerialize(PURE_CL_TEXT), TypeError);
+});
+
+test("backend 'fstar1st': clSerialize falls through to Lean, since F* never implements it", async (t) => {
+  if (skipUnlessLean(t)) return;
+  if (await skipUnlessOp(t, 'clSerialize')) return;
+  const sel = select.createSelector({ backend: 'fstar1st' });
+  const r = await sel.clSerialize(PURE_CL_TEXT);
+  assert.equal(r.engine, 'lean');
+  assert.equal(r.value.roundTripProved, false);
+});
+
+test("backend 'slowcompareboth': clSerialize fails the capability precondition, not a silent one-sided answer", async (t) => {
+  if (skipUnlessLean(t)) return;
+  const sel = select.createSelector({ backend: 'slowcompareboth' });
+  await assert.rejects(() => sel.clSerialize(PURE_CL_TEXT), /needs BOTH engines/);
+});
+
+// ---------------------------------------------------------------------
 // Owner decision, 2026-08-26: x-ikl-* entailment regimes are not
 // exposed through the npm API (IKL has no notion of shapes or named
 // profiles). Rejected at the JS layer in BOTH lib/api.js's query()
@@ -346,7 +394,7 @@ test('query() rejects x-ikl-* entail regimes (F* engine)', async () => {
   const ds = await factoidal.parse(TTL);
   await assert.rejects(
     () => factoidal.query(ds, 'SELECT * WHERE { ?s ?p ?o }', { entail: 'x-ikl-core' }),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
 test('query() rejects x-ikl-* entail regimes case-insensitively (Lean engine)', async (t) => {
@@ -355,22 +403,22 @@ test('query() rejects x-ikl-* entail regimes case-insensitively (Lean engine)', 
   const ds = await l4core.parse(TTL);
   await assert.rejects(
     () => l4core.query(ds, 'SELECT * WHERE { ?s ?p ?o }', { entail: 'X-IKL-Whatever' }),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
-test('fn.js entail() rejects x-ikl-* before it ever reaches the engine', async () => {
+test('fn.js entail() refuses x-ikl-* as not implemented, before it reaches the engine', async () => {
   const fn = require('../fn.js');
   const ds = await fn.parse(TTL);
   await assert.rejects(
     () => fn.entail(ds, 'x-ikl-foo'),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
 test('select query() propagates the x-ikl-* rejection', async () => {
   const sel = select.createSelector({ backend: 'fstar' });
   await assert.rejects(
     () => sel.query(TTL, 'SELECT * WHERE { ?s ?p ?o }', { entail: 'x-ikl-core' }),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
 test('compareValues compares bindings as a BAG: duplicate rows are significant', async () => {

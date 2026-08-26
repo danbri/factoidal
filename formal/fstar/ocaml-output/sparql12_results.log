@@ -8,8 +8,8 @@
   [8/8] codepoint-escapes/codepoint-esc-08.rq ok
   [1/41] eval-triple-terms/Triple terms - all graph triples (JSON results) ok
   [2/41] eval-triple-terms/Triple terms - all graph triples (XML results) ok
-  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (16ms)
-  [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (17ms)
+  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (25ms)
+  [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (26ms)
   [5/41] eval-triple-terms/Reified triples - match constant reified triple ok
   [6/41] eval-triple-terms/Reified triples - match reified triple, var subject ok
   [7/41] eval-triple-terms/Reified triples - match reified triple, var predicate ok
@@ -42,8 +42,8 @@
   [34/41] eval-triple-terms/Reified triples - Embedded triple - Functions ok
   [35/41] eval-triple-terms/Reified triples - Embedded triple - sameTerm ok
   [36/41] eval-triple-terms/Reified triples - Embedded triple - value-equality ok
-  [37/41] eval-triple-terms/Reified triples - Embedded triple - ORDER BY ok
-  [38/41] eval-triple-terms/Reified triples - Embedded triple - ordering ok (12ms)
+  [37/41] eval-triple-terms/Reified triples - Embedded triple - ORDER BY ok (15ms)
+  [38/41] eval-triple-terms/Reified triples - Embedded triple - ordering ok (19ms)
   [39/41] eval-triple-terms/Reified triples - Update ok
   [40/41] eval-triple-terms/Reified triples - Update - annotation ok
   [41/41] eval-triple-terms/Reified triples - Update - data ok
@@ -270,8 +270,8 @@ Test base: third_party/testing/w3c/sparql/sparql12
 --- eval-triple-terms ---
   PASS: Triple terms - all graph triples (JSON results)
   PASS: Triple terms - all graph triples (XML results)
-  PASS: Reified triples - all graph triples (JSON results) (16ms)
-  PASS: Reified triples - all graph triples (XML results) (17ms)
+  PASS: Reified triples - all graph triples (JSON results) (25ms)
+  PASS: Reified triples - all graph triples (XML results) (26ms)
   PASS: Reified triples - match constant reified triple
   PASS: Reified triples - match reified triple, var subject
   PASS: Reified triples - match reified triple, var predicate
@@ -304,8 +304,8 @@ Test base: third_party/testing/w3c/sparql/sparql12
   PASS: Reified triples - Embedded triple - Functions
   PASS: Reified triples - Embedded triple - sameTerm
   PASS: Reified triples - Embedded triple - value-equality
-  PASS: Reified triples - Embedded triple - ORDER BY
-  PASS: Reified triples - Embedded triple - ordering (12ms)
+  PASS: Reified triples - Embedded triple - ORDER BY (15ms)
+  PASS: Reified triples - Embedded triple - ordering (19ms)
   PASS: Reified triples - Update
   PASS: Reified triples - Update - annotation
   PASS: Reified triples - Update - data

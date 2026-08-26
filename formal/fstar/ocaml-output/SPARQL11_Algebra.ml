@@ -1481,10 +1481,46 @@ let string_substring (s : Prims.string) (start : Prims.nat)
   if (actual_len = Prims.int_zero) || (start' >= slen)
   then ""
   else FStar_String.sub s start' actual_len
+module Uucp_case_runtime = struct
+  (* Issue #250: Unicode-aware UCASE()/LCASE() via `uucp`.
+     `cmap_utf_8` is uucp's own documented recipe (uucp.mli,
+     "Default case conversion on UTF-8 strings") for applying a
+     per-Uchar case map across a UTF-8-encoded OCaml string. Invalid
+     UTF-8 byte sequences decode to U+FFFD (replacement character)
+     rather than raising -- SPARQL literals are already validated
+     UTF-8 by the F*-side lexical-form parser, so this path is a
+     defensive fallback, not the common case. *)
+  let cmap_utf_8 (cmap : Uchar.t -> [ `Self | `Uchars of Uchar.t list ]) (s : string) : string =
+    (* SPARQL11_Algebra.ml opens `Prims` at file scope, which rebinds
+       `(+)`/`(-)`/etc. to Z.add/Z.sub (F*'s Prims.int/nat are
+       unbounded, extracted via zarith). `String.get_utf_8_uchar`
+       and `Buffer`/`Uchar` all need native OCaml `int`, so re-open
+       `Stdlib` locally to get the native operators back -- same
+       pattern already used in 63_regex_hash_uuid_stubs.sh's glue in
+       this same file. *)
+    let open Stdlib in
+    let rec loop buf s i max =
+      if i > max then Buffer.contents buf
+      else begin
+        let dec = String.get_utf_8_uchar s i in
+        let u = Uchar.utf_decode_uchar dec in
+        (match cmap u with
+         | `Self -> Buffer.add_utf_8_uchar buf u
+         | `Uchars us -> List.iter (Buffer.add_utf_8_uchar buf) us);
+        loop buf s (i + Uchar.utf_decode_length dec) max
+      end
+    in
+    let buf = Buffer.create (String.length s * 2) in
+    if String.length s = 0 then "" else loop buf s 0 (String.length s - 1)
+
+  let uppercase_utf_8 (s : string) : string = cmap_utf_8 Uucp.Case.Map.to_upper s
+  let lowercase_utf_8 (s : string) : string = cmap_utf_8 Uucp.Case.Map.to_lower s
+end
+
 let string_uppercase_unicode (s : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.string_uppercase_unicode"
+  Uucp_case_runtime.uppercase_utf_8 s
 let string_lowercase_unicode (s : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.string_lowercase_unicode"
+  Uucp_case_runtime.lowercase_utf_8 s
 let string_upper (s : Prims.string) : Prims.string=
   string_uppercase_unicode s
 let string_lower (s : Prims.string) : Prims.string=
@@ -2855,18 +2891,27 @@ let fn_langMatches_spec (tag : Prims.string) (range : Prims.string) :
     (let ltag = string_lower tag in
      let lrange = string_lower range in
      (ltag = lrange) || (string_starts_with ltag (Prims.strcat lrange "-")))
-let hash_md5 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_md5"
-let hash_sha1 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha1"
-let hash_sha256 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha256"
-let hash_sha384 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha384"
-let hash_sha512 (uu___ : Prims.string) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.hash_sha512"
+let hash_md5 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.md5 s
+let hash_sha1 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha1 s
+let hash_sha256 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha256 s
+let hash_sha384 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha384 s
+let hash_sha512 (s : Prims.string) : Prims.string=
+  Fstar_pure_hashes.sha512 s
+let fx_now_cache : Prims.string ref = ref ""
 let fx_current_datetime (uu___ : unit) : Prims.string=
-  failwith "Not yet implemented: SPARQL11.Algebra.fx_current_datetime"
+  let open Stdlib in
+  if !fx_now_cache <> "" then !fx_now_cache
+  else begin
+    let t = Unix.gmtime (Unix.gettimeofday ()) in
+    let s = Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02dZ"
+      (t.Unix.tm_year + 1900) (t.Unix.tm_mon + 1) t.Unix.tm_mday
+      t.Unix.tm_hour t.Unix.tm_min t.Unix.tm_sec in
+    fx_now_cache := s; s
+  end
 let fx_key_row : Prims.string=
   Prims.strcat
     (FStar_String.string_of_list [FStar_Char.char_of_int Prims.int_one])
@@ -4912,10 +4957,31 @@ let eval_geof_call (iri_s : Prims.string) (arg_vals : eval_result Prims.list)
             | FStar_Pervasives_Native.None -> ER_Error)
          else ER_Error
      | uu___1 -> ER_Error)
-let extension_function_call (uu___ : Prims.string)
-  (uu___1 : eval_result Prims.list) :
-  eval_result FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: SPARQL11.Algebra.extension_function_call"
+(* Extension-function registry -- issue #463 (SPARQL 1.1 s17.6).
+   Global table of host-supplied closures keyed by absolute function
+   IRI. Populated by the npm-entry JS bridge (Comunica-style
+   extensionFunctions) or by native registrants (unit tests, future
+   CLI plug-ins). All dispatch DECISIONS live in F*: the E_FunctionCall
+   arm consults this hook last and maps None to ER_Error, the
+   spec-required unsupported-function error. The closure type uses
+   stdlib option for registrant ergonomics; conversion to the
+   extracted FStar_Pervasives_Native.option happens here. *)
+let extension_function_table : (string, eval_result list -> eval_result option) Hashtbl.t =
+  Hashtbl.create 16
+let extension_function_register (iri : string) (f : eval_result list -> eval_result option) : unit =
+  Hashtbl.replace extension_function_table iri f
+let extension_function_unregister (iri : string) : unit =
+  Hashtbl.remove extension_function_table iri
+let extension_function_clear () : unit =
+  Hashtbl.clear extension_function_table
+let extension_function_call (iri : Prims.string) (args : eval_result Prims.list)
+  : eval_result FStar_Pervasives_Native.option =
+  match Hashtbl.find_opt extension_function_table iri with
+  | None -> FStar_Pervasives_Native.None
+  | Some f ->
+    (match f args with
+     | Some r -> FStar_Pervasives_Native.Some r
+     | None -> FStar_Pervasives_Native.None)
 let rec eval_expr_with_base
   (base : RDF_Term.wf_iri FStar_Pervasives_Native.option) (e : expr)
   (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
@@ -5714,12 +5780,40 @@ let eval_expr_fwd (base : RDF_Term.wf_iri FStar_Pervasives_Native.option)
   (e : expr) (mu : RDF_Graph_Executable.solution_mapping) : eval_result=
   eval_expr_with_base base e mu
 type path_result_fwd = (RDF_Term.rdf_term * RDF_Term.rdf_term) Prims.list
-let eval_property_path_fwd (uu___ : property_path)
-  (uu___1 : RDF_Graph.rdf_graph) : path_result_fwd=
-  failwith "Not yet implemented: SPARQL11.Algebra.eval_property_path_fwd"
-let service_endpoint_lookup (uu___ : RDF_Term.wf_iri) :
-  graph_store FStar_Pervasives_Native.option=
-  failwith "Not yet implemented: SPARQL11.Algebra.service_endpoint_lookup"
+let eval_property_path_fwd_ref :
+  (property_path ->
+    RDF_Graph.rdf_graph -> path_result_fwd) Stdlib.ref=
+  Stdlib.ref (fun _ _ -> [])
+let eval_property_path_fwd (p : property_path)
+  (g : RDF_Graph.rdf_graph) : path_result_fwd=
+  !eval_property_path_fwd_ref p g
+(* SERVICE endpoint resolver -- issue #57.
+   Global table populated by the test runner from qt:serviceData
+   manifest declarations. Lookup is keyed on the absolute IRI string
+   of the endpoint. The value type is deliberately left unannotated:
+   `graph_to_store g` below pins it to whatever module currently
+   owns `rdf_graph` (RDF.Graph.Executable is being split into
+   RDF.Term/RDF.Triple/RDF.Graph; the qualifier has already moved
+   once) without this patch needing to track the split.
+
+   2026-07-06: a static-table MISS falls back to
+   `Service_wrap_hook.resolver` (virtual-sources design doc Stages 1-2,
+   issue #57 family) before returning None -- see that file's banner
+   and this patch's own header comment for why the fallback is a
+   forward-ref hook cell rather than a direct call into the wrap+
+   resolver module. *)
+let service_endpoint_table = Hashtbl.create 16
+let service_endpoint_register (iri : Prims.string) g : unit =
+  Hashtbl.replace service_endpoint_table iri g
+let service_endpoint_clear () : unit =
+  Hashtbl.clear service_endpoint_table
+let service_endpoint_lookup (iri : Prims.string) : graph_store FStar_Pervasives_Native.option=
+  match Hashtbl.find_opt service_endpoint_table iri with
+  | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
+  | None ->
+    (match !Service_wrap_hook.resolver iri with
+     | Some g -> FStar_Pervasives_Native.Some (graph_to_store g)
+     | None -> FStar_Pervasives_Native.None)
 let path_result_to_solutions (ps : pattern_subject) (pt : pattern_term)
   (pairs : path_result_fwd) : solution_sequence=
   list_filter_map
@@ -7773,6 +7867,7 @@ let rec eval_property_path (p : property_path) (g : RDF_Graph.rdf_graph) :
                then []
                else [((t.RDF_Triple.o), (subject_to_term t.RDF_Triple.s))]) g in
       RDF_List_Helpers.append_tr direct_pairs inverse_pairs
+let () = eval_property_path_fwd_ref := eval_property_path
 type numeric_precision =
   | NP_Integer 
   | NP_Decimal 

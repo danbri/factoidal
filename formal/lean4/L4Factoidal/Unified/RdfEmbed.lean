@@ -48,8 +48,34 @@ import L4Factoidal.RDF.Semantics
 namespace L4Factoidal.Unified
 
 /-! ## The `urn:cl:def:` operator vocabulary
-(the unified layer owns the namespace; these three are the unified
-layer's operators). -/
+
+The unified layer owns this namespace. The constants below are its
+operators; `OWL/RLSemantics.lean` adds `listMember` and
+`typedAllMembers` and treats `"urn:cl:def:"` as a RESERVED PREFIX
+(`reservedIriPre`) to tell its internal IRIs from user data.
+
+DECISION, owner, 2026-08-26: **leave the namespace as it is.** Do not
+re-open this.
+
+The question raised and answered that day: nothing blesses `urn:cl:def:`.
+Checked against the IKL GUIDE and Hayes's 2009 reduction paper — neither
+uses URNs at all, and where the GUIDE reaches for identifiers it reuses
+`rdf:` and `xsd:` http qnames. So an http-scheme namespace would sit
+closer to the source documents' own practice.
+
+It stays anyway, and the reasoning is worth keeping: these are operator
+names internal to the embedding, not vocabulary published for anyone to
+use. A rename would touch six constants, their theorem statements, and
+the reserved-prefix check that `OWL/RLSemantics.lean` decides
+IRI-is-internal by — real churn across proved files for no change in
+meaning.
+
+This is NOT the deleted content-addressed proposition naming
+(https://github.com/danbri/factoidal/issues/626), which was Claude-
+invented, never asked for, and had no requirement behind it. These
+constants are load-bearing: `graphAsserted` compares against
+`assertsIri` directly, and `asserted_merge_sound` in
+`Unified/ClBridge.lean` is stated over it. -/
 
 /-- The literal-value operator (LBase §3.0 `LiteralValueOf`). -/
 def litOp : String := "urn:cl:def:literalValueOf"

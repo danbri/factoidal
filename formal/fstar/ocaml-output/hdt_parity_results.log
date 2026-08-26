@@ -1,27 +1,9 @@
 --- HDT stage 4 backend parity: rml-core-ontology.hdt vs ontology.nt ---
-  FAIL  unbound scan (in-memory backend exited rc=2)
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: ËÆC__eh_frame__TEXTx’C∏ë: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 2: Syntax error: word unexpected (expecting ")")/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: 
-œ˙Ì˛àÖÄ!H__PAGEZEROÿ__TEXTÄNÄN__text__TEXT»WC»Ä__stubs__TEXT‡]Cå‡]CÄ__const__TEXTpkCxCpkC__cstring__TEXTËÆCè: not found
-  FAIL  bound-S (in-memory backend exited rc=2)
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: ËÆC__eh_frame__TEXTx’C∏ë: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 2: Syntax error: word unexpected (expecting ")")
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: œ˙Ì˛àÖÄ!H__PAGEZEROÿ__TEXTÄNÄN__text__TEXT»WC»Ä__stubs__TEXT‡]Cå‡]CÄ__const__TEXTpkCxCpkC__cstring__TEXTËÆCè: not found
-  FAIL  bound-P (in-memory backend exited rc=2)
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: ËÆC__eh_frame__TEXTx’C∏ë: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: œ˙Ì˛àÖÄ!H__PAGEZEROÿ__TEXTÄNÄN__text__TEXT»WC»Ä__stubs__TEXT‡]Cå‡]CÄ__const__TEXTpkCxCpkC__cstring__TEXTËÆCè: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 2: Syntax error: word unexpected (expecting ")")
-  FAIL  bound-O (in-memory backend exited rc=2)
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: ËÆC__eh_frame__TEXTx’C∏ë: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: /home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 2: Syntax error: word unexpected (expecting ")")œ˙Ì˛àÖÄ!H__PAGEZEROÿ__TEXTÄNÄN__text__TEXT»WC»Ä__stubs__TEXT‡]Cå‡]CÄ__const__TEXTpkCxCpkC__cstring__TEXTËÆCè: not found
-
-  FAIL  ASK (in-memory backend exited rc=2)
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: ËÆC__eh_frame__TEXTx’C∏ë: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: /home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 2: œ˙Ì˛àÖÄ!H__PAGEZEROÿ__TEXTÄNÄN__text__TEXT»WC»Ä__stubs__TEXT‡]Cå‡]CÄ__const__TEXTpkCxCpkC__cstring__TEXTËÆCè: not foundSyntax error: word unexpected (expecting ")")
-
-  FAIL  COUNT (in-memory backend exited rc=2)
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: ËÆC__eh_frame__TEXTx’C∏ë: not found
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 2: Syntax error: word unexpected (expecting ")")
-/home/runner/work/factoidal/factoidal/formal/fstar/ocaml-output/factoidal: 1: œ˙Ì˛àÖÄ!H__PAGEZEROÿ__TEXTÄNÄN__text__TEXT»WC»Ä__stubs__TEXT‡]Cå‡]CÄ__const__TEXTpkCxCpkC__cstring__TEXTËÆCè: not found
+  ok    unbound scan
+  ok    bound-S
+  ok    bound-P
+  ok    bound-O
+  ok    ASK
+  ok    COUNT
 ============================================================
-hdt-stage4 parity: 0 pass, 6 fail (out of 6)
+hdt-stage4 parity: 6 pass, 0 fail (out of 6)

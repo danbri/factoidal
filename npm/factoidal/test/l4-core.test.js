@@ -406,6 +406,64 @@ test('l4-core clParse: rejects a non-string argument', async (t) => {
 });
 
 // ---------------------------------------------------------------------
+// clSerialize / clAlphaNorm / clNormalize -- wired alongside clParse
+// (owner instruction, 2026-08-26: "wire into js functional api").
+// Lean-only, same reason as clParse. `clFiniteSat` is deliberately NOT
+// wired here (see lib/api.js's comment next to the other three).
+// ---------------------------------------------------------------------
+
+test('l4-core clSerialize: round-trips CLIF text, surfacing roundTripProved as false (not hidden or defaulted)', async (t) => {
+  if (await skipUnlessOp(t, 'clSerialize')) return;
+  const r = await l4core.clSerialize(PURE_CL_TEXT);
+  assert.equal(r.ok, true);
+  assert.equal(r.sentences, 1);
+  assert.equal(typeof r.clif, 'string');
+  // roundTripProved is a real field, present and exactly `false` --
+  // `clif_roundTrip` (CL/ClifAdequacy.lean) is an OPEN lemma.
+  assert.equal('roundTripProved' in r, true);
+  assert.equal(r.roundTripProved, false);
+});
+
+test('l4-core clSerialize: rejects a non-string argument', async (t) => {
+  if (skipUnlessAvailable(t)) return;
+  await assert.rejects(() => l4core.clSerialize(42), TypeError);
+});
+
+test('l4-core clAlphaNorm: two alpha-variant sentences normalise to the same text', async (t) => {
+  if (await skipUnlessOp(t, 'clAlphaNorm')) return;
+  const a = await l4core.clAlphaNorm('(forall (x) (Boy x))');
+  const b = await l4core.clAlphaNorm('(forall (zz) (Boy zz))');
+  assert.equal(a.ok, true);
+  assert.equal(b.ok, true);
+  assert.equal(a.clif, b.clif);
+});
+
+test('l4-core clAlphaNorm: rejects a non-string argument', async (t) => {
+  if (skipUnlessAvailable(t)) return;
+  await assert.rejects(() => l4core.clAlphaNorm(42), TypeError);
+});
+
+test('l4-core clNormalize: a `that`-term reduces to a head/tail pair, with preserves and noIntrusion surfaced', async (t) => {
+  if (await skipUnlessOp(t, 'clNormalize')) return;
+  const r = await l4core.clNormalize('(P (that (Q a)))');
+  assert.equal(r.ok, true);
+  assert.equal(r.thatCount, 1);
+  assert.ok(Array.isArray(r.head) && r.head.length === 1);
+  assert.ok(Array.isArray(r.tail) && r.tail.length === 1);
+  // The reduction preserves SATISFIABILITY, not equivalence -- this
+  // field says so rather than leaving the caller to assume equivalence.
+  assert.equal(r.preserves, 'satisfiability');
+  // noIntrusion IS the proof hypothesis CL.noIntrSs decides, not a
+  // paraphrase of it; this simple non-quantified case holds.
+  assert.equal(r.noIntrusion, true);
+});
+
+test('l4-core clNormalize: rejects a non-string argument', async (t) => {
+  if (skipUnlessAvailable(t)) return;
+  await assert.rejects(() => l4core.clNormalize(42), TypeError);
+});
+
+// ---------------------------------------------------------------------
 // capabilities honesty
 // ---------------------------------------------------------------------
 

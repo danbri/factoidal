@@ -45,21 +45,33 @@ const NOT_SUPPORTED =
 // typeof-guards each one and capabilities() reports the truth.
 //
 // The resolved wasm's full dispatch surface has 21 ops
-// (`bin/linux-x86_64/l4factoidal ops`); this list wires 13 of them.
+// (`bin/linux-x86_64/l4factoidal ops`); this list wires 16 of them.
 // `clParse` reads CLIF text into a CL syntax tree and reports its
 // shape (sentence count, CL-vs-IKL dialect, canonical re-serialisation)
 // -- it never produces RDF, so it is NOT part of the IKL-to-RDF
-// projection family below. It is the first Lean-only entry in the
-// typed capability table (formal/fstar has no CL/IKL parser at all);
-// see ./select.js, which throws on `backend:'fstar'` for it rather
-// than answering from Lean silently.
+// projection family below. `clSerialize`, `clAlphaNorm` and
+// `clNormalize` join it as the same kind of entry (CLIF text in, CLIF/
+// CL text out, never RDF) -- see lib/api.js's doc comments on each for
+// what their answers are worth (clSerialize's `roundTripProved: false`,
+// clNormalize's `preserves`/`noIntrusion`). All four are Lean-only
+// entries in the typed capability table (formal/fstar has no CL/IKL
+// parser at all); see ./select.js, which throws on `backend:'fstar'`
+// for each rather than answering from Lean silently.
+//
+// `clFiniteSat` (the fifth CL/IKL op) is DEFERRED from this typed
+// layer, not excluded (owner decision, 2026-08-26): it takes a
+// caller-supplied finite-interpretation JSON encoding that has no user
+// yet, and a typed wrapper would freeze that shape before we know
+// whether it is right. It stays reachable only through the raw
+// dispatch ABI (`l4.call('clFiniteSat', [interpJson, clifText])`) --
+// see lib/api.js's comment next to the other three clNormalize/
+// clAlphaNorm/clSerialize wrappers for the same note.
 //
 // The IKL-to-RDF projection ("direction B": `clToDataset`,
 // `queryWithIklService`) was removed from the engine source on
 // 2026-08-26 (https://github.com/danbri/factoidal/issues/626): both
 // ops went through the deleted `CL/ToRdf.lean`, whose content-addressed
-// proposition graph names (`urn:cl:that:sha256:<hex>`) were never
-// asked for. They had already been held off this JS surface by owner
+// proposition graph names were never asked for. They had already been held off this JS surface by owner
 // decision (https://github.com/danbri/factoidal/issues/618 — "I don't
 // want npm code for direction b at this stage ... Take it out of npm
 // for now."), and there is now nothing to wire. The compiled wasm
@@ -98,6 +110,9 @@ const OPS = [
   'rhoDfFragmentCheck',
   'rdfsPlusClosure',
   'clParse',
+  'clSerialize',
+  'clAlphaNorm',
+  'clNormalize',
 ];
 
 async function loadLeanEntry() {
@@ -149,9 +164,12 @@ module.exports = {
   rhoDfClosure: api.rhoDfClosure,
   rhoDfFragmentCheck: api.rhoDfFragmentCheck,
   rdfsPlusClosure: api.rdfsPlusClosure,
-  // Lean-only: formal/fstar has no CL/IKL parser, so this is NOT
+  // Lean-only: formal/fstar has no CL/IKL parser, so these are NOT
   // exported from index.js/wasm.js. See the OPS comment above.
   clParse: api.clParse,
+  clSerialize: api.clSerialize,
+  clAlphaNorm: api.clAlphaNorm,
+  clNormalize: api.clNormalize,
   // Served by the Lean engine's dispatch ABI when the resolved wasm
   // carries the ops (see the header note).
   owlIsConsistent: api.owlIsConsistent,

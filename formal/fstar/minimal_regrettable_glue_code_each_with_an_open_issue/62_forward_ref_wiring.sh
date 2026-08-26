@@ -65,6 +65,17 @@ path = sys.argv[1]
 with open(path, 'r', encoding='utf-8') as f:
     content = f.read()
 
+# Marker-idempotence (2026-08-26). ocaml-patches.sh runs over the WHOLE
+# output directory, and an incremental extract leaves untouched modules
+# already patched. This script's own product is the
+# `eval_property_path_fwd_ref` declaration; if it is already there, the
+# failwith stub is correctly absent and there is nothing to do. Without
+# this guard the stub search below exits 1, which ocaml-patches.sh now
+# treats as fatal -- so an incremental extract aborted the build.
+if 'eval_property_path_fwd_ref' in content:
+    print("  Already patched (eval_property_path_fwd_ref present); skipping.")
+    sys.exit(0)
+
 # 2026-07-06 follow-up (same class of hazard fixed for issue #261 in
 # experimental_ocaml_glue/cottas_ondisk_runtime.sh, and for #57 in
 # 57_service_client_bind.sh): the ongoing RDF.Graph.Executable ->

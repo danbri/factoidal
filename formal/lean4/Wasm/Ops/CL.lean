@@ -20,7 +20,7 @@ The Common Logic / IKL op family (L4Factoidal/CL/, issue 580):
 The `clToDataset` and `queryWithIklService` ops are REMOVED
 (https://github.com/danbri/factoidal/issues/626). They served the
 IKL-to-RDF projection built on content-addressed proposition graph
-names (`urn:cl:that:sha256:<hex>`), which is deleted.
+names, which is deleted.
 
 ## What each op's answer is worth
 

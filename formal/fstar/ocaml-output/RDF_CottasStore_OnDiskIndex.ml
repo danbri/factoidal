@@ -1,31 +1,165 @@
 open Prims
+
+(* vav3: companion mmap implementations installed (issue #100, 2026-04-26).
+   Per-path mmap'd Bigarray.Array1.t bytes for each .dict + .presence
+   companion file. Held for the lifetime of the process. *)
+module Vav3_mmap = struct
+  open Stdlib
+  (* `open Prims` at the top of this file (via `let cotd_magic_u32 : Prims.nat`)
+     shadows `int` with `Prims.int = Z.t`. We need plain machine ints here
+     for offsets, so alias them. *)
+  type pint = Stdlib.Int.t
+
+  type mmap_view = {
+    mv_path : string;
+    mv_size : pint;
+    mv_data : (Stdlib.Char.t, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t;
+    mv_fd   : Unix.file_descr;
+  }
+
+  let views : (string, mmap_view) Hashtbl.t = Hashtbl.create 17
+
+  (* Open a path read-only and mmap the whole file. Returns Some size on
+     success. None if the file doesn't exist or is empty. *)
+  let try_open_mmap (path : string) : pint option =
+    match Hashtbl.find_opt views path with
+    | Some v -> Some v.mv_size
+    | None ->
+      try
+        let fd = Unix.openfile path [Unix.O_RDONLY] 0 in
+        let st = Unix.fstat fd in
+        let size = st.Unix.st_size in
+        if size = 0 then begin Unix.close fd; None end
+        else begin
+          (* Bigarray.array1_of_genarray + Unix.map_file mmaps into a
+             Bigarray. We then keep the genarray-derived array1 alive in
+             the views hashtbl. *)
+          let ga = Unix.map_file fd Bigarray.Char Bigarray.c_layout false [|size|] in
+          let a1 = Bigarray.array1_of_genarray ga in
+          let v : mmap_view = {
+            mv_path = path;
+            mv_size = size;
+            mv_data = a1;
+            mv_fd = fd;
+          } in
+          Hashtbl.replace views path v;
+          Some size
+        end
+      with _ -> None
+
+  let close_mmap (path : string) : unit =
+    match Hashtbl.find_opt views path with
+    | None -> ()
+    | Some v ->
+      (try Unix.close v.mv_fd with _ -> ());
+      Hashtbl.remove views path
+
+  let view_for (path : string) : mmap_view option =
+    match Hashtbl.find_opt views path with
+    | Some v -> Some v
+    | None ->
+      (* Open lazily: F* may call read_companion_* without an explicit open. *)
+      match try_open_mmap path with
+      | None -> None
+      | Some _ -> Hashtbl.find_opt views path
+
+  let read_byte_int (path : string) (offset : pint) : pint option =
+    match view_for path with
+    | None -> None
+    | Some v ->
+      if offset < 0 || offset >= v.mv_size then None
+      else Some (Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data offset))
+
+  let read_u32_le_int (path : string) (offset : pint) : pint option =
+    match view_for path with
+    | None -> None
+    | Some v ->
+      if offset < 0 || offset + 4 > v.mv_size then None
+      else
+        let b0 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data offset) in
+        let b1 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 1)) in
+        let b2 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 2)) in
+        let b3 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 3)) in
+        Some (b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24))
+
+  (* Note: u64 read assumes the value fits in OCaml's native int (63-bit
+     on 64-bit). Our companion files are <= a few hundred MB so all u64
+     fields (token byte offsets) are well below 2^62. We sanity-check
+     and return None if the high bit looks set. *)
+  let read_u64_le_int (path : string) (offset : pint) : pint option =
+    match view_for path with
+    | None -> None
+    | Some v ->
+      if offset < 0 || offset + 8 > v.mv_size then None
+      else
+        let b0 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data offset) in
+        let b1 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 1)) in
+        let b2 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 2)) in
+        let b3 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 3)) in
+        let b4 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 4)) in
+        let b5 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 5)) in
+        let b6 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 6)) in
+        let b7 = Stdlib.Char.code (Bigarray.Array1.unsafe_get v.mv_data (offset + 7)) in
+        if b7 >= 0x80 then None  (* would not fit in 63-bit int *)
+        else
+          let lo = b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24) in
+          let hi = b4 lor (b5 lsl 8) lor (b6 lsl 16) lor (b7 lsl 24) in
+          Some (lo lor (hi lsl 32))
+
+  let read_string (path : string) (offset : pint) (count : pint) : string option =
+    match view_for path with
+    | None -> None
+    | Some v ->
+      if offset < 0 || count < 0 || offset + count > v.mv_size then None
+      else
+        let buf = Stdlib.Bytes.create count in
+        for i = 0 to count - 1 do
+          Stdlib.Bytes.unsafe_set buf i (Bigarray.Array1.unsafe_get v.mv_data (offset + i))
+        done;
+        Some (Stdlib.Bytes.unsafe_to_string buf)
+
+  let file_size (path : string) : pint option =
+    if not (Sys.file_exists path) then None
+    else try
+      let st = Unix.stat path in
+      if st.Unix.st_size <= 0 then None else Some st.Unix.st_size
+    with _ -> None
+end
+
+
 let cotd_magic_u32 : Prims.nat= (Prims.parse_int "0x44544f43")
 let cotp_magic_u32 : Prims.nat= (Prims.parse_int "0x50544f43")
 let layout_version : Prims.nat= Prims.int_one
 let mmap_companion_open (path : Prims.string) :
   Prims.nat FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.OnDiskIndex.mmap_companion_open"
+  match Vav3_mmap.try_open_mmap path with
+  | None -> FStar_Pervasives_Native.None
+  | Some n -> FStar_Pervasives_Native.Some (Z.of_int n)
 let read_companion_u32_le (path : Prims.string) (offset : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.OnDiskIndex.read_companion_u32_le"
+  match Vav3_mmap.read_u32_le_int path (Z.to_int offset) with
+  | None -> FStar_Pervasives_Native.None
+  | Some n -> FStar_Pervasives_Native.Some (Z.of_int n)
 let read_companion_u64_le (path : Prims.string) (offset : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.OnDiskIndex.read_companion_u64_le"
+  match Vav3_mmap.read_u64_le_int path (Z.to_int offset) with
+  | None -> FStar_Pervasives_Native.None
+  | Some n -> FStar_Pervasives_Native.Some (Z.of_int n)
 let read_companion_byte (path : Prims.string) (offset : Prims.nat) :
   Prims.nat FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.OnDiskIndex.read_companion_byte"
+  match Vav3_mmap.read_byte_int path (Z.to_int offset) with
+  | None -> FStar_Pervasives_Native.None
+  | Some n -> FStar_Pervasives_Native.Some (Z.of_int n)
 let read_companion_string (path : Prims.string) (offset : Prims.nat)
   (count : Prims.nat) : Prims.string FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.OnDiskIndex.read_companion_string"
+  match Vav3_mmap.read_string path (Z.to_int offset) (Z.to_int count) with
+  | None -> FStar_Pervasives_Native.None
+  | Some s -> FStar_Pervasives_Native.Some s
 let companion_file_size (path : Prims.string) :
   Prims.nat FStar_Pervasives_Native.option=
-  failwith
-    "Not yet implemented: RDF.CottasStore.OnDiskIndex.companion_file_size"
+  match Vav3_mmap.file_size path with
+  | None -> FStar_Pervasives_Native.None
+  | Some n -> FStar_Pervasives_Native.Some (Z.of_int n)
 type dict_header =
   {
   dh_magic: Prims.nat ;

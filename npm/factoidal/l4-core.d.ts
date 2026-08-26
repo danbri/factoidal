@@ -66,6 +66,61 @@ export function clParse(clifText: string): Promise<{
   normalized: string;
 }>;
 
+// Lean-only, same reason as clParse. Reads CLIF text and writes it
+// back out in canonical spacing. `roundTripProved` is ALWAYS `false`:
+// `clif_roundTrip` (CL/ClifAdequacy.lean) is an OPEN lemma -- the
+// fragment boundary `marksLexable` is MEASURED, not proved. The field
+// is surfaced, not dropped or defaulted away, so a caller does not
+// have to go find that out.
+export function clSerialize(clifText: string): Promise<{
+  ok: boolean;
+  clif: string;
+  sentences: number;
+  roundTripProved: false;
+}>;
+
+// Lean-only, same reason as clParse. Alpha-normalises CLIF text: the
+// canonical representative of each sentence's bound-variable-renaming
+// equivalence class -- IKL GUIDE Appendix B condition (1), renaming a
+// bound variable does not change the proposition expressed. Two
+// sentences that differ only in bound-variable names produce
+// byte-identical `clif` output.
+export function clAlphaNorm(clifText: string): Promise<{
+  ok: boolean;
+  clif: string;
+  sentences: number;
+}>;
+
+// Lean-only, same reason as clParse. Hayes's reduction of IKL to
+// Common Logic (danbri/factoidal#625), over a whole text.
+//
+// `preserves: "satisfiability"` -- the reduction preserves
+// satisfiability, NOT equivalence. It suits entailment and consistency
+// testing; it is not a transformation to apply to data you intend to
+// keep.
+//
+// `noIntrusion` IS the proof hypothesis `CL.noIntrSs [] []` decides,
+// not a paraphrase of it. The transformation runs and returns output
+// either way; when `noIntrusion` is `false`, `tails_satisfiable` /
+// `normalize_preserves` do not cover that output.
+export function clNormalize(clifText: string): Promise<{
+  ok: boolean;
+  head: string[];
+  tail: string[];
+  clif: string;
+  sentences: number;
+  thatCount: number;
+  noIntrusion: boolean;
+  preserves: 'satisfiability';
+  provedUnder: string;
+}>;
+
+// clFiniteSat is DEFERRED from this typed surface (owner decision,
+// 2026-08-26), not excluded: it takes a caller-supplied finite-
+// interpretation JSON encoding that has no user yet. Reachable only
+// through the raw dispatch ABI (`l4.call('clFiniteSat', [interpJson,
+// clifText])`), which needs no typed shape commitment here.
+
 // Present on the surface, NOT implemented by the Lean engine: each
 // rejects with an engine-capability error so an engine swap fails
 // loudly rather than with `undefined is not a function`.
