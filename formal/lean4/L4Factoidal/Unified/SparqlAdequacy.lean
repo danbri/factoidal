@@ -712,4 +712,269 @@ theorem unified_adequate_bgp (b : SPARQL.Bgp) (g : RDF.Graph)
     exact patternAtom_reflect (hb tp htp) hg
       ((satisfies_bgpBody_iff (herbQ g) mu b).mp hsat tp htp)
 
+/-! ## The evaluator side, completeness
+
+The remaining half: a mapping that instantiates the whole pattern into
+the graph is one the evaluator RETURNS — up to what the module header
+lists as the two things a semantic condition cannot see, binding-list
+ORDER and the COARSENESS of `Term.eqb`. So the conclusion is the
+existence of a returned mapping that agrees with the given one on the
+pattern's variables by engine equality, not membership on the nose.
+
+`BgpTtFree` is carried here for a second, independent reason: the
+triple-term arm of `tryBindTerm` recurses through sub-positions with
+intermediate mappings, which would need the whole lemma family again
+one level down. Recorded as the stage's boundary row. -/
+
+section Complete
+
+open L4Factoidal.SPARQL
+
+/-- Every binding `mu` makes is engine-equal to the target's. -/
+def BindingCompat (mu target : Binding) : Prop :=
+  ∀ v u, mu.lookup v = some u →
+    ∃ u', target.lookup v = some u' ∧ RDF.Term.eqb u u' = true
+
+theorem bindingCompat_empty (target : Binding) :
+    BindingCompat Binding.empty target := by
+  intro v u h
+  simp [Binding.empty, Binding.lookup] at h
+
+theorem bindingCompat_bind {mu target : Binding} {v : VarName} {t t' : RDF.Term}
+    (hc : BindingCompat mu target) (ht : target.lookup v = some t')
+    (he : RDF.Term.eqb t t' = true) : BindingCompat (mu.bind v t) target := by
+  intro w u hw
+  simp only [Binding.bind, Binding.lookup] at hw
+  by_cases hvw : v = w
+  · subst hvw
+    rw [if_pos rfl] at hw
+    cases hw
+    exact ⟨t', ht, he⟩
+  · rw [if_neg hvw] at hw
+    exact hc w u hw
+
+theorem isSome_of_extends {mu mu' : Binding} {v : VarName}
+    (he : Extends mu mu') (h : (mu.lookup v).isSome = true) :
+    (mu'.lookup v).isSome = true := by
+  cases hl : mu.lookup v with
+  | none => rw [hl] at h; exact absurd h (by simp)
+  | some u => rw [he v u hl]; rfl
+
+/-- Instantiating a predicate position and instantiating it as an
+object agree where the first succeeds. -/
+theorem instObject_of_constructPredicate {mu : Binding} {pt : PatternTerm}
+    {p : RDF.WfIri} (h : constructPredicate pt mu = some p) :
+    instObject id mu pt = some (.iri p) := by
+  cases pt with
+  | iri i =>
+      simp only [constructPredicate, Option.some.injEq] at h
+      subst h; rfl
+  | bnode _ => simp [constructPredicate] at h
+  | literal _ => simp [constructPredicate] at h
+  | tripleTerm _ _ _ => simp [constructPredicate] at h
+  | var v =>
+      simp only [constructPredicate] at h
+      simp only [instObject]
+      split at h <;> simp_all
+
+theorem tryBindSubject_complete {ps : PatternSubject} {s s' : RDF.Subject}
+    {mu target : Binding} (htt : PatternSubjectTtFree ps)
+    (hinst : instSubject id target ps = some s')
+    (heq : RDF.Subject.eqb s' s = true) (hc : BindingCompat mu target) :
+    ∃ mu1, tryBindSubject ps s mu = some mu1 ∧ BindingCompat mu1 target ∧
+      Extends mu mu1 ∧ ∀ v ∈ patternSubjectVars ps, (mu1.lookup v).isSome = true := by
+  have hss : s' = s := RDF.Subject.eqb_eq heq
+  subst hss
+  cases ps with
+  | tripleTerm _ _ _ => exact absurd htt (by simp [PatternSubjectTtFree])
+  | iri i =>
+      simp only [instSubject, Option.some.injEq] at hinst
+      subst hinst
+      exact ⟨mu, by simp [tryBindSubject], hc, Extends.refl mu,
+        by simp [patternSubjectVars]⟩
+  | bnode b =>
+      simp only [instSubject, Option.some.injEq] at hinst
+      subst hinst
+      exact ⟨mu, by simp [tryBindSubject], hc, Extends.refl mu,
+        by simp [patternSubjectVars]⟩
+  | var v =>
+      have hl : target.lookup v = some s'.toTerm := by
+        simp only [instSubject] at hinst
+        split at hinst <;>
+          first
+            | (simp only [Option.some.injEq] at hinst; subst hinst;
+               simp_all [RDF.Subject.toTerm])
+            | simp at hinst
+      cases hm : mu.lookup v with
+      | none =>
+          refine ⟨mu.bind v s'.toTerm, by simp [tryBindSubject, hm], ?_,
+            Extends.bind hm, ?_⟩
+          · exact bindingCompat_bind hc hl (RDF.Term.eqb_refl _)
+          · intro w hw
+            simp only [patternSubjectVars, List.mem_singleton] at hw
+            subst hw
+            simp [Binding.bind, Binding.lookup]
+      | some existing =>
+          obtain ⟨u', hu', hue⟩ := hc v existing hm
+          rw [hl, Option.some.injEq] at hu'
+          subst hu'
+          refine ⟨mu, by simp [tryBindSubject, hm, hue], hc, Extends.refl mu, ?_⟩
+          intro w hw
+          simp only [patternSubjectVars, List.mem_singleton] at hw
+          subst hw
+          rw [hm]; rfl
+
+theorem tryBindTerm_complete {pt : PatternTerm} {t t' : RDF.Term}
+    {mu target : Binding} (htt : PatternTermTtFree pt)
+    (hinst : instObject id target pt = some t')
+    (heq : RDF.Term.eqb t' t = true) (hc : BindingCompat mu target) :
+    ∃ mu1, tryBindTerm pt t mu = some mu1 ∧ BindingCompat mu1 target ∧
+      Extends mu mu1 ∧ ∀ v ∈ patternTermVars pt, (mu1.lookup v).isSome = true := by
+  cases pt with
+  | tripleTerm _ _ _ => exact absurd htt (by simp [PatternTermTtFree])
+  | iri i =>
+      simp only [instObject, Option.some.injEq] at hinst
+      subst hinst
+      cases t with
+      | iri j =>
+          have : i = j := Subtype.ext (by simpa [RDF.Term.eqb] using heq)
+          subst this
+          exact ⟨mu, by simp [tryBindTerm], hc, Extends.refl mu,
+            by simp [patternTermVars]⟩
+      | bnode _ => simp [RDF.Term.eqb] at heq
+      | literal _ => simp [RDF.Term.eqb] at heq
+      | tripleTerm _ _ _ => simp [RDF.Term.eqb] at heq
+  | bnode b =>
+      simp only [instObject, Option.some.injEq] at hinst
+      subst hinst
+      cases t with
+      | bnode c =>
+          have : b = c := by simpa [RDF.Term.eqb] using heq
+          subst this
+          exact ⟨mu, by simp [tryBindTerm], hc, Extends.refl mu,
+            by simp [patternTermVars]⟩
+      | iri _ => simp [RDF.Term.eqb] at heq
+      | literal _ => simp [RDF.Term.eqb] at heq
+      | tripleTerm _ _ _ => simp [RDF.Term.eqb] at heq
+  | literal l =>
+      simp only [instObject, Option.some.injEq] at hinst
+      subst hinst
+      cases t with
+      | literal m =>
+          have hlm : l.val.eqb m.val = true := by simpa [RDF.Term.eqb] using heq
+          exact ⟨mu, by simp [tryBindTerm, hlm], hc, Extends.refl mu,
+            by simp [patternTermVars]⟩
+      | iri _ => simp [RDF.Term.eqb] at heq
+      | bnode _ => simp [RDF.Term.eqb] at heq
+      | tripleTerm _ _ _ => simp [RDF.Term.eqb] at heq
+  | var v =>
+      simp only [instObject] at hinst
+      cases hm : mu.lookup v with
+      | none =>
+          refine ⟨mu.bind v t, by simp [tryBindTerm, hm], ?_,
+            Extends.bind hm, ?_⟩
+          · exact bindingCompat_bind hc hinst (by rw [RDF.Term.eqb_symm]; exact heq)
+          · intro w hw
+            simp only [patternTermVars, List.mem_singleton] at hw
+            subst hw
+            simp [Binding.bind, Binding.lookup]
+      | some existing =>
+          obtain ⟨u', hu', hue⟩ := hc v existing hm
+          rw [hinst, Option.some.injEq] at hu'
+          subst hu'
+          have hex : existing.eqb t = true := RDF.Term.eqb_trans hue heq
+          refine ⟨mu, by simp [tryBindTerm, hm, hex], hc, Extends.refl mu, ?_⟩
+          intro w hw
+          simp only [patternTermVars, List.mem_singleton] at hw
+          subst hw
+          rw [hm]; rfl
+
+theorem tpMatch_complete {tp : TriplePattern} {t t' : RDF.Triple}
+    {mu target : Binding} (htt : TpTtFree tp)
+    (hinst : instTriple id target tp = some t') (heq : RDF.Triple.eqb t' t = true)
+    (hc : BindingCompat mu target) :
+    ∃ mu1, tpMatch tp t mu = some mu1 ∧ BindingCompat mu1 target ∧
+      Extends mu mu1 ∧ ∀ v ∈ tpVars tp, (mu1.lookup v).isSome = true := by
+  obtain ⟨hts, htp, hto⟩ := htt
+  simp only [RDF.Triple.eqb, Bool.and_eq_true, beq_iff_eq] at heq
+  obtain ⟨⟨hes, hep⟩, heo⟩ := heq
+  simp only [instTriple] at hinst
+  split at hinst
+  · exact absurd hinst (by simp)
+  · next s0 h1 =>
+      split at hinst
+      · exact absurd hinst (by simp)
+      · next p0 h2 =>
+          split at hinst
+          · exact absurd hinst (by simp)
+          · next o0 h3 =>
+              cases hinst
+              obtain ⟨mu1, hm1, hc1, he1, hv1⟩ :=
+                tryBindSubject_complete hts h1 hes hc
+              obtain ⟨mu2, hm2, hc2, he2, hv2⟩ :=
+                tryBindTerm_complete htp (instObject_of_constructPredicate h2)
+                  (show RDF.Term.eqb (.iri p0) (.iri t.p) = true by
+                    rw [show p0 = t.p from hep]; exact RDF.Term.eqb_refl _) hc1
+              obtain ⟨mu3, hm3, hc3, he3, hv3⟩ :=
+                tryBindTerm_complete hto h3 heo hc2
+              refine ⟨mu3, by simp only [tpMatch, hm1, hm2, hm3], hc3,
+                (he1.trans he2).trans he3, ?_⟩
+              intro w hw
+              simp only [tpVars, List.mem_append] at hw
+              rcases hw with (hw | hw) | hw
+              · exact isSome_of_extends (he2.trans he3) (hv1 w hw)
+              · exact isSome_of_extends he3 (hv2 w hw)
+              · exact hv3 w hw
+
+theorem evalBgpFrom_complete {g : RDF.Graph} : ∀ (b : Bgp), BgpTtFree b →
+    ∀ {mu target : Binding}, BgpMatches target b g → BindingCompat mu target →
+      ∃ mu', mu' ∈ evalBgpFrom g b mu ∧ BindingCompat mu' target ∧
+        ∀ v ∈ bgpVars b, (mu'.lookup v).isSome = true := by
+  intro b
+  induction b with
+  | nil =>
+      intro _ mu target _ hc
+      exact ⟨mu, by simp [evalBgpFrom], hc, by simp [bgpVars]⟩
+  | cons tp rest ih =>
+      intro hb mu target hmatch hc
+      obtain ⟨t', hinst, hmem⟩ := hmatch tp (List.mem_cons_self ..)
+      obtain ⟨t, ht, hte⟩ := RDF.exists_of_graphMem hmem
+      obtain ⟨mu1, hm1, hc1, he1, hv1⟩ :=
+        tpMatch_complete (hb tp (List.mem_cons_self ..)) hinst
+          (by rw [RDF.Triple.eqb_symm]; exact hte) hc
+      obtain ⟨mu', hmem', hc', hv'⟩ :=
+        ih (fun u hu => hb u (List.mem_cons_of_mem _ hu))
+          (fun u hu => hmatch u (List.mem_cons_of_mem _ hu)) hc1
+      refine ⟨mu', ?_, hc', ?_⟩
+      · simp only [evalBgpFrom, List.mem_flatMap]
+        exact ⟨mu1, List.mem_filterMap.mpr ⟨t, ht, hm1⟩, hmem'⟩
+      · intro w hw
+        simp only [bgpVars, List.flatMap_cons, List.mem_append] at hw
+        rcases hw with hw | hw
+        · exact isSome_of_extends (evalBgpFrom_extends rest hmem') (hv1 w hw)
+        · exact hv' w hw
+
+/-- **Evaluator completeness at the pivot**: a mapping that
+instantiates the whole pattern into the graph has a counterpart the
+evaluator RETURNS, agreeing with it on every variable of the pattern
+by engine equality.
+
+The conclusion is agreement rather than `target ∈ evalBgp b g` because
+binding-list ORDER and the COARSENESS of `Term.eqb` are both invisible
+to `BgpMatches` — see the module header. `BgpTtFree` is the fragment
+guard; the boundary row records it. -/
+theorem bgp_eval_complete {b : Bgp} {g : RDF.Graph} {target : Binding}
+    (hb : BgpTtFree b) (h : BgpMatches target b g) :
+    ∃ mu', mu' ∈ evalBgp b g ∧
+      ∀ v ∈ bgpVars b, ∃ u u', target.lookup v = some u ∧
+        mu'.lookup v = some u' ∧ RDF.Term.eqb u' u = true := by
+  obtain ⟨mu', hmem, hc, hv⟩ :=
+    evalBgpFrom_complete b hb h (bindingCompat_empty target)
+  refine ⟨mu', hmem, fun v hvm => ?_⟩
+  obtain ⟨u', hl⟩ := Option.isSome_iff_exists.mp (hv v hvm)
+  obtain ⟨u, hu, hue⟩ := hc v u' hl
+  exact ⟨u, u', hu, hl, hue⟩
+
+end Complete
+
 end L4Factoidal.Unified
