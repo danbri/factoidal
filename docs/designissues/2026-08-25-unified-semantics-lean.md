@@ -8,7 +8,12 @@ No code lands with this document. Every Lean signature and theorem
 statement below is a proposal; each one becomes real only in the stage
 that proves it, under that stage's gate.
 
-Stages 1-7 have since landed. Read this document with the correction
+Stages 1-7 have since landed, and so has the §4.7 RIF Core stage that
+correction note 15 deferred (`Unified/RifEmbed.lean`, 2026-08-26,
+[https://github.com/danbri/factoidal/issues/612](https://github.com/danbri/factoidal/issues/612);
+correction notes 38-41 — its gate theorems are full iffs against the
+Datalog least fixpoint, NOT against the native RIF engine, for the
+reason note 38 gives). Read this document with the correction
 notes below, which record where the implementation contradicted it.
 The stage 7 account of what was proved, at what strength, with the
 named gaps and the defects the proof attempts found, is
@@ -684,6 +689,101 @@ spirit as 1-26:
     `urn:cl:def:literalValueOf` and `urn:cl:def:tripleTerm`.
     `dataset_decoration_asserts_nothing` is what survives of the
     RDF 1.1 neutrality: an undecorated named graph asserts nothing.
+
+### RIF Core stage correction notes (2026-08-26, issue 612)
+
+`Unified/RifEmbed.lean` landed: the deferred §4.7 stage that
+correction note 15 split out of stage 3. Four notes.
+
+38. **§4.7's `unified_adequate_rifCore` is NOT landed against the
+    native engine, and cannot be while three definitions are
+    `partial`.** The sketch puts `t ∈ RIF.Engine.saturate rs g fuel`
+    on the left. `RIF/Engine.lean`'s `groundTm`, `matchFormula` and
+    `qualifyTm` are `partial def`. A Lean `partial def` compiles to an
+    opaque constant: it has no equation lemmas, the kernel cannot
+    reduce it, and nothing about what it COMPUTES is available to a
+    proof. The theorem needs exactly the missing fact — that a
+    substitution `matchFormula` returns makes the body true in the
+    fact set — so it cannot be stated, let alone proved.
+    `RIF/EngineTheorems.lean` was already written around this limit:
+    its `Licensed` predicate MENTIONS `matchFormula`'s output rather
+    than characterising it, which is why that module proves
+    PROVENANCE and its own header declines to call the result
+    soundness. `decide` is blocked for the same reason, so not even a
+    concrete instance can be a theorem.
+
+    Landed instead: the same gate theorem with `DatalogProgram.lfp` —
+    the total least fixpoint of the SAME rules read as a Datalog
+    program — on the left. `rifCore_lfp_iff_entails_atom` (n-ary) and
+    `rifCore_lfp_iff_entails` (§4.7's triple shape) are FULL IFFs,
+    obtained by instantiating stage 3's two generic theorems rather
+    than re-proving them. Agreement with
+    `RIF.Saturate.saturateGraph` is pinned by
+    `rifEngineDatalogAgrees` `#guard`s under COMPILED evaluation,
+    which can see through the `partial def`s — evidence at the
+    strength of note 14's RDFS-Plus pins, not a theorem. Making the
+    three definitions total is the named prerequisite; it is a change
+    to `RIF/Engine.lean` and therefore its own piece of work.
+
+    Two smaller corrections in the same sketch: there is no
+    `RIF.RuleSet` type (a rule set is `List RIF.Rule`; `RifRuleSet`
+    abbreviates it locally rather than editing `RIF/Syntax.lean`), and
+    no `RIF.Engine.saturate` (the graph-level entry point is
+    `RIF.Saturate.saturateGraph`).
+
+39. **The desugaring lands on the unified layer's OWN triple
+    predications, and that fixes the fragment.** §4.7 asked for RIF
+    Core rules "over the same triple predications the rest of the
+    unified layer uses". That is achievable — and it is what makes
+    this stage different from `Unified/DatalogClosures.lean`, which
+    encodes RDF terms into a tagged constant vocabulary (`"i:"` /
+    `"b:"`) and therefore states its entailments over sentences of
+    that vocabulary rather than over `tripleAtom`. Here a `rif:iri`
+    constant with a well-formed IRI lexical form maps to the IRI
+    STRING ITSELF, so `(rifTripleFact t).sentence = tripleAtom t`
+    holds definitionally on the fragment, and the premise list is
+    satisfaction-equivalent to `[rdfToTheorySk g]`
+    (`satisfiesAll_tripleAtoms_iff`). The conclusion is
+    `rdfToTheory [t]` exactly as §4.7 writes it.
+
+    The price is the fragment: `TripleIriOnly` / `GraphIriOnly`.
+    Blank nodes are excluded because `Unified/RdfEmbed.lean` spells a
+    blank-node bound name COLON-FREE by construction and the Datalog
+    class requires a constant to contain a colon; literals are
+    excluded because `embedTerm` maps a literal to a FUNCTIONAL term
+    and the class has no function symbols. Both are consequences of
+    the class and of stage 1's freshness decision, not of any choice
+    made here. Off the fragment `rifCoreConstName` mints a reserved
+    `urn:rif:c:` name and nothing is proved about it.
+
+40. **RIF-DTB built-ins, `Equal`, `Or` and `Exists` are outside the
+    class, and the module says so with `decide`d rejection
+    theorems.** The Datalog class has no equality atom, no built-in
+    predicate, no disjunctive body and no existentially quantified
+    body variable, so all 197 RIF-DTB built-ins are outside it. This
+    is a narrower fragment than the native engine covers: the engine
+    decides a named subset of the built-ins and answers `.undecided`
+    for the rest, whereas the unified layer says nothing at all about
+    a rule that uses one. `rifEqualBodyRule_rejected`,
+    `rifBuiltinBodyRule_rejected`, `rifOrBodyRule_rejected`,
+    `rifFunctionTermRule_rejected` and
+    `rifExistentialHeadRule_rejected` pin each exclusion; the last is
+    the class's definiteness gate doing the same job RIF's own
+    `ruleSafe` does.
+
+41. **`RIF.collectAtoms` had to be restated structurally, and that is
+    a fact about `decide`, not about the function.**
+    `RIF/Translation.lean`'s `collectAtoms` recurses through a `foldr`
+    closure over `List Formula`, so Lean compiles it by WELL-FOUNDED
+    recursion, and a well-founded definition does not reduce in the
+    kernel — every `decide` in this module would have got stuck on
+    it. `rifCollect` / `rifCollectList` is its structural twin,
+    clause for clause, mutual over the nested `Formula` /
+    `List Formula` inductive. The two are pinned against each other by
+    `#guard` on every rule the module names, the rejected boundary
+    shapes included. Nothing here says `collectAtoms` is wrong; the
+    same pattern will recur wherever a `decide`d instance needs a
+    function the elaborator compiled by well-founded recursion.
 
 ## 1. Goal and provenance
 
