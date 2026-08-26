@@ -33,10 +33,15 @@ variable's name by the embedding of the term it is bound to.
    The narrowing AGREES with the Skolem reading `rdfToTheorySk` used
    here (both then read the label as one free constant), so the gate
    theorem below is a full iff — but on patterns that contain a blank
-   node it is adequate TO THE ENGINE, not to the specification.
+   node it is adequate TO THE ENGINE AT `evalBgp`, not to the
+   specification.
    `bgpBnodeFree` is the decidable fragment guard on which the two
-   readings coincide, and `unified_adequate_bgp_bnodeFree` is the
-   corollary that carries it.
+   readings coincide. It is no longer ASSUMED of the user's pattern:
+   `Query.evalSelect` runs `QueryPattern.rewriteBnodes` first, so the
+   pattern the algebra sees is `b.map rewriteBnodeTriple`, and
+   `SparqlAdequacy.bgpBnodeFree_rewriteBnodes` proves that pattern
+   satisfies the guard. `unified_adequate_bgp_spec` is the gate
+   theorem stated over it, with no blank-node hypothesis.
 2. **No multiplicity claim** (design document §5.4). Everything here
    is at the solution-mapping level: `Answers` is a `Prop`, and the
    evaluator side speaks of MEMBERSHIP in `evalBgp b g`. How many

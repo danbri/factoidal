@@ -896,6 +896,63 @@ correction note 15 split out of stage 3. Four notes.
     same pattern will recur wherever a `decide`d instance needs a
     function the elaborator compiled by well-founded recursion.
 
+### SPARQL above the BGP — correction notes (2026-08-26, issue 614)
+
+42. **Stage 6's `bgpBnodeFree` guard described the WRONG entry point,
+    and the engine had a smaller defect than the guard implied.**
+    [https://github.com/danbri/factoidal/issues/607](https://github.com/danbri/factoidal/issues/607)
+    reads `SPARQL/Algebra.lean`'s `tryBindSubject` / `tryBindTerm`
+    correctly: they match a pattern `.bnode b` only against a graph
+    `.bnode b'` with `b == b'`, which is not §18.3.1's pattern
+    instance mapping. What the issue did not see is that the QUERY
+    path never reaches those functions with a raw pattern.
+    `Query.evalSelect`, `evalAsk` and `evalConstruct` run
+    `QueryPattern.rewriteBnodes` first, turning every WHERE-clause
+    blank node into the variable `_bnode_<label>` and stripping it
+    again at projection (`stripSyntheticBnodeVars`, §18.2.4 OutScope).
+    That is why the sparql11 entailment suite passes `rdf03` ("RDF
+    test for blank node cardinalities", two rows from a data graph
+    whose blank-node labels do not match the query's) and the
+    `sparqldl-05`/`-06`/`-07`/`-08`/`-09` undistinguished-variable
+    tests.
+
+    The REAL residue was one step further in: the rewrite did not
+    enter embedded expressions, so an `EXISTS { … _:b … }` body kept
+    its blank nodes. Measured 2026-08-26, in BOTH trees,
+    `SELECT ?x { ?x ex:b1 ?o FILTER EXISTS { ?x ex:b1 _:d } }`
+    returned no rows where every row is a solution. Repaired in the
+    Lean tree by `Expr.rewriteBnodes` (arm for arm over `Expr`, no
+    catch-all) plus rewriting the FILTER / OPTIONAL / BIND / SELECT /
+    GROUP BY / HAVING / ORDER BY expressions; a CONSTRUCT template and
+    a DESCRIBE target list are deliberately NOT rewritten, because
+    §16.2 makes a template blank node fresh per solution. A SERVICE
+    body is left alone: it is a query for a remote endpoint, which
+    applies §18.3.1 itself. **The F\* tree still has the residue** —
+    `SPARQL11.Algebra.fst`'s `substitute_existentials` leaves the
+    body verbatim — and that half stays open on issue 607.
+
+    Theorem consequence: `unified_adequate_bgp_bnodeFree` is REMOVED.
+    Its `bgpBnodeFree b = true` hypothesis did no work in the proof
+    (the body was `unified_adequate_bgp b g mu hg hb`); it was a
+    marker saying which instances were specification claims.
+    `unified_adequate_bgp_spec` replaces it: the same full iff, stated
+    over `b.map SPARQL.rewriteBnodeTriple` — the pattern the query
+    path actually matches — with the blank-node guard PROVED by
+    `bgpBnodeFree_rewriteBnodes` rather than assumed. Its only
+    hypotheses are `RDF.GraphTtFree g` and `BgpTtFree b`. Non-vacuity
+    is pinned: `bgpBnodeFree wBbn = false` while
+    `bgpBnodeFree (wBbn.map rewriteBnodeTriple) = true`, and
+    `bgpMatchesCheck muBn wBbn wG` is FALSE where
+    `bgpMatchesCheck muBn (wBbn.map rewriteBnodeTriple) wG` is TRUE.
+
+    Regression pins for the engine half are `#guard`s in
+    `SPARQL/QueryTests.lean`, written before the fix and confirmed
+    failing on exactly the two EXISTS rows. No W3C sparql11 or
+    sparql12 test exercises a blank node inside an EXISTS body
+    (checked by grep over every `.rq` in both suites), which is why
+    they are `#guard`s and not a manifest row — the same
+    missing-pressure shape the issue itself predicted.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
