@@ -612,14 +612,23 @@ left implicit in the code, which is what
 
 ## `partial def` and what it cost
 
-`ShEx/` carries 40 `partial def` declarations
-(<https://github.com/danbri/factoidal/issues/617>), and this work
-added seven more (`matchStates`, `mentionedPairsWith`'s helper
-`tripleConstraintsWith`, `flattenSE` and its two mutual partners,
-`chainResidueOk`, `satisfiesLabel`, `directExtends`, `reachesLabel`).
-It cost no pin here: `#guard` in this toolchain evaluates through the
-compiler, not the kernel, so the `ShapesTests.lean` guards DO see
-through `satisfiesShape` even though it calls the `partial`
-`matchStates` — three new guards pinning the EXTRA over-run rule were
-added and pass. It would cost a THEOREM, and no theorem is claimed
-about any of it.
+<https://github.com/danbri/factoidal/issues/617> counts 40 `partial
+def` declarations in `ShEx/`. This work took the count to 50: it
+removed two (`matchTripleExpr`, `matchTripleExprWith`) and added
+twelve — `matchStates` and `tripleConstraintsWith` in `Shapes.lean`,
+and `findTeInShapeExpr`, `findTeInTripleExpr`, `flattenSE`,
+`flattenSEList`, `resolveExtends`, `directExtends`, `reachesLabel`,
+`chainResidueOk`, `satisfiesLabel` and `satisfiesExtends` in
+`Satisfies.lean`.
+
+It cost no PIN. `#guard` in this toolchain evaluates through the
+compiler rather than the kernel, so the `ShapesTests.lean` guards do
+see through `satisfiesShape` even though it calls the `partial`
+`matchStates`. That is measured, not assumed: the guard on line 77
+FAILED the build while the EXTRA rule was wrong and passed once it was
+corrected, and three new guards pinning the EXTRA over-run rule were
+added and pass. Issue 617's claim that "no `#guard` or theorem can see
+through a `partial def`" holds for the theorem half and not for
+`#guard` here.
+
+It would cost a THEOREM, and no theorem is claimed about any of it.
