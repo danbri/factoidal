@@ -10,10 +10,12 @@ that does not have the schema — but the ShEx test suite is largely
 made of references, so nothing above it can be scored without this
 layer.
 
-The generalisation is one parameter: the value check. Everything else
-is the same algorithm, and `Shapes.lean`'s own functions stay exactly
-as they are — the EXTRA/CLOSED distinction its header exists to keep
-straight is not re-derived here, it is reused.
+The generalisation is two parameters: the value check, and the lookup
+that resolves a triple-expression inclusion (`&<label>`). Everything
+else is the same algorithm — `Shapes.satisfiesShapeGen` is called with
+both supplied, so the partition search and the EXTRA/CLOSED
+distinction its header exists to keep straight are reused, not
+re-derived.
 
 ## Recursion is bounded, and running out is a REFUSAL
 
@@ -29,49 +31,45 @@ namespace L4Factoidal.ShEx
 
 open L4Factoidal.RDF
 
-/-- A partition parameterised by the value check. -/
-def partitionWith (valueOk : Option ShapeExpr → Term → Bool)
-    (tc : TripleConstraint) (arcs : List Arc) : List Arc × List Arc :=
-  arcs.partition (fun a => arcMatchesPredicate tc a && valueOk tc.valueExpr a.value)
+/-! ## Resolving a triple-expression INCLUSION
 
-/-- `matchTripleExpr` with the value check supplied. -/
-partial def matchTripleExprWith (valueOk : Option ShapeExpr → Term → Bool)
-    (te : TripleExpr) (arcs : List Arc) : Option (List Arc) :=
-  match te with
+`&<label>` names a triple expression declared elsewhere in the schema,
+by an `id` on a `TripleConstraint`, an `EachOf` or a `OneOf`.
+`Shapes.matchStates` takes the lookup as a parameter because the
+schema is not in scope there; here it is, so the search below walks
+every shape declaration for the label. `TripleExpr.ref` used to answer
+`none` from the matcher, which reads as UNSATISFIED — an inclusion was
+scored as a failed shape.
+-/
+
+mutual
+
+/-- The triple expression with this `id` inside a shape expression. -/
+partial def findTeInShapeExpr (id : String) : ShapeExpr → Option TripleExpr
+  | .shape sh    => sh.expression.bind (findTeInTripleExpr id)
+  | .shapeAnd es => es.findSome? (findTeInShapeExpr id)
+  | .shapeOr es  => es.findSome? (findTeInShapeExpr id)
+  | .shapeNot e  => findTeInShapeExpr id e
+  | _            => none
+
+/-- The triple expression with this `id` inside a triple expression. -/
+partial def findTeInTripleExpr (id : String) : TripleExpr → Option TripleExpr
+  | te@(.tripleConstraint tc) =>
+      if tc.id == some id then some te
+      else tc.valueExpr.bind (findTeInShapeExpr id)
+  | te@(.eachOf g) =>
+      if g.id == some id then some te
+      else g.expressions.findSome? (findTeInTripleExpr id)
+  | te@(.oneOf g) =>
+      if g.id == some id then some te
+      else g.expressions.findSome? (findTeInTripleExpr id)
   | .ref _ => none
-  | .tripleConstraint tc =>
-      let (taken, _) := partitionWith valueOk tc arcs
-      if tc.satisfiesCard taken.length then some taken else none
-  | .eachOf g =>
-      g.expressions.foldl (fun acc e =>
-        match acc with
-        | none => none
-        | some consumed =>
-            match matchTripleExprWith valueOk e arcs with
-            | none    => none
-            | some cs => some (consumed ++ cs)) (some [])
-  | .oneOf g =>
-      g.expressions.findSome? (fun e => matchTripleExprWith valueOk e arcs)
 
-/-- `satisfiesShape` with the value check supplied. The three steps —
-    match, EXTRA, CLOSED — are `Shapes.lean`'s, unchanged. -/
-def satisfiesShapeWith (valueOk : Option ShapeExpr → Term → Bool)
-    (sh : Shape) (arcs : List Arc) : Bool :=
-  let mentioned := match sh.expression with
-    | some te => mentionedPredicates te
-    | none    => []
-  match sh.expression with
-  | none => !sh.closed || arcs.isEmpty
-  | some te =>
-      match matchTripleExprWith valueOk te arcs with
-      | none => false
-      | some consumed =>
-          let leftover := arcs.filter (isLeftover consumed)
-          let leftoverMentioned := leftover.filter (fun a =>
-            mentioned.contains a.predicate && !(sh.extra.contains a.predicate))
-          let unmentioned := arcs.filter (fun a =>
-            !(mentioned.contains a.predicate) && !(sh.extra.contains a.predicate))
-          leftoverMentioned.isEmpty && (!sh.closed || unmentioned.isEmpty)
+end
+
+/-- Resolve a triple-expression label declared anywhere in the schema. -/
+def Schema.tripleExpr (sch : Schema) (id : String) : Option TripleExpr :=
+  sch.shapes.findSome? (fun d => findTeInShapeExpr id d.expr)
 
 /-- `satisfies(n, se, G)`. `fuel` bounds reference recursion; running
     out answers `false`, which the caller must read as "declined",
@@ -93,7 +91,8 @@ partial def satisfiesIn (sch : Schema) (g : List Triple)
       | .shapeOr es        => es.any (fun e => satisfiesIn sch g fuel e n)
       | .shapeNot e        => !(satisfiesIn sch g fuel e n)
       | .nodeConstraint nc => satisfiesNodeConstraint nc n
-      | .shape sh          => satisfiesShapeWith valueOk sh (neighbourhood g n)
+      | .shape sh          =>
+          satisfiesShapeGen valueOk sch.tripleExpr sh (neighbourhood g n)
       | .external          => false
 
 /-- How deep a reference chain this layer follows.

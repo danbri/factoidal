@@ -76,6 +76,24 @@ private def onePQ : TripleExpr :=
             none none [] [])
 #guard satisfiesShape (shape false [Q] (some onePQ)) [arcP (litT "x"), arcQ (litT "y")]
 
+-- EXTRA never launders a cardinality OVER-RUN, and the two cases that
+-- separate that from a genuine extra arc. Both verdicts were taken
+-- from the F* engine, which scores 1182 pass, 0 fail on the ShEx
+-- validation corpus: `bin/linux-x86_64/factoidal shex`.
+--   `EXTRA <p> { <p> . }` against two <p> arcs: the constraint takes
+--   one, the second satisfies the SAME constraint, and an arc was
+--   consumed on that predicate — an over-count, not an extra.
+#guard !(satisfiesShape (shape false [P] (some (tcP 1 1 none)))
+           [arcP (litT "x"), arcP (litT "y")])
+--   `EXTRA <q> { <p> . | <q> . }` against one <p> and one <q> arc:
+--   with the <p> branch chosen nothing was consumed on <q>, so the
+--   <q> arc is a genuine extra.
+#guard satisfiesShape (shape false [Q] (some onePQ)) [arcP (litT "x"), arcQ (litT "y")]
+--   A leftover that FAILS the constraint's value expression is
+--   tolerated whatever else happened on the predicate.
+#guard satisfiesShape (shape false [P] (some (tcP 1 1 (some onlyIri))))
+           [arcP (iriT "http://ex/a"), arcP (litT "not-an-iri")]
+
 -- Neighbourhood construction picks up forward and inverse arcs.
 private def g : List Triple :=
   [⟨.iri ⟨"http://ex/n", by decide⟩, ⟨P, by decide⟩, litT "v"⟩]
