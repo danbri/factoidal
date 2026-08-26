@@ -104,6 +104,56 @@ cd /path/to/factoidal
 formal/lean4/Wasm/build-wasm.sh               # work dir defaults to /tmp/l4wasm-build
 ```
 
+### On Linux (measured 2026-08-26, x86_64 container, from nothing)
+
+The script is portable; only the prerequisite install differs. This is
+the whole of it:
+
+```bash
+# Lean
+curl -sSfL https://elan.lean-lang.org/elan-init.sh -o /tmp/elan-init.sh
+sh /tmp/elan-init.sh -y --default-toolchain leanprover/lean4:v4.33.1
+export PATH="$HOME/.elan/bin:$PATH"
+
+# Emscripten — the upstream emsdk, NOT a distro package
+git clone --depth 1 https://github.com/emscripten-core/emsdk /opt/emsdk
+cd /opt/emsdk && ./emsdk install latest && ./emsdk activate latest
+source /opt/emsdk/emsdk_env.sh        # every shell, every time
+
+# libuv HEADERS only (step 5 needs uv.h for declarations)
+apt-get install -y libuv1-dev
+
+bash formal/lean4/Wasm/build-wasm.sh
+```
+
+`./emsdk install latest` gave Emscripten 6.0.8 — the same version the
+first working build used, so no version pinning was needed.
+
+Measured costs, so a session can budget rather than guess:
+
+| Step | Cost |
+|---|---|
+| elan + Lean v4.33.1 | ~2 min, ~2 GB |
+| emsdk (clone + install latest) | ~4 min, ~1.7 GB |
+| `lake build` (whole L4Factoidal, cold) | ~25 min, 704 jobs |
+| `build-wasm.sh` COLD (steps 1–9) | 15 min 36 s |
+| `build-wasm.sh` INCREMENTAL (steps 0, 6–9) | 8 min 11 s |
+
+⚠️ **The "disk is the blocker" warning in
+`docs/designissues/2026-08-26-cl-ikl-wasm-abi.md` is container-specific,
+not a property of the build.** That note measured ~1.8 GB free against
+emsdk's ~1.7 GB and planned a `git repack` around it. A container
+started fresh for this work had 25 GB free and needed no reclamation at
+all. Measure `df -h` in YOUR container before spending time on
+repacking — the toolchains together came to about 4 GB.
+
+**The build is byte-reproducible on a fixed toolchain.** Running
+`build-wasm.sh` twice over the same source produced the identical
+`l4factoidal.wasm` (sha256 `91fb323e…`, 4,348,311 bytes) — `git status`
+showed the wasm unmodified after the second run. So an unexpected sha
+change after a rebuild is a real input change, not link nondeterminism;
+chase it rather than shrugging.
+
 Incremental: the script skips a core `.c`/`.o` that already exists, so a
 re-run after a change to *our* Lean code only redoes steps 0, 6 and 7
 (seconds). To force a clean build, delete the work directory.
@@ -345,6 +395,21 @@ earlier version of the loader read the bytes itself and passed
 
 ## Adding a new export
 
+**First check whether you need one at all.** Most new functionality
+should be an OP on the dispatch ABI (`Wasm/Dispatch.lean` +
+`Wasm/Ops/*.lean`), not a new `@[export]` C symbol: ops ride the
+generic `l4_call` / `l4_call_io` exports that already exist, so they
+need no `l4_shim.c` wrapper, no `-sEXPORTED_FUNCTIONS` entry and no
+loader method. Adding one is a `def` in an ops module plus two lines in
+`Wasm/Dispatch.lean` (a name in `opNames`, an arity-checked arm in
+`call`), and it shows up in the `ops` reflection automatically. The
+four CL/IKL ops of https://github.com/danbri/factoidal/issues/623 were
+added that way on 2026-08-26 and touched no C at all.
+
+Reach for the steps below only for a genuinely new C-level entry point
+— a different calling convention, not a new operation.
+
+
 1. Write the Lean function in `Wasm/Abi.lean` as a pure
    `String → … → String`. Keep the boundary at JSON strings; do not
    invent a struct-passing convention.
@@ -421,7 +486,50 @@ against the old core library.
    `object.o`). If the patch anchor ever vanishes on a toolchain bump,
    the build fails loudly — re-audit `string_to_list_core` upstream
    before deleting the step.
-9. **`pretty()` in a hub cell returns a DOM element in the browser and a
+9. **Editing a Lean source WHILE `lake build` runs produces link
+   errors that name modules which are, in fact, present.** Lake plans
+   the link from the dependency graph it read at startup; an import
+   added to a module mid-run is compiled but not added to that plan.
+   Measured 2026-08-26: adding imports to `Wasm/Ops/CL.lean` during a
+   running build failed the `l4factoidal:exe` link with
+   `undefined symbol: initialize_l4factoidal_L4Factoidal_CL_Alpha` and
+   nine similar, while `L4Factoidal.lean` imported `CL.Alpha` and its
+   `.olean` was built. The tell is that the errors are ALL from
+   `ld.lld`, with none from Lean's elaborator — a genuine missing
+   module fails earlier, at elaboration, with `unknown identifier`.
+   Fix: re-run `lake build` on the settled source; nothing needs
+   cleaning. (This is the wasm-side face of hazard #9 in
+   `workflow-gotchas-debugging`.)
+
+10. **A wasm rebuild is not landed until all FOUR committed copies and
+   the committed NATIVE binary move together.** The copies are
+   `docs/web/hub/assets/l4/`, `npm/factoidal/l4-assets/`,
+   `npm/factoidal-lean/` and `docs/npm/lean/`; they must be
+   byte-identical, because the loader stamps ONE `WASM_VERSION` (the
+   wasm's own sha256 prefix) into the `?v=` cache-busting query, so a
+   copy that differs is served under a hash that is not its own.
+   Until 2026-08-26 step 9 synced only three: `npm/factoidal/l4-assets/`
+   — the copy issue #618 made the one a plain
+   `npm install @factoidal/core` resolves — was missing, so a rebuild
+   left it holding the PREVIOUS wasm with everything green. Step 9 now
+   syncs it and ends with a sha256 comparison across all four that
+   FAILS the build on disagreement. Separately, `bin/linux-x86_64/l4factoidal`
+   is committed (iron rule #9) and is a SECOND artifact carrying the
+   same ops table: refresh it from `.lake/build/bin/l4factoidal` in the
+   same landing, or `l4factoidal ops` keeps reporting the old surface
+   long after the wasm is right.
+
+11. **`wasm-ld: warning: function signature mismatch:
+   lean_io_create_tempfile / lean_io_create_tempdir` is expected.**
+   Lean's generated `Init_System_IO.o` declares them with a different
+   arity than the runtime's `io.o` defines. Neither is reachable from
+   the exported ABI — the link still reports `initialize_libuv` as its
+   only undefined symbol, which is the standing purity evidence — so
+   this is noise, not a regression. What would NOT be noise is the
+   undefined-symbol list growing; treat that as a design question per
+   "the purity evidence" above.
+
+12. **`pretty()` in a hub cell returns a DOM element in the browser and a
    plain object in the node harness.** Never read `.rows` off a
    `pretty()` result in a later cell — keep raw values in their own named
    cells and call `pretty` only in display cells. (Anti-pattern #28.)

@@ -367,6 +367,58 @@ PYEOF
   cp "$NPMLEAN"/l4factoidal.js "$NPMLEAN"/l4factoidal.mjs "$NPMLEAN"/l4factoidal.wasm \
      "$NPMLEAN"/version.json "$NPMLEAN"/package.json "$NPMLEAN"/README.md "$NPMLEAN"/LICENSE "$MIRROR/" 2>/dev/null || true
   echo "  companion + mirror updated (wasm sha256 $WASM_SHA)"
+
+  # The IN-PACKAGE copy. Issue #618 moved the Lean engine's assets
+  # INSIDE @factoidal/core (npm/factoidal/l4-assets/), which is the
+  # copy a plain `npm install @factoidal/core` actually resolves; the
+  # three directories above are the superseded companion package and
+  # its Pages mirror. This step was missing until 2026-08-26, so the
+  # rebuild of #627 left l4-assets/ holding the PREVIOUS wasm while the
+  # other three carried the new one, and the four copies -- which the
+  # tarball gate and the loader's WASM_VERSION assume are byte-identical
+  # -- silently disagreed. Syncing it here rather than by hand is what
+  # stops that recurring.
+  L4ASSETS="$LEAN_DIR/../../npm/factoidal/l4-assets"
+  if [ -d "$L4ASSETS" ]; then
+    cp "$ASSETS/l4factoidal.js" "$ASSETS/l4factoidal.mjs" "$ASSETS/l4factoidal.wasm" "$L4ASSETS/"
+    # Its version.json carries `engine` and `note` members the companion
+    # package's does not, so refresh the provenance fields in place
+    # instead of overwriting the file.
+    python3 - "$L4ASSETS/version.json" "$NPMLEAN/version.json" <<'PYSYNC'
+import json, sys
+dst_path, src_path = sys.argv[1], sys.argv[2]
+src = json.load(open(src_path))
+dst = json.load(open(dst_path))
+for k in ("version", "gitSha", "builtAt", "leanToolchain", "emscripten",
+          "abiVersion", "wasmSha256", "wasmBytes", "claims"):
+    dst[k] = src[k]
+# A stale-artifact note is a claim about the PREVIOUS build; a fresh
+# build is exactly the event that retires it.
+dst.pop("sourceDrift", None)
+with open(dst_path, "w") as f:
+    json.dump(dst, f, indent=2)
+    f.write("\n")
+PYSYNC
+    echo "  in-package l4-assets updated (npm/factoidal/l4-assets)"
+  else
+    echo "  (npm/factoidal/l4-assets absent — in-package step skipped)"
+  fi
+
+  # Every committed copy must be byte-identical: the loader stamps ONE
+  # WASM_VERSION (the wasm's own sha256 prefix) into the `?v=` query
+  # string, so a copy that differs would be served under a hash that is
+  # not its own.
+  BADCOPY=0
+  for d in "$ASSETS" "$NPMLEAN" "$MIRROR" "$LEAN_DIR/../../npm/factoidal/l4-assets"; do
+    [ -f "$d/l4factoidal.wasm" ] || continue
+    THIS=$(sha256sum "$d/l4factoidal.wasm" | cut -d' ' -f1)
+    if [ "$THIS" != "$WASM_SHA" ]; then
+      echo "  MISMATCH $d/l4factoidal.wasm has $THIS, expected $WASM_SHA"
+      BADCOPY=1
+    fi
+  done
+  [ "$BADCOPY" -eq 0 ] || { echo "committed wasm copies disagree — refusing to report success"; exit 1; }
+  echo "  all committed wasm copies agree ($WASM_SHA)"
 else
   echo "  (npm/factoidal-lean absent — companion step skipped)"
 fi

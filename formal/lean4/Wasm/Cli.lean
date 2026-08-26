@@ -380,11 +380,53 @@ def clParseCmd (args : List String) : IO UInt32 := do
       | none => pure 1
       | some j => IO.println j.toStringPretty; pure 0
 
+/-- The three text-shaped CL ops share `cl parse`'s shape: read one
+CLIF text, print one envelope. `label` is only for the error line. -/
+def clTextCmd (label : String) (op : String → String) (args : List String) :
+    IO UInt32 := do
+  match scanArgs [] [] args with
+  | .error e => IO.eprintln s!"l4factoidal cl {label}: {e}"; pure 2
+  | .ok s =>
+    match ← readInput s.positional[0]? with
+    | .error e => IO.eprintln e; pure 1
+    | .ok text =>
+      match ← parseEnvelope (op text) with
+      | none => pure 1
+      | some j => IO.println j.toStringPretty; pure 0
+
+/-- `cl finite-sat INTERP.json [FILE]` — the one CL op taking two
+arguments. The interpretation is a FILE rather than a flag value: it is
+a JSON document (see `Wasm/Ops/CL.lean`'s wire-format note), and a
+shell quoting it inline is how a domain label acquires a stray quote. -/
+def clFiniteSatCmd (args : List String) : IO UInt32 := do
+  match scanArgs [] [] args with
+  | .error e => IO.eprintln s!"l4factoidal cl finite-sat: {e}"; pure 2
+  | .ok s =>
+    match s.positional[0]? with
+    | none =>
+        IO.eprintln "l4factoidal cl finite-sat: need INTERP.json [FILE]"
+        pure 2
+    | some interpFile =>
+      match ← readInput (some interpFile) with
+      | .error e => IO.eprintln e; pure 1
+      | .ok interpJson =>
+        match ← readInput s.positional[1]? with
+        | .error e => IO.eprintln e; pure 1
+        | .ok text =>
+          match ← parseEnvelope (Ops.clFiniteSat interpJson text) with
+          | none => pure 1
+          | some j => IO.println j.toStringPretty; pure 0
+
 def clCmd (sub : String) (args : List String) : IO UInt32 :=
   match sub with
-  | "parse"  => clParseCmd args
+  | "parse"      => clParseCmd args
+  | "serialize"  => clTextCmd "serialize" Ops.clSerialize args
+  | "alpha-norm" => clTextCmd "alpha-norm" Ops.clAlphaNorm args
+  | "normalize"  => clTextCmd "normalize" Ops.clNormalize args
+  | "finite-sat" => clFiniteSatCmd args
   | other => do
-      IO.eprintln s!"l4factoidal cl: unknown subcommand '{other}' (parse)"
+      IO.eprintln s!"l4factoidal cl: unknown subcommand '{other}' \
+(parse | serialize | alpha-norm | normalize | finite-sat)"
       pure 2
 
 /-! ## Help + dispatch -/
@@ -421,6 +463,22 @@ def usageLines : List String :=
   , "  cl parse [FILE]"
   , "      Parse a Common Logic / IKL text; print sentence count,"
   , "      whether it is pure CL, and the canonical re-serialisation."
+  , "  cl serialize [FILE]"
+  , "      Re-serialise a CLIF text in canonical spacing. Reports"
+  , "      roundTripProved:false — clif_roundTrip is an open lemma."
+  , "  cl alpha-norm [FILE]"
+  , "      Canonical representative of each sentence's"
+  , "      alpha-equivalence class (bound names become v1, v2, …), so"
+  , "      alpha-variants serialise byte-identically."
+  , "  cl normalize [FILE]"
+  , "      Hayes's reduction of IKL to Common Logic: a head text and a"
+  , "      shared tail. Preserves SATISFIABILITY, not equivalence."
+  , "      Reports noIntrusion — the proof hypothesis, decided; when it"
+  , "      is false the output is outside what is proved."
+  , "  cl finite-sat INTERP.json [FILE]"
+  , "      Decide satisfaction of a CLIF text against the finite"
+  , "      interpretation in INTERP.json. Refuses a text that"
+  , "      quantifies a sequence marker, naming the condition."
   , "  version"
   , "      Print the engine version and the dispatch ABI version."
   , "  ops"
@@ -451,7 +509,8 @@ def main (args : List String) : IO UInt32 := do
   | "owl-entails" :: rest => owlEntailsCmd rest
   | "cl" :: sub :: rest => clCmd sub rest
   | "cl" :: [] =>
-      IO.eprintln "l4factoidal cl: need a subcommand (parse)"
+      IO.eprintln "l4factoidal cl: need a subcommand \
+(parse | serialize | alpha-norm | normalize | finite-sat)"
       pure 2
   | cmd :: _ =>
       IO.eprintln s!"l4factoidal: unknown verb '{cmd}' (try 'l4factoidal help')"

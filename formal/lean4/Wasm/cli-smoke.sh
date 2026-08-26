@@ -220,6 +220,50 @@ assert_json "cl parse" 0 \
 assert_text "cl parse unclosed paren -> error" 1 err "unclosed" \
   bash -c "printf '(P a' | '$CLI' cl parse"
 
+# The four ops of danbri/factoidal#623, through the CLI verbs.
+printf '%s' '(forall (zz) (if (Boy zz) (Person zz)))' > "$TMP/alpha.clif"
+printf '%s' '(P (that (Q a)))' > "$TMP/ikl.clif"
+printf '%s' '(Boy Bill)' > "$TMP/sat-yes.clif"
+printf '%s' '(Boy Sue)' > "$TMP/sat-no.clif"
+printf '%s' '(forall (...m) (P ...m))' > "$TMP/seqmark.clif"
+cat > "$TMP/interp.json" <<'INTERP'
+{"domain":["bill","boy"],"default":"bill",
+ "names":{"Bill":"bill","Boy":"boy","Sue":"boy"},
+ "relations":[{"op":"boy","args":["bill"]}]}
+INTERP
+
+assert_json "cl serialize" 0 \
+  'r["ok"] is True and r["clif"] == "(forall (zz) (if (Boy zz) (Person zz)))"
+   and r["roundTripProved"] is False' \
+  "$CLI" cl serialize "$TMP/alpha.clif"
+
+assert_json "cl alpha-norm canonicalises bound names" 0 \
+  'r["ok"] is True and r["clif"] == "(forall (v1) (if (Boy v1) (Person v1)))"' \
+  "$CLI" cl alpha-norm "$TMP/alpha.clif"
+
+assert_json "cl normalize -> head + tail" 0 \
+  'r["ok"] is True and r["head"] == ["(P prop1)"]
+   and r["tail"] == ["(iff (prop1) (Q a))"] and r["noIntrusion"] is True
+   and r["preserves"] == "satisfiability"' \
+  "$CLI" cl normalize "$TMP/ikl.clif"
+
+assert_json "cl finite-sat satisfied" 0 \
+  'r["ok"] is True and r["satisfied"] is True
+   and r["preconditions"]["domainComplete"]["holds"] is True' \
+  "$CLI" cl finite-sat "$TMP/interp.json" "$TMP/sat-yes.clif"
+
+# The refutation, so a checker answering `true` to everything fails here.
+assert_json "cl finite-sat refutes where the tables have no row" 0 \
+  'r["ok"] is True and r["satisfied"] is False' \
+  "$CLI" cl finite-sat "$TMP/interp.json" "$TMP/sat-no.clif"
+
+# The hypothesis is checked, and a text outside it is refused by name.
+assert_text "cl finite-sat refuses a sequence-marker quantifier" 1 err "noSeqQuant" \
+  "$CLI" cl finite-sat "$TMP/interp.json" "$TMP/seqmark.clif"
+
+assert_text "cl finite-sat missing INTERP.json -> usage error" 2 err "need INTERP.json" \
+  "$CLI" cl finite-sat
+
 assert_text "cl missing subcommand -> usage error" 2 err "need a subcommand" \
   "$CLI" cl
 assert_text "cl unknown subcommand -> usage error" 2 err "unknown subcommand" \

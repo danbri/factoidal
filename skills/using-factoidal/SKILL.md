@@ -116,7 +116,8 @@ flags over the same `Wasm/Ops/*.lean` functions the wasm build and
 script can drive the Lean engine without knowing the dispatch ABI's
 JSON envelopes. Verbs: `parse`, `query`, `update`, `canonicalize`,
 `closure --regime rdfs|rho-df|rdfs-plus|owl-rl`, `owl-consistent`,
-`owl-entails`, `cl parse|to-rdf|query` (Common Logic / IKL), `version`,
+`owl-entails`, `cl parse|serialize|alpha-norm|normalize|finite-sat`
+(Common Logic / IKL), `version`,
 `ops`. `l4factoidal help` prints the full flag reference. Exit codes:
 0 success/true, 1 failure/false/error, 2 usage error.
 
@@ -194,7 +195,7 @@ for this file and/or the labelled score in the next table.
 | MathML (Content MathML evaluation) | suite-runner only | yes | no | yes |
 | XForms (recalculate + binds subset) | no | yes | no | module exists, no published score — not verified |
 | JSON Schema draft-07 validation | suite-runner only | yes | no | yes |
-| Common Logic / IKL (CLIF parse, RDF translation, SERVICE, `x-ikl-*` regime family) | no | via `l4-core` when the resolved wasm carries the ops | yes | yes |
+| Common Logic / IKL (CLIF parse + serialise, alpha-normal form, Hayes IKL-to-CL normalization, finite satisfiability) | no | `clParse` via `l4-core`; the other four through a raw `call()` on the module | yes | yes |
 | COTTAS storage (Parquet-based; import, query, compact, serve) | yes | yes (in-memory bytes store) | no | modules exist, not exposed — not verified |
 | HDT (read-only query of `.hdt` bytes) | yes (`--data-hdt`) | yes (`queryHdt`) | no | probe exists — not verified |
 | VC Data Integrity (eddsa-rdfc-2022) + did:key | suite-runners (`vc_runner`, `did_runner`) | yes | no | yes |
@@ -419,19 +420,22 @@ NUL-terminated UTF-8, the returned pointer must be freed exactly once
 via `l4_free_result`.
 
 **Enumerate ops with the `ops` reflection op and trust it over any
-static list** — the surface grows (op names observed 2026-08-25:
+static list** — the surface grows (op names observed 2026-08-26:
 `parseToDatasetJson`, `queryDataset`, `updateDataset`,
 `serializeNQuads`, `serializeTurtle`, `canonicalizeToNQuads`,
 `owlClosure`, `owlIsConsistent`, `owlEntails`, `rhoDfClosure`,
-`rhoDfFragmentCheck`, `rdfsPlusClosure`, `clParse`, `ops`, and the
+`rhoDfFragmentCheck`, `rdfsPlusClosure`, `clParse`, `clSerialize`,
+`clAlphaNorm`, `clNormalize`, `clFiniteSat`, `ops`, and the
 dataset-handle ops
 `datasetOpen`, `datasetQuery`, `datasetUpdate`, `datasetSerialize`,
-`datasetClose`). ⚠️ The COMMITTED wasm artifact predates
-https://github.com/danbri/factoidal/issues/626 and still reflects two
-extra names, `clToDataset` and `queryWithIklService`; the engine source
-no longer defines them, and the rebuild is
-https://github.com/danbri/factoidal/issues/627. The handle ops are
-served only through the IO entry
+`datasetClose` — 23 in all through the IO entry). ✅ The committed wasm
+artifact was rebuilt on 2026-08-26 (sha256 `91fb323e…`) and now matches
+its source: `clToDataset` and `queryWithIklService`, deleted by
+https://github.com/danbri/factoidal/issues/626, answer `unknown op`,
+and the four CL/IKL ops of
+https://github.com/danbri/factoidal/issues/623 are present. That
+rebuild closed https://github.com/danbri/factoidal/issues/627. The
+handle ops are served only through the IO entry
 (`l4_call_c` / the CLI); the pure `l4_call` export omits them from its
 `ops` answer.
 
@@ -472,7 +476,10 @@ proposition naming scheme it used were deleted on 2026-08-26
 `clToDataset` and `queryWithIklService` ops and the `x-ikl-*`
 entailment-regime family.
 
-One op is on the wasm ABI:
+Five ops are on the wasm ABI
+(https://github.com/danbri/factoidal/issues/623). Every one of them
+reports the STRENGTH of its own answer in the envelope, so a caller
+never has to go and read the proofs to know what it just got.
 
 ```bash
 printf '%s' '["(ist c (that (Dead OBL)))"]' > /tmp/cl.json
@@ -484,12 +491,79 @@ printf '%s' '["(ist c (that (Dead OBL)))"]' > /tmp/cl.json
 stays inside ISO/IEC 24707 Common Logic, false from the first IKL
 `that` operator onward. The CLI verb is `l4factoidal cl parse FILE`.
 
+`clSerialize(cliftext)` — the canonical writer.
+
+```bash
+# {"ok":true,"clif":"(forall (x) (if (Boy x) (Person x)))",
+#  "sentences":1,"roundTripProved":false}
+```
+
+`roundTripProved` is `false` and stays false until `clif_roundTrip`
+(`CL/ClifAdequacy.lean`) is proved: the fragment boundary
+`marksLexable` is measured, not proved.
+
+`clAlphaNorm(cliftext)` — the canonical representative of each
+sentence's alpha-equivalence class. Bound names become `v1`, `v2`, … in
+traversal order, so two sentences differing only in bound names give
+byte-identical output. Use it to compare CLIF texts for
+alpha-equivalence without a decision procedure.
+
+`clNormalize(cliftext)` — Hayes's reduction of IKL to Common Logic, so
+IKL can be handed to a conventional first-order engine.
+
+```bash
+# input:  (P (that (Q a)))
+# {"ok":true,"head":["(P prop1)"],"tail":["(iff (prop1) (Q a))"],
+#  "thatCount":1,"noIntrusion":true,"preserves":"satisfiability", …}
+```
+
+⚠️ Two limits, both in the envelope. It preserves SATISFIABILITY, not
+equivalence — fit for entailment and consistency testing, not a
+transformation to apply to data you intend to keep. And `noIntrusion`
+is the PROOF HYPOTHESIS of `tails_satisfiable` / `normalize_preserves`
+DECIDED, not a paraphrase: when it is `false` the op still returns the
+transformation's output, but no theorem covers that output.
+
+`clFiniteSat(interpJson, cliftext)` — decide satisfaction against a
+caller-supplied finite interpretation. Argument 1 names the domain by
+LABELS; the op fixes the domain type itself.
+
+```json
+{ "domain":    ["bill", "boy"],
+  "default":   "bill",
+  "names":     { "Bill": "bill", "Boy": "boy", "Sue": "boy" },
+  "strings":   { "a string": "bill" },
+  "functions": [ { "op": "boy", "args": ["bill"], "value": "bill" } ],
+  "relations": [ { "op": "boy", "args": ["bill"] } ],
+  "props":     { "(P x)": "bill" } }
+```
+
+Only `domain` is required; the rest default to empty and `default` to
+the first label. `props` keys are canonical CLIF texts of `that`-bodies.
+
+The answer is worth what `satisfiesFin_eq`
+(`CL/FiniteSatTheorems.lean`) says, and its three hypotheses are
+discharged or checked rather than assumed. Domain completeness holds by
+CONSTRUCTION — the ABI gives the caller no way to name the domain type,
+which is `Fin m` over the m labels, with the domain `List.finRange m` —
+so a domain omitting an element of its own type is not expressible.
+`noSeqQuant` is checked with the same function the hypothesis names,
+and a text quantifying a sequence marker is REFUSED:
+
+```json
+{"ok":false,
+ "error":"refused: the text quantifies a sequence marker, …",
+ "precondition":"noSeqQuant"}
+```
+
+Read the `preconditions` block of a successful answer rather than
+assuming it; a future op may report a condition as checked-and-failed
+where this one refuses.
+
 `cl:text` phrases are rejected with a named error (reader gap,
 https://github.com/danbri/factoidal/issues/580).
 
-Most of the Lean CL/IKL work — alpha-normalisation, finite
-satisfiability, Hayes normalization, CLIF serialisation — has no wasm
-ABI yet: https://github.com/danbri/factoidal/issues/623. The RDF-side
+The RDF-side
 model theory that reads RDF INTO IKL (`Unified/RdfEmbed.lean`,
 `Unified/DatasetEmbed.lean`) is unaffected by the deletion above and is
 proved, not projected.

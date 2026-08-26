@@ -1,4 +1,24 @@
-# @factoidal/lean
+# @factoidal/lean — superseded, never published
+
+**Superseded by issue [#618](https://github.com/danbri/factoidal/issues/618).**
+The Lean 4 engine artifacts described below now ship *inside*
+`@factoidal/core` (`npm/factoidal/l4-assets/`), so a plain
+`npm install @factoidal/core` gets both engines with no companion
+package to add. `factoidal/l4` and `factoidal/l4-core` resolve the
+in-package copy first automatically — no call site changes.
+
+This package was never published to npm, so nothing outside this repo
+depends on it. It is kept in place (not deleted) only as a manual
+override path — installing it next to a newer `@factoidal/core` still
+works, because `factoidal/l4`'s resolver falls back to
+`@factoidal/lean` when `l4-assets/` is absent — and as the historical
+record of the packaging design this repo tried first (see
+`docs/designissues/2026-08-22-npm-l4-module-packaging.md`, which
+records both the original "companion package" reasoning and why it
+changed). It will not be kept in sync with the Lean build going
+forward; `npm/factoidal/l4-assets/` is the maintained copy.
+
+---
 
 The Lean 4 engine of [Factoidal](https://github.com/danbri/factoidal)
 as a single WebAssembly module for browser, Node (>= 20) and Deno:
