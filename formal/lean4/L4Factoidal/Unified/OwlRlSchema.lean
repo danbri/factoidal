@@ -32,11 +32,17 @@ The table is built ROW-FAMILY-WISE, not as one monolith:
   is definite by construction). Each is a universally closed negated
   conjunction, in the `dExclusionSchema` / `rangeClashSchema` pattern
   of `Unified/DSchema.lean` and `Unified/RdfsSchema.lean`.
-* **Literal-object and comprehension rows** — cls-maxc2 and the three
-  comprehension rows mention a cardinality LITERAL (`embedTerm` of a
-  literal is a `funapp`, not a `DTerm`) or have an EXISTENTIAL head
-  (excluded by `DRule.definiteB`). They are written directly as CL
-  sentences.
+* **Cardinality-literal rows** — cls-maxc2 (Horn) and cls-maxc1,
+  cls-maxqc1, cls-maxqc2 (clash) relate a term to a cardinality
+  LITERAL. `Unified/Datalog.lean` carries `DTerm.lit`, whose CL form is
+  `embedTerm (.literal l)` and whose value is the denotation
+  `restrictInterp` gives `iLit`, so these are ordinary rows of the two
+  families above. (Before 2026-08-26 they were in `OwlRlInterpCond`,
+  because a literal embedded as a `funapp` and `DTerm` had no literal
+  constructor.)
+* **Comprehension rows** — cax-dw-comp, cls-maxqc1-comp and minc1-comp
+  have EXISTENTIAL heads, excluded by `DRule.definiteB`. They stay in
+  `OwlRlInterpCond`; the section header below costs the alternative.
 
 ## Direction of the bridge
 
@@ -63,6 +69,17 @@ open L4Factoidal.OWL.RL
 
 /-- A constant `DTerm` naming an IRI. -/
 def dk (w : RDF.WfIri) : DTerm := .c w.val
+
+/-- A constant `DTerm` denoting a LITERAL — the term the four
+cardinality rows need in object position. Its CL form is
+`embedTerm (.literal l)` and its value is the same denotation
+`restrictInterp` gives `iLit`, so a body obligation whose premise is
+`i.iext _ x (i.iLit l)` closes by `assumption` exactly as an IRI
+premise does. -/
+def dlit (l : RDF.WfLiteral) : DTerm := .lit l
+
+theorem dlit_val (i : CL.Interp) (f : String → i.dom) (l : RDF.WfLiteral) :
+    (dlit l).val i f = (restrictInterp i).iLit l := rfl
 
 /-- A binary predication: the property term in operator position. -/
 def dbin (p x y : DTerm) : DAtom := ⟨p, [x, y]⟩
@@ -107,6 +124,7 @@ inductive RlRowId where
   | clsThing | clsNothing1 | clsInt1
   | typedAllBase | typedAllStep | listMemBase | listMemStep
   | clsInt2 | clsUni | clsSvf1 | clsSvf2 | clsAvf | clsHv1 | clsHv2
+  | clsMaxc2
   | clsOo | caxSco | caxEqc1 | caxEqc2
   | scmClsSelf | scmClsEqc | scmClsThing | scmClsNothing
   | scmSco | scmEqc1a | scmEqc1b | scmEqc2
@@ -326,6 +344,13 @@ def rlRowRule : RlRowId → DRule
   | .invFlipRngDomRev => ⟨dbin (dk rdfsDomain) (.v "p") (.v "c"),
       [dbin (dk owlInverseOf) (.v "p") (.v "q"),
        dbin (dk rdfsRange) (.v "q") (.v "c")]⟩
+
+  | .clsMaxc2 => ⟨dbin (dk owlSameAs) (.v "y") (.v "z"),
+      [dbin (dk owlMaxCardinality) (.v "x") (dlit litNni1),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dtyp (.v "u") (.v "x"),
+       dbin (.v "p") (.v "u") (.v "y"),
+       dbin (.v "p") (.v "u") (.v "z")]⟩
 
 theorem rlRowRule_wf (row : RlRowId) : (rlRowRule row).wfB = true := by
   cases row <;> rfl
@@ -647,6 +672,23 @@ theorem cond_clsHv2 : RlCondClsHv2 (restrictInterp i) := by
   · exact h1
   · exact h2
   · exact h3
+
+/-- **cls-maxc2**, now an ordinary Horn row: the `owl:maxCardinality`
+premise carries the cardinality literal as `dlit litNni1`, whose
+denotation IS `iLit litNni1`. -/
+theorem cond_clsMaxc2 : RlCondClsMaxc2 (restrictInterp i) := by
+  intro p x u y1 y2 h1 h2 h3 h4 h5
+  refine rlRowAt hS .clsMaxc2
+    (vals i [("x", x), ("p", (restrictInterp i).iIri p), ("u", u),
+             ("y", y1), ("z", y2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
 
 theorem cond_clsOo : RlCondClsOo (restrictInterp i) := by
   intro cc l yi h1 h2
@@ -1189,14 +1231,16 @@ theorem negRowFires {i : CL.Interp} {S : Schema} (hS : SatisfiesSchema i S)
     (f : String → i.dom) (hb : ∀ a ∈ r.atoms, a.Holds i f) : False :=
   (satisfies_negSentence_iff i hwf).mp (hS _ hmem) f hb
 
-/-- The nine clash rows whose premises are all binary predications over
-IRI constants and variables. The three max-cardinality rows (cls-maxc1,
-cls-maxqc1, cls-maxqc2) are NOT here: their premise relates a term to a
-cardinality LITERAL, whose CL translation is a `funapp`, not a `DTerm`.
-They are carried by `owlRlInterpCond` instead. -/
+/-- The twelve clash rows whose premises are all binary predications
+over IRI constants, cardinality literals and variables. The three
+max-cardinality rows (cls-maxc1, cls-maxqc1, cls-maxqc2) relate a term
+to a cardinality LITERAL; since `Unified/Datalog.lean` carries
+`DTerm.lit`, that is an ordinary `DAtom` argument and the rows are
+here rather than in `OwlRlInterpCond`. -/
 inductive RlNegRowId where
   | eqDiff1 | prpIrp | prpAsyp | prpPdw | prpNpa1 | prpNpa2
   | clsNothing2 | clsCom | caxDw
+  | clsMaxc1 | clsMaxqc1 | clsMaxqc2
   deriving DecidableEq, Repr
 
 def rlNegRowRule : RlNegRowId → DNeg
@@ -1223,6 +1267,23 @@ def rlNegRowRule : RlNegRowId → DNeg
       dtyp (.v "x") (.v "c"), dtyp (.v "x") (.v "d")]⟩
   | .caxDw => ⟨[dbin (dk owlDisjointWith) (.v "c") (.v "d"),
       dtyp (.v "x") (.v "c"), dtyp (.v "x") (.v "d")]⟩
+  | .clsMaxc1 => ⟨[dbin (dk owlMaxCardinality) (.v "x") (dlit litNni0),
+      dbin (dk owlOnProperty) (.v "x") (.v "p"),
+      dtyp (.v "u") (.v "x"),
+      dbin (.v "p") (.v "u") (.v "y")]⟩
+  | .clsMaxqc1 =>
+      ⟨[dbin (dk owlMaxQualifiedCardinality) (.v "x") (dlit litNni0),
+        dbin (dk owlOnProperty) (.v "x") (.v "p"),
+        dbin (dk owlOnClass) (.v "x") (.v "c"),
+        dtyp (.v "u") (.v "x"),
+        dbin (.v "p") (.v "u") (.v "y"),
+        dtyp (.v "y") (.v "c")]⟩
+  | .clsMaxqc2 =>
+      ⟨[dbin (dk owlMaxQualifiedCardinality) (.v "x") (dlit litNni0),
+        dbin (dk owlOnProperty) (.v "x") (.v "p"),
+        dbin (dk owlOnClass) (.v "x") (dk owlThing),
+        dtyp (.v "u") (.v "x"),
+        dbin (.v "p") (.v "u") (.v "y")]⟩
 
 theorem rlNegRowRule_wf (row : RlNegRowId) : (rlNegRowRule row).wfB = true := by
   cases row <;> rfl
@@ -1346,6 +1407,54 @@ theorem ncond_clsCom : RlNCondClsCom (restrictInterp i) := by
   · exact h2
   · exact h3
 
+/-- **cls-maxc1** — the `owl:maxCardinality 0` premise as `dlit
+litNni0`. -/
+theorem ncond_clsMaxc1 : RlNCondClsMaxc1 (restrictInterp i) := by
+  rintro p x u y ⟨h1, h2, h3, h4⟩
+  refine negRowFires hN (Or.inl ⟨.clsMaxc1, rfl⟩) (rlNegRowRule_wf .clsMaxc1)
+    (vals i [("x", x), ("p", (restrictInterp i).iIri p), ("u", u),
+             ("y", y)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+/-- **cls-maxqc1**. -/
+theorem ncond_clsMaxqc1 : RlNCondClsMaxqc1 (restrictInterp i) := by
+  rintro p x u y c ⟨h1, h2, h3, h4, h5, h6⟩
+  refine negRowFires hN (Or.inl ⟨.clsMaxqc1, rfl⟩)
+    (rlNegRowRule_wf .clsMaxqc1)
+    (vals i [("x", x), ("p", (restrictInterp i).iIri p), ("c", c),
+             ("u", u), ("y", y)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+  · exact h6
+
+/-- **cls-maxqc2**. -/
+theorem ncond_clsMaxqc2 : RlNCondClsMaxqc2 (restrictInterp i) := by
+  rintro p x u y ⟨h1, h2, h3, h4, h5⟩
+  refine negRowFires hN (Or.inl ⟨.clsMaxqc2, rfl⟩)
+    (rlNegRowRule_wf .clsMaxqc2)
+    (vals i [("x", x), ("p", (restrictInterp i).iIri p), ("u", u),
+             ("y", y)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
 theorem ncond_caxDw : RlNCondCaxDw (restrictInterp i) := by
   rintro c1 c2 x ⟨h1, h2, h3⟩
   refine negRowFires hN (Or.inl ⟨.caxDw, rfl⟩) (rlNegRowRule_wf .caxDw)
@@ -1378,30 +1487,53 @@ end ClashConditions
 
 ### What the schema does NOT carry, and why
 
-Nine of the 91 rows are not object-language sentences here. They are
-carried by the interpretation-class condition bundle `OwlRlInterpCond`
-instead — the `EntailsSchema` parameter the design document §2.2 calls
-the extension mechanism, and the same device `RdfsDInterpCond` uses in
+FIVE of the 91 rows are not object-language sentences here (nine
+before 2026-08-26). They are carried by the interpretation-class
+condition bundle `OwlRlInterpCond` instead — the `EntailsSchema`
+parameter the design document §2.2 calls the extension mechanism, and
+the same device `RdfsDInterpCond` uses in
 `Unified/RdfsSchema.lean`. Each has a structural reason:
 
 * **prp-spo2, prp-key** quantify over a COLLECTION. Each needs a
-  sentence family indexed by list length (the `rdf:first`/`rdf:rest`
+  sentence family indexed by list length: the `rdf:first`/`rdf:rest`
   walk plus the chain or shared-value premises flattened into `n`-many
-  atoms). The reserved binary helper predicates that serve the other
-  seven collection rows cannot serve these two: the relation to encode
-  is TERNARY (cell, subject, object), and `RDF.Interp.iext` is binary,
-  so a helper predicate cannot name it.
-* **cls-maxc2, cls-maxc1, cls-maxqc1, cls-maxqc2** relate a term to a
-  cardinality LITERAL. `embedTerm` sends a literal to a `funapp` of the
-  `urn:cl:def:literalValueOf` operator, which is not a `DTerm`, so the
-  row is not a `DAtom`.
-* **cax-dw-comp, cls-maxqc1-comp, minc1-comp** have EXISTENTIAL heads
-  (they mint a comprehension witness), which `DRule.definiteB` excludes,
-  and they also mention cardinality literals.
+  body atoms, over generated variable names `l0..ln`, `q0..q(n-1)`,
+  `v0..v(n-1)`.
 
-Moving these into the schema is the next increment of this stage; the
-statement of `unified_owlRl_sound` names them explicitly, so the
-boundary is visible in the theorem, not only in prose. -/
+  A reserved HELPER predicate would avoid the family, as it does for
+  the other seven collection rows. The relation to encode is ternary
+  (cell, subject, object) and `DAtom` is n-ary, so a ternary helper
+  atom is legal — the earlier claim here that "a helper predicate
+  cannot name it" was wrong; `RDF.Interp.iext` is binary, but the
+  helper never has to appear in `restrictInterp i`. The reason not to
+  take that route is `Unified/RdfTransport.lean`'s `liftInterp`, which
+  reads `rel p args` as `False` at every arity other than 2. A schema
+  row with a ternary head is therefore FALSE at `liftInterp r` for
+  every RDF interpretation `r`, which is exactly the class of models
+  schema-relative completeness needs
+  (https://github.com/danbri/factoidal/issues/613 item 2). The
+  per-length family keeps every row binary and costs no model.
+* **cax-dw-comp, cls-maxqc1-comp, minc1-comp** have EXISTENTIAL heads
+  (they mint a comprehension witness), which `DRule.definiteB`
+  excludes. A `Schema` is a predicate on `CL.Sentence`, so nothing
+  stops an existentially headed sentence from BEING in one; the
+  question is whether it should be. Two costs decide it. (i) The head
+  of `RlCondCompDw` is not a conjunction of atoms — `CompProps`
+  carries two universally quantified implications and a five-variable
+  one — so each row is a bespoke CL sentence with a bespoke
+  satisfaction lemma, an instance of no family here. (ii) An
+  existential head removes the least-model property the completeness
+  direction of the stage-3 class rests on (`datalog_lfp_complete`, and
+  the `rdfD1Shape_not_wf` exclusion `Unified/DatalogClosures.lean`
+  pins). The recorded decision is to keep `owlRlSchema` definite and
+  leave these three in the condition bundle. If they are ever
+  admitted it should be as a SEPARATE sub-schema, so that the definite
+  schema stays available for the completeness work.
+
+The statement of `unified_owlRl_sound` names `OwlRlInterpCond`
+explicitly, so the boundary is visible in the theorem, not only in
+prose; `owlRlSchema_cardinality_rows` below pins the four rows that
+left the bundle. -/
 
 /-- **The OWL 2 RL schema**: the plain Horn rows, the guarded and
 table-indexed families, and the clash rows.
@@ -1418,13 +1550,9 @@ condition (see the section header for why each one is here). -/
 def OwlRlInterpCond (i : CL.Interp) : Prop :=
   RlCondPrpSpo2 (restrictInterp i) ∧
   RlCondPrpKey (restrictInterp i) ∧
-  RlCondClsMaxc2 (restrictInterp i) ∧
   RlCondCompDw (restrictInterp i) ∧
   RlCondCompMqc (restrictInterp i) ∧
-  RlCondMinc1 (restrictInterp i) ∧
-  RlNCondClsMaxc1 (restrictInterp i) ∧
-  RlNCondClsMaxqc1 (restrictInterp i) ∧
-  RlNCondClsMaxqc2 (restrictInterp i)
+  RlCondMinc1 (restrictInterp i)
 
 theorem satisfiesSchema_owlRl_parts {i : CL.Interp}
     (hS : SatisfiesSchema i owlRlSchema) :
@@ -1433,15 +1561,29 @@ theorem satisfiesSchema_owlRl_parts {i : CL.Interp}
   rw [owlRlSchema, satisfiesSchema_union_iff, satisfiesSchema_union_iff] at hS
   exact ⟨hS.1, hS.2.1, hS.2.2⟩
 
-/-- **The bridge**: schema satisfaction plus the nine bundled rows give
+/-- **The four cardinality rows are carried by the SCHEMA**, with no
+appeal to `OwlRlInterpCond`. This is the shrinkage of the condition
+bundle stated as a theorem rather than left in the definition of
+`OwlRlInterpCond`: before 2026-08-26 each of these four was a
+hypothesis on the interpretation. -/
+theorem owlRlSchema_cardinality_rows {i : CL.Interp}
+    (hS : SatisfiesSchema i owlRlSchema) :
+    RlCondClsMaxc2 (restrictInterp i) ∧
+    RlNCondClsMaxc1 (restrictInterp i) ∧
+    RlNCondClsMaxqc1 (restrictInterp i) ∧
+    RlNCondClsMaxqc2 (restrictInterp i) := by
+  obtain ⟨hH, -, hN⟩ := satisfiesSchema_owlRl_parts hS
+  exact ⟨cond_clsMaxc2 hH, ncond_clsMaxc1 hN, ncond_clsMaxqc1 hN,
+         ncond_clsMaxqc2 hN⟩
+
+/-- **The bridge**: schema satisfaction plus the five bundled rows give
 the full `RlConditions` / `RlClashConditions` pair over the restricted
 interpretation. -/
 theorem owlRlSchema_conditions {i : CL.Interp}
     (hS : SatisfiesSchema i owlRlSchema) (hc : OwlRlInterpCond i) :
     RlConditions (restrictInterp i) ∧ RlClashConditions (restrictInterp i) := by
   obtain ⟨hH, hF, hN⟩ := satisfiesSchema_owlRl_parts hS
-  obtain ⟨kSpo2, kKey, kMaxc2, kCompDw, kCompMqc, kMinc1,
-          kNMaxc1, kNMaxqc1, kNMaxqc2⟩ := hc
+  obtain ⟨kSpo2, kKey, kCompDw, kCompMqc, kMinc1⟩ := hc
   refine ⟨?_, ?_⟩
   · exact
     { eqRefS := cond_eqRefS hH
@@ -1479,7 +1621,7 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       clsAvf := cond_clsAvf hH
       clsHv1 := cond_clsHv1 hH
       clsHv2 := cond_clsHv2 hH
-      clsMaxc2 := kMaxc2
+      clsMaxc2 := cond_clsMaxc2 hH
       clsOo := cond_clsOo hH
       caxSco := cond_caxSco hH
       caxEqc1 := cond_caxEqc1 hH
@@ -1530,9 +1672,9 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       prpNpa2 := ncond_prpNpa2 hN
       clsNothing2 := ncond_clsNothing2 hN
       clsCom := ncond_clsCom hN
-      clsMaxc1 := kNMaxc1
-      clsMaxqc1 := kNMaxqc1
-      clsMaxqc2 := kNMaxqc2
+      clsMaxc1 := ncond_clsMaxc1 hN
+      clsMaxqc1 := ncond_clsMaxqc1 hN
+      clsMaxqc2 := ncond_clsMaxqc2 hN
       caxDw := ncond_caxDw hN
       caxAdc := ncond_caxAdc hN }
 

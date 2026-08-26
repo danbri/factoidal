@@ -11,10 +11,13 @@ document `docs/designissues/2026-08-25-unified-semantics-lean.md` §4.4.
   RL rule relation derives from a reserved-vocabulary-free graph is
   entailed by the graph's translation, relative to `owlRlSchema` and
   the interpretation-class condition `OwlRlInterpCond` that carries the
-  nine rows `Unified/OwlRlSchema.lean` cannot state as object-language
-  sentences. The claim is exactly as strong as that pair, no stronger:
-  `OwlRlInterpCond` is a hypothesis on the interpretation, visible in
-  the statement.
+  FIVE rows `Unified/OwlRlSchema.lean` does not state as
+  object-language sentences (nine before 2026-08-26; the four
+  cardinality-literal rows moved into the schema when
+  `Unified/Datalog.lean` gained `DTerm.lit`, and
+  `owlRlSchema_cardinality_rows` pins them there). The claim is
+  exactly as strong as that pair, no stronger: `OwlRlInterpCond` is a
+  hypothesis on the interpretation, visible in the statement.
 * **`unified_owlRl_clash_unsat` / `unified_owlRl_clash_entails_all`** —
   a graph carrying a `Clash` configuration has no model in the schema
   class, so its translation entails everything.
@@ -24,6 +27,25 @@ document `docs/designissues/2026-08-25-unified-semantics-lean.md` §4.4.
   `RlClashConditions` that satisfies the saturated closure IS a triple
   of that closure. The countermodel is `rlHerb` and the last step is
   `rlHerb_triple_decode`.
+
+## The Herbrand fragment, and what does NOT widen it
+
+`RlHerbFrag` clause (a) — every object is an IRI or a blank node —
+excludes every graph whose closure carries a cardinality literal.
+`DTerm.lit` does not widen it, and the reason is worth stating because
+the opposite was expected
+(https://github.com/danbri/factoidal/issues/613 item 3). Clause (a)
+exists for eq-ref, object form: `RlCondEqRefO` demands
+`y owl:sameAs y` for every object `y`, and `rlHerb`'s `iext` reads
+"the triple is in the graph", so `y` must be expressible as an
+`RDF.Subject`. RDF 1.1 Concepts §3.1 gives a triple an IRI or a blank
+node as subject, never a literal. The obstruction is the RDF term
+algebra reproduced in the syntactic model — `frag_obj_subject` is
+consumed at fifteen sites of `rlHerb_conditions` — not the Datalog
+term type. Widening past clause (a) needs a different `rlHerbIext` for
+the `owl:sameAs` row, and then `rlHerb_triple_decode` would decode an
+atom that the RL `Derives` relation cannot produce. Recorded, not
+attempted.
 
 ## The completeness gap, stated exactly
 
