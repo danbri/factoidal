@@ -8,6 +8,14 @@ No code lands with this document. Every Lean signature and theorem
 statement below is a proposal; each one becomes real only in the stage
 that proves it, under that stage's gate.
 
+Stages 1-7 have since landed. Read this document with the correction
+notes below, which record where the implementation contradicted it.
+The stage 7 account of what was proved, at what strength, with the
+named gaps and the defects the proof attempts found, is
+[`docs/designissues/2026-08-26-lbase-account.md`](2026-08-26-lbase-account.md);
+its public version is hub post 43,
+`docs/web/hub/43-one-model-theory-under-all-of-it.md`.
+
 ### Stage 1 correction notes (2026-08-25)
 
 Stage 1 landed (`formal/lean4/L4Factoidal/Unified/`, registry section
@@ -191,6 +199,312 @@ Four notes in the same spirit as 1–7:
     registry's named open lemma (D-Herbrand literal quotient by
     `literalValueEq D` + `bindable`-restricted search completeness),
     and is not a triple-term matter.
+
+### Stage 3 landing notes (2026-08-25)
+
+`Unified/Datalog.lean` and `Unified/DatalogClosures.lean` landed
+(the generic least-fixpoint theorems and the closure-engine
+exhibits). Four notes in the same spirit as 1–11:
+
+12. **§3 Datalog signatures.** (a) `DAtom.pred` landed as a `DTerm`
+    (variable or constant), not the `String` of §3's sketch: rdfs7's
+    and eq-rep-p's heads predicate on a VARIABLE, which CL's
+    unsegregated universe reads directly; a string predicate cannot.
+    (b) `DatalogProgram` landed with a `wf` PROOF FIELD
+    (definiteness + the colon-free variable discipline), so the
+    "no existential heads" comment of §3 is enforced by construction —
+    a rule of rdfD1's shape cannot be written into a program
+    (`rdfD1Shape_not_wf` pins the rejection). (c) `DRule` therefore
+    has no separate wf story of its own; `DTerm` has no function
+    symbols in ANY position, which only shrinks the class §3 sketched.
+13. **§4.3 exhibit statement.** The design equation
+    `(rhoDfProgram.lfp (factsOf g) fuel).toGraph = RDFS.closureFix g`
+    is not the landed form, per the stage 2 salvage's instruction:
+    agreement is MEMBERSHIP equality
+    (`rhoDf_closure_datalog_agree`), because the engine's list
+    order/`Triple.eqb` dedup cannot match a generic fixpoint's list.
+    The landed hypotheses are exactly the stage 2 decided corollary's
+    engine-side pair (`rhoDfClosedCheck`, `isRhoDfFrag`, both
+    `decide`-dischargeable) plus Datalog-side `FuelAdequate`
+    (executable check `saturatedCheck`), plus `RhoDfModelObjectOk` on
+    the queried triple's object — the encoding gives literal /
+    triple-term objects placeholder constants, so injectivity (and
+    the iff) holds ON the ρdf model fragment, where the engine's
+    completeness story lives anyway. The Datalog rules mirror the
+    DIAGONAL specification relations `Rdfs*Derives` — NOT the engine
+    step functions — so the decode direction lands on `RhoDfClosed`,
+    blank-node classes included (the engine step's rdfs9 blank-node
+    gap is closed by the closedness hypothesis, exactly as in
+    stage 2's `rdfs9BnodeConclusions`).
+14. **§4.3's second exhibit tier is instance-level.** The RDFS-Plus
+    tier (`rdfsPlusProgram`: the six ρdf rows + the 13 OWL
+    equality/property rows + the four schema-level inverseOf flips —
+    the RL closure's non-list, non-clash core) landed with agreement
+    against `RDFS.rdfsPlusClosure` established on the demo instances
+    of `RDFS/RDFSPlus.lean` in both directions — as a `decide`d
+    theorem on the TransitiveProperty demo, and as native-evaluated
+    build-time `#guard` pins on the sameAs and inverseOf demos, whose
+    substitution closures exceed the kernel `decide` budget (the
+    kernel re-evaluates each unshared fixpoint round) — plus the
+    generic gate theorem instantiated on one. A GENERAL bridging
+    theorem in the ρdf style is not claimed for this tier: the native
+    tier itself claims no chain-level completeness, and the engine's
+    per-row IRI-subject guards (`subjIri`) restrict firings the
+    Datalog rules do not, so the general membership iff is not
+    expected to hold off the demo shapes without a new fragment
+    predicate. Recorded as the stage's named open item, not a defect.
+15. **§4.7 RIF Core did not ride with stage 3.** The document offered
+    the split ("if it grows, it splits out as its own M stage");
+    taken: `unified_adequate_rifCore` needs `rifCoreToTheory` plus
+    the frame/positional-atom desugaring of `RIF/Translation.lean`,
+    which is its own module's work. The generic theorem it will
+    instantiate is landed and generic (n-ary atoms were built for
+    exactly this — RIF positional atoms of arity ≠ 2 need no new
+    machinery).
+
+### Stage 4 correction notes (2026-08-26)
+
+Stage 4 landed (`OWL/RLSemantics.lean`, `OWL/RLHerbrand.lean`,
+`Unified/OwlRlSchema.lean`, `Unified/OwlRlAdequacy.lean`; registry
+section 9). Five points of §4.4 are corrected by the implementation.
+
+16. **§4.4's `owlRlSchema D` takes no `D`.** The OWL 2 RL datatype rows
+    (Table 7) range over the FIXED tables `builtinDatatypeAxioms`,
+    `xsdAxiomTriples` and `rangeIntersectLicenses` of
+    `OWL/RLRules.lean`, not over a recognised-datatype parameter.
+    Landed as `owlRlSchema : Schema`.
+
+17. **§4.4's `owlRl_row_condition (row : RlRowId)` is not one iff over
+    an enumeration of ALL rows.** `RlRowId` in `Unified/OwlRlSchema.lean`
+    enumerates the 66 PLAIN Horn rows only, and the bridge is a
+    one-directional per-row family (`cond_*`), not an iff. Direction:
+    schema sentence → `RlCond*`. The sentence is strictly STRONGER than
+    the condition (a `DRule` quantifies its predicate position over the
+    whole domain; the condition quantifies over `WfIri`), so an iff is
+    false as stated.
+
+18. **Nine rows are carried by the interpretation-class condition, not
+    by the schema.** `OwlRlInterpCond` carries prp-spo2 and prp-key
+    (their premise relation is TERNARY — cell, subject, object — and
+    `RDF.Interp.iext` is binary, so the reserved binary helper
+    predicates that serve the other seven collection rows cannot serve
+    these two; each needs a sentence family indexed by list length),
+    cls-maxc2 / cls-maxc1 / cls-maxqc1 / cls-maxqc2 (a cardinality
+    literal embeds as a `funapp` of `urn:cl:def:literalValueOf`, which
+    is not a `DTerm`) and the three comprehension rows (existential
+    heads, excluded by `DRule.definiteB`). `unified_owlRl_sound` names
+    `OwlRlInterpCond` in its statement, so the boundary is visible in
+    the theorem.
+
+19. **`unified_owlRl_complete_ground` landed in condition-bundle form,
+    not schema-relative form.** `owlRl_complete_ground` states ground
+    completeness over `RDF.Interp` + `RlConditions`/`RlClashConditions`.
+    The schema-relative form needs `liftInterp (rlHerb c)` to satisfy
+    every row sentence, and `liftInterp r` reads a binary predication as
+    `r.iext p.2 x.2 y.2` — so satisfaction quantifies EVERY position,
+    the predicate position included, over the whole of `r.idom`. That
+    full-domain reading is true for `rlHerb c` but is a second pass over
+    all 79 rows, not a corollary of `rlHerb_conditions`.
+
+20. **The completeness model needs a fragment, and the fragment is
+    narrow.** `RlHerbFrag` (`OWL/RLHerbrand.lean`) requires: every
+    object an IRI or blank node; `rdf:nil` heads no cons cell;
+    `owl:disjointWith` has IRI endpoints; no reserved `urn:cl:def:` IRI
+    anywhere. Clause (a) excludes every graph whose closure carries a
+    cardinality literal — which includes any graph declaring
+    `owl:ObjectProperty`, because the minc1 comprehension row emits an
+    `owl:minCardinality "1"` triple. The completeness direction
+    therefore does not reach cardinality-bearing ontologies.
+
+### Stage 5 correction notes (2026-08-26)
+
+Stage 5 landed (`Unified/OwlDlDirect.lean`,
+`Unified/OwlDlAdequacy.lean`; registry section 9). Six points of §4.5
+and §5.3 are corrected or made precise by the implementation.
+
+21. **The tableau's name spaces had to be separated from the RDF
+    route's, and the repair is an encoding, not a type change.**
+    `OWL.Role` and `OWL.Ind` are `abbrev … := String`, so an individual
+    named `"x"` sits in the same string space as the COLON-FREE bound
+    names `Unified/RdfEmbed.lean` reserves for blank nodes.
+    `OWL/Tableau.lean`'s header invites tightening `Role`/`Ind` to
+    `RDF.WfIri`; that was REJECTED. `exWitness` MINTS a fresh
+    individual name and `leqMerge` RENAMES one, so both rules would
+    acquire an IRI well-formedness obligation and the freshness side
+    condition `x ∉ indsOf A` would have to be restated over a subtype;
+    and Direct Semantics reads an individual as a structural entity,
+    not as an RDF IRI (§5.3). Landed instead: `dlName tag s` =
+    `urn:owl:dl:` ++ tag ++ `escape s`, with `tag ∈ {i, c, r}` for
+    individual, class and role. Every translated name carries a colon,
+    so it is distinct from every `bnodeName` and from every bound
+    variable; the three tags make the name spaces pairwise disjoint;
+    `escape` is injective, so `dlDecode` recovers the tableau name.
+    The gate theorem therefore carries NO freshness hypothesis.
+
+22. **§4.5's gate is stated over `owlDlDirect R A ++ roleAxiomSentences R`,
+    which double-counts.** `owlDlDirect` already receives `R`. Landed:
+    `owlDlDirect R A = roleAxiomSentences R ++ A.map assertionSentence`,
+    and `unified_adequate_dl` is stated over `owlDlDirect R A` alone.
+
+23. **The lift CANNOT use `Unified/RdfTransport.lean`'s tag-product
+    domain, and the reason is the cardinality translation.**
+    `liftInterp` (stage 1) takes `dom := Option String × r.idom` so
+    that the predicate position carries its name identity. That answer
+    is UNSOUND for the DL route: `atMost n r` translates to the
+    negation of an existential over `n + 1` PAIRWISE DISTINCT domain
+    elements, and a product domain has distinct pairs whose `δ`
+    components coincide — so an interpretation whose OWL reading
+    satisfies `atMost 1 r` would violate the translated sentence.
+    Landed: `dom := δ ⊕ String`, with both extensions FALSE on the
+    right summand, so every witness a counting formula can use lies in
+    the left summand where distinctness is distinctness in `δ`
+    (`card_sum_iff`, `sem_inl` in `Unified/OwlDlDirect.lean`).
+
+24. **The transfer is stated once against a compatibility predicate,
+    not run twice.** §4.1's pattern proves the restriction and lift
+    transfers separately. `OWL.Interp` carries no structure beyond two
+    extension families, so `DLCompat i I` (class and role extensions
+    read off `i.rel` at the translated names) suffices:
+    `sat_conceptFormula` and `satisfiesAll_owlDlDirect_iff` are proved
+    against it and instantiated at `restrictInterpDL i` and at
+    `dlCompat_lift`. Only `sem_inl` — the left-injection lemma for the
+    sum domain — is a second induction over `OWL.Concept`.
+
+25. **`speciesIsDl` cannot serve as the stage 5 fragment guard.**
+    `OWL/SyntaxDL.lean`'s species checker takes RDF `Graph`s
+    (five of them) and decides OWL 2 DL membership from triples. The
+    Direct-Semantics route does not factor through graphs (§5.3) and
+    the tree has NO reader from `Graph` to `List OWL.Assertion`, so
+    there is no place to attach it: it would guard a different input.
+    The stage 5 fragment guard is STRUCTURAL instead — `OWL.Concept`
+    and `OWL.Assertion` ARE the fragment, so `refuted_unified_unsat`
+    needs no fragment hypothesis at all. What the tableau fragment
+    omits relative to OWL 2 DL (nominals, datatypes, functional roles,
+    inverse roles, property chains, TBox axioms other than the role
+    box) is recorded as boundary rows in the registry, not as a guard
+    that does not fit.
+
+26. **Tableau COMPLETENESS is not available, so the gate is one
+    direction plus a satisfiability `↔`.** `unified_adequate_dl` is a
+    full `↔` between CL satisfiability of the translation and
+    `OWL.Consistent`. The refutation gate `refuted_unified_unsat` is
+    soundness only: `OWL/Tableau.lean`'s `Refuted` has no blocking
+    condition and no ⊔-saturation strategy, and
+    `OWL/TableauTheorems.lean` proves soundness only, so
+    `¬ OWL.Consistent R A → OWL.Refuted R A` is not derivable here.
+    Recorded as a registry gap row rather than weakened into a claim.
+
+### Stage 6 correction notes (2026-08-26)
+
+`Unified/SparqlQuery.lean` and `Unified/SparqlAdequacy.lean` landed
+(BGP matching and the entailment regimes). Six notes in the same
+spirit as 1-26:
+
+27. **§4.6's single membership iff splits into a pivot plus two
+    theorems.** The statement
+    `μ ∈ evalBgp b g ↔ (μ.domExact b ∧ μ.rangeIn g ∧ Entails …)`
+    cannot be proved, and not for want of effort: membership in
+    `evalBgp b g` is LIST membership of a `Binding`, and two of its
+    properties are invisible to any semantic condition. (a) ORDER —
+    the evaluator conses bindings as it walks subject → predicate →
+    object, left to right through the pattern list, so the mapping it
+    returns is one particular permutation of the pairs. (b)
+    COARSENESS — `tryBindTerm`'s already-bound arm keeps the FIRST
+    term bound to a variable and only compares the graph's own term to
+    it with `Term.eqb`, so a returned mapping's terms need only be
+    engine-equal to the graph's, not structurally identical
+    (`SPARQL/BgpRefinement.lean`'s header records the same point for
+    its own conclusion). Landed instead: the pivot
+    `BgpMatches μ b g` (every pattern instantiates under μ into `g` by
+    engine equality), the gate `unified_adequate_bgp` as a full iff
+    between the pivot and `Answers`, `bgp_eval_sound` (unconditional)
+    and `bgp_eval_complete` (agreement up to `Term.eqb`). The two
+    chains `unified_adequate_bgp_engine` and
+    `unified_bgp_answers_returned` are what a reader of §4.6 wanted.
+    Also withdrawn: the `μ.domExact b` conjunct. It is not needed —
+    the term model REFUTES an unbound variable through the tag
+    component of its denotation rather than excluding it by
+    assumption — so the gate carries no domain hypothesis at all.
+
+28. **`UQuery` carries the pattern, not an arbitrary `CL.Sentence`.**
+    §3's `structure UQuery where vars : List VarName; body :
+    CL.Sentence` makes `UQuery.instantiate` a capture-avoiding
+    name-substitution over `CL.Sentence`, which needs a substitution
+    engine plus a non-capture lemma that is false in general (a
+    substituted term can be captured by an enclosing `all` / `ex`).
+    The bodies this stage produces are quantifier-free conjunctions of
+    atoms, where the substitution and the compositional definition
+    agree, so the landed structure carries `pattern : SPARQL.Bgp` and
+    `body` is the derived accessor `bgpBody [] q.pattern` — exactly
+    the open body §3 names. If a later stage needs `UQuery` over an
+    arbitrary sentence, the substitution engine is the work item, not
+    a rename.
+
+29. **`regimeToSchema` is the SPECIFICATION table; the engine
+    dispatcher is narrower, and the two disagree on `"RDFS"`.**
+    `RDFS.entailmentClosureForQueryExt` recognises `x-rdfscore` and
+    `x-rdfsplus` and routes EVERY other string — `"RDFS"`,
+    `"OWL-RL"`, a typo — to `OWL.RL.closure`. Its own module header
+    states this. So a regime row that said "RDFS regime" without
+    saying WHICH closure would misdescribe the engine.
+    `regimeToSchema` resolves the four W3C names through
+    `RDF.Regime.ofName?` (whose `.rdfs` closure is
+    `RDFS.fullClosure`), `regimeDispatchSchema` records what the
+    dispatcher selects, and a `#guard` pins the disagreement.
+    `regime_sound_rdfs` is stated against `RDF.Regime.closure .rdfs`
+    and says so.
+
+30. **Regime soundness landed for `simple`, `x-rdfscore` and `RDFS`;
+    `x-rdfsplus` did not, and regime completeness is a different
+    claim.** §4.6's `regime_sound` shape landed once as
+    `regime_sound_of_closureHolds`, whose premise is the regime's own
+    content. `x-rdfsplus` has no closure-soundness theorem to supply
+    that premise: stage 3 landed the RDFS-Plus Datalog tier at
+    demo-instance strength, and `RDFS/RegimeDispatch.lean`'s own claim
+    column already refuses chain-level completeness for it because
+    `owl:sameAs` breaks the Herbrand construction — that refusal
+    transfers verbatim. Separately: §4.6's parenthetical "x-rdfscore
+    (with the ↔ form, via stage 2)" is delivered as
+    `regime_rhoDf_answers_closure_iff`, a full iff saying the
+    MATERIALISATION is answer-preserving. That is not "the engine
+    returns every ρdf answer", which needs the closure to be
+    SATURATED — the `rhoDfClosedCheck` hypothesis the stage 2 decided
+    corollary carries. Recorded as a gap row, not folded into the iff.
+
+31. **The `x-ikl-*` family is a dataset TRANSFORM, so it enters as a
+    premise-list transform and gets no schema.**
+    `CL.IklRegime.extendDataset` does not close a graph under rules;
+    it merges the content of every ASSERTED proposition into the
+    default graph. `ikl_extend_entailed` is the one theorem about the
+    merge: the extended default graph's Skolem reading is entailed by
+    `iklPremises ds` — the dataset's own graphs, read Skolem-wise —
+    unconditionally and independently of the suffix. What it
+    deliberately does NOT claim: that the merge is CONSERVATIVE (no
+    landed theorem ties the `urn:cl:def:asserts` decoration to
+    `CL.IklRespectsThat`), and anything about named subsets, which
+    stay deferred to
+    [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581)
+    per the owner ruling recorded there.
+
+32. **`Term.eqb` is coarser than syntactic identity, and without a
+    schema row for that the SOUNDNESS half is false.** `Graph.mem` is
+    stated over `RDF.Term.eqb`, which identifies literals differing in
+    language-tag CASE and `rdf:XMLLiteral` lexical forms that are
+    exclusive-canonical-XML equal. Two such literals embed to
+    DIFFERENT CL terms, so a plain CL interpretation may separate
+    them, and "the pattern instantiates to a triple `Graph.mem` finds
+    in `g`" would not imply the instantiated body is entailed. Landed:
+    `termEqSchema`, one `eq` row per `Term.eqb`-equal pair — the same
+    LBase §2.4 axiom-schema mechanism §2.5 already uses for the
+    D-entailment value rows. `herbQ` (the term model) had to be built
+    for the same reason: `RDF.herbrand`'s domain is `Term` under
+    structural equality, so it violates the schema; quotienting the
+    domain by `Term.eqb` repairs exactly that and nothing else.
+    Recorded while proving `termEqSchema_nontrivial`: `String.toLower`
+    does not reduce in the Lean kernel, so neither `decide` nor `rfl`
+    discharges `langTagEq "EN" "en" = true`; the theorem carries the
+    language-tag fact as a hypothesis and the concrete instance is
+    pinned by `#guard`.
 
 ## 1. Goal and provenance
 

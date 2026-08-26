@@ -117,6 +117,8 @@ import L4Factoidal.OWL.QueryEvalRegimeTests
 import L4Factoidal.OWL.RLRules
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
+import L4Factoidal.OWL.RLSemantics
+import L4Factoidal.OWL.RLHerbrand
 import L4Factoidal.OWL.RLTheorems
 import L4Factoidal.OWL.RLTests
 import L4Factoidal.OWL.Semantics
@@ -399,4 +401,12 @@ import L4Factoidal.Unified.DatasetEmbed
 import L4Factoidal.Unified.DSchema
 import L4Factoidal.Unified.RhoDfSchema
 import L4Factoidal.Unified.RdfsSchema
+import L4Factoidal.Unified.Datalog
+import L4Factoidal.Unified.DatalogClosures
+import L4Factoidal.Unified.OwlRlSchema
+import L4Factoidal.Unified.OwlRlAdequacy
+import L4Factoidal.Unified.OwlDlDirect
+import L4Factoidal.Unified.OwlDlAdequacy
+import L4Factoidal.Unified.SparqlQuery
+import L4Factoidal.Unified.SparqlAdequacy
 import L4Factoidal.Unified.Witnesses
