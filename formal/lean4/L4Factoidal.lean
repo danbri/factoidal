@@ -117,6 +117,7 @@ import L4Factoidal.OWL.QueryEvalRegimeTests
 import L4Factoidal.OWL.RLRules
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
+import L4Factoidal.OWL.RLSemantics
 import L4Factoidal.OWL.RLTheorems
 import L4Factoidal.OWL.RLTests
 import L4Factoidal.OWL.Semantics
