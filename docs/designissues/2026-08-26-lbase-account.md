@@ -88,14 +88,61 @@ reports `propext`, `Classical.choice`, `Quot.sound` only.
 
 | Location | Modules | Lines |
 |---|---|---|
-| `formal/lean4/L4Factoidal/Unified/` | 17 | 11,906 |
+| `formal/lean4/L4Factoidal/Unified/` | 18 | 12,679 |
 | `formal/lean4/L4Factoidal/OWL/RLSemantics.lean`, `OWL/RLHerbrand.lean` | 2 | 3,725 |
-| Total | 19 | 15,631 |
+| Total | 20 | 16,404 |
+
+(`Unified/ClBridge.lean`, 773 lines, landed after stage 7 with the
+issue-609 item-3 result of §3.7.)
 
 `OWL/RLSemantics.lean` supplies the model-theoretic truth layer that
 `OWL/RLTheorems.lean` had recorded as not ported since it was written.
 Stage 4's soundness gate needs that layer, so proving the gate was
 the port.
+
+---
+
+### 1.5 What "adequacy" means here, and what it does not
+
+The theorem names in this program use `adequate`. The word is
+borrowed, and the borrowing is worth stating precisely, because it
+carries three distinct meanings across the fields this work touches.
+
+* **Programming-language semantics and logical frameworks.** Plotkin's
+  *computational adequacy* ("LCF considered as a programming
+  language", 1977) relates two semantics of one object language; the
+  *adequacy theorem* of a logical-framework encoding
+  (Harper, Honsell and Plotkin, LF) relates an object language to its
+  encoding in a host logic by a compositional bijection. The stage
+  gates of this program have the second shape: an encoding of RDF,
+  RDFS, OWL or SPARQL in the CL/IKL host, proved faithful.
+* **Model theory.** "Adequate" is not a technical term there. The
+  model-theoretic name for what the stage gates prove is a **faithful
+  interpretation**, in the sense of relative interpretability
+  (Tarski, Mostowski and Robinson). `unified_adequate_simple` states
+  exactly that `rdfToTheory` is a faithful interpretation of RDF
+  simple entailment in the unified theory: sound because it is an
+  interpretation, complete because it is faithful.
+* **Knowledge representation.** McCarthy and Hayes ("Some
+  Philosophical Problems from the Standpoint of Artificial
+  Intelligence", 1969) use *epistemological adequacy* — with
+  metaphysical and heuristic adequacy alongside it — for whether a
+  representation can express the facts an agent needs. That is a
+  judgement about fitness for a purpose, not a theorem. **No result in
+  this document is an adequacy claim in that sense.**
+
+One further distinction, internal to the naming. Two different
+relations share the `unified_adequate_` prefix:
+
+* `unified_adequate_simple`, `_rdfs`, `_dl`, `_bgp` and their
+  siblings state translation faithfulness — the faithful-interpretation
+  reading above.
+* The `_decided` family (`unified_adequate_simple_decided`,
+  `unified_adequate_rhoDf_decided`,
+  `unified_adequate_d_decided_sound`) states that an **executable
+  procedure** agrees with the semantics. That is soundness and
+  completeness of a decision procedure, which composes with the first
+  relation but is not the same relation.
 
 ---
 
@@ -447,7 +494,7 @@ Regime results:
 | `x-rdfscore` | `regime_sound_rhoDf` | soundness, no hypotheses |
 | `x-rdfscore` | `regime_rhoDf_answers_closure_iff` | full iff — the MATERIALISATION is answer-preserving |
 | `RDFS` | `regime_sound_rdfs` | soundness, under `IsRdfMemberIri` on the harvested members and `rdf:XMLLiteral ∈ D` |
-| `x-ikl-*` | `ikl_extend_entailed`, `regime_sound_ikl` | soundness, unconditional, suffix-independent |
+| `x-ikl-*` | `ikl_extend_entailed`, `regime_sound_ikl` | soundness against `datasetToTheory` under `CL.IklRespectsThat`, on `datasetBnodeNames ds = []`; sensitive to the `urn:cl:def:asserts` test |
 | `x-rdfsplus` | — | NO theorem |
 
 **Named gaps at stage 6.**
@@ -463,9 +510,21 @@ Regime results:
   `RDFS.entailmentClosureForQueryExt` recognises `x-rdfscore` and
   `x-rdfsplus` and routes every other string — `"RDFS"` and `"OWL-RL"`
   included — to `OWL.RL.closure`. A `#guard` pins the disagreement.
-* The `x-ikl-*` merge is not proved CONSERVATIVE: no landed theorem
-  ties the `urn:cl:def:asserts` decoration to `CL.IklRespectsThat`.
-  Named subsets stay deferred to
+* **The `x-ikl-*` soundness theorem did not see its own selection
+  predicate, and its premise reading disagreed with the unified
+  layer's dataset embedding. REPAIRED 2026-08-26.** The old
+  `regime_sound_ikl` was stated over `iklPremises ds` — the default
+  graph's Skolem reading plus EVERY named graph's — so assertion and
+  mention were already identified in it, and `mergeWhere_entailed`
+  showed the entailment held for every selection predicate. The
+  embedding now asserts an ASSERTS-decorated named graph zero-arily,
+  so `ikl_extend_entailed` and `regime_sound_ikl` are stated over
+  `[datasetToTheory ds]` under `CL.IklRespectsThat` alone and are
+  predicate-sensitive
+  (`embedding_sees_the_assertion_decoration`). What remains open on
+  this line: the fragment guard `datasetBnodeNames ds = []`, silence
+  about the suffix, and no completeness claim in either direction.
+  Full account: §3.7. Named subsets stay deferred to
   [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581).
 
 ---
@@ -622,6 +681,153 @@ Open; the fix direction is a `valueInSpace`-shaped carve-out in
 `DRangeCond`, `rangeClashAx` and `existsRangeLiteralMismatch`, with the
 adequacy theorems reproved.
 
+### 3.7 Two renderings of a proposition inside RDF — they disagreed, and the embedding was changed
+
+Item 3 of
+[https://github.com/danbri/factoidal/issues/609](https://github.com/danbri/factoidal/issues/609).
+`Unified/ClBridge.lean`.
+
+**Found by:** asking, as a theorem, whether the CL/IKL translation and
+the unified layer's dataset embedding agree. They do not.
+
+The tree renders "a proposition inside RDF" twice. `CL/ToRdf.lean`
+makes each top-level CLIF sentence a NAMED GRAPH whose name is the
+SHA-256 content address of its alpha-normalized canonical CLIF, and
+puts an `urn:cl:def:asserts` decoration in the default graph;
+`CL/IklRegime.lean`'s `x-ikl-*` handler then merges the content of
+every asserts-decorated proposition graph into the default graph at
+query time. `Unified/DatasetEmbed.lean` rendered the same named graph
+as ONE decoration sentence, `atom(names)[n, that(rdfBody G)]`, which
+asserts nothing.
+
+`Unified/SparqlAdequacy.lean` stated the regime's soundness against a
+THIRD reading, `iklPremises ds`: the default graph's Skolem reading
+plus every named graph's. That reading asserts the content of every
+named graph, asserted or merely mentioned.
+
+**The witness** is not synthetic. `wDs` is the dataset
+`CL.toRdfDataset` produces from the CLIF text `((that (Dead OBL)))`,
+and a `#guard` pins the equality against the parser and the
+translator. On it:
+
+```lean
+theorem ikl_reading_diverges_from_decoration_only_embedding :
+    Unified.Entails (iklPremises wDs) (tripleAtom wContent) ∧
+    ¬ CL.EntailsUnder PropAlphaInvariant [decorationOnlyToTheory wDs]
+        (tripleAtom wContent)
+```
+
+The proposition's content triple, `<urn:cl:OBL> rdf:type
+<urn:cl:Dead>`, is entailed by the regime's premise reading and not by
+the decoration-only embedding. `decorationOnly_refutes_content_plain`
+gives the same refutation over the whole interpretation class;
+`decorationOnly_refutes_content_ikl` gives it over
+`CL.IklRespectsThat`. Coherence did not repair the gap because it
+constrains a proposition's ZERO-ARY relation extension, and the
+embedding of the time put the `that`-term in the second argument of
+`urn:cl:def:names`.
+
+(The theorem names carry `decorationOnly` because the repair below
+changed the embedding. `decorationOnlyToTheory` is the superseded
+reading, kept in `Unified/DatasetEmbed.lean` so these statements stay
+true of the thing they were evidence against.)
+
+**The soundness theorem's strength, measured.** `mergeWhere_entailed`
+proves `ikl_extend_entailed` for EVERY selection predicate over the
+named graphs. `mergeAll_entailed` is the same theorem for the regime
+that merges every named graph, believed propositions included — the
+regime that issue 581's narrowing removed. So `ikl_extend_entailed`
+and `regime_sound_ikl` certify nothing about the choice of the
+`urn:cl:def:asserts` test.
+
+**Cost:** a query answered through the `x-ikl-*` regime and a claim
+proved through the unified layer could differ about the same dataset,
+and no landed theorem said so. Correction notes 33 and 34.
+
+**The repair, landed 2026-08-26.** Owner ruling, verbatim: "The
+correct path is (3.)" — change the embedding so the `that`-term sits
+where IKL coherence bites. An earlier form of the repair adopted the
+commitment as an interpretation condition
+(`IklAssertionCommitment`) and proved it underivable from coherence
+(`commitment_not_derivable`); both are now removed, because the
+embedding no longer needs them.
+
+`Unified/DatasetEmbed.lean` now gives a named graph the DEFAULT graph
+decorates with `urn:cl:def:asserts` a SECOND conjunct:
+
+```lean
+def assertedGraphAtom (ng : RDF.NamedGraph) : CL.Sentence :=
+  .atom (.that (rdfBody ng.graph)) []
+```
+
+That is CLIF's cancelling-parentheses assertion `((that S))` — the
+same construct the witness text used — and it is the position
+`CL.IklRespectsThat` constrains. `CL.sat_assert_that` therefore turns
+it into the graph's content, and the regime's encoding commitment
+becomes a THEOREM:
+
+```lean
+theorem embed_asserts_decorated_graphs {i : CL.Interp}
+    (hcoh : CL.IklRespectsThat i) {ds : RDF.Dataset}
+    (hbn : datasetBnodeNames ds = [])
+    (hsat : CL.Satisfies i (datasetToTheory ds))
+    {ng : RDF.NamedGraph} (hng : ng ∈ ds.named)
+    (hass : CL.assertsDecorated ds.default ng.name = true) :
+    CL.Satisfies i (rdfToTheorySk ng.graph)
+```
+
+`ikl_extend_entailed` and `regime_sound_ikl` are restated over
+`[datasetToTheory ds]` under `CL.IklRespectsThat` and moved into
+`Unified/ClBridge.lean`. The naming decoration is retained, so the
+graph-name identification the regime relies on is unchanged, and a
+named graph WITHOUT the decoration still asserts nothing
+(`dataset_decoration_asserts_nothing`, whose witness has an empty
+default graph).
+
+**The new statement sees the predicate.** That was the second half of
+the finding: `mergeWhere_entailed` proved the old statement for every
+selection predicate. `embedding_sees_the_assertion_decoration` entails
+the content over `wDs` and REFUTES it over `wDsMentioned` — the same
+dataset with the assertion decoration deleted — while `iklPremises`
+entails it over both. The superseded, predicate-blind statement stays
+as `iklPremises_extend_entailed`.
+
+**What the repair costs.** `datasetToTheory` is now
+VOCABULARY-SENSITIVE: `urn:cl:def:asserts` joins `urn:cl:def:names`,
+`urn:cl:def:literalValueOf` and `urn:cl:def:tripleTerm` as reserved
+vocabulary of the unified layer, so the embedding is no longer a
+reading of an arbitrary RDF dataset that adds nothing to RDF 1.1
+Concepts §4. `graphAsserted_eq_assertsDecorated` pins the layer's test
+to the engine's by `rfl`. The fragment guard
+`datasetBnodeNames ds = []` and the suffix silence are unchanged.
+
+### 3.8 The host logic's coherence condition had no model
+
+`CL.IklRespectsThat` — the IKL guide's requirement that a
+proposition's zero-ary relation extension agree with satisfaction of
+the sentence expressing it — is the condition `CL.IklEntails` and
+`CL.sat_assert_that` are stated over. No interpretation satisfying it
+existed anywhere in `formal/lean4`. `CL/Examples.lean`'s header says
+so of `tiny`; the same holds of `trivialCLInterp`, `alphaKeyedInterp`
+and `namesOnlyInterp` in `Unified/Witnesses.lean`. Every theorem over
+the condition was therefore unwitnessed, and the refutations of §3.7
+needed one.
+
+A coherent interpretation makes zero-ary predication on a proposition
+DECIDE satisfaction of the sentence expressing it, so no constant or
+finite ad-hoc `iProp` can serve: the condition is a fixpoint.
+`Unified/ClBridge.lean` §5 builds the model. Its domain is `Prop`, a
+proposition IS a `Prop`, and `pSat` writes the model's own
+satisfaction out as a recursion over the CL syntax — which is what
+breaks the circularity between `CL.Sat` and `Interp.iProp`, since
+`CL.Sat` reaches `iProp` only at a `that`-term and `pSat` can recurse
+there. `pSat_eq` proves the recursion agrees with `CL.Sat` clause by
+clause; `propModel_coherent` turns that into `IklRespectsThat` for
+every relation reading that makes zero-ary predication transparent.
+The construction is parameterised by the name, string, relation and
+function readings, so one recursion serves both the refuting model of
+§3.7 and the model that witnesses the repair theorem's bundle.
+
 ---
 
 ## 4. What is NOT claimed
@@ -658,7 +864,26 @@ per-stage gap rows.
 8. **The D decided corollary has only its sound half.**
 9. **OWL 2 RL ground completeness is condition-bundle form, on a narrow
    fragment**, and does not reach graphs declaring object properties.
-10. **Nothing here is a performance claim.** The unified layer is
+10. **The `x-ikl-*` regime IS now proved sound against the unified
+    layer's own dataset reading** (repaired 2026-08-26, §3.7), but
+    only on `datasetBnodeNames ds = []`, only as soundness, and with
+    no claim about the `x-ikl-*` SUFFIX — all suffixes route to one
+    handler. The predicate-blind `iklPremises` statement it replaced
+    survives as `iklPremises_extend_entailed`.
+11. **The CL/IKL executable stack is NOT proved adequate to
+    `CL/Semantics.lean`.** Items 1 and 2 of
+    [https://github.com/danbri/factoidal/issues/609](https://github.com/danbri/factoidal/issues/609)
+    are open: `satFin_eq` — full satisfaction agreement between
+    `CL/FiniteSat.lean` and `CL.Sat`, the missing half of the pair
+    whose term-denotation half (`denotTermFin_eq` / `denotSeqFin_eq`)
+    is proved — and `clifParse_adequate` for the CLIF reader against
+    ISO 24707 Annex A. The host logic every gate theorem of stages 1-6
+    is stated over is still the one language in the tree whose own
+    executable stack has no adequacy theorem.
+12. **`ikl_extend_entailed` is stated on the blank-node-free
+    fragment**, and that every `ToRdf` output lies in it is pinned by
+    `#guard` on the witness, not proved for all CLIF texts.
+13. **Nothing here is a performance claim.** The unified layer is
     `Prop`-level and fuel-free: it states relations, and every decision
     procedure stays on the native side. Speed stays measured where it
     is measured.

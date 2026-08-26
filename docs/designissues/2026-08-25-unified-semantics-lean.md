@@ -49,7 +49,11 @@ read them with these notes:
    inside `that` shadows the dataset-wide binding and loses the
    blank-node sharing the bullet establishes. Landed:
    `that (rdfBody G)` — the unscoped body — under the dataset-level
-   closure.
+   closure. AMENDED 2026-08-26 (note 37): the decoration is no longer
+   the whole contribution — a named graph the DEFAULT graph decorates
+   with `urn:cl:def:asserts` also contributes
+   `atom (that (rdfBody G)) []`, the zero-ary assertion of its
+   proposition.
 4. **§6.1 DatasetEmbed "N-Quads round-trip corollaries".** No native
    theorem to compose with yet: the tree's round-trip theorem covers
    only the empty graph (`Syntax/SyntaxTheorems.lean`). Deferred to
@@ -484,7 +488,11 @@ spirit as 1-26:
     `CL.IklRespectsThat`), and anything about named subsets, which
     stay deferred to
     [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581)
-    per the owner ruling recorded there.
+    per the owner ruling recorded there. SUPERSEDED 2026-08-26 by note
+    37: the merge IS now tied to `CL.IklRespectsThat` — the embedding
+    asserts an `urn:cl:def:asserts`-decorated named graph zero-arily,
+    and `ikl_extend_entailed` is stated over `datasetToTheory` rather
+    than `iklPremises`.
 
 32. **`Term.eqb` is coarser than syntactic identity, and without a
     schema row for that the SOUNDNESS half is false.** `Graph.mem` is
@@ -505,6 +513,177 @@ spirit as 1-26:
     discharges `langTagEq "EN" "en" = true`; the theorem carries the
     language-tag fact as a hypothesis and the concrete instance is
     pinned by `#guard`.
+
+33. **The `x-ikl-*` regime's premise reading and the dataset embedding
+    are DIFFERENT readings of a dataset, and they disagree.** Note 31
+    recorded that no landed theorem tied the `urn:cl:def:asserts`
+    decoration to `CL.IklRespectsThat`. `Unified/ClBridge.lean`
+    ([https://github.com/danbri/factoidal/issues/609](https://github.com/danbri/factoidal/issues/609)
+    item 3) settles what that gap is. `iklPremises ds` asserts the
+    default graph AND every named graph; `datasetToTheory ds` asserts
+    the default graph and reads a named graph as ONE decoration,
+    `atom(names)[n, that(rdfBody G)]`, which asserts nothing.
+    `ikl_reading_diverges_from_dataset_embedding` proves the two
+    disagree on `wDs`, the translation `CL.toRdfDataset` really
+    produces for `((that (Dead OBL)))`: the asserted proposition's
+    content triple is entailed by `iklPremises` and is not entailed by
+    `datasetToTheory`. `embedding_refutes_content_ikl` shows IKL
+    coherence does not repair it — coherence constrains a
+    proposition's zero-ary relation extension, and the embedding puts
+    the `that`-term in the second argument of `urn:cl:def:names`.
+    Two consequences for note 31's own statement:
+    `mergeWhere_entailed` proves `ikl_extend_entailed` holds for EVERY
+    selection predicate over the named graphs, so "unconditionally and
+    independently of the suffix" understates it — the theorem is also
+    independent of the assertion test, and therefore does not certify
+    issue 581's narrowing; and `regime_sound_ikl`'s soundness is
+    relative to a premise reading in which assertion and mention are
+    already identified. The repair is stated:
+    `IklAssertionCommitment` is the regime's own encoding commitment
+    over the decoration vocabulary alone, and under it plus coherence
+    the embedding entails the whole extended default graph on the
+    blank-node-free fragment (`embed_entails_extension`). Adopting it
+    as a regime condition, or restating regime soundness over
+    `datasetToTheory`, is the engine-side decision this note does not
+    take.
+
+    SUPERSEDED 2026-08-26 by note 37: the owner took the second
+    option, and the embedding was changed rather than the condition
+    adopted. `IklAssertionCommitment` and `commitment_not_derivable`
+    are removed; the theorem names in this note now read
+    `decorationOnly_*` and refer to the superseded embedding
+    `decorationOnlyToTheory`.
+
+34. **`CL.IklRespectsThat` had no model in the tree.** Every theorem
+    over it — `CL.IklEntails`, `CL.sat_assert_that`, and now note 33's
+    refutations — needed one, and none existed: a coherent
+    interpretation makes zero-ary predication on a proposition decide
+    satisfaction of the sentence expressing it, which is a fixpoint,
+    and the ad-hoc finite models in `Unified/Witnesses.lean` and
+    `CL/Examples.lean` all fail it (`CL/Examples.lean`'s header says
+    so of `tiny`). `Unified/ClBridge.lean` §5 builds one: `propModel`
+    has domain `Prop`, a proposition IS a `Prop`, and `pSat` writes
+    the model's own satisfaction out as a recursion over the CL syntax
+    — which is what breaks the circularity between `CL.Sat` and
+    `Interp.iProp`. `pSat_eq` proves the recursion agrees with
+    `CL.Sat` clause by clause, and `propModel_coherent` turns that
+    into `IklRespectsThat` for every relation reading making zero-ary
+    predication transparent.
+
+35. **The finite satisfaction checker's agreement is now proved, and
+    one of the four conditions its header named is not a hypothesis.**
+    `CL/FiniteSatTheorems.lean` proves `satFin_eq`
+    ([#609](https://github.com/danbri/factoidal/issues/609) item 1)
+    under three hypotheses — lawful `BEq` on the domain type, domain
+    completeness, no sequence-marker quantifier — each shown not
+    removable by a separating pair. The fourth condition
+    `CL/FiniteSat.lean`'s header listed, valuation-independence of the
+    IKL `that`-reading, is a property of `FiniteInterp.toInterp` (its
+    `iProp` is a lookup keyed by canonical CLIF text), so it is
+    `rfl`, not a side condition. What the header condition is really
+    about is recorded as a boundary instead: `witFin_not_ikl_coherent`
+    shows the finite reading does not meet `IklRespectsThat` in
+    general, so `satFin_eq` is agreement with `fi.toInterp`, not with
+    IKL entailment. Note 34's `propModel` is the coherent
+    interpretation the finite reading is not.
+
+    A method note that cost time: `CL/Semantics.lean`'s satisfaction
+    group is compiled by well-founded recursion, so `simp only [Sat]`
+    cannot fire at `fi.toInterp` — the valuation `v.ind : String → α`
+    type-checks against `String → fi.toInterp.dom` only at DEFAULT
+    transparency, and `simp` matches at `implicit`. One
+    `rw [Sat]`-proved clause lemma per constructor, stated over an
+    arbitrary `Interp`, is the fix; they are public in
+    `CL/FiniteSatTheorems.lean` for any later proof over `CL.Sat`.
+
+36. **CLIF reader adequacy is a fragment statement with two obstacles,
+    not a theorem** ([#609](https://github.com/danbri/factoidal/issues/609)
+    item 2, `CL/ClifAdequacy.lean`). Annex A carries no meaning
+    function of its own, so the only adequacy claim available is the
+    round trip against the serialiser, and that is FALSE in general:
+    `Sentence.toClif` guards NAME spellings through `renderName` but
+    writes a sequence marker as the raw `"..." ++ m`, so
+    `.atom (.name "P") [.seqmark "a b"]` serialises to `(P ...a b)`
+    and reads back with TWO argument items. The string-level `#guard`s
+    already in `CL/Clif.lean` cannot see it — the misparse
+    re-serialises to the same text. `marksLexable` is the fragment,
+    found by measuring 38 shapes.
+
+    The general lemma is open (it needs `lexAcc` fuel-monotonicity and
+    a decomposition over `++`, then the same for `parseSExpr`).
+    INSTANCE-level theorems are open too, for a different reason
+    worth recording: the kernel cannot reduce this parser at useful
+    sizes. Measured 2026-08-26 on a 16 GB container, `(P a)` and
+    `(P a b)` reduce in 4-6 s while `(P ...a b)` and
+    `(forall (x) (P x))` exhaust memory and are killed after
+    150-200 s; the cliff is in the string primitives the lexer goes
+    through, not the grammar. Any future plan that assumes `rfl` or
+    `decide` can pin a parser instance in this tree should start from
+    that measurement.
+
+### Dataset-embedding repair note (2026-08-26, issue 609 item 3)
+
+37. **The repair for note 33 is a change to the EMBEDDING, not an
+    adopted condition.** Owner ruling (2026-08-26, verbatim): "The
+    correct path is (3.)" — change the embedding so the `that`-term
+    sits where IKL coherence bites. Landed in
+    `Unified/DatasetEmbed.lean`: a named graph the DEFAULT graph
+    decorates with `urn:cl:def:asserts` now contributes a SECOND
+    conjunct, `atom (that (rdfBody G)) []` — the proposition applied
+    as a relation with no arguments, which is CLIF's own
+    cancelling-parentheses assertion `((that S))` and the position
+    `CL.IklRespectsThat` constrains. The naming decoration
+    `atom(names)[n, that(rdfBody G)]` is retained, so the graph-name
+    identification the regime relies on is unchanged, and a named
+    graph WITHOUT the decoration still asserts nothing.
+
+    What follows, all in `Unified/ClBridge.lean`:
+
+    * `embed_asserts_decorated_graphs` DERIVES the regime's encoding
+      commitment from `CL.IklRespectsThat` alone. The adopted
+      condition `IklAssertionCommitment` and its non-derivability
+      witness `commitment_not_derivable` are REMOVED — both were
+      statements about the superseded embedding.
+    * `ikl_extend_entailed` and `regime_sound_ikl` are restated over
+      `[datasetToTheory ds]` under `CL.IklRespectsThat`, and moved out
+      of `Unified/SparqlAdequacy.lean` into `Unified/ClBridge.lean`.
+      This answers note 33's "engine-side decision this note does not
+      take": regime soundness is now soundness with respect to the
+      unified layer's own dataset reading.
+    * The new statement is SENSITIVE to the `urn:cl:def:asserts` test,
+      which note 33 recorded that the old one was not:
+      `embedding_sees_the_assertion_decoration` entails the content
+      over `wDs` and refutes it over `wDsMentioned` — the same dataset
+      with the assertion decoration deleted — while `iklPremises`
+      entails it over both. The superseded, predicate-blind statement
+      stays as `iklPremises_extend_entailed` beside
+      `mergeWhere_entailed`, which is the measurement that condemned
+      it.
+    * Note 33's divergence theorems are NOT deleted. They are
+      restated about `decorationOnlyToTheory` — the superseded
+      reading, kept in `Unified/DatasetEmbed.lean` — where they remain
+      true: `ikl_reading_diverges_from_decoration_only_embedding` and
+      `decorationOnly_refutes_content_ikl`. This is the
+      `topLevel_exclusion_insufficient_for_tt` pattern of note 11.
+      `decorationOnly_strictly_weaker` pins the two readings apart:
+      `coherentBlind` satisfies the superseded one and refutes the
+      repaired one.
+
+    What the repair does NOT claim. `ikl_extend_entailed` still
+    carries the fragment guard `datasetBnodeNames ds = []` (every
+    `ToRdf` output occupies it; `#guard` pins it for the witness, not
+    proved for all texts). It still says nothing about the SUFFIX —
+    all `x-ikl-*` suffixes route to one handler, per the owner ruling
+    in [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581). It is soundness only; no completeness claim
+    in either direction. And `datasetToTheory` is now
+    VOCABULARY-SENSITIVE: it gives `urn:cl:def:asserts` a meaning, so
+    it is no longer a reading of an arbitrary RDF dataset that adds
+    nothing to RDF 1.1 Concepts §4 — it is the unified layer's reading
+    of a dataset in which that decoration is the layer's own reserved
+    vocabulary, alongside `urn:cl:def:names`,
+    `urn:cl:def:literalValueOf` and `urn:cl:def:tripleTerm`.
+    `dataset_decoration_asserts_nothing` is what survives of the
+    RDF 1.1 neutrality: an undecorated named graph asserts nothing.
 
 ## 1. Goal and provenance
 

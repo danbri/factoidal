@@ -63,6 +63,26 @@ deliberate extra semantic commitment of this regime, not an RDF
 entailment: nothing in RDF semantics licenses treating membership in
 the graph named by an IRI as content of the proposition that IRI
 identifies.
+
+The commitment is now DISCHARGED in the model theory
+(https://github.com/danbri/factoidal/issues/609 item 3, 2026-08-26).
+`Unified/DatasetEmbed.lean`'s dataset embedding renders a named graph
+the default graph decorates with `urn:cl:def:asserts` as the zero-ary
+assertion of its proposition, `atom (that (rdfBody G)) []` — CLIF's
+cancelling-parentheses form, and the position `CL.IklRespectsThat`
+constrains. Under IKL coherence ALONE the embedding then entails the
+whole default graph `extendDataset` computes, on datasets with no
+blank nodes: `Unified/ClBridge.lean`'s `embed_asserts_decorated_graphs`
+and `ikl_extend_entailed`.
+
+An earlier form of the repair adopted the commitment as an
+interpretation condition (`Unified.IklAssertionCommitment`) because
+the embedding of the time put the `that`-term in the second argument
+of `urn:cl:def:names`, where coherence cannot reach it, and
+`commitment_not_derivable` showed the condition did not follow from
+coherence. Both are removed. The record of the defect is
+`Unified/ClBridge.lean` §3 and §6, stated about the superseded
+`decorationOnlyToTheory`.
 -/
 
 import L4Factoidal.CL.ToRdf
