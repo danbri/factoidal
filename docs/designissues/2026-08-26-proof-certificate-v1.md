@@ -1,6 +1,13 @@
 # Proof certificate v1 — design
 
-Status: DRAFT for owner review. Written 2026-08-26 alongside the first
+Status: PARTLY SUPERSEDED 2026-08-26 by
+[`2026-08-26-proof-profile-fpp0-adoption.md`](2026-08-26-proof-profile-fpp0-adoption.md),
+which replaces the single-regime claim shape and the single `tier` field
+with the FPP0 profile and the F/V/R/A evidence levels. Sections 2
+(trust model), 3 (graph identity) and 5 (rejection table) stand. Kept as
+the record of what changed and why.
+
+Status was: DRAFT for owner review. Written 2026-08-26 alongside the first
 implementation agent (issue
 [#615](https://github.com/danbri/factoidal/issues/615) item 1).
 
