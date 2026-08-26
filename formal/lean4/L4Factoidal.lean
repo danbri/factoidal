@@ -43,6 +43,8 @@ import L4Factoidal.RDFS.RhoDfCompleteness
 import L4Factoidal.RDFS.ReflexivityWitness
 import L4Factoidal.RDFS.FullClosure
 import L4Factoidal.RDFS.FullClosureTheorems
+import L4Factoidal.RDFS.Derivation
+import L4Factoidal.RDFS.DerivationTests
 import L4Factoidal.RDFS.SchemaSplit
 import L4Factoidal.RDF.Datatypes
 import L4Factoidal.RDF.Entailment
