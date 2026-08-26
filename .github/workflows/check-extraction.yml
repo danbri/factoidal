@@ -28,6 +28,31 @@ on:
       - 'formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/**'
       - 'formal/fstar/ocaml-output/*.ml'
 
+# Cost control. Step "Verify + Extract + Compile" is a full F* verify --
+# 20-30 minutes warm, over an hour from a cold .checked cache -- and the
+# drift check it exists to feed takes seconds. Adding the push trigger
+# above (correctly: the drift arrived by direct push) multiplied that.
+#
+# Measured 2026-08-26, four runs in twelve minutes:
+#   195  push  ba086788e3a  ~33 min
+#   196  push  49f8ca4d70b  ~23 min
+#   197  PR    49f8ca4d70b  ~30 min   same head as 196
+#   198  push  5a49bb0b887  ~31 min   the merge of 197's branch
+#
+# 196 and 197 are the same head commit; 197 and 198 are the same content
+# (a PR run checks out the merge result, which is what 198 then tests on
+# main). Roughly an hour of runner time for one commit's worth of answer.
+#
+# This group cancels a superseded run when another push lands on the SAME
+# ref, which is the common case during a working session -- three commits
+# in ten minutes should cost one verify, not three. It deliberately does
+# NOT collapse the PR/push pair: those check different trees whenever the
+# base has moved, and main's own green is not something to infer from a
+# branch run. Keyed by ref so a branch run can never cancel main's.
+concurrency:
+  group: check-extraction-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

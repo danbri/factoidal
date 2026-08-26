@@ -1,7 +1,7 @@
 {
-  "version": "0.1.0",
-  "gitSha": "4944fdb1cc6d5fcc7a2db2f2a1802f276aac6bee",
-  "builtAt": "2026-08-22T05:46:06Z",
+  "version": "0.3.0",
+  "gitSha": "49f8ca4d70bf57c12fea445611e2b01b067bf6ba",
+  "builtAt": "2026-08-26T21:45:40Z",
   "claims": {
     "schema": "1",
     "statement": "Proved sound with respect to an independent F* formalization of the W3C RDF/RDFS/OWL semantics, under the stated fragment restrictions and the trust surface recorded in docs/theorem-registry.md — never claimed as a complete formally verified implementation of RDF semantics (docs/theorem-registry.md § Calibrated claims).",

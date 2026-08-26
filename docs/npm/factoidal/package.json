@@ -1,7 +1,7 @@
 {
   "name": "@factoidal/core",
-  "version": "0.1.0",
-  "description": "Formally verified RDF/SPARQL engine, extracted from F* specifications, for Node and the browser (JS + Wasm). Parser and algebra spec verified in F*; on-disk backend has unverified OCaml-side optimization layers being migrated back to F*.",
+  "version": "0.3.0",
+  "description": "Factoidal: a linked information system with graph data and the Web at its heart - RDF parsing, SPARQL 1.1 query, canonicalization and entailment for Node and the browser (JS + Wasm), grounded in F* and Lean 4. Parser and algebra spec verified in F*; on-disk backend has unverified OCaml-side optimization layers being migrated back to F*.",
   "keywords": [
     "sparql",
     "rdf",
@@ -57,7 +57,20 @@
     "./factoidal.js": "./factoidal.js",
     "./factoidal.wasm.js": "./factoidal.wasm.js",
     "./factoidal.wasm.assets/*": "./factoidal.wasm.assets/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./l4": {
+      "types": "./l4.d.ts",
+      "default": "./l4.js"
+    },
+    "./l4-core": {
+      "types": "./l4-core.d.ts",
+      "default": "./l4-core.js"
+    },
+    "./l4-assets/*": "./l4-assets/*",
+    "./select": {
+      "types": "./select.d.ts",
+      "default": "./select.js"
+    }
   },
   "files": [
     "index.js",
@@ -68,6 +81,13 @@
     "rdfjs.js",
     "fn.js",
     "fn.d.ts",
+    "l4.js",
+    "l4.d.ts",
+    "l4-core.js",
+    "l4-core.d.ts",
+    "l4-assets/",
+    "select.js",
+    "select.d.ts",
     "lib/",
     "browser.js",
     "browser.d.ts",

@@ -34,10 +34,44 @@ earlier "identity stays `Claude <noreply@anthropic.com>`" paragraph.
 Set it repo-local in every session/worktree that commits:
 `git config user.name "Dan Brickley" && git config user.email
 danbri@danbri.org`. Subagent briefs that authorize commits must
-include this alongside the message rule. Consequences accepted by
-the owner: no GPG/SSH signing (commits show unsigned), and
-harness stop-hooks that expect `noreply@anthropic.com` will nag —
-ignore that nag; this policy wins.
+include this alongside the message rule. Consequence accepted by
+the owner: the container's SSH signing key is registered to the bot
+address, so a human-committed commit cannot verify against it and
+GitHub shows it "Unverified". Correct attribution outranks the badge.
+
+### The policy is now enforced by the bootstrap, not by memory
+(2026-08-26)
+
+For a month this rule depended on the agent remembering to run the
+`git config` pair in every session and worktree, and on the agent
+IGNORING a hook that told it to do the opposite. The hosted CCR image
+ships two hooks:
+
+- a SessionStart hook setting the GLOBAL identity to
+  `Claude <noreply@anthropic.com>`;
+- a Stop hook that, on any commit GitHub would mark Unverified,
+  printed `Please run 'git config user.email noreply@anthropic.com &&
+  git config user.name Claude'`.
+
+That second one is a standing instruction to violate iron rule #13,
+issued at the end of every turn, with an exit code that blocks the
+turn. Telling a future session to "ignore that nag" is not a control;
+an instruction repeated every turn beats a rule read once.
+
+Owner instruction, 2026-08-26, verbatim: "Delete the hook instruction
+to leak our ai tooling decisions into github; all attributions are to
+responsible human only".
+
+Both hooks were rewritten in the container, and — because
+`/root/.claude/` dies with the container — the durable fix lives in
+the repository: `tools/sandbox-bootstrap.sh` pins the REPOSITORY-LOCAL
+identity on every session start and prints it in the bootstrap block
+(`- commit identity: Dan Brickley <danbri@danbri.org> (repo-local;
+human only)`). Repo-local config wins over global regardless of which
+hook ran last, so the harness cannot take it back by reordering.
+
+If a future session sees the bootstrap line report anything else, the
+bootstrap did not run; fix that rather than committing.
 - PR descriptions follow the same spirit: describe the diff, skip
   the attribution footer.
 - CHANGELOG/docs prose is unaffected; this policy is about commits.

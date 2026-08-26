@@ -50,6 +50,28 @@ jobs:
             # Rule #11(c) — vendored crypto primitive realisation;
             # permanent fixture, not a retirement candidate.
             "fstar_pure_hashes.ml"
+            # Rule #11(c) — vendored crypto realisation, the Ed25519 +
+            # SHA-256 half of what fstar_pure_hashes.ml does for the
+            # SPARQL/RDFC hashes. Pure `external` call-outs to the
+            # vendored HACL* C in experimental_ocaml_glue/hacl_stubs.c;
+            # no cryptographic logic in the .ml. Same primitives are
+            # realised for js_of_ocaml by hacl_stubs.js over HACL*'s own
+            # official wasm build. Permanent fixture (crypto-policy
+            # skill), not a retirement candidate. Landed 2026-07-19;
+            # allowlist entry missing until 2026-08-26, which is why
+            # this gate was red.
+            "fstar_hacl_crypto.ml"
+            # Rule #11 — a single mutable ref cell with no .fst source,
+            # on the same footing as fstar_pure_hashes.ml. It breaks an
+            # OCaml link-order cycle that has no F*-side counterpart:
+            # SPARQL11_Algebra's patched service_endpoint_lookup needs
+            # RML_Eval/SPARQL_HTTP_Client, which are extracted from .fst
+            # modules that structurally depend on SPARQL11.Algebra.
+            # Issue #57 family; docs/designissues/
+            # 2026-07-06-virtual-sources-design.md. Retirement candidate
+            # only if that cycle is removed on the F* side. Landed
+            # 2026-07-19; allowlist entry missing until 2026-08-26.
+            "service_wrap_hook.ml"
             # parquet_probe.ml relocated to bin/parquet-probe/ on
             # 2026-05-08 (#200 PR5). No longer in ocaml-output/.
             # sparql_parser_stubs.ml + sparql-parser-patches.sh REMOVED
@@ -76,8 +98,25 @@ jobs:
             [ -f "$ml" ] || continue
             base=$(basename "$ml")
 
-            # F\*-extracted files always start with `open Prims`.
-            if head -1 "$ml" | grep -q "^open Prims$"; then
+            # F\*-extracted files carry `open Prims`, but not always on
+            # line 1: a patch script may prepend `include <Module>` lines
+            # to merge modules (RDF_Graph_Executable.ml has eight). The
+            # old check read line 1 only and reported that extracted file
+            # as hand-written for over three weeks.
+            #
+            # Rule: scan the prologue. `open Prims` counts as extracted
+            # when only `include`/`open` lines, blanks and comments
+            # precede it. The first line of real code ends the prologue,
+            # so a hand-written file cannot smuggle it in halfway down.
+            if awk '
+              /^[[:space:]]*$/                 { next }
+              /^[[:space:]]*\(\*/            { next }
+              /^open Prims$/                   { found = 1; exit }
+              /^include [A-Z][A-Za-z0-9_]*$/   { next }
+              /^open [A-Z][A-Za-z0-9_]*$/      { next }
+                                               { exit }
+              END { exit !found }
+            ' "$ml"; then
               continue
             fi
 
@@ -116,7 +155,15 @@ jobs:
           for ml in "$OUTDIR"/*.ml; do
             [ -f "$ml" ] || continue
             base=$(basename "$ml")
-            if head -1 "$ml" | grep -q "^open Prims$"; then
+            if awk '
+              /^[[:space:]]*$/                 { next }
+              /^[[:space:]]*\(\*/            { next }
+              /^open Prims$/                   { found = 1; exit }
+              /^include [A-Z][A-Za-z0-9_]*$/   { next }
+              /^open [A-Z][A-Za-z0-9_]*$/      { next }
+                                               { exit }
+              END { exit !found }
+            ' "$ml"; then
               extracted_count=$((extracted_count + 1))
             elif [ -n "${allow[$base]:-}" ]; then
               allow_count=$((allow_count + 1))
