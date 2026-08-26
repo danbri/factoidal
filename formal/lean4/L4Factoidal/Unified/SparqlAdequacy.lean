@@ -1129,10 +1129,24 @@ own graphs, read Skolem-wise.
 
 One theorem, about the merge itself. What it deliberately does NOT
 claim: that the merge is CONSERVATIVE (the `urn:cl:def:asserts`
-decoration is not tied by any landed theorem to the IKL `that`-term
-semantics of `CL.IklRespectsThat`), and nothing about the suffix — all
-suffixes route to one handler, per the owner ruling recorded in
-issue 581. -/
+decoration is not tied here to the IKL `that`-term semantics of
+`CL.IklRespectsThat`), and nothing about the suffix — all suffixes
+route to one handler, per the owner ruling recorded in issue 581.
+
+MEASURED, 2026-08-26 (`Unified/ClBridge.lean`,
+https://github.com/danbri/factoidal/issues/609 item 3): the theorem is
+weaker than "unconditional and suffix-independent" reads.
+`mergeWhere_entailed` proves it for EVERY selection predicate over the
+named graphs, the `urn:cl:def:asserts` test and the merge-everything
+predicate alike, so it certifies nothing about the choice of predicate
+and does not see issue 581's narrowing. And `iklPremises` asserts
+EVERY named graph, so it is a STRICTLY STRONGER dataset reading than
+`Unified/DatasetEmbed.lean`'s `datasetToTheory`, which reads a named
+graph as a decoration that asserts nothing:
+`ikl_reading_diverges_from_dataset_embedding` proves the two disagree
+about the content of an asserted proposition, on a dataset
+`CL.toRdfDataset` really produces. The repair —
+`IklAssertionCommitment` plus coherence — is stated there. -/
 
 theorem mem_graphAdd {g : RDF.Graph} {t u : RDF.Triple}
     (h : t ∈ RDF.Graph.add u g) : t ∈ g ∨ t = u := by

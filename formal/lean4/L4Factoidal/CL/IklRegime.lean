@@ -63,6 +63,16 @@ deliberate extra semantic commitment of this regime, not an RDF
 entailment: nothing in RDF semantics licenses treating membership in
 the graph named by an IRI as content of the proposition that IRI
 identifies.
+
+The commitment is now stated in the model theory as
+`Unified.IklAssertionCommitment` (`Unified/ClBridge.lean`,
+https://github.com/danbri/factoidal/issues/609 item 3), over the
+`urn:cl:def:names` and `urn:cl:def:asserts` vocabulary alone. Under it
+plus `CL.IklRespectsThat`, the unified layer's dataset embedding
+entails the whole default graph `extendDataset` computes, on datasets
+with no blank nodes. WITHOUT it the two disagree, and the divergence
+is machine-checked: `commitment_not_derivable` shows the condition is
+not a consequence of IKL coherence.
 -/
 
 import L4Factoidal.CL.ToRdf
