@@ -12,17 +12,28 @@ against the same W3C manifests on disk.
 
 **The Lean tree is at or near parity on the RDF + SPARQL + JSON-LD
 core, and absent on the periphery and the storage/serving layers.**
-The single most useful number: on the full SPARQL 1.1 manifest the
-Lean engine scores **601 pass, 0 fail, 30 unsupported (out of 631)**
-against F\*'s 631 pass, 0 fail — and **all 30 unsupported are
-entailment-regime tests** (OWL-Direct, OWL-RDF-Based, RIF), not core
-SPARQL. Zero failures on either side.
+The single most useful number, **re-measured 2026-08-26**: on the full
+SPARQL 1.1 manifest BOTH engines score **631 pass, 0 fail, 0 skip, 0
+unsupported (out of 631)**. The Lean side is level with F\*.
+
+⚠️ SUPERSEDED, kept as the record of the drift: this paragraph read
+**601 pass, 0 fail, 30 unsupported (out of 631)** for Lean, measured
+2026-08-22, with the 30 unsupported characterised below as
+entailment-regime tests (OWL-Direct, OWL-RDF-Based, RIF). Those 30 were
+closed at some point in the following four days and this file was not
+re-run, so the stale figure was quoted into a GitHub issue on
+2026-08-26 as a live Lean-versus-F\* gap. Verified by running
+`.lake/build/bin/l4w3c --quiet third_party/testing/w3c/sparql/sparql11/manifest-all.ttl`
+FROM THE REPOSITORY ROOT — the runners resolve manifest paths relative
+to the root and print `manifest not found` while still exiting 0 when
+run from `formal/lean4`, so a wrong working directory yields no score
+rather than a wrong one. Re-run before quoting any row here.
 
 ## At parity (measured this session)
 
 | Suite | F\* | Lean 4 |
 |---|---|---|
-| SPARQL 1.1, non-entailment-regime | 631 pass, 0 fail (of 631) | 601 pass, 0 fail (of 601 attempted) |
+| SPARQL 1.1, whole manifest (re-measured 2026-08-26) | 631 pass, 0 fail (of 631) | 631 pass, 0 fail (of 631) |
 | rdf-turtle | in rdf 1030 of 1031 | 313 pass, 0 fail (of 313) |
 | rdf-trig | in rdf | 356 pass, 0 fail (of 356) |
 | rdf-n-triples | in rdf | 70 pass, 0 fail (of 70) |
@@ -36,7 +47,7 @@ SPARQL. Zero failures on either side.
 | Area | F\* | Lean 4 | Gap |
 |---|---|---|---|
 | RDF/XML | in rdf suite | 130 pass, 2 fail (of 132, eval-isomorphic) | 2 tests |
-| SPARQL entailment regimes | supported | 30 unsupported | see below |
+| SPARQL entailment regimes | supported | supported (re-measured 2026-08-26: 0 unsupported; the "30 unsupported" section below is SUPERSEDED) | none |
 
 Re-measured 2026-08-23: `owl2_profile_ql` is 87 pass, 0 fail (of 87),
 and the whole rdf manifest is 1031 pass, 0 fail (of 1031). The two
@@ -97,7 +108,12 @@ reference recursion, RIF no builtins, XPath only the number type,
 storage only the byte primitives, CSVW no date formats. Each states
 its own scope in its module header.
 
-## The 30 unsupported, characterised
+## The 30 unsupported, characterised — SUPERSEDED 2026-08-26
+
+⚠️ This section describes a gap that no longer exists: the whole
+SPARQL 1.1 manifest reads 631 pass, 0 fail, 0 unsupported on the Lean
+side as of 2026-08-26. Retained as the record of what the gap was and
+of how long a stale row survived unnoticed.
 
 All are SPARQL queries under an entailment regime the Lean engine does
 not yet answer: OWL-Direct (about 20, including the `paper-sparqldl-*`
