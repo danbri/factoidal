@@ -17,10 +17,18 @@ if [[ ! -f "$FILE" ]]; then
   exit 0
 fi
 
-if grep -q 'let parquet_read_tail_hex (path : Prims.string)' "$FILE"; then
+# Marker-idempotence (2026-08-26). The previous guard tested for
+# `let parquet_read_tail_hex (path : Prims.string)`, which survives the
+# patch -- the replacement keeps that same signature line -- so an
+# already-patched file passed the guard and then hit the SystemExit
+# below. ocaml-patches.sh runs over the whole output directory, so an
+# incremental extract reaches this script with the file already patched;
+# with a fatal patch step that aborted the build. Test the stub's own
+# failwith text, which the patch removes.
+if grep -q 'Not yet implemented: Parquet.Footer.parquet_read_range_hex' "$FILE"; then
   echo "  Applying Parquet footer runtime glue to $FILE..."
 else
-  echo "  Warning: parquet_read_tail_hex stub not found in $FILE" >&2
+  echo "  [parquet-footer-runtime] already applied; skipping."
   exit 0
 fi
 
