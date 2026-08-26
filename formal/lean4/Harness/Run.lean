@@ -36,9 +36,7 @@ Three rules this module keeps:
     names RDFS, RDF or D (the closure of `RDF/Entailment.lean` is
     applied to the data before evaluation — see "Entailment regimes"
     below), OWL-Direct / OWL-RDF-Based (OWL 2 RL closure + the OWL
-    query path), RIF (premise saturation), or a member of the
-    `x-ikl-*` family (`CL/IklRegime.lean` — any suffix accepted,
-    provisional default semantics, issue 581); any other regime name
+    query path), or RIF (premise saturation); any other regime name
     is `unsupported entailment regime <R>`. The rdf-mt
     `PositiveEntailmentTest` / `NegativeEntailmentTest` types run
     through the same module (see "RDF 1.1 Semantics").
@@ -62,7 +60,6 @@ import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv
 import L4Factoidal.OWL.QueryEval
 import L4Factoidal.RIF.Saturate
-import L4Factoidal.CL.IklRegime
 
 open L4Factoidal.RDF
 open L4Factoidal.RDF.Canonical
@@ -412,15 +409,9 @@ def runQueryEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult :=
     tc.entailmentRegimes.contains "OWL-RDF-Based"
       || tc.entailmentRegimes.contains "OWL-Direct"
   let rifRegime : Bool := tc.entailmentRegimes.contains "RIF"
-  -- The x-ikl-* family (https://github.com/danbri/factoidal/issues/581):
-  -- any `x-ikl` / `x-ikl-<suffix>` regime string is recognized, the
-  -- suffix carried, and every suffix routes to the ONE provisional
-  -- handler `CL.IklRegime.extendDataset`.
-  let iklRegime? : Option L4Factoidal.CL.IklRegime :=
-    tc.entailmentRegimes.findSome? L4Factoidal.CL.IklRegime.parse?
   let regime? : Option Regime ←
     if tc.entailmentRegimes.isEmpty || owlRegime || rifRegime
-        || iklRegime?.isSome then pure none
+      then pure none
     else match pickRegime tc.entailmentRegimes with
       | some r => pure (some r)
       | none => return .ofOutcome (.unsupported
@@ -446,10 +437,7 @@ def runQueryEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult :=
         { default := L4Factoidal.OWL.RL.closureFix ds0.default,
           named := ds0.named.map (fun ng =>
             { ng with graph := L4Factoidal.OWL.RL.closureFix ng.graph }) }
-      else match iklRegime? with
-      | some ikl => ikl.extendDataset ds0
-      | none =>
-      match regime? with
+      else match regime? with
       | some r => closeDataset r (withMinimalD []) ds0
       | none   => ds0))
   let ds ← match dsE with

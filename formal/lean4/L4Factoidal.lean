@@ -393,8 +393,6 @@ import L4Factoidal.CL.Examples
 import L4Factoidal.CL.FiniteSat
 import L4Factoidal.CL.FiniteSatTheorems
 import L4Factoidal.CL.ClifAdequacy
-import L4Factoidal.CL.ToRdf
-import L4Factoidal.CL.IklRegime
 import L4Factoidal.CL.Normalize
 import L4Factoidal.CL.IklModels
 import L4Factoidal.CL.NormalizeSemantics

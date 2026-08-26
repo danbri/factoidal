@@ -94,7 +94,7 @@ assert_text "help"             0 out "Usage: l4factoidal"   "$CLI" help
 assert_text "no verb -> usage error" 2 err "missing verb"   "$CLI"
 assert_text "unknown verb -> usage error" 2 err "unknown verb" "$CLI" definitelyNotAVerb
 assert_json "ops reflection"   0 \
-  'r["ok"] is True and set(["parseToDatasetJson","queryDataset","owlClosure","clParse","clToDataset","queryWithIklService","datasetOpen"]) <= set(r["ops"])' \
+  'r["ok"] is True and set(["parseToDatasetJson","queryDataset","owlClosure","clParse","datasetOpen"]) <= set(r["ops"])' \
   "$CLI" ops
 
 # --- parse -------------------------------------------------------------
@@ -219,22 +219,6 @@ assert_json "cl parse" 0 \
   "$CLI" cl parse "$TMP/prop.clif"
 assert_text "cl parse unclosed paren -> error" 1 err "unclosed" \
   bash -c "printf '(P a' | '$CLI' cl parse"
-
-assert_json "cl to-rdf default (full envelope)" 0 \
-  'r["ok"] is True and r["count"] == 3 and r["skipped"] == 0' \
-  "$CLI" cl to-rdf "$TMP/prop.clif" --base "urn:cl:"
-assert_text "cl to-rdf --out nquads" 0 out "urn:cl:def:sentence" \
-  "$CLI" cl to-rdf "$TMP/prop.clif" --base "urn:cl:" --out nquads
-assert_text "cl to-rdf unknown --out -> usage error" 2 err "unknown --out" \
-  "$CLI" cl to-rdf "$TMP/prop.clif" --out bogus
-
-printf '<urn:cl:c> <http://e/label> "ctx" .\n' > "$TMP/ikldata.nq"
-assert_json "cl query (SERVICE + GRAPH join)" 0 \
-  'r["head"]["vars"] == ["l","g","s"] and r["results"]["bindings"][0]["l"]["value"] == "ctx"' \
-  "$CLI" cl query "$TMP/ikldata.nq" "$TMP/prop.clif" --format nquads \
-    --query-string 'SELECT ?l ?g ?s WHERE { ?c <http://e/label> ?l . SERVICE <urn:ikl:kb> { ?c <urn:cl:ist> ?g } GRAPH ?g { ?s ?p <urn:cl:Dead> } }'
-assert_text "cl query missing CLIF_FILE -> usage error" 2 err "need DATA_FILE CLIF_FILE" \
-  "$CLI" cl query "$TMP/ikldata.nq"
 
 assert_text "cl missing subcommand -> usage error" 2 err "need a subcommand" \
   "$CLI" cl

@@ -48,7 +48,7 @@ import L4Factoidal.RDF.Semantics
 namespace L4Factoidal.Unified
 
 /-! ## The `urn:cl:def:` operator vocabulary
-(`CL/ToRdf.lean` owns the namespace; these three are the unified
+(the unified layer owns the namespace; these three are the unified
 layer's operators). -/
 
 /-- The literal-value operator (LBase §3.0 `LiteralValueOf`). -/
@@ -63,17 +63,10 @@ def namesOp : String := "urn:cl:def:names"
 /-- The dataset ASSERTION decoration (design document §2.4, as
 repaired for https://github.com/danbri/factoidal/issues/609 item 3):
 the predicate whose occurrence in the DEFAULT graph makes the named
-graph it points at asserted rather than merely mentioned. Minted by
-`CL/ToRdf.lean` as `clDefAssertsIri`; restated here because the
-unified layer's reserved vocabulary belongs to the unified layer.
-`Unified/ClBridge.lean`'s `graphAsserted_eq_assertsDecorated` pins the
-two spellings together. -/
+graph it points at asserted rather than merely mentioned. -/
 def assertsOp : String := "urn:cl:def:asserts"
 
-/-- `assertsOp` as an RDF predicate. Definitionally
-`CL.clDefAssertsIri`, which is what makes
-`Unified/ClBridge.lean`'s `graphAsserted_eq_assertsDecorated` hold by
-`rfl`. -/
+/-- `assertsOp` as an RDF predicate. -/
 def assertsIri : RDF.WfIri := ⟨assertsOp, by decide⟩
 
 /-! ## Colon-free injective bound-name encoding -/

@@ -65,8 +65,7 @@ Each comment quotes the guide's own reading. -/
 
 -- guide (Appendix B): bound-variable renaming does not change the
 -- proposition — the guide's alpha-variant pair has ONE alpha-normal
--- form (`CL/Alpha.lean`, issue 589), which is what `CL/ToRdf.lean`
--- keys proposition graph names on.
+-- form (`CL/Alpha.lean`, issue 589).
 #guard alphaCanon "(exists (x)(loves Jim x))"
        == alphaCanon "(exists (y)(loves Jim y))"
 

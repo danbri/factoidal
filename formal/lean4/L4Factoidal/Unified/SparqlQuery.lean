@@ -68,7 +68,6 @@ import L4Factoidal.Unified.DatalogClosures
 import L4Factoidal.Unified.OwlRlSchema
 import L4Factoidal.SPARQL.BgpRefinement
 import L4Factoidal.RDFS.RegimeDispatch
-import L4Factoidal.CL.IklRegime
 
 namespace L4Factoidal.Unified
 
@@ -411,15 +410,10 @@ def bgpBnodeFree (b : SPARQL.Bgp) : Bool :=
 
 /-! ## Regime dispatch
 
-The design document's `regimeToSchema`. Two deviations, both forced
-by what the tree contains:
-
-* the RDFS rows need a `RDF.DatatypeSet` (stage 2 correction note 9b),
-  so that is a parameter alongside the recognised `D`;
-* the `x-ikl-*` family is a dataset TRANSFORM, not a closure and not a
-  schema (`CL/IklRegime.lean`'s `extendDataset`). It maps to the empty
-  schema here, and its content is the premise-list transform
-  `iklPremises` in `SparqlAdequacy.lean`.
+The design document's `regimeToSchema`. One deviation, forced by what
+the tree contains: the RDFS rows need a `RDF.DatatypeSet` (stage 2
+correction note 9b), so that is a parameter alongside the recognised
+`D`.
 
 **Which closure a regime string actually selects.** `regimeToSchema`
 is the SPECIFICATION table: it resolves the four W3C names of
@@ -446,9 +440,7 @@ def regimeToSchema (regime : String) (Dset : RDF.DatatypeSet)
       if regime = RDFS.regimeXRdfsCore then some (rdfsCoreSchema, condTrue)
       else if regime = RDFS.regimeXRdfsPlus then
         some (rdfsPlusProgram.toSchema, condTrue)
-      else match CL.IklRegime.parse? regime with
-        | some _ => some (emptySchema, condTrue)
-        | none => none
+      else none
 
 /-- The schema of the closure `RDFS.entailmentClosureForQueryExt`
 ACTUALLY selects for a regime string — the engine table, including its
@@ -475,7 +467,6 @@ section Checks
 #guard (regimeToSchema "RDFS" RDF.dMinimal []).isSome
 #guard (regimeToSchema "x-rdfscore" RDF.dMinimal []).isSome
 #guard (regimeToSchema "x-rdfsplus" RDF.dMinimal []).isSome
-#guard (regimeToSchema "x-ikl-flat" RDF.dMinimal []).isSome
 
 /-! The engine dispatcher sends `"RDFS"` to the OWL RL closure, which
 is NOT the RDFS schema the specification table names. Pinned, per the
