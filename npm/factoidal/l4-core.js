@@ -48,20 +48,36 @@ const NOT_SUPPORTED =
 // (`bin/linux-x86_64/l4factoidal ops`); this list wires 12 of them.
 // Two families are deliberately withheld, for different reasons:
 //
-//   - CL/IKL (`clParse`, `clToDataset`, `queryWithIklService`): held
-//     back by OWNER DECISION, 2026-08-26
+//   - IKL-to-RDF projection ("direction B": `clToDataset`,
+//     `queryWithIklService`): held back by OWNER DECISION, 2026-08-26
 //     (https://github.com/danbri/factoidal/issues/618) — "I don't want
 //     npm code for direction b at this stage, unless for the shape of
 //     ikl which is the subset we get mapping rdf into ikl. But ikl
 //     doesn't have shapes or named profiles. Take it out of npm for
-//     now." IKL has no notion of shapes or named profiles, so an
-//     x-ikl-<suffix> entailment-regime family (see lib/api.js's
-//     ENTAIL_VALUES / the x-ikl guard in query()) invents a taxonomy
-//     the spec does not have. These three ops are NOT removed from the
-//     compiled wasm (no rebuild happened for this) — they are simply
-//     never dispatched to from this JS surface. Do not add them here
-//     without a fresh owner sign-off; see the regression test in
-//     test/select.test.js that pins them absent.
+//     now." Both ops go through `CL/ToRdf.lean`, whose naming and
+//     decoration conventions have no reversibility theorem behind them
+//     yet (https://github.com/danbri/factoidal/issues/620). The same
+//     ruling is why an x-ikl-<suffix> entailment-regime family is
+//     rejected in lib/api.js's query() and fn.js's entail(): IKL has no
+//     notion of shapes or named profiles, so the suffix family invents
+//     a taxonomy the specification does not have. These ops are NOT
+//     removed from the compiled wasm (no rebuild happened for this) —
+//     they are simply never dispatched to from this JS surface. Do not
+//     add them without a fresh owner sign-off; test/select.test.js pins
+//     them absent.
+//
+//   - `clParse`: NOT direction B, and NOT covered by the ruling above.
+//     It reads CLIF text into a CL syntax tree and never produces RDF.
+//     CORRECTION 2026-08-26: an earlier version of this comment listed
+//     clParse with the two projection ops and cited the owner's
+//     direction-B ruling as the reason for all three. That
+//     misattributed a decision the owner did not make. clParse was
+//     already unwired here before that ruling, with no reason recorded;
+//     it stays unwired now only because nobody has decided to wrap it.
+//     Whether to expose it is an OPEN question, not a settled
+//     exclusion. The hub reaches it directly through fn.l4Call against
+//     the wasm (see docs/web/hub/44-a-little-ikl-walkthrough.md), which
+//     bypasses this typed surface entirely.
 //   - dataset handles (`datasetOpen`/`datasetQuery`/`datasetUpdate`/
 //     `datasetSerialize`/`datasetClose`): ordinary RDF dataset handles,
 //     not part of the CL/IKL decision above. Held back only because
