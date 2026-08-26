@@ -308,6 +308,84 @@ section 9). Five points of §4.4 are corrected by the implementation.
     `owl:minCardinality "1"` triple. The completeness direction
     therefore does not reach cardinality-bearing ontologies.
 
+### Stage 5 correction notes (2026-08-26)
+
+Stage 5 landed (`Unified/OwlDlDirect.lean`,
+`Unified/OwlDlAdequacy.lean`; registry section 9). Six points of §4.5
+and §5.3 are corrected or made precise by the implementation.
+
+21. **The tableau's name spaces had to be separated from the RDF
+    route's, and the repair is an encoding, not a type change.**
+    `OWL.Role` and `OWL.Ind` are `abbrev … := String`, so an individual
+    named `"x"` sits in the same string space as the COLON-FREE bound
+    names `Unified/RdfEmbed.lean` reserves for blank nodes.
+    `OWL/Tableau.lean`'s header invites tightening `Role`/`Ind` to
+    `RDF.WfIri`; that was REJECTED. `exWitness` MINTS a fresh
+    individual name and `leqMerge` RENAMES one, so both rules would
+    acquire an IRI well-formedness obligation and the freshness side
+    condition `x ∉ indsOf A` would have to be restated over a subtype;
+    and Direct Semantics reads an individual as a structural entity,
+    not as an RDF IRI (§5.3). Landed instead: `dlName tag s` =
+    `urn:owl:dl:` ++ tag ++ `escape s`, with `tag ∈ {i, c, r}` for
+    individual, class and role. Every translated name carries a colon,
+    so it is distinct from every `bnodeName` and from every bound
+    variable; the three tags make the name spaces pairwise disjoint;
+    `escape` is injective, so `dlDecode` recovers the tableau name.
+    The gate theorem therefore carries NO freshness hypothesis.
+
+22. **§4.5's gate is stated over `owlDlDirect R A ++ roleAxiomSentences R`,
+    which double-counts.** `owlDlDirect` already receives `R`. Landed:
+    `owlDlDirect R A = roleAxiomSentences R ++ A.map assertionSentence`,
+    and `unified_adequate_dl` is stated over `owlDlDirect R A` alone.
+
+23. **The lift CANNOT use `Unified/RdfTransport.lean`'s tag-product
+    domain, and the reason is the cardinality translation.**
+    `liftInterp` (stage 1) takes `dom := Option String × r.idom` so
+    that the predicate position carries its name identity. That answer
+    is UNSOUND for the DL route: `atMost n r` translates to the
+    negation of an existential over `n + 1` PAIRWISE DISTINCT domain
+    elements, and a product domain has distinct pairs whose `δ`
+    components coincide — so an interpretation whose OWL reading
+    satisfies `atMost 1 r` would violate the translated sentence.
+    Landed: `dom := δ ⊕ String`, with both extensions FALSE on the
+    right summand, so every witness a counting formula can use lies in
+    the left summand where distinctness is distinctness in `δ`
+    (`card_sum_iff`, `sem_inl` in `Unified/OwlDlDirect.lean`).
+
+24. **The transfer is stated once against a compatibility predicate,
+    not run twice.** §4.1's pattern proves the restriction and lift
+    transfers separately. `OWL.Interp` carries no structure beyond two
+    extension families, so `DLCompat i I` (class and role extensions
+    read off `i.rel` at the translated names) suffices:
+    `sat_conceptFormula` and `satisfiesAll_owlDlDirect_iff` are proved
+    against it and instantiated at `restrictInterpDL i` and at
+    `dlCompat_lift`. Only `sem_inl` — the left-injection lemma for the
+    sum domain — is a second induction over `OWL.Concept`.
+
+25. **`speciesIsDl` cannot serve as the stage 5 fragment guard.**
+    `OWL/SyntaxDL.lean`'s species checker takes RDF `Graph`s
+    (five of them) and decides OWL 2 DL membership from triples. The
+    Direct-Semantics route does not factor through graphs (§5.3) and
+    the tree has NO reader from `Graph` to `List OWL.Assertion`, so
+    there is no place to attach it: it would guard a different input.
+    The stage 5 fragment guard is STRUCTURAL instead — `OWL.Concept`
+    and `OWL.Assertion` ARE the fragment, so `refuted_unified_unsat`
+    needs no fragment hypothesis at all. What the tableau fragment
+    omits relative to OWL 2 DL (nominals, datatypes, functional roles,
+    inverse roles, property chains, TBox axioms other than the role
+    box) is recorded as boundary rows in the registry, not as a guard
+    that does not fit.
+
+26. **Tableau COMPLETENESS is not available, so the gate is one
+    direction plus a satisfiability `↔`.** `unified_adequate_dl` is a
+    full `↔` between CL satisfiability of the translation and
+    `OWL.Consistent`. The refutation gate `refuted_unified_unsat` is
+    soundness only: `OWL/Tableau.lean`'s `Refuted` has no blocking
+    condition and no ⊔-saturation strategy, and
+    `OWL/TableauTheorems.lean` proves soundness only, so
+    `¬ OWL.Consistent R A → OWL.Refuted R A` is not derivable here.
+    Recorded as a registry gap row rather than weakened into a claim.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
