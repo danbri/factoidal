@@ -317,8 +317,14 @@ def decimalCompare (a b : String) : Option Ordering :=
     let ka := padL ai ++ padR af
     let kb := padL bi ++ padR bf
     let magnitude := compare ka kb
+    -- `-0` and `0` are the SAME value. Reading the sign first made
+    -- `"-0"^^xsd:nonNegativeInteger` fall below the type's lower
+    -- bound and leave its lexical space (ShEx `nonNegativeInteger-n0`).
+    let aZero := ka.toList.all (· == '0')
+    let bZero := kb.toList.all (· == '0')
     some (
-      if an && !bn then .lt
+      if aZero && bZero then .eq
+      else if an && !bn then .lt
       else if !an && bn then .gt
       else if an && bn then magnitude.swap
       else magnitude)
@@ -771,11 +777,21 @@ def parseDate (base : String) (fmt : String) (v : String) : FmtOutcome :=
     and stamped `xsd:date` on it. -/
 def canonicalDatePatterns (base : String) : List String :=
   let withTz := fun (p : String) => [p, p ++ "XXX", p ++ "X"]
+  -- A canonical `xsd:dateTime` may carry ANY number of fractional
+  -- second digits. `matchDatePattern` reads an `S` run as an EXACT
+  -- digit count, deliberately (CSVW test247 requires `HH:mm:ss.S` to
+  -- reject `15:02:37.143`), so the no-format canonical form offers
+  -- one pattern per width instead. With only `.S` on offer,
+  -- `"2012-01-02T12:34:56.78Z"` was not a `dateTime` at all.
+  let fracRuns : List String :=
+    (List.range 9).map (fun n => String.ofList (List.replicate (n + 1) 'S'))
   match base with
   | "date"       => withTz "yyyy-MM-dd"
   | "dateTime" | "datetime" | "dateTimeStamp" =>
-      withTz "yyyy-MM-ddTHH:mm:ss" ++ withTz "yyyy-MM-ddTHH:mm:ss.S"
-  | "time"       => withTz "HH:mm:ss" ++ withTz "HH:mm:ss.S"
+      withTz "yyyy-MM-ddTHH:mm:ss" ++ fracRuns.flatMap (fun f =>
+        withTz ("yyyy-MM-ddTHH:mm:ss." ++ f))
+  | "time"       => withTz "HH:mm:ss" ++ fracRuns.flatMap (fun f =>
+        withTz ("HH:mm:ss." ++ f))
   | "gYear"      => withTz "yyyy"
   | "gYearMonth" => withTz "yyyy-MM"
   | "gMonth"     => withTz "--MM"

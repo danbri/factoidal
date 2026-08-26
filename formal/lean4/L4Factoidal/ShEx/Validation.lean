@@ -208,12 +208,22 @@ def matchesPattern (nc : NodeConstraint) (t : Term) : Bool :=
 
 /-- §5.4.6 `totalDigits` / `fractionDigits`. A literal whose lexical
     form is not a decimal FAILS the facet rather than being coerced,
-    which is the rule the ordering facets already follow. -/
+    which is the rule the ordering facets already follow.
+
+    The facets are defined on `xsd:decimal` and the types derived from
+    it, and on nothing else, so the literal's DATATYPE decides whether
+    they can apply at all — counting digits in the lexical form was
+    not enough. `"1.23456"^^xsd:float` has no digit count (its value
+    space is the IEEE binary floats), and `"1.2345"^^xsd:integer` is
+    not in `xsd:integer`'s lexical space, so it has no value to count
+    the digits of. Both were being accepted by reading the characters
+    and ignoring the datatype. -/
 def matchesDigitFacets (nc : NodeConstraint) (t : Term) : Bool :=
   if nc.totalDigits.isNone && nc.fractionDigits.isNone then true
   else match t with
     | .literal l =>
         let lex := l.val.lexicalForm
+        if !(digitFacetsApply l.val.datatype.val lex) then false else
         (match nc.totalDigits with
          | none   => true
          | some d => match totalDigitsOf lex with
