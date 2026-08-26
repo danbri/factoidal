@@ -1127,26 +1127,33 @@ still deferred). At the unified level that is a transform of the
 PREMISE LIST: the extended default graph is entailed by the dataset's
 own graphs, read Skolem-wise.
 
-One theorem, about the merge itself. What it deliberately does NOT
-claim: that the merge is CONSERVATIVE (the `urn:cl:def:asserts`
-decoration is not tied here to the IKL `that`-term semantics of
-`CL.IklRespectsThat`), and nothing about the suffix — all suffixes
-route to one handler, per the owner ruling recorded in issue 581.
+This module supplies the premise list only. The soundness statements
+themselves are in `Unified/ClBridge.lean`, over the unified layer's
+own dataset reading (`Unified/DatasetEmbed.lean`'s `datasetToTheory`),
+because that reading is what the engine's answers have to be sound
+with respect to.
 
-MEASURED, 2026-08-26 (`Unified/ClBridge.lean`,
-https://github.com/danbri/factoidal/issues/609 item 3): the theorem is
-weaker than "unconditional and suffix-independent" reads.
-`mergeWhere_entailed` proves it for EVERY selection predicate over the
-named graphs, the `urn:cl:def:asserts` test and the merge-everything
-predicate alike, so it certifies nothing about the choice of predicate
-and does not see issue 581's narrowing. And `iklPremises` asserts
-EVERY named graph, so it is a STRICTLY STRONGER dataset reading than
-`Unified/DatasetEmbed.lean`'s `datasetToTheory`, which reads a named
-graph as a decoration that asserts nothing:
-`ikl_reading_diverges_from_dataset_embedding` proves the two disagree
-about the content of an asserted proposition, on a dataset
-`CL.toRdfDataset` really produces. The repair —
-`IklAssertionCommitment` plus coherence — is stated there. -/
+WHY THEY MOVED (https://github.com/danbri/factoidal/issues/609 item 3,
+2026-08-26). Until that repair this module carried
+`ikl_extend_entailed` and `regime_sound_ikl` over `iklPremises`. Two
+measurements against them:
+
+* `iklPremises` asserts EVERY named graph, asserted or merely
+  mentioned, so it identifies assertion with mention before the
+  theorem starts. `ClBridge`'s
+  `ikl_reading_diverges_from_decoration_only_embedding` records the
+  disagreement that produced.
+* `ClBridge`'s `mergeWhere_entailed` proves the same entailment for
+  EVERY selection predicate over the named graphs, so the statement
+  certified nothing about the choice of the `urn:cl:def:asserts`
+  test and did not see issue 581's narrowing.
+
+The replacements read the dataset with `datasetToTheory`, which
+asserts an ASSERTS-decorated named graph and no other, and are
+predicate-sensitive: `ClBridge`'s `mergeAll_not_embed_entailed`
+refutes the merge-everything instance. Still nothing about the suffix
+— all suffixes route to one handler, per the owner ruling recorded in
+issue 581. -/
 
 theorem mem_graphAdd {g : RDF.Graph} {t u : RDF.Triple}
     (h : t ∈ RDF.Graph.add u g) : t ∈ g ∨ t = u := by
@@ -1168,56 +1175,10 @@ theorem mem_graphUnion : ∀ (g2 g1 : RDF.Graph) {t : RDF.Triple},
         · exact Or.inr (List.mem_cons_self ..)
       · exact Or.inr (List.mem_cons_of_mem _ h)
 
-theorem mem_iklFold (P : RDF.NamedGraph → Bool) :
-    ∀ (ns : List RDF.NamedGraph) (acc : RDF.Graph) {t : RDF.Triple},
-      t ∈ ns.foldl (fun acc ng =>
-            if P ng then RDF.Graph.union acc ng.graph else acc) acc →
-        t ∈ acc ∨ ∃ ng ∈ ns, t ∈ ng.graph
-  | [], acc, t, h => Or.inl h
-  | ng :: rest, acc, t, h => by
-      simp only [List.foldl_cons] at h
-      rcases mem_iklFold P rest _ h with h | ⟨ng', hng', ht'⟩
-      · by_cases hp : P ng
-        · rw [if_pos hp] at h
-          rcases mem_graphUnion _ _ h with h | h
-          · exact Or.inl h
-          · exact Or.inr ⟨ng, List.mem_cons_self .., h⟩
-        · rw [if_neg hp] at h
-          exact Or.inl h
-      · exact Or.inr ⟨ng', List.mem_cons_of_mem _ hng', ht'⟩
-
 /-- The premise list a dataset contributes under the `x-ikl-*` family:
 the default graph's Skolem reading and every named graph's. -/
 def iklPremises (ds : RDF.Dataset) : List CL.Sentence :=
   rdfToTheorySk ds.default :: ds.named.map (fun ng => rdfToTheorySk ng.graph)
-
-/-- **The `x-ikl-*` dataset transform is a premise-list transform**:
-the extended default graph's Skolem reading is entailed by the
-dataset's own graphs. Unconditional, and independent of the suffix. -/
-theorem ikl_extend_entailed (r : CL.IklRegime) (ds : RDF.Dataset) :
-    Unified.Entails (iklPremises ds)
-      (rdfToTheorySk (CL.IklRegime.extendDataset r ds).default) := by
-  intro i _ hsat
-  refine (satisfies_rdfToTheorySk_iff i _).mpr (fun t ht => ?_)
-  have hd : CL.Satisfies i (rdfToTheorySk ds.default) :=
-    hsat _ (List.mem_cons_self ..)
-  rcases mem_iklFold _ ds.named ds.default ht with h | ⟨ng, hng, htg⟩
-  · exact (satisfies_rdfToTheorySk_iff i ds.default).mp hd t h
-  · have : CL.Satisfies i (rdfToTheorySk ng.graph) :=
-      hsat _ (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨ng, hng, rfl⟩))
-    exact (satisfies_rdfToTheorySk_iff i ng.graph).mp this t htg
-
-/-- **`x-ikl-*` regime soundness**: an answer the engine returns over
-the extended default graph is a unified answer from the dataset's own
-premises. -/
-theorem regime_sound_ikl (r : CL.IklRegime) (ds : RDF.Dataset)
-    {b : SPARQL.Bgp} {mu : SPARQL.Binding}
-    (h : mu ∈ SPARQL.evalBgp b (CL.IklRegime.extendDataset r ds).default) :
-    Answers condTrue termEqSchema (iklPremises ds) (sparqlBgpToQuery b) mu := by
-  intro i _ hS hsat
-  exact unified_adequate_bgp_engine h i trivial hS (fun s hs => by
-    obtain rfl := List.mem_singleton.mp hs
-    exact ikl_extend_entailed r ds i trivial hsat)
 
 /-! ## Non-vacuity
 
@@ -1351,8 +1312,6 @@ section Audits
 #print axioms regime_sound_rhoDf
 #print axioms regime_rhoDf_answers_closure_iff
 #print axioms regime_sound_rdfs
-#print axioms ikl_extend_entailed
-#print axioms regime_sound_ikl
 #print axioms unified_bgp_answer_witness
 #print axioms unified_bgp_no_answer
 #print axioms termEqSchema_nontrivial

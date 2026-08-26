@@ -70,6 +70,12 @@ unified layer's reserved vocabulary belongs to the unified layer.
 two spellings together. -/
 def assertsOp : String := "urn:cl:def:asserts"
 
+/-- `assertsOp` as an RDF predicate. Definitionally
+`CL.clDefAssertsIri`, which is what makes
+`Unified/ClBridge.lean`'s `graphAsserted_eq_assertsDecorated` hold by
+`rfl`. -/
+def assertsIri : RDF.WfIri := ⟨assertsOp, by decide⟩
+
 /-! ## Colon-free injective bound-name encoding -/
 
 /-- Escape one character into a colon-free fragment: `:` → `%c`,

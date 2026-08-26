@@ -3,7 +3,7 @@ L4Factoidal.Unified.ClBridge — the CL/IKL → RDF translation against
 the unified layer's own dataset embedding.
 
 Item 3 of https://github.com/danbri/factoidal/issues/609. The tree
-carries TWO renderings of "a proposition inside RDF":
+carries two renderings of "a proposition inside RDF":
 
 1. `CL/ToRdf.lean` (https://github.com/danbri/factoidal/issues/580):
    a top-level CLIF sentence becomes a NAMED GRAPH whose name is the
@@ -15,80 +15,88 @@ carries TWO renderings of "a proposition inside RDF":
    every ASSERTS-decorated proposition graph into the default graph at
    query time.
 2. `Unified/DatasetEmbed.lean`: a named graph `(n, G)` becomes the
-   single decoration `atom (name "urn:cl:def:names") [n, that (rdfBody
-   G)]` under the dataset-wide existential closure, and asserts
-   nothing about the world (`dataset_decoration_asserts_nothing`).
+   naming decoration `atom (name "urn:cl:def:names") [n, that (rdfBody
+   G)]`, plus — when the default graph decorates `n` with
+   `urn:cl:def:asserts` — the zero-ary assertion `atom (that (rdfBody
+   G)) []`.
 
-## The result: they DISAGREE, and the disagreement is machine-checked
+## They used to disagree. §3 and §6 are the record of it
 
-`Unified/SparqlAdequacy.lean` states the regime's soundness against a
-THIRD reading, `iklPremises ds` — the default graph's Skolem reading
-plus EVERY named graph's. That reading asserts the content of every
-named graph, asserted or merely mentioned. So:
+Before the item-3 repair, clause 2 emitted the naming decoration
+ALONE, so the `that`-term appeared only in the second argument of a
+binary predication. `CL.IklRespectsThat` constrains a proposition's
+ZERO-ARY relation extension and cannot reach that position, so a
+proposition could be named and asserted in the dataset while the
+theory refuted its content. That reading survives as
+`Unified/DatasetEmbed.lean`'s `decorationOnlyToTheory`, and the
+divergence is stated about it here, where it is true:
 
 * `premises_entail_content` — under `iklPremises`, the witness
   proposition's content triple is entailed;
-* `embedding_refutes_content` — under `datasetToTheory`, the SAME
-  content triple is NOT entailed, and stays unentailed under
+* `decorationOnly_refutes_content` — under `decorationOnlyToTheory`,
+  the SAME content triple is NOT entailed, and stays unentailed under
   `PropAlphaInvariant` (issue 589's proposition-individuation
-  minimum). The separating model is `typeBlindInterp`.
+  minimum, separating model `typeBlindInterp`) and under
+  `CL.IklRespectsThat` itself (§6, separating model `coherentBlind`).
 
 The witness is a real `ToRdf` output: `wDs` is the translation of the
 CLIF text `((that (Dead OBL)))` — the guard `wDs_is_the_translation`
-pins the byte-equality against the parser and the translator.
+pins the byte-equality against the parser and the translator (the
+`#guard` on `wTranslated`).
 
-Two further facts about what `ikl_extend_entailed` proves:
+## The repair (§7): the assertion conjunct, and what it made derivable
 
-* `mergeWhere_entailed` — the entailment holds for EVERY selection
-  predicate over the named graphs, `CL.IklRegime.extendDataset`'s
-  `urn:cl:def:asserts` test included and excluded. So the landed
-  soundness theorem certifies nothing about the CHOICE of predicate:
-  `mergeAll_entailed` is the same theorem for the regime that merges
-  every named graph, believed propositions included — the narrowing
-  issue 581 made (a link decoration does not assert) is invisible to
-  it.
-* `regime_sound_ikl` inherits exactly that: its premise reading is
-  `iklPremises`, so it is soundness relative to a dataset reading in
-  which assertion and mention are already identified.
+`datasetToTheory` now renders an ASSERTS-decorated named graph with
+the zero-ary conjunct `atom (that (rdfBody G)) []` — CLIF's own
+cancelling-parentheses assertion `((that S))`, which is also the form
+the witness text used. Under `CL.IklRespectsThat` alone,
+`CL.sat_assert_that` turns that conjunct into the graph's content:
+`embed_asserts_decorated_graphs`.
 
-The divergence is not repaired by the IKL coherence condition either.
-`embedding_refutes_content_ikl` refutes the same entailment over
-`CL.IklRespectsThat`: coherence constrains a proposition's ZERO-ARY
-relation extension, and the dataset embedding never puts the
-`that`-term in that position — it sits in the second argument of
-`urn:cl:def:names`.
+That derivation REPLACES an adopted condition. The pre-repair version
+of this module carried `IklAssertionCommitment` — the regime's
+encoding commitment stated as an interpretation condition over the
+decoration vocabulary — together with `commitment_not_derivable`,
+which showed it did not follow from IKL coherence. Both are gone: the
+embedding now puts the `that`-term where coherence bites, so the
+commitment is not needed as a condition and its negation-of-
+derivability no longer holds of anything this module states.
+
+`decorationOnly_strictly_weaker` measures the change: `coherentBlind`
+satisfies the superseded reading of the witness dataset and refutes
+the repaired one.
+
+## §8: soundness over the dataset embedding, and it sees the predicate
+
+`ikl_extend_entailed` and `regime_sound_ikl` are stated here, over
+`[datasetToTheory ds]` under `CL.IklRespectsThat`. Until the repair
+they were stated in `Unified/SparqlAdequacy.lean` over `iklPremises`,
+a reading that asserts EVERY named graph, and §1's
+`mergeWhere_entailed` proves that older statement for EVERY selection
+predicate over the named graphs — so it certified nothing about the
+choice of the `urn:cl:def:asserts` test, and did not see issue 581's
+narrowing (a link decoration does not assert). The new statement does
+see it: `embedding_sees_the_assertion_decoration` entails the content
+over `wDs` and refutes it over `wDsMentioned` — the same dataset with
+the assertion decoration deleted — while `iklPremises` entails it over
+both.
 
 ## An IKL-coherent model, the first in this tree
 
-That refutation needs a model of `CL.IklRespectsThat`, and none
+The refutations of §6 need a model of `CL.IklRespectsThat`, and none
 existed anywhere in `formal/lean4` — so `CL.IklEntails` and
 `CL.sat_assert_that` had no non-vacuity witness either. §5 builds one:
 `propModel` has domain `Prop`, a proposition IS a `Prop`, and `pSat`
 writes the model's own satisfaction out as a recursion, which breaks
 the circularity between `CL.Sat` and `Interp.iProp`. `pSat_eq` proves
-the recursion agrees with `CL.Sat` clause by clause.
-
-## The repair, and what it costs
-
-`IklAssertionCommitment` states the regime's own encoding commitment
-(`CL/IklRegime.lean`, "Encoding commitment") as an interpretation
-condition over the decoration vocabulary alone: if `x` stands in the
-`urn:cl:def:names` relation to a proposition `q` and something asserts
-`x` through `urn:cl:def:asserts`, then `q` holds. Under that condition
-plus IKL coherence, the dataset embedding DOES entail the regime's
-extended default graph on the blank-node-free fragment
-(`embed_entails_extension`), and the two renderings agree.
-
-`commitment_not_derivable` shows the condition is not free: it fails
-in `coherentBlind`, which is IKL-coherent.
-`embed_entails_extension_nonvacuous` shows the bundle has a model that
-also satisfies the witness dataset's embedding, so the repair theorem
-is not vacuous, and `commitModel_not_everything` shows that model is
-not the everything-model.
+the recursion agrees with `CL.Sat` clause by clause. `objModel`, the
+instance of §8, is the non-vacuity witness for the repaired
+embedding: IKL-coherent, satisfies `datasetToTheory wDs`, and refutes
+a sentence.
 
 ## Fragment guard
 
-`embed_entails_extension` is stated for a dataset with NO blank nodes
+`ikl_extend_entailed` is stated for a dataset with NO blank nodes
 (`datasetBnodeNames ds = []`). Every `ToRdf` output satisfies it —
 `toRdfDataset` emits only IRIs, literals and triple terms — but that
 is pinned here by `#guard` on the witness, not proved for all texts.
@@ -112,11 +120,13 @@ namespace L4Factoidal.Unified
 
 open L4Factoidal
 
-/-! ## 1. The selection predicate is invisible to the soundness proof
+/-! ## 1. The selection predicate is invisible to the SUPERSEDED
+soundness statement
 
 `CL.IklRegime.extendDataset` folds the named graphs into the default
 graph under one test. `mergeWhere` is that fold with the test as a
-parameter. -/
+parameter. The measurement below is why the soundness statements of
+§8 were restated over `datasetToTheory`. -/
 
 /-- Merge into the default graph the content of every named graph the
 predicate selects. `CL.IklRegime.extendDataset` is one instance. -/
@@ -132,9 +142,9 @@ theorem extendDataset_eq_mergeWhere (r : CL.IklRegime) (ds : RDF.Dataset) :
       mergeWhere (fun ng => CL.isPropositionGraphName ng.name &&
                             CL.assertsDecorated ds.default ng.name) ds := rfl
 
-/-- `mem_iklFold` with the predicate CARRIED: a triple of the merged
-default graph either was there, or comes from a SELECTED named
-graph. -/
+/-- The merge fold, read backwards with the predicate CARRIED: a
+triple of the merged default graph either was there, or comes from a
+SELECTED named graph. -/
 theorem mem_mergeFold (P : RDF.NamedGraph → Bool) :
     ∀ (ns : List RDF.NamedGraph) (acc : RDF.Graph) {t : RDF.Triple},
       t ∈ ns.foldl (fun acc ng =>
@@ -153,10 +163,11 @@ theorem mem_mergeFold (P : RDF.NamedGraph → Bool) :
           exact Or.inl h
       · exact Or.inr ⟨ng', List.mem_cons_of_mem _ hng', hp', ht'⟩
 
-/-- **The soundness proof does not see the predicate**: for EVERY
-selection predicate, the merged default graph's Skolem reading is
-entailed by the dataset's own graphs. `ikl_extend_entailed` is the
-instance at the regime's `urn:cl:def:asserts` test. -/
+/-- **The superseded soundness statement does not see the
+predicate**: for EVERY selection predicate, the merged default
+graph's Skolem reading is entailed by the dataset's own graphs read
+`iklPremises`-wise. The regime's `urn:cl:def:asserts` test is one
+instance (`iklPremises_extend_entailed`); so is merging everything. -/
 theorem mergeWhere_entailed (P : RDF.NamedGraph → Bool) (ds : RDF.Dataset) :
     Unified.Entails (iklPremises ds) (rdfToTheorySk (mergeWhere P ds).default) := by
   intro i _ hsat
@@ -176,6 +187,17 @@ theorem mergeAll_entailed (ds : RDF.Dataset) :
     Unified.Entails (iklPremises ds)
       (rdfToTheorySk (mergeWhere (fun _ => true) ds).default) :=
   mergeWhere_entailed _ ds
+
+/-- The SUPERSEDED soundness statement itself, at the regime's own
+predicate: the statement `Unified/SparqlAdequacy.lean` carried as
+`ikl_extend_entailed` before the issue-609 item-3 repair. Kept as the
+record — `mergeAll_entailed` is the same theorem for the regime the
+narrowing removed. -/
+theorem iklPremises_extend_entailed (r : CL.IklRegime) (ds : RDF.Dataset) :
+    Unified.Entails (iklPremises ds)
+      (rdfToTheorySk (CL.IklRegime.extendDataset r ds).default) := by
+  rw [extendDataset_eq_mergeWhere]
+  exact mergeWhere_entailed _ ds
 
 /-! ## 2. The witness: a real `ToRdf` output
 
@@ -209,11 +231,14 @@ def wProjection : RDF.Triple :=
   { s := .iri wProp, p := CL.clDefRdfProjectionIri,
     o := .tripleTerm wContent.s wContent.p wContent.o }
 
+/-- The proposition graph: named by the proposition IRI, holding the
+sentence record and the sentence's one translatable atom. -/
+def wPropGraph : RDF.NamedGraph :=
+  { name := .iri wProp, graph := [CL.recordTriple wProp wSentence, wContent] }
+
 /-- The dataset `CL.toRdfDataset` produces for the witness text. -/
 def wDs : RDF.Dataset :=
-  { default := [wAsserts, wProjection],
-    named := [{ name := .iri wProp,
-                graph := [CL.recordTriple wProp wSentence, wContent] }] }
+  { default := [wAsserts, wProjection], named := [wPropGraph] }
 
 /-- The witness text, parsed and translated by the real pipeline. -/
 def wTranslated : Option RDF.Dataset :=
@@ -229,11 +254,38 @@ def wTranslated : Option RDF.Dataset :=
 #guard wTranslated == some wDs
 
 -- The witness carries no blank nodes: the fragment guard of
--- `embed_entails_extension` holds for it.
+-- `ikl_extend_entailed` holds for it.
 #guard datasetBnodeNames wDs == ([] : List String)
 
 -- The regime merges the proposition's content into the default graph.
 #guard (CL.IklRegime.extendDataset ⟨"flat"⟩ wDs).default.mem wContent
+
+-- And the unified layer's dataset reading asserts that named graph.
+#guard graphAsserted wDs wPropGraph
+
+/-- **The unified layer's assertion test IS the engine's**: the local
+`urn:cl:def:asserts` vocabulary of `Unified/RdfEmbed.lean` and
+`CL/ToRdf.lean`'s `clDefAssertsIri` are the same predicate, so the two
+tests are definitionally equal. -/
+theorem graphAsserted_eq_assertsDecorated (ds : RDF.Dataset)
+    (ng : RDF.NamedGraph) :
+    graphAsserted ds ng = CL.assertsDecorated ds.default ng.name := rfl
+
+/-- The MENTION-ONLY witness: `wDs` with its assertion decoration
+deleted. The proposition is still named by its graph and still
+projected; nothing asserts it. -/
+def wDsMentioned : RDF.Dataset := { wDs with default := [wProjection] }
+
+-- Nothing asserts the proposition, so neither the regime nor the
+-- dataset embedding carries its content over ...
+#guard !(graphAsserted wDsMentioned wPropGraph)
+#guard !((CL.IklRegime.extendDataset ⟨"flat"⟩ wDsMentioned).default.mem wContent)
+
+-- ... while the merge-EVERYTHING regime does carry it over. That gap
+-- is what `mergeAll_not_embed_entailed` turns into a refutation.
+#guard (mergeWhere (fun _ => true) wDsMentioned).default.mem wContent
+
+#guard datasetBnodeNames wDsMentioned == ([] : List String)
 
 /-- With no bound names, the override valuation is the interpretation's
 own name mapping. -/
@@ -242,16 +294,22 @@ theorem overrideOn_nil {d : Type} (base f : String → d) :
   funext n
   simp [overrideOn]
 
-/-! ## 3. The divergence -/
+/-! ## 3. The divergence, over the SUPERSEDED embedding
+
+Everything in this section and in §6 is stated about
+`decorationOnlyToTheory` — the reading `Unified/DatasetEmbed.lean`
+carried before the issue-609 item-3 repair, in which a named graph
+contributed its naming decoration and nothing else. The statements are
+kept because they are the record of why the embedding changed; they
+are FALSE of the repaired `datasetToTheory` (§7). -/
 
 /-- Under the regime's premise reading the content is entailed. -/
 theorem premises_entail_content :
     Unified.Entails (iklPremises wDs) (tripleAtom wContent) := by
   intro i _ hsat
-  have hg : CL.Satisfies i (rdfToTheorySk
-      [CL.recordTriple wProp wSentence, wContent]) :=
+  have hg : CL.Satisfies i (rdfToTheorySk wPropGraph.graph) :=
     hsat _ (by simp [iklPremises, wDs])
-  exact (satisfies_rdfToTheorySk_iff i _).mp hg wContent (by simp)
+  exact (satisfies_rdfToTheorySk_iff i _).mp hg wContent (by simp [wPropGraph])
 
 /-- The separating model: every name denotes `true` except
 `rdf:type`, and a predication holds exactly when its PREDICATE's
@@ -272,52 +330,51 @@ one proposition: issue 589's individuation minimum holds. -/
 theorem typeBlind_alphaInvariant : PropAlphaInvariant typeBlindInterp :=
   fun _ _ _ _ _ => rfl
 
-theorem typeBlind_satisfies_wDs :
-    CL.Satisfies typeBlindInterp (datasetToTheory wDs) := by
-  refine (satisfies_datasetToTheory_iff _ _).mpr
+theorem typeBlind_satisfies_decorationOnly :
+    CL.Satisfies typeBlindInterp (decorationOnlyToTheory wDs) := by
+  have hnil : datasetBnodeNames wDs = [] := by decide
+  refine (satisfies_decorationOnlyToTheory_iff _ _).mpr
     ⟨fun _ => true, fun t ht => ?_, fun ng hng => ?_⟩
-  · have hnil : datasetBnodeNames wDs = [] := by decide
-    rcases List.mem_cons.mp ht with rfl | ht
+  · rcases List.mem_cons.mp ht with rfl | ht
     · simp [tripleAtom, CL.Sat, CL.denotTerm, overrideOn, hnil,
             typeBlindInterp, wAsserts, CL.clDefAssertsIri, CL.rdfTypeIri]
     · obtain rfl := List.mem_singleton.mp ht
       simp [tripleAtom, CL.Sat, CL.denotTerm, overrideOn, hnil,
             typeBlindInterp, wProjection, CL.clDefRdfProjectionIri,
             CL.rdfTypeIri]
-  · have hnil : datasetBnodeNames wDs = [] := by decide
-    obtain rfl := List.mem_singleton.mp hng
-    simp [namedGraphAtom, CL.Sat, CL.denotTerm, overrideOn, hnil,
+  · obtain rfl := List.mem_singleton.mp hng
+    simp [namedGraphAtom, graphProp, CL.Sat, CL.denotTerm, overrideOn, hnil,
           typeBlindInterp, namesOp, CL.rdfTypeIri]
 
-/-- **The dataset embedding does not license the regime's merge**: the
-content triple of an ASSERTS-decorated proposition graph is not
-entailed by `datasetToTheory`, and stays unentailed under
+/-- **The superseded embedding does not license the regime's merge**:
+the content triple of an ASSERTS-decorated proposition graph is not
+entailed by `decorationOnlyToTheory`, and stays unentailed under
 `PropAlphaInvariant`. -/
-theorem embedding_refutes_content :
-    ¬ CL.EntailsUnder PropAlphaInvariant [datasetToTheory wDs]
+theorem decorationOnly_refutes_content :
+    ¬ CL.EntailsUnder PropAlphaInvariant [decorationOnlyToTheory wDs]
         (tripleAtom wContent) := by
   intro h
   have hs := h typeBlindInterp typeBlind_alphaInvariant (fun s hs => by
     obtain rfl := List.mem_singleton.mp hs
-    exact typeBlind_satisfies_wDs)
+    exact typeBlind_satisfies_decorationOnly)
   simp [tripleAtom, CL.Satisfies, CL.Sat, CL.denotTerm,
         typeBlindInterp, wContent, CL.rdfTypeIri] at hs
 
 /-- The same refutation over the whole interpretation class. -/
-theorem embedding_refutes_content_plain :
-    ¬ Unified.Entails [datasetToTheory wDs] (tripleAtom wContent) := by
+theorem decorationOnly_refutes_content_plain :
+    ¬ Unified.Entails [decorationOnlyToTheory wDs] (tripleAtom wContent) := by
   intro h
-  exact embedding_refutes_content (fun i _ hsat => h i trivial hsat)
+  exact decorationOnly_refutes_content (fun i _ hsat => h i trivial hsat)
 
-/-- **The two renderings disagree**, on one dataset that the CLIF
+/-- **The two renderings disagreed**, on one dataset that the CLIF
 translator really produces: the regime's premise reading entails the
-proposition's content, the unified layer's dataset embedding does
-not. -/
-theorem ikl_reading_diverges_from_dataset_embedding :
+proposition's content, the superseded decoration-only embedding does
+not. Repaired by `embedding_entails_content` (§7). -/
+theorem ikl_reading_diverges_from_decoration_only_embedding :
     Unified.Entails (iklPremises wDs) (tripleAtom wContent) ∧
-    ¬ CL.EntailsUnder PropAlphaInvariant [datasetToTheory wDs]
+    ¬ CL.EntailsUnder PropAlphaInvariant [decorationOnlyToTheory wDs]
         (tripleAtom wContent) :=
-  ⟨premises_entail_content, embedding_refutes_content⟩
+  ⟨premises_entail_content, decorationOnly_refutes_content⟩
 
 /-! ## 4. Non-vacuity of the divergence
 
@@ -329,8 +386,8 @@ sides are checked. -/
 separating model itself. -/
 theorem divergence_premise_satisfiable :
     ∃ i : CL.Interp, PropAlphaInvariant i ∧
-      CL.Satisfies i (datasetToTheory wDs) :=
-  ⟨typeBlindInterp, typeBlind_alphaInvariant, typeBlind_satisfies_wDs⟩
+      CL.Satisfies i (decorationOnlyToTheory wDs) :=
+  ⟨typeBlindInterp, typeBlind_alphaInvariant, typeBlind_satisfies_decorationOnly⟩
 
 /-- And the conclusion is not refuted by every model: the everywhere-
 true interpretation satisfies it, so the entailment fails for the
@@ -567,7 +624,13 @@ theorem propModel_coherent (iN iS : String → Prop)
 same separating idea inside the term model: every name denotes `True`
 except `rdf:type`, and a predication holds exactly when its PREDICATE's
 individual holds. It satisfies the three decoration vocabularies,
-refutes every `rdf:type` predication, and is IKL-coherent. -/
+refutes every `rdf:type` predication, and is IKL-coherent.
+
+This is the section that names the defect exactly: coherence
+constrains a proposition's ZERO-ARY relation extension, and the
+superseded embedding never put the `that`-term in that position — it
+sat in the second argument of `urn:cl:def:names`, where `predRel`
+reads the OPERATOR and the `that`-term is never consulted. -/
 
 /-- Every name denotes truth except `rdf:type`. -/
 def blindName (n : String) : Prop := n ≠ CL.rdfTypeIri.val
@@ -587,10 +650,10 @@ def coherentBlind : CL.Interp :=
 theorem coherentBlind_respectsThat : CL.IklRespectsThat coherentBlind :=
   propModel_coherent _ _ _ _ (fun _ => Iff.rfl)
 
-theorem coherentBlind_satisfies_wDs :
-    CL.Satisfies coherentBlind (datasetToTheory wDs) := by
+theorem coherentBlind_satisfies_decorationOnly :
+    CL.Satisfies coherentBlind (decorationOnlyToTheory wDs) := by
   have hnil : datasetBnodeNames wDs = [] := by decide
-  refine (satisfies_datasetToTheory_iff _ _).mpr
+  refine (satisfies_decorationOnlyToTheory_iff _ _).mpr
     ⟨fun _ => True, fun t ht => ?_, fun ng hng => ?_⟩
   · rcases List.mem_cons.mp ht with rfl | ht
     · simp only [tripleAtom, CL.Sat, CL.denotTerm, hnil, overrideOn_nil,
@@ -603,143 +666,259 @@ theorem coherentBlind_satisfies_wDs :
         CL.clDefRdfProjectionIri, CL.rdfTypeIri]
       decide
   · obtain rfl := List.mem_singleton.mp hng
-    simp only [namedGraphAtom, CL.Sat, CL.denotTerm, hnil, overrideOn_nil,
-      coherentBlind, propModel, predRel, blindName, namesOp, CL.rdfTypeIri]
+    simp only [namedGraphAtom, graphProp, CL.Sat, CL.denotTerm, hnil,
+      overrideOn_nil, coherentBlind, propModel, predRel, blindName, namesOp,
+      CL.rdfTypeIri]
     decide
 
-/-- **The divergence survives IKL coherence**: `CL.IklRespectsThat`
-does not tie the `urn:cl:def:asserts` decoration to the truth of the
-proposition it decorates, so the dataset embedding still refutes the
-content the regime merges. -/
-theorem embedding_refutes_content_ikl :
-    ¬ CL.EntailsUnder CL.IklRespectsThat [datasetToTheory wDs]
+/-- **The divergence survived IKL coherence**: `CL.IklRespectsThat`
+did not tie the `urn:cl:def:asserts` decoration to the truth of the
+proposition it decorates, so the superseded embedding still refuted
+the content the regime merges. -/
+theorem decorationOnly_refutes_content_ikl :
+    ¬ CL.EntailsUnder CL.IklRespectsThat [decorationOnlyToTheory wDs]
         (tripleAtom wContent) := by
   intro h
   have hs := h coherentBlind coherentBlind_respectsThat (fun s hs => by
     obtain rfl := List.mem_singleton.mp hs
-    exact coherentBlind_satisfies_wDs)
+    exact coherentBlind_satisfies_decorationOnly)
   simp only [tripleAtom, CL.Satisfies, CL.Sat, CL.denotTerm, coherentBlind,
     propModel, predRel, blindName, wContent] at hs
   exact hs rfl
 
-/-! ## 7. The repair: the regime's encoding commitment, stated
+/-! ## 7. The repair: the assertion conjunct, and what it derives
 
 `CL/IklRegime.lean`'s "Encoding commitment" section says in prose what
 the regime adds to RDF: the proposition IRI is read BOTH as the
 proposition's identifier and as the name of the graph holding its
 projection, so an `urn:cl:def:asserts` decoration on that IRI makes the
-proposition true. Stated over the decoration vocabulary alone, with no
-mention of graphs, satisfaction or the translation, that is: -/
+proposition true.
 
-/-- If `x` stands in the `urn:cl:def:names` relation to a proposition
-`q`, and something asserts `x` through `urn:cl:def:asserts`, then `q`
-holds. -/
-def IklAssertionCommitment (i : CL.Interp) : Prop :=
-  ∀ x q s : i.dom,
-    i.rel (i.iName namesOp) [x, q] →
-    i.rel (i.iName CL.clDefAssertsIri.val) [s, x] →
-    i.rel q []
+Before the item-3 repair that had to be ADOPTED as an interpretation
+condition (`IklAssertionCommitment`, over the decoration vocabulary
+alone), because nothing in the embedding forced it —
+`commitment_not_derivable` exhibited an IKL-coherent model in which it
+failed. Both are removed. The embedding now emits the decorated
+graph's proposition ZERO-ARILY, and `CL.sat_assert_that` does the rest:
+the commitment is a THEOREM about any interpretation that satisfies the
+embedding. -/
 
-/-- **The two renderings agree under the commitment**: on the
-blank-node-free fragment, the dataset embedding entails the whole
+/-- **The regime's encoding commitment, DERIVED**: under IKL coherence
+alone, an interpretation satisfying the dataset embedding satisfies the
+content of every named graph the default graph decorates with
+`urn:cl:def:asserts`. -/
+theorem embed_asserts_decorated_graphs {i : CL.Interp}
+    (hcoh : CL.IklRespectsThat i) {ds : RDF.Dataset}
+    (hbn : datasetBnodeNames ds = [])
+    (hsat : CL.Satisfies i (datasetToTheory ds))
+    {ng : RDF.NamedGraph} (hng : ng ∈ ds.named)
+    (hass : CL.assertsDecorated ds.default ng.name = true) :
+    CL.Satisfies i (rdfToTheorySk ng.graph) := by
+  obtain ⟨f, _, _, hasserted⟩ := (satisfies_datasetToTheory_iff i ds).mp hsat
+  rw [hbn, overrideOn_nil] at hasserted
+  exact (sat_assertedGraphAtom i hcoh _ _ ng).mp
+    (hasserted ng hng (graphAsserted_eq_assertsDecorated ds ng ▸ hass))
+
+/-- **The divergence is gone**: on the same witness dataset, the
+repaired embedding entails the asserted proposition's content, under
+IKL coherence. Compare `decorationOnly_refutes_content_ikl`, the same
+statement about the superseded reading. -/
+theorem wDs_asserts_propGraph :
+    CL.assertsDecorated wDs.default wPropGraph.name = true := by
+  simp [CL.assertsDecorated, wDs, wPropGraph, wAsserts]
+
+theorem embedding_entails_content :
+    CL.EntailsUnder CL.IklRespectsThat [datasetToTheory wDs]
+      (tripleAtom wContent) := by
+  intro i hcoh hsat
+  have h := embed_asserts_decorated_graphs hcoh (by decide)
+    (hsat _ (List.mem_singleton.mpr rfl))
+    (List.mem_singleton.mpr rfl) wDs_asserts_propGraph
+  exact (satisfies_rdfToTheorySk_iff i wPropGraph.graph).mp h wContent
+    (by simp [wPropGraph])
+
+/-- **The two renderings agree**, on the dataset the divergence was
+stated about: the regime's premise reading and the unified layer's
+dataset embedding both entail the asserted proposition's content. -/
+theorem ikl_reading_agrees_with_dataset_embedding :
+    Unified.Entails (iklPremises wDs) (tripleAtom wContent) ∧
+    CL.EntailsUnder CL.IklRespectsThat [datasetToTheory wDs]
+      (tripleAtom wContent) :=
+  ⟨premises_entail_content, embedding_entails_content⟩
+
+/-- The repaired reading is a STRICT strengthening of the superseded
+one: `coherentBlind` satisfies `decorationOnlyToTheory wDs` and refutes
+`datasetToTheory wDs`. With `datasetToTheory_entails_decorationOnly`
+(`Unified/DatasetEmbed.lean`) this pins the inclusion as proper. -/
+theorem decorationOnly_strictly_weaker :
+    CL.Satisfies coherentBlind (decorationOnlyToTheory wDs) ∧
+    ¬ CL.Satisfies coherentBlind (datasetToTheory wDs) := by
+  refine ⟨coherentBlind_satisfies_decorationOnly, fun h => ?_⟩
+  have hc := embedding_entails_content coherentBlind coherentBlind_respectsThat
+    (fun s hs => by obtain rfl := List.mem_singleton.mp hs; exact h)
+  simp only [tripleAtom, CL.Satisfies, CL.Sat, CL.denotTerm, coherentBlind,
+    propModel, predRel, blindName, wContent] at hc
+  exact hc rfl
+
+/-! ## 8. Regime soundness over the dataset embedding
+
+The statements `Unified/SparqlAdequacy.lean` carried over
+`iklPremises` before the repair, restated over the unified layer's own
+dataset reading. -/
+
+/-- **The dataset embedding licenses the regime's merge**: on the
+blank-node-free fragment, `datasetToTheory ds` entails the whole
 extended default graph the `x-ikl-*` handler computes — every suffix,
-and every asserting subject. -/
-theorem embed_entails_extension (r : CL.IklRegime) (ds : RDF.Dataset)
+every asserting subject — under `CL.IklRespectsThat` alone. -/
+theorem ikl_extend_entailed (r : CL.IklRegime) (ds : RDF.Dataset)
     (hbn : datasetBnodeNames ds = []) :
-    CL.EntailsUnder (fun i => CL.IklRespectsThat i ∧ IklAssertionCommitment i)
-      [datasetToTheory ds]
+    CL.EntailsUnder CL.IklRespectsThat [datasetToTheory ds]
       (rdfToTheorySk (CL.IklRegime.extendDataset r ds).default) := by
-  rintro i ⟨hcoh, hcom⟩ hsat
-  obtain ⟨f, hdef, hnamed⟩ :=
-    (satisfies_datasetToTheory_iff i ds).mp (hsat _ (List.mem_singleton.mpr rfl))
-  rw [hbn, overrideOn_nil] at hdef hnamed
+  intro i hcoh hsat
+  have hds := hsat _ (List.mem_singleton.mpr rfl)
+  obtain ⟨f, hdef, _, _⟩ := (satisfies_datasetToTheory_iff i ds).mp hds
+  rw [hbn, overrideOn_nil] at hdef
   refine (satisfies_rdfToTheorySk_iff i _).mpr (fun t ht => ?_)
   rw [extendDataset_eq_mergeWhere] at ht
   simp only [mergeWhere] at ht
   rcases mem_mergeFold _ ds.named ds.default ht with h | ⟨ng, hng, hp, htg⟩
   · exact hdef t h
   · simp only [Bool.and_eq_true] at hp
-    obtain ⟨_, hass⟩ := hp
-    cases hn : ng.name with
-    | bnode b => rw [hn] at hass; exact absurd hass (by simp [CL.assertsDecorated])
-    | iri n =>
-        rw [hn] at hass
-        simp only [CL.assertsDecorated, List.any_eq_true, Bool.and_eq_true,
-          beq_iff_eq] at hass
-        obtain ⟨u, hu, hup, huo⟩ := hass
-        have hun := hdef u hu
-        have hgn := hnamed ng hng
-        simp only [namedGraphAtom, CL.Sat, CL.denotTerm, CL.denotSeq, hn,
-          embedSubject] at hgn
-        simp only [tripleAtom, CL.Sat, CL.denotTerm, CL.denotSeq, hup, huo,
-          embedTerm] at hun
-        have hq := hcom _ _ _ hgn hun
-        have hbody : CL.Sat i i.iName (fun _ => []) (rdfBody ng.graph) :=
-          (hcoh (rdfBody ng.graph) i.iName (fun _ => [])).mp hq
-        exact (satisfies_rdfToTheorySk_iff i ng.graph).mp hbody t htg
+    exact (satisfies_rdfToTheorySk_iff i ng.graph).mp
+      (embed_asserts_decorated_graphs hcoh hbn hds hng hp.2) t htg
 
-/-! ## 8. The commitment does work, and the bundle has a model -/
+/-- **`x-ikl-*` regime soundness**: an answer the engine returns over
+the extended default graph is a unified answer from the dataset's own
+embedding, over the IKL-coherent interpretations. -/
+theorem regime_sound_ikl (r : CL.IklRegime) (ds : RDF.Dataset)
+    (hbn : datasetBnodeNames ds = [])
+    {b : SPARQL.Bgp} {mu : SPARQL.Binding}
+    (h : mu ∈ SPARQL.evalBgp b (CL.IklRegime.extendDataset r ds).default) :
+    Answers CL.IklRespectsThat termEqSchema [datasetToTheory ds]
+      (sparqlBgpToQuery b) mu := by
+  intro i hcoh hS hsat
+  exact unified_adequate_bgp_engine h i trivial hS (fun s hs => by
+    obtain rfl := List.mem_singleton.mp hs
+    exact ikl_extend_entailed r ds hbn i hcoh hsat)
 
-/-- The commitment is not derivable from IKL coherence: `coherentBlind`
-satisfies `CL.IklRespectsThat` and fails it. -/
-theorem commitment_not_derivable :
-    CL.IklRespectsThat coherentBlind ∧ ¬ IklAssertionCommitment coherentBlind := by
-  refine ⟨coherentBlind_respectsThat, fun h => ?_⟩
-  have := h True False True (by
-      simp only [coherentBlind, propModel, predRel, blindName, namesOp]
-      decide) (by
-      simp only [coherentBlind, propModel, predRel, blindName,
-        CL.clDefAssertsIri, CL.rdfTypeIri]
-      decide)
-  exact this
+/-! ### The new statement DOES see the selection predicate
+
+§1's `mergeWhere_entailed` holds for every predicate, so the
+superseded statement certified nothing about the choice of the
+`urn:cl:def:asserts` test. The replacement is refutable at a different
+predicate: on `wDsMentioned` — `wDs` with its assertion decoration
+deleted — the merge-everything regime's extended default graph is NOT
+entailed by the embedding. -/
+
+theorem coherentBlind_satisfies_wDsMentioned :
+    CL.Satisfies coherentBlind (datasetToTheory wDsMentioned) := by
+  have hnil : datasetBnodeNames wDsMentioned = [] := by decide
+  refine (satisfies_datasetToTheory_iff _ _).mpr
+    ⟨fun _ => True, fun t ht => ?_, fun ng hng => ?_, fun ng hng ha => ?_⟩
+  · obtain rfl := List.mem_singleton.mp ht
+    simp only [tripleAtom, CL.Sat, CL.denotTerm, hnil, overrideOn_nil,
+      coherentBlind, propModel, predRel, blindName, wProjection,
+      CL.clDefRdfProjectionIri, CL.rdfTypeIri]
+    decide
+  · obtain rfl := List.mem_singleton.mp hng
+    simp only [namedGraphAtom, graphProp, CL.Sat, CL.denotTerm, hnil,
+      overrideOn_nil, coherentBlind, propModel, predRel, blindName, namesOp,
+      CL.rdfTypeIri]
+    decide
+  · obtain rfl := List.mem_singleton.mp hng
+    exact absurd ha (by decide)
+
+/-- Over `iklPremises`, the mentioned proposition's content is
+entailed exactly as the asserted one's is — the reading does not
+distinguish them. -/
+theorem premises_entail_mentioned_content :
+    Unified.Entails (iklPremises wDsMentioned) (tripleAtom wContent) := by
+  intro i _ hsat
+  have hg : CL.Satisfies i (rdfToTheorySk wPropGraph.graph) :=
+    hsat _ (by simp [iklPremises, wDsMentioned, wDs])
+  exact (satisfies_rdfToTheorySk_iff i _).mp hg wContent (by simp [wPropGraph])
+
+/-- **The embedding does distinguish them**: the content of a
+proposition that is named and projected but NOT asserted is not
+entailed. -/
+theorem embedding_refutes_mentioned_content :
+    ¬ CL.EntailsUnder CL.IklRespectsThat [datasetToTheory wDsMentioned]
+        (tripleAtom wContent) := by
+  intro h
+  have hs := h coherentBlind coherentBlind_respectsThat (fun s hs => by
+    obtain rfl := List.mem_singleton.mp hs
+    exact coherentBlind_satisfies_wDsMentioned)
+  simp only [tripleAtom, CL.Satisfies, CL.Sat, CL.denotTerm, coherentBlind,
+    propModel, predRel, blindName, wContent] at hs
+  exact hs rfl
+
+/-- **The choice of the `urn:cl:def:asserts` test is now visible in
+the statement.** `mergeWhere_entailed` proves the superseded
+soundness statement for every predicate, so it could not see the
+choice. Over `datasetToTheory` the same content is entailed when the
+default graph asserts the graph (`embedding_entails_content`, on
+`wDs`) and refuted when it does not (on `wDsMentioned`, which differs
+from `wDs` by the deletion of the assertion decoration alone) — while
+`iklPremises` entails it in both cases. The `#guard`s of §2 pin the
+executable half: the regime does not merge the mentioned graph's
+content, the merge-everything predicate does. -/
+theorem embedding_sees_the_assertion_decoration :
+    CL.EntailsUnder CL.IklRespectsThat [datasetToTheory wDs]
+      (tripleAtom wContent) ∧
+    ¬ CL.EntailsUnder CL.IklRespectsThat [datasetToTheory wDsMentioned]
+      (tripleAtom wContent) ∧
+    Unified.Entails (iklPremises wDsMentioned) (tripleAtom wContent) :=
+  ⟨embedding_entails_content, embedding_refutes_mentioned_content,
+   premises_entail_mentioned_content⟩
+
+/-! ### Non-vacuity of the repaired statements -/
 
 /-- The relation reading that makes a binary predication hold exactly
-when its OBJECT's individual holds — an assertion of `x` then carries
-`x`, which is what the commitment asks for. -/
+when its OBJECT's individual holds. -/
 def objRel : Prop → List Prop → Prop
   | x, [] => x
   | _, [_, b] => b
   | _, _ => True
 
-/-- A model of the whole bundle. -/
-def commitModel : CL.Interp :=
+/-- The non-vacuity model. -/
+def objModel : CL.Interp :=
   propModel (fun _ => True) (fun _ => True) objRel opFn
 
-theorem commitModel_respectsThat : CL.IklRespectsThat commitModel :=
+theorem objModel_respectsThat : CL.IklRespectsThat objModel :=
   propModel_coherent _ _ _ _ (fun _ => Iff.rfl)
 
-theorem commitModel_commitment : IklAssertionCommitment commitModel := by
-  intro x q s hnames _
-  simpa only [commitModel, propModel, objRel] using hnames
-
-/-- **The bundle of `embed_entails_extension` is satisfiable, and its
-premise with it**: `commitModel` meets both conditions AND satisfies
-the witness dataset's embedding, so the theorem is not vacuous. -/
-theorem embed_entails_extension_nonvacuous :
-    CL.IklRespectsThat commitModel ∧ IklAssertionCommitment commitModel ∧
-      CL.Satisfies commitModel (datasetToTheory wDs) := by
-  refine ⟨commitModel_respectsThat, commitModel_commitment, ?_⟩
+/-- **The premise of `ikl_extend_entailed` is satisfiable together
+with its condition**: `objModel` is IKL-coherent AND satisfies the
+witness dataset's embedding, so the theorem is not vacuous. -/
+theorem ikl_extend_entailed_nonvacuous :
+    CL.IklRespectsThat objModel ∧ CL.Satisfies objModel (datasetToTheory wDs) := by
+  refine ⟨objModel_respectsThat, ?_⟩
   have hnil : datasetBnodeNames wDs = [] := by decide
   refine (satisfies_datasetToTheory_iff _ _).mpr
-    ⟨fun _ => True, fun t ht => ?_, fun ng hng => ?_⟩
+    ⟨fun _ => True, fun t ht => ?_, fun ng hng => ?_, fun ng hng _ => ?_⟩
   · rcases List.mem_cons.mp ht with rfl | ht
     · simp [tripleAtom, CL.Sat, CL.denotTerm, CL.denotSeq, hnil, overrideOn_nil,
-        commitModel, propModel, objRel, wAsserts, embedSubject, embedTerm]
+        objModel, propModel, objRel, wAsserts, embedSubject, embedTerm]
     · obtain rfl := List.mem_singleton.mp ht
       simp [tripleAtom, CL.Sat, CL.denotTerm, CL.denotSeq, hnil, overrideOn_nil,
-        commitModel, propModel, objRel, opFn, wProjection, embedSubject,
+        objModel, propModel, objRel, opFn, wProjection, embedSubject,
         embedTerm]
   · obtain rfl := List.mem_singleton.mp hng
-    simp [namedGraphAtom, CL.Sat, CL.denotTerm, CL.denotSeq, hnil,
-      overrideOn_nil, commitModel, propModel, objRel, pSat, rdfBody, pAll,
+    simp [namedGraphAtom, graphProp, CL.Sat, CL.denotTerm, CL.denotSeq, hnil,
+      overrideOn_nil, objModel, propModel, objRel, pSat, rdfBody, pAll,
       tripleAtom, pDen, pSeq, opFn, embedSubject, embedTerm, CL.recordTriple,
-      wContent]
+      wContent, wPropGraph]
+  · obtain rfl := List.mem_singleton.mp hng
+    simp [assertedGraphAtom, graphProp, CL.Sat, CL.denotTerm, CL.denotSeq,
+      hnil, overrideOn_nil, objModel, propModel, objRel, pSat, rdfBody, pAll,
+      tripleAtom, pDen, pSeq, opFn, embedSubject, embedTerm, CL.recordTriple,
+      wContent, wPropGraph]
 
-/-- And the bundle is not degenerate: `commitModel` refutes a
-sentence, so it is not the everything-model. -/
-theorem commitModel_not_everything :
-    ¬ CL.Satisfies commitModel (.neg (.atom (.name "p") [])) := by
-  simp [CL.Satisfies, CL.Sat, CL.denotTerm, CL.denotSeq, commitModel,
+/-- And the model is not degenerate: `objModel` refutes a sentence, so
+it is not the everything-model. -/
+theorem objModel_not_everything :
+    ¬ CL.Satisfies objModel (.neg (.atom (.name "p") [])) := by
+  simp [CL.Satisfies, CL.Sat, CL.denotTerm, CL.denotSeq, objModel,
     propModel, objRel]
 
 /-! ## 9. Axiom audit -/
@@ -748,25 +927,35 @@ section Audits
 
 #print axioms mergeWhere_entailed
 #print axioms mergeAll_entailed
+#print axioms iklPremises_extend_entailed
 #print axioms extendDataset_eq_mergeWhere
+#print axioms graphAsserted_eq_assertsDecorated
 #print axioms premises_entail_content
-#print axioms typeBlind_satisfies_wDs
-#print axioms embedding_refutes_content
-#print axioms embedding_refutes_content_plain
-#print axioms ikl_reading_diverges_from_dataset_embedding
+#print axioms typeBlind_satisfies_decorationOnly
+#print axioms decorationOnly_refutes_content
+#print axioms decorationOnly_refutes_content_plain
+#print axioms ikl_reading_diverges_from_decoration_only_embedding
 #print axioms divergence_premise_satisfiable
 #print axioms divergence_conclusion_satisfiable
 #print axioms pSat_eq
 #print axioms propModel_coherent
 #print axioms coherentBlind_respectsThat
-#print axioms coherentBlind_satisfies_wDs
-#print axioms embedding_refutes_content_ikl
-#print axioms embed_entails_extension
-#print axioms commitment_not_derivable
-#print axioms commitModel_respectsThat
-#print axioms commitModel_commitment
-#print axioms embed_entails_extension_nonvacuous
-#print axioms commitModel_not_everything
+#print axioms coherentBlind_satisfies_decorationOnly
+#print axioms decorationOnly_refutes_content_ikl
+#print axioms embed_asserts_decorated_graphs
+#print axioms embedding_entails_content
+#print axioms ikl_reading_agrees_with_dataset_embedding
+#print axioms decorationOnly_strictly_weaker
+#print axioms ikl_extend_entailed
+#print axioms regime_sound_ikl
+#print axioms wDs_asserts_propGraph
+#print axioms coherentBlind_satisfies_wDsMentioned
+#print axioms premises_entail_mentioned_content
+#print axioms embedding_refutes_mentioned_content
+#print axioms embedding_sees_the_assertion_decoration
+#print axioms objModel_respectsThat
+#print axioms ikl_extend_entailed_nonvacuous
+#print axioms objModel_not_everything
 
 end Audits
 

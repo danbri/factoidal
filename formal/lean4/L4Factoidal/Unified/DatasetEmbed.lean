@@ -123,7 +123,7 @@ as the engine's `CL.assertsDecorated`, pinned by
 def graphAsserted (ds : RDF.Dataset) (ng : RDF.NamedGraph) : Bool :=
   match ng.name with
   | .iri i => ds.default.any
-      (fun t => t.p.val == assertsOp && t.o == RDF.Term.iri i)
+      (fun t => t.p == assertsIri && t.o == RDF.Term.iri i)
   | .bnode _ => false
 
 /-- What one named graph contributes to the dataset body: its naming
