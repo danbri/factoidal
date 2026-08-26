@@ -347,6 +347,410 @@ def owlDlDirect (R : OWL.RoleAxioms) (A : List OWL.Assertion) :
     List CL.Sentence :=
   roleAxiomSentences R ++ A.map assertionSentence
 
+/-! ## List and satisfaction plumbing -/
+
+theorem satAll_append {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (l1 l2 : List CL.Sentence) :
+    CL.SatAll i ν σ (l1 ++ l2) ↔ CL.SatAll i ν σ l1 ∧ CL.SatAll i ν σ l2 := by
+  rw [satAll_forall, satAll_forall, satAll_forall]
+  constructor
+  · intro h
+    exact ⟨fun s hs => h s (List.mem_append_left _ hs),
+           fun s hs => h s (List.mem_append_right _ hs)⟩
+  · rintro ⟨h1, h2⟩ s hs
+    rcases List.mem_append.mp hs with h | h
+    · exact h1 s h
+    · exact h2 s h
+
+theorem forall_mem_map' {α β : Type} (f : α → β) (l : List α) (P : β → Prop) :
+    (∀ y ∈ l.map f, P y) ↔ ∀ x ∈ l, P (f x) := by
+  constructor
+  · intro h x hx
+    exact h _ (List.mem_map.mpr ⟨x, hx, rfl⟩)
+  · rintro h y hy
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hy
+    exact h x hx
+
+theorem satAll_map_iff {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (vs : List String) (g : String → CL.Sentence) :
+    CL.SatAll i ν σ (vs.map g) ↔ ∀ v ∈ vs, CL.Sat i ν σ (g v) := by
+  rw [satAll_forall]
+  exact forall_mem_map' g vs _
+
+/-! The `CL.Sat` clauses are compiled from a `mutual` block, so they
+are not definitional equations. These are the shape lemmas the
+translation's proofs rewrite with, one per constructor used. -/
+
+theorem sat_neg' {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (a : CL.Sentence) :
+    CL.Sat i ν σ (.neg a) ↔ ¬ CL.Sat i ν σ a := by simp [CL.Sat]
+
+theorem sat_impl' {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (a b : CL.Sentence) :
+    CL.Sat i ν σ (.impl a b) ↔ (CL.Sat i ν σ a → CL.Sat i ν σ b) := by
+  simp [CL.Sat]
+
+theorem sat_conj' {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (l : List CL.Sentence) :
+    CL.Sat i ν σ (.conj l) ↔ CL.SatAll i ν σ l := by simp [CL.Sat]
+
+theorem sat_disj' {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (l : List CL.Sentence) :
+    CL.Sat i ν σ (.disj l) ↔ CL.SatAny i ν σ l := by simp [CL.Sat]
+
+theorem sat_exList' {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (bs : List CL.Binding) (body : CL.Sentence) :
+    CL.Sat i ν σ (.ex bs body) ↔ CL.SatExists i ν σ bs body := by simp [CL.Sat]
+
+theorem sat_allOne {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (n : String) (body : CL.Sentence) :
+    CL.Sat i ν σ (.all [.plain n] body) ↔
+      ∀ y : i.dom, CL.Sat i (CL.updateInd ν n y) σ body := by
+  simp [CL.Sat, CL.SatForall]
+
+theorem sat_exOne {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (n : String) (body : CL.Sentence) :
+    CL.Sat i ν σ (.ex [.plain n] body) ↔
+      ∃ y : i.dom, CL.Sat i (CL.updateInd ν n y) σ body := by
+  simp [CL.Sat, CL.SatExists]
+
+theorem sat_eq' {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (a b : String) :
+    CL.Sat i ν σ (.eq (.name a) (.name b)) ↔ ν a = ν b := by
+  simp [CL.Sat, CL.denotTerm]
+
+/-- `freshVal_overrideOn` over an arbitrary fresh base valuation (the
+library version fixes the base at `i.iName`). -/
+theorem freshVal_overrideOn' {i : CL.Interp} {ν : String → i.dom}
+    (hν : FreshVal i ν) {names : List String}
+    (hnames : ∀ n ∈ names, ':' ∉ n.toList) (f : String → i.dom) :
+    FreshVal i (overrideOn ν names f) := by
+  intro n hn
+  have hnm : n ∉ names := fun hmem => hnames n hmem hn
+  rw [overrideOn, if_neg hnm]
+  exact hν n hn
+
+theorem map_overrideOn_self {α : Type} (ν : String → α) (vs : List String)
+    (f : String → α) : vs.map (overrideOn ν vs f) = vs.map f := by
+  apply List.map_congr_left
+  intro v hv
+  simp [overrideOn, hv]
+
+/-- Every list of the right length is the image of the (duplicate-free)
+name list under SOME valuation — the surjectivity that turns an
+existential over valuations into an existential over witness lists. -/
+theorem exists_fun_map {α : Type} (dflt : α) :
+    ∀ {vs : List String}, vs.Nodup → ∀ {l : List α}, l.length = vs.length →
+      ∃ f : String → α, vs.map f = l
+  | [], _, l, hl => ⟨fun _ => dflt, by
+      cases l with
+      | nil => rfl
+      | cons _ _ => simp at hl⟩
+  | v :: vs, hnd, l, hl => by
+      cases l with
+      | nil => simp at hl
+      | cons y l' =>
+          have hnd' : vs.Nodup := (List.nodup_cons.mp hnd).2
+          have hv : v ∉ vs := (List.nodup_cons.mp hnd).1
+          obtain ⟨g, hg⟩ := exists_fun_map dflt hnd' (l := l') (by simpa using hl)
+          refine ⟨fun n => if n = v then y else g n, ?_⟩
+          have h1 : (if v = v then y else g v) = y := by simp
+          rw [List.map_cons, h1, ← hg]
+          congr 1
+          apply List.map_congr_left
+          intro w hw
+          have hwv : w ≠ v := fun he => hv (he ▸ hw)
+          simp [hwv]
+
+/-- Existential over valuations ↔ existential over witness lists. -/
+theorem exists_override_map {i : CL.Interp} (ν : String → i.dom)
+    {vs : List String} (hnd : vs.Nodup) (P : List i.dom → Prop) :
+    (∃ f : String → i.dom, P (vs.map (overrideOn ν vs f))) ↔
+      ∃ l : List i.dom, l.length = vs.length ∧ P l := by
+  constructor
+  · rintro ⟨f, hf⟩
+    exact ⟨vs.map (overrideOn ν vs f), by simp, hf⟩
+  · rintro ⟨l, hl, hP⟩
+    obtain ⟨g, hg⟩ := exists_fun_map i.domWit hnd hl
+    exact ⟨g, by rw [map_overrideOn_self, hg]; exact hP⟩
+
+/-- The distinctness block is satisfied exactly when the named values
+are pairwise distinct. -/
+theorem sat_distinctBlock {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) :
+    ∀ vs : List String,
+      CL.SatAll i ν σ (distinctBlock vs) ↔ (vs.map ν).Pairwise (· ≠ ·)
+  | [] => by simp [distinctBlock, CL.SatAll]
+  | v :: vs => by
+      rw [distinctBlock, satAll_append, satAll_map_iff,
+          sat_distinctBlock ν σ vs]
+      simp only [List.map_cons, List.pairwise_cons, forall_mem_map']
+      constructor
+      · rintro ⟨h1, h2⟩
+        exact ⟨fun w hw => by simpa [CL.Sat, CL.denotTerm] using h1 w hw, h2⟩
+      · rintro ⟨h1, h2⟩
+        exact ⟨fun w hw => by simpa [CL.Sat, CL.denotTerm] using h1 w hw, h2⟩
+
+/-! ## The transport pair
+
+A CL interpretation and an OWL Direct-Semantics interpretation over
+the SAME domain are compatible when the class and role extensions read
+off the CL relation extensions of the translated names. This is the
+`Unified/RdfTransport.lean` pattern with one difference: because
+`OWL.Interp` carries no structure beyond two extension families, the
+transfer argument can be stated ONCE against a compatibility predicate
+and instantiated in both directions, instead of being run twice. -/
+
+/-- Compatibility of a CL interpretation with an OWL interpretation
+over its own domain. -/
+structure DLCompat (i : CL.Interp) (I : OWL.Interp i.dom) : Prop where
+  cls : ∀ a x, I.concept a x ↔ i.rel (i.iName (className a)) [x]
+  rol : ∀ r x y, I.role r x y ↔ i.rel (i.iName (roleName r)) [x, y]
+
+/-- **`restrictInterpDL`** — the OWL interpretation a CL interpretation
+induces (design document §4.1's pattern for the DL route). The domain
+is preserved: unlike the RDF route there is no literal operator whose
+arguments must be recovered from their denotations. -/
+def restrictInterpDL (i : CL.Interp) : OWL.Interp i.dom where
+  concept := fun a x => i.rel (i.iName (className a)) [x]
+  role := fun r x y => i.rel (i.iName (roleName r)) [x, y]
+
+theorem dlCompat_restrict (i : CL.Interp) : DLCompat i (restrictInterpDL i) :=
+  ⟨fun _ _ => Iff.rfl, fun _ _ _ => Iff.rfl⟩
+
+/-- The name assignment a CL interpretation induces on ABox
+constants. -/
+def dlNu (i : CL.Interp) : OWL.Ind → i.dom := fun a => i.iName (indName a)
+
+/-! ## Transfer -/
+
+theorem sat_roleAtom {i : CL.Interp} {I : OWL.Interp i.dom} (hc : DLCompat i I)
+    {ν : String → i.dom} {σ : String → List i.dom} (hν : FreshVal i ν)
+    (r : OWL.Role) (x y : String) :
+    CL.Sat i ν σ (roleAtom r x y) ↔ I.role r (ν x) (ν y) := by
+  simp only [roleAtom, CL.Sat, CL.denotTerm, CL.denotSeq]
+  rw [hν (roleName r) (roleName_has_colon r)]
+  exact (hc.rol r (ν x) (ν y)).symm
+
+theorem sat_classAtom {i : CL.Interp} {I : OWL.Interp i.dom} (hc : DLCompat i I)
+    {ν : String → i.dom} {σ : String → List i.dom} (hν : FreshVal i ν)
+    (a : String) (x : String) :
+    CL.Sat i ν σ (classAtom a x) ↔ I.concept a (ν x) := by
+  simp only [classAtom, CL.Sat, CL.denotTerm, CL.denotSeq]
+  rw [hν (className a) (className_has_colon a)]
+  exact (hc.cls a (ν x)).symm
+
+/-- The counting block, characterised. `extra` carries the qualified
+form's filler conjuncts; `Q` is what they say about each witness. -/
+theorem sat_exBlock_card {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) {σ : String → List i.dom} {ν : String → i.dom}
+    (hν : FreshVal i ν) (r : OWL.Role) (x : String) (k n : Nat)
+    (hx : OkArg k x) (extra : List CL.Sentence) (Q : i.dom → Prop)
+    (hextra : ∀ f : String → i.dom,
+        CL.SatAll i (overrideOn ν (bvars k n) f) σ extra ↔
+          ∀ y ∈ (bvars k n).map f, Q y) :
+    CL.Sat i ν σ
+      (.ex ((bvars k n).map .plain)
+        (.conj (distinctBlock (bvars k n)
+                  ++ (bvars k n).map (fun v => roleAtom r x v) ++ extra)))
+      ↔ ∃ l : List i.dom, l.length = n ∧ l.Pairwise (· ≠ ·) ∧
+          ∀ y ∈ l, I.role r (ν x) y ∧ Q y := by
+  rw [sat_exList', satExists_plains]
+  have hbody : ∀ f : String → i.dom,
+      CL.Sat i (overrideOn ν (bvars k n) f) σ
+          (.conj (distinctBlock (bvars k n)
+                    ++ (bvars k n).map (fun v => roleAtom r x v) ++ extra))
+        ↔ ((bvars k n).map (overrideOn ν (bvars k n) f)).Pairwise (· ≠ ·) ∧
+            ∀ y ∈ (bvars k n).map (overrideOn ν (bvars k n) f),
+              I.role r (ν x) y ∧ Q y := by
+    intro f
+    have hμ : FreshVal i (overrideOn ν (bvars k n) f) :=
+      freshVal_overrideOn' hν (fun m hm => bvars_no_colon m hm) f
+    have hxv : overrideOn ν (bvars k n) f x = ν x := by
+      rw [overrideOn, if_neg (okArg_not_mem_bvars hx)]
+    have hmapf : (bvars k n).map (overrideOn ν (bvars k n) f)
+        = (bvars k n).map f := map_overrideOn_self _ _ _
+    rw [sat_conj', satAll_append, satAll_append, sat_distinctBlock,
+        satAll_map_iff, hextra f, hmapf]
+    constructor
+    · rintro ⟨⟨hd, hr⟩, hq⟩
+      refine ⟨hd, ?_⟩
+      intro y hy
+      refine ⟨?_, hq y hy⟩
+      obtain ⟨v, hv, rfl⟩ := List.mem_map.mp hy
+      have := (sat_roleAtom hc hμ r x v).mp (hr v hv)
+      rw [hxv] at this
+      have hvf : overrideOn ν (bvars k n) f v = f v := by
+        rw [overrideOn, if_pos hv]
+      rwa [hvf] at this
+    · rintro ⟨hd, hy⟩
+      refine ⟨⟨hd, ?_⟩, fun y hyy => (hy y hyy).2⟩
+      intro v hv
+      have hvf : overrideOn ν (bvars k n) f v = f v := by
+        rw [overrideOn, if_pos hv]
+      refine (sat_roleAtom hc hμ r x v).mpr ?_
+      rw [hxv, hvf]
+      exact (hy (f v) (List.mem_map.mpr ⟨v, hv, rfl⟩)).1
+  constructor
+  · rintro ⟨f, hf⟩
+    obtain ⟨hd, hy⟩ := (hbody f).mp hf
+    exact ⟨(bvars k n).map (overrideOn ν (bvars k n) f),
+           by rw [List.length_map, bvars_length], hd, hy⟩
+  · rintro ⟨l, hl, hd, hy⟩
+    have hnd := bvars_nodup k n
+    have := (exists_override_map ν hnd
+      (fun m => m.Pairwise (· ≠ ·) ∧ ∀ y ∈ m, I.role r (ν x) y ∧ Q y)).mpr
+      ⟨l, by rw [bvars_length]; exact hl, hd, hy⟩
+    obtain ⟨f, hf⟩ := this
+    exact ⟨f, (hbody f).mpr hf⟩
+
+/-- The unqualified counting block (no filler conjuncts). -/
+theorem sat_exBlock_card0 {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) {σ : String → List i.dom} {ν : String → i.dom}
+    (hν : FreshVal i ν) (r : OWL.Role) (x : String) (k n : Nat)
+    (hx : OkArg k x) :
+    CL.Sat i ν σ
+      (.ex ((bvars k n).map .plain)
+        (.conj (distinctBlock (bvars k n)
+                  ++ (bvars k n).map (fun v => roleAtom r x v))))
+      ↔ ∃ l : List i.dom, l.length = n ∧ l.Pairwise (· ≠ ·) ∧
+          ∀ y ∈ l, I.role r (ν x) y := by
+  have h := sat_exBlock_card (σ := σ) hc hν r x k n hx [] (fun _ => True)
+    (by intro f; simp [CL.SatAll])
+  rw [List.append_nil] at h
+  simpa using h
+
+/-- The qualified form's filler conjuncts, characterised — the
+`hextra` argument `sat_exBlock_card` expects, built from the concept
+translation's induction hypothesis. -/
+theorem qualBlock_iff {i : CL.Interp} {I : OWL.Interp i.dom}
+    (_hc : DLCompat i I) (σ : String → List i.dom) {c : OWL.Concept}
+    (ih : ∀ (k : Nat) (x : String) (ν : String → i.dom),
+        FreshVal i ν → OkArg k x →
+        (CL.Sat i ν σ (conceptFormula c x k) ↔ I.sem c (ν x)))
+    {ν : String → i.dom} (hν : FreshVal i ν) (k n : Nat) :
+    ∀ f : String → i.dom,
+      CL.SatAll i (overrideOn ν (bvars k n) f) σ
+          ((bvars k n).map (fun v => conceptFormula c v (k + n)))
+        ↔ ∀ y ∈ (bvars k n).map f, I.sem c y := by
+  intro f
+  rw [satAll_map_iff, forall_mem_map']
+  have hμ : FreshVal i (overrideOn ν (bvars k n) f) :=
+    freshVal_overrideOn' hν (fun m hm => bvars_no_colon m hm) f
+  constructor
+  · intro h v hv
+    have h2 := (ih (k + n) v _ hμ (okArg_mem_bvars hv)).mp (h v hv)
+    rwa [overrideOn, if_pos hv] at h2
+  · intro h v hv
+    refine (ih (k + n) v _ hμ (okArg_mem_bvars hv)).mpr ?_
+    rw [overrideOn, if_pos hv]
+    exact h v hv
+
+/-- **The transfer lemma**: a compatible pair reads the same class
+expression the same way, at every fresh valuation and every in-scope
+argument. Induction on the concept; the counting cases go through
+`sat_exBlock_card`. -/
+theorem sat_conceptFormula {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (σ : String → List i.dom) :
+    ∀ (c : OWL.Concept) (k : Nat) (x : String) (ν : String → i.dom),
+      FreshVal i ν → OkArg k x →
+      (CL.Sat i ν σ (conceptFormula c x k) ↔ I.sem c (ν x)) := by
+  intro c
+  induction c with
+  | atom a =>
+      intro k x ν hν _
+      rw [conceptFormula, sat_classAtom hc hν a x]
+      simp only [OWL.Interp.sem]
+  | top =>
+      intro k x ν _ _
+      rw [conceptFormula, sat_conj']
+      simp only [CL.SatAll, OWL.Interp.sem]
+  | bot =>
+      intro k x ν _ _
+      rw [conceptFormula, sat_disj']
+      simp only [CL.SatAny, OWL.Interp.sem]
+  | neg c ih =>
+      intro k x ν hν hx
+      rw [conceptFormula, sat_neg', ih k x ν hν hx]
+      simp only [OWL.Interp.sem]
+  | conj c d ihc ihd =>
+      intro k x ν hν hx
+      rw [conceptFormula, sat_conj']
+      simp only [CL.SatAll, and_true]
+      rw [ihc k x ν hν hx, ihd k x ν hν hx]
+      simp only [OWL.Interp.sem]
+  | disj c d ihc ihd =>
+      intro k x ν hν hx
+      rw [conceptFormula, sat_disj']
+      simp only [CL.SatAny, or_false]
+      rw [ihc k x ν hν hx, ihd k x ν hν hx]
+      simp only [OWL.Interp.sem]
+  | all r c ih =>
+      intro k x ν hν hx
+      have hstep : ∀ y : i.dom,
+          (CL.Sat i (CL.updateInd ν (bvar k) y) σ (roleAtom r x (bvar k)) →
+            CL.Sat i (CL.updateInd ν (bvar k) y) σ
+              (conceptFormula c (bvar k) (k + 1)))
+          ↔ (I.role r (ν x) y → I.sem c y) := by
+        intro y
+        have hν' : FreshVal i (CL.updateInd ν (bvar k) y) := by
+          intro m hm
+          have hmk : m ≠ bvar k := fun he => bvar_no_colon k (he ▸ hm)
+          rw [CL.updateInd, if_neg hmk]
+          exact hν m hm
+        have hxk : CL.updateInd ν (bvar k) y x = ν x := by
+          rw [CL.updateInd, if_neg (okArg_ne hx (Nat.le_refl k))]
+        have hkk : CL.updateInd ν (bvar k) y (bvar k) = y := by
+          rw [CL.updateInd, if_pos rfl]
+        rw [sat_roleAtom hc hν' r x (bvar k),
+            ih (k + 1) (bvar k) _ hν' (okArg_bvar (Nat.lt_succ_self k)),
+            hxk, hkk]
+      rw [conceptFormula, sat_allOne]
+      simp only [sat_impl', hstep, OWL.Interp.sem]
+  | ex r c ih =>
+      intro k x ν hν hx
+      have hstep : ∀ y : i.dom,
+          (CL.Sat i (CL.updateInd ν (bvar k) y) σ (roleAtom r x (bvar k)) ∧
+            CL.Sat i (CL.updateInd ν (bvar k) y) σ
+              (conceptFormula c (bvar k) (k + 1)))
+          ↔ (I.role r (ν x) y ∧ I.sem c y) := by
+        intro y
+        have hν' : FreshVal i (CL.updateInd ν (bvar k) y) := by
+          intro m hm
+          have hmk : m ≠ bvar k := fun he => bvar_no_colon k (he ▸ hm)
+          rw [CL.updateInd, if_neg hmk]
+          exact hν m hm
+        have hxk : CL.updateInd ν (bvar k) y x = ν x := by
+          rw [CL.updateInd, if_neg (okArg_ne hx (Nat.le_refl k))]
+        have hkk : CL.updateInd ν (bvar k) y (bvar k) = y := by
+          rw [CL.updateInd, if_pos rfl]
+        rw [sat_roleAtom hc hν' r x (bvar k),
+            ih (k + 1) (bvar k) _ hν' (okArg_bvar (Nat.lt_succ_self k)),
+            hxk, hkk]
+      rw [conceptFormula, sat_exOne]
+      simp only [sat_conj', CL.SatAll, and_true, hstep, OWL.Interp.sem]
+  | atLeast n r =>
+      intro k x ν hν hx
+      rw [conceptFormula, sat_exBlock_card0 hc hν r x k n hx]
+      simp only [OWL.Interp.sem, OWL.Interp.succWitness]
+  | atMost n r =>
+      intro k x ν hν hx
+      rw [conceptFormula, sat_neg', sat_exBlock_card0 hc hν r x k (n + 1) hx]
+      simp only [OWL.Interp.sem, OWL.Interp.succWitness]
+  | atLeastQ n r c ih =>
+      intro k x ν hν hx
+      rw [conceptFormula,
+          sat_exBlock_card hc hν r x k n hx _ (fun y => I.sem c y)
+            (qualBlock_iff hc σ ih hν k n)]
+      simp only [OWL.Interp.sem]
+  | atMostQ n r c ih =>
+      intro k x ν hν hx
+      rw [conceptFormula, sat_neg',
+          sat_exBlock_card hc hν r x k (n + 1) hx _ (fun y => I.sem c y)
+            (qualBlock_iff hc σ ih hν k (n + 1))]
+      simp only [OWL.Interp.sem]
+
+
 /-! ## Build-time checks -/
 
 section Checks
