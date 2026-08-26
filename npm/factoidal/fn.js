@@ -339,8 +339,29 @@ function normalizeEntailRegime(regime) {
   return ENTAIL_REGIME_ALIASES[key] || regime;
 }
 
+// x-ikl-* is withheld from the npm API by OWNER DECISION, 2026-08-26
+// (https://github.com/danbri/factoidal/issues/618): IKL has no notion
+// of shapes or named profiles, so an x-ikl-<suffix> entailment-regime
+// family invents a taxonomy the specification does not have.
+// engineApi.query() (lib/api.js) already rejects this, but
+// normalizeEntailRegime() above passes any unrecognised string through
+// UNCHANGED before it gets there — check explicitly here too, so this
+// function's own contract states the rule rather than depending on a
+// downstream check someone could relax without noticing this call
+// site. Case-insensitive, any suffix; see test/select.test.js.
+function rejectIklRegime(regime, who) {
+  if (regime != null && /^x-ikl/i.test(String(regime))) {
+    throw new TypeError(
+      `${who}: entail '${regime}' is not exposed through the npm API -- ` +
+      'the x-ikl-* entailment regimes are not exposed through the ' +
+      'npm API (owner decision 2026-08-26, danbri/factoidal#618); ' +
+      'the Lean CLI and the hub notebooks still carry them.');
+  }
+}
+
 async function entail(ds, regime) {
   assertFnDataset(ds, 'entail');
+  rejectIklRegime(regime, 'entail');
   const rows = await engineApi.query(
     toDataset(ds), 'SELECT ?s ?p ?o WHERE { ?s ?p ?o }',
     { entail: normalizeEntailRegime(regime) });

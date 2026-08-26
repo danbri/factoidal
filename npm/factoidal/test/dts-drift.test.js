@@ -104,6 +104,22 @@ test('index.js implements nothing that index.d.ts leaves untyped', () => {
     `index.js exports names undeclared in index.d.ts: ${untyped.join(', ')}`);
 });
 
+test('select.d.ts declares nothing select.js does not implement', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'select.d.ts'));
+  const runtime = runtimeNames(require('../select.js'));
+  const missing = [...declared].filter((n) => !runtime.has(n));
+  assert.deepEqual(missing, [],
+    `select.d.ts declares names absent from select.js: ${missing.join(', ')}`);
+});
+
+test('select.js implements nothing that select.d.ts leaves untyped', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'select.d.ts'));
+  const runtime = runtimeNames(require('../select.js'));
+  const untyped = [...runtime].filter((n) => !declared.has(n) && !TYPE_ONLY.has(n));
+  assert.deepEqual(untyped, [],
+    `select.js exports names undeclared in select.d.ts: ${untyped.join(', ')}`);
+});
+
 test('the VC crypto surface is typed on both index.d.ts and fn.d.ts', () => {
   const vc = [
     'vcSha256Hex', 'vcEd25519SecretToPublic', 'vcEd25519Sign',

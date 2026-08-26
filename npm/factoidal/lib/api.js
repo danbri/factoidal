@@ -490,6 +490,23 @@ function buildApi(driver) {
     }
     const opts = options || {};
     const entail = opts.entail || 'none';
+    // x-ikl-* is withheld by OWNER DECISION, 2026-08-26
+    // (https://github.com/danbri/factoidal/issues/618): "I don't want
+    // npm code for direction b at this stage ... IKL doesn't have
+    // shapes or named profiles. Take it out of npm for now." IKL has
+    // no notion of shapes or named profiles, so an x-ikl-<suffix>
+    // entailment-regime family invents a taxonomy the specification
+    // does not have. Checked explicitly (not just left out of
+    // ENTAIL_VALUES below) so a future ENTAIL_VALUES edit can't
+    // reopen this without deliberately removing this check too; see
+    // test/select.test.js's regression test.
+    if (/^x-ikl/i.test(entail)) {
+      throw new TypeError(
+        `query: entail '${entail}' is not exposed through the npm API -- ` +
+        'the x-ikl-* entailment regimes are not exposed through the ' +
+        'npm API (owner decision 2026-08-26, danbri/factoidal#618); ' +
+        'the Lean CLI and the hub notebooks still carry them.');
+    }
     if (!ENTAIL_VALUES.has(entail)) {
       throw new TypeError(
         `query: entail must be one of ${[...ENTAIL_VALUES].join(', ')}`);
