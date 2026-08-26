@@ -254,6 +254,60 @@ exhibits). Four notes in the same spirit as 1–11:
     exactly this — RIF positional atoms of arity ≠ 2 need no new
     machinery).
 
+### Stage 4 correction notes (2026-08-26)
+
+Stage 4 landed (`OWL/RLSemantics.lean`, `OWL/RLHerbrand.lean`,
+`Unified/OwlRlSchema.lean`, `Unified/OwlRlAdequacy.lean`; registry
+section 9). Five points of §4.4 are corrected by the implementation.
+
+16. **§4.4's `owlRlSchema D` takes no `D`.** The OWL 2 RL datatype rows
+    (Table 7) range over the FIXED tables `builtinDatatypeAxioms`,
+    `xsdAxiomTriples` and `rangeIntersectLicenses` of
+    `OWL/RLRules.lean`, not over a recognised-datatype parameter.
+    Landed as `owlRlSchema : Schema`.
+
+17. **§4.4's `owlRl_row_condition (row : RlRowId)` is not one iff over
+    an enumeration of ALL rows.** `RlRowId` in `Unified/OwlRlSchema.lean`
+    enumerates the 66 PLAIN Horn rows only, and the bridge is a
+    one-directional per-row family (`cond_*`), not an iff. Direction:
+    schema sentence → `RlCond*`. The sentence is strictly STRONGER than
+    the condition (a `DRule` quantifies its predicate position over the
+    whole domain; the condition quantifies over `WfIri`), so an iff is
+    false as stated.
+
+18. **Nine rows are carried by the interpretation-class condition, not
+    by the schema.** `OwlRlInterpCond` carries prp-spo2 and prp-key
+    (their premise relation is TERNARY — cell, subject, object — and
+    `RDF.Interp.iext` is binary, so the reserved binary helper
+    predicates that serve the other seven collection rows cannot serve
+    these two; each needs a sentence family indexed by list length),
+    cls-maxc2 / cls-maxc1 / cls-maxqc1 / cls-maxqc2 (a cardinality
+    literal embeds as a `funapp` of `urn:cl:def:literalValueOf`, which
+    is not a `DTerm`) and the three comprehension rows (existential
+    heads, excluded by `DRule.definiteB`). `unified_owlRl_sound` names
+    `OwlRlInterpCond` in its statement, so the boundary is visible in
+    the theorem.
+
+19. **`unified_owlRl_complete_ground` landed in condition-bundle form,
+    not schema-relative form.** `owlRl_complete_ground` states ground
+    completeness over `RDF.Interp` + `RlConditions`/`RlClashConditions`.
+    The schema-relative form needs `liftInterp (rlHerb c)` to satisfy
+    every row sentence, and `liftInterp r` reads a binary predication as
+    `r.iext p.2 x.2 y.2` — so satisfaction quantifies EVERY position,
+    the predicate position included, over the whole of `r.idom`. That
+    full-domain reading is true for `rlHerb c` but is a second pass over
+    all 79 rows, not a corollary of `rlHerb_conditions`.
+
+20. **The completeness model needs a fragment, and the fragment is
+    narrow.** `RlHerbFrag` (`OWL/RLHerbrand.lean`) requires: every
+    object an IRI or blank node; `rdf:nil` heads no cons cell;
+    `owl:disjointWith` has IRI endpoints; no reserved `urn:cl:def:` IRI
+    anywhere. Clause (a) excludes every graph whose closure carries a
+    cardinality literal — which includes any graph declaring
+    `owl:ObjectProperty`, because the minc1 comprehension row emits an
+    `owl:minCardinality "1"` triple. The completeness direction
+    therefore does not reach cardinality-bearing ontologies.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
