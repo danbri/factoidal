@@ -17,13 +17,38 @@ both supplied, so the partition search and the EXTRA/CLOSED
 distinction its header exists to keep straight are reused, not
 re-derived.
 
-## Recursion is bounded, and running out is a REFUSAL
+## Recursion terminates on the (label, node) pair, not on fuel
 
 A ShEx schema may be recursive (`<S> { <p> @<S> }`), and a recursive
-schema against a cyclic graph can walk forever. `fuel` bounds the
-depth; exhausting it answers `false`. That is a REFUSAL, not a
-verdict, and the runner counts it separately — a schema this layer
-declined to decide must not be reported as a validation failure.
+schema against a cyclic graph can walk forever.
+
+This module used to bound the walk with a fuel counter, `refDepth = 6`,
+and answer `false` when it ran out. Its header called that a REFUSAL
+and said "the runner counts it separately". **The runner did no such
+thing**: `validateNode` returned a `Bool`, `Harness/ShExRun.lean`
+compared it against the expected verdict, and there was no declined
+column anywhere. Sixteen entries of the validation suite were scored
+as validation failures for running out of fuel — including
+`<S1> { <p1> BNODE @<S1> OR MINLENGTH 20 @<S1> }` against a reflexive
+triple, the three-cycle `S1 → S2 → S3 → S1`, and `1list0PlusDot`
+walking a three-element RDF list, which needs depth 8. A cap that
+answers a question it did not decide is a wrong answer, and a comment
+claiming someone else counts it is worse than no comment.
+
+The bound is now the (shape label, focus node) pair. `satisfiesIn`
+carries the pairs already being decided further up the stack; entering
+`@<S>` for a node already on the stack ASSUMES the shape holds of it
+and returns `true`. Every `.ref` step either returns at once or adds a
+new pair, and the pairs come from the schema's labels crossed with the
+graph's terms, so the walk terminates with no cap to exhaust. Nothing
+is refused, and no declined column is needed.
+
+**The assumption is the GREATEST fixpoint reading**, and it is sound
+only for a schema whose recursion does not pass through `ShapeNot`
+(negation stratification, ShEx 2.1 §5.9). This module does not check
+that condition. A schema that violates it gets the greatest-fixpoint
+answer, which may differ from the least-fixpoint one; the corpus
+contains no such schema.
 -/
 import L4Factoidal.ShEx.Shapes
 
@@ -71,45 +96,37 @@ end
 def Schema.tripleExpr (sch : Schema) (id : String) : Option TripleExpr :=
   sch.shapes.findSome? (fun d => findTeInShapeExpr id d.expr)
 
-/-- `satisfies(n, se, G)`. `fuel` bounds reference recursion; running
-    out answers `false`, which the caller must read as "declined",
-    not as "failed". -/
+/-- `satisfies(n, se, G)`.
+
+    `visited` carries the (shape label, node) pairs already being
+    decided further up the stack. Re-entering one ASSUMES it holds —
+    see the module header for why, and for the stratification
+    condition that makes the assumption sound. -/
 partial def satisfiesIn (sch : Schema) (g : List Triple)
-    : Nat → ShapeExpr → Term → Bool
-  | 0,        _,  _ => false
-  | fuel + 1, se, n =>
-      let valueOk : Option ShapeExpr → Term → Bool := fun ve t =>
-        match ve with
-        | none    => true
-        | some e' => satisfiesIn sch g fuel e' t
-      match se with
-      | .ref id =>
-          (match sch.lookup id with
-           | some d => satisfiesIn sch g fuel d.expr n
-           | none   => false)
-      | .shapeAnd es       => es.all (fun e => satisfiesIn sch g fuel e n)
-      | .shapeOr es        => es.any (fun e => satisfiesIn sch g fuel e n)
-      | .shapeNot e        => !(satisfiesIn sch g fuel e n)
-      | .nodeConstraint nc => satisfiesNodeConstraint nc n
-      | .shape sh          =>
-          satisfiesShapeGen valueOk sch.tripleExpr sh (neighbourhood g n)
-      | .external          => false
-
-/-- How deep a reference chain this layer follows.
-
-    SMALL on purpose. `fuel` is not a step count: every level re-checks
-    each arc's value expression, and `eachOf` re-matches each
-    sub-expression against the whole neighbourhood, so the work grows
-    like a branching factor to the fuel. A first attempt at 24 did not
-    finish the 1182-entry suite in ten minutes. The corpus's recursive
-    schemas nest a handful of levels, and a chain deeper than this is
-    reported as declined rather than waited on. -/
-def refDepth : Nat := 6
+    (visited : List (String × Term)) (se : ShapeExpr) (n : Term) : Bool :=
+  let valueOk : Option ShapeExpr → Term → Bool := fun ve t =>
+    match ve with
+    | none    => true
+    | some e' => satisfiesIn sch g visited e' t
+  match se with
+  | .ref id =>
+      if visited.contains (id, n) then true
+      else
+        (match sch.lookup id with
+         | some d => satisfiesIn sch g ((id, n) :: visited) d.expr n
+         | none   => false)
+  | .shapeAnd es       => es.all (fun e => satisfiesIn sch g visited e n)
+  | .shapeOr es        => es.any (fun e => satisfiesIn sch g visited e n)
+  | .shapeNot e        => !(satisfiesIn sch g visited e n)
+  | .nodeConstraint nc => satisfiesNodeConstraint nc n
+  | .shape sh          =>
+      satisfiesShapeGen valueOk sch.tripleExpr sh (neighbourhood g n)
+  | .external          => false
 
 /-- Validate a focus node against a labelled shape of a schema. -/
 def validateNode (sch : Schema) (g : List Triple) (label : String) (n : Term) : Bool :=
   match sch.lookup label with
-  | some d => satisfiesIn sch g refDepth d.expr n
+  | some d => satisfiesIn sch g [(label, n)] d.expr n
   | none   => false
 
 /-- Validate a focus node against the schema's START shape.
@@ -119,7 +136,7 @@ def validateNode (sch : Schema) (g : List Triple) (label : String) (n : Term) : 
     it and answered `false` for every such entry. -/
 def validateStart (sch : Schema) (g : List Triple) (n : Term) : Bool :=
   match sch.start with
-  | some se => satisfiesIn sch g refDepth se n
+  | some se => satisfiesIn sch g [] se n
   | none    => false
 
 end L4Factoidal.ShEx
