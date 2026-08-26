@@ -372,4 +372,68 @@ def clFiniteSat (interpJson cliftext : String) : String :=
               , ("preconditions", preconditionsJson)
               , ("agreementTheorem", .string "L4Factoidal.CL.satisfiesFin_eq") ]
 
+/-! ## Build-time pins
+
+`lake build` is this project's test run (`skills/factoidal-lean-basics`,
+Build/test/demo), and until 2026-08-26 these ops had no build-time
+coverage at all: they were gated only by `Wasm/native-smoke.sh` and
+`Wasm/cli-smoke.sh`, which need a built binary and an explicit run.
+Measured that day by sabotage — replacing `clFiniteSat`'s
+`noSeqQuantList` test with `false`, so the op answered outside its own
+hypothesis — `lake build` COMPLETED SUCCESSFULLY and only the smoke
+script caught it. A session that ran the build and not the scripts
+would have shipped a checker that answers where it should refuse.
+
+So the safety-relevant behaviours are pinned here as well. Each is a
+`#guard`, which evaluates during elaboration; a wrong answer is a build
+error. They pin REFUSALS and REFUTATIONS, not only the affirmative
+cases: an op that answered `true` to everything would satisfy the
+affirmative pins alone. -/
+
+/-- Substring test, written here rather than reached for from `String`,
+so a core rename cannot change what these pins mean. -/
+private def hasSub (hay needle : String) : Bool := (hay.splitOn needle).length > 1
+
+private def guardInterp : String :=
+  "{\"domain\":[\"bill\",\"boy\"],\"default\":\"bill\"," ++
+  "\"names\":{\"Bill\":\"bill\",\"Boy\":\"boy\",\"Sue\":\"boy\"}," ++
+  "\"relations\":[{\"op\":\"boy\",\"args\":[\"bill\"]}]}"
+
+private def guardSeqMark : String := "(forall (...m) (P ...m))"
+
+-- `clSerialize` reports the OPEN round-trip lemma rather than implying one.
+#guard hasSub (clSerialize "(Boy Bill)") "\"roundTripProved\":false"
+
+-- `clAlphaNorm` collapses alpha-variants to byte-identical text.
+#guard clAlphaNorm "(forall (x) (Boy x))" == clAlphaNorm "(forall (zz) (Boy zz))"
+
+-- `clNormalize` names an IKL `that`-term and emits the biconditional tail.
+#guard hasSub (clNormalize "(P (that (Q a)))") "\"tail\":[\"(iff (prop1) (Q a))\"]"
+
+-- ...and reports `noIntrusion` truthfully in BOTH directions: true where
+-- the theorems reach, false where they do not.
+#guard hasSub (clNormalize "(P (that (Q a)))") "\"noIntrusion\":true"
+#guard hasSub (clNormalize "(forall (x) (P (that (Q x))))") "\"noIntrusion\":false"
+
+-- `clFiniteSat` satisfies where the relation table has a row...
+#guard hasSub (clFiniteSat guardInterp "(Boy Bill)") "\"satisfied\":true"
+-- ...and REFUTES where it has none. Without this pin an op that answered
+-- `true` unconditionally would pass every guard above.
+#guard hasSub (clFiniteSat guardInterp "(Boy Sue)") "\"satisfied\":false"
+
+-- The `noSeqQuant` hypothesis is CHECKED: a sequence-marker quantifier is
+-- refused, by name. This is the guard the sabotage above defeated.
+#guard hasSub (clFiniteSat guardInterp guardSeqMark) "\"precondition\":\"noSeqQuant\""
+#guard hasSub (clFiniteSat guardInterp guardSeqMark) "\"ok\":false"
+
+-- An unknown domain label is an error naming the label, never a silent
+-- fallback to the default element.
+#guard hasSub (clFiniteSat "{\"domain\":[\"bill\"],\"names\":{\"Boy\":\"nope\"}}" "(Boy Bill)")
+              "'nope' is not a domain label"
+
+-- The `hdom` hypothesis of `satisfiesFin_eq`, discharged for every
+-- interpretation this ABI can build. The audit line keeps its axiom base
+-- in every build log, per the proof policy in `skills/factoidal-lean-basics`.
+#print axioms finSatDomComplete
+
 end L4Wasm.Ops
