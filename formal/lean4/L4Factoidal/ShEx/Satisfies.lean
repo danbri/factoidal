@@ -269,25 +269,7 @@ partial def satisfiesIn (sch : Schema) (g : List Triple)
     | none    => true
     | some e' => satisfiesIn sch g visited e' t
   match se with
-  | .ref id =>
-      if visited.contains (id, n) then true
-      else
-        (match sch.lookup id with
-         | none   => false
-         | some d =>
-             let v := (id, n) :: visited
-             satisfiesIn sch g v d.expr n
-             -- ABSTRACT (arXiv 2503.24299, Definition 4): a node
-             -- satisfies an abstract shape only by satisfying some
-             -- NON-abstract shape that extends it. Without this,
-             -- `ABSTRACT <PersonShape> { ... }` — which is not closed —
-             -- admitted a node carrying an extra predicate that its
-             -- only concrete extension, a CLOSED `<UserShape>`, rejects.
-             && (!d.isAbstract
-                 || sch.shapes.any (fun d2 =>
-                      !d2.isAbstract
-                      && reachesLabel sch id (directExtends d2.expr) []
-                      && satisfiesIn sch g v d2.expr n)))
+  | .ref id => satisfiesLabel sch g visited id n
   | .shapeAnd es       => es.all (fun e => satisfiesIn sch g visited e n)
   | .shapeOr es        => es.any (fun e => satisfiesIn sch g visited e n)
   | .shapeNot e        => !(satisfiesIn sch g visited e n)
@@ -297,6 +279,47 @@ partial def satisfiesIn (sch : Schema) (g : List Triple)
         satisfiesShapeGen valueOk sch.tripleExpr sh (neighbourhood g n)
       else satisfiesExtends sch g visited sh n
   | .external          => false
+
+/-- Does the node validate against a shape LABEL?
+
+    DESCENDANT-WITNESS SEMANTICS (arXiv 2503.24299, Definition 4; the
+    same rule `formal/fstar/ShEx.Validation.fst:1035` records as
+    verified against @shexjs/validator 1.0.0-alpha.29). A node
+    validates against a label when
+
+    * the label is NON-abstract and the node satisfies the label's own
+      declared shape expression, OR
+    * SOME non-abstract declaration that extends the label, directly or
+      transitively, validates the node.
+
+    A correct typing is closed under ancestors, so witnessing
+    `(t, ReclinedBP)` also witnesses `(t, BP)`, `(t, Posture)`,
+    `(t, Vital)` up the whole chain. An ABSTRACT label offers ONLY the
+    second route — its own-content check is skipped outright, which is
+    what makes `ABSTRACT <PersonShape>` reject a node that satisfies
+    its own content while neither concrete descendant accepts it.
+
+    The witness route for a NON-abstract label is what makes
+    `vitals-RESTRICTS-pass_lie-Posture` pass: `:lie` fails
+    `<#Posture>`'s own expression outright — the systolic and diastolic
+    components are mentioned-predicate leftovers with no `extra` to
+    excuse them, which is the strict rule `1val1IRIREF_v1v2` and
+    `1dotInline1_overReferrer` require — but non-abstract
+    `<#ReclinedBP>` extends-reaches `<#Posture>` and validates `:lie`,
+    so `(lie, Posture)` is witnessed. -/
+partial def satisfiesLabel (sch : Schema) (g : List Triple)
+    (visited : List (String × Term)) (label : String) (n : Term) : Bool :=
+  if visited.contains (label, n) then true
+  else
+    match sch.lookup label with
+    | none   => false
+    | some d =>
+        let v := (label, n) :: visited
+        (!d.isAbstract && satisfiesIn sch g v d.expr n)
+        || sch.shapes.any (fun d2 =>
+             !d2.isAbstract
+             && reachesLabel sch label (directExtends d2.expr) []
+             && satisfiesIn sch g v d2.expr n)
 
 /-- §satisfies for a shape that EXTENDS others — see the EXTENDS
     section above for the partition rule and the two-tier split. -/
@@ -338,9 +361,7 @@ end
 /-- Validate a focus node against a labelled shape of a schema. -/
 def validateNode (sch : Schema) (g : List Triple) (label : String) (n : Term) : Bool :=
   if anySemActFails sch.startActs then false else
-  match sch.lookup label with
-  | some d => satisfiesIn sch g [(label, n)] d.expr n
-  | none   => false
+  satisfiesLabel sch g [] label n
 
 /-- Validate a focus node against the schema's START shape.
 
