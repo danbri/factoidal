@@ -49,7 +49,11 @@ read them with these notes:
    inside `that` shadows the dataset-wide binding and loses the
    blank-node sharing the bullet establishes. Landed:
    `that (rdfBody G)` — the unscoped body — under the dataset-level
-   closure.
+   closure. AMENDED 2026-08-26 (note 37): the decoration is no longer
+   the whole contribution — a named graph the DEFAULT graph decorates
+   with `urn:cl:def:asserts` also contributes
+   `atom (that (rdfBody G)) []`, the zero-ary assertion of its
+   proposition.
 4. **§6.1 DatasetEmbed "N-Quads round-trip corollaries".** No native
    theorem to compose with yet: the tree's round-trip theorem covers
    only the empty graph (`Syntax/SyntaxTheorems.lean`). Deferred to
@@ -484,7 +488,11 @@ spirit as 1-26:
     `CL.IklRespectsThat`), and anything about named subsets, which
     stay deferred to
     [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581)
-    per the owner ruling recorded there.
+    per the owner ruling recorded there. SUPERSEDED 2026-08-26 by note
+    37: the merge IS now tied to `CL.IklRespectsThat` — the embedding
+    asserts an `urn:cl:def:asserts`-decorated named graph zero-arily,
+    and `ikl_extend_entailed` is stated over `datasetToTheory` rather
+    than `iklPremises`.
 
 32. **`Term.eqb` is coarser than syntactic identity, and without a
     schema row for that the SOUNDNESS half is false.** `Graph.mem` is
@@ -538,6 +546,13 @@ spirit as 1-26:
     as a regime condition, or restating regime soundness over
     `datasetToTheory`, is the engine-side decision this note does not
     take.
+
+    SUPERSEDED 2026-08-26 by note 37: the owner took the second
+    option, and the embedding was changed rather than the condition
+    adopted. `IklAssertionCommitment` and `commitment_not_derivable`
+    are removed; the theorem names in this note now read
+    `decorationOnly_*` and refer to the superseded embedding
+    `decorationOnlyToTheory`.
 
 34. **`CL.IklRespectsThat` had no model in the tree.** Every theorem
     over it — `CL.IklEntails`, `CL.sat_assert_that`, and now note 33's
@@ -605,6 +620,70 @@ spirit as 1-26:
     through, not the grammar. Any future plan that assumes `rfl` or
     `decide` can pin a parser instance in this tree should start from
     that measurement.
+
+### Dataset-embedding repair note (2026-08-26, issue 609 item 3)
+
+37. **The repair for note 33 is a change to the EMBEDDING, not an
+    adopted condition.** Owner ruling (2026-08-26, verbatim): "The
+    correct path is (3.)" — change the embedding so the `that`-term
+    sits where IKL coherence bites. Landed in
+    `Unified/DatasetEmbed.lean`: a named graph the DEFAULT graph
+    decorates with `urn:cl:def:asserts` now contributes a SECOND
+    conjunct, `atom (that (rdfBody G)) []` — the proposition applied
+    as a relation with no arguments, which is CLIF's own
+    cancelling-parentheses assertion `((that S))` and the position
+    `CL.IklRespectsThat` constrains. The naming decoration
+    `atom(names)[n, that(rdfBody G)]` is retained, so the graph-name
+    identification the regime relies on is unchanged, and a named
+    graph WITHOUT the decoration still asserts nothing.
+
+    What follows, all in `Unified/ClBridge.lean`:
+
+    * `embed_asserts_decorated_graphs` DERIVES the regime's encoding
+      commitment from `CL.IklRespectsThat` alone. The adopted
+      condition `IklAssertionCommitment` and its non-derivability
+      witness `commitment_not_derivable` are REMOVED — both were
+      statements about the superseded embedding.
+    * `ikl_extend_entailed` and `regime_sound_ikl` are restated over
+      `[datasetToTheory ds]` under `CL.IklRespectsThat`, and moved out
+      of `Unified/SparqlAdequacy.lean` into `Unified/ClBridge.lean`.
+      This answers note 33's "engine-side decision this note does not
+      take": regime soundness is now soundness with respect to the
+      unified layer's own dataset reading.
+    * The new statement is SENSITIVE to the `urn:cl:def:asserts` test,
+      which note 33 recorded that the old one was not:
+      `embedding_sees_the_assertion_decoration` entails the content
+      over `wDs` and refutes it over `wDsMentioned` — the same dataset
+      with the assertion decoration deleted — while `iklPremises`
+      entails it over both. The superseded, predicate-blind statement
+      stays as `iklPremises_extend_entailed` beside
+      `mergeWhere_entailed`, which is the measurement that condemned
+      it.
+    * Note 33's divergence theorems are NOT deleted. They are
+      restated about `decorationOnlyToTheory` — the superseded
+      reading, kept in `Unified/DatasetEmbed.lean` — where they remain
+      true: `ikl_reading_diverges_from_decoration_only_embedding` and
+      `decorationOnly_refutes_content_ikl`. This is the
+      `topLevel_exclusion_insufficient_for_tt` pattern of note 11.
+      `decorationOnly_strictly_weaker` pins the two readings apart:
+      `coherentBlind` satisfies the superseded one and refutes the
+      repaired one.
+
+    What the repair does NOT claim. `ikl_extend_entailed` still
+    carries the fragment guard `datasetBnodeNames ds = []` (every
+    `ToRdf` output occupies it; `#guard` pins it for the witness, not
+    proved for all texts). It still says nothing about the SUFFIX —
+    all `x-ikl-*` suffixes route to one handler, per the owner ruling
+    in [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581). It is soundness only; no completeness claim
+    in either direction. And `datasetToTheory` is now
+    VOCABULARY-SENSITIVE: it gives `urn:cl:def:asserts` a meaning, so
+    it is no longer a reading of an arbitrary RDF dataset that adds
+    nothing to RDF 1.1 Concepts §4 — it is the unified layer's reading
+    of a dataset in which that decoration is the layer's own reserved
+    vocabulary, alongside `urn:cl:def:names`,
+    `urn:cl:def:literalValueOf` and `urn:cl:def:tripleTerm`.
+    `dataset_decoration_asserts_nothing` is what survives of the
+    RDF 1.1 neutrality: an undecorated named graph asserts nothing.
 
 ## 1. Goal and provenance
 
