@@ -386,6 +386,118 @@ and §5.3 are corrected or made precise by the implementation.
     `¬ OWL.Consistent R A → OWL.Refuted R A` is not derivable here.
     Recorded as a registry gap row rather than weakened into a claim.
 
+### Stage 6 correction notes (2026-08-26)
+
+`Unified/SparqlQuery.lean` and `Unified/SparqlAdequacy.lean` landed
+(BGP matching and the entailment regimes). Six notes in the same
+spirit as 1-26:
+
+27. **§4.6's single membership iff splits into a pivot plus two
+    theorems.** The statement
+    `μ ∈ evalBgp b g ↔ (μ.domExact b ∧ μ.rangeIn g ∧ Entails …)`
+    cannot be proved, and not for want of effort: membership in
+    `evalBgp b g` is LIST membership of a `Binding`, and two of its
+    properties are invisible to any semantic condition. (a) ORDER —
+    the evaluator conses bindings as it walks subject → predicate →
+    object, left to right through the pattern list, so the mapping it
+    returns is one particular permutation of the pairs. (b)
+    COARSENESS — `tryBindTerm`'s already-bound arm keeps the FIRST
+    term bound to a variable and only compares the graph's own term to
+    it with `Term.eqb`, so a returned mapping's terms need only be
+    engine-equal to the graph's, not structurally identical
+    (`SPARQL/BgpRefinement.lean`'s header records the same point for
+    its own conclusion). Landed instead: the pivot
+    `BgpMatches μ b g` (every pattern instantiates under μ into `g` by
+    engine equality), the gate `unified_adequate_bgp` as a full iff
+    between the pivot and `Answers`, `bgp_eval_sound` (unconditional)
+    and `bgp_eval_complete` (agreement up to `Term.eqb`). The two
+    chains `unified_adequate_bgp_engine` and
+    `unified_bgp_answers_returned` are what a reader of §4.6 wanted.
+    Also withdrawn: the `μ.domExact b` conjunct. It is not needed —
+    the term model REFUTES an unbound variable through the tag
+    component of its denotation rather than excluding it by
+    assumption — so the gate carries no domain hypothesis at all.
+
+28. **`UQuery` carries the pattern, not an arbitrary `CL.Sentence`.**
+    §3's `structure UQuery where vars : List VarName; body :
+    CL.Sentence` makes `UQuery.instantiate` a capture-avoiding
+    name-substitution over `CL.Sentence`, which needs a substitution
+    engine plus a non-capture lemma that is false in general (a
+    substituted term can be captured by an enclosing `all` / `ex`).
+    The bodies this stage produces are quantifier-free conjunctions of
+    atoms, where the substitution and the compositional definition
+    agree, so the landed structure carries `pattern : SPARQL.Bgp` and
+    `body` is the derived accessor `bgpBody [] q.pattern` — exactly
+    the open body §3 names. If a later stage needs `UQuery` over an
+    arbitrary sentence, the substitution engine is the work item, not
+    a rename.
+
+29. **`regimeToSchema` is the SPECIFICATION table; the engine
+    dispatcher is narrower, and the two disagree on `"RDFS"`.**
+    `RDFS.entailmentClosureForQueryExt` recognises `x-rdfscore` and
+    `x-rdfsplus` and routes EVERY other string — `"RDFS"`,
+    `"OWL-RL"`, a typo — to `OWL.RL.closure`. Its own module header
+    states this. So a regime row that said "RDFS regime" without
+    saying WHICH closure would misdescribe the engine.
+    `regimeToSchema` resolves the four W3C names through
+    `RDF.Regime.ofName?` (whose `.rdfs` closure is
+    `RDFS.fullClosure`), `regimeDispatchSchema` records what the
+    dispatcher selects, and a `#guard` pins the disagreement.
+    `regime_sound_rdfs` is stated against `RDF.Regime.closure .rdfs`
+    and says so.
+
+30. **Regime soundness landed for `simple`, `x-rdfscore` and `RDFS`;
+    `x-rdfsplus` did not, and regime completeness is a different
+    claim.** §4.6's `regime_sound` shape landed once as
+    `regime_sound_of_closureHolds`, whose premise is the regime's own
+    content. `x-rdfsplus` has no closure-soundness theorem to supply
+    that premise: stage 3 landed the RDFS-Plus Datalog tier at
+    demo-instance strength, and `RDFS/RegimeDispatch.lean`'s own claim
+    column already refuses chain-level completeness for it because
+    `owl:sameAs` breaks the Herbrand construction — that refusal
+    transfers verbatim. Separately: §4.6's parenthetical "x-rdfscore
+    (with the ↔ form, via stage 2)" is delivered as
+    `regime_rhoDf_answers_closure_iff`, a full iff saying the
+    MATERIALISATION is answer-preserving. That is not "the engine
+    returns every ρdf answer", which needs the closure to be
+    SATURATED — the `rhoDfClosedCheck` hypothesis the stage 2 decided
+    corollary carries. Recorded as a gap row, not folded into the iff.
+
+31. **The `x-ikl-*` family is a dataset TRANSFORM, so it enters as a
+    premise-list transform and gets no schema.**
+    `CL.IklRegime.extendDataset` does not close a graph under rules;
+    it merges the content of every ASSERTED proposition into the
+    default graph. `ikl_extend_entailed` is the one theorem about the
+    merge: the extended default graph's Skolem reading is entailed by
+    `iklPremises ds` — the dataset's own graphs, read Skolem-wise —
+    unconditionally and independently of the suffix. What it
+    deliberately does NOT claim: that the merge is CONSERVATIVE (no
+    landed theorem ties the `urn:cl:def:asserts` decoration to
+    `CL.IklRespectsThat`), and anything about named subsets, which
+    stay deferred to
+    [https://github.com/danbri/factoidal/issues/581](https://github.com/danbri/factoidal/issues/581)
+    per the owner ruling recorded there.
+
+32. **`Term.eqb` is coarser than syntactic identity, and without a
+    schema row for that the SOUNDNESS half is false.** `Graph.mem` is
+    stated over `RDF.Term.eqb`, which identifies literals differing in
+    language-tag CASE and `rdf:XMLLiteral` lexical forms that are
+    exclusive-canonical-XML equal. Two such literals embed to
+    DIFFERENT CL terms, so a plain CL interpretation may separate
+    them, and "the pattern instantiates to a triple `Graph.mem` finds
+    in `g`" would not imply the instantiated body is entailed. Landed:
+    `termEqSchema`, one `eq` row per `Term.eqb`-equal pair — the same
+    LBase §2.4 axiom-schema mechanism §2.5 already uses for the
+    D-entailment value rows. `herbQ` (the term model) had to be built
+    for the same reason: `RDF.herbrand`'s domain is `Term` under
+    structural equality, so it violates the schema; quotienting the
+    domain by `Term.eqb` repairs exactly that and nothing else.
+    Recorded while proving `termEqSchema_nontrivial`: `String.toLower`
+    does not reduce in the Lean kernel, so neither `decide` nor `rfl`
+    discharges `langTagEq "EN" "en" = true`; the theorem carries the
+    language-tag fact as a hypothesis and the concrete instance is
+    pinned by `#guard`.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
