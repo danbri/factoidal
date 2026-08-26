@@ -52,6 +52,17 @@ private def arr (k : String) (v : Json) : List Json :=
 private def strList (k : String) (v : Json) : List String :=
   (arr k v).filterMap (fun x => match x with | .string s => some s | _ => none)
 
+/-- One `SemAct`. The `code` is kept VERBATIM: this reader does not
+    know any extension's language, and an extension nobody implements
+    must reach the evaluator intact rather than be dropped here. -/
+def semActOf (j : Json) : Option SemAct :=
+  (str? "name" j).map (fun n => { name := n, code := str? "code" j })
+
+def semActsOf (j : Json) : List SemAct := (arr "semActs" j).filterMap semActOf
+
+/-- The SCHEMA's own actions live under `startActs`, not `semActs`. -/
+def startActsOf (j : Json) : List SemAct := (arr "startActs" j).filterMap semActOf
+
 def nodeKindOf (s : String) : Option NodeKind :=
   if s == "iri" then some .iri
   else if s == "bnode" then some .bnode
@@ -174,7 +185,7 @@ partial def shapeExprOf (j : Json) : Option ShapeExpr :=
           some (.shape (.mk ((bool? "closed" j).getD false)
                             (strList "extra" j)
                             ((fld? "expression" j).bind tripleExprOf)
-                            [] [] (strList "extends" j)))
+                            (semActsOf j) [] (strList "extends" j)))
       | some "ShapeDecl"     => (fld? "shapeExpr" j).bind shapeExprOf
       | _ => none
   | _ => none
@@ -193,13 +204,13 @@ partial def tripleExprOf (j : Json) : Option TripleExpr :=
                                    ((fld? "valueExpr" j).bind shapeExprOf)
                                    ((int? "min" j).getD 1)
                                    ((int? "max" j).getD 1)
-                                   [] []))
+                                   (semActsOf j) []))
       | some "EachOf" =>
           some (.eachOf (.mk (str? "id" j) ((arr "expressions" j).filterMap tripleExprOf)
-                             (int? "min" j) (int? "max" j) [] []))
+                             (int? "min" j) (int? "max" j) (semActsOf j) []))
       | some "OneOf" =>
           some (.oneOf (.mk (str? "id" j) ((arr "expressions" j).filterMap tripleExprOf)
-                            (int? "min" j) (int? "max" j) [] []))
+                            (int? "min" j) (int? "max" j) (semActsOf j) []))
       | _ => none
   | _ => none
 
@@ -224,7 +235,7 @@ def schemaOf (j : Json) : Option Schema :=
   match str? "type" j with
   | some "Schema" =>
       some { start := (fld? "start" j).bind shapeExprOf
-             startActs := []
+             startActs := startActsOf j
              shapes := (arr "shapes" j).filterMap shapeDeclOf
              imports := strList "imports" j }
   | _ => none

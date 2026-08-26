@@ -17,6 +17,33 @@ namespace L4Factoidal.ShEx
 
 open L4Factoidal.RDF
 
+/-! ## Semantic actions
+
+ShEx 2.1 §5.10: a semantic action is code in an extension language,
+and an implementation that does not know the language cannot evaluate
+it — an unknown extension's action neither passes nor fails, so it is
+ignored. The ONE extension the validation corpus relies on is the Test
+extension, whose whole language is `print(...)` and `fail(...)`:
+`fail` makes the containing expression not match, `print` does
+nothing an implementation can observe.
+
+Reading `semActs` at all is new. `FromJson.lean` was passing `[]` for
+every `semActs` slot, so `%<...Test/>{ fail(s) %}` was invisible and
+four `*fail_abort* ` entries of the suite reported conformance for
+schemas that abort. -/
+
+/-- The one extension whose language this implementation knows. -/
+def testExtension : String := "http://shex.io/extensions/Test/"
+
+private def dropLeadingSpace (s : String) : String :=
+  String.ofList (s.toList.dropWhile (fun c => c == ' ' || c == '\t' || c == '\n'))
+
+/-- Does this action ABORT? Only a Test-extension `fail(...)` does. -/
+def semActFails (a : SemAct) : Bool :=
+  a.name == testExtension && (dropLeadingSpace (a.code.getD "")).startsWith "fail"
+
+def anySemActFails (as : List SemAct) : Bool := as.any semActFails
+
 /-- §5.4.1 nodeKind. `nonLiteral` admits IRIs and blank nodes. -/
 def matchesNodeKind (k : NodeKind) (t : Term) : Bool :=
   match k, t with

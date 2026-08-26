@@ -317,7 +317,8 @@ partial def satisfiesExtends (sch : Schema) (g : List Triple)
       let unmentioned := arcs.filter (fun a =>
         !a.inverse && !(pairs.contains (false, a.predicate))
           && !(allExtra.contains a.predicate))
-      if allClosed && !unmentioned.isEmpty then false
+      if anySemActFails sh.semActs then false
+      else if allClosed && !unmentioned.isEmpty then false
       else if !(chain.checks.all (fun c => satisfiesIn sch g visited c n)) then false
       else
         let arr := arcs.toArray
@@ -336,6 +337,7 @@ end
 
 /-- Validate a focus node against a labelled shape of a schema. -/
 def validateNode (sch : Schema) (g : List Triple) (label : String) (n : Term) : Bool :=
+  if anySemActFails sch.startActs then false else
   match sch.lookup label with
   | some d => satisfiesIn sch g [(label, n)] d.expr n
   | none   => false
@@ -346,6 +348,7 @@ def validateNode (sch : Schema) (g : List Triple) (label : String) (n : Term) : 
     shape EXPRESSION and not a label: `Schema.lookup ""` cannot find
     it and answered `false` for every such entry. -/
 def validateStart (sch : Schema) (g : List Triple) (n : Term) : Bool :=
+  if anySemActFails sch.startActs then false else
   match sch.start with
   | some se => satisfiesIn sch g [] se n
   | none    => false

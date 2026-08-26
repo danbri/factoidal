@@ -176,6 +176,7 @@ partial def matchStates (valueOk : Option ShapeExpr → Term → Bool)
       | some te' => matchStates valueOk lookupTe arr te' avail
       | none     => []
   | .tripleConstraint tc =>
+      if anySemActFails tc.semActs then [] else
       let cands := avail.filter (fun i =>
         match arr[i]? with
         | some a => arcMatchesPredicate tc a && valueOk tc.valueExpr a.value
@@ -258,6 +259,7 @@ def mentionedPairsWith (lookupTe : String → Option TripleExpr)
     leftover. -/
 def satisfiesShapeGen (valueOk : Option ShapeExpr → Term → Bool)
     (lookupTe : String → Option TripleExpr) (sh : Shape) (arcs : List Arc) : Bool :=
+  if anySemActFails sh.semActs then false else
   match sh.expression with
   | none => !sh.closed || arcs.isEmpty
   | some te =>
