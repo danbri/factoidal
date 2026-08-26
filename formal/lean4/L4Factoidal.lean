@@ -395,6 +395,7 @@ import L4Factoidal.CL.FiniteSatTheorems
 import L4Factoidal.CL.ClifAdequacy
 import L4Factoidal.CL.ToRdf
 import L4Factoidal.CL.IklRegime
+import L4Factoidal.CL.Normalize
 import L4Factoidal.Unified.Theory
 import L4Factoidal.Unified.RdfEmbed
 import L4Factoidal.Unified.RdfTransport
