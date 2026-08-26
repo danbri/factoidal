@@ -1,4 +1,14 @@
 open Prims
+(* SHACL sh:sparql dispatch acknowledgement -- issue #181.
+   `validate` and `parse_shape_from_graph` are real F-star
+   (Phase 2 / slice 1 landed 2026-07-04) -- only
+   `eval_sparql_target_select` is still extracted as a
+   `failwith` stub, and it is unreachable this slice (T_Sparql
+   targets and CC_Sparql constraints both evaluate to "no
+   result" in pure F-star). See
+     formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/
+     181_shacl_validate_stub.sh
+   for the wiring plan. *)
 let sh_NodeShape : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#NodeShape"
 let sh_ShapeClass : RDF_Term.wf_iri= "http://www.w3.org/ns/shacl#ShapeClass"
 let sh_PropertyShape : RDF_Term.wf_iri=
