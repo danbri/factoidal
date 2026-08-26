@@ -102,6 +102,50 @@ the port.
 
 ---
 
+### 1.5 What "adequacy" means here, and what it does not
+
+The theorem names in this program use `adequate`. The word is
+borrowed, and the borrowing is worth stating precisely, because it
+carries three distinct meanings across the fields this work touches.
+
+* **Programming-language semantics and logical frameworks.** Plotkin's
+  *computational adequacy* ("LCF considered as a programming
+  language", 1977) relates two semantics of one object language; the
+  *adequacy theorem* of a logical-framework encoding
+  (Harper, Honsell and Plotkin, LF) relates an object language to its
+  encoding in a host logic by a compositional bijection. The stage
+  gates of this program have the second shape: an encoding of RDF,
+  RDFS, OWL or SPARQL in the CL/IKL host, proved faithful.
+* **Model theory.** "Adequate" is not a technical term there. The
+  model-theoretic name for what the stage gates prove is a **faithful
+  interpretation**, in the sense of relative interpretability
+  (Tarski, Mostowski and Robinson). `unified_adequate_simple` states
+  exactly that `rdfToTheory` is a faithful interpretation of RDF
+  simple entailment in the unified theory: sound because it is an
+  interpretation, complete because it is faithful.
+* **Knowledge representation.** McCarthy and Hayes ("Some
+  Philosophical Problems from the Standpoint of Artificial
+  Intelligence", 1969) use *epistemological adequacy* — with
+  metaphysical and heuristic adequacy alongside it — for whether a
+  representation can express the facts an agent needs. That is a
+  judgement about fitness for a purpose, not a theorem. **No result in
+  this document is an adequacy claim in that sense.**
+
+One further distinction, internal to the naming. Two different
+relations share the `unified_adequate_` prefix:
+
+* `unified_adequate_simple`, `_rdfs`, `_dl`, `_bgp` and their
+  siblings state translation faithfulness — the faithful-interpretation
+  reading above.
+* The `_decided` family (`unified_adequate_simple_decided`,
+  `unified_adequate_rhoDf_decided`,
+  `unified_adequate_d_decided_sound`) states that an **executable
+  procedure** agrees with the semantics. That is soundness and
+  completeness of a decision procedure, which composes with the first
+  relation but is not the same relation.
+
+---
+
 ## 2. The results
 
 One row per gate theorem. Statements are quoted from the Lean source
