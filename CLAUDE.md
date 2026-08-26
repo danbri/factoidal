@@ -281,6 +281,27 @@ Where a property holds of both trees, state it once over an abstraction
 (a typeclass or parameterised structure in Lean) and instantiate it,
 rather than proving it twice. Lean first; F\* optional.
 
+### There are no users. Prefer the right structure to the compatible one
+
+The issue-566 ruling above says "We have no users so rip it up where
+it is crap." That is a GENERAL rule, not a hex-layer one. Owner
+restatement, 2026-08-26, verbatim:
+
+> "You speak like this is a huge codebase with many users. Thw honest
+> truth is that I made it using my anthropic claude subscription
+> overnight, and it has zero audience and users so far."
+
+Blast radius, backwards compatibility and migration cost are not
+arguments here. When a design is wrong, change the design; keep the
+superseded artifact only as the record of why it changed. Cost of
+getting this wrong: on 2026-08-26 the coordinator recommended the
+conservative option for
+[issue 609](https://github.com/danbri/factoidal/issues/609) item 3 —
+adopt the divergence as a stated interpretation condition rather than
+repair the dataset embedding — on blast-radius grounds that only apply
+to a codebase with users. The owner overruled it: "The correct path is
+(3.)".
+
 ## Reading owner steers: prioritization is not prohibition
 
 The owner usually steers this project from a phone, between other
