@@ -45,11 +45,19 @@ const NOT_SUPPORTED =
 // typeof-guards each one and capabilities() reports the truth.
 //
 // The resolved wasm's full dispatch surface has 21 ops
-// (`bin/linux-x86_64/l4factoidal ops`); this list wires 12 of them.
-// Two families are deliberately withheld, for different reasons:
+// (`bin/linux-x86_64/l4factoidal ops`); this list wires 13 of them.
+// `clParse` reads CLIF text into a CL syntax tree and reports its
+// shape (sentence count, CL-vs-IKL dialect, canonical re-serialisation)
+// -- it never produces RDF, so it is NOT part of the IKL-to-RDF
+// projection family below. It is the first Lean-only entry in the
+// typed capability table (formal/fstar has no CL/IKL parser at all);
+// see ./select.js, which throws on `backend:'fstar'` for it rather
+// than answering from Lean silently.
+//
+// One family remains deliberately withheld, by OWNER DECISION:
 //
 //   - IKL-to-RDF projection ("direction B": `clToDataset`,
-//     `queryWithIklService`): held back by OWNER DECISION, 2026-08-26
+//     `queryWithIklService`): held back, 2026-08-26
 //     (https://github.com/danbri/factoidal/issues/618) — "I don't want
 //     npm code for direction b at this stage, unless for the shape of
 //     ikl which is the subset we get mapping rdf into ikl. But ikl
@@ -66,18 +74,15 @@ const NOT_SUPPORTED =
 //     add them without a fresh owner sign-off; test/select.test.js pins
 //     them absent.
 //
-//   - `clParse`: NOT direction B, and NOT covered by the ruling above.
-//     It reads CLIF text into a CL syntax tree and never produces RDF.
 //     CORRECTION 2026-08-26: an earlier version of this comment listed
-//     clParse with the two projection ops and cited the owner's
-//     direction-B ruling as the reason for all three. That
-//     misattributed a decision the owner did not make. clParse was
-//     already unwired here before that ruling, with no reason recorded;
-//     it stays unwired now only because nobody has decided to wrap it.
-//     Whether to expose it is an OPEN question, not a settled
-//     exclusion. The hub reaches it directly through fn.l4Call against
-//     the wasm (see docs/web/hub/44-a-little-ikl-walkthrough.md), which
-//     bypasses this typed surface entirely.
+//     `clParse` alongside these two and cited this same ruling as the
+//     reason for all three. That misattributed a decision the owner
+//     did not make -- `clParse` was unwired only because nobody had
+//     decided to wrap it, which is why it is wired above instead of
+//     here now.
+//
+// A second group is withheld for an unrelated, non-owner reason:
+//
 //   - dataset handles (`datasetOpen`/`datasetQuery`/`datasetUpdate`/
 //     `datasetSerialize`/`datasetClose`): ordinary RDF dataset handles,
 //     not part of the CL/IKL decision above. Held back only because
@@ -98,6 +103,7 @@ const OPS = [
   'rhoDfClosure',
   'rhoDfFragmentCheck',
   'rdfsPlusClosure',
+  'clParse',
 ];
 
 async function loadLeanEntry() {
@@ -149,6 +155,9 @@ module.exports = {
   rhoDfClosure: api.rhoDfClosure,
   rhoDfFragmentCheck: api.rhoDfFragmentCheck,
   rdfsPlusClosure: api.rdfsPlusClosure,
+  // Lean-only: formal/fstar has no CL/IKL parser, so this is NOT
+  // exported from index.js/wasm.js. See the OPS comment above.
+  clParse: api.clParse,
   // Served by the Lean engine's dispatch ABI when the resolved wasm
   // carries the ops (see the header note).
   owlIsConsistent: api.owlIsConsistent,

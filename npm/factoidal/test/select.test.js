@@ -22,6 +22,32 @@ function skipUnlessLean(t) {
   return true;
 }
 
+// The op names the RESOLVED wasm actually serves (same defensive
+// pattern as l4-core.test.js's leanOps()/skipUnlessOp() -- the
+// committed wasm can predate an op added in the same landing as its
+// tests).
+let leanOpsPromise = null;
+function leanOps() {
+  if (!leanOpsPromise) {
+    leanOpsPromise = require('../l4.js')
+      .loadL4()
+      .then((eng) =>
+        typeof eng.call === 'function' ? eng.call('ops', []).ops : [])
+      .catch(() => []);
+  }
+  return leanOpsPromise;
+}
+
+async function skipUnlessOp(t, op) {
+  if (skipUnlessLean(t)) return true;
+  const ops = await leanOps();
+  if (!ops.includes(op)) {
+    t.skip(`resolved Lean wasm predates the '${op}' op (ops reflection)`);
+    return true;
+  }
+  return false;
+}
+
 const TTL = '@prefix ex: <http://example.org/> . ex:a ex:b ex:c .';
 const SHAPES =
   '@prefix sh: <http://www.w3.org/ns/shacl#> . ' +
@@ -53,14 +79,21 @@ test('capabilityTable is derived from live capabilities(), not hand-written', as
   }
   // shaclValidate/shexValidate/tableauMaterialise/rmlMap/csvwToRdf/
   // jsonldToRdf/rifEval/xsltTransform are not in the Lean engine's
-  // 12-op typed-API surface (bin/linux-x86_64/l4factoidal ops lists 21
-  // raw ops; only 12 are wired to lib/api.js's typed wrappers) --
+  // 13-op typed-API surface (bin/linux-x86_64/l4factoidal ops lists 21
+  // raw ops; only 13 are wired to lib/api.js's typed wrappers) --
   // Lean must report false for every one of them.
   for (const fn of ['shaclValidate', 'shexValidate', 'tableauMaterialise',
     'rmlMap', 'csvwToRdf', 'jsonldToRdf', 'rifEval', 'xsltTransform']) {
     assert.equal(table[fn].lean, false, `lean should NOT support ${fn}`);
     assert.equal(table[fn].fstar, true, `fstar should support ${fn}`);
   }
+});
+
+test('capabilityTable: clParse is Lean-only -- lean true, fstar false', async (t) => {
+  if (skipUnlessLean(t)) return;
+  const table = await select.capabilityTable();
+  assert.equal(table.clParse.lean, true);
+  assert.equal(table.clParse.fstar, false);
 });
 
 // ---------------------------------------------------------------------
@@ -252,16 +285,69 @@ test('slowcompareboth: blank-node relabeling does not itself cause a false disag
 });
 
 // ---------------------------------------------------------------------
-// Owner decision, 2026-08-26 (issue #618, scope-change comment):
-// CL/IKL ops (clParse, clToDataset, queryWithIklService) stay off the
-// npm surface -- "IKL doesn't have shapes or named profiles. Take it
-// out of npm for now." These ops are NOT deleted from the compiled
-// wasm (no rebuild happened for this decision); they are held back at
-// the JS layer only. Pinned here so a later change can't quietly wire
-// them back in without failing a test that names the decision.
+// clParse: the first Lean-only op on the typed capability table.
+// formal/fstar has no CL/IKL parser, so backend:'fstar' must throw
+// (never silently answer from Lean) and slowcompareboth must fail on
+// the capability precondition (nothing to compare), not on an
+// execution error from calling a function that does not exist.
 // ---------------------------------------------------------------------
 
-const WITHHELD_CL_IKL_OPS = ['clParse', 'clToDataset', 'queryWithIklService'];
+const PURE_CL_TEXT = "(uttered Bram 'I saw Jon watching Foxworth by the nut tree')";
+const IKL_TEXT =
+  "(witnessed Clud (that (saw Jon (that (cached Foxworth 'the beech hollow')))))";
+
+test("backend 'lean': clParse answers with the parse envelope", async (t) => {
+  if (skipUnlessLean(t)) return;
+  if (await skipUnlessOp(t, 'clParse')) return;
+  const sel = select.createSelector({ backend: 'lean' });
+  const r = await sel.clParse(IKL_TEXT);
+  assert.equal(r.engine, 'lean');
+  assert.equal(r.backend, 'lean');
+  assert.equal(r.value.ok, true);
+  assert.equal(r.value.sentences, 1);
+  assert.equal(r.value.pureCL, false);
+  assert.equal(r.value.normalized, IKL_TEXT);
+});
+
+test("backend 'fstar': clParse throws (never falls back to Lean) -- formal/fstar has no CL/IKL parser", async () => {
+  const sel = select.createSelector({ backend: 'fstar' });
+  await assert.rejects(() => sel.clParse(PURE_CL_TEXT), TypeError);
+});
+
+test("backend 'fstar1st': clParse falls through to Lean, since F* never implements it", async (t) => {
+  if (skipUnlessLean(t)) return;
+  if (await skipUnlessOp(t, 'clParse')) return;
+  const sel = select.createSelector({ backend: 'fstar1st' });
+  const r = await sel.clParse(PURE_CL_TEXT);
+  assert.equal(r.engine, 'lean');
+  assert.equal(r.value.pureCL, true);
+});
+
+test("backend 'slowcompareboth': clParse fails the capability precondition, not a silent one-sided answer", async (t) => {
+  if (skipUnlessLean(t)) return;
+  const sel = select.createSelector({ backend: 'slowcompareboth' });
+  await assert.rejects(() => sel.clParse(PURE_CL_TEXT), /needs BOTH engines/);
+});
+
+// ---------------------------------------------------------------------
+// Owner decision, 2026-08-26 (issue #618, scope-change comment): the
+// IKL-to-RDF projection ("direction B": clToDataset, queryWithIklService)
+// stays off the npm surface -- "IKL doesn't have shapes or named
+// profiles. Take it out of npm for now." These ops are NOT deleted from
+// the compiled wasm (no rebuild happened for this decision); they are
+// held back at the JS layer only. Pinned here so a later change can't
+// quietly wire them back in without failing a test that names the
+// decision.
+//
+// clParse used to sit in this same list, misattributed to the same
+// owner decision. CORRECTION 2026-08-26 (see l4-core.js's OPS comment):
+// clParse reads CLIF text and never produces RDF, so it was never part
+// of direction B -- it was unwired only because nobody had decided to
+// wrap it, and it is wired now (tests above). It must not be added
+// back to this list.
+// ---------------------------------------------------------------------
+
+const WITHHELD_CL_IKL_OPS = ['clToDataset', 'queryWithIklService'];
 
 test('capabilityTable/ROUTABLE never mention the withheld CL/IKL ops', async () => {
   const table = await select.capabilityTable();

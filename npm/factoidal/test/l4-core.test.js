@@ -361,6 +361,51 @@ test('l4-core owlEntails: closure yes / refutation no / budget-out null', async 
 });
 
 // ---------------------------------------------------------------------
+// clParse — Common Logic Interchange Format (ISO/IEC 24707:2018) text,
+// with the IKL `that`-operator extension. Lean-only: formal/fstar has
+// no CL/IKL parser (see select.js's capability table for the
+// consequence). `pureCL` is a DIALECT flag, not a validity signal.
+// ---------------------------------------------------------------------
+
+const PURE_CL_TEXT = "(uttered Bram 'I saw Jon watching Foxworth by the nut tree')";
+const IKL_TEXT =
+  "(witnessed Clud (that (saw Jon (that (cached Foxworth 'the beech hollow')))))";
+
+test('l4-core clParse: pureCL true for CL text with no `that` operator', async (t) => {
+  if (await skipUnlessOp(t, 'clParse')) return;
+  const r = await l4core.clParse(PURE_CL_TEXT);
+  assert.equal(r.ok, true);
+  assert.equal(r.sentences, 1);
+  assert.equal(r.pureCL, true);
+  assert.equal(r.normalized, PURE_CL_TEXT);
+});
+
+test('l4-core clParse: pureCL false once the text uses IKL\'s `that` operator', async (t) => {
+  if (await skipUnlessOp(t, 'clParse')) return;
+  const r = await l4core.clParse(IKL_TEXT);
+  assert.equal(r.ok, true);
+  assert.equal(r.sentences, 1);
+  assert.equal(r.pureCL, false);
+  assert.equal(r.normalized, IKL_TEXT);
+});
+
+test('l4-core clParse: rejects a `that`-term used where a proposition is required', async (t) => {
+  if (await skipUnlessOp(t, 'clParse')) return;
+  // '(that S)' denotes a TERM (the proposition-as-object); using it
+  // bare as a sentence needs the extra parens IKL's GUIDE spells out --
+  // '((that S))' asserts it. The engine's message says exactly this.
+  await assert.rejects(
+    () => l4core.clParse(
+      "(that (saw Jon (that (cached Foxworth 'the beech hollow'))))"),
+    /'\(that S\)' is a term; to assert the proposition write '\(\(that S\)\)'/);
+});
+
+test('l4-core clParse: rejects a non-string argument', async (t) => {
+  if (skipUnlessAvailable(t)) return;
+  await assert.rejects(() => l4core.clParse(42), TypeError);
+});
+
+// ---------------------------------------------------------------------
 // capabilities honesty
 // ---------------------------------------------------------------------
 
