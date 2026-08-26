@@ -506,6 +506,55 @@ spirit as 1-26:
     language-tag fact as a hypothesis and the concrete instance is
     pinned by `#guard`.
 
+33. **The `x-ikl-*` regime's premise reading and the dataset embedding
+    are DIFFERENT readings of a dataset, and they disagree.** Note 31
+    recorded that no landed theorem tied the `urn:cl:def:asserts`
+    decoration to `CL.IklRespectsThat`. `Unified/ClBridge.lean`
+    ([https://github.com/danbri/factoidal/issues/609](https://github.com/danbri/factoidal/issues/609)
+    item 3) settles what that gap is. `iklPremises ds` asserts the
+    default graph AND every named graph; `datasetToTheory ds` asserts
+    the default graph and reads a named graph as ONE decoration,
+    `atom(names)[n, that(rdfBody G)]`, which asserts nothing.
+    `ikl_reading_diverges_from_dataset_embedding` proves the two
+    disagree on `wDs`, the translation `CL.toRdfDataset` really
+    produces for `((that (Dead OBL)))`: the asserted proposition's
+    content triple is entailed by `iklPremises` and is not entailed by
+    `datasetToTheory`. `embedding_refutes_content_ikl` shows IKL
+    coherence does not repair it — coherence constrains a
+    proposition's zero-ary relation extension, and the embedding puts
+    the `that`-term in the second argument of `urn:cl:def:names`.
+    Two consequences for note 31's own statement:
+    `mergeWhere_entailed` proves `ikl_extend_entailed` holds for EVERY
+    selection predicate over the named graphs, so "unconditionally and
+    independently of the suffix" understates it — the theorem is also
+    independent of the assertion test, and therefore does not certify
+    issue 581's narrowing; and `regime_sound_ikl`'s soundness is
+    relative to a premise reading in which assertion and mention are
+    already identified. The repair is stated:
+    `IklAssertionCommitment` is the regime's own encoding commitment
+    over the decoration vocabulary alone, and under it plus coherence
+    the embedding entails the whole extended default graph on the
+    blank-node-free fragment (`embed_entails_extension`). Adopting it
+    as a regime condition, or restating regime soundness over
+    `datasetToTheory`, is the engine-side decision this note does not
+    take.
+
+34. **`CL.IklRespectsThat` had no model in the tree.** Every theorem
+    over it — `CL.IklEntails`, `CL.sat_assert_that`, and now note 33's
+    refutations — needed one, and none existed: a coherent
+    interpretation makes zero-ary predication on a proposition decide
+    satisfaction of the sentence expressing it, which is a fixpoint,
+    and the ad-hoc finite models in `Unified/Witnesses.lean` and
+    `CL/Examples.lean` all fail it (`CL/Examples.lean`'s header says
+    so of `tiny`). `Unified/ClBridge.lean` §5 builds one: `propModel`
+    has domain `Prop`, a proposition IS a `Prop`, and `pSat` writes
+    the model's own satisfaction out as a recursion over the CL syntax
+    — which is what breaks the circularity between `CL.Sat` and
+    `Interp.iProp`. `pSat_eq` proves the recursion agrees with
+    `CL.Sat` clause by clause, and `propModel_coherent` turns that
+    into `IklRespectsThat` for every relation reading making zero-ary
+    predication transparent.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
