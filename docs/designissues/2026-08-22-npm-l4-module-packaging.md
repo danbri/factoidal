@@ -143,12 +143,12 @@ committed module now serves the ten-op dispatch ABI (`l4_call`) behind
 |---|---|---|
 | BGP-only surface (targeted imports) | 1,448,306 | the floor: runtime + Init + the BGP closure |
 | Full v1 dispatch surface | 3,510,827 | + five parsers, SPARQL 1.1/1.2 eval + update, four closures, RDFC-1.0 |
-| v1 + Common Logic / IKL ops (measured 2026-08-25, Linux) | 3,598,886 | + `clParse` / `clToDataset` / `queryWithIklService` (`Wasm/Ops/CL.lean`, `L4Factoidal/CL/`) — ~88 KB over the v1 surface |
+| v1 + Common Logic / IKL ops (measured 2026-08-25, Linux) | 3,598,886 | + `clParse` / `clToDataset` / `queryWithIklService` (`Wasm/Ops/CL.lean`, `L4Factoidal/CL/`) — ~88 KB over the v1 surface. The last two were deleted from the source on 2026-08-26 ([#626](https://github.com/danbri/factoidal/issues/626)); the rows below therefore measure a surface the tree no longer has |
 | + dataset handles + x-ikl regime (measured 2026-08-25, Linux) | 3,866,580 | + `datasetOpen`/`datasetQuery`/`datasetUpdate`/`datasetSerialize`/`datasetClose` (`Wasm/Ops/Handles.lean`, [#585](https://github.com/danbri/factoidal/issues/585)) and the `x-ikl-*` regime module ([#581](https://github.com/danbri/factoidal/issues/581)) — ~261 KB over the CL row; abiVersion 0.2.0 |
 | + OWL verdict ops (measured 2026-08-25, Linux) | 4,190,019 | + `owlIsConsistent`/`owlEntails` (three-valued, `OWL/Refute.tableauConsistent` + `OWL/NegationGoals.lean`, [#586](https://github.com/danbri/factoidal/issues/586)) — ~316 KB over the handles row |
-| + content-addressed proposition naming (measured 2026-08-25, Linux) | 4,220,881 | + `CL/Alpha.lean` alpha-normalization and `urn:cl:that:sha256:<hex64>` graph names with the sentence-record triple ([#589](https://github.com/danbri/factoidal/issues/589)) — ~30 KB over the OWL row |
-| + graph-decoration CL translation (measured 2026-08-25, Linux) | 4,248,818 | + the no-flattening `CL/ToRdf.lean` rules ([#581](https://github.com/danbri/factoidal/issues/581)): `urn:cl:def:asserts` decorations, `rdf:reifies` triple-term bridges, asserts-only `x-ikl-*` regime + SERVICE view, and RDF 1.2 read mode in `queryDataset`/`updateDataset` — ~28 KB over the naming row |
-| + rdfProjection + uniform conjunction (measured 2026-08-25, Linux) | 4,248,606 | review disposition ([#589](https://github.com/danbri/factoidal/issues/589)): the triple-term decoration renamed to `urn:cl:def:rdfProjection` (`rdf:reifies` reserved for future report/occurrence nodes) and a top-level `(and …)` translated as ONE asserted proposition (no distribution) — ~0.2 KB under the previous row |
+| + content-addressed proposition naming (measured 2026-08-25, Linux) | 4,220,881 | + `CL/Alpha.lean` alpha-normalization and the content-addressed proposition graph names with the sentence-record triple — ~30 KB over the OWL row. The naming scheme is DELETED ([#626](https://github.com/danbri/factoidal/issues/626)); `CL/Alpha.lean` stays, for the IKL individuation condition |
+| + graph-decoration CL translation (measured 2026-08-25, Linux) | 4,248,818 | + the CL-to-RDF projection rules and the `x-ikl-*` regime + SERVICE view, plus RDF 1.2 read mode in `queryDataset`/`updateDataset` — ~28 KB over the naming row. Everything in this row except the RDF 1.2 read mode is DELETED ([#626](https://github.com/danbri/factoidal/issues/626)) |
+| + triple-term decoration + uniform conjunction (measured 2026-08-25, Linux) | 4,248,606 | ~0.2 KB under the previous row. This is the byte count of the COMMITTED artifact, and it is now ahead of its source ([#627](https://github.com/danbri/factoidal/issues/627)) — the projection it measures is deleted |
 | `import L4Factoidal` umbrella | 4,534,258 | non-functional — its 374-module initializer chain dies under wasm32 |
 
 Decision the table settles: ONE module, no payload split. The v1
@@ -179,7 +179,7 @@ true:
   serves a **21-op dispatch surface** (`bin/linux-x86_64/l4factoidal
   ops`), 12 of which are wired into `l4-core.js`'s typed API (see the
   capability table below).
-- The measured wasm is 4,248,606 bytes (the "+ rdfProjection" row
+- The measured wasm is 4,248,606 bytes (the last row of the table
   above) — carrying its own weight for what it now does, not a
   disproportionate tax on a thin surface.
 - `npm/factoidal` was already 6.4 MB and `npm/factoidal-lean` 4.2 MB
@@ -354,19 +354,25 @@ code for direction b at this stage, unless for the shape of ikl which
 is the subset we get mapping rdf into ikl. But ikl doesn't have shapes
 or named profiles. Take it out of npm for now."
 
-`clParse`, `clToDataset` and `queryWithIklService` are real ops on the
-compiled wasm (confirmed present via `l4.call('ops', [])` reflection —
-**not deleted**, no wasm rebuild happened for this decision) but are
-withheld from the npm typed-API surface by this owner decision: IKL has
-no notion of shapes or named profiles, so an `x-ikl-<suffix>`
-entailment-regime family invents a taxonomy the specification does not
-have. `lib/api.js`'s `query()` (the shared choke point for `index.js`,
-`l4-core.js` and `select.js`) and `fn.js`'s `entail()` both reject any
-`entail` value matching `/^x-ikl/i` explicitly, independent of the
-`ENTAIL_VALUES` whitelist, so a later whitelist edit cannot reopen this
-without a deliberate second look. Pinned by regression tests in
-`test/select.test.js` (both the op-absence and the regime-rejection
-cases).
+`clToDataset` and `queryWithIklService` were withheld from the npm
+typed-API surface by that decision, and are now DELETED from the engine
+source entirely ([#626](https://github.com/danbri/factoidal/issues/626)):
+they went through `CL/ToRdf.lean`, whose content-addressed proposition
+graph names were never asked for. `clParse` was never part of that
+family — it reads CLIF and produces no RDF — and is wired.
+
+`lib/api.js`'s `query()` (the shared choke point for `index.js`,
+`l4-core.js` and `select.js`) and `fn.js`'s `entail()` both still
+reject any `entail` value matching `/^x-ikl/i` explicitly, independent
+of the `ENTAIL_VALUES` whitelist, so a later whitelist edit cannot
+reopen this without a deliberate second look. The Lean engine no longer
+defines an `x-ikl-*` regime either, so the JS check is where the name
+is answered. Pinned by regression tests in `test/select.test.js`.
+
+The committed wasm artifact still EXPORTS both deleted ops: it was not
+rebuilt in that landing (emsdk absent). Tracked in
+[#627](https://github.com/danbri/factoidal/issues/627), and recorded in
+the three Lean `version.json` files under `sourceDrift`.
 
 `datasetOpen`/`datasetQuery`/`datasetUpdate`/`datasetSerialize`/
 `datasetClose` are the other 5 of the 9 unwired ops — ordinary RDF

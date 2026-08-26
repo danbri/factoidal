@@ -2,6 +2,46 @@
 
 ## Status
 
+> ### ⚠️ Correction note, 2026-08-26 — the IKL-to-RDF projection and the `x-ikl-*` regime are DELETED
+>
+> Owner instruction, 2026-08-26, verbatim: "Re shas56 prop ids,
+> alphanorm 'Treat it as superseded rather than repaired.' Stronger:
+> close its issues, PRs, branches if alive, purge it from code, wasm js
+> c fstar lean markdown whatever, docs, and hub notebooks. Make it go
+> away."
+>
+> `formal/lean4/L4Factoidal/CL/ToRdf.lean` and
+> `formal/lean4/L4Factoidal/CL/IklRegime.lean` no longer exist
+> ([#626](https://github.com/danbri/factoidal/issues/626)). Every
+> mention below of the `urn:cl:that:sha256:<hex>` proposition naming
+> scheme, of `CL.IklRegime.extendDataset`, of the `x-ikl-*` regime
+> family, or of `urn:cl:def:rdfProjection` / `urn:cl:def:sentence`
+> describes an artifact that is gone. This document is NOT edited in
+> place — it is the record of what was designed on its date.
+>
+> What survives, and under which names:
+>
+> | deleted name | replacement |
+> | --- | --- |
+> | `CL.IklRegime.extendDataset` | `Unified.mergeAsserted` (the assertion decoration alone — no graph-name test) |
+> | `ikl_extend_entailed` | `embed_entails_asserted_merge` |
+> | `regime_sound_ikl` | `asserted_merge_sound` |
+> | `iklPremises_extend_entailed` | `asserted_merge_premises_entailed` |
+> | `ikl_extend_entailed_nonvacuous` | `embed_entails_asserted_merge_nonvacuous` |
+> | `extendDataset_eq_mergeWhere` | deleted — the handler it related is gone |
+> | `graphAsserted_eq_assertsDecorated` | deleted — there is now one spelling of the assertion test |
+>
+> `urn:cl:def:asserts`, `urn:cl:def:names`, `urn:cl:def:literalValueOf`,
+> `urn:cl:def:tripleTerm`, `urn:cl:def:listMember` and
+> `urn:cl:def:typedAllMembers` are the UNIFIED LAYER's own reserved
+> vocabulary and are unaffected. `CL/Alpha.lean` is unaffected: the IKL
+> GUIDE Appendix B individuation condition is IKL's semantics, not the
+> naming scheme.
+>
+> The committed wasm artifact still carries the deleted ops until it is
+> rebuilt: [#627](https://github.com/danbri/factoidal/issues/627).
+
+
 Design (Stage 0 of
 [https://github.com/danbri/factoidal/issues/598](https://github.com/danbri/factoidal/issues/598)).
 No code lands with this document. Every Lean signature and theorem
@@ -1083,7 +1123,7 @@ property term in operator position — legal because CL is unsegregated
   (language-tagged strings carry the tag as a third argument). This
   is LBase §3.0's `LiteralValueOf('sss', TR[ddd])` made concrete
   under the `urn:cl:def:` vocabulary that
-  [`formal/lean4/L4Factoidal/CL/ToRdf.lean`](../../formal/lean4/L4Factoidal/CL/ToRdf.lean)
+  `formal/lean4/L4Factoidal/CL/ToRdf.lean` (DELETED, [#626](https://github.com/danbri/factoidal/issues/626))
   already owns. The D-schema (§5.1 below) constrains this operator.
 * **Blank node** → an existentially bound name. Scoping rule, stated
   precisely: **the closure is taken once, at graph level** — RDF 1.1
@@ -1123,7 +1163,7 @@ property term in operator position — legal because CL is unsegregated
 ### 2.4 How datasets and named graphs embed
 
 Following the conventions of
-[`formal/lean4/L4Factoidal/CL/ToRdf.lean`](../../formal/lean4/L4Factoidal/CL/ToRdf.lean)
+`formal/lean4/L4Factoidal/CL/ToRdf.lean` (DELETED, [#626](https://github.com/danbri/factoidal/issues/626))
 (propositions are named graphs; the default graph carries
 decorations only) run in the opposite direction, and the
 individuation rule of
@@ -1153,7 +1193,7 @@ individuation rule of
   minimum, condition (1)); the stronger `=p` identities stay in the
   defined relation per issue 589 and are out of scope here.
 * the `x-ikl-*` assertion rule
-  ([`formal/lean4/L4Factoidal/CL/IklRegime.lean`](../../formal/lean4/L4Factoidal/CL/IklRegime.lean)):
+  (`formal/lean4/L4Factoidal/CL/IklRegime.lean` (DELETED, [#626](https://github.com/danbri/factoidal/issues/626))):
   a default-graph `urn:cl:def:asserts` decoration of a proposition
   IRI corresponds, on the unified side, to the additional premise
   `atom (that (rdfToTheory G)) []` — IKL's assertion-as-zero-ary

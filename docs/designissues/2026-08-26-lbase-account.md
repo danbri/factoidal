@@ -13,6 +13,47 @@ design document with its 32 correction notes,
 Public version of the same material: hub post 43,
 [`docs/web/hub/43-one-model-theory-under-all-of-it.md`](../web/hub/43-one-model-theory-under-all-of-it.md).
 
+
+> ### ⚠️ Correction note, 2026-08-26 — the IKL-to-RDF projection and the `x-ikl-*` regime are DELETED
+>
+> Owner instruction, 2026-08-26, verbatim: "Re shas56 prop ids,
+> alphanorm 'Treat it as superseded rather than repaired.' Stronger:
+> close its issues, PRs, branches if alive, purge it from code, wasm js
+> c fstar lean markdown whatever, docs, and hub notebooks. Make it go
+> away."
+>
+> `formal/lean4/L4Factoidal/CL/ToRdf.lean` and
+> `formal/lean4/L4Factoidal/CL/IklRegime.lean` no longer exist
+> ([#626](https://github.com/danbri/factoidal/issues/626)). Every
+> mention below of the `urn:cl:that:sha256:<hex>` proposition naming
+> scheme, of `CL.IklRegime.extendDataset`, of the `x-ikl-*` regime
+> family, or of `urn:cl:def:rdfProjection` / `urn:cl:def:sentence`
+> describes an artifact that is gone. This document is NOT edited in
+> place — it is the record of what was designed on its date.
+>
+> What survives, and under which names:
+>
+> | deleted name | replacement |
+> | --- | --- |
+> | `CL.IklRegime.extendDataset` | `Unified.mergeAsserted` (the assertion decoration alone — no graph-name test) |
+> | `ikl_extend_entailed` | `embed_entails_asserted_merge` |
+> | `regime_sound_ikl` | `asserted_merge_sound` |
+> | `iklPremises_extend_entailed` | `asserted_merge_premises_entailed` |
+> | `ikl_extend_entailed_nonvacuous` | `embed_entails_asserted_merge_nonvacuous` |
+> | `extendDataset_eq_mergeWhere` | deleted — the handler it related is gone |
+> | `graphAsserted_eq_assertsDecorated` | deleted — there is now one spelling of the assertion test |
+>
+> `urn:cl:def:asserts`, `urn:cl:def:names`, `urn:cl:def:literalValueOf`,
+> `urn:cl:def:tripleTerm`, `urn:cl:def:listMember` and
+> `urn:cl:def:typedAllMembers` are the UNIFIED LAYER's own reserved
+> vocabulary and are unaffected. `CL/Alpha.lean` is unaffected: the IKL
+> GUIDE Appendix B individuation condition is IKL's semantics, not the
+> naming scheme.
+>
+> The committed wasm artifact still carries the deleted ops until it is
+> rebuilt: [#627](https://github.com/danbri/factoidal/issues/627).
+
+
 ---
 
 ## 1. What was built, and why
@@ -498,7 +539,7 @@ Regime results:
 | `x-rdfscore` | `regime_sound_rhoDf` | soundness, no hypotheses |
 | `x-rdfscore` | `regime_rhoDf_answers_closure_iff` | full iff — the MATERIALISATION is answer-preserving |
 | `RDFS` | `regime_sound_rdfs` | soundness, under `IsRdfMemberIri` on the harvested members and `rdf:XMLLiteral ∈ D` |
-| `x-ikl-*` | `ikl_extend_entailed`, `regime_sound_ikl` | soundness against `datasetToTheory` under `CL.IklRespectsThat`, on `datasetBnodeNames ds = []`; sensitive to the `urn:cl:def:asserts` test |
+| `x-ikl-*` (regime DELETED [#626](https://github.com/danbri/factoidal/issues/626); the theorems survive, renamed) | `embed_entails_asserted_merge`, `asserted_merge_sound` | soundness against `datasetToTheory` under `CL.IklRespectsThat`, on `datasetBnodeNames ds = []`; sensitive to the `urn:cl:def:asserts` test |
 | `x-rdfsplus` | — | NO theorem |
 
 **Named gaps at stage 6.**
