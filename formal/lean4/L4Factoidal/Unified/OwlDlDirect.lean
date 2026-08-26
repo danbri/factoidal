@@ -751,6 +751,410 @@ theorem sat_conceptFormula {i : CL.Interp} {I : OWL.Interp i.dom}
       simp only [OWL.Interp.sem]
 
 
+/-! ## Valuation plumbing for the fixed-arity role-box sentences -/
+
+theorem freshVal_updateInd {i : CL.Interp} {ν : String → i.dom}
+    (hν : FreshVal i ν) {n : String} (hn : ':' ∉ n.toList) (y : i.dom) :
+    FreshVal i (CL.updateInd ν n y) := by
+  intro m hm
+  have hmn : m ≠ n := fun he => hn (he ▸ hm)
+  rw [CL.updateInd, if_neg hmn]
+  exact hν m hm
+
+theorem freshVal_iName (i : CL.Interp) : FreshVal i i.iName := fun _ _ => rfl
+
+theorem updateInd_self {i : CL.Interp} (ν : String → i.dom) (n : String)
+    (y : i.dom) : CL.updateInd ν n y n = y := by rw [CL.updateInd, if_pos rfl]
+
+theorem updateInd_other {i : CL.Interp} (ν : String → i.dom) {n m : String}
+    (h : m ≠ n) (y : i.dom) : CL.updateInd ν n y m = ν m := by
+  rw [CL.updateInd, if_neg h]
+
+theorem bvar_ne {k m : Nat} (h : k ≠ m) : bvar k ≠ bvar m :=
+  fun he => h (bvar_injective he)
+
+theorem sat_allTwo {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (n m : String) (body : CL.Sentence) :
+    CL.Sat i ν σ (.all [.plain n, .plain m] body) ↔
+      ∀ x y : i.dom,
+        CL.Sat i (CL.updateInd (CL.updateInd ν n x) m y) σ body := by
+  simp [CL.Sat, CL.SatForall]
+
+theorem sat_allThree {i : CL.Interp} (ν : String → i.dom)
+    (σ : String → List i.dom) (n m p : String) (body : CL.Sentence) :
+    CL.Sat i ν σ (.all [.plain n, .plain m, .plain p] body) ↔
+      ∀ x y z : i.dom,
+        CL.Sat i (CL.updateInd (CL.updateInd (CL.updateInd ν n x) m y) p z)
+          σ body := by
+  simp [CL.Sat, CL.SatForall]
+
+theorem satisfiesAll_append (i : CL.Interp) (l1 l2 : List CL.Sentence) :
+    CL.SatisfiesAll i (l1 ++ l2) ↔
+      CL.SatisfiesAll i l1 ∧ CL.SatisfiesAll i l2 := by
+  constructor
+  · intro h
+    exact ⟨fun s hs => h s (List.mem_append_left _ hs),
+           fun s hs => h s (List.mem_append_right _ hs)⟩
+  · rintro ⟨h1, h2⟩ s hs
+    rcases List.mem_append.mp hs with h | h
+    · exact h1 s h
+    · exact h2 s h
+
+theorem satisfiesAll_map {α : Type} (i : CL.Interp) (l : List α)
+    (g : α → CL.Sentence) :
+    CL.SatisfiesAll i (l.map g) ↔ ∀ a ∈ l, CL.Satisfies i (g a) :=
+  forall_mem_map' g l _
+
+/-! ## Assertions and the role box, transferred -/
+
+theorem satisfies_assertionSentence {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (φ : OWL.Assertion) :
+    CL.Satisfies i (assertionSentence φ) ↔ OWL.Satisfies I (dlNu i) φ := by
+  have hν := freshVal_iName i
+  cases φ with
+  | inst a c =>
+      rw [CL.Satisfies, assertionSentence,
+          sat_conceptFormula hc (fun _ => []) c 0 (indName a) i.iName hν
+            (okArg_dlName 0 'i' a)]
+      exact Iff.rfl
+  | rel r a b =>
+      rw [CL.Satisfies, assertionSentence, sat_roleAtom hc hν]
+      exact Iff.rfl
+  | diff a b =>
+      rw [CL.Satisfies, assertionSentence, sat_neg', sat_eq']
+      exact Iff.rfl
+
+theorem satAll_assertions {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (A : List OWL.Assertion) :
+    CL.SatisfiesAll i (A.map assertionSentence) ↔ OWL.SatAll I (dlNu i) A := by
+  rw [satisfiesAll_map]
+  constructor
+  · intro h φ hφ
+    exact (satisfies_assertionSentence hc φ).mp (h φ hφ)
+  · intro h φ hφ
+    exact (satisfies_assertionSentence hc φ).mpr (h φ hφ)
+
+theorem satisfies_subRoleSentence {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (p q : OWL.Role) :
+    CL.Satisfies i (subRoleSentence p q) ↔
+      ∀ x y : i.dom, I.role p x y → I.role q x y := by
+  have hν := freshVal_iName i
+  have key : ∀ x y : i.dom,
+      CL.Sat i (CL.updateInd (CL.updateInd i.iName (bvar 0) x) (bvar 1) y)
+          (fun _ => [])
+          (.impl (roleAtom p (bvar 0) (bvar 1)) (roleAtom q (bvar 0) (bvar 1)))
+        ↔ (I.role p x y → I.role q x y) := by
+    intro x y
+    have hν2 : FreshVal i
+        (CL.updateInd (CL.updateInd i.iName (bvar 0) x) (bvar 1) y) :=
+      freshVal_updateInd (freshVal_updateInd hν (bvar_no_colon 0) x)
+        (bvar_no_colon 1) y
+    have h0 : CL.updateInd (CL.updateInd i.iName (bvar 0) x) (bvar 1) y
+        (bvar 0) = x := by
+      rw [updateInd_other _ (bvar_ne (by decide)), updateInd_self]
+    have h1 : CL.updateInd (CL.updateInd i.iName (bvar 0) x) (bvar 1) y
+        (bvar 1) = y := updateInd_self _ _ _
+    rw [sat_impl', sat_roleAtom hc hν2, sat_roleAtom hc hν2, h0, h1]
+  rw [CL.Satisfies, subRoleSentence, sat_allTwo]
+  simp only [key]
+
+theorem satisfies_transSentence {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (r : OWL.Role) :
+    CL.Satisfies i (transSentence r) ↔
+      ∀ x y z : i.dom, I.role r x y → I.role r y z → I.role r x z := by
+  have hν := freshVal_iName i
+  have key : ∀ x y z : i.dom,
+      CL.Sat i (CL.updateInd (CL.updateInd (CL.updateInd i.iName (bvar 0) x)
+            (bvar 1) y) (bvar 2) z) (fun _ => [])
+          (.impl (roleAtom r (bvar 0) (bvar 1))
+            (.impl (roleAtom r (bvar 1) (bvar 2)) (roleAtom r (bvar 0) (bvar 2))))
+        ↔ (I.role r x y → I.role r y z → I.role r x z) := by
+    intro x y z
+    have hν3 : FreshVal i
+        (CL.updateInd (CL.updateInd (CL.updateInd i.iName (bvar 0) x)
+          (bvar 1) y) (bvar 2) z) :=
+      freshVal_updateInd (freshVal_updateInd
+        (freshVal_updateInd hν (bvar_no_colon 0) x) (bvar_no_colon 1) y)
+        (bvar_no_colon 2) z
+    have h0 : CL.updateInd (CL.updateInd (CL.updateInd i.iName (bvar 0) x)
+        (bvar 1) y) (bvar 2) z (bvar 0) = x := by
+      rw [updateInd_other _ (bvar_ne (by decide)),
+          updateInd_other _ (bvar_ne (by decide)), updateInd_self]
+    have h1 : CL.updateInd (CL.updateInd (CL.updateInd i.iName (bvar 0) x)
+        (bvar 1) y) (bvar 2) z (bvar 1) = y := by
+      rw [updateInd_other _ (bvar_ne (by decide)), updateInd_self]
+    have h2 : CL.updateInd (CL.updateInd (CL.updateInd i.iName (bvar 0) x)
+        (bvar 1) y) (bvar 2) z (bvar 2) = z := updateInd_self _ _ _
+    rw [sat_impl', sat_impl', sat_roleAtom hc hν3, sat_roleAtom hc hν3,
+        sat_roleAtom hc hν3, h0, h1, h2]
+  rw [CL.Satisfies, transSentence, sat_allThree]
+  simp only [key]
+
+theorem satisfiesAll_roleAxiomSentences {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (R : OWL.RoleAxioms) :
+    CL.SatisfiesAll i (roleAxiomSentences R) ↔ OWL.RespectsRBox I R := by
+  rw [roleAxiomSentences, satisfiesAll_append, satisfiesAll_map,
+      satisfiesAll_map]
+  constructor
+  · rintro ⟨h1, h2⟩
+    refine ⟨fun p hp => (satisfies_subRoleSentence hc p.1 p.2).mp (h1 p hp),
+            fun r hr => ?_⟩
+    exact (satisfies_transSentence hc r).mp (h2 r hr)
+  · rintro ⟨h1, h2⟩
+    exact ⟨fun p hp => (satisfies_subRoleSentence hc p.1 p.2).mpr (h1 p hp),
+           fun r hr => (satisfies_transSentence hc r).mpr (h2 r hr)⟩
+
+/-- **The translation transfer, stated once against compatibility.**
+Both transport directions instantiate this. -/
+theorem satisfiesAll_owlDlDirect_iff {i : CL.Interp} {I : OWL.Interp i.dom}
+    (hc : DLCompat i I) (R : OWL.RoleAxioms) (A : List OWL.Assertion) :
+    CL.SatisfiesAll i (owlDlDirect R A) ↔
+      (OWL.RespectsRBox I R ∧ OWL.SatAll I (dlNu i) A) := by
+  rw [owlDlDirect, satisfiesAll_append, satisfiesAll_roleAxiomSentences hc,
+      satAll_assertions hc]
+
+/-! ## `liftInterpDL` : OWL to CL
+
+The lift cannot preserve the domain. `CL.Interp.rel` receives the
+DENOTATION of the predicate term, so an interpretation over `δ` alone
+cannot tell `className a` from `className b` when `δ` is a singleton.
+`Unified/RdfTransport.lean` solved the same problem with a tag
+component `Option String × r.idom`; that answer does NOT work here,
+because the cardinality translation asks whether `n + 1` domain
+elements are DISTINCT, and a product domain has distinct pairs whose
+`δ`-components coincide — an `atMost` sentence would then be violated
+by an interpretation whose OWL reading satisfies it.
+
+The domain is therefore the SUM `δ ⊕ String`: the right summand
+carries the name-identity, and the class and role extensions are FALSE
+on it, so every witness a counting formula can use lies in the left
+summand, where distinctness is exactly distinctness in `δ`. -/
+
+/-- The OWL interpretation over the extended domain: the original one
+on the left summand, empty on the right. -/
+def inlInterp {δ : Type} (I : OWL.Interp δ) : OWL.Interp (δ ⊕ String) where
+  concept := fun a z => match z with
+    | .inl y => I.concept a y
+    | .inr _ => False
+  role := fun r z w => match z, w with
+    | .inl y, .inl v => I.role r y v
+    | _, _ => False
+
+theorem inlInterp_concept {δ : Type} (I : OWL.Interp δ) (a : String) (y : δ) :
+    (inlInterp I).concept a (.inl y) ↔ I.concept a y := Iff.rfl
+
+theorem inlInterp_concept_inr {δ : Type} (I : OWL.Interp δ) (a : String)
+    (s : String) : ¬ (inlInterp I).concept a (.inr s) := id
+
+theorem inlInterp_role {δ : Type} (I : OWL.Interp δ) (r : OWL.Role) (y v : δ) :
+    (inlInterp I).role r (.inl y) (.inl v) ↔ I.role r y v := Iff.rfl
+
+theorem inlInterp_role_inr {δ : Type} (I : OWL.Interp δ) (r : OWL.Role)
+    (y : δ) (s : String) : ¬ (inlInterp I).role r (.inl y) (.inr s) := id
+
+/-- A list all of whose members are left injections is a left-injected
+list. -/
+theorem all_inl {δ : Type} :
+    ∀ {l : List (δ ⊕ String)}, (∀ z ∈ l, ∃ y : δ, z = Sum.inl y) →
+      ∃ l' : List δ, l = l'.map Sum.inl
+  | [], _ => ⟨[], rfl⟩
+  | z :: r, h => by
+      obtain ⟨y, rfl⟩ := h z (by simp)
+      obtain ⟨r', hr'⟩ := all_inl (l := r) (fun w hw => h w (by simp [hw]))
+      exact ⟨y :: r', by rw [hr']; rfl⟩
+
+/-- Counting on the extended domain reduces to counting on `δ`, for
+any property that is false on the right summand. -/
+theorem card_sum_iff {δ : Type} (n : Nat) (P : δ → Prop)
+    (P' : δ ⊕ String → Prop) (hinl : ∀ v, P' (.inl v) ↔ P v)
+    (hinr : ∀ s, ¬ P' (.inr s)) :
+    (∃ l : List (δ ⊕ String), l.length = n ∧ l.Pairwise (· ≠ ·) ∧
+        ∀ z ∈ l, P' z)
+      ↔ (∃ l : List δ, l.length = n ∧ l.Pairwise (· ≠ ·) ∧ ∀ v ∈ l, P v) := by
+  constructor
+  · rintro ⟨l, hlen, hpw, hall⟩
+    obtain ⟨l', rfl⟩ := all_inl (l := l) (fun z hz => by
+      cases z with
+      | inl y => exact ⟨y, rfl⟩
+      | inr s => exact absurd (hall _ hz) (hinr s))
+    refine ⟨l', by simpa using hlen, ?_, ?_⟩
+    · rw [List.pairwise_map] at hpw
+      exact hpw.imp (fun {a b} hab he => hab (by rw [he]))
+    · intro v hv
+      exact (hinl v).mp (hall _ (List.mem_map.mpr ⟨v, hv, rfl⟩))
+  · rintro ⟨l, hlen, hpw, hall⟩
+    refine ⟨l.map Sum.inl, by simpa using hlen, ?_, ?_⟩
+    · rw [List.pairwise_map]
+      exact hpw.imp (fun {a b} hab he => hab (Sum.inl.inj he))
+    · intro z hz
+      obtain ⟨v, hv, rfl⟩ := List.mem_map.mp hz
+      exact (hinl v).mpr (hall v hv)
+
+/-- Class-expression semantics is preserved by the left injection. -/
+theorem sem_inl {δ : Type} (I : OWL.Interp δ) :
+    ∀ (c : OWL.Concept) (y : δ),
+      (inlInterp I).sem c (Sum.inl y) ↔ I.sem c y := by
+  intro c
+  induction c with
+  | atom a => intro y; simp only [OWL.Interp.sem]; exact inlInterp_concept I a y
+  | top => intro y; simp only [OWL.Interp.sem]
+  | bot => intro y; simp only [OWL.Interp.sem]
+  | neg c ih => intro y; simp only [OWL.Interp.sem, ih y]
+  | conj c d ihc ihd => intro y; simp only [OWL.Interp.sem, ihc y, ihd y]
+  | disj c d ihc ihd => intro y; simp only [OWL.Interp.sem, ihc y, ihd y]
+  | all r c ih =>
+      intro y
+      simp only [OWL.Interp.sem]
+      constructor
+      · intro h v hv
+        exact (ih v).mp (h (Sum.inl v) hv)
+      · intro h z hz
+        cases z with
+        | inl v => exact (ih v).mpr (h v hz)
+        | inr s => exact absurd hz (inlInterp_role_inr I r y s)
+  | ex r c ih =>
+      intro y
+      simp only [OWL.Interp.sem]
+      constructor
+      · rintro ⟨z, hz, hc⟩
+        cases z with
+        | inl v => exact ⟨v, hz, (ih v).mp hc⟩
+        | inr s => exact absurd hz (inlInterp_role_inr I r y s)
+      · rintro ⟨v, hv, hc⟩
+        exact ⟨Sum.inl v, hv, (ih v).mpr hc⟩
+  | atLeast n r =>
+      intro y
+      simp only [OWL.Interp.sem, OWL.Interp.succWitness]
+      exact card_sum_iff n (fun v => I.role r y v)
+        (fun z => (inlInterp I).role r (Sum.inl y) z)
+        (fun v => inlInterp_role I r y v) (fun s => inlInterp_role_inr I r y s)
+  | atMost n r =>
+      intro y
+      simp only [OWL.Interp.sem, OWL.Interp.succWitness]
+      exact not_congr (card_sum_iff (n + 1) (fun v => I.role r y v)
+        (fun z => (inlInterp I).role r (Sum.inl y) z)
+        (fun v => inlInterp_role I r y v) (fun s => inlInterp_role_inr I r y s))
+  | atLeastQ n r c ih =>
+      intro y
+      simp only [OWL.Interp.sem]
+      exact card_sum_iff n (fun v => I.role r y v ∧ I.sem c v)
+        (fun z => (inlInterp I).role r (Sum.inl y) z ∧ (inlInterp I).sem c z)
+        (fun v => and_congr (inlInterp_role I r y v) (ih v))
+        (fun s hs => inlInterp_role_inr I r y s hs.1)
+  | atMostQ n r c ih =>
+      intro y
+      simp only [OWL.Interp.sem]
+      exact not_congr (card_sum_iff (n + 1) (fun v => I.role r y v ∧ I.sem c v)
+        (fun z => (inlInterp I).role r (Sum.inl y) z ∧ (inlInterp I).sem c z)
+        (fun v => and_congr (inlInterp_role I r y v) (ih v))
+        (fun s hs => inlInterp_role_inr I r y s hs.1))
+
+/-- **`liftInterpDL`** — the CL interpretation an OWL interpretation
+plus a name assignment induces. Predicate identity is carried by the
+right summand of the domain; see the section header. -/
+def liftInterpDL {δ : Type} (I : OWL.Interp δ) (ν : OWL.Ind → δ) : CL.Interp where
+  dom := δ ⊕ String
+  domWit := .inr ""
+  iName := fun n =>
+    match dlDecode 'i' n with
+    | some a => Sum.inl (ν a)
+    | none => Sum.inr n
+  iStr := fun _ => .inr ""
+  rel := fun p args =>
+    match p, args with
+    | .inr n, [z] =>
+        match dlDecode 'c' n with
+        | some a => (inlInterp I).concept a z
+        | none => False
+    | .inr n, [z, w] =>
+        match dlDecode 'r' n with
+        | some r => (inlInterp I).role r z w
+        | none => False
+    | _, _ => False
+  fn := fun _ _ => .inr ""
+  iProp := fun _ _ _ => .inr ""
+
+theorem liftInterpDL_iName_ind {δ : Type} (I : OWL.Interp δ)
+    (ν : OWL.Ind → δ) (a : OWL.Ind) :
+    (liftInterpDL I ν).iName (indName a) = Sum.inl (ν a) := by
+  simp [liftInterpDL, indName, dlDecode_dlName]
+
+theorem liftInterpDL_iName_class {δ : Type} (I : OWL.Interp δ)
+    (ν : OWL.Ind → δ) (a : String) :
+    (liftInterpDL I ν).iName (className a) = Sum.inr (className a) := by
+  simp [liftInterpDL, className,
+    dlDecode_dlName_ne (show ('c' : Char) ≠ 'i' by decide) a]
+
+theorem liftInterpDL_iName_role {δ : Type} (I : OWL.Interp δ)
+    (ν : OWL.Ind → δ) (r : OWL.Role) :
+    (liftInterpDL I ν).iName (roleName r) = Sum.inr (roleName r) := by
+  simp [liftInterpDL, roleName,
+    dlDecode_dlName_ne (show ('r' : Char) ≠ 'i' by decide) r]
+
+theorem dlCompat_lift {δ : Type} (I : OWL.Interp δ) (ν : OWL.Ind → δ) :
+    DLCompat (liftInterpDL I ν) (inlInterp I) := by
+  constructor
+  · intro a z
+    rw [liftInterpDL_iName_class]
+    show _ ↔ (liftInterpDL I ν).rel (Sum.inr (className a)) [z]
+    simp [liftInterpDL, className, dlDecode_dlName]
+  · intro r z w
+    rw [liftInterpDL_iName_role]
+    show _ ↔ (liftInterpDL I ν).rel (Sum.inr (roleName r)) [z, w]
+    simp [liftInterpDL, roleName, dlDecode_dlName]
+
+theorem respectsRBox_inl {δ : Type} (I : OWL.Interp δ) (R : OWL.RoleAxioms)
+    (h : OWL.RespectsRBox I R) : OWL.RespectsRBox (inlInterp I) R := by
+  refine ⟨fun p hp z w hzw => ?_, fun r hr z w u hzw hwu => ?_⟩
+  · cases z with
+    | inr s => exact absurd hzw (by cases w <;> exact id)
+    | inl y =>
+        cases w with
+        | inr s => exact absurd hzw (inlInterp_role_inr I p.1 y s)
+        | inl v => exact h.1 p hp y v hzw
+  · cases z with
+    | inr s => exact absurd hzw (by cases w <;> exact id)
+    | inl y =>
+        cases w with
+        | inr s => exact absurd hzw (inlInterp_role_inr I r y s)
+        | inl v =>
+            cases u with
+            | inr s => exact absurd hwu (inlInterp_role_inr I r v s)
+            | inl t => exact h.2 r hr y v t hzw hwu
+
+theorem satAll_inl {δ : Type} (I : OWL.Interp δ) (ν : OWL.Ind → δ)
+    (A : List OWL.Assertion) (h : OWL.SatAll I ν A) :
+    OWL.SatAll (inlInterp I) (fun a => Sum.inl (ν a)) A := by
+  intro φ hφ
+  have hs := h φ hφ
+  cases φ with
+  | inst a c => exact (sem_inl I c (ν a)).mpr hs
+  | rel r a b => exact hs
+  | diff a b => exact fun he => hs (Sum.inl.inj he)
+
+/-- **Transfer, lift direction**: an OWL model of the role box and the
+ABox yields a CL model of the translation. -/
+theorem satisfiesAll_owlDlDirect_lift {δ : Type} (I : OWL.Interp δ)
+    (ν : OWL.Ind → δ) (R : OWL.RoleAxioms) (A : List OWL.Assertion)
+    (hR : OWL.RespectsRBox I R) (hA : OWL.SatAll I ν A) :
+    CL.SatisfiesAll (liftInterpDL I ν) (owlDlDirect R A) := by
+  refine (satisfiesAll_owlDlDirect_iff (dlCompat_lift I ν) R A).mpr
+    ⟨respectsRBox_inl I R hR, ?_⟩
+  have hnu : dlNu (liftInterpDL I ν) = fun a => Sum.inl (ν a) :=
+    funext (fun a => liftInterpDL_iName_ind I ν a)
+  rw [hnu]
+  exact satAll_inl I ν A hA
+
+/-- **Transfer, restriction direction**: a CL model of the translation
+yields an OWL model of the role box and the ABox, over the same
+domain. -/
+theorem satisfiesAll_owlDlDirect_restrict (i : CL.Interp)
+    (R : OWL.RoleAxioms) (A : List OWL.Assertion)
+    (h : CL.SatisfiesAll i (owlDlDirect R A)) :
+    OWL.RespectsRBox (restrictInterpDL i) R ∧
+      OWL.SatAll (restrictInterpDL i) (dlNu i) A :=
+  (satisfiesAll_owlDlDirect_iff (dlCompat_restrict i) R A).mp h
+
 /-! ## Build-time checks -/
 
 section Checks
