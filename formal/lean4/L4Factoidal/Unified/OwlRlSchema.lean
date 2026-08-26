@@ -1159,6 +1159,438 @@ theorem cond_xsdAxioms : RlCondXsdAxioms (restrictInterp i) := by
 end FamilyConditions
 
 
+
+/-! ## The list-valued rows: prp-spo2 and prp-key as sentence FAMILIES
+
+These two rows quantify over a collection, so neither is a single
+sentence. Each becomes one Horn rule per collection length: the
+`rdf:first` / `rdf:rest` walk and the chain (or shared-value) premises
+flattened into `n`-many body atoms.
+
+The variable names are GENERATED, and the generation scheme is chosen
+so that a valuation never has to parse a numeral: `nmAt c k` is the
+character `c` followed by `k` copies of `'x'`, so `seqVal` reads the
+index off the tail's LENGTH. That removes the injectivity burden a
+decimal spelling would carry. -/
+
+/-- A generated variable name: `c` then `k` copies of `'x'`. -/
+def nmAt (c : Char) (k : Nat) : String :=
+  String.ofList (c :: List.replicate k 'x')
+
+/-- Cell names (the `rdf:first`/`rdf:rest` walk). -/
+def nmL (k : Nat) : String := nmAt 'l' k
+/-- Collection-member names: the properties of a chain (prp-spo2) or
+the key properties (prp-key). -/
+def nmQ (k : Nat) : String := nmAt 'q' k
+/-- Chain-intermediate names (prp-spo2) / shared-value names
+(prp-key). -/
+def nmV (k : Nat) : String := nmAt 'v' k
+/-- prp-spo2's head property, and prp-key's class and two
+individuals. -/
+def nmP : String := String.ofList ['p']
+def nmC : String := String.ofList ['c']
+def nmX : String := String.ofList ['s']
+def nmY : String := String.ofList ['t']
+
+theorem nmAt_toList (c : Char) (k : Nat) :
+    (nmAt c k).toList = c :: List.replicate k 'x' := String.toList_ofList
+
+theorem nmAt_no_colon {c : Char} (hc : c ≠ ':') (k : Nat) :
+    (nmAt c k).toList.contains ':' = false := by
+  rw [nmAt_toList]
+  simp [List.mem_replicate, Ne.symm hc]
+
+theorem nmL_no_colon (k : Nat) : (nmL k).toList.contains ':' = false :=
+  nmAt_no_colon (by decide) k
+theorem nmQ_no_colon (k : Nat) : (nmQ k).toList.contains ':' = false :=
+  nmAt_no_colon (by decide) k
+theorem nmV_no_colon (k : Nat) : (nmV k).toList.contains ':' = false :=
+  nmAt_no_colon (by decide) k
+
+/-- A valuation for the generated names: the leading character selects
+the family and the tail's LENGTH is the index. Polymorphic in the
+domain so it applies at `i.dom` and at `(restrictInterp i).idom`
+without transport. -/
+def seqVal {d : Type} (wit : d) (cells props vs : Nat → d)
+    (a b c : d) : String → d :=
+  fun s => match s.toList with
+    | 'l' :: r => cells r.length
+    | 'q' :: r => props r.length
+    | 'v' :: r => vs r.length
+    | 'p' :: [] => a
+    | 'c' :: [] => a
+    | 's' :: [] => b
+    | 't' :: [] => c
+    | _ => wit
+
+section SeqValLookup
+variable {d : Type} (wit : d) (cells props vs : Nat → d) (a b c : d)
+
+@[simp] theorem seqVal_L (k : Nat) :
+    seqVal wit cells props vs a b c (nmL k) = cells k := by
+  simp [seqVal, nmL, nmAt]
+
+@[simp] theorem seqVal_Q (k : Nat) :
+    seqVal wit cells props vs a b c (nmQ k) = props k := by
+  simp [seqVal, nmQ, nmAt]
+
+@[simp] theorem seqVal_V (k : Nat) :
+    seqVal wit cells props vs a b c (nmV k) = vs k := by
+  simp [seqVal, nmV, nmAt]
+
+@[simp] theorem seqVal_P : seqVal wit cells props vs a b c nmP = a := by
+  simp [seqVal, nmP]
+@[simp] theorem seqVal_C : seqVal wit cells props vs a b c nmC = a := by
+  simp [seqVal, nmC]
+@[simp] theorem seqVal_X : seqVal wit cells props vs a b c nmX = b := by
+  simp [seqVal, nmX]
+@[simp] theorem seqVal_Y : seqVal wit cells props vs a b c nmY = c := by
+  simp [seqVal, nmY]
+
+end SeqValLookup
+
+/-! ### Reading a collection off `SeqIs`, and a chain off `SemChain`
+
+`SeqIs` and `SemChain` are existential chains. The rule family needs
+the witnesses as INDEXED functions, so each is turned into one by
+induction on the member list. `List.getD … i.idomWit` names the k-th
+member without a bounds proof. -/
+
+/-- The walk of a `SeqIs` collection as indexed functions: `cells k`
+is the k-th cons cell (`cells 0` the head, `cells n` `rdf:nil`) and
+`props k` the k-th member. Stated at `restrictInterp i`, with every
+function at `i.dom`, so the bridge lemmas need no transport. -/
+theorem seqIs_walk {i : CL.Interp} :
+    ∀ (qs : List i.dom) (l : i.dom), OWL.SeqIs (restrictInterp i) l qs →
+      ∃ cells props : Nat → i.dom,
+        cells 0 = l ∧ cells qs.length = (restrictInterp i).iIri rdfNil ∧
+        (∀ k, k < qs.length → props k = qs.getD k i.domWit) ∧
+        (∀ k, k < qs.length →
+          (restrictInterp i).iext ((restrictInterp i).iIri rdfFirst)
+            (cells k) (props k)) ∧
+        (∀ k, k < qs.length →
+          (restrictInterp i).iext ((restrictInterp i).iIri rdfRest)
+            (cells k) (cells (k + 1)))
+  | [], l, h => by
+      refine ⟨fun _ => (restrictInterp i).iIri rdfNil, fun _ => i.domWit,
+              ?_, rfl, ?_, ?_, ?_⟩
+      · exact h.symm
+      all_goals (intro k hk; simp at hk)
+  | x :: rest, l, h => by
+      obtain ⟨l', hf, hr, hs⟩ := h
+      obtain ⟨cells', props', h0', hnil', hp', hfst', hrst'⟩ :=
+        seqIs_walk rest l' hs
+      refine ⟨fun k => Nat.rec l (fun j _ => cells' j) k,
+              fun k => Nat.rec x (fun j _ => props' j) k, rfl, hnil', ?_, ?_, ?_⟩
+      · intro k hk
+        cases k with
+        | zero => rfl
+        | succ j => exact hp' j (Nat.lt_of_succ_lt_succ hk)
+      · intro k hk
+        cases k with
+        | zero => exact hf
+        | succ j => exact hfst' j (Nat.lt_of_succ_lt_succ hk)
+      · intro k hk
+        cases k with
+        | zero =>
+            show (restrictInterp i).iext ((restrictInterp i).iIri rdfRest) l
+              (cells' 0)
+            rw [h0']; exact hr
+        | succ j => exact hrst' j (Nat.lt_of_succ_lt_succ hk)
+
+/-- prp-spo2's chain as an indexed function: `vs 0 = u`, `vs n = w`,
+and step `k` runs along the k-th property. -/
+theorem semChain_vals {i : CL.Interp} :
+    ∀ (qs : List i.dom) (u w : i.dom), SemChain (restrictInterp i) u qs w →
+      ∃ vs : Nat → i.dom, vs 0 = u ∧ vs qs.length = w ∧
+        (∀ k, k < qs.length →
+          (restrictInterp i).iext (qs.getD k i.domWit) (vs k) (vs (k + 1)))
+  | [], u, w, h => by
+      refine ⟨fun _ => u, rfl, h, ?_⟩
+      intro k hk; simp at hk
+  | x :: rest, u, w, h => by
+      obtain ⟨v, hxv, hrest⟩ := h
+      obtain ⟨vs', h0', hn', hst'⟩ := semChain_vals rest v w hrest
+      refine ⟨fun k => Nat.rec u (fun j _ => vs' j) k, rfl, hn', ?_⟩
+      intro k hk
+      cases k with
+      | zero =>
+          show (restrictInterp i).iext ((x :: rest).getD 0 i.domWit) u (vs' 0)
+          rw [h0']
+          simpa using hxv
+      | succ j => exact hst' j (Nat.lt_of_succ_lt_succ hk)
+
+/-- prp-key's shared values as an indexed function. -/
+theorem semShares_vals {i : CL.Interp} (x y : i.dom) :
+    ∀ (qs : List i.dom), SemShares (restrictInterp i) x y qs →
+      ∃ vs : Nat → i.dom, ∀ k, k < qs.length →
+        (restrictInterp i).iext (qs.getD k i.domWit) x (vs k) ∧
+        (restrictInterp i).iext (qs.getD k i.domWit) y (vs k)
+  | [], _ => by
+      refine ⟨fun _ => i.domWit, ?_⟩
+      intro k hk; simp at hk
+  | q :: rest, h => by
+      obtain ⟨v, hxv, hyv⟩ := h q (List.mem_cons_self ..)
+      obtain ⟨vs', hst'⟩ :=
+        semShares_vals x y rest (fun u hu => h u (List.mem_cons_of_mem _ hu))
+      refine ⟨fun k => Nat.rec v (fun j _ => vs' j) k, ?_⟩
+      intro k hk
+      cases k with
+      | zero => exact ⟨hxv, hyv⟩
+      | succ j => exact hst' j (Nat.lt_of_succ_lt_succ hk)
+
+@[simp] theorem dv_val (i : CL.Interp) (f : String → i.dom) (n : String) :
+    (DTerm.v n).val i f = f n := rfl
+
+/-! ### The two rule families -/
+
+/-- **prp-spo2** at chain length `m + 1`. The chain axiom names cell
+`l0`; cells `l0..lm` walk the collection and `lm` rests at `rdf:nil`;
+`qk` is the k-th property and `vk` the k-th chain point, so the head
+runs `p` from `v0` to `v(m+1)`. -/
+def spo2Rule (m : Nat) : DRule :=
+  ⟨dbin (.v nmP) (.v (nmV 0)) (.v (nmV (m + 1))),
+   dbin (dk owlPropertyChainAxiom) (.v nmP) (.v (nmL 0)) ::
+   dbin (dk rdfRest) (.v (nmL m)) (dk rdfNil) ::
+   ((List.range (m + 1)).flatMap (fun k =>
+      [dbin (dk rdfFirst) (.v (nmL k)) (.v (nmQ k)),
+       dbin (.v (nmQ k)) (.v (nmV k)) (.v (nmV (k + 1)))]) ++
+    (List.range m).map (fun k =>
+      dbin (dk rdfRest) (.v (nmL k)) (.v (nmL (k + 1)))))⟩
+
+/-- **prp-key** at key length `m + 1`. Same walk; `s` and `t` are the
+two individuals, both typed into `c`, and `vk` is the value they share
+on the k-th key property. -/
+def keyRule (m : Nat) : DRule :=
+  ⟨dbin (dk owlSameAs) (.v nmX) (.v nmY),
+   dbin (dk owlHasKey) (.v nmC) (.v (nmL 0)) ::
+   dbin (dk rdfRest) (.v (nmL m)) (dk rdfNil) ::
+   dtyp (.v nmX) (.v nmC) ::
+   dtyp (.v nmY) (.v nmC) ::
+   ((List.range (m + 1)).flatMap (fun k =>
+      [dbin (dk rdfFirst) (.v (nmL k)) (.v (nmQ k)),
+       dbin (.v (nmQ k)) (.v nmX) (.v (nmV k)),
+       dbin (.v (nmQ k)) (.v nmY) (.v (nmV k))]) ++
+    (List.range m).map (fun k =>
+      dbin (dk rdfRest) (.v (nmL k)) (.v (nmL (k + 1)))))⟩
+
+theorem nmP_wf : (DTerm.v nmP).wfB = true := dv_wf _ (by decide)
+theorem nmC_wf : (DTerm.v nmC).wfB = true := dv_wf _ (by decide)
+theorem nmX_wf : (DTerm.v nmX).wfB = true := dv_wf _ (by decide)
+theorem nmY_wf : (DTerm.v nmY).wfB = true := dv_wf _ (by decide)
+theorem nmL_wf (k : Nat) : (DTerm.v (nmL k)).wfB = true := dv_wf _ (nmL_no_colon k)
+theorem nmQ_wf (k : Nat) : (DTerm.v (nmQ k)).wfB = true := dv_wf _ (nmQ_no_colon k)
+theorem nmV_wf (k : Nat) : (DTerm.v (nmV k)).wfB = true := dv_wf _ (nmV_no_colon k)
+
+/-- Membership in a rule's binder list, from membership in one of its
+body atoms' variable lists. -/
+theorem mem_bodyVars {r : DRule} {a : DAtom} (ha : a ∈ r.body)
+    {n : String} (hn : n ∈ a.varList) : n ∈ r.bodyVars :=
+  List.mem_flatMap.mpr ⟨a, ha, hn⟩
+
+theorem spo2Rule_wf (m : Nat) : (spo2Rule m).wfB = true := by
+  refine drule_wf_of (dbin_wf nmP_wf (nmV_wf 0) (nmV_wf (m + 1))) ?_ ?_
+  · rw [List.all_eq_true]
+    intro a ha
+    simp only [spo2Rule, List.mem_cons, List.mem_append, List.mem_flatMap,
+               List.mem_map, List.mem_range] at ha
+    rcases ha with rfl | rfl | ⟨⟨k, _, hk⟩ | ⟨k, _, rfl⟩⟩
+    · exact dbin_wf (dk_wf owlPropertyChainAxiom) nmP_wf (nmL_wf 0)
+    · exact dbin_wf (dk_wf rdfRest) (nmL_wf m) (dk_wf rdfNil)
+    · rcases hk with rfl | rfl | hk3
+      · exact dbin_wf (dk_wf rdfFirst) (nmL_wf k) (nmQ_wf k)
+      · exact dbin_wf (nmQ_wf k) (nmV_wf k) (nmV_wf (k + 1))
+      · cases hk3
+    · exact dbin_wf (dk_wf rdfRest) (nmL_wf k) (nmL_wf (k + 1))
+  · rw [DRule.definiteB, List.all_eq_true]
+    intro n hn
+    refine List.contains_iff_mem.mpr ?_
+    simp only [spo2Rule, dbin, DAtom.varList, DTerm.varList,
+               List.flatMap_cons, List.flatMap_nil, List.append_nil,
+               List.nil_append, List.mem_append, List.mem_cons,
+               List.not_mem_nil, or_false, List.mem_singleton] at hn
+    rcases hn with rfl | rfl | rfl
+    · exact mem_bodyVars (r := spo2Rule m)
+        (a := dbin (dk owlPropertyChainAxiom) (.v nmP) (.v (nmL 0)))
+        (by simp [spo2Rule]) (by simp [dbin, DAtom.varList, DTerm.varList, dk])
+    · exact mem_bodyVars (r := spo2Rule m)
+        (a := dbin (.v (nmQ 0)) (.v (nmV 0)) (.v (nmV 1)))
+        (by
+          simp only [spo2Rule, List.mem_cons, List.mem_append, List.mem_flatMap,
+                     List.mem_map, List.mem_range]
+          exact Or.inr (Or.inr (Or.inl ⟨0, Nat.succ_pos m, by simp⟩)))
+        (by simp [dbin, DAtom.varList, DTerm.varList])
+    · exact mem_bodyVars (r := spo2Rule m)
+        (a := dbin (.v (nmQ m)) (.v (nmV m)) (.v (nmV (m + 1))))
+        (by
+          simp only [spo2Rule, List.mem_cons, List.mem_append, List.mem_flatMap,
+                     List.mem_map, List.mem_range]
+          exact Or.inr (Or.inr (Or.inl ⟨m, Nat.lt_succ_self m, by simp⟩)))
+        (by simp [dbin, DAtom.varList, DTerm.varList])
+
+theorem keyRule_wf (m : Nat) : (keyRule m).wfB = true := by
+  refine drule_wf_of (dbin_wf (dk_wf owlSameAs) nmX_wf nmY_wf) ?_ ?_
+  · rw [List.all_eq_true]
+    intro a ha
+    simp only [keyRule, List.mem_cons, List.mem_append, List.mem_flatMap,
+               List.mem_map, List.mem_range] at ha
+    rcases ha with rfl | rfl | rfl | rfl | ⟨⟨k, _, hk⟩ | ⟨k, _, rfl⟩⟩
+    · exact dbin_wf (dk_wf owlHasKey) nmC_wf (nmL_wf 0)
+    · exact dbin_wf (dk_wf rdfRest) (nmL_wf m) (dk_wf rdfNil)
+    · exact dtyp_wf nmX_wf nmC_wf
+    · exact dtyp_wf nmY_wf nmC_wf
+    · rcases hk with rfl | rfl | rfl | hk4
+      · exact dbin_wf (dk_wf rdfFirst) (nmL_wf k) (nmQ_wf k)
+      · exact dbin_wf (nmQ_wf k) nmX_wf (nmV_wf k)
+      · exact dbin_wf (nmQ_wf k) nmY_wf (nmV_wf k)
+      · cases hk4
+    · exact dbin_wf (dk_wf rdfRest) (nmL_wf k) (nmL_wf (k + 1))
+  · rw [DRule.definiteB, List.all_eq_true]
+    intro n hn
+    refine List.contains_iff_mem.mpr ?_
+    simp only [keyRule, dbin, DAtom.varList, DTerm.varList,
+               List.flatMap_cons, List.flatMap_nil, List.append_nil,
+               List.nil_append, List.mem_append, List.mem_cons,
+               List.not_mem_nil, or_false, List.mem_singleton, dk] at hn
+    rcases hn with rfl | rfl
+    · exact mem_bodyVars (r := keyRule m) (a := dtyp (.v nmX) (.v nmC))
+        (by simp [keyRule]) (by simp [dtyp, dbin, DAtom.varList, DTerm.varList, dk])
+    · exact mem_bodyVars (r := keyRule m) (a := dtyp (.v nmY) (.v nmC))
+        (by simp [keyRule]) (by simp [dtyp, dbin, DAtom.varList, DTerm.varList, dk])
+
+/-- The two list-valued families as a schema. -/
+def owlRlSeqSchema : Schema := fun s =>
+  (∃ m : Nat, s = (spo2Rule m).sentence) ∨ (∃ m : Nat, s = (keyRule m).sentence)
+
+section SeqConditions
+
+variable {i : CL.Interp} (hS : SatisfiesSchema i owlRlSeqSchema)
+include hS
+
+/-- **prp-spo2** from the family: the collection has some length
+`m + 1`, and the `m`-th member of the family is the row at that
+length. -/
+theorem cond_prpSpo2 : RlCondPrpSpo2 (restrictInterp i) := by
+  show ∀ (p : RDF.WfIri) (l u w : i.dom) (qs : List i.dom), qs ≠ [] →
+    (restrictInterp i).iext ((restrictInterp i).iIri owlPropertyChainAxiom)
+      ((restrictInterp i).iIri p) l →
+    OWL.SeqIs (restrictInterp i) l qs →
+    SemChain (restrictInterp i) u qs w →
+    (restrictInterp i).iext ((restrictInterp i).iIri p) u w
+  intro p l u w qs hne h1 h2 h3
+  obtain ⟨m, hm⟩ : ∃ m, qs.length = m + 1 := by
+    cases qs with
+    | nil => exact absurd rfl hne
+    | cons a r => exact ⟨r.length, rfl⟩
+  obtain ⟨cells, props, hc0, hcn, hpk, hfst, hrst⟩ := seqIs_walk qs l h2
+  obtain ⟨vs, hv0, hvn, hstep⟩ := semChain_vals qs u w h3
+  rw [hm] at hcn hpk hfst hrst hvn hstep
+  have hb : ∀ a ∈ (spo2Rule m).body,
+      a.Holds i (seqVal (d := i.dom) i.domWit cells props vs
+        ((restrictInterp i).iIri p) i.domWit i.domWit) := by
+    intro a ha
+    simp only [spo2Rule, List.mem_cons, List.mem_append, List.mem_flatMap,
+               List.mem_map, List.mem_range, List.not_mem_nil, or_false] at ha
+    rcases ha with rfl | rfl | ⟨⟨k, hk, (rfl | rfl)⟩ | ⟨k, hk, rfl⟩⟩
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_P, seqVal_L, hc0]
+      exact h1
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_L]
+      rw [← hcn]
+      exact hrst m (Nat.lt_succ_self m)
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_L, seqVal_Q]
+      exact hfst k hk
+    · rw [holds_dbin]
+      simp only [dv_val]
+      erw [seqVal_Q, seqVal_V, seqVal_V]
+      rw [hpk k hk]
+      exact hstep k hk
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_L, seqVal_L]
+      exact hrst k (Nat.lt_succ_of_lt hk)
+  have h4 := rlRowFires hS (Or.inl ⟨m, rfl⟩) (spo2Rule_wf m) _ hb
+  rw [show (spo2Rule m).head
+        = dbin (.v nmP) (.v (nmV 0)) (.v (nmV (m + 1))) from rfl,
+      holds_dbin] at h4
+  simp only [dv_val] at h4
+  erw [seqVal_P, seqVal_V, seqVal_V, hv0, hvn] at h4
+  exact h4
+
+/-- **prp-key** from the family. -/
+theorem cond_prpKey : RlCondPrpKey (restrictInterp i) := by
+  show ∀ (c l x y : i.dom) (qs : List i.dom), qs ≠ [] →
+    (restrictInterp i).iext ((restrictInterp i).iIri owlHasKey) c l →
+    OWL.SeqIs (restrictInterp i) l qs →
+    icext (restrictInterp i) x c → icext (restrictInterp i) y c →
+    SemShares (restrictInterp i) x y qs →
+    (restrictInterp i).iext ((restrictInterp i).iIri owlSameAs) x y
+  intro c l x y qs hne h1 h2 h3 h4 h5
+  obtain ⟨m, hm⟩ : ∃ m, qs.length = m + 1 := by
+    cases qs with
+    | nil => exact absurd rfl hne
+    | cons a r => exact ⟨r.length, rfl⟩
+  obtain ⟨cells, props, hc0, hcn, hpk, hfst, hrst⟩ := seqIs_walk qs l h2
+  obtain ⟨vs, hsh⟩ := semShares_vals x y qs h5
+  rw [hm] at hcn hpk hfst hrst hsh
+  have hb : ∀ a ∈ (keyRule m).body,
+      a.Holds i (seqVal (d := i.dom) i.domWit cells props vs c x y) := by
+    intro a ha
+    simp only [keyRule, List.mem_cons, List.mem_append, List.mem_flatMap,
+               List.mem_map, List.mem_range, List.not_mem_nil, or_false] at ha
+    rcases ha with rfl | rfl | rfl | rfl |
+      ⟨⟨k, hk, (rfl | rfl | rfl)⟩ | ⟨k, hk, rfl⟩⟩
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_C, seqVal_L, hc0]
+      exact h1
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_L]
+      rw [← hcn]
+      exact hrst m (Nat.lt_succ_self m)
+    · simp only [dtyp]
+      rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_X, seqVal_C]
+      exact h3
+    · simp only [dtyp]
+      rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_Y, seqVal_C]
+      exact h4
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_L, seqVal_Q]
+      exact hfst k hk
+    · rw [holds_dbin]
+      simp only [dv_val]
+      erw [seqVal_Q, seqVal_X, seqVal_V]
+      rw [hpk k hk]
+      exact (hsh k hk).1
+    · rw [holds_dbin]
+      simp only [dv_val]
+      erw [seqVal_Q, seqVal_Y, seqVal_V]
+      rw [hpk k hk]
+      exact (hsh k hk).2
+    · rw [holds_dbin]
+      simp only [dv_val, dk_val]
+      erw [seqVal_L, seqVal_L]
+      exact hrst k (Nat.lt_succ_of_lt hk)
+  have h6 := rlRowFires hS (Or.inr ⟨m, rfl⟩) (keyRule_wf m) _ hb
+  rw [show (keyRule m).head = dbin (dk owlSameAs) (.v nmX) (.v nmY) from rfl,
+      holds_dbin] at h6
+  simp only [dv_val, dk_val] at h6
+  erw [seqVal_X, seqVal_Y] at h6
+  exact h6
+
+end SeqConditions
+
 /-! ## The clash rows
 
 A clash row is falsity-headed, so it is not a `DRule` (a
@@ -1543,13 +1975,13 @@ set `D`. The RL datatype rows (Table 7) range over the FIXED tables
 `builtinDatatypeAxioms`, `xsdAxiomTriples` and `rangeIntersectLicenses`
 of `OWL/RLRules.lean`, not over a recognised-datatype parameter. -/
 def owlRlSchema : Schema :=
-  schemaUnion owlRlHornSchema (schemaUnion owlRlFamilySchema owlRlClashSchema)
+  schemaUnion owlRlHornSchema
+    (schemaUnion owlRlFamilySchema
+      (schemaUnion owlRlSeqSchema owlRlClashSchema))
 
 /-- The nine rows the schema does not carry, as an interpretation-class
 condition (see the section header for why each one is here). -/
 def OwlRlInterpCond (i : CL.Interp) : Prop :=
-  RlCondPrpSpo2 (restrictInterp i) ∧
-  RlCondPrpKey (restrictInterp i) ∧
   RlCondCompDw (restrictInterp i) ∧
   RlCondCompMqc (restrictInterp i) ∧
   RlCondMinc1 (restrictInterp i)
@@ -1557,9 +1989,10 @@ def OwlRlInterpCond (i : CL.Interp) : Prop :=
 theorem satisfiesSchema_owlRl_parts {i : CL.Interp}
     (hS : SatisfiesSchema i owlRlSchema) :
     SatisfiesSchema i owlRlHornSchema ∧ SatisfiesSchema i owlRlFamilySchema ∧
-      SatisfiesSchema i owlRlClashSchema := by
-  rw [owlRlSchema, satisfiesSchema_union_iff, satisfiesSchema_union_iff] at hS
-  exact ⟨hS.1, hS.2.1, hS.2.2⟩
+      SatisfiesSchema i owlRlSeqSchema ∧ SatisfiesSchema i owlRlClashSchema := by
+  rw [owlRlSchema, satisfiesSchema_union_iff, satisfiesSchema_union_iff,
+      satisfiesSchema_union_iff] at hS
+  exact ⟨hS.1, hS.2.1, hS.2.2.1, hS.2.2.2⟩
 
 /-- **The four cardinality rows are carried by the SCHEMA**, with no
 appeal to `OwlRlInterpCond`. This is the shrinkage of the condition
@@ -1572,18 +2005,27 @@ theorem owlRlSchema_cardinality_rows {i : CL.Interp}
     RlNCondClsMaxc1 (restrictInterp i) ∧
     RlNCondClsMaxqc1 (restrictInterp i) ∧
     RlNCondClsMaxqc2 (restrictInterp i) := by
-  obtain ⟨hH, -, hN⟩ := satisfiesSchema_owlRl_parts hS
+  obtain ⟨hH, -, -, hN⟩ := satisfiesSchema_owlRl_parts hS
   exact ⟨cond_clsMaxc2 hH, ncond_clsMaxc1 hN, ncond_clsMaxqc1 hN,
          ncond_clsMaxqc2 hN⟩
 
-/-- **The bridge**: schema satisfaction plus the five bundled rows give
+/-- **The two list-valued rows are carried by the SCHEMA**, through
+the per-length sentence families, with no appeal to `OwlRlInterpCond`.
+Before 2026-08-26 both were hypotheses on the interpretation. -/
+theorem owlRlSchema_seq_rows {i : CL.Interp}
+    (hS : SatisfiesSchema i owlRlSchema) :
+    RlCondPrpSpo2 (restrictInterp i) ∧ RlCondPrpKey (restrictInterp i) := by
+  obtain ⟨-, -, hQ, -⟩ := satisfiesSchema_owlRl_parts hS
+  exact ⟨cond_prpSpo2 hQ, cond_prpKey hQ⟩
+
+/-- **The bridge**: schema satisfaction plus the three bundled rows give
 the full `RlConditions` / `RlClashConditions` pair over the restricted
 interpretation. -/
 theorem owlRlSchema_conditions {i : CL.Interp}
     (hS : SatisfiesSchema i owlRlSchema) (hc : OwlRlInterpCond i) :
     RlConditions (restrictInterp i) ∧ RlClashConditions (restrictInterp i) := by
-  obtain ⟨hH, hF, hN⟩ := satisfiesSchema_owlRl_parts hS
-  obtain ⟨kSpo2, kKey, kCompDw, kCompMqc, kMinc1⟩ := hc
+  obtain ⟨hH, hF, hQ, hN⟩ := satisfiesSchema_owlRl_parts hS
+  obtain ⟨kCompDw, kCompMqc, kMinc1⟩ := hc
   refine ⟨?_, ?_⟩
   · exact
     { eqRefS := cond_eqRefS hH
@@ -1601,12 +2043,12 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       prpSymp := cond_prpSymp hH
       prpTrp := cond_prpTrp hH
       prpSpo1 := cond_prpSpo1 hH
-      prpSpo2 := kSpo2
+      prpSpo2 := cond_prpSpo2 hQ
       prpEqp1 := cond_prpEqp1 hH
       prpEqp2 := cond_prpEqp2 hH
       prpInv1 := cond_prpInv1 hH
       prpInv2 := cond_prpInv2 hH
-      prpKey := kKey
+      prpKey := cond_prpKey hQ
       clsThing := cond_clsThing hH
       clsNothing1 := cond_clsNothing1 hH
       clsInt1 := cond_clsInt1 hH
