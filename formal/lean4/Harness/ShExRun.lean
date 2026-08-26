@@ -265,6 +265,40 @@ def jsonternBeside (p : String) : String :=
   if p.endsWith ".shextern"
   then String.ofList (p.toList.take (p.length - 9)) ++ ".jsontern" else p
 
+/-! ## ShapeMap entries
+
+Three entries name no `focus` and no `shape`. They carry a QUERY SHAPE
+MAP instead — a list of (node, shape) pairs to decide — and a RESULT
+shape map giving the expected verdict for each pair. The entry passes
+when every pair's verdict matches; the entry's own
+`sht:ValidationTest` / `sht:ValidationFailure` type says nothing here,
+and `node_kind_example` is a `ValidationFailure` whose result map is
+one `true` and two `false`.
+
+These were the runner's three "focus node not read" entries: it looked
+for a focus that a ShapeMap entry does not have. -/
+
+/-- The (node, shape) pairs of a query shape map. -/
+def shapeMapPairs (j : Json) : List (String × String) :=
+  match j with
+  | .array es => es.filterMap (fun e =>
+      match str? "node" e, str? "shape" e with
+      | some n, some sh => some (n, sh)
+      | _, _            => none)
+  | _ => []
+
+/-- The expected verdicts: (node, shape, result). -/
+def shapeMapResults (j : Json) : List (String × String × Bool) :=
+  match j with
+  | .object ms => ms.flatMap (fun (node, v) =>
+      match v with
+      | .array rs => rs.filterMap (fun r =>
+          match str? "shape" r, fld? "result" r with
+          | some sh, some (.bool b) => some (node, sh, b)
+          | _, _                    => none)
+      | _ => [])
+  | _ => []
+
 structure Tally where
   pass    : Nat := 0
   fail    : Nat := 0
@@ -366,9 +400,42 @@ def main (args : List String) : IO UInt32 := do
                   t := { t with notRead := t.notRead + 1 }
                   readGaps := bump readGaps "data Turtle not read"
                   if verbose then IO.println s!"TURTLE {name}: {msg} ({dataRel})"
-              | _, _, none =>
-                  t := { t with notRead := t.notRead + 1 }
-                  readGaps := bump readGaps "focus node not read"
+              | some sch, .ok g, none =>
+                  -- A ShapeMap entry: no focus, a query shape map and
+                  -- an expected result shape map instead.
+                  match (str? "map" act).map (resolveRel dir),
+                        (str? "result" e).map (resolveRel dir) with
+                  | some mp, some rp =>
+                      if !(← System.FilePath.pathExists mp)
+                         || !(← System.FilePath.pathExists rp) then
+                        t := { t with notRead := t.notRead + 1 }
+                        readGaps := bump readGaps "shape map file missing"
+                      else
+                        let msrc ← IO.FS.readFile mp
+                        let rsrc ← IO.FS.readFile rp
+                        match parseJson? msrc, parseJson? rsrc with
+                        | some mj, some rj =>
+                            let pairs := shapeMapPairs mj
+                            let expected := shapeMapResults rj
+                            let ok := pairs.all (fun (node, shp) =>
+                              match (if h : isIri node then some (Term.iri ⟨node, h⟩)
+                                     else none) with
+                              | none => false
+                              | some nt =>
+                                  let got := validateNode sch g shp nt
+                                  (expected.filter (fun (en, es, _) =>
+                                     en == node && es == shp)).all
+                                       (fun (_, _, want) => got == want))
+                            if ok then t := { t with pass := t.pass + 1 }
+                            else
+                              t := { t with fail := t.fail + 1 }
+                              if verbose then IO.println s!"FAIL {name} (shapemap)"
+                        | _, _ =>
+                            t := { t with notRead := t.notRead + 1 }
+                            readGaps := bump readGaps "shape map not read"
+                  | _, _ =>
+                      t := { t with notRead := t.notRead + 1 }
+                      readGaps := bump readGaps "focus node not read"
       IO.println ""
       IO.println s!"shex validation: {t.pass} pass, {t.fail} fail (out of {t.pass + t.fail} decided)"
       IO.println s!"NOT READ: {t.notRead} entries (out of {entries.length})"
