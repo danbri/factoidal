@@ -13,12 +13,18 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: debug-bytecode-${{ github.ref }}-${{ matrix.platform }}
-  cancel-in-progress: true
-
 jobs:
   build-debug-bytecode:
+    # Concurrency is JOB-level, not workflow-level, because the group
+    # keys on matrix.platform. `matrix` does not exist in the
+    # workflow-level concurrency context -- it is job-scoped. An
+    # invalid context reference there stops the workflow before any job
+    # starts, which shows as a 0s Failure with no logs and no billable
+    # time. This workflow failed that way on every push from 2026-07-27
+    # until 2026-08-26.
+    concurrency:
+      group: debug-bytecode-${{ github.ref }}-${{ matrix.platform }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
