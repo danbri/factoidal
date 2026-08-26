@@ -67,11 +67,33 @@ test('post44: the committed wasm serves the clParse op the page calls', async ()
   assert.ok(ops.includes('clParse'), 'dispatch table is missing clParse');
 });
 
+// danbri/factoidal#627: the committed artifact used to be AHEAD of its
+// source, still exporting two ops the projection purge
+// (danbri/factoidal#626) had deleted. The rebuild closed that. This
+// asserts the artifact's own reflection, so a stale wasm committed in
+// future fails here rather than being found by a caller.
+test('post44: the committed wasm no longer serves the deleted projection ops', async () => {
+  const ops = (await l4api.l4Call('ops', [])).ops;
+  for (const gone of ['clToDataset', 'queryWithIklService']) {
+    assert.ok(!ops.includes(gone), `artifact still exports the deleted op ${gone}`);
+  }
+});
+
+// The four ops the same rebuild ADDED (danbri/factoidal#623). Asserted
+// against the artifact for the same reason as above.
+test('post44: the committed wasm serves the four CL/IKL ops added by the rebuild', async () => {
+  const ops = (await l4api.l4Call('ops', [])).ops;
+  for (const op of ['clSerialize', 'clAlphaNorm', 'clNormalize', 'clFiniteSat']) {
+    assert.ok(ops.includes(op), `dispatch table is missing ${op}`);
+  }
+});
+
 // The page's hard constraint: clParse is the ONLY op it calls. The
 // banned names below are the deleted projection ops
-// (danbri/factoidal#626); the committed wasm artifact still answers
-// them until it is rebuilt (danbri/factoidal#627), so the check is
-// still doing work.
+// (danbri/factoidal#626). The committed wasm no longer answers them --
+// the rebuild of danbri/factoidal#627 landed -- and the test above
+// asserts that directly; this check keeps a cell from reintroducing a
+// call to either name.
 test('post44: no cell calls any op other than clParse', () => {
   const source = cells.join('\n');
   for (const banned of ['clToDataset', 'queryWithIklService', 'queryDataset']) {
