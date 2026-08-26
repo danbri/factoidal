@@ -19,7 +19,17 @@ validator be MEASURED today.
     result, and folding it into either column would report a parser
     gap as an engine verdict.
 
-Usage: `lake exe l4shex [validation-dir]`
+## Schema IMPORTs
+
+A ShExJ schema may carry `"imports": ["2RefS1"]`, naming another
+schema document RELATIVE to its own retrieval IRI. The imported
+document's shape declarations join the importing schema's, and the
+importing schema's own `start` wins when both have one (ShEx 2.1 §5.2:
+imports contribute declarations, not a start shape). Resolution is
+here, in the reader, because it is a document-retrieval step and not a
+satisfaction rule.
+
+Usage: `lake exe l4shex [validation-dir] [--verbose] [--only SUBSTR]`
 -/
 import L4Factoidal.ShEx.FromJson
 import L4Factoidal.ShEx.Satisfies
@@ -111,15 +121,57 @@ def resolveRel (dir rel : String) : String :=
     up ++ "/" ++ String.ofList (rel.toList.drop 3)
   else dir ++ "/" ++ rel
 
+/-- Merge an imported schema's declarations into the importer's. The
+    importer's own `start` wins; its declarations come first, so a
+    label it declares itself shadows an imported one. -/
+def mergeSchema (outer inner : Schema) : Schema :=
+  { start := outer.start.orElse (fun _ => inner.start)
+    startActs := outer.startActs
+    shapes := outer.shapes ++ inner.shapes.filter (fun d =>
+      !(outer.shapes.any (fun o => o.id == d.id)))
+    imports := [] }
+
+/-- Read a ShExJ document and resolve its `imports` against the
+    directory it was read from. `depth` bounds an import cycle; the
+    corpus nests at most two deep. -/
+partial def loadSchema (path : String) (depth : Nat) : IO (Option Schema) := do
+  if !(← System.FilePath.pathExists path) then return none
+  let src ← IO.FS.readFile path
+  match (parseJson? src).bind schemaOf with
+  | none => return none
+  | some sch =>
+      if depth == 0 || sch.imports.isEmpty then return some sch
+      let dir := match (path.splitOn "/").reverse with
+        | _ :: rest => String.intercalate "/" rest.reverse
+        | []        => "."
+      let mut acc := sch
+      for imp in sch.imports do
+        let ip := dir ++ "/" ++ imp ++ ".json"
+        match ← loadSchema ip (depth - 1) with
+        | some inner => acc := mergeSchema acc inner
+        | none       => pure ()
+      return some { acc with imports := [] }
+
 structure Tally where
   pass    : Nat := 0
   fail    : Nat := 0
   notRead : Nat := 0
 deriving Inhabited
 
+/-- Does `hay` contain `needle`? -/
+def hasSub (hay needle : String) : Bool :=
+  needle.isEmpty || (hay.splitOn needle).length > 1
+
 def main (args : List String) : IO UInt32 := do
-  let dir := (args.filter (fun a => !a.startsWith "--")).head?
-    |>.getD "third_party/testing/shex/validation"
+  -- `--only SUBSTR` runs just the entries whose name contains SUBSTR.
+  -- Diagnosing one family out of 1182 by re-running all of them is how
+  -- a ten-second question costs four minutes.
+  let only := match args.dropWhile (· != "--only") with
+    | _ :: v :: _ => some v
+    | _           => none
+  let positional := (args.filter (fun a => !a.startsWith "--")).filter
+    (fun a => only != some a)
+  let dir := positional.head?.getD "third_party/testing/shex/validation"
   let verbose := args.contains "--verbose"
   let manifestPath := dir ++ "/manifest.jsonld"
   if !(← System.FilePath.pathExists manifestPath) then
@@ -149,6 +201,9 @@ def main (args : List String) : IO UInt32 := do
         seen := seen + 1
         let ty := (str? "@type" e).getD ""
         let name := (str? "name" e).getD "?"
+        if !(only.all (hasSub name)) then
+          pure ()
+        else
         match fld? "action" e with
         | none => t := { t with notRead := t.notRead + 1 }
         | some act =>
@@ -166,11 +221,14 @@ def main (args : List String) : IO UInt32 := do
               t := { t with notRead := t.notRead + 1 }
               readGaps := bump readGaps "data graph missing"
             else
-              let ssrc ← IO.FS.readFile sp
+              let schema? ← loadSchema sp 4
               let dsrc ← IO.FS.readFile dp
-              match (parseJson? ssrc).bind schemaOf, parseTurtle dsrc (some dataUrl), focus with
+              match schema?, parseTurtle dsrc (some dataUrl), focus with
               | some sch, .ok g, some n =>
-                  let got := validateNode sch g label n
+                  -- No `shape` in the entry means the schema's START
+                  -- shape, not a shape whose label is the empty string.
+                  let got := if label.isEmpty then validateStart sch g n
+                             else validateNode sch g label n
                   let want := ty == "sht:ValidationTest"
                   if got == want then t := { t with pass := t.pass + 1 }
                   else

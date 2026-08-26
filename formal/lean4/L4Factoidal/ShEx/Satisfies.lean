@@ -113,4 +113,14 @@ def validateNode (sch : Schema) (g : List Triple) (label : String) (n : Term) : 
   | some d => satisfiesIn sch g refDepth d.expr n
   | none   => false
 
+/-- Validate a focus node against the schema's START shape.
+
+    A manifest entry with no `shape` names the start shape, which is a
+    shape EXPRESSION and not a label: `Schema.lookup ""` cannot find
+    it and answered `false` for every such entry. -/
+def validateStart (sch : Schema) (g : List Triple) (n : Term) : Bool :=
+  match sch.start with
+  | some se => satisfiesIn sch g refDepth se n
+  | none    => false
+
 end L4Factoidal.ShEx
