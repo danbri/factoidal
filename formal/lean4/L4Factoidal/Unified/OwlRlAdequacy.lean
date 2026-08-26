@@ -275,6 +275,7 @@ theorem owlRlClashSchema_satisfiable :
 #print axioms unified_owlRl_clash_entails_all
 #print axioms owlRl_complete_ground
 #print axioms owlRlSchema_conditions
+#print axioms owlRlSchema_cardinality_rows
 #print axioms allTrue_violates_clash
 #print axioms allFalse_violates_horn
 

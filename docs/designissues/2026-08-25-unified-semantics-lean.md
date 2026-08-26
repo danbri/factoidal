@@ -275,7 +275,9 @@ exhibits). Four notes in the same spirit as 1–11:
 
 Stage 4 landed (`OWL/RLSemantics.lean`, `OWL/RLHerbrand.lean`,
 `Unified/OwlRlSchema.lean`, `Unified/OwlRlAdequacy.lean`; registry
-section 9). Five points of §4.4 are corrected by the implementation.
+section 9). Five points of §4.4 are corrected by the implementation,
+and note 21 (added later the same day) corrects two of those notes in
+turn.
 
 16. **§4.4's `owlRlSchema D` takes no `D`.** The OWL 2 RL datatype rows
     (Table 7) range over the FIXED tables `builtinDatatypeAxioms`,
@@ -324,6 +326,81 @@ section 9). Five points of §4.4 are corrected by the implementation.
     `owl:ObjectProperty`, because the minc1 comprehension row emits an
     `owl:minCardinality "1"` triple. The completeness direction
     therefore does not reach cardinality-bearing ontologies.
+
+21. **Correction note 18 is superseded in part, and one of its reasons
+    was wrong** (2026-08-26, later the same day,
+    [issue 613](https://github.com/danbri/factoidal/issues/613)).
+    `OwlRlInterpCond` now carries FIVE rows, not nine.
+
+    **What moved.** `Unified/Datalog.lean` gained `DTerm.lit`, a term
+    constructor carrying an `RDF.WfLiteral` whose `toCl` is
+    `embedTerm (.literal l)` and whose `val` is the denotation
+    `restrictInterp` gives `iLit`. A cardinality-literal row is then an
+    ordinary `DAtom`, so cls-maxc2 is a plain Horn row
+    (`RlRowId.clsMaxc2`) and cls-maxc1, cls-maxqc1, cls-maxqc2 are
+    plain clash rows (`RlNegRowId`). `owlRlSchema_cardinality_rows`
+    states the four as consequences of schema satisfaction alone.
+
+    The new constructor is free in the MODEL-theoretic layer
+    (`DTerm.wfB` holds of every literal: the colon discipline is about
+    capture under the universal closure, and a literal binds nothing).
+    It is not free in the OPERATIONAL layer: `herbInterp`'s domain is
+    the constant names, so a rigid literal term denotes outside that
+    Herbrand universe. `DTerm.litFreeB` names the restriction and
+    `herb_holds_iff`, `herb_ground_mem_iff`, `herb_satisfiesSchema`,
+    `datalog_lfp_complete` and `datalog_lfp_iff_entails` carry it as a
+    hypothesis. Every existing call site discharges it by computation,
+    so no landed gate theorem weakens in substance.
+
+    **The reason that was wrong.** Note 18 said the reserved helper
+    predicates "cannot serve" prp-spo2 and prp-key because the relation
+    to encode is ternary and `RDF.Interp.iext` is binary. `DAtom` is
+    n-ary, and such a helper need never appear in `restrictInterp i` —
+    it is internal to the schema and to the bridge proof, so a ternary
+    helper IS writable. The real obstruction is
+    `Unified/RdfTransport.lean`'s `liftInterp`, which reads `rel p
+    args` as `False` at every arity other than 2: a schema row with a
+    ternary head would be false at `liftInterp r` for every RDF
+    interpretation `r`, i.e. at exactly the models note 19's
+    schema-relative completeness needs. The per-length sentence family
+    keeps every row binary and costs no model, so it remains the route
+    for these two rows. Neither was attempted.
+
+    **Existential heads: a decision, not a blockage.** A `Schema` is a
+    predicate on `CL.Sentence`, so cax-dw-comp, cls-maxqc1-comp and
+    minc1-comp CAN be put in one. The decision is not to, for two
+    costs. (i) The head of `RlCondCompDw` is not a conjunction of
+    atoms — `CompProps` carries two universally quantified
+    implications and a five-variable one — so each row is a bespoke CL
+    sentence with a bespoke satisfaction lemma, an instance of no
+    family in `Unified/OwlRlSchema.lean`. (ii) An existential head
+    removes the least-model property the completeness direction of the
+    stage-3 class rests on (`datalog_lfp_complete`; the same boundary
+    `rdfD1Shape_not_wf` pins at the program layer). If they are ever
+    admitted it should be as a SEPARATE sub-schema, so that the
+    definite `owlRlSchema` stays available for the completeness work.
+
+    **Note 20's expected remedy does not work.** Note 20 records
+    `RlHerbFrag` clause (a) as the narrowness, and
+    [issue 613](https://github.com/danbri/factoidal/issues/613) item 3
+    expected a `DTerm` cardinality literal to widen it. It does not.
+    Clause (a) exists for eq-ref, object form: `RlCondEqRefO` demands
+    `y owl:sameAs y` for every object `y`, `rlHerb`'s `iext` reads "the
+    triple is in the graph", so `y` must be expressible as an
+    `RDF.Subject` — and RDF 1.1 Concepts §3.1 gives a triple an IRI or
+    a blank node as subject, never a literal. `frag_obj_subject` is
+    consumed at fifteen sites of `rlHerb_conditions`. The obstruction
+    is the RDF term algebra reproduced in the syntactic model, not the
+    Datalog term type. Widening past clause (a) needs a different
+    `rlHerbIext` for the `owl:sameAs` row, after which
+    `rlHerb_triple_decode` would decode an atom that `OWL.RL.Derives`
+    cannot produce — so the fragment and the decode step have to move
+    together, or not at all.
+
+    Measured with the landing: OWL probe 1131 pass, 316 fail, 2 skip,
+    8 unsupported (out of 1457) — unchanged, the closure engine was not
+    touched. SPARQL 1.1 entailment sentinel 70 pass, 0 fail (out of 70)
+    in both trees.
 
 ### Stage 5 correction notes (2026-08-26)
 

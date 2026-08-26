@@ -1170,6 +1170,8 @@ user-declared. -/
 #print axioms herb_satisfiesSchema
 #print axioms datalog_lfp_complete
 #print axioms datalog_lfp_iff_entails
+#print axioms herb_holds_iff
+#print axioms herb_ground_mem_iff
 #print axioms toSchema_satisfiable
 #print axioms demo_path_entailed
 #print axioms demo_not_entailed_reverse
