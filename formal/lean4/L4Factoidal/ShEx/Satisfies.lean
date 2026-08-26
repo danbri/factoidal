@@ -140,19 +140,10 @@ applied to a validation request that names the abstract shape
 directly, because the corpus asks for exactly that and expects an
 answer (`vitals-RESTRICTS-pass_lie-Vital` names `ABSTRACT <#Vital>`).
 
-## Known gap: one over-permissive chain residue
-
-`ExtendAND3G-fail_ExtraP` still answers `true` where the corpus says
-`false`. `<E> EXTENDS @<D> { <p> [2] }` against `<p> 0, 2, 3`: the own
-tier claims the `2`, and in the residue `{0, 3}` the ancestor `<C>`
-cannot take the `3` — but `<A>`, whose value set does take it, is
-allowed to explain it under the "SOME member claims it" rule above.
-Requiring EVERY member's own residue to be acceptable instead fixes
-this one entry and costs thirteen others (measured 2026-08-26: 1153
-pass, 26 fail against 1165 pass, 14 fail), so it is the wrong repair.
-The F* module carries an extra `unbounded_tes` argument through
-`matches_chain_shared` that this port does not have, and that is the
-first place to look.
+An unbounded chain member may CLAIM an arc that no other unbounded
+member would accept, but that claim does not COUNT as explaining it —
+see `backgroundSafe` for the rule and for the pair of fixtures that
+turn on it alone.
 -/
 
 /-- What a shape and its ancestors jointly contribute. -/
@@ -240,19 +231,63 @@ partial def reachesLabel (sch : Schema) (target : String) (labels : List String)
        | some d => reachesLabel sch target (directExtends d.expr) (l :: seen)
        | none   => false)))
 
+/-- Is this chain member an UNBOUNDED triple constraint? -/
+def teIsUnboundedTc : TripleExpr → Bool
+  | .tripleConstraint tc => tc.unbounded
+  | _                    => false
+
+/-- Would this member accept the arc — or does it not claim that
+    (inverse, predicate) pair at all? -/
+def itemGoodFor (valueOk : Option ShapeExpr → Term → Bool)
+    (te : TripleExpr) (a : Arc) : Bool :=
+  match te with
+  | .tripleConstraint tc =>
+      !(arcMatchesPredicate tc a) || valueOk tc.valueExpr a.value
+  | _ => true
+
+/-- An arc is BACKGROUND SAFE when every unbounded chain member would
+    accept it — the intersection of the broad ancestors' value sets.
+
+    An unbounded member may claim an arc no other unbounded member
+    accepts, but that claim must not COUNT as explaining the arc:
+    only a genuinely bounded sibling's exact claim can. `ExtendAND3G`
+    and `Extend3G` differ in exactly this and in nothing else. `<D>`,
+    with `<p> [0 1 2 3 5 6 7 8 9]+`, structurally tolerates the value
+    `3` in both; in `Extend3G` the bounded `<F>` pins `3` with its own
+    `<p> [3]`, and in `ExtendAND3G` nothing does, so `<D>` absorbing
+    `3` gratuitously must not excuse it.
+
+    Empty list means there are no unbounded members at all, so nothing
+    is unconditionally excused — a different case from every member of
+    a non-empty list accepting the arc. -/
+def backgroundSafe (valueOk : Option ShapeExpr → Term → Bool)
+    (unbounded : List TripleExpr) (a : Arc) : Bool :=
+  !unbounded.isEmpty && unbounded.all (fun te => itemGoodFor valueOk te a)
+
 /-- Every chain member sees the same `pool`; `running` is the set of
     arcs NO member has claimed yet, and the residue that survives all
-    of them must pass `acceptable`. -/
+    of them must pass `acceptable`. An unbounded member's claim on an
+    arc that is not background safe is handed BACK into its own
+    leftover, so it does not shrink `running`. -/
 partial def chainResidueOk (valueOk : Option ShapeExpr → Term → Bool)
     (lookupTe : String → Option TripleExpr) (arr : Array Arc)
+    (unbounded : List TripleExpr)
     (members : List TripleExpr) (pool running : List Nat)
     (acceptable : List Nat → Bool) : Bool :=
   match members with
   | []      => acceptable running
   | m :: ms =>
       (matchStates valueOk lookupTe arr m pool).any (fun leftM =>
-        chainResidueOk valueOk lookupTe arr ms pool
-          (running.filter (fun i => leftM.contains i)) acceptable)
+        let effective :=
+          if teIsUnboundedTc m then
+            pool.filter (fun i =>
+              leftM.contains i ||
+              (match arr[i]? with
+               | some a => !(backgroundSafe valueOk unbounded a)
+               | none   => false))
+          else leftM
+        chainResidueOk valueOk lookupTe arr unbounded ms pool
+          (running.filter (fun i => effective.contains i)) acceptable)
 
 mutual
 
@@ -353,8 +388,9 @@ partial def satisfiesExtends (sch : Schema) (g : List Triple)
         let ownStates := match sh.expression with
           | some te => matchStates valueOk sch.tripleExpr arr te all
           | none    => [all]
+        let unbounded := chain.tes.filter teIsUnboundedTc
         ownStates.any (fun rest =>
-          chainResidueOk valueOk sch.tripleExpr arr chain.tes rest rest acceptable)
+          chainResidueOk valueOk sch.tripleExpr arr unbounded chain.tes rest rest acceptable)
 
 end
 
