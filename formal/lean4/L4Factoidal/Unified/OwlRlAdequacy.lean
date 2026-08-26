@@ -215,6 +215,69 @@ theorem allTrue_satisfies_family :
   · rw [satisfies_ruleSentence_iff _ (ruleXsdAxiom_wf p w a pr b)]
     intro f _; exact trivial
 
+/-- The all-true interpretation satisfies both list-valued families at
+every length — so `owlRlSeqSchema` is satisfiable and neither family is
+empty of models. -/
+theorem allTrue_satisfies_seq :
+    SatisfiesSchema allTrueInterp owlRlSeqSchema := by
+  rintro s (⟨m, rfl⟩ | ⟨m, rfl⟩)
+  · rw [satisfies_ruleSentence_iff _ (spo2Rule_wf m)]; intro f _; exact trivial
+  · rw [satisfies_ruleSentence_iff _ (keyRule_wf m)]; intro f _; exact trivial
+
+/-- A counter-model for the list-valued families: a one-step chain
+whose premises all hold and whose conclusion does not. Without a
+witness like this, `owlRlSeqSchema` could be the everything-relation
+and `owlRlSchema_seq_rows` would say nothing. -/
+def spo2Counter : CL.Interp where
+  dom := String
+  domWit := ""
+  iName := id
+  iStr := id
+  rel := fun p args =>
+    (p = owlPropertyChainAxiom.val ∧ args = ["P", "L"]) ∨
+    (p = rdfRest.val ∧ args = ["L", rdfNil.val]) ∨
+    (p = rdfFirst.val ∧ args = ["L", "Q"]) ∨
+    (p = "Q" ∧ args = ["A", "B"])
+  fn := fun _ _ => ""
+  iProp := fun _ _ _ => ""
+
+/-- **The list-valued families exclude something.** `spo2Counter`
+satisfies every premise of prp-spo2 at chain length 1 and denies its
+conclusion, so it is not a model of `owlRlSeqSchema`. -/
+theorem seqSchema_not_everything :
+    ¬ SatisfiesSchema spo2Counter owlRlSeqSchema := by
+  intro h
+  have hr := (satisfies_ruleSentence_iff _ (spo2Rule_wf 0)).mp
+    (h _ (Or.inl ⟨0, rfl⟩))
+  have hhead := hr (seqVal (d := spo2Counter.dom) "" (fun _ => "L")
+      (fun _ => "Q") (fun k => if k = 0 then "A" else "B") "P" "" "") ?_
+  · rw [show (spo2Rule 0).head
+          = dbin (.v nmP) (.v (nmV 0)) (.v (nmV 1)) from rfl] at hhead
+    simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val] at hhead
+    erw [seqVal_P, seqVal_V, seqVal_V] at hhead
+    simp [spo2Counter] at hhead
+  · intro a ha
+    simp only [spo2Rule, List.mem_cons, List.mem_append, List.mem_flatMap,
+               List.mem_map, List.mem_range, List.not_mem_nil, or_false] at ha
+    rcases ha with rfl | rfl | ⟨⟨k, hk, (rfl | rfl)⟩ | ⟨k, hk, rfl⟩⟩
+    · simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val,
+                 DTerm.val, dk]
+      erw [seqVal_P, seqVal_L]
+      exact Or.inl ⟨rfl, rfl⟩
+    · simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val,
+                 DTerm.val, dk]
+      erw [seqVal_L]
+      exact Or.inr (Or.inl ⟨rfl, rfl⟩)
+    · simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val,
+                 DTerm.val, dk]
+      erw [seqVal_L, seqVal_Q]
+      exact Or.inr (Or.inr (Or.inl ⟨rfl, rfl⟩))
+    · obtain rfl : k = 0 := by omega
+      simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val]
+      erw [seqVal_Q, seqVal_V, seqVal_V]
+      exact Or.inr (Or.inr (Or.inr ⟨rfl, rfl⟩))
+    · exact absurd hk (Nat.not_lt_zero k)
+
 /-- **Separating model, clash side**: the all-true interpretation does
 NOT satisfy the clash schema. The clash family therefore excludes
 something — it is not vacuously satisfied. -/
@@ -276,6 +339,11 @@ theorem owlRlClashSchema_satisfiable :
 #print axioms owlRl_complete_ground
 #print axioms owlRlSchema_conditions
 #print axioms owlRlSchema_cardinality_rows
+#print axioms owlRlSchema_seq_rows
+#print axioms cond_prpSpo2
+#print axioms cond_prpKey
+#print axioms allTrue_satisfies_seq
+#print axioms seqSchema_not_everything
 #print axioms allTrue_violates_clash
 #print axioms allFalse_violates_horn
 
