@@ -1181,7 +1181,7 @@
   [1181/1182] 1dot_fail-empty-err ok
   [1182/1182] 2dot_fail-empty-err ok
 === ShEx Validation Manifest Runner (stage 8) ===
-Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/shex/validation/manifest.ttl
+Manifest: /home/user/factoidal/third_party/testing/shex/validation/manifest.ttl
 
 Totals: 1182 test entries
 

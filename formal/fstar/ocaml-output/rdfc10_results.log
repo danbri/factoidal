@@ -1,5 +1,5 @@
-RDFC-1.0 manifest: /home/runner/work/factoidal/factoidal/third_party/testing/rdf-canon/tests/manifest.ttl
-  parsed 713 triples in 0.01s
+RDFC-1.0 manifest: /home/user/factoidal/third_party/testing/rdf-canon/tests/manifest.ttl
+  parsed 713 triples in 0.02s
 Totals: 86 test entries
   RDFC10EvalTest:         64
   RDFC10MapTest:          21

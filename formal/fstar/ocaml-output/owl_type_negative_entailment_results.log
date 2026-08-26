@@ -36,6 +36,7 @@
   [cons-running] WebOnt-Restriction-005
   [cons-running] WebOnt-allValuesFrom-002
   [cons-running] WebOnt-description-logic-209
+  [owl_marker_escape] is_inconsistent scan abandoned (Owl_runner.Owl_closure_timeout); "no inconsistency marker" was never established
   [cons-running] WebOnt-description-logic-902
   [cons-running] WebOnt-description-logic-904
   [cons-running] WebOnt-equivalentClass-005
@@ -47,7 +48,7 @@
 Closure regime: DL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/type-negative-entailment.rdf
-  parsed 594 triples in 0.03s
+  parsed 594 triples in 0.05s
 Totals: 23 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    23
@@ -85,7 +86,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 6.64s
+Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 12.30s
 
 Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-004
@@ -102,7 +103,8 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-Ontology-003
   PASS  WebOnt-Restriction-005
   PASS  WebOnt-allValuesFrom-002
-  PASS  WebOnt-description-logic-209
+  UNSUPPORTED/cap-escape  WebOnt-description-logic-209
+      reason: reasoning abandoned on a budget — inconsistency-marker scan abandoned (cap/exception). This test's PASS condition is the ABSENCE of a derived fact (no inconsistency marker, or a conclusion triple missing from the closure), which a truncated closure satisfies trivially — so the verdict is unsupported, not PASS (issue #326). Raise FACTOIDAL_OWL_CAP_SEC / FACTOIDAL_OWL_REFUTE_CAP_SEC to convert it into a real verdict
   PASS  WebOnt-description-logic-902
   PASS  WebOnt-description-logic-904
   PASS  WebOnt-equivalentClass-005
@@ -112,7 +114,9 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 59.12s
+Profile-RL ConsistencyTests: 22 pass, 1 fail (out of 23), 0 skipped (functional-syntax-only); 1 unsupported (cap-escape, #326) in 108.46s
 
 Harness Diagnostics (escape branches, #316 + #326):
-HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:0 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:0 tests_unsupported_cap_escape:0 tests_unsupported_refuter_indeterminate:0
+HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:1 refuter_escapes:0 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:1 tests_unsupported_cap_escape:1 tests_unsupported_refuter_indeterminate:0
+HARNESS-DIAG-OWL-TEST WebOnt-description-logic-209
+HARNESS-DIAG-OWL-UNSUPPORTED WebOnt-description-logic-209 | inconsistency-marker scan abandoned (cap/exception)

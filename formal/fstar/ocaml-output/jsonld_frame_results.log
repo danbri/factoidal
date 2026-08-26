@@ -1,5 +1,5 @@
 === W3C JSON-LD 1.1 Framing Test Runner ===
-Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld-framing/tests/frame-manifest.jsonld
+Manifest: /home/user/factoidal/third_party/testing/json-ld-framing/tests/frame-manifest.jsonld
 
   FAIL: Library framing example — framed JSON-LD differs from expected
   FAIL: reframe w/extra CURIE value. — framed JSON-LD differs from expected
