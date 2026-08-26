@@ -114,6 +114,25 @@ issues. Linking them to unrelated issues is worse than plain text.
 When citing a register entry, name the register and link the file:
 [skills/workflow-gotchas-debugging/SKILL.md](../workflow-gotchas-debugging/SKILL.md).
 
+## Rule 2b — never write a commit hash from memory. Read it.
+
+A commit hash in a report is a pointer, and a wrong pointer is worse
+than no pointer: the reader follows it, finds nothing, and stops
+trusting the rest of the table. Copy every hash from `git log
+--oneline` in the same turn you write it.
+
+Cost of getting this wrong: 2026-08-26, the closing report on
+[#619](https://github.com/danbri/factoidal/issues/619) carried a
+thirteen-row table mapping each commit to the score it produced. Ten
+of the thirteen hashes were invented — plausible-looking, none real.
+The scores and the order were correct, so the error was invisible
+until someone tried a link. It cost a correction comment on a report
+that was otherwise finished.
+
+The same rule holds for file paths, line numbers and test names in a
+report: if it is a pointer, it comes from a command run in this turn,
+not from recall.
+
 ## Rule 3 — register: technical Simple English
 
 Short sentences. One fact per sentence. Concrete nouns. Numbers with
