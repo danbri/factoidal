@@ -313,7 +313,227 @@ theorem divergence_conclusion_satisfiable :
   ⟨trivialCLInterp, fun _ _ _ _ _ => rfl, by
     simp [tripleAtom, CL.Satisfies, CL.Sat, trivialCLInterp]⟩
 
-/-! ## 5. Axiom audit -/
+/-! ## 5. The IKL-coherent term model
+
+Every statement above is over the whole interpretation class or over
+`PropAlphaInvariant`. The condition the IKL guide actually imposes is
+`CL.IklRespectsThat` — a proposition's zero-ary relation extension
+agrees with satisfaction of the sentence expressing it. NO model of
+that condition existed anywhere in this tree, so every theorem stated
+over it (`CL.IklEntails` included) risked being vacuous.
+
+The model below supplies one. Its domain is `Prop`; a sentence's
+proposition IS a `Prop`, and `pSat` is the satisfaction function of
+the model written out as a recursion, which is what breaks the
+circularity — `CL.Sat` needs `iProp`, and `iProp` needs satisfaction.
+`pSat_eq` proves the two agree, and `propModel_coherent` turns that
+into coherence for every relation reading that makes zero-ary
+predication transparent.
+
+The construction is parameterised by the name, string, relation and
+function readings, so the same recursion serves the refuting model of
+§6 and the bundle-satisfiability model of §8. -/
+
+
+mutual
+def pDen (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) : CL.Term → Prop
+  | .name n => ν n
+  | .str s => iS s
+  | .funapp op args => F (pDen iS R F ν σ op) (pSeq iS R F ν σ args)
+  | .that s => pSat iS R F ν σ s
+termination_by t => sizeOf t
+
+def pSeq (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) : List CL.SeqItem → List Prop
+  | [] => []
+  | .term t :: r => pDen iS R F ν σ t :: pSeq iS R F ν σ r
+  | .seqmark m :: r => σ m ++ pSeq iS R F ν σ r
+termination_by xs => sizeOf xs
+
+def pSat (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) : CL.Sentence → Prop
+  | .atom p args => R (pDen iS R F ν σ p) (pSeq iS R F ν σ args)
+  | .eq a b => pDen iS R F ν σ a = pDen iS R F ν σ b
+  | .conj ss => pAll iS R F ν σ ss
+  | .disj ss => pAny iS R F ν σ ss
+  | .neg s => ¬ pSat iS R F ν σ s
+  | .impl a b => pSat iS R F ν σ a → pSat iS R F ν σ b
+  | .iff a b => pSat iS R F ν σ a ↔ pSat iS R F ν σ b
+  | .all bs body => pForall iS R F ν σ bs body
+  | .ex bs body => pExists iS R F ν σ bs body
+termination_by s => sizeOf s
+
+def pAll (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) : List CL.Sentence → Prop
+  | [] => True
+  | s :: r => pSat iS R F ν σ s ∧ pAll iS R F ν σ r
+termination_by ss => sizeOf ss
+
+def pAny (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) : List CL.Sentence → Prop
+  | [] => False
+  | s :: r => pSat iS R F ν σ s ∨ pAny iS R F ν σ r
+termination_by ss => sizeOf ss
+
+def pForall (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    List CL.Binding → CL.Sentence → Prop
+  | [], body => pSat iS R F ν σ body
+  | .plain n :: r, body =>
+      ∀ x : Prop, pForall iS R F (CL.updateInd ν n x) σ r body
+  | .seqmark m :: r, body =>
+      ∀ xs : List Prop, pForall iS R F ν (CL.updateSeq σ m xs) r body
+  | .restricted n g :: r, body =>
+      ∀ x : Prop, R (pDen iS R F ν σ g) [x] →
+        pForall iS R F (CL.updateInd ν n x) σ r body
+termination_by bs body => sizeOf bs + sizeOf body
+
+def pExists (iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    List CL.Binding → CL.Sentence → Prop
+  | [], body => pSat iS R F ν σ body
+  | .plain n :: r, body =>
+      ∃ x : Prop, pExists iS R F (CL.updateInd ν n x) σ r body
+  | .seqmark m :: r, body =>
+      ∃ xs : List Prop, pExists iS R F ν (CL.updateSeq σ m xs) r body
+  | .restricted n g :: r, body =>
+      ∃ x : Prop, R (pDen iS R F ν σ g) [x] ∧
+        pExists iS R F (CL.updateInd ν n x) σ r body
+termination_by bs body => sizeOf bs + sizeOf body
+end
+
+/-- The Prop-domain term model. -/
+@[reducible] def propModel (iN iS : String → Prop) (R F : Prop → List Prop → Prop) :
+    CL.Interp where
+  dom := Prop
+  domWit := True
+  iName := iN
+  iStr := iS
+  rel := R
+  fn := F
+  iProp := fun s ν σ => pSat iS R F ν σ s
+
+
+theorem propModel_fn (iN iS : String → Prop) (R F : Prop → List Prop → Prop) :
+    (propModel iN iS R F).fn = F := rfl
+theorem propModel_rel (iN iS : String → Prop) (R F : Prop → List Prop → Prop) :
+    (propModel iN iS R F).rel = R := rfl
+theorem propModel_iStr (iN iS : String → Prop) (R F : Prop → List Prop → Prop) :
+    (propModel iN iS R F).iStr = iS := rfl
+theorem propModel_iName (iN iS : String → Prop) (R F : Prop → List Prop → Prop) :
+    (propModel iN iS R F).iName = iN := rfl
+theorem propModel_iProp (iN iS : String → Prop) (R F : Prop → List Prop → Prop) :
+    (propModel iN iS R F).iProp = fun s ν σ => pSat iS R F ν σ s := rfl
+
+mutual
+theorem pDen_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ t : CL.Term, CL.denotTerm (propModel iN iS R F) ν σ t = pDen iS R F ν σ t
+  | .name _ => by simp only [CL.denotTerm, pDen] <;> rfl
+  | .str _ => by simp only [CL.denotTerm, pDen, propModel_iStr] <;> rfl
+  | .funapp op args => by
+      simp only [CL.denotTerm, pDen, propModel_fn,
+        pDen_eq iN iS R F ν σ op, pSeq_eq iN iS R F ν σ args] <;> rfl
+  | .that _ => by simp only [CL.denotTerm, pDen, propModel_iProp] <;> rfl
+
+theorem pSeq_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ xs : List CL.SeqItem,
+      CL.denotSeq (propModel iN iS R F) ν σ xs = pSeq iS R F ν σ xs
+  | [] => by simp only [CL.denotSeq, pSeq] <;> rfl
+  | .term t :: r => by
+      simp only [CL.denotSeq, pSeq, pDen_eq iN iS R F ν σ t,
+        pSeq_eq iN iS R F ν σ r] <;> rfl
+  | .seqmark _ :: r => by
+      simp only [CL.denotSeq, pSeq, pSeq_eq iN iS R F ν σ r] <;> rfl
+end
+
+mutual
+theorem pSat_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ s : CL.Sentence, CL.Sat (propModel iN iS R F) ν σ s = pSat iS R F ν σ s
+  | .atom p args => by
+      simp only [CL.Sat, pSat, propModel_rel, pDen_eq iN iS R F ν σ p,
+        pSeq_eq iN iS R F ν σ args] <;> rfl
+  | .eq a b => by
+      simp only [CL.Sat, pSat, pDen_eq iN iS R F ν σ a,
+        pDen_eq iN iS R F ν σ b] <;> rfl
+  | .conj ss => by simp only [CL.Sat, pSat, pAll_eq iN iS R F ν σ ss] <;> rfl
+  | .disj ss => by simp only [CL.Sat, pSat, pAny_eq iN iS R F ν σ ss] <;> rfl
+  | .neg s => by simp only [CL.Sat, pSat, pSat_eq iN iS R F ν σ s] <;> rfl
+  | .impl a b => by
+      simp only [CL.Sat, pSat, pSat_eq iN iS R F ν σ a,
+        pSat_eq iN iS R F ν σ b] <;> rfl
+  | .iff a b => by
+      simp only [CL.Sat, pSat, pSat_eq iN iS R F ν σ a,
+        pSat_eq iN iS R F ν σ b] <;> rfl
+  | .all bs body => by
+      simp only [CL.Sat, pSat, pForall_eq iN iS R F ν σ bs body] <;> rfl
+  | .ex bs body => by
+      simp only [CL.Sat, pSat, pExists_eq iN iS R F ν σ bs body] <;> rfl
+
+theorem pAll_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ ss : List CL.Sentence,
+      CL.SatAll (propModel iN iS R F) ν σ ss = pAll iS R F ν σ ss
+  | [] => by simp only [CL.SatAll, pAll] <;> rfl
+  | s :: r => by
+      simp only [CL.SatAll, pAll, pSat_eq iN iS R F ν σ s,
+        pAll_eq iN iS R F ν σ r] <;> rfl
+
+theorem pAny_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ ss : List CL.Sentence,
+      CL.SatAny (propModel iN iS R F) ν σ ss = pAny iS R F ν σ ss
+  | [] => by simp only [CL.SatAny, pAny] <;> rfl
+  | s :: r => by
+      simp only [CL.SatAny, pAny, pSat_eq iN iS R F ν σ s,
+        pAny_eq iN iS R F ν σ r] <;> rfl
+
+theorem pForall_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ (bs : List CL.Binding) (body : CL.Sentence),
+      CL.SatForall (propModel iN iS R F) ν σ bs body = pForall iS R F ν σ bs body
+  | [], body => by
+      simp only [CL.SatForall, pForall, pSat_eq iN iS R F ν σ body] <;> rfl
+  | .plain n :: r, body => by
+      simp only [CL.SatForall, pForall,
+        fun x => pForall_eq iN iS R F (CL.updateInd ν n x) σ r body] <;> rfl
+  | .seqmark m :: r, body => by
+      simp only [CL.SatForall, pForall,
+        fun xs => pForall_eq iN iS R F ν (CL.updateSeq σ m xs) r body] <;> rfl
+  | .restricted n g :: r, body => by
+      simp only [CL.SatForall, pForall, propModel_rel, pDen_eq iN iS R F ν σ g,
+        fun x => pForall_eq iN iS R F (CL.updateInd ν n x) σ r body] <;> rfl
+
+theorem pExists_eq (iN iS : String → Prop) (R F : Prop → List Prop → Prop)
+    (ν : String → Prop) (σ : String → List Prop) :
+    ∀ (bs : List CL.Binding) (body : CL.Sentence),
+      CL.SatExists (propModel iN iS R F) ν σ bs body = pExists iS R F ν σ bs body
+  | [], body => by
+      simp only [CL.SatExists, pExists, pSat_eq iN iS R F ν σ body] <;> rfl
+  | .plain n :: r, body => by
+      simp only [CL.SatExists, pExists,
+        fun x => pExists_eq iN iS R F (CL.updateInd ν n x) σ r body] <;> rfl
+  | .seqmark m :: r, body => by
+      simp only [CL.SatExists, pExists,
+        fun xs => pExists_eq iN iS R F ν (CL.updateSeq σ m xs) r body] <;> rfl
+  | .restricted n g :: r, body => by
+      simp only [CL.SatExists, pExists, propModel_rel, pDen_eq iN iS R F ν σ g,
+        fun x => pExists_eq iN iS R F (CL.updateInd ν n x) σ r body] <;> rfl
+end
+
+/-- The term model is IKL-coherent whenever the relation reading makes
+zero-ary predication transparent. -/
+theorem propModel_coherent (iN iS : String → Prop)
+    (R F : Prop → List Prop → Prop) (hR : ∀ p : Prop, R p [] ↔ p) :
+    CL.IklRespectsThat (propModel iN iS R F) := by
+  intro s ν σ
+  show R (pSat iS R F ν σ s) [] ↔ _
+  rw [hR, pSat_eq iN iS R F ν σ s]
+
+/-! ## 9. Axiom audit -/
 
 section Audits
 
