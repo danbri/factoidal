@@ -16,7 +16,10 @@
 // tableauDlInconsistent, RML/CSVW/JSON-LD/RIF) reject with a clear
 // engine-capability error rather than silently falling back to the F*
 // engine — the point of this entry is that everything it answers came
-// through the Lean extraction. owlIsConsistent / owlEntails ARE served
+// through the Lean extraction. See ./select.js (factoidal/select) for
+// an explicit, observable lean/fstar/lean1st/fstar1st/slowcompareboth
+// switch built on top of this and ./index.js (issue #618); this module
+// itself never falls back. owlIsConsistent / owlEntails ARE served
 // (the three-valued OWL DL verdict, formal/lean4 issue 586) when the
 // resolved wasm carries the ops — an older bundle answers "unknown op",
 // which surfaces as the entryResult error, so probe the `ops`
@@ -40,6 +43,32 @@ const NOT_SUPPORTED =
 // Lean wasm module's single dispatch export. Methods absent from this
 // list are deliberately absent from the entry object: api.js
 // typeof-guards each one and capabilities() reports the truth.
+//
+// The resolved wasm's full dispatch surface has 21 ops
+// (`bin/linux-x86_64/l4factoidal ops`); this list wires 12 of them.
+// Two families are deliberately withheld, for different reasons:
+//
+//   - CL/IKL (`clParse`, `clToDataset`, `queryWithIklService`): held
+//     back by OWNER DECISION, 2026-08-26
+//     (https://github.com/danbri/factoidal/issues/618) — "I don't want
+//     npm code for direction b at this stage, unless for the shape of
+//     ikl which is the subset we get mapping rdf into ikl. But ikl
+//     doesn't have shapes or named profiles. Take it out of npm for
+//     now." IKL has no notion of shapes or named profiles, so an
+//     x-ikl-<suffix> entailment-regime family (see lib/api.js's
+//     ENTAIL_VALUES / the x-ikl guard in query()) invents a taxonomy
+//     the spec does not have. These three ops are NOT removed from the
+//     compiled wasm (no rebuild happened for this) — they are simply
+//     never dispatched to from this JS surface. Do not add them here
+//     without a fresh owner sign-off; see the regression test in
+//     test/select.test.js that pins them absent.
+//   - dataset handles (`datasetOpen`/`datasetQuery`/`datasetUpdate`/
+//     `datasetSerialize`/`datasetClose`): ordinary RDF dataset handles,
+//     not part of the CL/IKL decision above. Held back only because
+//     lib/api.js has no typed wrapper shape for a stateful handle yet
+//     (every existing typed op is request/response) — a scope
+//     judgement, not an owner ruling. Wiring these in is a reasonable
+//     follow-up.
 const OPS = [
   'parseToDatasetJson',
   'queryDataset',

@@ -1,7 +1,8 @@
 // TypeScript declarations for factoidal/l4 — the Lean 4 (L4Factoidal)
-// engine compiled to WebAssembly. See l4.js for asset resolution and
+// engine compiled to WebAssembly, bundled in this package's l4-assets/
+// since issue #618. See l4.js for the asset-resolution ladder and
 // docs/designissues/2026-08-22-npm-l4-module-packaging.md for why the
-// wasm ships outside @factoidal/core.
+// wasm was split out originally and why that no longer applies.
 
 /** A term in SPARQL Query Results JSON shape, plus `var` for patterns. */
 export interface L4Term {

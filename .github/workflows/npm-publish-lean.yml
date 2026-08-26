@@ -1,3 +1,15 @@
+# SUPERSEDED (issue #618) — @factoidal/lean was never published, and
+# its engine artifacts now ship inside @factoidal/core
+# (npm/factoidal/l4-assets/, kept current there; npm/factoidal-lean/ is
+# a frozen manual-override copy — see npm/factoidal-lean/README.md).
+# This workflow is disabled by default (see the manual `confirm` input
+# below) so a stray `npm-lean-v*` tag can never publish a stale,
+# no-longer-maintained package by accident. Kept, not deleted, per
+# CLAUDE.md's "there are no users, prefer the right structure" — the
+# gate logic below (tarball self-sufficiency) is still a reasonable
+# template if @factoidal/lean is ever revived as an explicit
+# older-pin-vs-newer-core override channel.
+#
 # Publish npm/factoidal-lean (@factoidal/lean) to npmjs.com via
 # TRUSTED PUBLISHING (OIDC) — no npm tokens anywhere. Mirror of
 # npm-publish.yml's skeleton; see that file's header for the OIDC
@@ -21,19 +33,28 @@
 # next rung, not this one — the wasmSha256 in version.json binds the
 # artifact to its recorded build inputs meanwhile.
 #
-# Trigger: manual (workflow_dispatch) or an npm-lean-v* tag.
+# Trigger: manual (workflow_dispatch) ONLY — the automatic
+# `npm-lean-v*` tag trigger was removed when the package was
+# superseded, so publishing now requires BOTH triggering the workflow
+# by hand AND typing the confirm phrase below.
 name: npm-publish-lean
 on:
-  workflow_dispatch: {}
-  push:
-    tags:
-      - 'npm-lean-v*'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >-
+          Type EXACTLY "publish superseded package" to proceed. This
+          package is superseded (issue #618) — @factoidal/core carries
+          the current Lean engine. Only publish this if you specifically
+          intend the frozen override copy on npm.
+        required: true
 permissions:
   id-token: write   # OIDC — required for trusted publishing
   contents: read
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'publish superseded package'
     steps:
       - uses: actions/checkout@v4
 
