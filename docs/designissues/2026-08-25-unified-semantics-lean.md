@@ -555,6 +555,57 @@ spirit as 1-26:
     into `IklRespectsThat` for every relation reading making zero-ary
     predication transparent.
 
+35. **The finite satisfaction checker's agreement is now proved, and
+    one of the four conditions its header named is not a hypothesis.**
+    `CL/FiniteSatTheorems.lean` proves `satFin_eq`
+    ([#609](https://github.com/danbri/factoidal/issues/609) item 1)
+    under three hypotheses — lawful `BEq` on the domain type, domain
+    completeness, no sequence-marker quantifier — each shown not
+    removable by a separating pair. The fourth condition
+    `CL/FiniteSat.lean`'s header listed, valuation-independence of the
+    IKL `that`-reading, is a property of `FiniteInterp.toInterp` (its
+    `iProp` is a lookup keyed by canonical CLIF text), so it is
+    `rfl`, not a side condition. What the header condition is really
+    about is recorded as a boundary instead: `witFin_not_ikl_coherent`
+    shows the finite reading does not meet `IklRespectsThat` in
+    general, so `satFin_eq` is agreement with `fi.toInterp`, not with
+    IKL entailment. Note 34's `propModel` is the coherent
+    interpretation the finite reading is not.
+
+    A method note that cost time: `CL/Semantics.lean`'s satisfaction
+    group is compiled by well-founded recursion, so `simp only [Sat]`
+    cannot fire at `fi.toInterp` — the valuation `v.ind : String → α`
+    type-checks against `String → fi.toInterp.dom` only at DEFAULT
+    transparency, and `simp` matches at `implicit`. One
+    `rw [Sat]`-proved clause lemma per constructor, stated over an
+    arbitrary `Interp`, is the fix; they are public in
+    `CL/FiniteSatTheorems.lean` for any later proof over `CL.Sat`.
+
+36. **CLIF reader adequacy is a fragment statement with two obstacles,
+    not a theorem** ([#609](https://github.com/danbri/factoidal/issues/609)
+    item 2, `CL/ClifAdequacy.lean`). Annex A carries no meaning
+    function of its own, so the only adequacy claim available is the
+    round trip against the serialiser, and that is FALSE in general:
+    `Sentence.toClif` guards NAME spellings through `renderName` but
+    writes a sequence marker as the raw `"..." ++ m`, so
+    `.atom (.name "P") [.seqmark "a b"]` serialises to `(P ...a b)`
+    and reads back with TWO argument items. The string-level `#guard`s
+    already in `CL/Clif.lean` cannot see it — the misparse
+    re-serialises to the same text. `marksLexable` is the fragment,
+    found by measuring 38 shapes.
+
+    The general lemma is open (it needs `lexAcc` fuel-monotonicity and
+    a decomposition over `++`, then the same for `parseSExpr`).
+    INSTANCE-level theorems are open too, for a different reason
+    worth recording: the kernel cannot reduce this parser at useful
+    sizes. Measured 2026-08-26 on a 16 GB container, `(P a)` and
+    `(P a b)` reduce in 4-6 s while `(P ...a b)` and
+    `(forall (x) (P x))` exhaust memory and are killed after
+    150-200 s; the cliff is in the string primitives the lexer goes
+    through, not the grammar. Any future plan that assumes `rfl` or
+    `decide` can pin a parser instance in this tree should start from
+    that measurement.
+
 ## 1. Goal and provenance
 
 Owner direction (2026-08-25, verbatim, from
