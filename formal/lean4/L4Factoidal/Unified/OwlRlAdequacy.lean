@@ -11,13 +11,16 @@ document `docs/designissues/2026-08-25-unified-semantics-lean.md` §4.4.
   RL rule relation derives from a reserved-vocabulary-free graph is
   entailed by the graph's translation, relative to `owlRlSchema` and
   the interpretation-class condition `OwlRlInterpCond` that carries the
-  FIVE rows `Unified/OwlRlSchema.lean` does not state as
-  object-language sentences (nine before 2026-08-26; the four
+  THREE rows `Unified/OwlRlSchema.lean` does not state as
+  object-language sentences (nine before 2026-08-26). Four
   cardinality-literal rows moved into the schema when
-  `Unified/Datalog.lean` gained `DTerm.lit`, and
-  `owlRlSchema_cardinality_rows` pins them there). The claim is
-  exactly as strong as that pair, no stronger: `OwlRlInterpCond` is a
-  hypothesis on the interpretation, visible in the statement.
+  `Unified/Datalog.lean` gained `DTerm.lit`
+  (`owlRlSchema_cardinality_rows`), and prp-spo2 and prp-key moved in
+  as per-length sentence families (`owlRlSchema_seq_rows`). What
+  remains is the existential-head group, which is a recorded decision
+  and not a missing proof. The claim is exactly as strong as that
+  pair, no stronger: `OwlRlInterpCond` is a hypothesis on the
+  interpretation, visible in the statement.
 * **`unified_owlRl_clash_unsat` / `unified_owlRl_clash_entails_all`** —
   a graph carrying a `Clash` configuration has no model in the schema
   class, so its translation entails everything.

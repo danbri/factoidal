@@ -20,14 +20,15 @@ The table is built ROW-FAMILY-WISE, not as one monolith:
   a decidable side condition (eq-ref at a non-reserved predicate,
   cax-adc-dw at a distinct IRI pair, the three Table 7 datatype rows).
 * **List-valued rows** — prp-spo2 and prp-key quantify over a
-  collection; each becomes a sentence FAMILY, one Horn sentence per
-  list length `n`, with the `rdf:first`/`rdf:rest` walk and the chain
-  or shared-value premises flattened into `n`-many body atoms. The
-  seven other collection rows (cls-int1/2, cls-uni, cls-oo, scm-int,
-  scm-uni, cax-adc-dw) go through the reserved `urn:cl:def:listMember`
-  and `urn:cl:def:typedAllMembers` helper predicates that
-  `RLSemantics.lean` introduces, whose two Horn axioms each replace
-  the per-length family.
+  collection; each is a sentence FAMILY, one Horn rule per collection
+  length (`spo2Rule m`, `keyRule m` at length `m + 1`), with the
+  `rdf:first`/`rdf:rest` walk and the chain or shared-value premises
+  flattened into `m + 1`-many body atoms and the last cell resting at
+  `rdf:nil`. The seven other collection rows (cls-int1/2, cls-uni,
+  cls-oo, scm-int, scm-uni, cax-adc-dw) go through the reserved
+  `urn:cl:def:listMember` and `urn:cl:def:typedAllMembers` helper
+  predicates that `RLSemantics.lean` introduces, whose two Horn axioms
+  each replace the per-length family.
 * **Clash rows** — falsity-headed, so NOT `DRule`s (a `DatalogProgram`
   is definite by construction). Each is a universally closed negated
   conjunction, in the `dExclusionSchema` / `rangeClashSchema` pattern
@@ -1919,53 +1920,49 @@ end ClashConditions
 
 ### What the schema does NOT carry, and why
 
-FIVE of the 91 rows are not object-language sentences here (nine
+THREE of the 91 rows are not object-language sentences here (nine
 before 2026-08-26). They are carried by the interpretation-class
 condition bundle `OwlRlInterpCond` instead — the `EntailsSchema`
 parameter the design document §2.2 calls the extension mechanism, and
 the same device `RdfsDInterpCond` uses in
-`Unified/RdfsSchema.lean`. Each has a structural reason:
+`Unified/RdfsSchema.lean`. All three have the same structural reason:
 
-* **prp-spo2, prp-key** quantify over a COLLECTION. Each needs a
-  sentence family indexed by list length: the `rdf:first`/`rdf:rest`
-  walk plus the chain or shared-value premises flattened into `n`-many
-  body atoms, over generated variable names `l0..ln`, `q0..q(n-1)`,
-  `v0..v(n-1)`.
-
-  A reserved HELPER predicate would avoid the family, as it does for
-  the other seven collection rows. The relation to encode is ternary
-  (cell, subject, object) and `DAtom` is n-ary, so a ternary helper
-  atom is legal — the earlier claim here that "a helper predicate
-  cannot name it" was wrong; `RDF.Interp.iext` is binary, but the
-  helper never has to appear in `restrictInterp i`. The reason not to
-  take that route is `Unified/RdfTransport.lean`'s `liftInterp`, which
-  reads `rel p args` as `False` at every arity other than 2. A schema
-  row with a ternary head is therefore FALSE at `liftInterp r` for
-  every RDF interpretation `r`, which is exactly the class of models
-  schema-relative completeness needs
-  (https://github.com/danbri/factoidal/issues/613 item 2). The
-  per-length family keeps every row binary and costs no model.
-* **cax-dw-comp, cls-maxqc1-comp, minc1-comp** have EXISTENTIAL heads
+**cax-dw-comp, cls-maxqc1-comp, minc1-comp** have EXISTENTIAL heads
   (they mint a comprehension witness), which `DRule.definiteB`
-  excludes. A `Schema` is a predicate on `CL.Sentence`, so nothing
-  stops an existentially headed sentence from BEING in one; the
-  question is whether it should be. Two costs decide it. (i) The head
-  of `RlCondCompDw` is not a conjunction of atoms — `CompProps`
-  carries two universally quantified implications and a five-variable
-  one — so each row is a bespoke CL sentence with a bespoke
-  satisfaction lemma, an instance of no family here. (ii) An
-  existential head removes the least-model property the completeness
-  direction of the stage-3 class rests on (`datalog_lfp_complete`, and
-  the `rdfD1Shape_not_wf` exclusion `Unified/DatalogClosures.lean`
-  pins). The recorded decision is to keep `owlRlSchema` definite and
-  leave these three in the condition bundle. If they are ever
-  admitted it should be as a SEPARATE sub-schema, so that the definite
-  schema stays available for the completeness work.
+excludes. A `Schema` is a predicate on `CL.Sentence`, so nothing stops
+an existentially headed sentence from BEING in one; the question is
+whether it should be. Two costs decide it. (i) The head of
+`RlCondCompDw` is not a conjunction of atoms — `CompProps` carries two
+universally quantified implications and a five-variable one — so each
+row is a bespoke CL sentence with a bespoke satisfaction lemma, an
+instance of no family here. (ii) An existential head removes the
+least-model property the completeness direction of the stage-3 class
+rests on (`datalog_lfp_complete`, and the `rdfD1Shape_not_wf`
+exclusion `Unified/DatalogClosures.lean` pins). The recorded decision
+is to keep `owlRlSchema` definite and leave these three in the
+condition bundle. If they are ever admitted it should be as a SEPARATE
+sub-schema, so that the definite schema stays available for the
+completeness work.
+
+A note on prp-spo2 and prp-key, which left the bundle on 2026-08-26. A
+reserved HELPER predicate would have avoided the per-length families,
+as it does for the other seven collection rows. The relation to encode
+is ternary (cell, subject, object) and `DAtom` is n-ary, so a ternary
+helper atom is legal — the earlier claim here that "a helper predicate
+cannot name it" was wrong; `RDF.Interp.iext` is binary, but the helper
+never has to appear in `restrictInterp i`. The reason the families are
+used instead is `Unified/RdfTransport.lean`'s `liftInterp`, which
+reads `rel p args` as `False` at every arity other than 2: a schema
+row with a ternary head is FALSE at `liftInterp r` for every RDF
+interpretation `r`, which is exactly the class of models
+schema-relative completeness needs
+(https://github.com/danbri/factoidal/issues/613 item 2). The families
+keep every row binary and cost no model.
 
 The statement of `unified_owlRl_sound` names `OwlRlInterpCond`
 explicitly, so the boundary is visible in the theorem, not only in
-prose; `owlRlSchema_cardinality_rows` below pins the four rows that
-left the bundle. -/
+prose; `owlRlSchema_cardinality_rows` and `owlRlSchema_seq_rows` below
+pin the six rows that left the bundle. -/
 
 /-- **The OWL 2 RL schema**: the plain Horn rows, the guarded and
 table-indexed families, and the clash rows.

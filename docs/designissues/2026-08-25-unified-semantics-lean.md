@@ -330,7 +330,7 @@ turn.
 21. **Correction note 18 is superseded in part, and one of its reasons
     was wrong** (2026-08-26, later the same day,
     [issue 613](https://github.com/danbri/factoidal/issues/613)).
-    `OwlRlInterpCond` now carries FIVE rows, not nine.
+    `OwlRlInterpCond` now carries THREE rows, not nine.
 
     **What moved.** `Unified/Datalog.lean` gained `DTerm.lit`, a term
     constructor carrying an `RDF.WfLiteral` whose `toCl` is
@@ -352,19 +352,46 @@ turn.
     hypothesis. Every existing call site discharges it by computation,
     so no landed gate theorem weakens in substance.
 
-    **The reason that was wrong.** Note 18 said the reserved helper
-    predicates "cannot serve" prp-spo2 and prp-key because the relation
-    to encode is ternary and `RDF.Interp.iext` is binary. `DAtom` is
-    n-ary, and such a helper need never appear in `restrictInterp i` —
-    it is internal to the schema and to the bridge proof, so a ternary
-    helper IS writable. The real obstruction is
+    **prp-spo2 and prp-key moved too, as per-length families.**
+    `spo2Rule m` and `keyRule m` are the rows at collection length
+    `m + 1`: the `rdf:first`/`rdf:rest` walk and the chain (or
+    shared-value) premises flattened into `m + 1` body atoms, the last
+    cell resting at `rdf:nil`. `owlRlSeqSchema` is the two families
+    and `owlRlSchema` unions it in; `owlRlSchema_seq_rows` states both
+    rows as consequences of schema satisfaction alone.
+
+    Two things made this cheap enough to do. Generated variable names
+    carry their index as a UNARY tail (`nmAt c k` is `c` then `k`
+    copies of `'x'`), so `seqVal` reads the index off a list length
+    and nothing has to prove a numeral spelling injective. And
+    `seqIs_walk`, `semChain_vals`, `semShares_vals` turn the
+    existential chains of `SeqIs`, `SemChain` and `SemShares` into
+    indexed functions by one induction each, so the bridge lemma just
+    fires the family member at the collection's own length.
+
+    Non-vacuity: `allTrue_satisfies_seq` (the families have models at
+    every length) and `spo2Counter` / `seqSchema_not_everything` (an
+    interpretation meeting every premise of prp-spo2 at chain length 1
+    and denying its conclusion, so the family is not the
+    everything-relation).
+
+    **The reason note 18 gave was wrong.** Note 18 said the reserved
+    helper predicates "cannot serve" prp-spo2 and prp-key because the
+    relation to encode is ternary and `RDF.Interp.iext` is binary.
+    `DAtom` is n-ary, and such a helper need never appear in
+    `restrictInterp i` — it is internal to the schema and to the
+    bridge proof, so a ternary helper IS writable. The actual reason
+    to prefer the per-length families is
     `Unified/RdfTransport.lean`'s `liftInterp`, which reads `rel p
     args` as `False` at every arity other than 2: a schema row with a
     ternary head would be false at `liftInterp r` for every RDF
     interpretation `r`, i.e. at exactly the models note 19's
-    schema-relative completeness needs. The per-length sentence family
-    keeps every row binary and costs no model, so it remains the route
-    for these two rows. Neither was attempted.
+    schema-relative completeness needs. The families keep every row
+    binary and cost no model.
+
+    They do make note 19's outstanding pass larger in kind: it now has
+    to cover the two families at EVERY length, which is an induction
+    on collection length rather than a finite row walk.
 
     **Existential heads: a decision, not a blockage.** A `Schema` is a
     predicate on `CL.Sentence`, so cax-dw-comp, cls-maxqc1-comp and
@@ -396,6 +423,13 @@ turn.
     `rlHerb_triple_decode` would decode an atom that `OWL.RL.Derives`
     cannot produce — so the fragment and the decode step have to move
     together, or not at all.
+
+    A Lean mechanics note worth keeping: `simp only` and `rw` will not
+    fire the `seqVal` lookup lemmas, because matching a generated name
+    has to see through `String.ofList` / `String.toList`. `erw` does.
+    Every lookup step in `cond_prpSpo2`, `cond_prpKey` and
+    `seqSchema_not_everything` is an `erw` for that reason, and it is
+    not a shortcut around a failed proof.
 
     Measured with the landing: OWL probe 1131 pass, 316 fail, 2 skip,
     8 unsupported (out of 1457) — unchanged, the closure engine was not
