@@ -180,10 +180,29 @@ The two that corrupt files silently:
     `make verify` / `build-ocaml.sh` / `fstar.exe`. If `fstar.exe` is
     missing from PATH, stop and activate; do not burn time on partial
     builds. See the `fstar-env` skill for setup.
-13. **No Claude attribution in git commits.** No `Co-Authored-By:
-    Claude`, no "Generated with Claude Code", no session links, no
-    prose crediting Claude in commit messages — this repo policy
-    overrides the harness default. Full rule:
+13. **No Claude attribution anywhere in git history.** This covers
+    two things, and the second was missed for a month:
+    (a) **Message content** — no `Co-Authored-By: Claude`, no
+    "Generated with Claude Code", no session links, no prose crediting
+    Claude in commit messages.
+    (b) **Author and committer identity** — every commit is attributed
+    to the responsible HUMAN. Owner instruction, 2026-08-26, verbatim:
+    "all attributions are to responsible human only".
+    This repo policy overrides the harness default, and the harness
+    actively pushes the other way: the hosted CCR image ships a
+    SessionStart hook setting the GLOBAL identity to
+    `Claude <noreply@anthropic.com>`, plus a Stop hook that instructed
+    the agent to run `git config user.name Claude` whenever a commit
+    failed GitHub's Verified check. An agent obeying that hook would
+    have rewritten the human author out of the commit — the hook and
+    this rule were in direct contradiction, and the hook was the one
+    with teeth. `tools/sandbox-bootstrap.sh` now pins the
+    REPOSITORY-LOCAL identity on every session start, which git prefers
+    over the global one regardless of hook ordering, and reports it in
+    the bootstrap block. Accepted cost, stated so nobody "fixes" it:
+    the container's SSH signing key is registered to the bot address,
+    so human-committed commits show as "Unverified" on GitHub. Correct
+    attribution outranks the badge. Full rule:
     [`skills/github-coauthor-policy/SKILL.md`](skills/github-coauthor-policy/SKILL.md).
 14. **A repaired methodology error is not done until the docs that
     prevent its repetition are updated.** After identifying and fixing

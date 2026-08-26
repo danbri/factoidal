@@ -174,6 +174,39 @@ if BR=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) && [ -n "$B
   fi
 fi
 
+# 2b. Commit identity: the responsible HUMAN, never the agent.
+#
+#     Owner instruction, 2026-08-26: "all attributions are to responsible
+#     human only". Iron rule #13 in CLAUDE.md forbids Claude attribution in
+#     commits; this is the mechanism that makes the rule hold rather than
+#     depending on the agent remembering it.
+#
+#     The hosted harness ships its own SessionStart hook that sets the GLOBAL
+#     identity to Claude <noreply@anthropic.com>, and a Stop hook that used to
+#     instruct the agent to restore it whenever a commit failed GitHub's
+#     Verified check. We set the REPOSITORY-LOCAL identity instead, which git
+#     prefers over the global one no matter which hook ran last, so the
+#     harness cannot win the race.
+#
+#     Consequence, stated rather than hidden: the container's SSH signing key
+#     is registered to noreply@anthropic.com, so a commit whose committer is a
+#     human cannot verify against it and GitHub shows it "Unverified". Every
+#     commit in this repository is already in that state. Do not restore the
+#     bot identity to regain the badge.
+#
+#     Also drops a core.hooksPath the harness may have pointed at a generated
+#     commit-msg hook that appends a Co-authored-by trailer.
+GIT_IDENTITY_STATUS="not a git repo; identity unset"
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  git config user.email "danbri@danbri.org" 2>/dev/null || true
+  git config user.name  "Dan Brickley" 2>/dev/null || true
+  HOOKS_PATH="$(git config --global --get core.hooksPath 2>/dev/null || true)"
+  if [[ "$HOOKS_PATH" == "$HOME/.ccr-git-hooks" ]]; then
+    git config --global --unset core.hooksPath 2>/dev/null || true
+  fi
+  GIT_IDENTITY_STATUS="$(git config --get user.name) <$(git config --get user.email)> (repo-local; human only)"
+fi
+
 # 3. Compact orientation block (stdout → added to session context).
 #    Keep this short: it exists so the agent does NOT re-derive
 #    environment state with a dozen exploratory commands.
@@ -186,6 +219,7 @@ factoidal session bootstrap:
 - F* toolchain: ${FSTAR_STATUS}
 - ${MCP_STATUS}
 - git: ${GIT_FRESHNESS}
+- commit identity: ${GIT_IDENTITY_STATUS}
 - goal + working discipline: CLAUDE.md (skills index at the bottom)
 - run tests: ./w3c-tests.sh | current scores: docs/test-results/latest.json
 ORIENT
