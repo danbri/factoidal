@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — both engines in one package, with a backend selector
+## 0.2.0 — both engines in one package, with a backend selector
 
 - The Lean 4 engine (`L4Factoidal`, wasm) now ships INSIDE
   `@factoidal/core` as `l4-assets/`, alongside the F\*-extracted

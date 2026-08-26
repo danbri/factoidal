@@ -47,6 +47,9 @@ import L4Factoidal.RDFS.Derivation
 import L4Factoidal.RDFS.DerivationTests
 import L4Factoidal.RDFS.DerivationCheck
 import L4Factoidal.RDFS.DerivationCheckTests
+import L4Factoidal.Proof.Syntax
+import L4Factoidal.Proof.Checker
+import L4Factoidal.Proof.Tests
 import L4Factoidal.RDFS.SchemaSplit
 import L4Factoidal.RDF.Datatypes
 import L4Factoidal.RDF.Entailment
