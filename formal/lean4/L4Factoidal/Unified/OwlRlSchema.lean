@@ -955,4 +955,165 @@ theorem cond_invFlipRngDomRev : RlCondInvFlipRngDomRev (restrictInterp i) := by
   · exact h2
 end RowConditions
 
+
+/-! ## Guarded and table-indexed families
+
+Five rows carry a decidable side condition or range over a fixed table.
+Each becomes one `DRule` per instance, and the family is the set of
+those rule sentences. -/
+
+theorem dk_wf (w : RDF.WfIri) : (dk w).wfB = true := by
+  simp only [dk, DTerm.wfB]
+  exact List.contains_iff_mem.mpr (isIri_has_colon w.property)
+
+/-- **eq-ref**, predicate conclusion, at a NON-RESERVED predicate (the
+guard `RLSemantics.lean` states on the row). -/
+def ruleEqRefP (p : RDF.WfIri) : DRule :=
+  ⟨dbin (dk owlSameAs) (dk p) (dk p), [dbin (dk p) (.v "x") (.v "y")]⟩
+
+/-- **cax-adc-dw**, at a distinct pair of member IRIs. -/
+def ruleCaxAdcToDw (ci cj : RDF.WfIri) : DRule :=
+  ⟨dbin (dk owlDisjointWith) (dk ci) (dk cj),
+   [dtyp (.v "y") (dk owlAllDisjointClasses),
+    dbin (dk owlMembers) (.v "y") (.v "l"),
+    dbin (dk uListMem) (.v "l") (dk ci),
+    dbin (dk uListMem) (.v "l") (dk cj)]⟩
+
+/-- **dt-type1**, one premise-free rule per builtin datatype axiom. -/
+def ruleDtType1 (a pr b : RDF.WfIri) : DRule := ⟨dbin (dk pr) (dk a) (dk b), []⟩
+
+/-- **dt-rng-intersect**, one rule per licensed datatype triple. -/
+def ruleDtRangeIntersect (d1 d2 d3 : RDF.WfIri) : DRule :=
+  ⟨dbin (dk rdfsRange) (.v "p") (dk d3),
+   [dbin (dk rdfsRange) (.v "p") (dk d1),
+    dbin (dk rdfsRange) (.v "p") (dk d2)]⟩
+
+/-- **xsd-axioms**, one rule per (datatype-position predicate, XSD IRI,
+XSD tower triple). -/
+def ruleXsdAxiom (p w a pr b : RDF.WfIri) : DRule :=
+  ⟨dbin (dk pr) (dk a) (dk b), [dbin (dk p) (.v "x") (dk w)]⟩
+
+theorem dv_wf (n : String) (h : n.toList.contains ':' = false) :
+    (DTerm.v n).wfB = true := by
+  simp only [DTerm.wfB, h, Bool.not_false]
+
+theorem dbin_wf {p x y : DTerm} (hp : p.wfB = true) (hx : x.wfB = true)
+    (hy : y.wfB = true) : (dbin p x y).wfB = true := by
+  simp only [dbin, DAtom.wfB, List.all_cons, List.all_nil, hp, hx, hy,
+             Bool.and_true, Bool.true_and]
+
+theorem dtyp_wf {x cc : DTerm} (hx : x.wfB = true) (hc : cc.wfB = true) :
+    (dtyp x cc).wfB = true :=
+  dbin_wf (dk_wf rdfType) hx hc
+
+theorem drule_wf_of {r : DRule} (hh : r.head.wfB = true)
+    (hb : r.body.all DAtom.wfB = true) (hd : r.definiteB = true) :
+    r.wfB = true := by
+  simp only [DRule.wfB, hh, hb, hd, Bool.and_true, Bool.true_and]
+
+theorem ruleEqRefP_wf (p : RDF.WfIri) : (ruleEqRefP p).wfB = true :=
+  drule_wf_of (dbin_wf (dk_wf owlSameAs) (dk_wf p) (dk_wf p))
+    (by simp only [ruleEqRefP, List.all_cons, List.all_nil,
+          dbin_wf (dk_wf p) (dv_wf "x" (by decide)) (dv_wf "y" (by decide)), Bool.and_true])
+    rfl
+
+theorem ruleCaxAdcToDw_wf (ci cj : RDF.WfIri) :
+    (ruleCaxAdcToDw ci cj).wfB = true :=
+  drule_wf_of (dbin_wf (dk_wf owlDisjointWith) (dk_wf ci) (dk_wf cj))
+    (by simp only [ruleCaxAdcToDw, List.all_cons, List.all_nil,
+          dtyp_wf (dv_wf "y" (by decide)) (dk_wf owlAllDisjointClasses),
+          dbin_wf (dk_wf owlMembers) (dv_wf "y" (by decide)) (dv_wf "l" (by decide)),
+          dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf ci),
+          dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf cj),
+          Bool.and_true])
+    rfl
+
+theorem ruleDtType1_wf (a pr b : RDF.WfIri) : (ruleDtType1 a pr b).wfB = true :=
+  drule_wf_of (dbin_wf (dk_wf pr) (dk_wf a) (dk_wf b)) rfl rfl
+
+theorem ruleDtRangeIntersect_wf (d1 d2 d3 : RDF.WfIri) :
+    (ruleDtRangeIntersect d1 d2 d3).wfB = true :=
+  drule_wf_of (dbin_wf (dk_wf rdfsRange) (dv_wf "p" (by decide)) (dk_wf d3))
+    (by simp only [ruleDtRangeIntersect, List.all_cons, List.all_nil,
+          dbin_wf (dk_wf rdfsRange) (dv_wf "p" (by decide)) (dk_wf d1),
+          dbin_wf (dk_wf rdfsRange) (dv_wf "p" (by decide)) (dk_wf d2),
+          Bool.and_true])
+    rfl
+
+theorem ruleXsdAxiom_wf (p w a pr b : RDF.WfIri) :
+    (ruleXsdAxiom p w a pr b).wfB = true :=
+  drule_wf_of (dbin_wf (dk_wf pr) (dk_wf a) (dk_wf b))
+    (by simp only [ruleXsdAxiom, List.all_cons, List.all_nil,
+          dbin_wf (dk_wf p) (dv_wf "x" (by decide)) (dk_wf w), Bool.and_true])
+    rfl
+
+/-- The five guarded / table-indexed families. -/
+def owlRlFamilySchema : Schema := fun s =>
+  (∃ p : RDF.WfIri, rlReservedIri p = false ∧ s = (ruleEqRefP p).sentence) ∨
+  (∃ ci cj : RDF.WfIri, ci ≠ cj ∧ s = (ruleCaxAdcToDw ci cj).sentence) ∨
+  (∃ a pr b : RDF.WfIri,
+      (⟨Subject.iri a, pr, Term.iri b⟩ : Triple) ∈ builtinDatatypeAxioms ∧
+      s = (ruleDtType1 a pr b).sentence) ∨
+  (∃ d1 d2 d3 : RDF.WfIri, rangeIntersectLicenses d1 d2 d3 = true ∧
+      s = (ruleDtRangeIntersect d1 d2 d3).sentence) ∨
+  (∃ p w a pr b : RDF.WfIri, p ∈ datatypePositionPredicates ∧
+      iriInXsdNs w = true ∧
+      (⟨Subject.iri a, pr, Term.iri b⟩ : Triple) ∈ xsdAxiomTriples ∧
+      s = (ruleXsdAxiom p w a pr b).sentence)
+
+section FamilyConditions
+
+variable {i : CL.Interp} (hF : SatisfiesSchema i owlRlFamilySchema)
+include hF
+
+theorem cond_eqRefP : RlCondEqRefP (restrictInterp i) := by
+  intro p hp x y h1
+  refine rlRowFires hF (Or.inl ⟨p, hp, rfl⟩) (ruleEqRefP_wf p)
+    (vals i [("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [ruleEqRefP, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_caxAdcToDw : RlCondCaxAdcToDw (restrictInterp i) := by
+  intro ci cj hne y l h1 h2 h3 h4
+  refine rlRowFires hF (Or.inr (Or.inl ⟨ci, cj, hne, rfl⟩))
+    (ruleCaxAdcToDw_wf ci cj) (vals i [("y", y), ("l", l)]) ?_
+  intro a ha
+  simp only [ruleCaxAdcToDw, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem cond_dtType1Builtin : RlCondDtType1Builtin (restrictInterp i) := by
+  intro a pr b hm
+  refine rlRowFires hF (Or.inr (Or.inr (Or.inl ⟨a, pr, b, hm, rfl⟩)))
+    (ruleDtType1_wf a pr b) (vals i []) ?_
+  intro u hu
+  simp only [ruleDtType1, List.not_mem_nil] at hu
+
+theorem cond_dtRangeIntersect : RlCondDtRangeIntersect (restrictInterp i) := by
+  intro d1 d2 d3 hlic pd h1 h2
+  refine rlRowFires hF (Or.inr (Or.inr (Or.inr (Or.inl ⟨d1, d2, d3, hlic, rfl⟩))))
+    (ruleDtRangeIntersect_wf d1 d2 d3) (vals i [("p", pd)]) ?_
+  intro a ha
+  simp only [ruleDtRangeIntersect, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_xsdAxioms : RlCondXsdAxioms (restrictInterp i) := by
+  intro p hp w hw a pr b hm x h1
+  refine rlRowFires hF
+    (Or.inr (Or.inr (Or.inr (Or.inr ⟨p, w, a, pr, b, hp, hw, hm, rfl⟩))))
+    (ruleXsdAxiom_wf p w a pr b) (vals i [("x", x)]) ?_
+  intro u hu
+  simp only [ruleXsdAxiom, List.mem_cons, List.not_mem_nil, or_false] at hu
+  rcases hu with rfl
+  exact h1
+
+end FamilyConditions
+
 end L4Factoidal.Unified
