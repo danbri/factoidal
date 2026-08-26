@@ -65,7 +65,17 @@ if [[ -d "$EXPERIMENTAL_DIR" ]]; then
   done
 fi
 
-echo "  All patches applied successfully."
+# 2026-08-26: this used to print "All patches applied successfully."
+# unconditionally, before the error count, and always exit 0. Run 1 of
+# npm-publish.yml carried that line in its log while the drift check
+# failed, so the line was read as evidence that the patches had applied.
+# It was not evidence of anything (anti-pattern #14 -- never let a
+# failure pass unnoticed). The count is now reported honestly and a
+# failing patch script fails this script, which fails build-ocaml.sh's
+# extract step under its set -e.
 if [[ $PATCH_ERRORS -gt 0 ]]; then
-  echo "  WARNING: $PATCH_ERRORS of $PATCH_COUNT patches had errors" >&2
+  echo "  FATAL: $PATCH_ERRORS of $PATCH_COUNT patch scripts exited non-zero." >&2
+  echo "         The extraction output in $OUTDIR is INCOMPLETE. Do not commit it." >&2
+  exit 1
 fi
+echo "  All $PATCH_COUNT patch scripts exited 0."

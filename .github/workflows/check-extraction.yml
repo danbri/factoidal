@@ -1,11 +1,32 @@
 name: Check F* Extraction
 
+# Runs on PUSH as well as pull_request. The 2026-08-24 extraction drift
+# (docs/designissues/2026-08-26-extraction-drift-root-cause.md) reached
+# claude/main through three direct pushes with no PR, so a
+# pull_request-only gate never fired once. The path filter also now
+# covers the glue-patch directories and the extraction output itself:
+# the drift was introduced by commits that touched
+# experimental_ocaml_glue/*.sh and ocaml-output/*.ml, neither of which
+# was in the old filter.
 on:
+  push:
+    paths:
+      - 'formal/fstar/*.fst'
+      - 'formal/fstar/*.fsti'
+      - 'formal/fstar/build-ocaml.sh'
+      - 'formal/fstar/ocaml-patches.sh'
+      - 'formal/fstar/experimental_ocaml_glue/**'
+      - 'formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/**'
+      - 'formal/fstar/ocaml-output/*.ml'
   pull_request:
     paths:
       - 'formal/fstar/*.fst'
+      - 'formal/fstar/*.fsti'
       - 'formal/fstar/build-ocaml.sh'
       - 'formal/fstar/ocaml-patches.sh'
+      - 'formal/fstar/experimental_ocaml_glue/**'
+      - 'formal/fstar/minimal_regrettable_glue_code_each_with_an_open_issue/**'
+      - 'formal/fstar/ocaml-output/*.ml'
 
 permissions:
   contents: read
@@ -64,9 +85,28 @@ jobs:
           fstar.exe --version
           z3 --version
 
+      # The drift check npm-publish.yml runs, moved to every push and PR
+      # that touches the extraction inputs or output. Until 2026-08-26
+      # this job ran `extract` + `compile` and stopped, so it asserted
+      # only that extraction SUCCEEDS -- never that the committed .ml
+      # MATCHES it. It ran green through a month of drift for that
+      # reason (anti-pattern #28: the audit's reach, before the code).
       - name: Verify + Extract + Compile
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
-          ./build-ocaml.sh extract
+          ./build-ocaml.sh extract --force-full
           ./build-ocaml.sh compile
+
+      - name: Fail on extraction drift vs the committed OCaml
+        run: |
+          # Every .ml under ocaml-output must be byte-identical to a
+          # fresh extract + patch of this commit's .fst. A diff means the
+          # committed output does not derive from the committed source:
+          # either a re-extraction was committed without the patch step,
+          # or the .ml came from a different toolchain.
+          if ! git diff --stat --exit-code -- 'formal/fstar/ocaml-output/*.ml'; then
+            echo '::error::extraction drift: committed .ml does not match a fresh extraction of this commit'"'"'s .fst'
+            echo 'Fix: eval $(opam env --switch=fstar); cd formal/fstar && ./build-ocaml.sh extract --force-full, then commit the result.'
+            exit 1
+          fi

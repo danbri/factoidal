@@ -96,11 +96,21 @@ jobs:
         run: |
           eval $(opam env --switch=fstar)
           cd formal/fstar
-          # --force-full: bypass the committed incremental-extract
-          # manifest. Without it a manifest hit turns extraction into
-          # a no-op and this drift check into a vacuous pass (the
-          # silently-no-op hazard) — the whole point is to re-derive
-          # every module's .ml here.
+          # --force-full: bypass the incremental-extract manifest.
+          # Without it a manifest hit turns extraction into a no-op and
+          # this drift check into a vacuous pass (the silently-no-op
+          # hazard) — the whole point is to re-derive every module's .ml
+          # here.
+          #
+          # Two corrections, 2026-08-26. (1) The manifest is NOT
+          # committed — `git ls-files
+          # formal/fstar/ocaml-output/.extract-state/` is empty — so a
+          # CI checkout has none and plain `extract` is already full
+          # here. The flag still matters for local runs. (2) Until
+          # 2026-08-26 this exact invocation did not reach the flag at
+          # all: build-ocaml.sh's multi-step loop read `--force-full` as
+          # a step name. See
+          # docs/designissues/2026-08-26-extraction-drift-root-cause.md.
           ./build-ocaml.sh extract --force-full
           cd ../..
           # The extracted + patched .ml must be byte-identical to what
