@@ -479,4 +479,237 @@ theorem herbQ_satisfies_sk (g : RDF.Graph) (htt : RDF.GraphTtFree g) :
   simp only [herbQ, herbName_iri t.p, herbRel]
   exact ⟨t, ht, rfl, rfl, rfl⟩
 
+/-! ## Reflection: what a satisfied predication forces
+
+Each pattern position is read back off its denotation. The tag
+component does the work: a name denotes with its own string in the
+tag, a constructed value (literal, triple term) with `none`, so an
+unbound variable, a literal in subject position and a blank node in
+predicate position are all REFUTED rather than assumed away. That is
+why the pivot iff below needs no domain hypothesis on `mu`. -/
+
+theorem subjectEqb_of_termEqb {a b : RDF.Subject}
+    (h : RDF.Term.eqb a.toTerm b.toTerm = true) : RDF.Subject.eqb a b = true := by
+  cases a <;> cases b <;> simp_all [RDF.Subject.toTerm, RDF.Term.eqb, RDF.Subject.eqb]
+
+theorem subjToTerm_ttFree (s : RDF.Subject) : RDF.TermTtFree s.toTerm := by
+  cases s <;> simp [RDF.Subject.toTerm, RDF.TermTtFree]
+
+theorem herbDenot_fst_subj (s : RDF.Subject) : ∃ n, (herbDenot s.toTerm).1 = some n := by
+  cases s with
+  | iri i => exact ⟨i.val, rfl⟩
+  | bnode b => exact ⟨bnodeName b, rfl⟩
+
+/-- A term whose denotation is a name's denotation is that name's own
+kind of term: not a literal, not a triple term. -/
+theorem ttFree_of_herbDenot_fst_some {u : RDF.Term} {n : String}
+    (h : (herbDenot u).1 = some n) : RDF.TermTtFree u := by
+  cases u <;> simp_all [herbDenot, RDF.TermTtFree]
+
+theorem instSubject_of_denot {g : RDF.Graph} {mu : SPARQL.Binding}
+    {ps : SPARQL.PatternSubject} {s : RDF.Subject}
+    (htt : PatternSubjectTtFree ps)
+    (h : CL.denotTerm (herbQ g) (herbQ g).iName (fun _ => [])
+           (embedPatternSubject mu ps) = herbDenot s.toTerm) :
+    ∃ s', SPARQL.instSubject id mu ps = some s' ∧ RDF.Subject.eqb s' s = true := by
+  cases ps with
+  | tripleTerm _ _ _ => exact absurd htt (by simp [PatternSubjectTtFree])
+  | iri i =>
+      rw [show embedPatternSubject mu (.iri i) = embedTerm (.iri i) from rfl,
+          denot_embedTerm_herbQ g] at h
+      exact ⟨.iri i, rfl,
+        subjectEqb_of_termEqb
+          (eqb_of_herbDenot (by simp [RDF.TermTtFree, RDF.Subject.toTerm])
+            (subjToTerm_ttFree s) h)⟩
+  | bnode b =>
+      rw [show embedPatternSubject mu (.bnode b) = embedTerm (.bnode b) from rfl,
+          denot_embedTerm_herbQ g] at h
+      exact ⟨.bnode b, rfl,
+        subjectEqb_of_termEqb
+          (eqb_of_herbDenot (by simp [RDF.TermTtFree, RDF.Subject.toTerm])
+            (subjToTerm_ttFree s) h)⟩
+  | var v =>
+      cases hl : mu.lookup v with
+      | none =>
+          exfalso
+          rw [show embedPatternSubject mu (.var v) = .name (varName v) by
+                simp [embedPatternSubject, hl]] at h
+          have h1 : (herbName (varName v)).1 = (herbDenot s.toTerm).1 := by
+            simpa [herbQ, CL.denotTerm] using congrArg Prod.fst h
+          rw [herbName_fst] at h1
+          cases s with
+          | iri j =>
+              exact varName_ne_iri v j (by simpa [herbDenot, RDF.Subject.toTerm] using h1)
+          | bnode c =>
+              exact varName_ne_bnodeName v c
+                (by simpa [herbDenot, RDF.Subject.toTerm] using h1)
+      | some u =>
+          rw [show embedPatternSubject mu (.var v) = embedTerm u by
+                simp [embedPatternSubject, hl],
+              denot_embedTerm_herbQ g] at h
+          obtain ⟨nn, hnn⟩ := herbDenot_fst_subj s
+          have hu : RDF.TermTtFree u :=
+            ttFree_of_herbDenot_fst_some (n := nn) (by rw [h]; exact hnn)
+          have heq : RDF.Term.eqb u s.toTerm = true :=
+            eqb_of_herbDenot hu (subjToTerm_ttFree s) h
+          cases u with
+          | iri j =>
+              exact ⟨.iri j, by simp [SPARQL.instSubject, hl],
+                subjectEqb_of_termEqb (by simpa [RDF.Subject.toTerm] using heq)⟩
+          | bnode c =>
+              exact ⟨.bnode c, by simp [SPARQL.instSubject, hl],
+                subjectEqb_of_termEqb (by simpa [RDF.Subject.toTerm] using heq)⟩
+          | literal _ =>
+              exact absurd heq
+                (by cases s <;> simp [RDF.Subject.toTerm, RDF.Term.eqb])
+          | tripleTerm _ _ _ => exact absurd hu (by simp [RDF.TermTtFree])
+
+theorem instObject_of_denot {g : RDF.Graph} {mu : SPARQL.Binding}
+    {pt : SPARQL.PatternTerm} {o : RDF.Term}
+    (htt : PatternTermTtFree pt) (hott : RDF.TermTtFree o)
+    (h : CL.denotTerm (herbQ g) (herbQ g).iName (fun _ => [])
+           (embedPatternTerm mu pt) = herbDenot o) :
+    ∃ o', SPARQL.instObject id mu pt = some o' ∧ RDF.Term.eqb o' o = true := by
+  cases pt with
+  | tripleTerm _ _ _ => exact absurd htt (by simp [PatternTermTtFree])
+  | iri i =>
+      rw [show embedPatternTerm mu (.iri i) = embedTerm (.iri i) from rfl,
+          denot_embedTerm_herbQ g] at h
+      exact ⟨.iri i, rfl, eqb_of_herbDenot (by simp [RDF.TermTtFree]) hott h⟩
+  | bnode b =>
+      rw [show embedPatternTerm mu (.bnode b) = embedTerm (.bnode b) from rfl,
+          denot_embedTerm_herbQ g] at h
+      exact ⟨.bnode b, rfl, eqb_of_herbDenot (by simp [RDF.TermTtFree]) hott h⟩
+  | literal l =>
+      rw [show embedPatternTerm mu (.literal l) = embedTerm (.literal l) from rfl,
+          denot_embedTerm_herbQ g] at h
+      exact ⟨.literal l, rfl, eqb_of_herbDenot (by simp [RDF.TermTtFree]) hott h⟩
+  | var v =>
+      cases hl : mu.lookup v with
+      | none =>
+          exfalso
+          rw [show embedPatternTerm mu (.var v) = .name (varName v) by
+                simp [embedPatternTerm, hl]] at h
+          have h1 : some (varName v) = (herbDenot o).1 := by
+            simpa [herbQ, CL.denotTerm, herbName_fst] using congrArg Prod.fst h
+          cases o with
+          | iri j => exact varName_ne_iri v j (by simpa [herbDenot] using h1)
+          | bnode c => exact varName_ne_bnodeName v c (by simpa [herbDenot] using h1)
+          | literal _ => simp [herbDenot] at h1
+          | tripleTerm _ _ _ => exact absurd hott (by simp [RDF.TermTtFree])
+      | some u =>
+          rw [show embedPatternTerm mu (.var v) = embedTerm u by
+                simp [embedPatternTerm, hl],
+              denot_embedTerm_herbQ g] at h
+          have hu : RDF.TermTtFree u := by
+            cases u with
+            | tripleTerm _ _ _ =>
+                exfalso
+                cases o with
+                | iri j =>
+                    exact absurd (congrArg Prod.fst h) (by simp [herbDenot])
+                | bnode c =>
+                    exact absurd (congrArg Prod.fst h) (by simp [herbDenot])
+                | literal m =>
+                    have := tq_eq_iff.mp
+                      (by simpa [herbDenot] using congrArg Prod.snd h)
+                    simp [RDF.Term.eqb] at this
+                | tripleTerm _ _ _ => exact absurd hott (by simp [RDF.TermTtFree])
+            | iri _ => simp [RDF.TermTtFree]
+            | bnode _ => simp [RDF.TermTtFree]
+            | literal _ => simp [RDF.TermTtFree]
+          exact ⟨u, by simp [SPARQL.instObject, hl], eqb_of_herbDenot hu hott h⟩
+
+theorem constructPredicate_of_denot {g : RDF.Graph} {mu : SPARQL.Binding}
+    {pt : SPARQL.PatternTerm} {p : RDF.WfIri} (htt : PatternTermTtFree pt)
+    (h : CL.denotTerm (herbQ g) (herbQ g).iName (fun _ => [])
+           (embedPatternTerm mu pt) = herbDenot (.iri p)) :
+    SPARQL.constructPredicate pt mu = some p := by
+  obtain ⟨o', ho', hoe⟩ := instObject_of_denot htt (by simp [RDF.TermTtFree]) h
+  cases o' with
+  | iri j =>
+      have : j = p := Subtype.ext (by simpa [RDF.Term.eqb] using hoe)
+      subst this
+      cases pt with
+      | iri i =>
+          simp only [SPARQL.instObject, Option.some.injEq] at ho'
+          have hij : i = j := by injection ho'
+          simp [SPARQL.constructPredicate, hij]
+      | var v =>
+          simp only [SPARQL.instObject] at ho'
+          simp [SPARQL.constructPredicate, ho']
+      | bnode _ => simp [SPARQL.instObject] at ho'
+      | literal _ => simp [SPARQL.instObject] at ho'
+      | tripleTerm _ _ _ => exact absurd htt (by simp [PatternTermTtFree])
+  | bnode _ => simp [RDF.Term.eqb] at hoe
+  | literal _ => simp [RDF.Term.eqb] at hoe
+  | tripleTerm _ _ _ => simp [RDF.Term.eqb] at hoe
+
+/-- **Reflection at the atom**: a predication true in the term model
+comes from a triple of the graph, and the pattern instantiates to an
+engine-equal triple. -/
+theorem patternAtom_reflect {g : RDF.Graph} {mu : SPARQL.Binding}
+    {tp : SPARQL.TriplePattern} (htt : TpTtFree tp) (hg : RDF.GraphTtFree g)
+    (h : CL.Satisfies (herbQ g) (patternAtom mu tp)) :
+    ∃ t', SPARQL.instTriple id mu tp = some t' ∧ RDF.Graph.mem t' g = true := by
+  obtain ⟨hts, htp, hto⟩ := htt
+  have h' : herbRel g
+      (CL.denotTerm (herbQ g) (herbQ g).iName (fun _ => [])
+        (embedPatternTerm mu tp.p))
+      [CL.denotTerm (herbQ g) (herbQ g).iName (fun _ => [])
+        (embedPatternSubject mu tp.s),
+       CL.denotTerm (herbQ g) (herbQ g).iName (fun _ => [])
+        (embedPatternTerm mu tp.o)] := by
+    simpa [CL.Satisfies, patternAtom, CL.Sat, CL.denotSeq, herbQ] using h
+  obtain ⟨t, ht, hp, hs, ho⟩ := h'
+  obtain ⟨s', hs', hse⟩ := instSubject_of_denot hts hs
+  obtain ⟨o', ho', hoe⟩ := instObject_of_denot hto (hg t ht) ho
+  have hpm : SPARQL.constructPredicate tp.p mu = some t.p :=
+    constructPredicate_of_denot htp hp
+  refine ⟨{ s := s', p := t.p, o := o' }, ?_, ?_⟩
+  · simp only [SPARQL.instTriple, hs', hpm, ho']
+  · exact RDF.graphMem_of_exists ⟨t, ht, by
+      simp [RDF.Triple.eqb, RDF.Subject.eqb_symm, RDF.Term.eqb_symm, hse, hoe]⟩
+
+/-! ## The stage 6 gate theorem -/
+
+/-- **BGP adequacy** (design document §4.6, in the pivot form the
+module header explains): a solution mapping instantiates a basic graph
+pattern into a graph exactly when it answers the query from the
+graph's Skolem reading, under the engine-term-equality schema.
+
+A FULL iff. Hypotheses, and their exact strength:
+
+* `hg : RDF.GraphTtFree g` and `hb : BgpTtFree b` are needed only by
+  the ← direction, where the term model gives every triple term the
+  same quarantine constant (`RDF.herbrand` carries the identical
+  hypothesis for the identical reason). The → direction
+  (`bgp_matches_answers`) has no hypotheses at all.
+* No domain hypothesis on `mu`: an unbound variable is REFUTED by the
+  term model rather than excluded by assumption.
+
+**Delimitation** (SPARQL 1.1 §18.3.1;
+https://github.com/danbri/factoidal/issues/607): a blank node in `b`
+is read as a CONSTANT on BOTH sides — by `instTriple`/`tryBind*` on
+the left, by the Skolem reading on the right. On a pattern containing
+a blank node this theorem is therefore adequate TO THE ENGINE, not to
+the specification, whose pattern instance mapping would let that blank
+node match any RDF term. `unified_adequate_bgp_bnodeFree` is the
+corollary that carries the fragment guard on which the two readings
+provably coincide. **No multiplicity is claimed** (design document
+§5.4). -/
+theorem unified_adequate_bgp (b : SPARQL.Bgp) (g : RDF.Graph)
+    (mu : SPARQL.Binding) (hg : RDF.GraphTtFree g) (hb : BgpTtFree b) :
+    BgpMatches mu b g ↔
+      Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu := by
+  constructor
+  · exact bgp_matches_answers
+  · intro hA tp htp
+    have hsat : CL.Satisfies (herbQ g) (bgpBody mu b) :=
+      hA (herbQ g) trivial (herbQ_satisfiesSchema g) (fun s hs => by
+        obtain rfl := List.mem_singleton.mp hs
+        exact herbQ_satisfies_sk g hg)
+    exact patternAtom_reflect (hb tp htp) hg
+      ((satisfies_bgpBody_iff (herbQ g) mu b).mp hsat tp htp)
+
 end L4Factoidal.Unified
