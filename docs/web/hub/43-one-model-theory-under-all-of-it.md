@@ -51,8 +51,7 @@ never machine-checked.
 Menzel, IKRIS 2006) supplies what §4.0 says is missing: it extends
 Common Logic (ISO/IEC 24707) with the term `(that S)`, which denotes
 the proposition a sentence expresses.
-[Post 39](../39-propositions-as-first-class-citizens/) and
-[post 41](../41-a-walkthrough-of-the-ikl-guide/) run that machinery
+[Post 41](../41-a-walkthrough-of-the-ikl-guide/) parses that construct
 live; `CL/Semantics.lean` in this repository formalizes the ISO/IEC
 24707 §6.2/§6.3 clauses plus the IKL proposition domain.
 
