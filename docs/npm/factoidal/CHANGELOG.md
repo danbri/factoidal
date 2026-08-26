@@ -1,5 +1,87 @@
 # Changelog
 
+## 0.3.0 — both engines in one package, with a backend selector
+
+- The Lean 4 engine (`L4Factoidal`, wasm) now ships INSIDE
+  `@factoidal/core` as `l4-assets/`, alongside the F\*-extracted
+  engine. One install gets both. `require('factoidal/l4')` and
+  `factoidal/l4-core` are unchanged; the resolver checks in-package
+  assets first, then falls through to the old order (companion
+  package, `$FACTOIDAL_L4_ASSETS`, repo checkout).
+- `@factoidal/lean` is superseded and was never published.
+- New subpath `factoidal/select`: a backend selector, per-instance
+  with per-call override. Values `lean`, `fstar`, `lean1st`,
+  `fstar1st`, `slowcompareboth`. A request naming exactly one engine
+  never gets an answer from the other -- `lean` and `fstar` throw on a
+  function that engine does not implement; `lean1st` / `fstar1st` fall
+  through, and `lean1st` also takes a list of functions to route to
+  F\* regardless. Every result carries the answering engine.
+  `slowcompareboth` runs both and REPORTS disagreement rather than
+  throwing; comparison is RDFC-1.0 isomorphism for Dataset-shaped
+  results and bag equality (blank nodes relabelled per side) for
+  SELECT bindings.
+- Measured on the typed API surface at this release: 15 functions both
+  engines answer, 38 F\*-only, 4 Lean-only (out of 57). This measures
+  the typed wrapper surface, not the Lean engine's total capability --
+  `l4-core.js` wires 16 of the engine's 21 dispatch ops.
+- `clParse` (Common Logic Interchange Format text, ISO/IEC 24707:2018,
+  with the IKL `that`-operator extension) is now wired into the typed
+  API -- `l4-core.js`/`lib/api.js`/`select.js`, with `.d.ts` types and
+  tests. It reads CLIF text and reports its shape (sentence count,
+  `pureCL` dialect flag, canonical re-serialisation); it never produces
+  RDF. `pureCL` is a DIALECT flag, not a validity or quality signal:
+  true while the text stays inside ISO/IEC 24707 Common Logic, false
+  once it uses IKL's `that` operator. It is the first Lean-only entry
+  on the typed capability table -- formal/fstar has no CL/IKL parser at
+  all, so `index.js`/`wasm.js` never export it, `factoidal/select`'s
+  `backend:'fstar'` throws for it (never falls back to Lean), and
+  `backend:'slowcompareboth'` fails the capability precondition rather
+  than comparing one side against nothing.
+- `clSerialize`, `clAlphaNorm` and `clNormalize` join `clParse` on the
+  same Lean-only typed surface (owner instruction, 2026-08-26 -- "wire
+  into js functional api"), same `.d.ts`-typed, test-covered pattern:
+  `clSerialize` reads CLIF text and writes it back in canonical
+  spacing, surfacing `roundTripProved: false` unmodified (the
+  round-trip lemma `clif_roundTrip`, `CL/ClifAdequacy.lean`, is OPEN --
+  the fragment boundary `marksLexable` is measured, not proved).
+  `clAlphaNorm` gives each sentence's bound-variable-renaming canonical
+  form (IKL GUIDE Appendix B condition (1)). `clNormalize` is Hayes's
+  satisfiability-preserving reduction of IKL to Common Logic
+  ([#625](https://github.com/danbri/factoidal/issues/625)): it
+  surfaces `preserves: "satisfiability"` (not equivalence -- suited to
+  entailment/consistency testing, not to transforming data you intend
+  to keep) and `noIntrusion` (the proof hypothesis `CL.noIntrSs [] []`
+  decides, not a paraphrase of it). `clFiniteSat`, the fifth CL/IKL op,
+  is DEFERRED rather than wired: it takes a caller-supplied finite-
+  interpretation JSON encoding with no user yet, and a typed wrapper
+  would freeze that shape before it is known to be right; it stays
+  reachable through the raw dispatch ABI.
+- The IKL-to-RDF projection ops (`clToDataset`, `queryWithIklService`)
+  are DELETED from the engine source (danbri/factoidal#626), along with
+  the content-addressed proposition graph names they minted. They were
+  never exposed through the npm API. `x-ikl-*` entailment regimes are
+  still rejected at the JS layer, and the engine no longer defines the
+  family either. The two ops remain present in the compiled wasm
+  artifact until it is rebuilt (danbri/factoidal#627) -- the artifact
+  is ahead of its source. `clParse` is a different op (it never
+  produces RDF) and is unaffected.
+
+## 0.2.0 — Lean 4 engine subpath
+
+- New `factoidal/l4-core` subpath: the same typed API served by the
+  Lean 4-extracted wasm engine instead of the F\*-extracted one
+  ([#476](https://github.com/danbri/factoidal/issues/476)). Engine
+  assets resolve from the `@factoidal/lean` companion package, the
+  `FACTOIDAL_L4_ASSETS` environment variable, or the repository
+  checkout, in that order. `capabilities()` reports the Lean engine's
+  actual surface; `shaclValidate`/`owlIsConsistent`/`owlEntails`
+  raise pinned errors rather than returning wrong answers
+  ([#586](https://github.com/danbri/factoidal/issues/586) tracks the
+  OWL verdicts).
+- `serialize({ format: "nquads" })` now normalizes through the entry
+  ABI instead of the CLI path.
+
+
 ## 0.1.0 — First published release (as `@factoidal/core`)
 
 - SPARQL 1.1 §17.6 extension functions
