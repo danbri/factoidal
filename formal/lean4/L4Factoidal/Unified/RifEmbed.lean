@@ -563,4 +563,204 @@ def rifFunctionTermRule : RIF.Rule :=
 theorem rifFunctionTermRule_rejected :
     rifRuleOk rifFunctionTermRule = false := by decide
 
+/-! ## A worked rule set, decided end to end
+
+The pattern of `Unified/DatalogClosures.lean`: a concrete program,
+both directions of the gate theorem discharged by `decide`, and a
+NEGATIVE instance so the entailment relation is visibly not the
+everything-relation. -/
+
+private theorem rifDemoIri (s : String) :
+    RDF.isIri ("http://rif.example/" ++ s) = true := by
+  simp [RDF.isIri, String.isEmpty]
+
+private def ri (s : String) : RDF.WfIri := ⟨"http://rif.example/" ++ s, rifDemoIri s⟩
+private def rsub (s : String) : RDF.Subject := .iri (ri s)
+private def robj (s : String) : RDF.Term := .iri (ri s)
+private def rtm (s : String) : RIF.Tm := .const ("http://rif.example/" ++ s) RIF.iriSpace
+
+/-- Three rules covering the three desugaring shapes: a MEMBERSHIP
+rule `?x # ex:D :- ?x # ex:C`, a FRAME rule
+`?x[ex:q -> ?y] :- ?x[ex:p -> ?y]`, and a TERNARY positional head
+`ex:linked(?x ?y ex:mark) :- ?x[ex:p -> ?y]` — the last one is what
+makes the n-ary machinery do work no binary encoding could. -/
+def demoRifRules : RifRuleSet :=
+  [ { vars := ["x"], head := .member (.var "x") (rtm "D"),
+      body := some (.atom (.member (.var "x") (rtm "C"))) },
+    { vars := ["x", "y"], head := .frame (.var "x") (rtm "q") (.var "y"),
+      body := some (.atom (.frame (.var "x") (rtm "p") (.var "y"))) },
+    { vars := ["x", "y"],
+      head := .pos "http://rif.example/linked" RIF.iriSpace
+                [.var "x", .var "y", rtm "mark"],
+      body := some (.atom (.frame (.var "x") (rtm "p") (.var "y"))) } ]
+
+def demoRifGraph : RDF.Graph :=
+  [ ⟨rsub "a", RDFS.rdfType, robj "C"⟩, ⟨rsub "a", ri "p", robj "b"⟩ ]
+
+theorem demoRifRules_fragment : rifCoreFragmentB demoRifRules = true := by decide
+
+/-- The rule set as a program of the class. The `by decide` IS the
+class gate: it discharges the colon discipline and definiteness for
+all three rules. -/
+def demoRifProgram : DatalogProgram := ⟨rifDRules demoRifRules, by decide⟩
+
+theorem demoRifProgram_rules : demoRifProgram.rules = rifDRules demoRifRules := rfl
+
+private def demoDerivedType : RDF.Triple := ⟨rsub "a", RDFS.rdfType, robj "D"⟩
+private def demoDerivedFrame : RDF.Triple := ⟨rsub "a", ri "q", robj "b"⟩
+private def demoUnderivedType : RDF.Triple := ⟨rsub "b", RDFS.rdfType, robj "D"⟩
+
+/-- The membership rule's consequence, end to end: the executable
+fixpoint decides a CL-entailment verdict for the rules-as-sentences. -/
+theorem rifCore_demo_member_entails :
+    EntailsSchema condTrue (fun s => s ∈ rifCoreToTheory demoRifRules)
+      [rdfToTheorySk demoRifGraph] (rdfToTheory [demoDerivedType]) :=
+  (rifCore_lfp_iff_entails demoRifRules demoRifProgram rfl demoRifGraph
+    (graphIriOnly_of_check (by decide)) demoDerivedType
+    (tripleIriOnly_of_check (by decide)) 2
+    (demoRifProgram.fuelAdequate_of_check (by decide))).mp (by decide)
+
+/-- The frame rule's consequence. -/
+theorem rifCore_demo_frame_entails :
+    EntailsSchema condTrue (fun s => s ∈ rifCoreToTheory demoRifRules)
+      [rdfToTheorySk demoRifGraph] (rdfToTheory [demoDerivedFrame]) :=
+  (rifCore_lfp_iff_entails demoRifRules demoRifProgram rfl demoRifGraph
+    (graphIriOnly_of_check (by decide)) demoDerivedFrame
+    (tripleIriOnly_of_check (by decide)) 2
+    (demoRifProgram.fuelAdequate_of_check (by decide))).mp (by decide)
+
+/-- The TERNARY consequence — arity 3, no triple form, stated at the
+predication level through the n-ary gate theorem. -/
+theorem rifCore_demo_nary_entails :
+    EntailsSchema condTrue (fun s => s ∈ rifCoreToTheory demoRifRules)
+      [rdfToTheorySk demoRifGraph]
+      (DAtom.sentence ⟨.c "http://rif.example/linked",
+        [.c "http://rif.example/a", .c "http://rif.example/b",
+         .c "http://rif.example/mark"]⟩) :=
+  (rifCore_lfp_iff_entails_atom demoRifRules demoRifProgram rfl demoRifGraph
+    (graphIriOnly_of_check (by decide))
+    ⟨.c "http://rif.example/linked",
+      [.c "http://rif.example/a", .c "http://rif.example/b",
+       .c "http://rif.example/mark"]⟩ (by decide) 2
+    (demoRifProgram.fuelAdequate_of_check (by decide))).mp (by decide)
+
+/-- **The not-everything guard.** `ex:b # ex:D` is NOT entailed: the
+refutation flows through the COMPLETENESS half of the gate theorem, so
+it is a statement about the entailment relation and not merely about
+the fixpoint. -/
+theorem rifCore_demo_not_entailed :
+    ¬ EntailsSchema condTrue (fun s => s ∈ rifCoreToTheory demoRifRules)
+        [rdfToTheorySk demoRifGraph] (rdfToTheory [demoUnderivedType]) := by
+  intro h
+  have hm := (rifCore_lfp_iff_entails demoRifRules demoRifProgram rfl demoRifGraph
+    (graphIriOnly_of_check (by decide)) demoUnderivedType
+    (tripleIriOnly_of_check (by decide)) 2
+    (demoRifProgram.fuelAdequate_of_check (by decide))).mpr h
+  exact absurd hm (by decide)
+
+/-- **Non-vacuity, part 2.** The demo schema is satisfiable, so the
+three positive theorems above are not entailments out of an
+unsatisfiable premise set. -/
+theorem rifCore_demo_satisfiable :
+    ∃ i : CL.Interp, SatisfiesSchema i (fun s => s ∈ rifCoreToTheory demoRifRules) :=
+  rifCoreToTheory_satisfiable demoRifRules demoRifProgram rfl
+
+/-! ## Agreement with the native engine — EVIDENCE, not a theorem
+
+`RIF.Saturate.saturateGraph` runs `RIF.closure`, which calls the
+`partial def` `matchFormula`. The kernel cannot reduce it and no proof
+can see through it, so what follows is a build-time check under
+COMPILED evaluation, at the strength `Unified/DatalogClosures.lean`
+labels its RDFS-Plus `#guard`s with. Making `groundTm`, `matchFormula`
+and `qualifyTm` total is the prerequisite for turning this into a
+theorem. -/
+
+/-- A binary Datalog fact back to its triple, when all three positions
+are well-formed IRIs. Atoms of other arities — the positional ones —
+have no triple form and yield none, exactly as
+`RIF.Saturate.tripleOfGAtom` does for a `pos` atom. -/
+def rifFactTriple? (a : DAtom) : Option RDF.Triple :=
+  match a.pred, a.args with
+  | .c p, [.c s, .c o] =>
+      if hp : RDF.isIri p then
+        if hs : RDF.isIri s then
+          if ho : RDF.isIri o then
+            some ⟨.iri ⟨s, hs⟩, ⟨p, hp⟩, .iri ⟨o, ho⟩⟩
+          else none
+        else none
+      else none
+  | _, _ => none
+
+/-- Membership equality between the engine's saturated graph and the
+triple image of the program's least fixpoint. -/
+def rifEngineDatalogAgrees (rs : RifRuleSet) (p : DatalogProgram)
+    (g : RDF.Graph) (rounds fuel : Nat) : Bool :=
+  let eng := RIF.Saturate.saturateGraph "rules" rs g rounds
+  let dl := (p.lfp (rifGraphFacts g) fuel).filterMap rifFactTriple?
+  eng.all (fun t => dl.contains t) && dl.all (fun t => eng.contains t)
+
+section Checks
+
+/-! ### The engine and the program derive the same triples here -/
+
+#guard rifEngineDatalogAgrees demoRifRules demoRifProgram demoRifGraph 8 2
+
+/-! And the check is not vacuous: the engine's saturation is strictly
+larger than the input graph, so both sides are doing work. -/
+
+#guard (RIF.Saturate.saturateGraph "rules" demoRifRules demoRifGraph 8).length == 4
+#guard demoRifGraph.length == 2
+
+/-! ### The structural flattener agrees with `RIF/Translation.lean`'s
+
+`rifCollect` restates `RIF.collectAtoms` clause for clause; this pins
+the restatement against the original on every rule this module names,
+the rejected boundary shapes included. `DRule` has `DecidableEq`, RIF's
+`Atom` does not, so the comparison is made after translation. -/
+
+private def rifRuleDViaTranslation (r : RIF.Rule) : Option DRule :=
+  match (match r.body with
+         | none => some []
+         | some f => RIF.collectAtoms f) with
+  | none => none
+  | some bs => some ⟨rifAtomD r.head, bs.map rifAtomD⟩
+
+#guard (demoRifRules ++
+        [rifExistentialHeadRule, rifEqualBodyRule, rifBuiltinBodyRule,
+         rifOrBodyRule, rifFunctionTermRule]).all
+       (fun r => decide (rifRuleD r = rifRuleDViaTranslation r))
+
+/-! ### The fixpoint holds what the theorems say, and not more -/
+
+#guard demoRifProgram.saturatedCheck (rifGraphFacts demoRifGraph) 2
+#guard !demoRifProgram.saturatedCheck (rifGraphFacts demoRifGraph) 0
+#guard decide (rifTripleFact demoDerivedType ∈
+        demoRifProgram.lfp (rifGraphFacts demoRifGraph) 2)
+#guard decide (rifTripleFact demoDerivedFrame ∈
+        demoRifProgram.lfp (rifGraphFacts demoRifGraph) 2)
+#guard !decide (rifTripleFact demoUnderivedType ∈
+        demoRifProgram.lfp (rifGraphFacts demoRifGraph) 2)
+
+/-! ### Axiom audit — expected at most `propext` / `Classical.choice` /
+`Quot.sound`. No `sorryAx`, nothing user-declared. -/
+
+#print axioms rifCoreProgram_of_fragment
+#print axioms rifCoreToTheory_schema
+#print axioms rifTripleFact_sentence
+#print axioms rifGraphFacts_sentences
+#print axioms satisfiesAll_tripleAtoms_iff
+#print axioms satisfies_rdfToTheory_single
+#print axioms rifCore_lfp_iff_entails_atom
+#print axioms rifCore_lfp_iff_entails
+#print axioms rifCoreToTheory_satisfiable
+#print axioms rifCore_demo_member_entails
+#print axioms rifCore_demo_frame_entails
+#print axioms rifCore_demo_nary_entails
+#print axioms rifCore_demo_not_entailed
+#print axioms rifCore_demo_satisfiable
+#print axioms rifExistentialHeadRule_rejected
+#print axioms rifOrBodyRule_no_rule
+
+end Checks
+
 end L4Factoidal.Unified
