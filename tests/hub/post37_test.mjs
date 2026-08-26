@@ -108,10 +108,37 @@ if (!SKIP_REASON) {
 
 test('post37: installed tarball version.json gitSha is an ancestor of (or equal to) HEAD',
   { skip: SKIP_REASON || undefined },
-  () => {
+  (t) => {
     assert.ok(PKG_VERSION_JSON && typeof PKG_VERSION_JSON.gitSha === 'string' &&
       /^[0-9a-f]{40}$/.test(PKG_VERSION_JSON.gitSha),
       `expected a 40-hex-char gitSha in version.json, got ${JSON.stringify(PKG_VERSION_JSON)}`);
+    // A SHALLOW clone cannot answer this. `git merge-base --is-ancestor`
+    // fails when either commit is beyond a graft boundary, and the
+    // failure is indistinguishable from a real "not an ancestor". CI
+    // runners and container clones are routinely shallow, so asserting
+    // here reports the clone's depth as a version.json defect.
+    //
+    // Measured 2026-08-26: this test failed in a shallow container for a
+    // gitSha that IS an ancestor of claude/main -- confirmed by resolving
+    // the objects directly once they were present. Five hub tests failed
+    // that way and none of them was a real finding.
+    //
+    // So: check shallowness first and SKIP with a reason. A test that
+    // cannot see the thing it asserts must say so, not fail.
+    const isShallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'],
+      { cwd: REPO_ROOT, encoding: 'utf8' }).trim() === 'true';
+    const haveObject = (() => {
+      try {
+        execFileSync('git', ['cat-file', '-e', PKG_VERSION_JSON.gitSha],
+          { cwd: REPO_ROOT, stdio: 'pipe' });
+        return true;
+      } catch { return false; }
+    })();
+    if (isShallow && !haveObject) {
+      t.skip(`shallow clone: ${PKG_VERSION_JSON.gitSha.slice(0, 12)} is beyond the ` +
+        'graft boundary, so ancestry is unanswerable here. Re-run with full history.');
+      return;
+    }
     // Throws if NOT an ancestor -- that IS the assertion.
     execFileSync('git', ['merge-base', '--is-ancestor', PKG_VERSION_JSON.gitSha, 'HEAD'],
       { cwd: REPO_ROOT, stdio: 'pipe' });
