@@ -79,6 +79,10 @@ import L4Factoidal.CL.Clif
 
 namespace L4Factoidal.CL
 
+-- The purity proofs below share one rewrite set across many cases;
+-- not every case needs every lemma of it.
+set_option linter.unusedSimpArgs false
+
 /-! ## Free names and free sequence markers
 
 Free occurrences per ISO/IEC 24707 §6.3's binding discipline, as
@@ -799,5 +803,283 @@ theorem mem_addNames {m : String} {ns : List String} :
         · rcases List.mem_cons.mp h with rfl | h
           · exact Or.inl (Or.inr rfl)
           · exact Or.inr h
+
+/-! ## The output is Common Logic
+
+Hayes: "an obvious inductive argument shows that this process of
+normalization must terminate with a CL text". Termination is settled
+by the traversal being structurally recursive; what is left to prove
+is the other half of that sentence — that what comes out contains no
+proposition name, so it is a text of ISO/IEC 24707 Common Logic
+proper. `Sentence.isPureCL` is the membership test
+(`CL.Syntax`). -/
+
+/-- A sequence of bound sequence markers is pure CL. -/
+theorem seqItemsPureCL_marks :
+    ∀ um : List String, seqItemsPureCL (um.map SeqItem.seqmark) = true
+  | [] => by simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_nil, seqItemsPureCL]
+  | _ :: r => by simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_cons, seqItemsPureCL]; exact seqItemsPureCL_marks r
+
+/-- The argument sequence of a replacement term is pure CL. -/
+theorem seqItemsPureCL_args :
+    ∀ (u um : List String),
+      seqItemsPureCL ((u.map (fun n => SeqItem.term (Term.name n)))
+        ++ um.map SeqItem.seqmark) = true
+  | [], um => by simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_nil, List.nil_append]; exact seqItemsPureCL_marks um
+  | _ :: r, um => by
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_cons, List.cons_append, seqItemsPureCL, Term.isPureCL,
+          seqItemsPureCL_args r um]
+
+/-- A boundlist of plain names and sequence markers is pure CL. -/
+theorem bindingsPureCL_marks :
+    ∀ um : List String, bindingsPureCL (um.map Binding.seqmark) = true
+  | [] => by simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_nil, bindingsPureCL]
+  | _ :: r => by simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_cons, bindingsPureCL]; exact bindingsPureCL_marks r
+
+/-- The boundlist of a tail sentence is pure CL. -/
+theorem bindingsPureCL_tail :
+    ∀ (u um : List String),
+      bindingsPureCL ((u.map Binding.plain) ++ um.map Binding.seqmark) = true
+  | [], um => by simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_nil, List.nil_append]; exact bindingsPureCL_marks um
+  | _ :: r, um => by
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, List.map_cons, List.cons_append, bindingsPureCL, bindingsPureCL_tail r um]
+
+/-- A replacement term is pure CL. -/
+theorem kTerm_pure (k : String) (u um : List String) :
+    (kTerm k u um).isPureCL = true := by
+  simp only [Bool.and_self, Bool.and_true, Bool.true_and, kTerm]
+  by_cases h : (u.isEmpty && um.isEmpty) = true
+  · simp only [Bool.and_self, Bool.and_true, Bool.true_and, if_pos h, Term.isPureCL]
+  · simp only [Bool.and_self, Bool.and_true, Bool.true_and, if_neg h, Term.isPureCL, Term.isPureCL, seqItemsPureCL_args u um]
+
+/-- A tail sentence is pure CL when its body is. -/
+theorem kTail_pure (k : String) (u um : List String) (body : Sentence)
+    (h : body.isPureCL = true) : (kTail k u um body).isPureCL = true := by
+  have hcore : (Sentence.iff (.atom (kTerm k u um) []) body).isPureCL = true := by
+    simp only [Sentence.isPureCL, kTerm_pure, seqItemsPureCL, h, Bool.and_self,
+               Bool.true_and]
+  rw [kTail]
+  by_cases hb : (u.isEmpty && um.isEmpty) = true
+  · rw [if_pos hb]; exact hcore
+  · rw [if_neg hb, Sentence.isPureCL, bindingsPureCL_tail u um, hcore]
+    rfl
+
+mutual
+
+/-- The transformed term is pure CL. -/
+theorem normT_pure : ∀ (t : Term) (bnd bm : List String) (c : Nat),
+    (normTerm bnd bm c t).1.isPureCL = true
+  | .name _ => by intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normTerm, Term.isPureCL]
+  | .str _ => by intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normTerm, Term.isPureCL]
+  | .funapp op args => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normTerm, Term.isPureCL, normT_pure op bnd bm c,
+          normSeq_pure args bnd bm (normTerm bnd bm c op).2.2]
+  | .that s => by intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normTerm]; exact kTerm_pure _ _ _
+
+/-- The transformed argument sequence is pure CL. -/
+theorem normSeq_pure : ∀ (args : List SeqItem) (bnd bm : List String) (c : Nat),
+    seqItemsPureCL (normSeq bnd bm c args).1 = true
+  | [] => by intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSeq, seqItemsPureCL]
+  | .term t :: r => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSeq, seqItemsPureCL, normT_pure t bnd bm c,
+          normSeq_pure r bnd bm (normTerm bnd bm c t).2.2]
+  | .seqmark _ :: r => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSeq, seqItemsPureCL, normSeq_pure r bnd bm c]
+
+/-- The transformed boundlist is pure CL. -/
+theorem normBinds_pure : ∀ (bs : List Binding) (bnd bm : List String) (c : Nat),
+    bindingsPureCL (normBinds bnd bm c bs).1 = true
+  | [] => by intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normBinds, bindingsPureCL]
+  | .plain n :: r => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normBinds, bindingsPureCL, normBinds_pure r (addName bnd n) bm c]
+  | .seqmark m :: r => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normBinds, bindingsPureCL, normBinds_pure r bnd (addName bm m) c]
+  | .restricted n g :: r => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normBinds, bindingsPureCL, normT_pure g bnd bm c,
+          normBinds_pure r (addName bnd n) bm (normTerm bnd bm c g).2.2]
+
+/-- The head sentence is pure CL. -/
+theorem normS_pure : ∀ (s : Sentence) (bnd bm : List String) (c : Nat),
+    (normSent bnd bm c s).1.isPureCL = true
+  | .atom p args => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normT_pure p bnd bm c,
+          normSeq_pure args bnd bm (normTerm bnd bm c p).2.2]
+  | .eq a b => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normT_pure a bnd bm c,
+          normT_pure b bnd bm (normTerm bnd bm c a).2.2]
+  | .conj ss => by
+      intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normSs_pure ss bnd bm c]
+  | .disj ss => by
+      intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normSs_pure ss bnd bm c]
+  | .neg s => by
+      intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normS_pure s bnd bm c]
+  | .impl a b => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normS_pure a bnd bm c,
+          normS_pure b bnd bm (normSent bnd bm c a).2.2]
+  | .iff a b => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normS_pure a bnd bm c,
+          normS_pure b bnd bm (normSent bnd bm c a).2.2]
+  | .all bs body => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normBinds_pure bs bnd bm c,
+          normS_pure body (addNames bnd (bindNames bs))
+            (addNames bm (bindMarks bs)) (normBinds bnd bm c bs).2.2]
+  | .ex bs body => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSent, Sentence.isPureCL, normBinds_pure bs bnd bm c,
+          normS_pure body (addNames bnd (bindNames bs))
+            (addNames bm (bindMarks bs)) (normBinds bnd bm c bs).2.2]
+
+/-- The transformed sentence list is pure CL. -/
+theorem normSs_pure : ∀ (ss : List Sentence) (bnd bm : List String) (c : Nat),
+    sentencesPureCL (normSents bnd bm c ss).1 = true
+  | [] => by intro bnd bm c; simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSents, sentencesPureCL]
+  | s :: r => by
+      intro bnd bm c
+      simp only [Bool.and_self, Bool.and_true, Bool.true_and, normSents, sentencesPureCL, normS_pure s bnd bm c,
+          normSs_pure r bnd bm (normSent bnd bm c s).2.2]
+
+end
+
+mutual
+
+/-- Every tail a term emits is pure CL. -/
+theorem normT_tailsPure : ∀ (t : Term) (bnd bm : List String) (c : Nat)
+    (tl : Sentence), tl ∈ (normTerm bnd bm c t).2.1 → tl.isPureCL = true
+  | .name _ => by
+      intro bnd bm c tl h; rw [normTerm] at h; exact absurd h List.not_mem_nil
+  | .str _ => by
+      intro bnd bm c tl h; rw [normTerm] at h; exact absurd h List.not_mem_nil
+  | .funapp op args => by
+      intro bnd bm c tl h
+      rw [normTerm] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normT_tailsPure op bnd bm c tl h
+      · exact normSeq_tailsPure args bnd bm (normTerm bnd bm c op).2.2 tl h
+  | .that s => by
+      intro bnd bm c tl h
+      rw [normTerm] at h
+      rcases List.mem_cons.mp h with rfl | h
+      · exact kTail_pure _ _ _ _ (normS_pure s _ _ (c + 1))
+      · exact normS_tailsPure s _ _ (c + 1) tl h
+
+/-- Every tail an argument sequence emits is pure CL. -/
+theorem normSeq_tailsPure : ∀ (args : List SeqItem) (bnd bm : List String) (c : Nat)
+    (tl : Sentence), tl ∈ (normSeq bnd bm c args).2.1 → tl.isPureCL = true
+  | [] => by
+      intro bnd bm c tl h; rw [normSeq] at h; exact absurd h List.not_mem_nil
+  | .term t :: r => by
+      intro bnd bm c tl h
+      rw [normSeq] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normT_tailsPure t bnd bm c tl h
+      · exact normSeq_tailsPure r bnd bm (normTerm bnd bm c t).2.2 tl h
+  | .seqmark _ :: r => by
+      intro bnd bm c tl h
+      rw [normSeq] at h
+      exact normSeq_tailsPure r bnd bm c tl h
+
+/-- Every tail a boundlist emits is pure CL. -/
+theorem normBinds_tailsPure : ∀ (bs : List Binding) (bnd bm : List String) (c : Nat)
+    (tl : Sentence), tl ∈ (normBinds bnd bm c bs).2.1 → tl.isPureCL = true
+  | [] => by
+      intro bnd bm c tl h; rw [normBinds] at h; exact absurd h List.not_mem_nil
+  | .plain n :: r => by
+      intro bnd bm c tl h
+      rw [normBinds] at h
+      exact normBinds_tailsPure r (addName bnd n) bm c tl h
+  | .seqmark m :: r => by
+      intro bnd bm c tl h
+      rw [normBinds] at h
+      exact normBinds_tailsPure r bnd (addName bm m) c tl h
+  | .restricted n g :: r => by
+      intro bnd bm c tl h
+      rw [normBinds] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normT_tailsPure g bnd bm c tl h
+      · exact normBinds_tailsPure r (addName bnd n) bm
+          (normTerm bnd bm c g).2.2 tl h
+
+/-- Every tail a sentence emits is pure CL. -/
+theorem normS_tailsPure : ∀ (s : Sentence) (bnd bm : List String) (c : Nat)
+    (tl : Sentence), tl ∈ (normSent bnd bm c s).2.1 → tl.isPureCL = true
+  | .atom p args => by
+      intro bnd bm c tl h
+      rw [normSent] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normT_tailsPure p bnd bm c tl h
+      · exact normSeq_tailsPure args bnd bm (normTerm bnd bm c p).2.2 tl h
+  | .eq a b => by
+      intro bnd bm c tl h
+      rw [normSent] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normT_tailsPure a bnd bm c tl h
+      · exact normT_tailsPure b bnd bm (normTerm bnd bm c a).2.2 tl h
+  | .conj ss => by
+      intro bnd bm c tl h; rw [normSent] at h
+      exact normSs_tailsPure ss bnd bm c tl h
+  | .disj ss => by
+      intro bnd bm c tl h; rw [normSent] at h
+      exact normSs_tailsPure ss bnd bm c tl h
+  | .neg s => by
+      intro bnd bm c tl h; rw [normSent] at h
+      exact normS_tailsPure s bnd bm c tl h
+  | .impl a b => by
+      intro bnd bm c tl h
+      rw [normSent] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normS_tailsPure a bnd bm c tl h
+      · exact normS_tailsPure b bnd bm (normSent bnd bm c a).2.2 tl h
+  | .iff a b => by
+      intro bnd bm c tl h
+      rw [normSent] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normS_tailsPure a bnd bm c tl h
+      · exact normS_tailsPure b bnd bm (normSent bnd bm c a).2.2 tl h
+  | .all bs body => by
+      intro bnd bm c tl h
+      rw [normSent] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normBinds_tailsPure bs bnd bm c tl h
+      · exact normS_tailsPure body (addNames bnd (bindNames bs))
+          (addNames bm (bindMarks bs)) (normBinds bnd bm c bs).2.2 tl h
+  | .ex bs body => by
+      intro bnd bm c tl h
+      rw [normSent] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normBinds_tailsPure bs bnd bm c tl h
+      · exact normS_tailsPure body (addNames bnd (bindNames bs))
+          (addNames bm (bindMarks bs)) (normBinds bnd bm c bs).2.2 tl h
+
+/-- Every tail a sentence list emits is pure CL. -/
+theorem normSs_tailsPure : ∀ (ss : List Sentence) (bnd bm : List String) (c : Nat)
+    (tl : Sentence), tl ∈ (normSents bnd bm c ss).2.1 → tl.isPureCL = true
+  | [] => by
+      intro bnd bm c tl h; rw [normSents] at h; exact absurd h List.not_mem_nil
+  | s :: r => by
+      intro bnd bm c tl h
+      rw [normSents] at h
+      rcases List.mem_append.mp h with h | h
+      · exact normS_tailsPure s bnd bm c tl h
+      · exact normSs_tailsPure r bnd bm (normSent bnd bm c s).2.2 tl h
+
+end
+
+/-- **The normalization of any IKL sentence is a Common Logic text.**
+Head and every tail contain no proposition name. -/
+theorem normalizeFrom_pureCL (start : Nat) (s : Sentence) :
+    (normalizeFrom start s).1.isPureCL = true
+      ∧ ∀ tl ∈ (normalizeFrom start s).2, tl.isPureCL = true :=
+  ⟨normS_pure s [] [] start, fun tl h => normS_tailsPure s [] [] start tl h⟩
 
 end L4Factoidal.CL
