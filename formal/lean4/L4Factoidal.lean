@@ -407,4 +407,6 @@ import L4Factoidal.Unified.OwlRlSchema
 import L4Factoidal.Unified.OwlRlAdequacy
 import L4Factoidal.Unified.OwlDlDirect
 import L4Factoidal.Unified.OwlDlAdequacy
+import L4Factoidal.Unified.SparqlQuery
+import L4Factoidal.Unified.SparqlAdequacy
 import L4Factoidal.Unified.Witnesses

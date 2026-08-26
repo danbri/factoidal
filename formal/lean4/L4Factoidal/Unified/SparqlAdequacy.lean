@@ -1117,4 +1117,232 @@ theorem regime_sound_rdfs {g : RDF.Graph} {b : SPARQL.Bgp}
     (fun a' t' ht' => hc.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2 a' t' ht')
     hc.2.2.2.1 hc.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hxml
 
+/-! ## The `x-ikl-*` family: a premise-list transform, not a closure
+
+`CL/IklRegime.lean`'s handler does not close a graph under rules; it
+merges the CONTENT of every ASSERTED proposition into the default
+graph (design document §2.4's assertion decoration;
+https://github.com/danbri/factoidal/issues/581 for the named subsets,
+still deferred). At the unified level that is a transform of the
+PREMISE LIST: the extended default graph is entailed by the dataset's
+own graphs, read Skolem-wise.
+
+One theorem, about the merge itself. What it deliberately does NOT
+claim: that the merge is CONSERVATIVE (the `urn:cl:def:asserts`
+decoration is not tied by any landed theorem to the IKL `that`-term
+semantics of `CL.IklRespectsThat`), and nothing about the suffix — all
+suffixes route to one handler, per the owner ruling recorded in
+issue 581. -/
+
+theorem mem_graphAdd {g : RDF.Graph} {t u : RDF.Triple}
+    (h : t ∈ RDF.Graph.add u g) : t ∈ g ∨ t = u := by
+  simp only [RDF.Graph.add] at h
+  split at h
+  · exact Or.inl h
+  · rcases List.mem_append.mp h with h | h
+    · exact Or.inl h
+    · exact Or.inr (List.mem_singleton.mp h)
+
+theorem mem_graphUnion : ∀ (g2 g1 : RDF.Graph) {t : RDF.Triple},
+    t ∈ RDF.Graph.union g1 g2 → t ∈ g1 ∨ t ∈ g2
+  | [], g1, t, h => Or.inl h
+  | u :: rest, g1, t, h => by
+      simp only [RDF.Graph.union, List.foldl_cons] at h
+      rcases mem_graphUnion rest (g1.add u) h with h | h
+      · rcases mem_graphAdd h with h | rfl
+        · exact Or.inl h
+        · exact Or.inr (List.mem_cons_self ..)
+      · exact Or.inr (List.mem_cons_of_mem _ h)
+
+theorem mem_iklFold (P : RDF.NamedGraph → Bool) :
+    ∀ (ns : List RDF.NamedGraph) (acc : RDF.Graph) {t : RDF.Triple},
+      t ∈ ns.foldl (fun acc ng =>
+            if P ng then RDF.Graph.union acc ng.graph else acc) acc →
+        t ∈ acc ∨ ∃ ng ∈ ns, t ∈ ng.graph
+  | [], acc, t, h => Or.inl h
+  | ng :: rest, acc, t, h => by
+      simp only [List.foldl_cons] at h
+      rcases mem_iklFold P rest _ h with h | ⟨ng', hng', ht'⟩
+      · by_cases hp : P ng
+        · rw [if_pos hp] at h
+          rcases mem_graphUnion _ _ h with h | h
+          · exact Or.inl h
+          · exact Or.inr ⟨ng, List.mem_cons_self .., h⟩
+        · rw [if_neg hp] at h
+          exact Or.inl h
+      · exact Or.inr ⟨ng', List.mem_cons_of_mem _ hng', ht'⟩
+
+/-- The premise list a dataset contributes under the `x-ikl-*` family:
+the default graph's Skolem reading and every named graph's. -/
+def iklPremises (ds : RDF.Dataset) : List CL.Sentence :=
+  rdfToTheorySk ds.default :: ds.named.map (fun ng => rdfToTheorySk ng.graph)
+
+/-- **The `x-ikl-*` dataset transform is a premise-list transform**:
+the extended default graph's Skolem reading is entailed by the
+dataset's own graphs. Unconditional, and independent of the suffix. -/
+theorem ikl_extend_entailed (r : CL.IklRegime) (ds : RDF.Dataset) :
+    Unified.Entails (iklPremises ds)
+      (rdfToTheorySk (CL.IklRegime.extendDataset r ds).default) := by
+  intro i _ hsat
+  refine (satisfies_rdfToTheorySk_iff i _).mpr (fun t ht => ?_)
+  have hd : CL.Satisfies i (rdfToTheorySk ds.default) :=
+    hsat _ (List.mem_cons_self ..)
+  rcases mem_iklFold _ ds.named ds.default ht with h | ⟨ng, hng, htg⟩
+  · exact (satisfies_rdfToTheorySk_iff i ds.default).mp hd t h
+  · have : CL.Satisfies i (rdfToTheorySk ng.graph) :=
+      hsat _ (List.mem_cons_of_mem _ (List.mem_map.mpr ⟨ng, hng, rfl⟩))
+    exact (satisfies_rdfToTheorySk_iff i ng.graph).mp this t htg
+
+/-- **`x-ikl-*` regime soundness**: an answer the engine returns over
+the extended default graph is a unified answer from the dataset's own
+premises. -/
+theorem regime_sound_ikl (r : CL.IklRegime) (ds : RDF.Dataset)
+    {b : SPARQL.Bgp} {mu : SPARQL.Binding}
+    (h : mu ∈ SPARQL.evalBgp b (CL.IklRegime.extendDataset r ds).default) :
+    Answers condTrue termEqSchema (iklPremises ds) (sparqlBgpToQuery b) mu := by
+  intro i _ hS hsat
+  exact unified_adequate_bgp_engine h i trivial hS (fun s hs => by
+    obtain rfl := List.mem_singleton.mp hs
+    exact ikl_extend_entailed r ds i trivial hsat)
+
+/-! ## Non-vacuity
+
+Every guard the design document asks for: a decidable pivot check with
+both polarities pinned, a positive answer, a REFUTED answer (so the
+gate is not proving everything), and a witness that `termEqSchema`
+carries rows no interpretation gets for free. -/
+
+/-- The pivot, decided. -/
+def bgpMatchesCheck (mu : SPARQL.Binding) (b : SPARQL.Bgp) (g : RDF.Graph) : Bool :=
+  b.all (fun tp =>
+    match SPARQL.instTriple id mu tp with
+    | some t => RDF.Graph.mem t g
+    | none => false)
+
+theorem bgpMatchesCheck_iff {mu : SPARQL.Binding} {b : SPARQL.Bgp}
+    {g : RDF.Graph} : bgpMatchesCheck mu b g = true ↔ BgpMatches mu b g := by
+  simp only [bgpMatchesCheck, List.all_eq_true]
+  constructor
+  · intro h tp htp
+    have h1 := h tp htp
+    split at h1
+    · next t ht => exact ⟨t, ht, h1⟩
+    · exact absurd h1 (by simp)
+  · intro h tp htp
+    obtain ⟨t, ht, hm⟩ := h tp htp
+    rw [ht]; exact hm
+
+section Witnesses
+
+private theorem exIri (s : String) : RDF.isIri ("http://example/" ++ s) = true := by
+  simp [RDF.isIri, String.isEmpty]
+
+private def eIri (s : String) : RDF.WfIri := ⟨"http://example/" ++ s, exIri s⟩
+
+private def wG : RDF.Graph :=
+  [{ s := .iri (eIri "a"), p := eIri "p", o := .iri (eIri "b") }]
+
+private def wB : SPARQL.Bgp :=
+  [{ s := .var "s", p := .iri (eIri "p"), o := .var "o" }]
+
+private def muGood : SPARQL.Binding :=
+  [("s", .iri (eIri "a")), ("o", .iri (eIri "b"))]
+
+private def muBad : SPARQL.Binding :=
+  [("s", .iri (eIri "b")), ("o", .iri (eIri "a"))]
+
+#guard bgpMatchesCheck muGood wB wG
+#guard ! bgpMatchesCheck muBad wB wG
+
+private theorem wG_ttFree : RDF.GraphTtFree wG := by
+  intro t ht
+  simp only [wG, List.mem_singleton] at ht
+  subst ht
+  simp [RDF.TermTtFree]
+
+private theorem wB_ttFree : BgpTtFree wB := by
+  intro tp htp
+  simp only [wB, List.mem_singleton] at htp
+  subst htp
+  exact ⟨trivial, trivial, trivial⟩
+
+/-- A real answer: the gate theorem produces an entailment, not a
+vacuous one. -/
+theorem unified_bgp_answer_witness :
+    Answers condTrue termEqSchema [rdfToTheorySk wG] (sparqlBgpToQuery wB) muGood :=
+  bgp_matches_answers (bgpMatchesCheck_iff.mp (by rfl))
+
+/-- A REFUTED answer: the reversed mapping is not an answer. Without
+this the gate theorem would be compatible with `Answers` holding of
+everything. -/
+theorem unified_bgp_no_answer :
+    ¬ Answers condTrue termEqSchema [rdfToTheorySk wG] (sparqlBgpToQuery wB) muBad := by
+  intro h
+  have hm := (unified_adequate_bgp wB wG muBad wG_ttFree wB_ttFree).mpr h
+  exact absurd (bgpMatchesCheck_iff.mpr hm) (by decide)
+
+/-- `termEqSchema` carries rows that are NOT instances of
+reflexivity: two DISTINCT RDF terms the engine identifies, whose
+`eq` row is a real sentence of the schema. Without such a row the
+soundness half is false wherever the graph and the pattern spell a
+language tag with different case.
+
+Stated with the language-tag fact as a hypothesis for a reason worth
+recording: `String.toLower` does not reduce in the Lean kernel, so
+neither `decide` nor `rfl` can discharge `langTagEq "EN" "en" = true`.
+The `#guard` under this theorem pins that concrete instance at build
+time, which is where the tree's other kernel-opaque facts are
+pinned. -/
+theorem termEqSchema_nontrivial {t1 t2 : String} (hne : t1 ≠ t2)
+    (heq : RDF.langTagEq t1 t2 = true) :
+    ∃ x y : RDF.Term, x ≠ y ∧ RDF.Term.eqb x y = true ∧
+      termEqSchema (.eq (embedTerm x) (embedTerm y)) := by
+  refine ⟨.literal ⟨{ lexicalForm := "a", datatype := RDF.rdfLangString,
+                      langTag := some t1, direction := none }, by rfl⟩,
+          .literal ⟨{ lexicalForm := "a", datatype := RDF.rdfLangString,
+                      langTag := some t2, direction := none }, by rfl⟩,
+          ?_, ?_, ?_⟩
+  · intro h
+    simp only [RDF.Term.literal.injEq, Subtype.ext_iff,
+               RDF.Literal.mk.injEq, Option.some.injEq] at h
+    exact hne h.2.2.1
+  · simp only [RDF.Term.eqb, RDF.Literal.eqb, RDF.langTagOptionEq, heq]
+    decide +kernel
+  · exact ⟨_, _, by
+      simp only [RDF.Term.eqb, RDF.Literal.eqb, RDF.langTagOptionEq, heq]
+      decide +kernel, rfl⟩
+
+/-! The concrete instance, pinned at build time. -/
+#guard RDF.langTagEq "EN" "en"
+
+end Witnesses
+
+/-! ## Axiom audits (in-source, per the stage gate) -/
+
+section Audits
+
+#print axioms satisfies_rdfToTheorySk_restrict
+#print axioms bgp_eval_sound
+#print axioms bgp_matches_answers
+#print axioms tq_eq_iff
+#print axioms herbQ_satisfiesSchema
+#print axioms herbQ_satisfies_sk
+#print axioms unified_adequate_bgp
+#print axioms unified_adequate_bgp_bnodeFree
+#print axioms bgp_eval_complete
+#print axioms unified_adequate_bgp_engine
+#print axioms unified_bgp_answers_returned
+#print axioms regime_sound_of_closureHolds
+#print axioms regime_sound_simple
+#print axioms regime_sound_rhoDf
+#print axioms regime_rhoDf_answers_closure_iff
+#print axioms regime_sound_rdfs
+#print axioms ikl_extend_entailed
+#print axioms regime_sound_ikl
+#print axioms unified_bgp_answer_witness
+#print axioms unified_bgp_no_answer
+#print axioms termEqSchema_nontrivial
+
+end Audits
+
 end L4Factoidal.Unified
