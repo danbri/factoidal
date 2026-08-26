@@ -339,10 +339,27 @@ function normalizeEntailRegime(regime) {
   return ENTAIL_REGIME_ALIASES[key] || regime;
 }
 
-// x-ikl-* is withheld from the npm API by OWNER DECISION, 2026-08-26
-// (https://github.com/danbri/factoidal/issues/618): IKL has no notion
-// of shapes or named profiles, so an x-ikl-<suffix> entailment-regime
-// family invents a taxonomy the specification does not have.
+// x-ikl-* is NOT IMPLEMENTED. It is not withheld by policy.
+//
+// CORRECTION 2026-08-26: an earlier version of this comment said the
+// family was withheld by owner decision, citing the direction-B ruling
+// of https://github.com/danbri/factoidal/issues/618. That ruling was
+// about the IKL-to-RDF projection, not about this regime family, and
+// attributing it here misstated a decision the owner did not make.
+//
+// The x-ikl-* family is the OWNER'S design
+// (https://github.com/danbri/factoidal/issues/581). Its Lean dispatch
+// was deleted on 2026-08-26 as collateral of the projection purge
+// (https://github.com/danbri/factoidal/issues/626), not as its target.
+// The SEMANTICS survived: Unified/ClBridge.lean's asserted_merge_sound
+// is this regime's soundness statement -- lifting asserted named-graph
+// content into the default graph -- and it carries no naming scheme.
+// Restoring the family is a dispatch branch plus flipping this guard.
+//
+// The owner's own statement of what IKL does not supply, 2026-08-26:
+// no profiles, no entailment procedures, no mapping from RDF datasets.
+// Checked the same day against the IKL GUIDE and Hayes 2009: correct.
+//
 // engineApi.query() (lib/api.js) already rejects this, but
 // normalizeEntailRegime() above passes any unrecognised string through
 // UNCHANGED before it gets there — check explicitly here too, so this
@@ -352,11 +369,11 @@ function normalizeEntailRegime(regime) {
 function rejectIklRegime(regime, who) {
   if (regime != null && /^x-ikl/i.test(String(regime))) {
     throw new TypeError(
-      `${who}: entail '${regime}' is not exposed through the npm API -- ` +
-      'the x-ikl-* entailment regimes are not exposed through the ' +
-      'npm API (owner decision 2026-08-26, danbri/factoidal#618); ' +
-      'the Lean engine no longer defines the family either ' +
-      '(danbri/factoidal#626).');
+      `${who}: entail '${regime}' is not implemented. The x-ikl-* ` +
+      'entailment regimes are the owner\'s design ' +
+      '(danbri/factoidal#581); the Lean engine\'s dispatch for them was ' +
+      'deleted on 2026-08-26 as collateral of the IKL-to-RDF projection ' +
+      'purge (danbri/factoidal#626). This is not a policy exclusion.');
   }
 }
 

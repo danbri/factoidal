@@ -490,25 +490,30 @@ function buildApi(driver) {
     }
     const opts = options || {};
     const entail = opts.entail || 'none';
-    // x-ikl-* is withheld by OWNER DECISION, 2026-08-26
-    // (https://github.com/danbri/factoidal/issues/618): "I don't want
-    // npm code for direction b at this stage ... IKL doesn't have
-    // shapes or named profiles. Take it out of npm for now." IKL has
-    // no notion of shapes or named profiles, so an x-ikl-<suffix>
-    // entailment-regime family invents a taxonomy the specification
-    // does not have. The Lean engine's own x-ikl handler is now gone
-    // too (danbri/factoidal#626), so this check is where the name is
-    // answered. Checked explicitly (not just left out of
+    // x-ikl-* is NOT IMPLEMENTED. It is not withheld by policy.
+    //
+    // CORRECTION 2026-08-26: this comment previously cited the owner's
+    // direction-B ruling (danbri/factoidal#618) as the reason. That
+    // ruling was about the IKL-to-RDF projection, not this regime
+    // family, and citing it here misstated a decision the owner did
+    // not make. The family is the OWNER'S design
+    // (danbri/factoidal#581); its Lean dispatch was deleted on
+    // 2026-08-26 as collateral of the projection purge
+    // (danbri/factoidal#626), not as its target. The semantics
+    // survived -- Unified/ClBridge.lean's asserted_merge_sound is the
+    // regime's soundness statement -- so restoring it is a dispatch
+    // branch, not a redesign. Checked explicitly (not just left out of
     // ENTAIL_VALUES below) so a future ENTAIL_VALUES edit can't
     // reopen this without deliberately removing this check too; see
     // test/select.test.js's regression test.
     if (/^x-ikl/i.test(entail)) {
       throw new TypeError(
-        `query: entail '${entail}' is not exposed through the npm API -- ` +
-        'the x-ikl-* entailment regimes are not exposed through the ' +
-        'npm API (owner decision 2026-08-26, danbri/factoidal#618); ' +
-        'the Lean engine no longer defines the family either ' +
-        '(danbri/factoidal#626).');
+        `query: entail '${entail}' is not implemented. The x-ikl-* ` +
+        "entailment regimes are the owner's design " +
+        "(danbri/factoidal#581); the Lean engine's dispatch for them " +
+        'was deleted on 2026-08-26 as collateral of the IKL-to-RDF ' +
+        'projection purge (danbri/factoidal#626). This is not a ' +
+        'policy exclusion.');
     }
     if (!ENTAIL_VALUES.has(entail)) {
       throw new TypeError(

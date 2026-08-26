@@ -346,7 +346,7 @@ test('query() rejects x-ikl-* entail regimes (F* engine)', async () => {
   const ds = await factoidal.parse(TTL);
   await assert.rejects(
     () => factoidal.query(ds, 'SELECT * WHERE { ?s ?p ?o }', { entail: 'x-ikl-core' }),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
 test('query() rejects x-ikl-* entail regimes case-insensitively (Lean engine)', async (t) => {
@@ -355,22 +355,22 @@ test('query() rejects x-ikl-* entail regimes case-insensitively (Lean engine)', 
   const ds = await l4core.parse(TTL);
   await assert.rejects(
     () => l4core.query(ds, 'SELECT * WHERE { ?s ?p ?o }', { entail: 'X-IKL-Whatever' }),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
-test('fn.js entail() rejects x-ikl-* before it ever reaches the engine', async () => {
+test('fn.js entail() refuses x-ikl-* as not implemented, before it reaches the engine', async () => {
   const fn = require('../fn.js');
   const ds = await fn.parse(TTL);
   await assert.rejects(
     () => fn.entail(ds, 'x-ikl-foo'),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
 test('select query() propagates the x-ikl-* rejection', async () => {
   const sel = select.createSelector({ backend: 'fstar' });
   await assert.rejects(
     () => sel.query(TTL, 'SELECT * WHERE { ?s ?p ?o }', { entail: 'x-ikl-core' }),
-    /x-ikl-\* entailment regimes are not exposed/);
+    /x-ikl-\* entailment regimes are the owner's design/);
 });
 
 test('compareValues compares bindings as a BAG: duplicate rows are significant', async () => {
