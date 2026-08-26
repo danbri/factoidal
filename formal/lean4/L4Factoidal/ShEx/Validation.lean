@@ -61,8 +61,26 @@ def matchesObjectValue (ov : ObjectValue) (t : Term) : Bool :=
       (match dt with   | some d => l.val.datatype.val == d | none => true)
   | _, _ => false
 
-/-- Stem matching: wildcard matches anything, a plain stem is a
-    PREFIX match. -/
+/-- A LANGUAGE stem matches on SUBTAG boundaries, not on characters.
+
+    BCP 47 / RFC 4647 basic filtering: the range `fr` matches the tag
+    `fr` and every tag that extends it with a further subtag — `fr-be`,
+    `fr-CA` — and matches `frc` (Cajun French) not at all, because
+    `frc` is a DIFFERENT primary subtag rather than a refinement of
+    `fr`. A character prefix test admitted it, so `[@fr~]` accepted
+    `"septante"@frc` (`1val1languageStem_failLAtfrc`), and the
+    exclusion `- @fr-be~` removed `"septante"@fr-bel`, which it does
+    not cover either.
+
+    The empty range matches every language tag, which is how ShEx
+    writes `@~`. -/
+def langRangeMatches (range tag : String) : Bool :=
+  let r := range.toLower
+  let g := tag.toLower
+  r.isEmpty || g == r || g.startsWith (r ++ "-")
+
+/-- Stem matching: wildcard matches anything; an IRI or literal stem
+    is a character PREFIX, and a language stem is a subtag range. -/
 def matchesStem (kind : VsvKind) (s : Stem) (t : Term) : Bool :=
   let target := match kind, t with
     | .iri,      .iri i     => some i.val
@@ -72,7 +90,10 @@ def matchesStem (kind : VsvKind) (s : Stem) (t : Term) : Bool :=
   match target, s with
   | none,   _         => false
   | some _, .wildcard => true
-  | some v, .plain p  => v.startsWith p
+  | some v, .plain p  =>
+      match kind with
+      | .language => langRangeMatches p v
+      | _         => v.startsWith p
 
 /-- Does an exclusion remove this term? A nested STEM excludes a whole
     prefix, not one value — `IriStemRange` with an `IriStem` exclusion
