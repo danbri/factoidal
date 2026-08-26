@@ -404,4 +404,5 @@ import L4Factoidal.Unified.RdfsSchema
 import L4Factoidal.Unified.Datalog
 import L4Factoidal.Unified.DatalogClosures
 import L4Factoidal.Unified.OwlRlSchema
+import L4Factoidal.Unified.OwlRlAdequacy
 import L4Factoidal.Unified.Witnesses
