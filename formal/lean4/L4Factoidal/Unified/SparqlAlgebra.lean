@@ -537,6 +537,184 @@ theorem unified_union_no_answer :
 
 end UnionWitnesses
 
+/-! ## FILTER — §18.5, and what a unified `Answers` claim cannot say
+
+`Filter(expr, Ω) = { μ | μ ∈ Ω and expr(μ) has an effective boolean
+value of true }`. `SPARQL/AlgebraSpec.lean` states it PARAMETRICALLY in
+`FExpr := SMap → Bool`, exactly as §18.5 does, because §17's effective
+boolean value is outside the algebra fragment.
+
+Two things follow, and both are stated rather than glossed.
+
+**What holds.** The filter condition is a predicate on the SOLUTION
+MAPPING alone. It therefore rides alongside the gate:
+`unified_adequate_filter` is a full iff whose filter conjunct appears
+unchanged on both sides, and `inFilter_answers` takes a §18.5 filter
+row to a unified answer plus that conjunct. Neither theorem gives the
+filter any model-theoretic content, and neither pretends to.
+
+**What does not hold, and cannot.** No claim of the shape "the filter's
+answers are the entailments of a sentence built from the query body"
+is available. `answers_congr_onVars` proves that `Answers` reads the
+mapping ONLY through the variables of the pattern — two mappings
+agreeing there produce the SAME sentence, hence the same verdict for
+every condition bundle, schema and premise list — while a filter
+expression reads the whole mapping, `?z ∉ vars(P)` included (§17.4.1.1
+`bound`). `filter_not_determined_by_the_query_sentence` turns that into
+a refutation: for EVERY function `φ` from sentences to sentences, the
+claim "`φ (bgpBody μ b)` is entailed exactly when the filter passes"
+is false. `SPARQL/AlgebraRefinement.lean`'s `FExprCongr` is the
+algebra-layer counterpart — it assumes congruence up to `SMapEq`,
+which is agreement on ALL variables, not on the pattern's.
+
+That is the precise negative result this stage reaches for FILTER, and
+it is why the filter stays a side condition on the mapping. -/
+
+open L4Factoidal.SPARQL.AlgebraSpec (FExpr InFilter) in
+/-- **A §18.5 filter row is a unified answer plus its side condition.**
+UNCONDITIONAL. -/
+theorem inFilter_answers {f : FExpr} {b : Bgp} {g : RDF.Graph} {mu : Binding}
+    (h : InFilter f (evalBgp b g) mu) :
+    Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu ∧
+      f mu = true := by
+  obtain ⟨⟨mu', hmem, heq⟩, hf⟩ := h
+  exact ⟨bgp_matches_answers
+    (bgpMatches_mono (extends_of_smapEq heq) (bgp_eval_sound hmem)), hf⟩
+
+open L4Factoidal.SPARQL.AlgebraSpec (FExpr) in
+/-- **The FILTER gate.** A full iff — and the filter conjunct is the
+same on both sides, because `f μ` is a predicate on the mapping and
+has no reading in an interpretation. Stated so that no reader takes the
+theorem for more than it is. -/
+theorem unified_adequate_filter (f : FExpr) (b : Bgp) (g : RDF.Graph)
+    (mu : Binding) (hg : RDF.GraphTtFree g) (hb : BgpTtFree b) :
+    (BgpMatches mu b g ∧ f mu = true) ↔
+      (Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu ∧
+        f mu = true) :=
+  and_congr_left (fun _ => unified_adequate_bgp b g mu hg hb)
+
+/-! ### `Answers` sees only the pattern's variables -/
+
+theorem embedPatternTerm_congr {mu mu' : Binding} : ∀ (pt : SPARQL.PatternTerm),
+    (∀ v ∈ patternTermVars pt, mu.lookup v = mu'.lookup v) →
+    embedPatternTerm mu pt = embedPatternTerm mu' pt
+  | .var v, h => by
+      simp only [embedPatternTerm, h v (by simp [patternTermVars])]
+  | .iri _, _ => rfl
+  | .bnode _, _ => rfl
+  | .literal _, _ => rfl
+  | .tripleTerm a b c, h => by
+      simp only [embedPatternTerm]
+      rw [embedPatternTerm_congr a (fun v hv => h v (by
+            simp only [patternTermVars]; exact List.mem_append_left _ (List.mem_append_left _ hv))),
+          embedPatternTerm_congr b (fun v hv => h v (by
+            simp only [patternTermVars]
+            exact List.mem_append_left _ (List.mem_append_right _ hv))),
+          embedPatternTerm_congr c (fun v hv => h v (by
+            simp only [patternTermVars]; exact List.mem_append_right _ hv))]
+
+theorem embedPatternSubject_congr {mu mu' : Binding} : ∀ (ps : SPARQL.PatternSubject),
+    (∀ v ∈ patternSubjectVars ps, mu.lookup v = mu'.lookup v) →
+    embedPatternSubject mu ps = embedPatternSubject mu' ps
+  | .var v, h => by
+      simp only [embedPatternSubject, h v (by simp [patternSubjectVars])]
+  | .iri _, _ => rfl
+  | .bnode _, _ => rfl
+  | .tripleTerm a b c, h => by
+      simp only [embedPatternSubject]
+      rw [embedPatternTerm_congr a (fun v hv => h v (by
+            simp only [patternSubjectVars]
+            exact List.mem_append_left _ (List.mem_append_left _ hv))),
+          embedPatternTerm_congr b (fun v hv => h v (by
+            simp only [patternSubjectVars]
+            exact List.mem_append_left _ (List.mem_append_right _ hv))),
+          embedPatternTerm_congr c (fun v hv => h v (by
+            simp only [patternSubjectVars]; exact List.mem_append_right _ hv))]
+
+theorem patternAtom_congr {mu mu' : Binding} {tp : SPARQL.TriplePattern}
+    (h : ∀ v ∈ tpVars tp, mu.lookup v = mu'.lookup v) :
+    patternAtom mu tp = patternAtom mu' tp := by
+  simp only [patternAtom]
+  rw [embedPatternSubject_congr tp.s (fun v hv => h v (by
+        simp only [tpVars]; exact List.mem_append_left _ (List.mem_append_left _ hv))),
+      embedPatternTerm_congr tp.p (fun v hv => h v (by
+        simp only [tpVars]; exact List.mem_append_left _ (List.mem_append_right _ hv))),
+      embedPatternTerm_congr tp.o (fun v hv => h v (by
+        simp only [tpVars]; exact List.mem_append_right _ hv))]
+
+/-- **The instantiated body depends on the mapping only through the
+pattern's own variables.** A SYNTACTIC equality of sentences, so it
+transfers to every claim about them at once. -/
+theorem bgpBody_congr {mu mu' : Binding} : ∀ (b : Bgp),
+    (∀ v ∈ bgpVars b, mu.lookup v = mu'.lookup v) →
+    bgpBody mu b = bgpBody mu' b
+  | [], _ => rfl
+  | tp :: rest, h => by
+      have hrest : bgpBody mu rest = bgpBody mu' rest :=
+        bgpBody_congr rest (fun v hv => h v (by
+          simp only [bgpVars, List.flatMap_cons]; exact List.mem_append_right _ hv))
+      have htp : patternAtom mu tp = patternAtom mu' tp :=
+        patternAtom_congr (fun v hv => h v (by
+          simp only [bgpVars, List.flatMap_cons]; exact List.mem_append_left _ hv))
+      have hlist : List.map (patternAtom mu) rest = List.map (patternAtom mu') rest := by
+        simpa only [bgpBody, CL.Sentence.conj.injEq] using hrest
+      simp only [bgpBody, List.map_cons, htp, hlist]
+
+/-- **`Answers` cannot see a variable outside the pattern.** For every
+condition bundle, schema and premise list. -/
+theorem answers_congr_onVars {conds : CL.Interp → Prop} {S : Schema}
+    {premises : List CL.Sentence} {b : Bgp} {mu mu' : Binding}
+    (h : ∀ v ∈ bgpVars b, mu.lookup v = mu'.lookup v) :
+    Answers conds S premises (sparqlBgpToQuery b) mu ↔
+      Answers conds S premises (sparqlBgpToQuery b) mu' := by
+  simp only [Answers, UQuery.instantiate, sparqlBgpToQuery, bgpBody_congr b h]
+
+/-! ### The refutation -/
+
+section FilterWitnesses
+
+private def fB : Bgp := [{ s := .var "x", p := .iri (jI "p"), o := .iri (jI "b") }]
+private def fMu  : Binding := [("x", .iri (jI "a")), ("z", .iri (jI "c"))]
+private def fMu' : Binding := [("x", .iri (jI "a"))]
+
+/-- `bound(?z)` — §17.4.1.1, on a variable the pattern does not
+mention. -/
+private def fF : SPARQL.AlgebraSpec.FExpr := fun mu => (sval "z" mu).isSome
+
+#guard fF fMu
+#guard ! fF fMu'
+-- Both mappings match the pattern; the filter keeps one and drops the
+-- other.
+#guard bgpMatchesCheck fMu fB jG
+#guard bgpMatchesCheck fMu' fB jG
+
+/-- The two mappings instantiate the pattern to the SAME sentence. -/
+theorem fBody_eq : bgpBody fMu fB = bgpBody fMu' fB := rfl
+
+/-- **FILTER is not determined by the query sentence.** For EVERY
+function `φ` from sentences to sentences — that is, for every claim of
+the form "the filter passes exactly when this sentence, built from the
+instantiated body, is entailed" — the claim is false. `fMu` and `fMu'`
+instantiate the pattern identically, so `φ` cannot separate them, while
+`bound(?z)` does.
+
+This is the negative result the FILTER stage reaches. It does not say
+FILTER is unstateable; it says the filter conjunct in
+`unified_adequate_filter` cannot be replaced by an entailment, and so
+must stay a side condition on the mapping. -/
+theorem filter_not_determined_by_the_query_sentence
+    (φ : CL.Sentence → CL.Sentence) (premises : List CL.Sentence)
+    (conds : CL.Interp → Prop) (S : Schema) :
+    ¬ (∀ mu : Binding,
+        EntailsSchema conds S premises (φ (bgpBody mu fB)) ↔ fF mu = true) := by
+  intro h
+  have h1 : EntailsSchema conds S premises (φ (bgpBody fMu fB)) := (h fMu).mpr (by decide)
+  rw [fBody_eq] at h1
+  have h2 : fF fMu' = true := (h fMu').mp h1
+  exact absurd h2 (by decide)
+
+end FilterWitnesses
+
 /-! ## Axiom audits -/
 
 section Audits
@@ -565,6 +743,12 @@ section Audits
 #print axioms entailsSchema_disj_does_not_split
 #print axioms unified_union_answer_witness
 #print axioms unified_union_no_answer
+#print axioms inFilter_answers
+#print axioms unified_adequate_filter
+#print axioms bgpBody_congr
+#print axioms answers_congr_onVars
+#print axioms fBody_eq
+#print axioms filter_not_determined_by_the_query_sentence
 
 end Audits
 
