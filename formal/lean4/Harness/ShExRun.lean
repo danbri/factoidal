@@ -152,6 +152,26 @@ partial def loadSchema (path : String) (depth : Nat) : IO (Option Schema) := do
         | none       => pure ()
       return some { acc with imports := [] }
 
+/-- Resolve `ShapeExpr.external` declarations against an EXTERNAL
+    schema the manifest entry supplies.
+
+    ShEx 2.1 §5.3 leaves an `EXTERNAL` shape to be decided by a
+    mechanism outside the schema. The corpus supplies that mechanism
+    per entry, as `"shapeExterns": "../schemas/shapeExtern.shextern"`,
+    whose ShExJ twin is the `.jsontern` file beside it. A declaration
+    whose whole expression is `EXTERNAL` takes the external schema's
+    declaration of the same label. -/
+def substituteExternals (sch ext : Schema) : Schema :=
+  { sch with shapes := sch.shapes.map (fun d =>
+      match d.expr with
+      | .external => (ext.lookup d.id).getD d
+      | _         => d) }
+
+/-- The ShExJ twin of a `.shextern` file. -/
+def jsonternBeside (p : String) : String :=
+  if p.endsWith ".shextern"
+  then String.ofList (p.toList.take (p.length - 9)) ++ ".jsontern" else p
+
 structure Tally where
   pass    : Nat := 0
   fail    : Nat := 0
@@ -221,7 +241,14 @@ def main (args : List String) : IO UInt32 := do
               t := { t with notRead := t.notRead + 1 }
               readGaps := bump readGaps "data graph missing"
             else
-              let schema? ← loadSchema sp 4
+              let schema0? ← loadSchema sp 4
+              let externs? ← (match (str? "shapeExterns" act).map
+                    (fun r => jsonternBeside (resolveRel dir r)) with
+                | some ep => loadSchema ep 4
+                | none    => pure none)
+              let schema? := match schema0?, externs? with
+                | some sc, some ex => some (substituteExternals sc ex)
+                | other,   _       => other
               let dsrc ← IO.FS.readFile dp
               match schema?, parseTurtle dsrc (some dataUrl), focus with
               | some sch, .ok g, some n =>
