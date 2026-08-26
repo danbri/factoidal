@@ -85,15 +85,67 @@ JSDIR=../../docs/fstar-extracted
 # silent-failure class this repo keeps removing from its engine (anti-pattern
 # #14 -- never let a failure pass unnoticed).
 # ---------------------------------------------------------------------------
-if [ "$#" -gt 1 ]; then
-  for _step in "$@"; do
+# 2026-08-26: the loop above used to iterate "$@" verbatim, so it read a
+# FLAG as if it were a step. `./build-ocaml.sh extract --force-full` --
+# the form npm-publish.yml and this file's own comments prescribe -- ran
+# `"$0" extract` (no flag, so FORCE_FULL stayed 0 and the manifest skip
+# stayed live) and then `"$0" --force-full`, which matched no step block
+# and exited 0. --force-full had been a silent no-op since the multi-step
+# change landed on 2026-08-15. Arguments are now partitioned: flags go to
+# every step sub-invocation, steps are validated, and an unrecognised
+# argument of either kind is fatal instead of silently discarded.
+BUILD_FLAGS=()
+BUILD_STEPS=()
+for _arg in "$@"; do
+  case "$_arg" in
+    -*) BUILD_FLAGS+=("$_arg") ;;
+    *)  BUILD_STEPS+=("$_arg") ;;
+  esac
+done
+
+for _flag in ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"}; do
+  case "$_flag" in
+    --force-full) ;;
+    *)
+      echo "FATAL: unknown flag '${_flag}'." >&2
+      echo "       Known flags: --force-full" >&2
+      exit 2
+      ;;
+  esac
+done
+
+VALID_STEPS="all extract compile test js npm wasm wasm-factoidal karamel patches"
+for _step in ${BUILD_STEPS[@]+"${BUILD_STEPS[@]}"}; do
+  case " $VALID_STEPS " in
+    *" $_step "*) ;;
+    *)
+      echo "FATAL: unknown step '${_step}'." >&2
+      echo "       Known steps: $VALID_STEPS" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ "${#BUILD_STEPS[@]}" -eq 0 ] && [ "$#" -gt 0 ]; then
+  echo "FATAL: flags given with no step: $*" >&2
+  echo "       Known steps: $VALID_STEPS" >&2
+  exit 2
+fi
+
+if [ "${#BUILD_STEPS[@]}" -gt 1 ]; then
+  for _step in "${BUILD_STEPS[@]}"; do
     echo "=== build-ocaml.sh: step '${_step}' ==="
-    "$0" "$_step" || exit $?
+    "$0" "$_step" ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} || exit $?
   done
   exit 0
 fi
 
-STEP="${1:-all}"
+STEP="${BUILD_STEPS[0]:-all}"
+
+FORCE_FULL=0
+for _flag in ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"}; do
+  [ "$_flag" = "--force-full" ] && FORCE_FULL=1
+done
 
 # ---------------------------------------------------------------------------
 # Single-runner lock + build-running marker.
@@ -380,9 +432,10 @@ if [[ "$STEP" == "all" || "$STEP" == "extract" ]]; then
   MANIFEST_FILE="$EXTRACT_STATE_DIR/manifest.tsv"
   touch "$MANIFEST_FILE"
 
-  FORCE_FULL=0
-  if [[ "${2:-}" == "--force-full" ]]; then
-    FORCE_FULL=1
+  # FORCE_FULL is parsed at the top of this script from the flag
+  # partition, not from "$2" -- reading "$2" broke the moment the
+  # multi-step loop started re-invoking each step on its own.
+  if [[ "$FORCE_FULL" -eq 1 ]]; then
     echo "  --force-full: ignoring incremental-extract manifest; re-extracting every module."
   fi
 
