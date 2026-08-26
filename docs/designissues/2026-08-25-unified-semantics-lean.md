@@ -8,6 +8,14 @@ No code lands with this document. Every Lean signature and theorem
 statement below is a proposal; each one becomes real only in the stage
 that proves it, under that stage's gate.
 
+Stages 1-7 have since landed. Read this document with the correction
+notes below, which record where the implementation contradicted it.
+The stage 7 account of what was proved, at what strength, with the
+named gaps and the defects the proof attempts found, is
+[`docs/designissues/2026-08-26-lbase-account.md`](2026-08-26-lbase-account.md);
+its public version is hub post 43,
+`docs/web/hub/43-one-model-theory-under-all-of-it.md`.
+
 ### Stage 1 correction notes (2026-08-25)
 
 Stage 1 landed (`formal/lean4/L4Factoidal/Unified/`, registry section

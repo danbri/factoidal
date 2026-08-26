@@ -2748,3 +2748,13 @@ stated over it, so answers are evaluated under `termEqSchema`.
 | REGIME COMPLETENESS AGAINST THE RUNNING EVALUATOR NOT PROVED — `regime_rhoDf_answers_closure_iff` is answer-preservation of the MATERIALISATION, not "the engine returns every ρdf answer". The latter needs the closure to be SATURATED, which is the `rhoDfClosedCheck` hypothesis the stage 2 decided corollary carries; `x-rdfsplus` has no closure-soundness theorem at all (stage 3 landed the RDFS-Plus Datalog tier at demo-instance strength only) | — | design doc §4.6 | ⬜ OPEN (recorded gap, correction note 30) | — |
 | ENGINE REGIME DISPATCH IS NARROWER THAN THE REGIME TABLE — `RDFS.entailmentClosureForQueryExt` recognises `x-rdfscore` and `x-rdfsplus` and routes EVERY other string, `"RDFS"` and `"OWL-RL"` included, to `OWL.RL.closure`. `regime_sound_rdfs` is about `RDF.Regime.closure .rdfs`, which is a DIFFERENT entry point. Splitting the dispatch is engine work, not registry work | `RDFS/RegimeDispatch.lean` module header | — | ⬜ OPEN (recorded divergence, correction note 29) | — |
 | `String.toLower` IS KERNEL-OPAQUE — neither `decide` nor `rfl` discharges `RDF.langTagEq "EN" "en" = true`, so `termEqSchema_nontrivial` carries the language-tag fact as a hypothesis and the concrete instance is pinned by `#guard` instead. Not a gap in the theory; a note for the next session that reaches for `decide` on a string-normalising function | `Unified/SparqlAdequacy.lean` | — | ⬜ RECORDED (2026-08-26) | — |
+
+Stage 7 (2026-08-26): no new theorems. The account of what stages 1-6
+proved — every gate theorem quoted as landed with its exact strength,
+the named gaps, the defects the proof attempts found in shipping code,
+and the list of claims NOT made — is
+[`docs/designissues/2026-08-26-lbase-account.md`](designissues/2026-08-26-lbase-account.md).
+Public version, with the ρdf closure, Finding C-1's separating pair and
+an OWL 2 RL row computed live beside the theorems that cover them: hub
+post 43, `docs/web/hub/43-one-model-theory-under-all-of-it.md`
+(cells pinned by `tests/hub/post43_test.mjs`).
