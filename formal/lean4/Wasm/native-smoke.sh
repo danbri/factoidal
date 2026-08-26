@@ -258,6 +258,89 @@ args "$TMP/cl-parse-bad.json" '(P a'
 check "clParse unclosed paren -> error" clParse "$TMP/cl-parse-bad.json" \
   'r["ok"] is False and "unclosed" in r["error"]'
 
+# clSerialize — the canonical writer, with the OPEN round-trip lemma
+# reported rather than assumed (`clif_roundTrip`, CL/ClifAdequacy.lean).
+args "$TMP/cl-ser.json" '(forall (x) (if (Boy x) (Person x)))'
+check "clSerialize canonical text" clSerialize "$TMP/cl-ser.json" \
+  'r["ok"] is True and r["sentences"] == 1
+   and r["clif"] == "(forall (x) (if (Boy x) (Person x)))"
+   and r["roundTripProved"] is False'
+
+args "$TMP/cl-ser-bad.json" '(P a'
+check "clSerialize unclosed paren -> error" clSerialize "$TMP/cl-ser-bad.json" \
+  'r["ok"] is False and "unclosed" in r["error"]'
+
+# clAlphaNorm — two alpha-variants must serialise byte-identically.
+args "$TMP/cl-alpha-x.json" '(forall (x) (if (Boy x) (Person x)))'
+check "clAlphaNorm canonical names" clAlphaNorm "$TMP/cl-alpha-x.json" \
+  'r["ok"] is True and r["sentences"] == 1
+   and r["clif"] == "(forall (v1) (if (Boy v1) (Person v1)))"'
+
+args "$TMP/cl-alpha-z.json" '(forall (zz) (if (Boy zz) (Person zz)))'
+check "clAlphaNorm collapses an alpha-variant" clAlphaNorm "$TMP/cl-alpha-z.json" \
+  'r["ok"] is True
+   and r["clif"] == "(forall (v1) (if (Boy v1) (Person v1)))"'
+
+# clNormalize — Hayes's satisfiability-preserving IKL-to-CL reduction.
+# `noIntrusion` is the PROOF HYPOTHESIS decided, so both verdicts are
+# pinned: the head/tail pair, and the intrusion case the theorems do
+# not cover.
+args "$TMP/cl-norm.json" '(P (that (Q a)))'
+check "clNormalize that-term -> head + tail" clNormalize "$TMP/cl-norm.json" \
+  'r["ok"] is True and r["thatCount"] == 1 and r["noIntrusion"] is True
+   and r["head"] == ["(P prop1)"] and r["tail"] == ["(iff (prop1) (Q a))"]
+   and r["preserves"] == "satisfiability"'
+
+args "$TMP/cl-norm-intr.json" '(forall (x) (P (that (Q x))))'
+check "clNormalize intrusion -> noIntrusion false" clNormalize "$TMP/cl-norm-intr.json" \
+  'r["ok"] is True and r["noIntrusion"] is False and r["thatCount"] == 1'
+
+args "$TMP/cl-norm-bad.json" '(P a'
+check "clNormalize unclosed paren -> error" clNormalize "$TMP/cl-norm-bad.json" \
+  'r["ok"] is False and "unclosed" in r["error"]'
+
+# clFiniteSat — CL.Examples' `tiny` as a wire interpretation: Boy holds
+# of Bill alone. The refutations are pinned alongside the satisfactions,
+# so a checker answering `true` to everything cannot pass.
+CLI_FS='{"domain":["bill","boy"],"default":"bill","names":{"Bill":"bill","Boy":"boy","Sue":"boy"},"relations":[{"op":"boy","args":["bill"]}]}'
+
+args "$TMP/cl-fs-yes.json" "$CLI_FS" '(Boy Bill)
+(exists (x) (Boy x))'
+check "clFiniteSat satisfied" clFiniteSat "$TMP/cl-fs-yes.json" \
+  'r["ok"] is True and r["satisfied"] is True and r["domainSize"] == 2
+   and [s["satisfied"] for s in r["sentences"]] == [True, True]
+   and r["preconditions"]["domainComplete"]["holds"] is True
+   and r["preconditions"]["noSeqQuant"]["holds"] is True'
+
+args "$TMP/cl-fs-no.json" "$CLI_FS" '(Boy Sue)
+(forall (x) (Boy x))'
+check "clFiniteSat refutes where the tables have no row" clFiniteSat "$TMP/cl-fs-no.json" \
+  'r["ok"] is True and r["satisfied"] is False
+   and [s["satisfied"] for s in r["sentences"]] == [False, False]'
+
+# The hypothesis `noSeqQuant` of `satisfiesFin_eq` is CHECKED, and a
+# text outside it is refused by name rather than answered.
+args "$TMP/cl-fs-seq.json" "$CLI_FS" '(forall (...m) (P ...m))'
+check "clFiniteSat refuses a sequence-marker quantifier" clFiniteSat "$TMP/cl-fs-seq.json" \
+  'r["ok"] is False and r["precondition"] == "noSeqQuant"
+   and "noSeqQuant" in r["error"]'
+
+args "$TMP/cl-fs-label.json" '{"domain":["bill"],"names":{"Boy":"nope"}}' '(Boy Bill)'
+check "clFiniteSat unknown domain label -> error" clFiniteSat "$TMP/cl-fs-label.json" \
+  'r["ok"] is False and "nope" in r["error"]'
+
+args "$TMP/cl-fs-empty.json" '{"domain":[]}' '(Boy Bill)'
+check "clFiniteSat empty domain -> error" clFiniteSat "$TMP/cl-fs-empty.json" \
+  'r["ok"] is False and "at least one element" in r["error"]'
+
+args "$TMP/cl-fs-nodom.json" '{}' '(Boy Bill)'
+check "clFiniteSat missing domain -> error" clFiniteSat "$TMP/cl-fs-nodom.json" \
+  "r['ok'] is False and 'domain' in r['error']"
+
+args "$TMP/cl-fs-arity.json" "$CLI_FS"
+check "clFiniteSat wrong arity -> error" clFiniteSat "$TMP/cl-fs-arity.json" \
+  'r["ok"] is False and "expects 2 arguments" in r["error"]'
+
 # --- Dataset handles (issue 585) --------------------------------------
 # Handle state lives in the process, so the dependent sequence runs
 # through `callseq`: open -> query -> update -> query -> serialize
@@ -335,7 +418,8 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
             "owlClosure","owlIsConsistent","owlEntails",
             "rhoDfClosure","rhoDfFragmentCheck",
-            "rdfsPlusClosure","clParse","ops",
+            "rdfsPlusClosure","clParse","clSerialize",
+            "clAlphaNorm","clNormalize","clFiniteSat","ops",
             "datasetOpen","datasetQuery","datasetUpdate",
             "datasetSerialize","datasetClose"]) <= set(r["ops"])'
 
