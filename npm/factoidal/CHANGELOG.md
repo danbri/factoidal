@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.0 — both engines in one package, with a backend selector
+
+- The Lean 4 engine (`L4Factoidal`, wasm) now ships INSIDE
+  `@factoidal/core` as `l4-assets/`, alongside the F\*-extracted
+  engine. One install gets both. `require('factoidal/l4')` and
+  `factoidal/l4-core` are unchanged; the resolver checks in-package
+  assets first, then falls through to the old order (companion
+  package, `$FACTOIDAL_L4_ASSETS`, repo checkout).
+- `@factoidal/lean` is superseded and was never published.
+- New subpath `factoidal/select`: a backend selector, per-instance
+  with per-call override. Values `lean`, `fstar`, `lean1st`,
+  `fstar1st`, `slowcompareboth`. A request naming exactly one engine
+  never gets an answer from the other -- `lean` and `fstar` throw on a
+  function that engine does not implement; `lean1st` / `fstar1st` fall
+  through, and `lean1st` also takes a list of functions to route to
+  F\* regardless. Every result carries the answering engine.
+  `slowcompareboth` runs both and REPORTS disagreement rather than
+  throwing; comparison is RDFC-1.0 isomorphism for Dataset-shaped
+  results and bag equality (blank nodes relabelled per side) for
+  SELECT bindings.
+- Measured on the typed API surface at this release: 15 functions both
+  engines answer, 39 F\*-only, 0 Lean-only (out of 54). This measures
+  the typed wrapper surface, not the Lean engine's total capability --
+  `l4-core.js` wires 12 of the engine's 21 dispatch ops.
+- The CL/IKL ops (`clParse`, `clToDataset`, `queryWithIklService`) are
+  NOT exposed through the npm API, and `x-ikl-*` entailment regimes
+  are rejected. The ops remain present in the compiled wasm; they are
+  unreachable through the package. Owner decision, 2026-08-26: the
+  IKL-to-RDF projection stays out of npm until it has a reversibility
+  theorem (danbri/factoidal#620).
+
 ## 0.2.0 — Lean 4 engine subpath
 
 - New `factoidal/l4-core` subpath: the same typed API served by the

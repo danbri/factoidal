@@ -474,9 +474,13 @@ The engine sides of the gate are therefore:
    mapping makes it a non-distinguished variable
    ([https://github.com/danbri/factoidal/issues/607](https://github.com/danbri/factoidal/issues/607)).
    The narrowing agrees with the Skolem reading, so the gate is a full
-   iff — but on a blank-node-carrying pattern it is adequate TO THE
-   ENGINE, not to the specification. `unified_adequate_bgp_bnodeFree`
-   is the corollary on the fragment where the two readings coincide.
+   iff — but at the raw `evalBgp` entry point, on a blank-node-carrying
+   pattern, it is adequate TO THE ENGINE. The query path does not use
+   that entry point: `Query.evalSelect` rewrites pattern blank nodes
+   into non-distinguished variables first, and
+   `unified_adequate_bgp_spec` (2026-08-26) is the gate over the
+   rewritten pattern, with the blank-node guard PROVED rather than
+   assumed.
 2. **No multiplicity claim.** `Answers` is a `Prop`; the evaluator side
    is membership.
 3. **`RDF.Term.eqb` is coarser than syntactic identity** (language-tag
@@ -633,12 +637,27 @@ pattern blank node only against a graph blank node with the same label
 instance mapping, in which a pattern blank node is a non-distinguished
 variable that may match any RDF term.
 
-**Cost:** the engine returns fewer solutions than the specification
-licenses on any pattern with a blank node, and the narrowing was not
-flagged anywhere in `Algebra.lean` — no comment, no test. For the
-programme it cost a delimitation: stage 6's rows are adequate to the
-ENGINE on such patterns, with `unified_adequate_bgp_bnodeFree` as the
-corollary that is a claim about SPARQL 1.1.
+**Cost, as first recorded:** the engine returns fewer solutions than
+the specification licenses on any pattern with a blank node, and the
+narrowing was not flagged anywhere in `Algebra.lean` — no comment, no
+test. For the programme it cost a delimitation: stage 6's rows were
+adequate to the ENGINE on such patterns, with
+`unified_adequate_bgp_bnodeFree` as the corollary that is a claim
+about SPARQL 1.1.
+
+**Corrected 2026-08-26.** The reading of `Algebra.lean` was right and
+the reading of the ENGINE was wrong. `Query.evalSelect` /`evalAsk` /
+`evalConstruct` run `QueryPattern.rewriteBnodes` before evaluation, so
+the query path never hands `tryBindSubject` a raw pattern blank node;
+that is why sparql11 `rdf03` and the `sparqldl` undistinguished-variable
+tests pass. The actual defect was one level in — the rewrite did not
+enter an `EXISTS` body — and it was reproducible from the CLI in both
+trees. Fixed in the Lean tree; the F* tree still has it.
+`unified_adequate_bgp_bnodeFree` is removed and
+`unified_adequate_bgp_spec` states the gate with no blank-node
+hypothesis. Design-doc correction note 42. The methodology lesson: an
+audit that reads ONE function and infers engine behaviour has not
+measured the engine — run the query (anti-pattern #28).
 
 ### 3.5 A false `decide`, caught in the stage 2 salvage
 

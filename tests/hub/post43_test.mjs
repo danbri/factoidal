@@ -18,7 +18,7 @@
 //
 // Every op called here is in the COMMITTED wasm dispatch table (see the
 // last test): rhoDfClosure, rhoDfFragmentCheck, owlClosure, owlEntails,
-// queryDataset. Harness shape follows tests/hub/post39_test.mjs: `fn`
+// queryDataset. Harness shape follows tests/hub/post38_test.mjs: `fn`
 // is the node npm package with the Lean dispatch layered on over the
 // SAME on-disk loader the browser imports.
 

@@ -5,20 +5,29 @@
 //   await l4.version();                        // "L4Factoidal ..."
 //   await l4.bgpQuery(triples, bgp);           // SPARQL results JSON
 //
-// DELIBERATELY NOT BUNDLED: the wasm artifact (~1.4 MB) does not ship
-// inside @factoidal/core, so installing the F* engines does not pay
-// for the Lean one (packaging decision:
-// docs/designissues/2026-08-22-npm-l4-module-packaging.md). This
-// module is a thin resolver over three sources, first hit wins:
+// BUNDLED since issue #618: `@factoidal/core` now ships the Lean wasm
+// directly under `l4-assets/` (l4factoidal.{js,mjs,wasm} + version.json
+// — l4-assets/version.json, not this package's own version.json, which
+// stays the F* engine's), so one `npm install @factoidal/core` gets
+// both engines. The +23%-tarball objection that shaped the earlier
+// companion-package split
+// (docs/designissues/2026-08-22-npm-l4-module-packaging.md) no longer
+// applies once measured against the real 21-op dispatch surface — see
+// that doc's "issue #618: option A after all" section for the full
+// argument. This module is now a resolver over FOUR sources, first hit
+// wins:
 //
-//   1. the companion package `@factoidal/lean` (npm-installed users);
-//   2. $FACTOIDAL_L4_ASSETS — a directory holding
+//   1. this package's own l4-assets/ (the normal case, since #618);
+//   2. the companion package `@factoidal/lean` (never published — kept
+//      only as a manual-override path for anyone pinning an older
+//      Lean build against a newer core; see npm/factoidal-lean/README.md);
+//   3. $FACTOIDAL_L4_ASSETS — a directory holding
 //      l4factoidal.{js,mjs,wasm} (custom deployments);
-//   3. the repository checkout layout (docs/web/hub/assets/l4/) —
+//   4. the repository checkout layout (docs/web/hub/assets/l4/) —
 //      what the hub tests and in-repo development use.
 //
-// The three files must stay together and keep their names: the
-// Emscripten glue resolves the .wasm sidecar from its own basename
+// Every source's three files must stay together and keep their names:
+// the Emscripten glue resolves the .wasm sidecar from its own basename
 // (see skills/lean4-wasm-export, "the naming trap").
 //
 // API surface mirrors docs/web/hub/assets/l4/l4factoidal.js (phase-1
@@ -32,6 +41,8 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 function resolveLoader() {
+  const inPkg = path.join(__dirname, 'l4-assets', 'l4factoidal.js');
+  if (existsSync(inPkg)) return inPkg;
   try {
     return require.resolve('@factoidal/lean/l4factoidal.js');
   } catch { /* not installed */ }
@@ -51,11 +62,12 @@ async function loadL4() {
   const loaderPath = resolveLoader();
   if (!loaderPath) {
     throw new Error(
-      'factoidal/l4: Lean engine assets not found. Install the companion ' +
-      'package (npm install @factoidal/lean), or set FACTOIDAL_L4_ASSETS to ' +
-      'a directory containing l4factoidal.js, l4factoidal.mjs and ' +
-      'l4factoidal.wasm. The Lean engine ships separately so ' +
-      '@factoidal/core stays small.');
+      'factoidal/l4: Lean engine assets not found. They normally ship in ' +
+      "this package's own l4-assets/ directory — if it is missing, this " +
+      'checkout/install is incomplete. Otherwise set FACTOIDAL_L4_ASSETS ' +
+      'to a directory containing l4factoidal.js, l4factoidal.mjs and ' +
+      'l4factoidal.wasm, or install the (unpublished, override-only) ' +
+      'companion package @factoidal/lean.');
   }
   l4Promise = import(pathToFileURL(loaderPath).href).then((m) => m.loadL4());
   return l4Promise;

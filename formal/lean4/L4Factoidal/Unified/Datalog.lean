@@ -70,6 +70,7 @@ here in NO position, which only shrinks the class). -/
 inductive DTerm where
   | v (n : String)
   | c (s : String)
+  | lit (l : RDF.WfLiteral)
   deriving DecidableEq, Repr
 
 /-- An n-ary predication with the predicate itself a term — the
@@ -95,6 +96,7 @@ structure DRule where
 def DTerm.groundB : DTerm → Bool
   | .v _ => false
   | .c _ => true
+  | .lit _ => true
 
 def DAtom.groundB (a : DAtom) : Bool :=
   a.pred.groundB && a.args.all DTerm.groundB
@@ -102,6 +104,7 @@ def DAtom.groundB (a : DAtom) : Bool :=
 def DTerm.varList : DTerm → List String
   | .v n => [n]
   | .c _ => []
+  | .lit _ => []
 
 def DAtom.varList (a : DAtom) : List String :=
   a.pred.varList ++ a.args.flatMap DTerm.varList
@@ -121,6 +124,35 @@ side-condition-free satisfaction lemma. -/
 def DTerm.wfB : DTerm → Bool
   | .v n => !(n.toList.contains ':')
   | .c s => s.toList.contains ':'
+  | .lit _ => true
+
+/-- **Literal-freeness**: no `DTerm.lit` occurs. The colon discipline
+(`wfB`) is about capture under the universal closure and a literal
+term captures nothing, so `wfB` holds of every literal. What a literal
+DOES break is the STRING Herbrand universe of `herbInterp`, whose
+domain is the constant names: a literal term is rigid and denotes
+outside that universe. Every theorem that builds or reads `herbInterp`
+carries this predicate as a hypothesis; the model-theoretic layer
+(`DRule.sentence`, `satisfies_ruleSentence_iff`) does not need it. -/
+def DTerm.litFreeB : DTerm → Bool
+  | .v _ => true
+  | .c _ => true
+  | .lit _ => false
+
+def DAtom.litFreeB (a : DAtom) : Bool :=
+  a.pred.litFreeB && a.args.all DTerm.litFreeB
+
+def DRule.litFreeB (r : DRule) : Bool :=
+  r.head.litFreeB && r.body.all DAtom.litFreeB
+
+@[simp] theorem DTerm.litFreeB_v (n : String) :
+    (DTerm.v n).litFreeB = true := rfl
+
+@[simp] theorem DTerm.litFreeB_c (s : String) :
+    (DTerm.c s).litFreeB = true := rfl
+
+@[simp] theorem DTerm.litFreeB_lit (l : RDF.WfLiteral) :
+    (DTerm.lit l).litFreeB = false := rfl
 
 def DAtom.wfB (a : DAtom) : Bool :=
   a.pred.wfB && a.args.all DTerm.wfB
@@ -183,6 +215,7 @@ theorem DTerm.varList_no_colon {t : DTerm} (h : t.wfB = true) :
       rw [h] at hcon
       cases hcon
   | c s => intro n hn; simp [DTerm.varList] at hn
+  | lit l => intro n hn; simp [DTerm.varList] at hn
 
 theorem DAtom.varList_no_colon {a : DAtom} (h : a.wfB = true) :
     ∀ n ∈ a.varList, ':' ∉ n.toList := by
@@ -214,16 +247,19 @@ theorem DRule.body_scoped (r : DRule) :
 def DTerm.substVal (θ : String → String) : DTerm → String
   | .v n => θ n
   | .c s => s
+  | .lit _ => ""
 
 /-- Grounding substitution: every variable to a constant. -/
 def DTerm.subst (θ : String → String) : DTerm → DTerm
   | .v n => .c (θ n)
   | .c s => .c s
+  | .lit l => .lit l
 
 theorem DTerm.subst_eq_substVal (θ : String → String) :
-    ∀ t : DTerm, t.subst θ = .c (t.substVal θ)
-  | .v _ => rfl
-  | .c _ => rfl
+    ∀ t : DTerm, t.litFreeB = true → t.subst θ = .c (t.substVal θ)
+  | .v _, _ => rfl
+  | .c _, _ => rfl
+  | .lit _, h => by simp [DTerm.litFreeB] at h
 
 def DAtom.subst (θ : String → String) (a : DAtom) : DAtom :=
   ⟨a.pred.subst θ, a.args.map (DTerm.subst θ)⟩
@@ -246,6 +282,7 @@ theorem DTerm.subst_congr {θ1 θ2 : String → String} :
       simp only [DTerm.subst, DTerm.c.injEq]
       exact h n (by simp [DTerm.varList])
   | .c _, _ => rfl
+  | .lit _, _ => rfl
 
 theorem DAtom.subst_congr {θ1 θ2 : String → String} {a : DAtom}
     (h : ∀ n ∈ a.varList, θ1 n = θ2 n) : a.subst θ1 = a.subst θ2 := by
@@ -260,6 +297,7 @@ theorem DTerm.subst_of_ground {t : DTerm} (h : t.groundB = true)
   cases t with
   | v n => simp [DTerm.groundB] at h
   | c s => rfl
+  | lit l => rfl
 
 theorem DAtom.subst_of_ground {a : DAtom} (h : a.groundB = true)
     (θ : String → String) : a.subst θ = a := by
@@ -304,6 +342,7 @@ theorem BindExtends.trans {a b c : Bindings} (h1 : BindExtends a b)
 def DTerm.boundIn (b : Bindings) : DTerm → Prop
   | .v n => (blookup b n).isSome
   | .c _ => True
+  | .lit _ => True
 
 theorem DTerm.boundIn_mono {b b' : Bindings} (h : BindExtends b b') :
     ∀ {t : DTerm}, t.boundIn b → t.boundIn b'
@@ -312,6 +351,7 @@ theorem DTerm.boundIn_mono {b b' : Bindings} (h : BindExtends b b') :
       obtain ⟨v, hv⟩ := hb
       exact ⟨v, h n v hv⟩
   | .c _, _ => trivial
+  | .lit _, _ => trivial
 
 theorem DTerm.subst_bsubst_mono {b b' : Bindings} (h : BindExtends b b') :
     ∀ {t : DTerm}, t.boundIn b → t.subst (bsubst b) = t.subst (bsubst b')
@@ -320,14 +360,21 @@ theorem DTerm.subst_bsubst_mono {b b' : Bindings} (h : BindExtends b b') :
       obtain ⟨v, hv⟩ := hb
       simp [DTerm.subst, bsubst, hv, h n v hv]
   | .c _, _ => rfl
+  | .lit _, _ => rfl
 
 def matchTerm (b : Bindings) : DTerm → DTerm → Option Bindings
   | .c s, .c g => if s = g then some b else none
+  | .c _, .v _ => none
+  | .c _, .lit _ => none
   | .v n, .c g =>
       match blookup b n with
       | some v => if v = g then some b else none
       | none => some ((n, g) :: b)
-  | _, .v _ => none
+  | .v _, .v _ => none
+  | .v _, .lit _ => none
+  | .lit _, .c _ => none
+  | .lit _, .v _ => none
+  | .lit l, .lit g => if l = g then some b else none
 
 def matchArgs : Bindings → List DTerm → List DTerm → Option Bindings
   | b, [], [] => some b
@@ -366,6 +413,18 @@ theorem matchTerm_sound {pat gt : DTerm} {b b' : Bindings}
               exact ⟨BindExtends.refl _, trivial, by simp [DTerm.subst, heq]⟩
           · cases h
       | v m => simp [matchTerm] at h
+      | lit g => simp [matchTerm] at h
+  | lit l =>
+      cases gt with
+      | c g => simp [matchTerm] at h
+      | v m => simp [matchTerm] at h
+      | lit g =>
+          simp only [matchTerm] at h
+          split at h
+          · next heq =>
+              cases h
+              exact ⟨BindExtends.refl _, trivial, by simp [DTerm.subst, heq]⟩
+          · cases h
   | v n =>
       cases gt with
       | c g =>
@@ -388,6 +447,7 @@ theorem matchTerm_sound {pat gt : DTerm} {b b' : Bindings}
               · simp [DTerm.boundIn, blookup]
               · simp [DTerm.subst, bsubst, blookup]
       | v m => simp [matchTerm] at h
+      | lit g => simp [matchTerm] at h
 
 theorem matchArgs_sound :
     ∀ {pats gts : List DTerm} {b b' : Bindings},
@@ -483,6 +543,9 @@ theorem matchTerm_complete {θ : String → String} {b : Bindings}
       BindExtends b b' ∧ ∀ n ∈ pat.varList, blookup b' n = some (θ n) := by
   cases pat with
   | c s =>
+      exact ⟨b, by simp [DTerm.subst, matchTerm], ha, BindExtends.refl _,
+             by simp [DTerm.varList]⟩
+  | lit l =>
       exact ⟨b, by simp [DTerm.subst, matchTerm], ha, BindExtends.refl _,
              by simp [DTerm.varList]⟩
   | v n =>
@@ -676,6 +739,7 @@ theorem DatalogProgram.derives_mem_lfp {p : DatalogProgram}
 def DTerm.toCl : DTerm → CL.Term
   | .v n => .name n
   | .c s => .name s
+  | .lit l => embedTerm (.literal l)
 
 /-- An atom as a CL predication (the same operator-position reading
 as `HAtom.sentence`, at any arity). -/
@@ -697,6 +761,7 @@ def DatalogProgram.toSchema (p : DatalogProgram) : Schema :=
 def DTerm.val (i : CL.Interp) (f : String → i.dom) : DTerm → i.dom
   | .v n => f n
   | .c s => i.iName s
+  | .lit l => CL.denotTerm i i.iName (fun _ => []) (embedTerm (.literal l))
 
 /-- The n-ary generalisation of `HAtom.HoldsN`, stated directly over
 the CL interpretation (no `restrictInterp` — arity is not 2). -/
@@ -716,6 +781,11 @@ theorem denot_dterm (i : CL.Interp) {vars : List String}
         simpa [DTerm.wfB, List.contains_iff_mem] using hwf
       have hnm : s ∉ vars := fun hmem => hvars s hmem hcolon
       simp [DTerm.toCl, CL.denotTerm, DTerm.val, overrideOn, hnm]
+  | .lit l, _, _ => by
+      have hfresh : FreshVal i (overrideOn i.iName vars f) :=
+        freshVal_overrideOn i hvars f
+      simp only [DTerm.toCl, DTerm.val, embedTerm, CL.denotTerm]
+      rw [denotSeq_litArgs i hfresh l, hfresh litOp (by decide)]
 
 theorem denotSeq_dargs (i : CL.Interp) {vars : List String}
     (hvars : ∀ n ∈ vars, ':' ∉ n.toList) (f : String → i.dom)
@@ -793,6 +863,9 @@ theorem denot_ground_dterm (i : CL.Interp) (σ : String → List i.dom)
       CL.denotTerm i i.iName σ t.toCl = t.val i f
   | .v n, hg => by simp [DTerm.groundB] at hg
   | .c s, _ => by simp [DTerm.toCl, CL.denotTerm, DTerm.val]
+  | .lit l, _ => by
+      simp only [DTerm.toCl, DTerm.val, embedTerm, CL.denotTerm]
+      rw [denotSeq_litArgs i (fun _ _ => rfl) l]
 
 theorem denotSeq_ground_dargs (i : CL.Interp) (σ : String → List i.dom)
     (f : String → i.dom) :
@@ -884,21 +957,36 @@ def herbInterp (base : List DAtom) : CL.Interp where
 exactly when its instance under that valuation (read as a
 substitution) is in the base. -/
 theorem herb_holds_iff (base : List DAtom)
-    (f : String → (herbInterp base).dom) (a : DAtom) :
+    (f : String → (herbInterp base).dom) {a : DAtom}
+    (hlf : a.litFreeB = true) :
     a.Holds (herbInterp base) f ↔ a.subst f ∈ base := by
-  have hval : DTerm.val (herbInterp base) f = DTerm.substVal f := by
-    funext t; cases t <;> rfl
-  have hsubst : DTerm.subst f = fun t => DTerm.c (DTerm.substVal f t) := by
-    funext t; cases t <;> rfl
-  simp only [DAtom.Holds, hval, DAtom.subst, hsubst]
+  simp only [DAtom.litFreeB, Bool.and_eq_true, List.all_eq_true] at hlf
+  have hval : ∀ t : DTerm, t.litFreeB = true →
+      DTerm.val (herbInterp base) f t = DTerm.substVal f t := by
+    intro t ht
+    cases t with
+    | v n => rfl
+    | c s => rfl
+    | lit l => simp [DTerm.litFreeB] at ht
+  have hsubst : ∀ t : DTerm, t.litFreeB = true →
+      DTerm.subst f t = DTerm.c (DTerm.substVal f t) := by
+    intro t ht
+    cases t with
+    | v n => rfl
+    | c s => rfl
+    | lit l => simp [DTerm.litFreeB] at ht
+  simp only [DAtom.Holds, DAtom.subst,
+             hval _ hlf.1, hsubst _ hlf.1,
+             List.map_congr_left (fun t ht => hval t (hlf.2 t ht)),
+             List.map_congr_left (fun t ht => hsubst t (hlf.2 t ht))]
   simp only [herbInterp, List.map_map, Function.comp_def]
 
 /-- A GROUND atom's sentence is satisfied by the Herbrand
 interpretation exactly when the atom is in the base. -/
 theorem herb_ground_mem_iff (base : List DAtom) {a : DAtom}
-    (hg : a.groundB = true) :
+    (hg : a.groundB = true) (hlf : a.litFreeB = true) :
     CL.Satisfies (herbInterp base) a.sentence ↔ a ∈ base := by
-  rw [satisfies_groundAtom _ (herbInterp base).iName hg, herb_holds_iff]
+  rw [satisfies_groundAtom _ (herbInterp base).iName hg, herb_holds_iff _ _ hlf]
   exact iff_of_eq (congrArg (· ∈ base) (DAtom.subst_of_ground hg _))
 
 /-- The Herbrand interpretation of a SATURATED least fixpoint
@@ -906,17 +994,20 @@ satisfies the program's schema: a rule's native reading at any
 valuation is one `step` firing, and saturation keeps the head inside
 the fixpoint. -/
 theorem herb_satisfiesSchema {p : DatalogProgram} {facts : List DAtom}
-    {fuel : Nat} (hfa : p.FuelAdequate facts fuel) :
+    {fuel : Nat} (hfa : p.FuelAdequate facts fuel)
+    (hlf : ∀ r ∈ p.rules, r.litFreeB = true) :
     SatisfiesSchema (herbInterp (p.lfp facts fuel)) p.toSchema := by
   rintro s ⟨r, hr, rfl⟩
+  have hrl := hlf r hr
+  simp only [DRule.litFreeB, Bool.and_eq_true, List.all_eq_true] at hrl
   rw [satisfies_ruleSentence_iff _ (p.rule_wf _ hr)]
   intro f hb
-  rw [herb_holds_iff]
+  rw [herb_holds_iff _ _ hrl.1]
   refine hfa _ (List.mem_flatMap.mpr ⟨_, hr, ?_⟩)
   refine DRule.mem_conclusions_of_instance
     (DRule.wf_definite (p.rule_wf _ hr)) ?_
   intro b hbm
-  rw [← herb_holds_iff]
+  rw [← herb_holds_iff _ _ (hrl.2 b hbm)]
   exact hb b hbm
 
 /-- **Generic least-fixpoint COMPLETENESS for ground-atomic
@@ -926,17 +1017,20 @@ is in the fuel-adequate least fixpoint. The Herbrand interpretation of
 the fixpoint is the minimal model. -/
 theorem datalog_lfp_complete (p : DatalogProgram) {facts : List DAtom}
     {fuel : Nat} (hgf : ∀ b ∈ facts, b.groundB = true)
+    (hlfp : ∀ r ∈ p.rules, r.litFreeB = true)
+    (hlff : ∀ b ∈ facts, b.litFreeB = true)
     (hfa : p.FuelAdequate facts fuel) {a : DAtom} (hg : a.groundB = true)
+    (hla : a.litFreeB = true)
     (h : EntailsSchema condTrue p.toSchema (facts.map DAtom.sentence)
       a.sentence) :
     a ∈ p.lfp facts fuel := by
   have hsat : CL.Satisfies (herbInterp (p.lfp facts fuel)) a.sentence := by
-    refine h _ trivial (herb_satisfiesSchema hfa) ?_
+    refine h _ trivial (herb_satisfiesSchema hfa hlfp) ?_
     intro s hs
     obtain ⟨b, hbm, rfl⟩ := List.mem_map.mp hs
-    exact (herb_ground_mem_iff _ (hgf b hbm)).mpr
+    exact (herb_ground_mem_iff _ (hgf b hbm) (hlff b hbm)).mpr
       (p.lfp_extensive facts fuel b hbm)
-  exact (herb_ground_mem_iff _ hg).mp hsat
+  exact (herb_ground_mem_iff _ hg hla).mp hsat
 
 /-- **The stage 3 gate theorem** (design document §4.3,
 `datalog_lfp_iff_entails`): for a well-formed program (definite Horn
@@ -945,12 +1039,15 @@ least fixpoint contains the atom EXACTLY WHEN the program-as-schema
 plus the facts entail its sentence over every CL interpretation. -/
 theorem datalog_lfp_iff_entails (p : DatalogProgram) {facts : List DAtom}
     {fuel : Nat} {a : DAtom} (hgf : ∀ b ∈ facts, b.groundB = true)
-    (hg : a.groundB = true) (hfa : p.FuelAdequate facts fuel) :
+    (hlfp : ∀ r ∈ p.rules, r.litFreeB = true)
+    (hlff : ∀ b ∈ facts, b.litFreeB = true)
+    (hg : a.groundB = true) (hla : a.litFreeB = true)
+    (hfa : p.FuelAdequate facts fuel) :
     a ∈ p.lfp facts fuel ↔
       EntailsSchema condTrue p.toSchema (facts.map DAtom.sentence)
         a.sentence :=
   ⟨fun h => datalog_lfp_sound p facts fuel h,
-   fun h => datalog_lfp_complete p hgf hfa hg h⟩
+   fun h => datalog_lfp_complete p hgf hlfp hlff hfa hg hla h⟩
 
 /-! ## Non-vacuity witnesses (the `SemanticsHypothesisWitness`
 discipline: a schema nothing satisfies would make every entailment
@@ -1011,7 +1108,8 @@ theorem demo_path_entailed :
       (demoFacts.map DAtom.sentence)
       (DAtom.sentence ⟨pPath, [dA, dC]⟩) :=
   (datalog_lfp_iff_entails demoProgram (fuel := 3) demoFacts_ground
-    (by decide) (demoProgram.fuelAdequate_of_check (by decide))).mp
+    (by decide) (by decide) (by decide) (by decide)
+    (demoProgram.fuelAdequate_of_check (by decide))).mp
     (by decide)
 
 /-- The ternary instance: `tri(a,b,d:mark)` is entailed — the n-ary
@@ -1021,7 +1119,8 @@ theorem demo_tri_entailed :
       (demoFacts.map DAtom.sentence)
       (DAtom.sentence ⟨pTri, [dA, dB, cMark]⟩) :=
   (datalog_lfp_iff_entails demoProgram (fuel := 3) demoFacts_ground
-    (by decide) (demoProgram.fuelAdequate_of_check (by decide))).mp
+    (by decide) (by decide) (by decide) (by decide)
+    (demoProgram.fuelAdequate_of_check (by decide))).mp
     (by decide)
 
 /-- The negative instance — the not-everything guard: `path(c,a)` is
@@ -1034,7 +1133,7 @@ theorem demo_not_entailed_reverse :
         (DAtom.sentence ⟨pPath, [dC, dA]⟩) := by
   intro h
   have hmem := (datalog_lfp_iff_entails demoProgram (fuel := 3)
-    demoFacts_ground (by decide)
+    demoFacts_ground (by decide) (by decide) (by decide) (by decide)
     (demoProgram.fuelAdequate_of_check (by decide))).mpr h
   exact absurd hmem (by decide)
 
@@ -1071,6 +1170,8 @@ user-declared. -/
 #print axioms herb_satisfiesSchema
 #print axioms datalog_lfp_complete
 #print axioms datalog_lfp_iff_entails
+#print axioms herb_holds_iff
+#print axioms herb_ground_mem_iff
 #print axioms toSchema_satisfiable
 #print axioms demo_path_entailed
 #print axioms demo_not_entailed_reverse

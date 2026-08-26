@@ -1,5 +1,14 @@
 # npm packaging for two verified engines: F\* extractions + Lean 4 wasm
 
+**STATUS UPDATE, issue #618 (2026-08-26): option A was chosen after
+all.** Everything below through "Done 2026-08-25" is the ORIGINAL
+design record (option B, the companion-package split) — kept in full,
+unedited, as the record of why the decision changed; do not delete it
+when reading further down. See "## 2026-08-26 (#618): the merge into
+`@factoidal/core`, and why option A's rejection no longer holds" at the
+end of this file for the current state, the premise that changed, and
+the backend-selector spec built on top of it.
+
 Owner request 2026-08-22: "Draft an l4 module of npm factoidal package
 and scope out ways for the module to include both lean 4 and f\*
 extractions without being a hideous bloated monolith." Workstream:
@@ -149,3 +158,227 @@ API-level (npm subpaths over one memoised instance); the
 `Wasm/Ops/*.lean` file-per-group layout and the single `l4_call`
 export keep a later split mechanical if a future op group changes the
 economics.
+
+## 2026-08-26 (#618): the merge into `@factoidal/core`, and why option A's rejection no longer holds
+
+Owner, 2026-08-26: "Can't our lean module be part of core, and
+eventually we settle on lean vs fstar? We could add backend
+args/switcher but it seems lean is already outshining fstar even if
+fstar helped bootstrap the lean 4 port." Issue:
+[#618](https://github.com/danbri/factoidal/issues/618).
+
+### The premise that changed
+
+Option A was rejected above for one stated reason: "+23% tarball for a
+phase-1 ABI (BGP only)." That premise was true when it was written
+(2026-08-22, `l4factoidal.wasm` ~1.4 MB, BGP-only). It is no longer
+true:
+
+- The ABI is not BGP-only. The "Done 2026-08-25" section above already
+  records the widening through OWL verdicts and CL/IKL; the wasm now
+  serves a **21-op dispatch surface** (`bin/linux-x86_64/l4factoidal
+  ops`), 12 of which are wired into `l4-core.js`'s typed API (see the
+  capability table below).
+- The measured wasm is 4,248,606 bytes (the "+ rdfProjection" row
+  above) — carrying its own weight for what it now does, not a
+  disproportionate tax on a thin surface.
+- `npm/factoidal` was already 6.4 MB and `npm/factoidal-lean` 4.2 MB
+  before this landing; folding the latter into the former is a
+  reorganization of where the bytes live, not new bytes.
+- Non-monolith principle #2 above ("binary payloads live in leaf
+  packages that rev with their toolchain") was already violated by
+  core carrying the F\* wasm assets, flagged in this file's own text as
+  predating the rule. Adding Lean's artifacts makes core consistent
+  with what it already is, rather than newly monolithic.
+- CLAUDE.md standing decision, owner 2026-08-24/26: "There are no
+  users. Prefer the right structure to the compatible one" — the
+  release-cadence annoyance (the Lean artifact revs with
+  `lean-toolchain`) costs nothing with zero installers depending on the
+  split today.
+
+### What landed
+
+`npm/factoidal-lean/{l4factoidal.js,l4factoidal.mjs,l4factoidal.wasm,version.json}`
+moved into `npm/factoidal/l4-assets/` (identical bytes — `wasmSha256`
+unchanged: `6593d0449b5905e5b02c1e32cf643238ef26a67589cb910158948dbf3798f58d`).
+`l4.js`'s resolver ladder gained a new first-hit source ahead of the
+existing three, so `require('factoidal/l4')` / `require('factoidal/l4-core')`
+are unchanged for every existing call site:
+
+1. this package's own `l4-assets/` (new, the normal case now);
+2. the companion package `@factoidal/lean` (kept as a manual-override
+   path, not deleted — see `npm/factoidal-lean/README.md`, now marked
+   superseded);
+3. `$FACTOIDAL_L4_ASSETS`;
+4. the repository checkout layout (`docs/web/hub/assets/l4/`).
+
+`version.json` claims stay in TWO files, not merged: `npm/factoidal/version.json`
+(F\*, tagged `"engine": "fstar"`) and `npm/factoidal/l4-assets/version.json`
+(Lean, tagged `"engine": "lean4"`), each pointing at the other in a
+`note` field. `.github/workflows/npm-publish-lean.yml` is disabled by
+default (a `workflow_dispatch` confirm phrase is required to run it) —
+publishing the superseded package by accident is worse than not
+publishing it at all.
+
+### The backend selector (`factoidal/select`, `npm/factoidal/select.js`)
+
+Owner ruling, 2026-08-26 (issue #618 comments
+[1](https://github.com/danbri/factoidal/issues/618#issuecomment-5425162574),
+[2](https://github.com/danbri/factoidal/issues/618#issuecomment-5425193280)):
+a per-instance backend option with per-call override on at least the
+`fn` flavour of the API; five values (`lean`, `fstar`, `lean1st`,
+`fstar1st`, `slowcompareboth`); `lean`/`fstar` throw rather than
+silently answer from the other engine; `lean1st`/`fstar1st` fall
+through for functions the primary engine lacks, with an optional
+override-function list; `slowcompareboth` runs both and compares.
+
+`createSelector({backend, overrideFns})` returns an instance whose
+methods (`parse`, `query`, `update`, `serialize`, `canonicalize`,
+`owlClosure`, `owlIsConsistent`, `owlEntails`, `coreRdfsClosure`,
+`shaclValidate`, ... and the generic `call(fnName, args, callOptions)`)
+each take a trailing `{backend, overrideFns}` that overrides the
+instance default for that one call. Three sub-questions the ruling left
+for the implementation:
+
+1. **Observability.** Every result is an envelope naming the answering
+   engine: `{engine: 'lean'|'fstar', backend, value}` for the four
+   single/fallthrough modes, `{engine: 'both', backend, agree,
+   comparison: {method}, lean, fstar}` for `slowcompareboth`. A caller
+   can always tell `lean1st` apart from `lean` by reading `.engine` on
+   the result.
+2. **`slowcompareboth` disagreement.** Returns both values with
+   `agree: false` — a disagreement is a reportable finding, not a
+   thrown error. `slowcompareboth` DOES throw in two other cases, kept
+   distinct: (a) a capability precondition fails (either engine lacks
+   the function — nothing to compare, `lean1st`/`fstar1st` exist for
+   that case instead), or (b) the call itself throws on at least one
+   side (an execution error, not a semantic disagreement; the thrown
+   `Error` carries `.lean`/`.fstar` outcome records so both sides stay
+   inspectable).
+3. **"Same answer."** RDFC-1.0 isomorphism (reusing `fn.js`'s
+   `equals()`, which already implements the cheapest-correct-path
+   chain down to canonical-hash comparison) for anything Dataset-shaped
+   — bare `Dataset` results, and the `ntriples`/`dataset`/`report`
+   fields other results wrap one in. SPARQL SELECT bindings are
+   compared as a **bag** (order-insensitive, duplicate rows
+   significant — SPARQL results are bags, and RDFC-1.0 canonicalizes
+   graphs, not solution bindings) with blank-node labels renamed to a
+   stable per-side form first, documented as `method:
+   'bag-of-bindings'` on the result so a caller can see which
+   comparison ran. `serialize()` text is parsed back to a `Dataset` and
+   compared the same isomorphism-aware way when it parses as N-Quads/
+   N-Triples; other serialization formats fall back to a labelled
+   strict-string comparison (`method:
+   'strict-equality(non-nquads-text)'`) rather than silently guessing.
+
+### The capability table (derived, not hand-written)
+
+`select.capabilityTable()` computes this live from both engines'
+`capabilities()` probes (`lib/api.js`'s `capabilitiesUncached()`,
+itself `typeof <the real loaded entry object>[opName] === 'function'`
+against each engine) — never a maintained list. Measured against this
+repo's committed artifacts, 2026-08-26:
+
+| Function | Lean | F\* |
+|---|---|---|
+| `canonicalHash` | yes | yes |
+| `canonicalize` | yes | yes |
+| `closeCottas` | no | yes |
+| `coreRdfsCheck` | yes | yes |
+| `coreRdfsClosure` | yes | yes |
+| `csvwToRdf` | no | yes |
+| `didKeyResolve` | no | yes |
+| `graphs` | yes | yes |
+| `jsonSchemaValidate` | no | yes |
+| `jsonldFromRdf` | no | yes |
+| `jsonldToRdf` | no | yes |
+| `mathmlEval` | no | yes |
+| `matrixDeterminant` | no | yes |
+| `matrixOuterProduct` | no | yes |
+| `matrixScalarProduct` | no | yes |
+| `matrixVectorProduct` | no | yes |
+| `openCottas` | no | yes |
+| `owlClosure` | yes | yes |
+| `owlEntails` | yes | yes |
+| `owlIsConsistent` | yes | yes |
+| `parse` | yes | yes |
+| `query` | yes | yes |
+| `queryCottas` | no | yes |
+| `rdfsPlusClosure` | yes | yes |
+| `rhoDfClosure` | yes | yes |
+| `rhoDfFragmentCheck` | yes | yes |
+| `rifEval` | no | yes |
+| `rmlMap` | no | yes |
+| `schematronValidate` | no | yes |
+| `serialize` | yes | yes |
+| `shaclValidate` | no | yes |
+| `shexValidate` | no | yes |
+| `sigmoidFormulaMathml` | no | yes |
+| `sigmoidPoints` | no | yes |
+| `tableauDlInconsistent` | no | yes |
+| `tableauMaterialise` | no | yes |
+| `toCottas` | no | yes |
+| `toanDiff` | no | yes |
+| `toanProduct` | no | yes |
+| `toanSimplify` | no | yes |
+| `toanSubst` | no | yes |
+| `toanSummation` | no | yes |
+| `update` | yes | yes |
+| `vcEd25519SecretToPublic` | no | yes |
+| `vcEd25519Sign` | no | yes |
+| `vcEd25519Verify` | no | yes |
+| `vcEddsaCreateFromCanonical` | no | yes |
+| `vcEddsaVerifyFromCanonical` | no | yes |
+| `vcSha256Hex` | no | yes |
+| `xformsRecalc` | no | yes |
+| `xmlWellformed` | no | yes |
+| `xpathEval` | no | yes |
+| `xsltTransform` | no | yes |
+
+F\* is a strict superset on this typed-API surface today: 15 functions
+both engines answer, 39 that only F\* does, 0 that only Lean does. This
+is a statement about the **npm typed-API wrapper surface** in
+`lib/api.js`, not about the Lean engine's total capability — the raw
+wasm has 21 ops (see below), and the parity ledger referenced from
+issue #618 (SPARQL 1.1, ShEx, OWL RL+DL, RIF Core, XSLT, GRDDL,
+JSON-LD, CSVW, JSON Schema, entailment regimes) shows Lean matching or
+leading F\* on several suites at the engine-conformance level even
+where no typed npm wrapper exists yet for that surface. Filling in the
+remaining parity-ledger rows (SHACL, VC/DID, GeoSPARQL, RDFC-1.0) is
+issue #618 work item 4, out of scope for this npm-packaging landing.
+
+### CL/IKL and the dataset-handle ops: 9 of 21 unwired, for two different reasons
+
+Owner, 2026-08-26 (same issue, scope-change comment): "I don't want npm
+code for direction b at this stage, unless for the shape of ikl which
+is the subset we get mapping rdf into ikl. But ikl doesn't have shapes
+or named profiles. Take it out of npm for now."
+
+`clParse`, `clToDataset` and `queryWithIklService` are real ops on the
+compiled wasm (confirmed present via `l4.call('ops', [])` reflection —
+**not deleted**, no wasm rebuild happened for this decision) but are
+withheld from the npm typed-API surface by this owner decision: IKL has
+no notion of shapes or named profiles, so an `x-ikl-<suffix>`
+entailment-regime family invents a taxonomy the specification does not
+have. `lib/api.js`'s `query()` (the shared choke point for `index.js`,
+`l4-core.js` and `select.js`) and `fn.js`'s `entail()` both reject any
+`entail` value matching `/^x-ikl/i` explicitly, independent of the
+`ENTAIL_VALUES` whitelist, so a later whitelist edit cannot reopen this
+without a deliberate second look. Pinned by regression tests in
+`test/select.test.js` (both the op-absence and the regime-rejection
+cases).
+
+`datasetOpen`/`datasetQuery`/`datasetUpdate`/`datasetSerialize`/
+`datasetClose` are the other 5 of the 9 unwired ops — ordinary RDF
+dataset handles, explicitly NOT covered by the owner decision above.
+They stay unwired only because `lib/api.js` has no typed-wrapper shape
+for a stateful handle yet (every existing typed op is request/
+response); wiring them in is a reasonable follow-up, not a ruling to
+revisit.
+
+### Gates
+
+`npm test` (`npm/factoidal`): 235 pass, 0 fail, 1 skip, 1 todo (out of
+237) — includes the pre-existing suite plus 28 new selector tests
+(`test/select.test.js`) and 4 new `.d.ts`-drift tests. `node --test
+tests/hub/npm_l4_test.mjs`: 4 pass, 0 fail (unchanged).

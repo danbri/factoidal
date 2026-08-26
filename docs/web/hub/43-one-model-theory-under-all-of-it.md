@@ -51,8 +51,7 @@ never machine-checked.
 Menzel, IKRIS 2006) supplies what §4.0 says is missing: it extends
 Common Logic (ISO/IEC 24707) with the term `(that S)`, which denotes
 the proposition a sentence expresses.
-[Post 39](../39-propositions-as-first-class-citizens/) and
-[post 41](../41-a-walkthrough-of-the-ikl-guide/) run that machinery
+[Post 41](../41-a-walkthrough-of-the-ikl-guide/) parses that construct
 live; `CL/Semantics.lean` in this repository formalizes the ISO/IEC
 24707 §6.2/§6.3 clauses plus the IKL proposition domain.
 
@@ -401,9 +400,13 @@ matched the layer. Open.
 * **Tableau completeness is open**, so "consistent" from the calculus
   is not a proof of satisfiability, and "unknown" claims nothing
   ([issue 586](https://github.com/danbri/factoidal/issues/586)).
-* **SPARQL adequacy is to the ENGINE on any pattern containing a blank
-  node**, per §18.3.1 above. `unified_adequate_bgp_bnodeFree` is the
-  corollary that is a claim about the specification.
+* **SPARQL adequacy is to the ENGINE at the raw `evalBgp` entry
+  point** on a pattern containing a blank node, per §18.3.1 above. The
+  QUERY path rewrites those blank nodes into non-distinguished
+  variables first, and `unified_adequate_bgp_spec` is the gate stated
+  over the rewritten pattern with no blank-node hypothesis
+  ([issue 607](https://github.com/danbri/factoidal/issues/607), whose
+  remaining half is the F* tree's EXISTS bodies).
 * **RIF Core never got its stage.** The machinery it needs has been
   landed and generic since stage 3; the theorem does not exist.
 * **The `rdf:_n` finite-slice lemma is unproved.** Nothing landed

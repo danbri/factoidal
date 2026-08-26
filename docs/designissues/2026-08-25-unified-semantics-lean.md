@@ -8,7 +8,12 @@ No code lands with this document. Every Lean signature and theorem
 statement below is a proposal; each one becomes real only in the stage
 that proves it, under that stage's gate.
 
-Stages 1-7 have since landed. Read this document with the correction
+Stages 1-7 have since landed, and so has the §4.7 RIF Core stage that
+correction note 15 deferred (`Unified/RifEmbed.lean`, 2026-08-26,
+[https://github.com/danbri/factoidal/issues/612](https://github.com/danbri/factoidal/issues/612);
+correction notes 38-41 — its gate theorems are full iffs against the
+Datalog least fixpoint, NOT against the native RIF engine, for the
+reason note 38 gives). Read this document with the correction
 notes below, which record where the implementation contradicted it.
 The stage 7 account of what was proved, at what strength, with the
 named gaps and the defects the proof attempts found, is
@@ -270,7 +275,9 @@ exhibits). Four notes in the same spirit as 1–11:
 
 Stage 4 landed (`OWL/RLSemantics.lean`, `OWL/RLHerbrand.lean`,
 `Unified/OwlRlSchema.lean`, `Unified/OwlRlAdequacy.lean`; registry
-section 9). Five points of §4.4 are corrected by the implementation.
+section 9). Five points of §4.4 are corrected by the implementation,
+and note 21 (added later the same day) corrects two of those notes in
+turn.
 
 16. **§4.4's `owlRlSchema D` takes no `D`.** The OWL 2 RL datatype rows
     (Table 7) range over the FIXED tables `builtinDatatypeAxioms`,
@@ -319,6 +326,115 @@ section 9). Five points of §4.4 are corrected by the implementation.
     `owl:ObjectProperty`, because the minc1 comprehension row emits an
     `owl:minCardinality "1"` triple. The completeness direction
     therefore does not reach cardinality-bearing ontologies.
+
+21. **Correction note 18 is superseded in part, and one of its reasons
+    was wrong** (2026-08-26, later the same day,
+    [issue 613](https://github.com/danbri/factoidal/issues/613)).
+    `OwlRlInterpCond` now carries THREE rows, not nine.
+
+    **What moved.** `Unified/Datalog.lean` gained `DTerm.lit`, a term
+    constructor carrying an `RDF.WfLiteral` whose `toCl` is
+    `embedTerm (.literal l)` and whose `val` is the denotation
+    `restrictInterp` gives `iLit`. A cardinality-literal row is then an
+    ordinary `DAtom`, so cls-maxc2 is a plain Horn row
+    (`RlRowId.clsMaxc2`) and cls-maxc1, cls-maxqc1, cls-maxqc2 are
+    plain clash rows (`RlNegRowId`). `owlRlSchema_cardinality_rows`
+    states the four as consequences of schema satisfaction alone.
+
+    The new constructor is free in the MODEL-theoretic layer
+    (`DTerm.wfB` holds of every literal: the colon discipline is about
+    capture under the universal closure, and a literal binds nothing).
+    It is not free in the OPERATIONAL layer: `herbInterp`'s domain is
+    the constant names, so a rigid literal term denotes outside that
+    Herbrand universe. `DTerm.litFreeB` names the restriction and
+    `herb_holds_iff`, `herb_ground_mem_iff`, `herb_satisfiesSchema`,
+    `datalog_lfp_complete` and `datalog_lfp_iff_entails` carry it as a
+    hypothesis. Every existing call site discharges it by computation,
+    so no landed gate theorem weakens in substance.
+
+    **prp-spo2 and prp-key moved too, as per-length families.**
+    `spo2Rule m` and `keyRule m` are the rows at collection length
+    `m + 1`: the `rdf:first`/`rdf:rest` walk and the chain (or
+    shared-value) premises flattened into `m + 1` body atoms, the last
+    cell resting at `rdf:nil`. `owlRlSeqSchema` is the two families
+    and `owlRlSchema` unions it in; `owlRlSchema_seq_rows` states both
+    rows as consequences of schema satisfaction alone.
+
+    Two things made this cheap enough to do. Generated variable names
+    carry their index as a UNARY tail (`nmAt c k` is `c` then `k`
+    copies of `'x'`), so `seqVal` reads the index off a list length
+    and nothing has to prove a numeral spelling injective. And
+    `seqIs_walk`, `semChain_vals`, `semShares_vals` turn the
+    existential chains of `SeqIs`, `SemChain` and `SemShares` into
+    indexed functions by one induction each, so the bridge lemma just
+    fires the family member at the collection's own length.
+
+    Non-vacuity: `allTrue_satisfies_seq` (the families have models at
+    every length) and `spo2Counter` / `seqSchema_not_everything` (an
+    interpretation meeting every premise of prp-spo2 at chain length 1
+    and denying its conclusion, so the family is not the
+    everything-relation).
+
+    **The reason note 18 gave was wrong.** Note 18 said the reserved
+    helper predicates "cannot serve" prp-spo2 and prp-key because the
+    relation to encode is ternary and `RDF.Interp.iext` is binary.
+    `DAtom` is n-ary, and such a helper need never appear in
+    `restrictInterp i` — it is internal to the schema and to the
+    bridge proof, so a ternary helper IS writable. The actual reason
+    to prefer the per-length families is
+    `Unified/RdfTransport.lean`'s `liftInterp`, which reads `rel p
+    args` as `False` at every arity other than 2: a schema row with a
+    ternary head would be false at `liftInterp r` for every RDF
+    interpretation `r`, i.e. at exactly the models note 19's
+    schema-relative completeness needs. The families keep every row
+    binary and cost no model.
+
+    They do make note 19's outstanding pass larger in kind: it now has
+    to cover the two families at EVERY length, which is an induction
+    on collection length rather than a finite row walk.
+
+    **Existential heads: a decision, not a blockage.** A `Schema` is a
+    predicate on `CL.Sentence`, so cax-dw-comp, cls-maxqc1-comp and
+    minc1-comp CAN be put in one. The decision is not to, for two
+    costs. (i) The head of `RlCondCompDw` is not a conjunction of
+    atoms — `CompProps` carries two universally quantified
+    implications and a five-variable one — so each row is a bespoke CL
+    sentence with a bespoke satisfaction lemma, an instance of no
+    family in `Unified/OwlRlSchema.lean`. (ii) An existential head
+    removes the least-model property the completeness direction of the
+    stage-3 class rests on (`datalog_lfp_complete`; the same boundary
+    `rdfD1Shape_not_wf` pins at the program layer). If they are ever
+    admitted it should be as a SEPARATE sub-schema, so that the
+    definite `owlRlSchema` stays available for the completeness work.
+
+    **Note 20's expected remedy does not work.** Note 20 records
+    `RlHerbFrag` clause (a) as the narrowness, and
+    [issue 613](https://github.com/danbri/factoidal/issues/613) item 3
+    expected a `DTerm` cardinality literal to widen it. It does not.
+    Clause (a) exists for eq-ref, object form: `RlCondEqRefO` demands
+    `y owl:sameAs y` for every object `y`, `rlHerb`'s `iext` reads "the
+    triple is in the graph", so `y` must be expressible as an
+    `RDF.Subject` — and RDF 1.1 Concepts §3.1 gives a triple an IRI or
+    a blank node as subject, never a literal. `frag_obj_subject` is
+    consumed at fifteen sites of `rlHerb_conditions`. The obstruction
+    is the RDF term algebra reproduced in the syntactic model, not the
+    Datalog term type. Widening past clause (a) needs a different
+    `rlHerbIext` for the `owl:sameAs` row, after which
+    `rlHerb_triple_decode` would decode an atom that `OWL.RL.Derives`
+    cannot produce — so the fragment and the decode step have to move
+    together, or not at all.
+
+    A Lean mechanics note worth keeping: `simp only` and `rw` will not
+    fire the `seqVal` lookup lemmas, because matching a generated name
+    has to see through `String.ofList` / `String.toList`. `erw` does.
+    Every lookup step in `cond_prpSpo2`, `cond_prpKey` and
+    `seqSchema_not_everything` is an `erw` for that reason, and it is
+    not a shortcut around a failed proof.
+
+    Measured with the landing: OWL probe 1131 pass, 316 fail, 2 skip,
+    8 unsupported (out of 1457) — unchanged, the closure engine was not
+    touched. SPARQL 1.1 entailment sentinel 70 pass, 0 fail (out of 70)
+    in both trees.
 
 ### Stage 5 correction notes (2026-08-26)
 
@@ -684,6 +800,158 @@ spirit as 1-26:
     `urn:cl:def:literalValueOf` and `urn:cl:def:tripleTerm`.
     `dataset_decoration_asserts_nothing` is what survives of the
     RDF 1.1 neutrality: an undecorated named graph asserts nothing.
+
+### RIF Core stage correction notes (2026-08-26, issue 612)
+
+`Unified/RifEmbed.lean` landed: the deferred §4.7 stage that
+correction note 15 split out of stage 3. Four notes.
+
+38. **§4.7's `unified_adequate_rifCore` is NOT landed against the
+    native engine, and cannot be while three definitions are
+    `partial`.** The sketch puts `t ∈ RIF.Engine.saturate rs g fuel`
+    on the left. `RIF/Engine.lean`'s `groundTm`, `matchFormula` and
+    `qualifyTm` are `partial def`. A Lean `partial def` compiles to an
+    opaque constant: it has no equation lemmas, the kernel cannot
+    reduce it, and nothing about what it COMPUTES is available to a
+    proof. The theorem needs exactly the missing fact — that a
+    substitution `matchFormula` returns makes the body true in the
+    fact set — so it cannot be stated, let alone proved.
+    `RIF/EngineTheorems.lean` was already written around this limit:
+    its `Licensed` predicate MENTIONS `matchFormula`'s output rather
+    than characterising it, which is why that module proves
+    PROVENANCE and its own header declines to call the result
+    soundness. `decide` is blocked for the same reason, so not even a
+    concrete instance can be a theorem.
+
+    Landed instead: the same gate theorem with `DatalogProgram.lfp` —
+    the total least fixpoint of the SAME rules read as a Datalog
+    program — on the left. `rifCore_lfp_iff_entails_atom` (n-ary) and
+    `rifCore_lfp_iff_entails` (§4.7's triple shape) are FULL IFFs,
+    obtained by instantiating stage 3's two generic theorems rather
+    than re-proving them. Agreement with
+    `RIF.Saturate.saturateGraph` is pinned by
+    `rifEngineDatalogAgrees` `#guard`s under COMPILED evaluation,
+    which can see through the `partial def`s — evidence at the
+    strength of note 14's RDFS-Plus pins, not a theorem. Making the
+    three definitions total is the named prerequisite; it is a change
+    to `RIF/Engine.lean` and therefore its own piece of work.
+
+    Two smaller corrections in the same sketch: there is no
+    `RIF.RuleSet` type (a rule set is `List RIF.Rule`; `RifRuleSet`
+    abbreviates it locally rather than editing `RIF/Syntax.lean`), and
+    no `RIF.Engine.saturate` (the graph-level entry point is
+    `RIF.Saturate.saturateGraph`).
+
+39. **The desugaring lands on the unified layer's OWN triple
+    predications, and that fixes the fragment.** §4.7 asked for RIF
+    Core rules "over the same triple predications the rest of the
+    unified layer uses". That is achievable — and it is what makes
+    this stage different from `Unified/DatalogClosures.lean`, which
+    encodes RDF terms into a tagged constant vocabulary (`"i:"` /
+    `"b:"`) and therefore states its entailments over sentences of
+    that vocabulary rather than over `tripleAtom`. Here a `rif:iri`
+    constant with a well-formed IRI lexical form maps to the IRI
+    STRING ITSELF, so `(rifTripleFact t).sentence = tripleAtom t`
+    holds definitionally on the fragment, and the premise list is
+    satisfaction-equivalent to `[rdfToTheorySk g]`
+    (`satisfiesAll_tripleAtoms_iff`). The conclusion is
+    `rdfToTheory [t]` exactly as §4.7 writes it.
+
+    The price is the fragment: `TripleIriOnly` / `GraphIriOnly`.
+    Blank nodes are excluded because `Unified/RdfEmbed.lean` spells a
+    blank-node bound name COLON-FREE by construction and the Datalog
+    class requires a constant to contain a colon; literals are
+    excluded because `embedTerm` maps a literal to a FUNCTIONAL term
+    and the class has no function symbols. Both are consequences of
+    the class and of stage 1's freshness decision, not of any choice
+    made here. Off the fragment `rifCoreConstName` mints a reserved
+    `urn:rif:c:` name and nothing is proved about it.
+
+40. **RIF-DTB built-ins, `Equal`, `Or` and `Exists` are outside the
+    class, and the module says so with `decide`d rejection
+    theorems.** The Datalog class has no equality atom, no built-in
+    predicate, no disjunctive body and no existentially quantified
+    body variable, so all 197 RIF-DTB built-ins are outside it. This
+    is a narrower fragment than the native engine covers: the engine
+    decides a named subset of the built-ins and answers `.undecided`
+    for the rest, whereas the unified layer says nothing at all about
+    a rule that uses one. `rifEqualBodyRule_rejected`,
+    `rifBuiltinBodyRule_rejected`, `rifOrBodyRule_rejected`,
+    `rifFunctionTermRule_rejected` and
+    `rifExistentialHeadRule_rejected` pin each exclusion; the last is
+    the class's definiteness gate doing the same job RIF's own
+    `ruleSafe` does.
+
+41. **`RIF.collectAtoms` had to be restated structurally, and that is
+    a fact about `decide`, not about the function.**
+    `RIF/Translation.lean`'s `collectAtoms` recurses through a `foldr`
+    closure over `List Formula`, so Lean compiles it by WELL-FOUNDED
+    recursion, and a well-founded definition does not reduce in the
+    kernel — every `decide` in this module would have got stuck on
+    it. `rifCollect` / `rifCollectList` is its structural twin,
+    clause for clause, mutual over the nested `Formula` /
+    `List Formula` inductive. The two are pinned against each other by
+    `#guard` on every rule the module names, the rejected boundary
+    shapes included. Nothing here says `collectAtoms` is wrong; the
+    same pattern will recur wherever a `decide`d instance needs a
+    function the elaborator compiled by well-founded recursion.
+
+### SPARQL above the BGP — correction notes (2026-08-26, issue 614)
+
+42. **Stage 6's `bgpBnodeFree` guard described the WRONG entry point,
+    and the engine had a smaller defect than the guard implied.**
+    [https://github.com/danbri/factoidal/issues/607](https://github.com/danbri/factoidal/issues/607)
+    reads `SPARQL/Algebra.lean`'s `tryBindSubject` / `tryBindTerm`
+    correctly: they match a pattern `.bnode b` only against a graph
+    `.bnode b'` with `b == b'`, which is not §18.3.1's pattern
+    instance mapping. What the issue did not see is that the QUERY
+    path never reaches those functions with a raw pattern.
+    `Query.evalSelect`, `evalAsk` and `evalConstruct` run
+    `QueryPattern.rewriteBnodes` first, turning every WHERE-clause
+    blank node into the variable `_bnode_<label>` and stripping it
+    again at projection (`stripSyntheticBnodeVars`, §18.2.4 OutScope).
+    That is why the sparql11 entailment suite passes `rdf03` ("RDF
+    test for blank node cardinalities", two rows from a data graph
+    whose blank-node labels do not match the query's) and the
+    `sparqldl-05`/`-06`/`-07`/`-08`/`-09` undistinguished-variable
+    tests.
+
+    The REAL residue was one step further in: the rewrite did not
+    enter embedded expressions, so an `EXISTS { … _:b … }` body kept
+    its blank nodes. Measured 2026-08-26, in BOTH trees,
+    `SELECT ?x { ?x ex:b1 ?o FILTER EXISTS { ?x ex:b1 _:d } }`
+    returned no rows where every row is a solution. Repaired in the
+    Lean tree by `Expr.rewriteBnodes` (arm for arm over `Expr`, no
+    catch-all) plus rewriting the FILTER / OPTIONAL / BIND / SELECT /
+    GROUP BY / HAVING / ORDER BY expressions; a CONSTRUCT template and
+    a DESCRIBE target list are deliberately NOT rewritten, because
+    §16.2 makes a template blank node fresh per solution. A SERVICE
+    body is left alone: it is a query for a remote endpoint, which
+    applies §18.3.1 itself. **The F\* tree still has the residue** —
+    `SPARQL11.Algebra.fst`'s `substitute_existentials` leaves the
+    body verbatim — and that half stays open on issue 607.
+
+    Theorem consequence: `unified_adequate_bgp_bnodeFree` is REMOVED.
+    Its `bgpBnodeFree b = true` hypothesis did no work in the proof
+    (the body was `unified_adequate_bgp b g mu hg hb`); it was a
+    marker saying which instances were specification claims.
+    `unified_adequate_bgp_spec` replaces it: the same full iff, stated
+    over `b.map SPARQL.rewriteBnodeTriple` — the pattern the query
+    path actually matches — with the blank-node guard PROVED by
+    `bgpBnodeFree_rewriteBnodes` rather than assumed. Its only
+    hypotheses are `RDF.GraphTtFree g` and `BgpTtFree b`. Non-vacuity
+    is pinned: `bgpBnodeFree wBbn = false` while
+    `bgpBnodeFree (wBbn.map rewriteBnodeTriple) = true`, and
+    `bgpMatchesCheck muBn wBbn wG` is FALSE where
+    `bgpMatchesCheck muBn (wBbn.map rewriteBnodeTriple) wG` is TRUE.
+
+    Regression pins for the engine half are `#guard`s in
+    `SPARQL/QueryTests.lean`, written before the fix and confirmed
+    failing on exactly the two EXISTS rows. No W3C sparql11 or
+    sparql12 test exercises a blank node inside an EXISTS body
+    (checked by grep over every `.rq` in both suites), which is why
+    they are `#guard`s and not a manifest row — the same
+    missing-pressure shape the issue itself predicted.
 
 ## 1. Goal and provenance
 

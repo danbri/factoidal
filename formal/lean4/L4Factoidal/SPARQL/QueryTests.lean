@@ -647,6 +647,49 @@ def pExistsO2 : QueryPattern :=
 -- the expression-layer error, so FILTER drops every row.
 #guard ((QueryPattern.lower emptyEnv pExistsO2).evalIn dsExists dsExists.default) == []
 
+/-! ### Pattern blank nodes are non-distinguished variables — §18.3.1
+
+Regression pin for https://github.com/danbri/factoidal/issues/607. A
+blank node written in a query pattern is a NON-DISTINGUISHED VARIABLE
+(SPARQL 1.1 §4.1.4, §18.3.1's pattern instance mapping): it matches any
+RDF term and is not returned. `Algebra.tryBindSubject`/`tryBindTerm`
+match it as a CONSTANT with that label; `Query.evalSelect` is what
+repairs that, by running `QueryPattern.rewriteBnodes` first.
+
+Before this pin the rewrite reached the WHERE clause but NOT an EXISTS
+body carried inside a `FILTER` expression, so a blank node there still
+matched as a constant and the filter dropped every row. Both trees had
+that residue (the F* `factoidal query` binary returned no results on
+the same query on 2026-08-26). -/
+
+-- Top level: `?s ?p _:b` binds `?s` for every subject with any
+-- object, because `_:b` matches any term.
+#guard colS "s" (rows dsExists (qAll
+    (.bgp [{ s := .var "s", p := .var "p", o := .bnode "b" }])))
+  == ["s", "s", "s", "t", "t"]
+
+-- `SELECT *` does not return the rewrite's variable (§18.2.4
+-- OutScope): the header carries `?p` and `?s` only, in first-seen
+-- order of the stripped rows.
+#guard hdr dsExists (qAll (.bgp [{ s := .var "s", p := .var "p", o := .bnode "b" }]))
+  == ["p", "s"]
+
+-- Inside an EXISTS body the same reading must hold: `<s> <p> _:b`
+-- after substitution asks whether the row's subject has ANY object,
+-- true for both subjects. Engine behaviour before the repair: `[]`.
+#guard colS "s" (rows dsExists (qAll
+    (.filter (.existsPat (.bgp [{ s := .var "s", p := .var "p", o := .bnode "e1" }]))
+      (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }]))))
+  == ["s", "t"]
+
+-- NOT EXISTS is its complement: no subject lacks an object, so no
+-- row survives. Before the repair this returned both rows, for the
+-- wrong reason (the body matched nothing).
+#guard rows dsExists (qAll
+    (.filter (.notExistsPat (.bgp [{ s := .var "s", p := .var "p", o := .bnode "e2" }]))
+      (.bgp [{ s := .var "s", p := .var "p", o := .iri oEx1 }])))
+  == []
+
 /-! ### Axiom audit — the whole pipeline is definition-only -/
 
 #print axioms GraphPattern.evalIn

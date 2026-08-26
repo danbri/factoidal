@@ -11,10 +11,16 @@ document `docs/designissues/2026-08-25-unified-semantics-lean.md` §4.4.
   RL rule relation derives from a reserved-vocabulary-free graph is
   entailed by the graph's translation, relative to `owlRlSchema` and
   the interpretation-class condition `OwlRlInterpCond` that carries the
-  nine rows `Unified/OwlRlSchema.lean` cannot state as object-language
-  sentences. The claim is exactly as strong as that pair, no stronger:
-  `OwlRlInterpCond` is a hypothesis on the interpretation, visible in
-  the statement.
+  THREE rows `Unified/OwlRlSchema.lean` does not state as
+  object-language sentences (nine before 2026-08-26). Four
+  cardinality-literal rows moved into the schema when
+  `Unified/Datalog.lean` gained `DTerm.lit`
+  (`owlRlSchema_cardinality_rows`), and prp-spo2 and prp-key moved in
+  as per-length sentence families (`owlRlSchema_seq_rows`). What
+  remains is the existential-head group, which is a recorded decision
+  and not a missing proof. The claim is exactly as strong as that
+  pair, no stronger: `OwlRlInterpCond` is a hypothesis on the
+  interpretation, visible in the statement.
 * **`unified_owlRl_clash_unsat` / `unified_owlRl_clash_entails_all`** —
   a graph carrying a `Clash` configuration has no model in the schema
   class, so its translation entails everything.
@@ -24,6 +30,25 @@ document `docs/designissues/2026-08-25-unified-semantics-lean.md` §4.4.
   `RlClashConditions` that satisfies the saturated closure IS a triple
   of that closure. The countermodel is `rlHerb` and the last step is
   `rlHerb_triple_decode`.
+
+## The Herbrand fragment, and what does NOT widen it
+
+`RlHerbFrag` clause (a) — every object is an IRI or a blank node —
+excludes every graph whose closure carries a cardinality literal.
+`DTerm.lit` does not widen it, and the reason is worth stating because
+the opposite was expected
+(https://github.com/danbri/factoidal/issues/613 item 3). Clause (a)
+exists for eq-ref, object form: `RlCondEqRefO` demands
+`y owl:sameAs y` for every object `y`, and `rlHerb`'s `iext` reads
+"the triple is in the graph", so `y` must be expressible as an
+`RDF.Subject`. RDF 1.1 Concepts §3.1 gives a triple an IRI or a blank
+node as subject, never a literal. The obstruction is the RDF term
+algebra reproduced in the syntactic model — `frag_obj_subject` is
+consumed at fifteen sites of `rlHerb_conditions` — not the Datalog
+term type. Widening past clause (a) needs a different `rlHerbIext` for
+the `owl:sameAs` row, and then `rlHerb_triple_decode` would decode an
+atom that the RL `Derives` relation cannot produce. Recorded, not
+attempted.
 
 ## The completeness gap, stated exactly
 
@@ -193,6 +218,69 @@ theorem allTrue_satisfies_family :
   · rw [satisfies_ruleSentence_iff _ (ruleXsdAxiom_wf p w a pr b)]
     intro f _; exact trivial
 
+/-- The all-true interpretation satisfies both list-valued families at
+every length — so `owlRlSeqSchema` is satisfiable and neither family is
+empty of models. -/
+theorem allTrue_satisfies_seq :
+    SatisfiesSchema allTrueInterp owlRlSeqSchema := by
+  rintro s (⟨m, rfl⟩ | ⟨m, rfl⟩)
+  · rw [satisfies_ruleSentence_iff _ (spo2Rule_wf m)]; intro f _; exact trivial
+  · rw [satisfies_ruleSentence_iff _ (keyRule_wf m)]; intro f _; exact trivial
+
+/-- A counter-model for the list-valued families: a one-step chain
+whose premises all hold and whose conclusion does not. Without a
+witness like this, `owlRlSeqSchema` could be the everything-relation
+and `owlRlSchema_seq_rows` would say nothing. -/
+def spo2Counter : CL.Interp where
+  dom := String
+  domWit := ""
+  iName := id
+  iStr := id
+  rel := fun p args =>
+    (p = owlPropertyChainAxiom.val ∧ args = ["P", "L"]) ∨
+    (p = rdfRest.val ∧ args = ["L", rdfNil.val]) ∨
+    (p = rdfFirst.val ∧ args = ["L", "Q"]) ∨
+    (p = "Q" ∧ args = ["A", "B"])
+  fn := fun _ _ => ""
+  iProp := fun _ _ _ => ""
+
+/-- **The list-valued families exclude something.** `spo2Counter`
+satisfies every premise of prp-spo2 at chain length 1 and denies its
+conclusion, so it is not a model of `owlRlSeqSchema`. -/
+theorem seqSchema_not_everything :
+    ¬ SatisfiesSchema spo2Counter owlRlSeqSchema := by
+  intro h
+  have hr := (satisfies_ruleSentence_iff _ (spo2Rule_wf 0)).mp
+    (h _ (Or.inl ⟨0, rfl⟩))
+  have hhead := hr (seqVal (d := spo2Counter.dom) "" (fun _ => "L")
+      (fun _ => "Q") (fun k => if k = 0 then "A" else "B") "P" "" "") ?_
+  · rw [show (spo2Rule 0).head
+          = dbin (.v nmP) (.v (nmV 0)) (.v (nmV 1)) from rfl] at hhead
+    simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val] at hhead
+    erw [seqVal_P, seqVal_V, seqVal_V] at hhead
+    simp [spo2Counter] at hhead
+  · intro a ha
+    simp only [spo2Rule, List.mem_cons, List.mem_append, List.mem_flatMap,
+               List.mem_map, List.mem_range, List.not_mem_nil, or_false] at ha
+    rcases ha with rfl | rfl | ⟨⟨k, hk, (rfl | rfl)⟩ | ⟨k, hk, rfl⟩⟩
+    · simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val,
+                 DTerm.val, dk]
+      erw [seqVal_P, seqVal_L]
+      exact Or.inl ⟨rfl, rfl⟩
+    · simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val,
+                 DTerm.val, dk]
+      erw [seqVal_L]
+      exact Or.inr (Or.inl ⟨rfl, rfl⟩)
+    · simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val,
+                 DTerm.val, dk]
+      erw [seqVal_L, seqVal_Q]
+      exact Or.inr (Or.inr (Or.inl ⟨rfl, rfl⟩))
+    · obtain rfl : k = 0 := by omega
+      simp only [DAtom.Holds, dbin, List.map_cons, List.map_nil, dv_val]
+      erw [seqVal_Q, seqVal_V, seqVal_V]
+      exact Or.inr (Or.inr (Or.inr ⟨rfl, rfl⟩))
+    · exact absurd hk (Nat.not_lt_zero k)
+
 /-- **Separating model, clash side**: the all-true interpretation does
 NOT satisfy the clash schema. The clash family therefore excludes
 something — it is not vacuously satisfied. -/
@@ -253,6 +341,12 @@ theorem owlRlClashSchema_satisfiable :
 #print axioms unified_owlRl_clash_entails_all
 #print axioms owlRl_complete_ground
 #print axioms owlRlSchema_conditions
+#print axioms owlRlSchema_cardinality_rows
+#print axioms owlRlSchema_seq_rows
+#print axioms cond_prpSpo2
+#print axioms cond_prpKey
+#print axioms allTrue_satisfies_seq
+#print axioms seqSchema_not_everything
 #print axioms allTrue_violates_clash
 #print axioms allFalse_violates_horn
 

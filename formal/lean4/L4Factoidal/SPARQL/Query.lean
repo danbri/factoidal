@@ -816,6 +816,248 @@ def substTriplePattern (mu : Binding) (tp : TriplePattern) : TriplePattern :=
 
 def substBgp (mu : Binding) (b : Bgp) : Bgp := b.map (substTriplePattern mu)
 
+/-! ## WHERE-clause blank nodes — §18.2.4 (OutScope), §4.1.4
+
+SPARQL 1.1 §4.1.4: "Blank node labels are scoped to the query … a
+blank node in a query pattern acts as a non-distinguished variable".
+The F* evaluator (`eval_select_query`, via
+`rewrite_query_bnodes_pattern`) makes that literal: every `_:label`
+in the WHERE clause becomes the variable `_bnode_label` before
+matching, so it matches ANY term rather than only a data blank node
+that happens to carry the same label — and `SELECT *` strips those
+variables again (`strip_synthetic_bnode_vars`) because §18.2.4 puts
+them outside the user's variable scope.
+
+Port of `rewrite_query_bnode_term` / `rewrite_query_bnode_subject` /
+`rewrite_query_bnodes_pattern`. The rewrite itself does not enter
+embedded expressions, SERVICE bodies or VALUES rows.
+
+An EXISTS body IS an embedded expression, and until 2026-08-26 that
+left a blank node there matching as a constant — the residue of
+https://github.com/danbri/factoidal/issues/607 that survived the
+top-level rewrite. `substituteExistentials` now applies
+`rewriteBnodes` to the body it is about to evaluate, which reaches
+every EXISTS site at once (FILTER, an OPTIONAL condition, BIND, HAVING,
+a SELECT expression, ORDER BY). The F* tree still has the residue:
+`factoidal query` returned no results for
+`SELECT ?x { ?x ex:b1 ?o FILTER EXISTS { ?x ex:b1 _:d } }` on
+2026-08-26, where this tree now returns every row. A SERVICE body is
+left alone deliberately: it is a query for a remote endpoint, which
+applies §18.3.1 itself. -/
+
+/-- `rewrite_query_bnode_term`: a blank node becomes `?_bnode_<label>`;
+RDF 1.2 triple-term patterns are rewritten position by position. -/
+def rewriteBnodeTerm : PatternTerm → PatternTerm
+  | .bnode b          => .var ("_bnode_" ++ b)
+  | .tripleTerm s p o => .tripleTerm (rewriteBnodeTerm s) (rewriteBnodeTerm p) (rewriteBnodeTerm o)
+  | pt                => pt
+
+/-- `rewrite_query_bnode_subject`. -/
+def rewriteBnodeSubject : PatternSubject → PatternSubject
+  | .bnode b => .var ("_bnode_" ++ b)
+  | ps       => ps
+
+/-- `rewrite_query_bnode_tp`. -/
+def rewriteBnodeTriple (tp : TriplePattern) : TriplePattern :=
+  { s := rewriteBnodeSubject tp.s, p := rewriteBnodeTerm tp.p, o := rewriteBnodeTerm tp.o }
+
+mutual
+
+/-- `rewrite_query_bnodes_pattern`, arm for arm.
+
+The condition of a `FILTER` or an `OPTIONAL`, and a `BIND`
+expression, are rewritten too: an `EXISTS { … _:b … }` body is a
+graph pattern whose blank nodes are non-distinguished variables like
+any other (`Expr.rewriteBnodes` below). A `SERVICE` body is left
+alone — it is a query for a remote endpoint, which applies §18.3.1
+itself. -/
+def QueryPattern.rewriteBnodes : QueryPattern → QueryPattern
+  | .bgp b            => .bgp (b.map rewriteBnodeTriple)
+  | .join l r         => .join l.rewriteBnodes r.rewriteBnodes
+  | .leftJoin l r c   => .leftJoin l.rewriteBnodes r.rewriteBnodes c.rewriteBnodes
+  | .filter c p       => .filter c.rewriteBnodes p.rewriteBnodes
+  | .union l r        => .union l.rewriteBnodes r.rewriteBnodes
+  | .minus l r        => .minus l.rewriteBnodes r.rewriteBnodes
+  | .graph n p        => .graph (rewriteBnodeTerm n) p.rewriteBnodes
+  | .lateral l r      => .lateral l.rewriteBnodes r.rewriteBnodes
+  | .bind e v p       => .bind e.rewriteBnodes v p.rewriteBnodes
+  | .values vs rows   => .values vs rows
+  | .service i s p    => .service i s p
+  | .serviceVar v s p => .serviceVar v s p
+  | .subSelect q      => .subSelect q.rewriteBnodes
+  | .propertyPath s path o => .propertyPath (rewriteBnodeSubject s) path (rewriteBnodeTerm o)
+  | .empty            => .empty
+
+/-- The same rewrite inside an expression. Only `EXISTS` / `NOT
+EXISTS` carry a graph pattern, so every other constructor is rebuilt
+unchanged — arm for arm, no catch-all, so a new expression form
+cannot silently hide an EXISTS (the discipline
+`substituteExistentials` already follows). -/
+def Expr.rewriteBnodes : Expr → Expr
+  | .existsPat p    => .existsPat p.rewriteBnodes
+  | .notExistsPat p => .notExistsPat p.rewriteBnodes
+  -- Leaves.
+  | .var v => .var v
+  | .iri i => .iri i
+  | .lit l => .lit l
+  | .boolLit b => .boolLit b
+  | .numericLit n => .numericLit n
+  | .decimalLit s => .decimalLit s
+  | .doubleLit s => .doubleLit s
+  | .bound v => .bound v
+  | .now => .now
+  -- Recurse into sub-expressions.
+  | .arith op a b => .arith op (Expr.rewriteBnodes a)
+                              (Expr.rewriteBnodes b)
+  | .unaryMinus a => .unaryMinus (Expr.rewriteBnodes a)
+  | .unaryPlus a => .unaryPlus (Expr.rewriteBnodes a)
+  | .compare op a b => .compare op (Expr.rewriteBnodes a)
+                                  (Expr.rewriteBnodes b)
+  | .and a b => .and (Expr.rewriteBnodes a)
+                     (Expr.rewriteBnodes b)
+  | .or a b => .or (Expr.rewriteBnodes a)
+                   (Expr.rewriteBnodes b)
+  | .not a => .not (Expr.rewriteBnodes a)
+  | .isIri a => .isIri (Expr.rewriteBnodes a)
+  | .isBlank a => .isBlank (Expr.rewriteBnodes a)
+  | .isLiteral a => .isLiteral (Expr.rewriteBnodes a)
+  | .isNumeric a => .isNumeric (Expr.rewriteBnodes a)
+  | .str a => .str (Expr.rewriteBnodes a)
+  | .lang a => .lang (Expr.rewriteBnodes a)
+  | .datatype a => .datatype (Expr.rewriteBnodes a)
+  | .iriFn a => .iriFn (Expr.rewriteBnodes a)
+  | .hasLang a => .hasLang (Expr.rewriteBnodes a)
+  | .hasLangDir a => .hasLangDir (Expr.rewriteBnodes a)
+  | .langDir a => .langDir (Expr.rewriteBnodes a)
+  | .strDt a b => .strDt (Expr.rewriteBnodes a)
+                         (Expr.rewriteBnodes b)
+  | .strLang a b => .strLang (Expr.rewriteBnodes a)
+                             (Expr.rewriteBnodes b)
+  | .strLangDir a b c => .strLangDir (Expr.rewriteBnodes a)
+                                     (Expr.rewriteBnodes b)
+                                     (Expr.rewriteBnodes c)
+  | .cond c t e => .cond (Expr.rewriteBnodes c)
+                         (Expr.rewriteBnodes t)
+                         (Expr.rewriteBnodes e)
+  | .coalesce es => .coalesce (Expr.rewriteBnodesList es)
+  | .inList a es => .inList (Expr.rewriteBnodes a)
+                            (Expr.rewriteBnodesList es)
+  | .notInList a es => .notInList (Expr.rewriteBnodes a)
+                                  (Expr.rewriteBnodesList es)
+  | .strLen a => .strLen (Expr.rewriteBnodes a)
+  | .substr a b c => .substr (Expr.rewriteBnodes a)
+                             (Expr.rewriteBnodes b)
+                             (Expr.rewriteBnodesOpt c)
+  | .uCase a => .uCase (Expr.rewriteBnodes a)
+  | .lCase a => .lCase (Expr.rewriteBnodes a)
+  | .strStarts a b => .strStarts (Expr.rewriteBnodes a)
+                                 (Expr.rewriteBnodes b)
+  | .strEnds a b => .strEnds (Expr.rewriteBnodes a)
+                             (Expr.rewriteBnodes b)
+  | .contains a b => .contains (Expr.rewriteBnodes a)
+                               (Expr.rewriteBnodes b)
+  | .strBefore a b => .strBefore (Expr.rewriteBnodes a)
+                                 (Expr.rewriteBnodes b)
+  | .strAfter a b => .strAfter (Expr.rewriteBnodes a)
+                               (Expr.rewriteBnodes b)
+  | .concat es => .concat (Expr.rewriteBnodesList es)
+  | .encodeForUri a => .encodeForUri (Expr.rewriteBnodes a)
+  | .replace a b c d => .replace (Expr.rewriteBnodes a)
+                                 (Expr.rewriteBnodes b)
+                                 (Expr.rewriteBnodes c)
+                                 (Expr.rewriteBnodesOpt d)
+  | .regex a b c => .regex (Expr.rewriteBnodes a)
+                           (Expr.rewriteBnodes b)
+                           (Expr.rewriteBnodesOpt c)
+  | .abs a => .abs (Expr.rewriteBnodes a)
+  | .round a => .round (Expr.rewriteBnodes a)
+  | .ceil a => .ceil (Expr.rewriteBnodes a)
+  | .floor a => .floor (Expr.rewriteBnodes a)
+  | .md5 a => .md5 (Expr.rewriteBnodes a)
+  | .sha1 a => .sha1 (Expr.rewriteBnodes a)
+  | .sha256 a => .sha256 (Expr.rewriteBnodes a)
+  | .sha384 a => .sha384 (Expr.rewriteBnodes a)
+  | .sha512 a => .sha512 (Expr.rewriteBnodes a)
+  | .year a => .year (Expr.rewriteBnodes a)
+  | .month a => .month (Expr.rewriteBnodes a)
+  | .day a => .day (Expr.rewriteBnodes a)
+  | .hours a => .hours (Expr.rewriteBnodes a)
+  | .minutes a => .minutes (Expr.rewriteBnodes a)
+  | .seconds a => .seconds (Expr.rewriteBnodes a)
+  | .timezone a => .timezone (Expr.rewriteBnodes a)
+  | .tz a => .tz (Expr.rewriteBnodes a)
+  | .sameTerm a b => .sameTerm (Expr.rewriteBnodes a)
+                               (Expr.rewriteBnodes b)
+  | .aggregate fn d a => .aggregate fn d (Expr.rewriteBnodes a)
+  | .functionCall i args => .functionCall i (Expr.rewriteBnodesList args)
+  | .tripleTerm a b c => .tripleTerm (Expr.rewriteBnodes a)
+                                     (Expr.rewriteBnodes b)
+                                     (Expr.rewriteBnodes c)
+  | .ttSubject a => .ttSubject (Expr.rewriteBnodes a)
+  | .ttPredicate a => .ttPredicate (Expr.rewriteBnodes a)
+  | .ttObject a => .ttObject (Expr.rewriteBnodes a)
+  | .isTriple a => .isTriple (Expr.rewriteBnodes a)
+
+/-- `Expr.rewriteBnodes` over an argument list. -/
+def Expr.rewriteBnodesList : List Expr → List Expr
+  | []      => []
+  | e :: es => e.rewriteBnodes :: Expr.rewriteBnodesList es
+
+/-- `Expr.rewriteBnodes` over an optional expression. -/
+def Expr.rewriteBnodesOpt : Option Expr → Option Expr
+  | none   => none
+  | some e => some e.rewriteBnodes
+
+/-- The `GP_SubSelect` arm: a sub-SELECT's own WHERE clause is rewritten
+too (WHERE-clause blank nodes have to reach sub-SELECTs), and so are
+the expressions its SELECT, GROUP BY, HAVING and ORDER BY clauses
+carry, for the EXISTS bodies inside them. A CONSTRUCT template and a
+DESCRIBE target list are NOT rewritten: §16.2 makes a template blank
+node fresh per solution, which is a different rule. -/
+def Query.rewriteBnodes : Query → Query
+  | .mk f d p g h m v b =>
+      .mk (QueryForm.rewriteBnodes f) d p.rewriteBnodes
+          (match g with
+           | none    => none
+           | some cs => some (GroupCondition.rewriteBnodesList cs))
+          (Expr.rewriteBnodesList h)
+          (match m with
+           | { orderBy := ob, distinct := dd, reduced := rr,
+               offset := oo, limit := ll } =>
+             { orderBy := (match ob with
+                           | none    => none
+                           | some cs => some (OrderCondition.rewriteBnodesList cs)),
+               distinct := dd, reduced := rr, offset := oo, limit := ll })
+          v b
+
+/-- The SELECT clause's `(expr AS ?v)` items. -/
+def QueryForm.rewriteBnodes : QueryForm → QueryForm
+  | .select sel      => .select (SelectClause.rewriteBnodes sel)
+  | .construct tpl   => .construct tpl
+  | .ask             => .ask
+  | .describe terms  => .describe terms
+
+def SelectClause.rewriteBnodes : SelectClause → SelectClause
+  | .vars items => .vars (SelectItem.rewriteBnodesList items)
+  | .all        => .all
+
+def SelectItem.rewriteBnodesList : List SelectItem → List SelectItem
+  | []                  => []
+  | .var v :: rest      => .var v :: SelectItem.rewriteBnodesList rest
+  | .expr e v :: rest   => .expr e.rewriteBnodes v :: SelectItem.rewriteBnodesList rest
+
+def GroupCondition.rewriteBnodesList : List GroupCondition → List GroupCondition
+  | []                     => []
+  | .var v :: rest         => .var v :: GroupCondition.rewriteBnodesList rest
+  | .expr e a :: rest      => .expr e.rewriteBnodes a :: GroupCondition.rewriteBnodesList rest
+
+def OrderCondition.rewriteBnodesList : List OrderCondition → List OrderCondition
+  | []              => []
+  | .asc e :: rest  => .asc e.rewriteBnodes :: OrderCondition.rewriteBnodesList rest
+  | .desc e :: rest => .desc e.rewriteBnodes :: OrderCondition.rewriteBnodesList rest
+
+end
+
 /-! ## Lowering `QueryPattern` into the algebra
 
 `lowerWith env mu p` compiles `p` into a `GraphPattern`, with `mu`'s
@@ -1074,65 +1316,6 @@ def applyDataset (dcs : List DatasetClause) (ds : Dataset) (active : Graph) :
     let newDefault := defaults.foldl Graph.union Graph.empty
     ({ default := newDefault, named := named }, newDefault)
 
-/-! ## WHERE-clause blank nodes — §18.2.4 (OutScope), §4.1.4
-
-SPARQL 1.1 §4.1.4: "Blank node labels are scoped to the query … a
-blank node in a query pattern acts as a non-distinguished variable".
-The F* evaluator (`eval_select_query`, via
-`rewrite_query_bnodes_pattern`) makes that literal: every `_:label`
-in the WHERE clause becomes the variable `_bnode_label` before
-matching, so it matches ANY term rather than only a data blank node
-that happens to carry the same label — and `SELECT *` strips those
-variables again (`strip_synthetic_bnode_vars`) because §18.2.4 puts
-them outside the user's variable scope.
-
-Port of `rewrite_query_bnode_term` / `rewrite_query_bnode_subject` /
-`rewrite_query_bnodes_pattern`. Like the F* source, the rewrite does
-NOT enter embedded expressions (a FILTER's EXISTS body keeps its blank
-nodes) and does not enter SERVICE bodies or VALUES rows. -/
-
-/-- `rewrite_query_bnode_term`: a blank node becomes `?_bnode_<label>`;
-RDF 1.2 triple-term patterns are rewritten position by position. -/
-def rewriteBnodeTerm : PatternTerm → PatternTerm
-  | .bnode b          => .var ("_bnode_" ++ b)
-  | .tripleTerm s p o => .tripleTerm (rewriteBnodeTerm s) (rewriteBnodeTerm p) (rewriteBnodeTerm o)
-  | pt                => pt
-
-/-- `rewrite_query_bnode_subject`. -/
-def rewriteBnodeSubject : PatternSubject → PatternSubject
-  | .bnode b => .var ("_bnode_" ++ b)
-  | ps       => ps
-
-/-- `rewrite_query_bnode_tp`. -/
-def rewriteBnodeTriple (tp : TriplePattern) : TriplePattern :=
-  { s := rewriteBnodeSubject tp.s, p := rewriteBnodeTerm tp.p, o := rewriteBnodeTerm tp.o }
-
-mutual
-
-/-- `rewrite_query_bnodes_pattern`, arm for arm. -/
-def QueryPattern.rewriteBnodes : QueryPattern → QueryPattern
-  | .bgp b            => .bgp (b.map rewriteBnodeTriple)
-  | .join l r         => .join l.rewriteBnodes r.rewriteBnodes
-  | .leftJoin l r c   => .leftJoin l.rewriteBnodes r.rewriteBnodes c
-  | .filter c p       => .filter c p.rewriteBnodes
-  | .union l r        => .union l.rewriteBnodes r.rewriteBnodes
-  | .minus l r        => .minus l.rewriteBnodes r.rewriteBnodes
-  | .graph n p        => .graph (rewriteBnodeTerm n) p.rewriteBnodes
-  | .lateral l r      => .lateral l.rewriteBnodes r.rewriteBnodes
-  | .bind e v p       => .bind e v p.rewriteBnodes
-  | .values vs rows   => .values vs rows
-  | .service i s p    => .service i s p
-  | .serviceVar v s p => .serviceVar v s p
-  | .subSelect q      => .subSelect q.rewriteBnodes
-  | .propertyPath s path o => .propertyPath (rewriteBnodeSubject s) path (rewriteBnodeTerm o)
-  | .empty            => .empty
-
-/-- The `GP_SubSelect` arm: a sub-SELECT's own WHERE clause is rewritten
-too (WHERE-clause blank nodes have to reach sub-SELECTs). -/
-def Query.rewriteBnodes : Query → Query
-  | .mk f d p g h m v b => .mk f d p.rewriteBnodes g h m v b
-
-end
 
 /-! ## Query evaluation — §18.2.4, §16.2 -/
 

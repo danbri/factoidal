@@ -34,6 +34,10 @@ Landed instead: a PIVOT and two theorems that meet at it.
 
 * `unified_adequate_bgp` — `BgpMatches μ b g ↔ Answers …`, a full iff,
   the model-theoretic gate;
+* `unified_adequate_bgp_spec` — the same iff for the pattern the query
+  path matches (`b.map rewriteBnodeTriple`), carrying NO blank-node
+  hypothesis: the guard stage 6 assumed is discharged by
+  `bgpBnodeFree_rewriteBnodes`;
 * `bgp_eval_sound` — `μ ∈ evalBgp b g → BgpMatches μ b g`,
   unconditional;
 * `bgp_eval_complete` — `BgpMatches μ b g` plus a domain condition
@@ -692,12 +696,14 @@ A FULL iff. Hypotheses, and their exact strength:
 https://github.com/danbri/factoidal/issues/607): a blank node in `b`
 is read as a CONSTANT on BOTH sides — by `instTriple`/`tryBind*` on
 the left, by the Skolem reading on the right. On a pattern containing
-a blank node this theorem is therefore adequate TO THE ENGINE, not to
-the specification, whose pattern instance mapping would let that blank
-node match any RDF term. `unified_adequate_bgp_bnodeFree` is the
-corollary that carries the fragment guard on which the two readings
-provably coincide. **No multiplicity is claimed** (design document
-§5.4). -/
+a blank node this theorem is therefore adequate TO THE ENGINE at the
+`evalBgp` entry point, not to the specification, whose pattern
+instance mapping lets that blank node match any RDF term.
+`unified_adequate_bgp_spec` below is the specification-level
+statement: it applies this theorem to `b.map rewriteBnodeTriple`, the
+pattern `Query.evalSelect` actually hands the algebra, and PROVES the
+blank-node-freeness that stage 6 assumed. **No multiplicity is
+claimed** (design document §5.4). -/
 theorem unified_adequate_bgp (b : SPARQL.Bgp) (g : RDF.Graph)
     (mu : SPARQL.Binding) (hg : RDF.GraphTtFree g) (hb : BgpTtFree b) :
     BgpMatches mu b g ↔
@@ -998,20 +1004,107 @@ theorem unified_bgp_answers_returned {b : SPARQL.Bgp} {g : RDF.Graph}
         mu'.lookup v = some u' ∧ RDF.Term.eqb u' u = true :=
   bgp_eval_complete hb ((unified_adequate_bgp b g mu hg hb).mpr h)
 
-/-- **The §18.3.1-clean corollary** (delimitation 1;
-https://github.com/danbri/factoidal/issues/607). On a pattern with no
-blank node the engine's constant reading of pattern blank nodes and
-the specification's pattern-instance-mapping reading cannot differ,
-because there is no pattern blank node to read either way. On that
-fragment the gate theorem is a claim about SPARQL 1.1, not only about
-this engine. Outside it, `unified_adequate_bgp` remains true of the
-engine and says nothing about §18.3.1. -/
-theorem unified_adequate_bgp_bnodeFree (b : SPARQL.Bgp) (g : RDF.Graph)
-    (mu : SPARQL.Binding) (hg : RDF.GraphTtFree g) (hb : BgpTtFree b)
-    (hbn : bgpBnodeFree b = true) :
-    BgpMatches mu b g ↔
-      Answers condTrue termEqSchema [rdfToTheorySk g] (sparqlBgpToQuery b) mu :=
-  unified_adequate_bgp b g mu hg hb
+/-! ## The §18.3.1 reading, discharged rather than assumed
+
+Stage 6 stated the specification-level corollary as
+`unified_adequate_bgp_bnodeFree`, whose extra hypothesis
+`bgpBnodeFree b = true` did no work in the proof: it marked which
+instances of `unified_adequate_bgp` were claims about SPARQL 1.1
+rather than about this engine. That hypothesis is now DROPPED, because
+the engine no longer needs it.
+
+`Query.evalSelect` (and `evalAsk`, and `evalConstruct`) runs
+`QueryPattern.rewriteBnodes` before evaluation, so the basic graph
+pattern the algebra ever sees is `b.map rewriteBnodeTriple`: every
+pattern blank node has become the variable `_bnode_<label>`, which is
+§18.3.1's non-distinguished variable, and §18.2.4's OutScope strip
+(`stripSyntheticBnodeVars`) removes it again from the answer. The
+2026-08-26 repair extended that rewrite to EXISTS bodies
+(https://github.com/danbri/factoidal/issues/607).
+
+So the fragment guard is not assumed of the user's pattern; it is
+PROVED of the pattern the engine matches. `bgpBnodeFree_rewriteBnodes`
+below is that proof, and `unified_adequate_bgp_spec` is the gate
+theorem with no blank-node hypothesis of any kind. -/
+
+theorem patternTermBnodeFree_rewrite (pt : SPARQL.PatternTerm)
+    (h : PatternTermTtFree pt) :
+    patternTermBnodeFree (SPARQL.rewriteBnodeTerm pt) = true := by
+  cases pt with
+  | var _ => rfl
+  | iri _ => rfl
+  | bnode _ => rfl
+  | literal _ => rfl
+  | tripleTerm _ _ _ => exact absurd h (by simp [PatternTermTtFree])
+
+theorem patternSubjectBnodeFree_rewrite (ps : SPARQL.PatternSubject)
+    (h : PatternSubjectTtFree ps) :
+    patternSubjectBnodeFree (SPARQL.rewriteBnodeSubject ps) = true := by
+  cases ps with
+  | var _ => rfl
+  | iri _ => rfl
+  | bnode _ => rfl
+  | tripleTerm _ _ _ => exact absurd h (by simp [PatternSubjectTtFree])
+
+/-- **The rewritten pattern carries no blank node.** The hypothesis is
+`BgpTtFree`, which the gate theorem already carries: a triple-term
+SUBJECT pattern is the one position `rewriteBnodeSubject` does not
+descend into (it matches no concrete data subject, so nothing depends
+on it), and `BgpTtFree` excludes exactly that. -/
+theorem bgpBnodeFree_rewriteBnodes (b : SPARQL.Bgp) (hb : BgpTtFree b) :
+    bgpBnodeFree (b.map SPARQL.rewriteBnodeTriple) = true := by
+  simp only [bgpBnodeFree, List.all_eq_true, List.mem_map,
+             forall_exists_index, and_imp]
+  rintro tp' tp htp rfl
+  obtain ⟨hs, hp, ho⟩ := hb tp htp
+  simp only [SPARQL.rewriteBnodeTriple, Bool.and_eq_true]
+  exact ⟨⟨patternSubjectBnodeFree_rewrite tp.s hs,
+          patternTermBnodeFree_rewrite tp.p hp⟩,
+         patternTermBnodeFree_rewrite tp.o ho⟩
+
+/-- Rewriting a blank node into a variable preserves triple-term
+freeness, position by position. -/
+theorem patternTermTtFree_rewrite {pt : SPARQL.PatternTerm}
+    (h : PatternTermTtFree pt) :
+    PatternTermTtFree (SPARQL.rewriteBnodeTerm pt) := by
+  cases pt <;> simp_all [SPARQL.rewriteBnodeTerm, PatternTermTtFree]
+
+theorem patternSubjectTtFree_rewrite {ps : SPARQL.PatternSubject}
+    (h : PatternSubjectTtFree ps) :
+    PatternSubjectTtFree (SPARQL.rewriteBnodeSubject ps) := by
+  cases ps <;> simp_all [SPARQL.rewriteBnodeSubject, PatternSubjectTtFree]
+
+theorem bgpTtFree_rewriteBnodes (b : SPARQL.Bgp) (hb : BgpTtFree b) :
+    BgpTtFree (b.map SPARQL.rewriteBnodeTriple) := by
+  rintro tp' htp'
+  simp only [List.mem_map] at htp'
+  obtain ⟨tp, htp, rfl⟩ := htp'
+  obtain ⟨hs, hp, ho⟩ := hb tp htp
+  exact ⟨patternSubjectTtFree_rewrite hs,
+         patternTermTtFree_rewrite hp,
+         patternTermTtFree_rewrite ho⟩
+
+/-- **BGP adequacy for the pattern the engine matches** — the gate
+theorem with NO blank-node hypothesis.
+
+`b` is the user's basic graph pattern, blank nodes and all;
+`b.map SPARQL.rewriteBnodeTriple` is what `Query.evalSelect` hands the
+algebra. The two hypotheses are the stage's triple-term guards and
+nothing else: `bgpBnodeFree` has been discharged by
+`bgpBnodeFree_rewriteBnodes`, not assumed. On this statement the
+delimitation of https://github.com/danbri/factoidal/issues/607 is
+closed for the query path, and the iff is a claim about SPARQL 1.1
+§18.3.1 for EVERY pattern, not only blank-node-free ones.
+
+Still NOT claimed here (registry §9): any multiplicity, and
+membership in `evalBgp` on the nose. -/
+theorem unified_adequate_bgp_spec (b : SPARQL.Bgp) (g : RDF.Graph)
+    (mu : SPARQL.Binding) (hg : RDF.GraphTtFree g) (hb : BgpTtFree b) :
+    BgpMatches mu (b.map SPARQL.rewriteBnodeTriple) g ↔
+      Answers condTrue termEqSchema [rdfToTheorySk g]
+        (sparqlBgpToQuery (b.map SPARQL.rewriteBnodeTriple)) mu :=
+  unified_adequate_bgp (b.map SPARQL.rewriteBnodeTriple) g mu hg
+    (bgpTtFree_rewriteBnodes b hb)
 
 /-! ## The entailment regimes
 
@@ -1256,6 +1349,64 @@ theorem unified_bgp_no_answer :
   have hm := (unified_adequate_bgp wB wG muBad wG_ttFree wB_ttFree).mpr h
   exact absurd (bgpMatchesCheck_iff.mpr hm) (by decide)
 
+/-! ### The §18.3.1 repair has content
+
+Without these three the `bgpBnodeFree` guard could have been dropped
+by a theorem that says nothing new. `wBbn` is the user's pattern
+`?s <p> _:z`. Against `wG` the RAW pattern matches nothing at all —
+`wG` has no blank node, let alone one labelled `z` — while the
+rewritten pattern `?s <p> ?_bnode_z` matches, with `_bnode_z` bound to
+the object. That difference is exactly what
+https://github.com/danbri/factoidal/issues/607 was about, and it is
+what `unified_adequate_bgp_spec` now states an iff over. -/
+
+private def wBbn : SPARQL.Bgp :=
+  [{ s := .var "s", p := .iri (eIri "p"), o := .bnode "z" }]
+
+private def muBn : SPARQL.Binding :=
+  [("s", .iri (eIri "a")), ("_bnode_z", .iri (eIri "b"))]
+
+-- The raw pattern matches NO mapping that the rewritten one matches:
+-- the engine reads `_:z` as a constant, and `wG` carries no blank node.
+#guard ! bgpMatchesCheck muBn wBbn wG
+-- The rewritten pattern does match, with the non-distinguished
+-- variable bound to the object §18.3.1's pattern instance mapping
+-- sends `_:z` to.
+#guard bgpMatchesCheck muBn (wBbn.map SPARQL.rewriteBnodeTriple) wG
+
+private theorem wBbn_ttFree : BgpTtFree wBbn := by
+  intro tp htp
+  simp only [wBbn, List.mem_singleton] at htp
+  subst htp
+  exact ⟨trivial, trivial, trivial⟩
+
+/-- The rewritten pattern of a blank-node-carrying BGP satisfies the
+guard stage 6 had to ASSUME. -/
+theorem wBbn_rewrite_bnodeFree :
+    bgpBnodeFree (wBbn.map SPARQL.rewriteBnodeTriple) = true :=
+  bgpBnodeFree_rewriteBnodes wBbn wBbn_ttFree
+
+/-- …and the user's own pattern does NOT: the guard was a real
+restriction, so dropping it is a real strengthening. -/
+theorem wBbn_not_bnodeFree : bgpBnodeFree wBbn = false := by decide
+
+/-- A real answer for a blank-node-carrying pattern, through the
+no-blank-node-hypothesis gate. -/
+theorem unified_bgp_bnode_answer_witness :
+    Answers condTrue termEqSchema [rdfToTheorySk wG]
+      (sparqlBgpToQuery (wBbn.map SPARQL.rewriteBnodeTriple)) muBn :=
+  (unified_adequate_bgp_spec wBbn wG muBn wG_ttFree wBbn_ttFree).mp
+    (bgpMatchesCheck_iff.mp (by rfl))
+
+/-- And not of everything: swapping the two terms is refuted. -/
+theorem unified_bgp_bnode_no_answer :
+    ¬ Answers condTrue termEqSchema [rdfToTheorySk wG]
+        (sparqlBgpToQuery (wBbn.map SPARQL.rewriteBnodeTriple))
+        [("s", .iri (eIri "b")), ("_bnode_z", .iri (eIri "a"))] := by
+  intro h
+  have hm := (unified_adequate_bgp_spec wBbn wG _ wG_ttFree wBbn_ttFree).mpr h
+  exact absurd (bgpMatchesCheck_iff.mpr hm) (by decide)
+
 /-- `termEqSchema` carries rows that are NOT instances of
 reflexivity: two DISTINCT RDF terms the engine identifies, whose
 `eq` row is a real sentence of the schema. Without such a row the
@@ -1303,7 +1454,9 @@ section Audits
 #print axioms herbQ_satisfiesSchema
 #print axioms herbQ_satisfies_sk
 #print axioms unified_adequate_bgp
-#print axioms unified_adequate_bgp_bnodeFree
+#print axioms bgpBnodeFree_rewriteBnodes
+#print axioms bgpTtFree_rewriteBnodes
+#print axioms unified_adequate_bgp_spec
 #print axioms bgp_eval_complete
 #print axioms unified_adequate_bgp_engine
 #print axioms unified_bgp_answers_returned
@@ -1314,6 +1467,10 @@ section Audits
 #print axioms regime_sound_rdfs
 #print axioms unified_bgp_answer_witness
 #print axioms unified_bgp_no_answer
+#print axioms wBbn_rewrite_bnodeFree
+#print axioms wBbn_not_bnodeFree
+#print axioms unified_bgp_bnode_answer_witness
+#print axioms unified_bgp_bnode_no_answer
 #print axioms termEqSchema_nontrivial
 
 end Audits
