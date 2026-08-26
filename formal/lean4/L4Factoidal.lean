@@ -411,6 +411,7 @@ import L4Factoidal.Unified.OwlDlDirect
 import L4Factoidal.Unified.OwlDlAdequacy
 import L4Factoidal.Unified.SparqlQuery
 import L4Factoidal.Unified.SparqlAdequacy
+import L4Factoidal.Unified.SparqlAlgebra
 import L4Factoidal.Unified.Witnesses
 import L4Factoidal.Unified.ClBridge
 import L4Factoidal.Unified.RifEmbed
