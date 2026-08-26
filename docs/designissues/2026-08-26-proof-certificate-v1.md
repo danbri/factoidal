@@ -118,10 +118,10 @@ Two tables. `artifacts` are content-addressed intermediate values;
                      "module": "L4Factoidal.XML.Wellformedness",
                      "tier": "algorithm-correctness" } },
 
-    { "component": "rdfs",   "rule": "rdfD2",
-      "consumes": [1], "produces": 1, "premises": [3],
-      "assurance": { "theorem": "RDFS.rdfD2For_sound",
-                     "module": "L4Factoidal.RDFS.FullClosureTheorems",
+    { "component": "rdfs",   "rule": "rdfs2",
+      "consumes": [1], "produces": 1, "premises": [3, 4],
+      "assurance": { "theorem": "RDFS.rdfs2For_sound",
+                     "module": "L4Factoidal.RDFS.ClosureTheorems",
                      "tier": "w3c-refinement" } }
   ]
 }
@@ -148,6 +148,42 @@ Format rules, each tied to the attack it closes:
 5. **`engine` pins the producing build.** Not trusted by the checker —
    it is provenance, so a divergence between two certificates over the
    same input can be attributed.
+
+### A witness shows the engine's derivation, not the reader's
+
+Measured 2026-08-26, after the emitter landed (commit `4feb7d9a4cc`).
+
+Issue [#615](https://github.com/danbri/factoidal/issues/615) states the
+`rdfs:subPropertyOf rdfs:subPropertyOf rdfs:subPropertyOf` case as
+deriving through the section 9.3 axiomatic triple `rdfs:isDefinedBy
+rdfs:subPropertyOf rdfs:seeAlso` and then rdfD2. The emitter does not
+produce that chain. Over the empty graph it produces:
+
+    [9]   axiomatic  []       rdfs:domain rdfs:domain rdf:Property .
+    [11]  axiomatic  []       rdfs:subPropertyOf rdfs:domain rdf:Property .
+    [59]  rdfs2      [9,11]   rdfs:subPropertyOf rdf:type rdf:Property .
+    [109] rdfs6      [59]     rdfs:subPropertyOf rdfs:subPropertyOf
+                                                 rdfs:subPropertyOf .
+
+`fullStepConclusions` runs the six rdfs-core rows before the eight
+single-premise rows, and `addAll` keeps the FIRST derivation of a
+triple, so rdfs2 reaches `rdfs:subPropertyOf rdf:type rdf:Property`
+before rdfD2 can and rdfD2's copy is dropped as a duplicate. Both are
+valid RDF 1.1 Semantics derivations, both three rule applications deep.
+
+Two consequences for this design:
+
+1. A certificate shows ONE derivation, chosen by the engine's row
+   order. It is not canonical, and two engines agreeing on the
+   conclusion may ship different chains. Nothing here should be read as
+   promising a unique proof, and a consumer diffing two certificates for
+   equality would be measuring row order.
+2. The chain a reader predicts from the specification is not
+   necessarily the chain they will be handed. That is a feature of the
+   format working -- the witness reports what the engine did -- but it
+   means a hand-written expected chain is not a valid test oracle. Pin
+   what the engine emits, and check it is a valid derivation, not that
+   it is the anticipated one.
 
 Inline artifact bodies may be omitted when the checker already holds
 them; hashes may not. A certificate that does not pin its inputs proves
