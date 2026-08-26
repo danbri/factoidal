@@ -152,6 +152,99 @@ partial def loadSchema (path : String) (depth : Nat) : IO (Option Schema) := do
         | none       => pure ()
       return some { acc with imports := [] }
 
+/-! ## Relative IRIs in the schema document
+
+A ShExJ document may be written with RELATIVE IRIs, and they resolve
+against the document's own retrieval IRI — the shape labels, the
+predicates, the datatypes and the value-set members alike. The corpus
+writes one such schema, `1dot-relative`, whose shape is `"S1"` and
+whose predicate is `"p1"`; the data file's IRIs resolve against the
+DATA file, so the two sides only meet once both are made absolute.
+
+Resolution is here rather than in `FromJson.lean` because it is a
+property of where the document was FETCHED FROM, which the reader of
+its bytes does not know.
+-/
+
+/-- Does this string already carry a scheme? Only a relative reference
+    is resolved; an absolute IRI must come through untouched. -/
+def hasScheme (s : String) : Bool :=
+  match s.toList.findIdx? (· == ':') with
+  | none   => false
+  | some i =>
+      i > 0 && (s.toList.take i).all (fun c =>
+        c.isAlpha || c.isDigit || c == '+' || c == '-' || c == '.')
+
+/-- A BLANK NODE label is not a relative IRI. ShExJ writes a
+    bnode-labelled shape as `"_:S1"`, and resolving it against the
+    document turned it into `.../validation/_:S1`, which the manifest's
+    own `_:S1` then failed to find. -/
+def absolutise (base s : String) : String :=
+  if hasScheme s || s.isEmpty || s.startsWith "_:" then s
+  else L4Factoidal.Syntax.resolveIri base s
+
+def absObjectValue (base : String) : ObjectValue → ObjectValue
+  | .iri v => .iri (absolutise base v)
+  | .literal v lang dt => .literal v lang (dt.map (absolutise base))
+
+def absStem (base : String) (k : VsvKind) : Stem → Stem
+  | .plain p => if k == .iri then .plain (absolutise base p) else .plain p
+  | .wildcard => .wildcard
+
+def absExclusion (base : String) (k : VsvKind) : Exclusion → Exclusion
+  | .value ov => .value (absObjectValue base ov)
+  | .lang t   => .lang t
+  | .stem p   => if k == .iri then .stem (absolutise base p) else .stem p
+
+def absVsv (base : String) : ValueSetValue → ValueSetValue
+  | .object v            => .object (absObjectValue base v)
+  | .stem k st           => .stem k (absStem base k st)
+  | .stemRange k st excl => .stemRange k (absStem base k st) (excl.map (absExclusion base k))
+  | .language t          => .language t
+
+def absNodeConstraint (base : String) (nc : NodeConstraint) : NodeConstraint :=
+  { nc with datatype := nc.datatype.map (absolutise base)
+            values := nc.values.map (absVsv base) }
+
+mutual
+
+partial def absShapeExpr (base : String) : ShapeExpr → ShapeExpr
+  | .ref id            => .ref (absolutise base id)
+  | .shapeAnd es       => .shapeAnd (es.map (absShapeExpr base))
+  | .shapeOr es        => .shapeOr (es.map (absShapeExpr base))
+  | .shapeNot e        => .shapeNot (absShapeExpr base e)
+  | .nodeConstraint nc => .nodeConstraint (absNodeConstraint base nc)
+  | .shape sh          => .shape (absShape base sh)
+  | .external          => .external
+
+partial def absShape (base : String) : Shape → Shape
+  | .mk closed extra expr acts anns exts =>
+      .mk closed (extra.map (absolutise base)) (expr.map (absTripleExpr base))
+          acts anns (exts.map (absolutise base))
+
+partial def absTripleExpr (base : String) : TripleExpr → TripleExpr
+  | .ref id              => .ref (absolutise base id)
+  | .tripleConstraint tc => .tripleConstraint (absTc base tc)
+  | .eachOf g            => .eachOf (absGroup base g)
+  | .oneOf g             => .oneOf (absGroup base g)
+
+partial def absGroup (base : String) : Group → Group
+  | .mk id es mn mx acts anns =>
+      .mk (id.map (absolutise base)) (es.map (absTripleExpr base)) mn mx acts anns
+
+partial def absTc (base : String) : TripleConstraint → TripleConstraint
+  | .mk id inv pred ve mn mx acts anns =>
+      .mk (id.map (absolutise base)) inv (absolutise base pred)
+          (ve.map (absShapeExpr base)) mn mx acts anns
+
+end
+
+/-- Make every IRI in a schema absolute against its retrieval IRI. -/
+def absSchema (base : String) (sch : Schema) : Schema :=
+  { sch with start := sch.start.map (absShapeExpr base)
+             shapes := sch.shapes.map (fun d =>
+               { d with id := absolutise base d.id, expr := absShapeExpr base d.expr }) }
+
 /-- Resolve `ShapeExpr.external` declarations against an EXTERNAL
     schema the manifest entry supplies.
 
@@ -229,7 +322,11 @@ def main (args : List String) : IO UInt32 := do
         | some act =>
             let schemaRel := (str? "schema" act).getD ""
             let dataRel := (str? "data" act).getD ""
-            let label := (str? "shape" act).getD ""
+            let schemaUrl := L4Factoidal.Syntax.resolveIri suiteBase schemaRel
+            -- A manifest `shape` may itself be relative, and resolves
+            -- against the manifest, exactly as the schema's own labels
+            -- resolve against the schema (`1dot-relative`).
+            let label := (str? "shape" act).map (absolutise suiteBase) |>.getD ""
             let dataUrl := L4Factoidal.Syntax.resolveIri suiteBase dataRel
             let focus := (fld? "focus" act).bind (focusOf dataUrl)
             let sp := jsonBeside (resolveRel dir schemaRel)
@@ -246,9 +343,9 @@ def main (args : List String) : IO UInt32 := do
                     (fun r => jsonternBeside (resolveRel dir r)) with
                 | some ep => loadSchema ep 4
                 | none    => pure none)
-              let schema? := match schema0?, externs? with
+              let schema? := (match schema0?, externs? with
                 | some sc, some ex => some (substituteExternals sc ex)
-                | other,   _       => other
+                | other,   _       => other).map (absSchema schemaUrl)
               let dsrc ← IO.FS.readFile dp
               match schema?, parseTurtle dsrc (some dataUrl), focus with
               | some sch, .ok g, some n =>
