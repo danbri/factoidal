@@ -306,6 +306,58 @@ const tabular = await fromCsvw(csvText, csvwMetadataJson, { mode: 'minimal' }); 
 const saturated = await rif(data, rifRulesXml); // RIF Core forward chaining
 ```
 
+## Lean engine (new in 0.2.0)
+
+Two engines now ship in one package. `factoidal` and `factoidal/wasm`
+are the F\*-extracted engine, unchanged. The subpaths below are the
+Lean 4 engine (`L4Factoidal`, compiled to wasm).
+
+```js
+const l4 = require('factoidal/l4-core');       // Lean engine, same API shape
+const { select } = require('factoidal/select'); // choose an engine per call
+```
+
+### `factoidal/l4-core`
+
+Same call shape as the main API — `parse`, `query`, `update`,
+`serialize`, `canonicalize`, `graphs`, `canonicalHash`, `owlClosure`,
+`coreRdfsClosure`, `coreRdfsCheck`, `rhoDfClosure`,
+`rhoDfFragmentCheck`, `rdfsPlusClosure`, `owlIsConsistent` — plus four
+Common Logic / IKL operations that exist only here, because the F\* tree
+has no CL parser.
+
+| Function | In → out | What the answer is worth |
+|---|---|---|
+| `clParse(clifText)` | CLIF text → shape report | sentence count, CL-vs-IKL dialect, canonical re-serialisation. Reads CLIF; never produces RDF |
+| `clSerialize(clifText)` | CLIF → CLIF | canonical writer. Returns `roundTripProved: false` — `clif_roundTrip` is an open lemma and the fragment boundary is measured, not proved |
+| `clAlphaNorm(clifText)` | CLIF → CLIF | alpha-equivalence canonical form (IKL Appendix B condition 1) |
+| `clNormalize(clifText)` | CLIF → CLIF | Hayes's IKL-to-CL reduction. Returns `preserves: "satisfiability"` — **not** equivalence — and `noIntrusion`, the proof hypothesis decided rather than assumed |
+
+A fifth op, `clFiniteSat(interpJson, clifText)`, is reachable only
+through the raw dispatch ABI: `l4.call('clFiniteSat', [interpJson,
+clifText])`. It is not in the typed layer.
+
+### `factoidal/select`
+
+Per-instance backend choice with a per-call override.
+
+| Value | Behaviour |
+|---|---|
+| `lean` / `fstar` | that engine only; **throws** if it does not implement the function |
+| `lean1st` / `fstar1st` | prefer that engine, fall through to the other for unimplemented functions |
+| `slowcompareboth` | run both and **report** disagreement rather than throwing |
+
+Every result names the engine that answered. `capabilityTable()`
+returns which functions each engine implements.
+
+### What this surface is, honestly
+
+Four `String → String` operations plus one through raw dispatch. The
+Lean tree behind them is larger than that — the CL/IKL and unified
+model-theory modules run to about 22,000 lines — but only these reach
+JavaScript today. Everything else in the Lean tree is used through
+`parse`/`query`/`closure`, or not exposed at all.
+
 ## API (draft)
 
 The `factoidal` CLI (`bin/factoidal-cli/factoidal_cli.ml`, built to
