@@ -991,4 +991,502 @@ decreasing_by
 
 end
 
+/-! ## Every allocated key is a fresh name -/
+
+mutual
+
+/-- Keys allocated inside a term. -/
+theorem assignT_keys_fresh :
+    ∀ (t : Term) (bnd bm : List String) (c : Nat) (k : String) (b : Sentence),
+      (k, b) ∈ assignT bnd bm c t → isFreshName k = true
+  | .name _ => by intro bnd bm c k b h; rw [assignT] at h; exact absurd h List.not_mem_nil
+  | .str _ => by intro bnd bm c k b h; rw [assignT] at h; exact absurd h List.not_mem_nil
+  | .funapp op args => by
+      intro bnd bm c k b h
+      rw [assignT] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignT_keys_fresh op bnd bm c k b h
+      · exact assignSeq_keys_fresh args bnd bm _ k b h
+  | .that s => by
+      intro bnd bm c k b h
+      rw [assignT] at h
+      rcases List.mem_cons.mp h with h | h
+      · have hk : k = propName c := congrArg Prod.fst h
+        rw [hk]; exact isFreshName_propName c
+      · exact assignS_keys_fresh s _ _ (c + 1) k b h
+termination_by t => t.size
+decreasing_by
+  all_goals simp [Term.size]
+  all_goals omega
+
+/-- Keys allocated inside an argument sequence. -/
+theorem assignSeq_keys_fresh :
+    ∀ (args : List SeqItem) (bnd bm : List String) (c : Nat) (k : String) (b : Sentence),
+      (k, b) ∈ assignSeq bnd bm c args → isFreshName k = true
+  | [] => by intro bnd bm c k b h; rw [assignSeq] at h; exact absurd h List.not_mem_nil
+  | .term t :: r => by
+      intro bnd bm c k b h
+      rw [assignSeq] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignT_keys_fresh t bnd bm c k b h
+      · exact assignSeq_keys_fresh r bnd bm _ k b h
+  | .seqmark _ :: r => by
+      intro bnd bm c k b h
+      rw [assignSeq] at h
+      exact assignSeq_keys_fresh r bnd bm c k b h
+termination_by args => seqItemsSize args
+decreasing_by
+  all_goals simp [Term.size, seqItemsSize]
+  all_goals omega
+
+/-- Keys allocated inside a boundlist. -/
+theorem assignBinds_keys_fresh :
+    ∀ (bs : List Binding) (bnd bm : List String) (c : Nat) (k : String) (b : Sentence),
+      (k, b) ∈ assignBinds bnd bm c bs → isFreshName k = true
+  | [] => by intro bnd bm c k b h; rw [assignBinds] at h; exact absurd h List.not_mem_nil
+  | .plain n :: r => by
+      intro bnd bm c k b h
+      rw [assignBinds] at h
+      exact assignBinds_keys_fresh r _ bm c k b h
+  | .seqmark m :: r => by
+      intro bnd bm c k b h
+      rw [assignBinds] at h
+      exact assignBinds_keys_fresh r bnd _ c k b h
+  | .restricted n g :: r => by
+      intro bnd bm c k b h
+      rw [assignBinds] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignT_keys_fresh g bnd bm c k b h
+      · exact assignBinds_keys_fresh r _ bm _ k b h
+termination_by bs => bindingsSize bs
+decreasing_by
+  all_goals simp [Term.size, bindingsSize]
+  all_goals omega
+
+/-- Keys allocated inside a sentence. -/
+theorem assignS_keys_fresh :
+    ∀ (s : Sentence) (bnd bm : List String) (c : Nat) (k : String) (b : Sentence),
+      (k, b) ∈ assignS bnd bm c s → isFreshName k = true
+  | .atom p args => by
+      intro bnd bm c k b h
+      rw [assignS] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignT_keys_fresh p bnd bm c k b h
+      · exact assignSeq_keys_fresh args bnd bm _ k b h
+  | .eq a b => by
+      intro bnd bm c k bb h
+      rw [assignS] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignT_keys_fresh a bnd bm c k bb h
+      · exact assignT_keys_fresh b bnd bm _ k bb h
+  | .conj ss => by
+      intro bnd bm c k b h; rw [assignS] at h
+      exact assignSs_keys_fresh ss bnd bm c k b h
+  | .disj ss => by
+      intro bnd bm c k b h; rw [assignS] at h
+      exact assignSs_keys_fresh ss bnd bm c k b h
+  | .neg s => by
+      intro bnd bm c k b h; rw [assignS] at h
+      exact assignS_keys_fresh s bnd bm c k b h
+  | .impl a b => by
+      intro bnd bm c k bb h
+      rw [assignS] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignS_keys_fresh a bnd bm c k bb h
+      · exact assignS_keys_fresh b bnd bm _ k bb h
+  | .iff a b => by
+      intro bnd bm c k bb h
+      rw [assignS] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignS_keys_fresh a bnd bm c k bb h
+      · exact assignS_keys_fresh b bnd bm _ k bb h
+  | .all bs body => by
+      intro bnd bm c k b h
+      rw [assignS] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignBinds_keys_fresh bs bnd bm c k b h
+      · exact assignS_keys_fresh body _ _ _ k b h
+  | .ex bs body => by
+      intro bnd bm c k b h
+      rw [assignS] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignBinds_keys_fresh bs bnd bm c k b h
+      · exact assignS_keys_fresh body _ _ _ k b h
+termination_by s => s.size
+decreasing_by
+  all_goals simp [Term.size, Sentence.size, seqItemsSize, sentencesSize, bindingsSize]
+  all_goals omega
+
+/-- Keys allocated inside a sentence list. -/
+theorem assignSs_keys_fresh :
+    ∀ (ss : List Sentence) (bnd bm : List String) (c : Nat) (k : String) (b : Sentence),
+      (k, b) ∈ assignSs bnd bm c ss → isFreshName k = true
+  | [] => by intro bnd bm c k b h; rw [assignSs] at h; exact absurd h List.not_mem_nil
+  | s :: r => by
+      intro bnd bm c k b h
+      rw [assignSs] at h
+      rcases List.mem_append.mp h with h | h
+      · exact assignS_keys_fresh s bnd bm c k b h
+      · exact assignSs_keys_fresh r bnd bm _ k b h
+termination_by ss => sentencesSize ss
+decreasing_by
+  all_goals simp [Sentence.size, sentencesSize]
+  all_goals omega
+
+end
+
+/-- The allocation list of a sentence has fresh keys throughout. -/
+theorem freshKeys_assignS (s : Sentence) (bnd bm : List String) (c : Nat) :
+    FreshKeys (assignS bnd bm c s) :=
+  fun k b h => assignS_keys_fresh s bnd bm c k b h
+
+/-! ## The valuation the construction builds -/
+
+/-- Hayes's J: the original interpretation with each allocated fresh
+name pointed at the proposition its `that`-body denotes. Only the name
+valuation changes; `rel`, `fn` and `iProp` are untouched, which is why
+this is stated as a valuation rather than as a new interpretation. -/
+noncomputable def kapOf (i : Interp) (A : List (String × Sentence))
+    (n : String) : i.dom :=
+  match A.find? (fun p => p.1 == n) with
+  | some p => i.iProp p.2 i.iName (fun _ => [])
+  | none => i.iName n
+
+/-- Off the fresh-name space the valuation is unchanged. -/
+theorem kapOf_offFresh (i : Interp) :
+    ∀ (A : List (String × Sentence)), FreshKeys A → OffFresh i (kapOf i A) i.iName
+  | [] => by intro _ m _; rw [kapOf]; simp [List.find?]
+  | (k0, b0) :: r => by
+      intro hFK m hm
+      have hk0 : isFreshName k0 = true := hFK k0 b0 List.mem_cons_self
+      have hne : (k0 == m) = false := by
+        by_cases h : k0 = m
+        · rw [h, hm] at hk0; exact absurd hk0 (by simp)
+        · simp [h]
+      rw [kapOf, List.find?_cons]
+      simp only [hne, Bool.false_eq_true, if_false]
+      have hrec :=
+        kapOf_offFresh i r (fun k b hb => hFK k b (List.mem_cons_of_mem _ hb)) m hm
+      rw [kapOf] at hrec
+      exact hrec
+
+/-- With distinct keys, the valuation knows every allocation. -/
+theorem kapOf_knowsA (i : Interp) :
+    ∀ (A : List (String × Sentence)), (A.map Prod.fst).Nodup → KnowsA i A (kapOf i A)
+  | [], _ => by intro k b h; exact absurd h List.not_mem_nil
+  | (k0, b0) :: r, hnd => by
+      intro k b hmem
+      simp only [List.map_cons, List.nodup_cons, List.mem_map] at hnd
+      rw [kapOf, List.find?_cons]
+      by_cases hk : (k0 == k) = true
+      · simp only [hk, if_pos]
+        have hkk : k0 = k := eq_of_beq hk
+        rcases List.mem_cons.mp hmem with h | h
+        · rw [(Prod.mk.injEq _ _ _ _).mp h |>.2]
+        · exfalso
+          exact hnd.1 ⟨(k, b), h, hkk.symm⟩
+      · simp only [hk, if_neg, Bool.false_eq_true]
+        have hne : (k0, b0) ≠ (k, b) := by
+          intro h
+          exact hk (by rw [(Prod.mk.injEq _ _ _ _).mp h |>.1]; exact beq_self_eq_true k)
+        have hmr : (k, b) ∈ r := by
+          rcases List.mem_cons.mp hmem with h | h
+          · exact absurd h.symm hne
+          · exact h
+        have := kapOf_knowsA i r hnd.2 k b hmr
+        rw [kapOf] at this
+        exact this
+
+/-! ## Satisfiability
+
+`Satisfies i s` is `Sat i i.iName (fun _ => []) s` by definition, so
+giving an interpretation plus a name valuation is the same as giving
+an interpretation whose `iName` is that valuation. Stating
+satisfiability with an explicit valuation avoids rebuilding the
+interpretation record. -/
+
+/-- A Common Logic text is satisfiable. -/
+def ClSatisfiable (ss : List Sentence) : Prop :=
+  ∃ (i : Interp) (nu : String → i.dom), ∀ s ∈ ss, Sat i nu (fun _ => []) s
+
+/-- An IKL sentence is satisfiable: some coherent, local
+interpretation satisfies it. -/
+def IklSatisfiable (s : Sentence) : Prop :=
+  ∃ i : Interp, IklRespectsThat i ∧ IklPropLocal i ∧ Satisfies i s
+
+/-! ## The theorems
+
+The three side conditions are: no quantifier intrudes into a
+proposition name; the sentence uses no name from the fresh-name space;
+and the allocation list has distinct keys. The third holds whenever
+the fresh-name supply is injective — see the module header on why
+injectivity of `propName` itself is not proved here — and is decidable
+for any concrete sentence. -/
+
+/-- **Hayes's construction, both halves.** The head sentence read
+under the constructed valuation has the truth value the original
+sentence has, and every tail sentence holds under that valuation. -/
+theorem normalize_preserves (i : Interp) (hIkl : IklRespectsThat i)
+    (hLoc : IklPropLocal i) (E : Sentence) (c : Nat)
+    (hni : noIntrS [] [] E = true) (hfr : NoFresh (allNamesS E))
+    (hnd : ((assignS [] [] c E).map Prod.fst).Nodup) :
+    (Sat i (kapOf i (assignS [] [] c E)) (fun _ => []) (normSent [] [] c E).1
+        ↔ Satisfies i E)
+      ∧ (∀ tl ∈ (normSent [] [] c E).2.1,
+          Sat i (kapOf i (assignS [] [] c E)) (fun _ => []) tl) := by
+  have hFK : FreshKeys (assignS [] [] c E) := freshKeys_assignS E [] [] c
+  have hkn : KnowsA i (assignS [] [] c E) (kapOf i (assignS [] [] c E)) :=
+    kapOf_knowsA i (assignS [] [] c E) hnd
+  have hoff : OffFresh i (kapOf i (assignS [] [] c E)) i.iName :=
+    kapOf_offFresh i (assignS [] [] c E) hFK
+  constructor
+  · exact normS_head i (assignS [] [] c E) hLoc hFK E [] [] c
+      (kapOf i (assignS [] [] c E)) i.iName (fun _ => [])
+      hfr hni (fun _ _ h => h) hkn hoff (fun _ _ => rfl) (fun _ _ => rfl)
+  · exact normS_tails i (assignS [] [] c E) hIkl hLoc hFK E [] [] c
+      (kapOf i (assignS [] [] c E)) hfr hni (fun _ _ h => h) hkn hoff
+
+/-- **Satisfiability is preserved forwards.** An IKL-satisfiable
+sentence has a CL-satisfiable normalization. -/
+theorem ikl_sat_to_cl_sat (E : Sentence) (c : Nat)
+    (hni : noIntrS [] [] E = true) (hfr : NoFresh (allNamesS E))
+    (hnd : ((assignS [] [] c E).map Prod.fst).Nodup) :
+    IklSatisfiable E →
+      ClSatisfiable ((normSent [] [] c E).1 :: (normSent [] [] c E).2.1) := by
+  rintro ⟨i, hIkl, hLoc, hsat⟩
+  obtain ⟨hhead, htails⟩ := normalize_preserves i hIkl hLoc E c hni hfr hnd
+  refine ⟨i, kapOf i (assignS [] [] c E), ?_⟩
+  intro s hs
+  rcases List.mem_cons.mp hs with rfl | h
+  · exact hhead.mpr hsat
+  · exact htails s h
+
+/-- **Hayes's open conjecture, for the no-intrusion fragment.** The
+tail sentences of a normalized IKL sentence are CL-satisfiable —
+whatever the sentence, and whether or not the sentence itself is
+satisfiable. The paper: "if the tail sentences are inconsistent in CL
+... We have not found any such example, and believe that it is
+impossible, but do not at the time of writing have a conclusive
+proof." The proof here is that `normS_tails` never uses the premise
+that the original sentence holds, so the model can be built from ANY
+coherent, local IKL interpretation, and `iklProp` is one. -/
+theorem tails_satisfiable (E : Sentence) (c : Nat)
+    (hni : noIntrS [] [] E = true) (hfr : NoFresh (allNamesS E))
+    (hnd : ((assignS [] [] c E).map Prod.fst).Nodup) :
+    ClSatisfiable (normSent [] [] c E).2.1 := by
+  obtain ⟨_, htails⟩ :=
+    normalize_preserves iklProp iklProp_respects iklProp_local E c hni hfr hnd
+  exact ⟨iklProp, kapOf iklProp (assignS [] [] c E), htails⟩
+
+/-! ## The four paradoxes, semantically
+
+`CL.Normalize` pins the SYNTAX of the paper's four normalizations.
+This section pins their content: each sentence's side conditions are
+discharged by decision, each normalization's head and tails are read
+off by `rfl`, and each text is then decided satisfiable or not.
+
+Three of the four normalized texts are CL-unsatisfiable, so by
+`ikl_sat_to_cl_sat` the sentences themselves have no coherent IKL
+model — which is what calling them paradoxes says. The Knower's fourth
+sentence taken alone is satisfiable, and a model is exhibited.
+
+Against each of those, `tails_satisfiable` gives a model of the TAIL
+SET alone. That contrast is the non-vacuity check on Hayes's
+conjecture: for the Liar the whole text is inconsistent while its tail
+set is not. -/
+
+/-- 1. That Nothing Is True. -/
+def tnitS : Sentence :=
+  .atom (.that (.all [.plain "p"] (.neg (.atom (.name "p") [])))) []
+
+/-- 2. The Liar. -/
+def liarS : Sentence :=
+  .eq (.name "p") (.that (.neg (.atom (.name "p") [])))
+
+/-- 3. Kripke's semantic paradox. -/
+def kripkeS : Sentence :=
+  .all [.plain "x"]
+    (.iff (.atom (.name "S") [.term (.name "x")])
+      (.eq (.name "x")
+        (.that (.all [.plain "y"]
+          (.impl (.atom (.name "S") [.term (.name "y")])
+            (.neg (.atom (.name "y") [])))))))
+
+/-- 4. The Knower, fourth sentence. -/
+def knowerS : Sentence :=
+  .eq (.name "D")
+    (.that (.atom (.name "K") [.term (.that (.neg (.atom (.name "D") [])))]))
+
+-- The abstract sentences are the paper's texts.
+#guard tnitS.toClif == "((that (forall (p) (not (p)))))"
+#guard liarS.toClif == "(= p (that (not (p))))"
+#guard kripkeS.toClif ==
+  "(forall (x) (iff (S x) (= x (that (forall (y) (if (S y) (not (y))))))))"
+#guard knowerS.toClif == "(= D (that (K (that (not (D))))))"
+
+/-! ### That Nothing Is True -/
+
+theorem tnit_head : (normSent [] [] 1 tnitS).1 = .atom (.name "prop1") [] := rfl
+
+theorem tnit_tails : (normSent [] [] 1 tnitS).2.1 =
+    [.iff (.atom (.name "prop1") [])
+      (.all [.plain "p"] (.neg (.atom (.name "p") [])))] := rfl
+
+/-- The normalized text is CL-unsatisfiable: the head asserts the
+proposition, the tail equates it with "no proposition holds". -/
+theorem tnit_cl_unsat :
+    ¬ ClSatisfiable ((normSent [] [] 1 tnitS).1 :: (normSent [] [] 1 tnitS).2.1) := by
+  rintro ⟨i, nu, h⟩
+  rw [tnit_head, tnit_tails] at h
+  have h1 := h _ (List.mem_cons_self)
+  have h2 := h _ (List.mem_cons_of_mem _ List.mem_cons_self)
+  rw [sat_atom_iff, denotTerm, denotSeq] at h1
+  rw [sat_iff_iff, sat_atom_iff, denotTerm, denotSeq, sat_all_iff,
+      satForall_plain_iff] at h2
+  have h3 := h2.mp h1 (nu "prop1")
+  rw [satForall_nil_iff, sat_neg_iff, sat_atom_iff, denotTerm, denotSeq,
+      updateInd] at h3
+  simp only [if_pos] at h3
+  exact h3 h1
+
+/-- Hence the sentence has no coherent IKL model. -/
+theorem tnit_not_ikl_sat : ¬ IklSatisfiable tnitS := fun h =>
+  tnit_cl_unsat (ikl_sat_to_cl_sat tnitS 1 (by decide)
+    (by unfold NoFresh; decide) (by decide) h)
+
+/-- Its tail set alone IS satisfiable — Hayes's conjecture, here. -/
+theorem tnit_tails_sat : ClSatisfiable (normSent [] [] 1 tnitS).2.1 :=
+  tails_satisfiable tnitS 1 (by decide) (by unfold NoFresh; decide) (by decide)
+
+/-! ### The Liar -/
+
+theorem liar_head : (normSent [] [] 2 liarS).1 = .eq (.name "p") (.name "prop2") := rfl
+
+theorem liar_tails : (normSent [] [] 2 liarS).2.1 =
+    [.iff (.atom (.name "prop2") []) (.neg (.atom (.name "p") []))] := rfl
+
+/-- The normalized text is CL-unsatisfiable: the head makes the two
+names co-denote, and the tail then says a proposition holds exactly
+when it does not. -/
+theorem liar_cl_unsat :
+    ¬ ClSatisfiable ((normSent [] [] 2 liarS).1 :: (normSent [] [] 2 liarS).2.1) := by
+  rintro ⟨i, nu, h⟩
+  rw [liar_head, liar_tails] at h
+  have h1 := h _ (List.mem_cons_self)
+  have h2 := h _ (List.mem_cons_of_mem _ List.mem_cons_self)
+  rw [sat_eq_iff, denotTerm, denotTerm] at h1
+  rw [sat_iff_iff, sat_atom_iff, denotTerm, denotSeq, sat_neg_iff, sat_atom_iff,
+      denotTerm, denotSeq] at h2
+  rw [← h1] at h2
+  exact iff_not_self h2
+
+/-- Hence the Liar has no coherent IKL model. -/
+theorem liar_not_ikl_sat : ¬ IklSatisfiable liarS := fun h =>
+  liar_cl_unsat (ikl_sat_to_cl_sat liarS 2 (by decide)
+    (by unfold NoFresh; decide) (by decide) h)
+
+/-- Its tail set alone is satisfiable. -/
+theorem liar_tails_sat : ClSatisfiable (normSent [] [] 2 liarS).2.1 :=
+  tails_satisfiable liarS 2 (by decide) (by unfold NoFresh; decide) (by decide)
+
+/-! ### Kripke's semantic paradox -/
+
+theorem kripke_head : (normSent [] [] 3 kripkeS).1 =
+    .all [.plain "x"]
+      (.iff (.atom (.name "S") [.term (.name "x")])
+        (.eq (.name "x") (.name "prop3"))) := rfl
+
+theorem kripke_tails : (normSent [] [] 3 kripkeS).2.1 =
+    [.iff (.atom (.name "prop3") [])
+      (.all [.plain "y"]
+        (.impl (.atom (.name "S") [.term (.name "y")])
+          (.neg (.atom (.name "y") []))))] := rfl
+
+/-- The normalized text is CL-unsatisfiable. The head makes `S` hold
+of exactly the one individual `prop3` denotes; the tail then says that
+individual is a true proposition exactly when it is not. -/
+theorem kripke_cl_unsat :
+    ¬ ClSatisfiable ((normSent [] [] 3 kripkeS).1 :: (normSent [] [] 3 kripkeS).2.1) := by
+  rintro ⟨i, nu, h⟩
+  rw [kripke_head, kripke_tails] at h
+  have h1 := h _ (List.mem_cons_self)
+  have h2 := h _ (List.mem_cons_of_mem _ List.mem_cons_self)
+  rw [sat_all_iff, satForall_plain_iff] at h1
+  have hS : ∀ x : i.dom, i.rel (nu "S") [x] ↔ x = nu "prop3" := by
+    intro x
+    have hx := h1 x
+    rw [satForall_nil_iff, sat_iff_iff, sat_atom_iff, sat_eq_iff] at hx
+    simpa [denotTerm, denotSeq, updateInd] using hx
+  have hTail : i.rel (nu "prop3") [] ↔ ∀ x : i.dom, i.rel (nu "S") [x] → ¬ i.rel x [] := by
+    rw [sat_iff_iff, sat_atom_iff, denotTerm, denotSeq, sat_all_iff,
+        satForall_plain_iff] at h2
+    refine Iff.trans h2 (forall_congr' (fun x => ?_))
+    rw [satForall_nil_iff, sat_impl_iff, sat_atom_iff, sat_neg_iff, sat_atom_iff]
+    simp [denotTerm, denotSeq, updateInd]
+  by_cases hp : i.rel (nu "prop3") []
+  · exact hTail.mp hp (nu "prop3") ((hS _).mpr rfl) hp
+  · exact hp (hTail.mpr (fun x hx hrx => absurd ((hS x).mp hx ▸ hrx) hp))
+
+/-- Hence Kripke's sentence has no coherent IKL model. -/
+theorem kripke_not_ikl_sat : ¬ IklSatisfiable kripkeS := fun h =>
+  kripke_cl_unsat (ikl_sat_to_cl_sat kripkeS 3 (by decide)
+    (by unfold NoFresh; decide) (by decide) h)
+
+/-- Its tail set alone is satisfiable. -/
+theorem kripke_tails_sat : ClSatisfiable (normSent [] [] 3 kripkeS).2.1 :=
+  tails_satisfiable kripkeS 3 (by decide) (by unfold NoFresh; decide) (by decide)
+
+/-! ### The Knower
+
+The paper's fourth Knower sentence taken alone is consistent: the
+paradox needs the other three, which carry no proposition name and are
+unchanged by normalization. A model of the whole normalized text is
+exhibited, so this is where the preservation theorem is seen doing
+work in the positive direction. -/
+
+theorem knower_head : (normSent [] [] 4 knowerS).1 =
+    .eq (.name "D") (.name "prop4") := rfl
+
+theorem knower_tails : (normSent [] [] 4 knowerS).2.1 =
+    [.iff (.atom (.name "prop4") [])
+       (.atom (.name "K") [.term (.name "prop5")]),
+     .iff (.atom (.name "prop5") []) (.neg (.atom (.name "D") []))] := rfl
+
+/-- Two iterations of the main loop, so two tail sentences. -/
+theorem knower_two_iterations : (normSent [] [] 4 knowerS).2.1.length = 2 := rfl
+
+/-- The normalized text is satisfiable, in `iklProp`, under the
+valuation that makes `prop5` the true proposition and everything else
+false. -/
+theorem knower_cl_sat :
+    ClSatisfiable ((normSent [] [] 4 knowerS).1 :: (normSent [] [] 4 knowerS).2.1) := by
+  refine ⟨iklProp, fun n => if n = "prop5" then True else False, ?_⟩
+  rw [knower_head, knower_tails]
+  intro s hs
+  rcases List.mem_cons.mp hs with rfl | hs
+  · rw [sat_eq_iff, denotTerm, denotTerm]; simp
+  rcases List.mem_cons.mp hs with rfl | hs
+  · rw [sat_iff_iff, sat_atom_iff, sat_atom_iff]
+    simp [iklProp, denotTerm, denotSeq]
+  rcases List.mem_cons.mp hs with rfl | hs
+  · rw [sat_iff_iff, sat_atom_iff, sat_neg_iff, sat_atom_iff]
+    simp [iklProp, denotTerm, denotSeq]
+  · exact absurd hs List.not_mem_nil
+
+/-- Its tail set alone is satisfiable. -/
+theorem knower_tails_sat : ClSatisfiable (normSent [] [] 4 knowerS).2.1 :=
+  tails_satisfiable knowerS 4 (by decide) (by unfold NoFresh; decide) (by decide)
+
+#print axioms normalize_preserves
+#print axioms ikl_sat_to_cl_sat
+#print axioms tails_satisfiable
+#print axioms tnit_not_ikl_sat
+#print axioms liar_not_ikl_sat
+#print axioms kripke_not_ikl_sat
+#print axioms knower_cl_sat
+#print axioms tnit_tails_sat
+#print axioms liar_tails_sat
+#print axioms kripke_tails_sat
+#print axioms knower_tails_sat
+
 end L4Factoidal.CL
