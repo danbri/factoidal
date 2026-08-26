@@ -58,8 +58,7 @@ const NOT_SUPPORTED =
 // `queryWithIklService`) was removed from the engine source on
 // 2026-08-26 (https://github.com/danbri/factoidal/issues/626): both
 // ops went through the deleted `CL/ToRdf.lean`, whose content-addressed
-// proposition graph names (`urn:cl:that:sha256:<hex>`) were never
-// asked for. They had already been held off this JS surface by owner
+// proposition graph names were never asked for. They had already been held off this JS surface by owner
 // decision (https://github.com/danbri/factoidal/issues/618 — "I don't
 // want npm code for direction b at this stage ... Take it out of npm
 // for now."), and there is now nothing to wire. The compiled wasm

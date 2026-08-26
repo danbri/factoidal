@@ -14,7 +14,7 @@ the sentence count, whether the text is pure ISO/IEC 24707 CL (no IKL
 The `clToDataset` and `queryWithIklService` ops are REMOVED
 (https://github.com/danbri/factoidal/issues/626). They served the
 IKL-to-RDF projection built on content-addressed proposition graph
-names (`urn:cl:that:sha256:<hex>`), which is deleted. The committed
+names, which is deleted. The committed
 wasm artifact still carries both ops until it is rebuilt; see
 https://github.com/danbri/factoidal/issues/627.
 

@@ -13,8 +13,7 @@
 > `formal/lean4/L4Factoidal/CL/ToRdf.lean` and
 > `formal/lean4/L4Factoidal/CL/IklRegime.lean` no longer exist
 > ([#626](https://github.com/danbri/factoidal/issues/626)). Every
-> mention below of the `urn:cl:that:sha256:<hex>` proposition naming
-> scheme, of `CL.IklRegime.extendDataset`, of the `x-ikl-*` regime
+> mention below of the content-addressed proposition naming scheme, of `CL.IklRegime.extendDataset`, of the `x-ikl-*` regime
 > family, or of `urn:cl:def:rdfProjection` / `urn:cl:def:sentence`
 > describes an artifact that is gone. This document is NOT edited in
 > place — it is the record of what was designed on its date.
