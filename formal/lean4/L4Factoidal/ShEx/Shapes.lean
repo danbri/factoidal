@@ -109,6 +109,20 @@ readings follow from that and are taken here:
    number of available arcs, because a repetition consuming no arc
    leaves the state it started from, which is already in the result.
 
+4. **CLOSED and EXTRA are clauses about `arcsOut`.** ShEx 2.1 §5.5
+   bounds `closed` by the triples whose SUBJECT is the focus node; an
+   arc reached through `arcsIn` is neither closed out nor in need of
+   an `extra` licence, and a leftover inverse arc is tolerated
+   unconditionally. `F*`'s `ShEx.Validation.fst:1438` writes the same
+   rule as `inv || List.Tot.mem pred extra`. Treating an inverse arc
+   as a mentioned-predicate leftover failed every reflexive graph in
+   the corpus: `<S1> { <p1> @<S2> }` against `<n1> <p1> <n1>` puts the
+   SAME triple in the neighbourhood twice, once forward and once
+   inverse, and the inverse copy was scored as an unconsumed `<p1>`.
+5. **A constraint's direction is part of the predicate key.** A
+   forward constraint on `<p1>` does not mention the inverse `<p1>`
+   arc, so `mentionedPairsWith` keys on `(inverse, predicate)`.
+
 An inclusion (`&<label>`) is resolved by the `lookupTe` parameter; a
 CYCLIC inclusion would not terminate, and ShEx 2.1 §5.6 forbids one.
 -/
@@ -191,14 +205,15 @@ partial def tripleConstraintsWith (lookupTe : String → Option TripleExpr)
   | .tripleConstraint tc => [tc]
   | .eachOf g | .oneOf g => g.expressions.flatMap (tripleConstraintsWith lookupTe)
 
-/-- The predicates a triple expression mentions, FOLLOWING inclusions. -/
-partial def mentionedPredicatesWith (lookupTe : String → Option TripleExpr)
-    : TripleExpr → List String
-  | .ref id => (match lookupTe id with
-                | some te => mentionedPredicatesWith lookupTe te
-                | none    => [])
-  | .tripleConstraint tc => [tc.predicate]
-  | .eachOf g | .oneOf g => g.expressions.flatMap (mentionedPredicatesWith lookupTe)
+/-- The (inverse, predicate) pairs a triple expression mentions,
+    FOLLOWING inclusions.
+
+    The DIRECTION belongs in the key. A forward constraint on `<p1>`
+    cannot match an INVERSE arc on `<p1>`, so an expression that
+    mentions only the forward one does not mention the inverse one. -/
+def mentionedPairsWith (lookupTe : String → Option TripleExpr)
+    (te : TripleExpr) : List (Bool × String) :=
+  (tripleConstraintsWith lookupTe te).map (fun tc => (tc.inverse, tc.predicate))
 
 /-- §satisfies(n, Shape, G), with the value check and the inclusion
     lookup supplied.
@@ -246,13 +261,16 @@ def satisfiesShapeGen (valueOk : Option ShapeExpr → Term → Bool)
   match sh.expression with
   | none => !sh.closed || arcs.isEmpty
   | some te =>
-      let mentioned := mentionedPredicatesWith lookupTe te
+      let mentioned := mentionedPairsWith lookupTe te
       let constraints := tripleConstraintsWith lookupTe te
       -- Would some constraint of this expression accept this arc?
       let claimable := fun (a : Arc) => constraints.any (fun tc =>
         arcMatchesPredicate tc a && valueOk tc.valueExpr a.value)
+      -- CLOSED and EXTRA are clauses about arcsOut. An INVERSE arc is
+      -- neither closed out nor in need of an `extra` licence.
       let unmentioned := arcs.filter (fun a =>
-        !(mentioned.contains a.predicate) && !(sh.extra.contains a.predicate))
+        !a.inverse && !(mentioned.contains (false, a.predicate))
+          && !(sh.extra.contains a.predicate))
       if sh.closed && !unmentioned.isEmpty then false
       else
         let arr := arcs.toArray
@@ -262,7 +280,8 @@ def satisfiesShapeGen (valueOk : Option ShapeExpr → Term → Bool)
           let consumed := (List.range arcs.length).filter (fun i => !(rest.contains i))
             |>.filterMap (fun i => arr[i]?)
           leftover.all (fun a =>
-            !(mentioned.contains a.predicate)
+            a.inverse
+            || !(mentioned.contains (false, a.predicate))
             || (sh.extra.contains a.predicate
                 && (!(claimable a)
                     || !(consumed.any (fun c =>
