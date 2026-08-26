@@ -8,7 +8,7 @@ https://www.ihmc.us/users/phayes/IKL/GUIDE/GUIDE.html) treats
 `(that (exists (y)(loves Jim y)))` as names of ONE proposition.
 `Sentence.alphaNorm` computes a canonical representative of a
 sentence's alpha-equivalence class, so a downstream identity keyed on
-the canonical CLIF text — `CL/ToRdf.lean`'s proposition graph names,
+the canonical CLIF text —
 https://github.com/danbri/factoidal/issues/589 — meets that condition
 exactly. Referential transparency (the guide's other individuation
 condition — a proposition depends on the things named, not on the
@@ -290,8 +290,7 @@ def Sentence.alphaNorm (s : Sentence) : Sentence :=
 /-! ## Guards
 
 `Sentence` has no `DecidableEq` (mutual family), so normal forms are
-compared through the canonical CLIF serialisation — which is also
-exactly how `CL/ToRdf.lean` consumes `alphaNorm`. -/
+compared through the canonical CLIF serialisation. -/
 
 /-- Parse one sentence, alpha-normalize, serialise (test entry;
 `none` on a parse error). -/

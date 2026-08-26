@@ -67,8 +67,6 @@ def opNames : List String :=
   , "rhoDfFragmentCheck"
   , "rdfsPlusClosure"
   , "clParse"
-  , "clToDataset"
-  , "queryWithIklService"
   , "ops" ]
 
 private def arity1 (op : String) (f : String → String) :
@@ -124,8 +122,6 @@ def call (op : String) (argsJson : String) : String :=
     | "rhoDfFragmentCheck"   => arity1 op rhoDfFragmentCheck args
     | "rdfsPlusClosure"      => arity1 op rdfsPlusClosure args
     | "clParse"              => arity1 op clParse args
-    | "clToDataset"          => arity2 op clToDataset args
-    | "queryWithIklService"  => arity3 op queryWithIklService args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"
 

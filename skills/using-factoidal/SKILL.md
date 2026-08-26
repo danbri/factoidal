@@ -174,7 +174,7 @@ for this file and/or the labelled score in the next table.
 | RDFC-1.0 canonicalization | yes | yes | yes | yes |
 | SPARQL 1.1 query + update | yes | yes | yes | yes |
 | SPARQL 1.1 Protocol + Graph Store Protocol (HTTP server) | yes (`serve`) | no server; in-process only | no server | in-harness only |
-| SPARQL SERVICE (federation; resolves against an in-process endpoint registry on every surface — live HTTP dispatch not verified) | suite-verified | yes (probed under `LATERAL`) | `queryWithIklService` op only | yes (suite) |
+| SPARQL SERVICE (federation; resolves against an in-process endpoint registry on every surface — live HTTP dispatch not verified) | suite-verified | yes (probed under `LATERAL`) | no | yes (suite) |
 | SPARQL 1.2 | yes | same extraction, measured on native runner | yes | yes |
 | SPARQL extension functions (§17.6, sync + async JS) | no | yes | no | no |
 | Entailment regimes in `query()` (`RDFS`, `OWL-RL`, `x-rdfscore`, `x-rdfsplus`) | `entail` verb (RDFS / OWL-RL) | yes, all four | no `entail` option | closures via ops |
@@ -423,10 +423,15 @@ static list** — the surface grows (op names observed 2026-08-25:
 `parseToDatasetJson`, `queryDataset`, `updateDataset`,
 `serializeNQuads`, `serializeTurtle`, `canonicalizeToNQuads`,
 `owlClosure`, `owlIsConsistent`, `owlEntails`, `rhoDfClosure`,
-`rhoDfFragmentCheck`, `rdfsPlusClosure`, `clParse`, `clToDataset`,
-`queryWithIklService`, `ops`, and the dataset-handle ops
+`rhoDfFragmentCheck`, `rdfsPlusClosure`, `clParse`, `ops`, and the
+dataset-handle ops
 `datasetOpen`, `datasetQuery`, `datasetUpdate`, `datasetSerialize`,
-`datasetClose`). The handle ops are served only through the IO entry
+`datasetClose`). ⚠️ The COMMITTED wasm artifact predates
+https://github.com/danbri/factoidal/issues/626 and still reflects two
+extra names, `clToDataset` and `queryWithIklService`; the engine source
+no longer defines them, and the rebuild is
+https://github.com/danbri/factoidal/issues/627. The handle ops are
+served only through the IO entry
 (`l4_call_c` / the CLI); the pure `l4_call` export omits them from its
 `ops` answer.
 
@@ -460,47 +465,34 @@ number "h1", "h2", … per process.
 
 ### Common Logic / IKL (Lean flavour only)
 
-CLIF sentences parse, translate to RDF, and answer SPARQL through an
-in-process SERVICE endpoint (`urn:ikl:kb`; names translate under the
-`urn:cl:` base). The translation is graph-decoration shaped
-(https://github.com/danbri/factoidal/issues/581): every top-level
-sentence becomes a NAMED proposition graph (its translatable atoms
-plus its canonical sentence text under `urn:cl:def:sentence`), and
-the default graph holds only decorations — `urn:cl:def:asserts` per
-asserted sentence, a link triple per predication about a proposition
-(`believes`/`ist`/…), and a `urn:cl:def:rdfProjection` RDF 1.2
-triple-term decoration when a proposition's sentence translates to
-exactly one triple (the proposition's RDF-native projection;
-`rdf:reifies` is deliberately not used — a reifier is an occurrence
-token, reserved for future report nodes). One top-level sentence is
-ONE proposition: a top-level `(and A B)` is a single asserted
-conjunction proposition, the same translation `((that (and A B)))`
-receives.
-`count` = graph-content triples + decorations (records excluded):
+CLIF text parses, alpha-normalizes and re-serialises. It does NOT
+translate to RDF: the IKL-to-RDF projection and the content-addressed
+proposition naming scheme it used were deleted on 2026-08-26
+(https://github.com/danbri/factoidal/issues/626), together with the
+`clToDataset` and `queryWithIklService` ops and the `x-ikl-*`
+entailment-regime family.
+
+One op is on the wasm ABI:
 
 ```bash
-printf '%s' '["(P a b)", "http://example.org/"]' > /tmp/cl.json
-.lake/build/bin/l4wasm-cli call clToDataset /tmp/cl.json
-# {"ok":true,"count":3,"skipped":0,"nquads":"<urn:cl:kb> <urn:cl:def:asserts> <http://example.org/that:sha256:4b35…> .\n
-#   <http://example.org/that:sha256:4b35…> <urn:cl:def:rdfProjection> <<( <http://example.org/a> <http://example.org/P> <http://example.org/b> )>> .\n
-#   <http://example.org/that:sha256:4b35…> <urn:cl:def:sentence> \"(P a b)\" <http://example.org/that:sha256:4b35…> .\n
-#   <http://example.org/a> <http://example.org/P> <http://example.org/b> <http://example.org/that:sha256:4b35…> .\n"}
-
-printf '%s' '["", "(likes alice bob)", "SELECT ?s ?o WHERE { SERVICE <urn:ikl:kb> { ?s <urn:cl:likes> ?o } }"]' > /tmp/ikl.json
-.lake/build/bin/l4wasm-cli call queryWithIklService /tmp/ikl.json
-# bindings: s=urn:cl:alice, o=urn:cl:bob — the SERVICE graph is the
-# decorations plus the content of ASSERTED propositions (the x-ikl
-# regime rule); a merely believed/ist-linked proposition's content
-# stays GRAPH-only.
+printf '%s' '["(ist c (that (Dead OBL)))"]' > /tmp/cl.json
+.lake/build/bin/l4wasm-cli call clParse /tmp/cl.json
+# {"ok":true,"sentences":1,"pureCL":false,"normalized":"(ist c (that (Dead OBL)))"}
 ```
 
+`pureCL` is a DIALECT flag, not a validity signal: true while the text
+stays inside ISO/IEC 24707 Common Logic, false from the first IKL
+`that` operator onward. The CLI verb is `l4factoidal cl parse FILE`.
+
 `cl:text` phrases are rejected with a named error (reader gap,
-https://github.com/danbri/factoidal/issues/580). The `x-ikl` /
-`x-ikl-<suffix>` entailment-regime string family
-(https://github.com/danbri/factoidal/issues/581) is accepted as one
-recognized family (any suffix; `x-iklx` and `ikl` are not members);
-the area is under active development — probe `ops` and expect this
-section to grow.
+https://github.com/danbri/factoidal/issues/580).
+
+Most of the Lean CL/IKL work — alpha-normalisation, finite
+satisfiability, Hayes normalization, CLIF serialisation — has no wasm
+ABI yet: https://github.com/danbri/factoidal/issues/623. The RDF-side
+model theory that reads RDF INTO IKL (`Unified/RdfEmbed.lean`,
+`Unified/DatasetEmbed.lean`) is unaffected by the deletion above and is
+proved, not projected.
 
 ## Storage backend status
 

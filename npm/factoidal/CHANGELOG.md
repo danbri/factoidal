@@ -38,14 +38,14 @@
   `backend:'slowcompareboth'` fails the capability precondition rather
   than comparing one side against nothing.
 - The IKL-to-RDF projection ops (`clToDataset`, `queryWithIklService`)
-  are still NOT exposed through the npm API, and `x-ikl-*` entailment
-  regimes are still rejected. The ops remain present in the compiled
-  wasm; they are unreachable through the package. Owner decision,
-  2026-08-26: the IKL-to-RDF projection stays out of npm until it has a
-  reversibility theorem (danbri/factoidal#620). `clParse` is a
-  different op (it never produces RDF) and was never covered by this
-  ruling; an earlier draft of this changelog entry grouped all three
-  ops together, which was a misattribution -- corrected here.
+  are DELETED from the engine source (danbri/factoidal#626), along with
+  the content-addressed proposition graph names they minted. They were
+  never exposed through the npm API. `x-ikl-*` entailment regimes are
+  still rejected at the JS layer, and the engine no longer defines the
+  family either. The two ops remain present in the compiled wasm
+  artifact until it is rebuilt (danbri/factoidal#627) -- the artifact
+  is ahead of its source. `clParse` is a different op (it never
+  produces RDF) and is unaffected.
 
 ## 0.2.0 — Lean 4 engine subpath
 

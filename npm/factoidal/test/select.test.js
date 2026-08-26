@@ -330,59 +330,15 @@ test("backend 'slowcompareboth': clParse fails the capability precondition, not 
 });
 
 // ---------------------------------------------------------------------
-// Owner decision, 2026-08-26 (issue #618, scope-change comment): the
-// IKL-to-RDF projection ("direction B": clToDataset, queryWithIklService)
-// stays off the npm surface -- "IKL doesn't have shapes or named
-// profiles. Take it out of npm for now." These ops are NOT deleted from
-// the compiled wasm (no rebuild happened for this decision); they are
-// held back at the JS layer only. Pinned here so a later change can't
-// quietly wire them back in without failing a test that names the
-// decision.
-//
-// clParse used to sit in this same list, misattributed to the same
-// owner decision. CORRECTION 2026-08-26 (see l4-core.js's OPS comment):
-// clParse reads CLIF text and never produces RDF, so it was never part
-// of direction B -- it was unwired only because nobody had decided to
-// wrap it, and it is wired now (tests above). It must not be added
-// back to this list.
-// ---------------------------------------------------------------------
-
-const WITHHELD_CL_IKL_OPS = ['clToDataset', 'queryWithIklService'];
-
-test('capabilityTable/ROUTABLE never mention the withheld CL/IKL ops', async () => {
-  const table = await select.capabilityTable();
-  for (const op of WITHHELD_CL_IKL_OPS) {
-    assert.equal(op in table, false, `${op} must not appear in capabilityTable()`);
-    assert.equal(select.ROUTABLE.includes(op), false, `${op} must not appear in ROUTABLE`);
-  }
-});
-
-test('l4-core.js exports none of the withheld CL/IKL ops as callable functions', () => {
-  const l4core = require('../l4-core.js');
-  for (const op of WITHHELD_CL_IKL_OPS) {
-    assert.equal(typeof l4core[op], 'undefined', `l4-core.js must not export ${op}`);
-  }
-});
-
-test('the withheld CL/IKL ops are still present in the compiled wasm (held back, not deleted)', async (t) => {
-  if (skipUnlessLean(t)) return;
-  const eng = await require('../l4.js').loadL4();
-  if (typeof eng.call !== 'function') { t.skip('resolved wasm predates the dispatch ABI'); return; }
-  const ops = eng.call('ops', []).ops;
-  for (const op of WITHHELD_CL_IKL_OPS) {
-    assert.ok(ops.includes(op),
-      `${op} should still be a real op on the wasm's own reflection -- ` +
-      'this is a JS-surface hold-back, not a wasm rebuild');
-  }
-});
-
-// ---------------------------------------------------------------------
 // Owner decision, 2026-08-26: x-ikl-* entailment regimes are not
 // exposed through the npm API (IKL has no notion of shapes or named
 // profiles). Rejected at the JS layer in BOTH lib/api.js's query()
 // (the shared choke point for index.js/l4-core.js/select.js) and
 // fn.js's entail() (which would otherwise pass an unrecognised regime
-// string through unchanged).
+// string through unchanged). The Lean engine no longer defines an
+// x-ikl-* regime at all (the handler went with the IKL-to-RDF
+// projection, danbri/factoidal#626), so the JS rejection is now the
+// only place the name is answered.
 // ---------------------------------------------------------------------
 
 test('query() rejects x-ikl-* entail regimes (F* engine)', async () => {

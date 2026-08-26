@@ -1210,13 +1210,13 @@ theorem regime_sound_rdfs {g : RDF.Graph} {b : SPARQL.Bgp}
     (fun a' t' ht' => hc.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2 a' t' ht')
     hc.2.2.2.1 hc.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1 hxml
 
-/-! ## The `x-ikl-*` family: a premise-list transform, not a closure
+/-! ## The assertion-decoration merge: a premise-list transform, not
+a closure
 
-`CL/IklRegime.lean`'s handler does not close a graph under rules; it
-merges the CONTENT of every ASSERTED proposition into the default
-graph (design document §2.4's assertion decoration;
-https://github.com/danbri/factoidal/issues/581 for the named subsets,
-still deferred). At the unified level that is a transform of the
+The merge does not close a graph under rules; it merges the CONTENT of
+every ASSERTED proposition into the default graph (design document
+§2.4's assertion decoration). At the unified level that is a transform
+of the
 PREMISE LIST: the extended default graph is entailed by the dataset's
 own graphs, read Skolem-wise.
 
@@ -1228,8 +1228,7 @@ with respect to.
 
 WHY THEY MOVED (https://github.com/danbri/factoidal/issues/609 item 3,
 2026-08-26). Until that repair this module carried
-`ikl_extend_entailed` and `regime_sound_ikl` over `iklPremises`. Two
-measurements against them:
+these statements over `iklPremises`. Two measurements against them:
 
 * `iklPremises` asserts EVERY named graph, asserted or merely
   mentioned, so it identifies assertion with mention before the
@@ -1239,14 +1238,13 @@ measurements against them:
 * `ClBridge`'s `mergeWhere_entailed` proves the same entailment for
   EVERY selection predicate over the named graphs, so the statement
   certified nothing about the choice of the `urn:cl:def:asserts`
-  test and did not see issue 581's narrowing.
+  test, and did not see that a link decoration does not assert.
 
 The replacements read the dataset with `datasetToTheory`, which
 asserts an ASSERTS-decorated named graph and no other, and are
-predicate-sensitive: `ClBridge`'s `mergeAll_not_embed_entailed`
-refutes the merge-everything instance. Still nothing about the suffix
-— all suffixes route to one handler, per the owner ruling recorded in
-issue 581. -/
+predicate-sensitive: `ClBridge`'s
+`embedding_sees_the_assertion_decoration` refutes the merge-everything
+instance. -/
 
 theorem mem_graphAdd {g : RDF.Graph} {t u : RDF.Triple}
     (h : t ∈ RDF.Graph.add u g) : t ∈ g ∨ t = u := by
@@ -1268,8 +1266,10 @@ theorem mem_graphUnion : ∀ (g2 g1 : RDF.Graph) {t : RDF.Triple},
         · exact Or.inr (List.mem_cons_self ..)
       · exact Or.inr (List.mem_cons_of_mem _ h)
 
-/-- The premise list a dataset contributes under the `x-ikl-*` family:
-the default graph's Skolem reading and every named graph's. -/
+/-- The SUPERSEDED premise list a dataset contributes: the default
+graph's Skolem reading and every named graph's. It asserts every named
+graph, asserted or merely mentioned — kept as the record of what the
+issue-609 item-3 repair replaced. -/
 def iklPremises (ds : RDF.Dataset) : List CL.Sentence :=
   rdfToTheorySk ds.default :: ds.named.map (fun ng => rdfToTheorySk ng.graph)
 

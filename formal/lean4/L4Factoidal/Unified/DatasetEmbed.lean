@@ -29,7 +29,7 @@ SECOND ARGUMENT of a binary predication. `CL.IklRespectsThat`
 constrains a proposition's ZERO-ARY relation extension and cannot
 reach that position, so a proposition could be named and asserted in
 the dataset while the theory refuted its content — machine-checked in
-`Unified/ClBridge.lean` on a real `CL.toRdfDataset` output. The
+`Unified/ClBridge.lean` on a witness dataset. The
 superseded reading survives here as `decorationOnlyToTheory`, and
 `ClBridge` states the defect about it. The repaired reading is a
 strict strengthening: `datasetToTheory_entails_decorationOnly` gives
@@ -117,9 +117,7 @@ def assertedGraphAtom (ng : RDF.NamedGraph) : CL.Sentence :=
 /-- Does the dataset's DEFAULT graph assert this named graph — is the
 graph name the object of a default-graph triple whose predicate is
 `urn:cl:def:asserts` (any asserting subject)? A blank-node graph name
-is never asserted, because a decoration cannot refer to it. Same test
-as the engine's `CL.assertsDecorated`, pinned by
-`Unified/ClBridge.lean`'s `graphAsserted_eq_assertsDecorated`. -/
+is never asserted, because a decoration cannot refer to it. -/
 def graphAsserted (ds : RDF.Dataset) (ng : RDF.NamedGraph) : Bool :=
   match ng.name with
   | .iri i => ds.default.any

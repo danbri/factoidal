@@ -496,7 +496,9 @@ function buildApi(driver) {
     // shapes or named profiles. Take it out of npm for now." IKL has
     // no notion of shapes or named profiles, so an x-ikl-<suffix>
     // entailment-regime family invents a taxonomy the specification
-    // does not have. Checked explicitly (not just left out of
+    // does not have. The Lean engine's own x-ikl handler is now gone
+    // too (danbri/factoidal#626), so this check is where the name is
+    // answered. Checked explicitly (not just left out of
     // ENTAIL_VALUES below) so a future ENTAIL_VALUES edit can't
     // reopen this without deliberately removing this check too; see
     // test/select.test.js's regression test.
@@ -505,7 +507,8 @@ function buildApi(driver) {
         `query: entail '${entail}' is not exposed through the npm API -- ` +
         'the x-ikl-* entailment regimes are not exposed through the ' +
         'npm API (owner decision 2026-08-26, danbri/factoidal#618); ' +
-        'the Lean CLI and the hub notebooks still carry them.');
+        'the Lean engine no longer defines the family either ' +
+        '(danbri/factoidal#626).');
     }
     if (!ENTAIL_VALUES.has(entail)) {
       throw new TypeError(
@@ -1281,9 +1284,8 @@ function buildApi(driver) {
    * with the IKL `that`-operator extension (entry_jsoo.ml's clParse
    * export -> L4Factoidal's CL/Clif.lean reader). Reads CLIF into a CL
    * syntax tree and reports its shape; it never produces RDF -- the
-   * IKL-to-RDF projection is a separate, deliberately unexposed pair
-   * of ops (clToDataset/queryWithIklService; see l4-core.js's OPS
-   * comment). Lean 4 only: formal/fstar has no CL/IKL parser, so this
+   * IKL-to-RDF projection that used to accompany it is deleted
+   * (danbri/factoidal#626). Lean 4 only: formal/fstar has no CL/IKL parser, so this
    * function is absent from index.js/wasm.js -- see capabilities() /
    * factoidal/select's capability table.
    * @param {string} clifText

@@ -449,62 +449,9 @@ def updateCase (n : String) : Option TestCase := updateCases.find? (fun tc => tc
 -- A syntax test's action is the request file itself.
 #guard (updateCase "u3").bind (·.action) == some "/u/u3.ru"
 
-/-! ## The `x-ikl-*` regime family, on the runner's own decision points
+/-! ## Regime names -/
 
-https://github.com/danbri/factoidal/issues/581. `runQueryEvaluation`
-recognizes the family with exactly this `findSome?` call; the guards
-pin that a manifest regime list naming any family member is accepted
-(suffix carried) and that near-misses fall through to the
-`unsupported` path. -/
-
-#guard (["x-ikl"].findSome? L4Factoidal.CL.IklRegime.parse?)
-       == some ⟨""⟩
-#guard (["x-ikl-flat"].findSome? L4Factoidal.CL.IklRegime.parse?)
-       == some ⟨"flat"⟩
-#guard (["x-ikl-anything-at-all"].findSome? L4Factoidal.CL.IklRegime.parse?)
-       == some ⟨"anything-at-all"⟩
-#guard (["x-iklx"].findSome? L4Factoidal.CL.IklRegime.parse?) == none
-#guard (["ikl"].findSome? L4Factoidal.CL.IklRegime.parse?) == none
--- The W3C-named regimes are untouched by the family matcher …
-#guard (["RDFS"].findSome? L4Factoidal.CL.IklRegime.parse?) == none
--- … and `pickRegime` still resolves them exactly as before.
 #guard pickRegime ["RDFS"] == some .rdfs
-
-/-- The provisional default end to end through the REAL SPARQL parser
-and evaluator: a CLIF text translated by `CL/ToRdf.lean`, the dataset
-extended by the one family handler, and a default-graph ASK for the
-proposition's content. -/
-private def iklAsk (extend : Bool) (text : String) : Bool :=
-  let ds : L4Factoidal.RDF.Dataset :=
-    match L4Factoidal.CL.parseClifText text with
-    | .error _ => L4Factoidal.RDF.Dataset.empty
-    | .ok ss =>
-        match L4Factoidal.CL.toRdfDataset "urn:cl:" ss with
-        | .error _ => L4Factoidal.RDF.Dataset.empty
-        | .ok r => r.ds
-  let ds := if extend then
-      (L4Factoidal.CL.IklRegime.mk "flat").extendDataset ds
-    else ds
-  match L4Factoidal.SPARQL.parseSparql "ASK { <urn:cl:OBL> a <urn:cl:Dead> }" with
-  | .error _ => false
-  | .ok q => L4Factoidal.SPARQL.evalAsk {} ds q
-
--- The asserted proposition `((that (Dead OBL)))`: nothing flattens
--- (the graph-decoration translation, issue 581), so without the
--- regime its content is invisible to a default-graph BGP; under the
--- x-ikl default the `urn:cl:def:asserts` decoration merges it.
-#guard iklAsk false "((that (Dead OBL)))" == false
-#guard iklAsk true "((that (Dead OBL)))" == true
--- The narrowing (issue 581): an `ist` LINK decoration does not
--- assert its proposition, so the regime does not merge its content.
-#guard iklAsk true "(ist c (that (Dead OBL)))" == false
--- Conjunction uniformity (review disposition, 2026-08-25): a
--- top-level `(and A B)` is ONE asserted proposition, and the x-ikl
--- default merges that one graph's translatable atoms exactly as it
--- does a single-atom assertion — the untranslatable conjunct stays
--- record-only, invisible either way.
-#guard iklAsk false "(and (Dead OBL) (forall (x) (P x)))" == false
-#guard iklAsk true "(and (Dead OBL) (forall (x) (P x)))" == true
 
 /-! ## Axiom audit
 

@@ -6,7 +6,7 @@ dispatch ABI (`Wasm/Dispatch.lean`).
 This module is thin argument parsing and JSON-envelope decoding ONLY.
 Every verb below calls one of the `Wasm/Ops/*.lean` functions the wasm
 build and `l4wasm-cli` also call — the same `parseToDatasetJson`,
-`queryDataset`, `owlClosure`, `clToDataset`, … — and prints the field a
+`queryDataset`, `owlClosure`, `clParse`, … — and prints the field a
 person wants from the envelope those functions already return. No RDF,
 SPARQL, OWL or CL semantics live here.
 
@@ -93,7 +93,7 @@ def readInput (pathOpt : Option String) : IO (Except String String) := do
 `parseTextToDataset` the dispatch ops use, and re-serialise to
 canonical N-Quads — the input path every RDF-consuming verb below
 shares (`query`, `update`, `canonicalize`, `closure`, `owl-consistent`,
-`owl-entails`, `cl query`), because every stateless op past `parse`
+`owl-entails`), because every stateless op past `parse`
 itself takes N-Quads text (`Wasm/Ops/*.lean` module headers). -/
 def readAsNQuads (pathOpt : Option String) (formatTag baseIri : String) :
     IO (Except String String) := do
@@ -105,8 +105,8 @@ def readAsNQuads (pathOpt : Option String) (formatTag baseIri : String) :
       | .ok ds => pure (.ok (Dataset.toCanonicalNQuads ds))
 
 /-- Resolve a `--foo FILE` / `--foo-string TEXT` pair (exactly one of
-the two) into the text it names — shared by `query`, `update` and
-`cl query`. The `Except UInt32` error already carries the exit code
+the two) into the text it names — shared by `query` and `update`.
+The `Except UInt32` error already carries the exit code
 the caller should return (2 for a usage mistake). -/
 def resolveTextArg (verb fileFlag strFlag what : String) (s : Scanned) :
     IO (Except UInt32 String) := do
@@ -192,7 +192,7 @@ def printSelectTable (srj : Json) : IO Unit := do
   for row in rows do
     IO.println (String.intercalate "\t" (vars.map fun v => (bindingValue? row v).getD ""))
 
-/-- Print the `queryDataset` / `queryWithIklService` envelope family
+/-- Print the `queryDataset` envelope family
 (select/ask/construct — DESCRIBE is already an error envelope, handled
 by `parseEnvelope`). -/
 def printQueryResult (j : Json) (table : Bool) : IO UInt32 := do
@@ -380,54 +380,11 @@ def clParseCmd (args : List String) : IO UInt32 := do
       | none => pure 1
       | some j => IO.println j.toStringPretty; pure 0
 
-def clToRdfCmd (args : List String) : IO UInt32 := do
-  match scanArgs ["--base", "--out"] [] args with
-  | .error e => IO.eprintln s!"l4factoidal cl to-rdf: {e}"; pure 2
-  | .ok s =>
-    let base := (s.value? "--base").getD "urn:cl:"
-    match ← readInput s.positional[0]? with
-    | .error e => IO.eprintln e; pure 1
-    | .ok text =>
-      match ← parseEnvelope (Ops.clToDataset text base) with
-      | none => pure 1
-      | some j =>
-          match s.value? "--out" with
-          | none => IO.println j.toStringPretty; pure 0
-          | some "nquads" => IO.println ((j.getString? "nquads").getD ""); pure 0
-          | some other =>
-              IO.eprintln s!"l4factoidal cl to-rdf: unknown --out '{other}' (nquads)"
-              pure 2
-
-def clQueryCmd (args : List String) : IO UInt32 := do
-  match scanArgs ["--format", "--query", "--query-string"] ["--table"] args with
-  | .error e => IO.eprintln s!"l4factoidal cl query: {e}"; pure 2
-  | .ok s =>
-    match s.positional[0]?, s.positional[1]? with
-    | some dataFile, some clifFile =>
-        match ← resolveTextArg "cl query" "--query" "--query-string" "SPARQL" s with
-        | .error code => pure code
-        | .ok sparql =>
-          let format := (s.value? "--format").getD "turtle"
-          match ← readAsNQuads (some dataFile) format "" with
-          | .error e => IO.eprintln e; pure 1
-          | .ok dataNq =>
-            match ← readInput (some clifFile) with
-            | .error e => IO.eprintln e; pure 1
-            | .ok clif =>
-              match ← parseEnvelope (Ops.queryWithIklService dataNq clif sparql) with
-              | none => pure 1
-              | some j => printQueryResult j (s.hasBool "--table")
-    | _, _ =>
-        IO.eprintln "l4factoidal cl query: need DATA_FILE CLIF_FILE"
-        pure 2
-
 def clCmd (sub : String) (args : List String) : IO UInt32 :=
   match sub with
   | "parse"  => clParseCmd args
-  | "to-rdf" => clToRdfCmd args
-  | "query"  => clQueryCmd args
   | other => do
-      IO.eprintln s!"l4factoidal cl: unknown subcommand '{other}' (parse | to-rdf | query)"
+      IO.eprintln s!"l4factoidal cl: unknown subcommand '{other}' (parse)"
       pure 2
 
 /-! ## Help + dispatch -/
@@ -464,13 +421,6 @@ def usageLines : List String :=
   , "  cl parse [FILE]"
   , "      Parse a Common Logic / IKL text; print sentence count,"
   , "      whether it is pure CL, and the canonical re-serialisation."
-  , "  cl to-rdf [FILE] [--base IRI] [--out nquads]"
-  , "      Translate CL/IKL text to the graph-decoration RDF form"
-  , "      (issue 581). Default base urn:cl:."
-  , "  cl query DATA_FILE CLIF_FILE (--query FILE | --query-string SPARQL)"
-  , "        [--format FMT] [--table]"
-  , "      Query DATA_FILE with CLIF_FILE's propositions reachable via"
-  , "      SERVICE <urn:ikl:kb> and GRAPH ?p — same output as `query`."
   , "  version"
   , "      Print the engine version and the dispatch ABI version."
   , "  ops"
@@ -501,7 +451,7 @@ def main (args : List String) : IO UInt32 := do
   | "owl-entails" :: rest => owlEntailsCmd rest
   | "cl" :: sub :: rest => clCmd sub rest
   | "cl" :: [] =>
-      IO.eprintln "l4factoidal cl: need a subcommand (parse | to-rdf | query)"
+      IO.eprintln "l4factoidal cl: need a subcommand (parse)"
       pure 2
   | cmd :: _ =>
       IO.eprintln s!"l4factoidal: unknown verb '{cmd}' (try 'l4factoidal help')"

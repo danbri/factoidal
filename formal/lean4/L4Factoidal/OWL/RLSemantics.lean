@@ -36,8 +36,8 @@ condition justifying it).
 
 ## Reserved vocabulary
 
-Two auxiliary predicates in the `urn:cl:def:` operator namespace that
-`CL/ToRdf.lean` owns (`urn:cl:def:listMember`,
+Two auxiliary predicates in the unified layer's `urn:cl:def:`
+operator namespace (`urn:cl:def:listMember`,
 `urn:cl:def:typedAllMembers`) give the `ListMember`-shaped rows a
 first-order Horn form: the RDF collection walk becomes two Horn
 axioms per predicate instead of one sentence per list length. The

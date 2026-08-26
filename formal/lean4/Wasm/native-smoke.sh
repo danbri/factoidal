@@ -258,60 +258,6 @@ args "$TMP/cl-parse-bad.json" '(P a'
 check "clParse unclosed paren -> error" clParse "$TMP/cl-parse-bad.json" \
   'r["ok"] is False and "unclosed" in r["error"]'
 
-# The proposition graph name is the sha256 content address of the
-# alpha-normalized canonical CLIF (issue 589):
-# echo -n '(Dead OBL)' | sha256sum
-# Graph-decoration translation (issue 581): count = graph-content
-# triples + decorations (ist link + rdfProjection here); the graph
-# holds record + content, nothing flattens into the default graph.
-# rdf:reifies must NOT appear (a reifier is an occurrence token,
-# reserved for future report nodes — review disposition 2026-08-25).
-# 5 occurrences of the graph IRI: link object, projection subject,
-# record subject + graph label, content graph label.
-DEADOBL_G='urn:cl:that:sha256:627ab6c4ca999f2605c342e052ef3fe6ae4f8c9a5744df8a09ef4f66819eddd0'
-args "$TMP/cl-ds.json" "$IKL" "urn:cl:"
-check "clToDataset proposition -> named graph" clToDataset "$TMP/cl-ds.json" \
-  'r["ok"] is True and r["count"] == 3 and r["skipped"] == 0
-   and "<urn:cl:c> <urn:cl:ist> <'"$DEADOBL_G"'> ." in r["nquads"]
-   and "<'"$DEADOBL_G"'> <urn:cl:def:rdfProjection> <<( <urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> )>> ." in r["nquads"]
-   and "reifies" not in r["nquads"]
-   and "<'"$DEADOBL_G"'> <urn:cl:def:sentence> \"(Dead OBL)\" <'"$DEADOBL_G"'> ." in r["nquads"]
-   and "<urn:cl:OBL> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:cl:Dead> <'"$DEADOBL_G"'> ." in r["nquads"]
-   and r["nquads"].count("<'"$DEADOBL_G"'>") == 5'
-
-# A top-level `and` is ONE asserted proposition (review disposition
-# 2026-08-25 — no distribution): one asserts decoration, one graph
-# holding the (Dog Rex) content atom, the quantified conjunct skipped
-# and counted. count = asserts (1) + content (1); no projection (the
-# sentence is not a single atom).
-args "$TMP/cl-ds-skip.json" '(and (Dog Rex) (forall (x) (P x)))' "urn:cl:"
-check "clToDataset conjunction is one proposition, skips counted" clToDataset "$TMP/cl-ds-skip.json" \
-  'r["ok"] is True and r["count"] == 2 and r["skipped"] == 1
-   and r["nquads"].count("<urn:cl:kb> <urn:cl:def:asserts>") == 1'
-
-args "$TMP/cl-ds-bad.json" "$IKL" "nocolon"
-check "clToDataset bad base -> error" clToDataset "$TMP/cl-ds-bad.json" \
-  'r["ok"] is False and "not an IRI" in r["error"]'
-
-IKLDATA='<urn:cl:c> <http://e/label> "ctx" .
-'
-IKLQ='SELECT ?l ?g ?s WHERE { ?c <http://e/label> ?l . SERVICE <urn:ikl:kb> { ?c <urn:cl:ist> ?g } GRAPH ?g { ?s ?p <urn:cl:Dead> } }'
-args "$TMP/cl-q.json" "$IKLDATA" "$IKL" "$IKLQ"
-check "queryWithIklService service+graph join" queryWithIklService "$TMP/cl-q.json" \
-  'r["ok"] is True and r["kind"] == "select"
-   and r["srj"]["results"]["bindings"][0]["l"]["value"] == "ctx"
-   and r["srj"]["results"]["bindings"][0]["g"]["value"] == "'"$DEADOBL_G"'"
-   and r["srj"]["results"]["bindings"][0]["s"]["value"] == "urn:cl:OBL"'
-
-args "$TMP/cl-q-ask.json" "$IKLDATA" "$IKL" \
-  'ASK { SERVICE <urn:ikl:kb> { <urn:cl:c> <urn:cl:ist> ?g } }'
-check "queryWithIklService ask over service" queryWithIklService "$TMP/cl-q-ask.json" \
-  'r["ok"] is True and r["kind"] == "ask" and r["boolean"] is True'
-
-args "$TMP/cl-q-bad.json" "$IKLDATA" '(P a' 'SELECT ?s WHERE { ?s ?p ?o }'
-check "queryWithIklService bad CLIF -> error" queryWithIklService "$TMP/cl-q-bad.json" \
-  'r["ok"] is False and "CLIF parse error" in r["error"]'
-
 # --- Dataset handles (issue 585) --------------------------------------
 # Handle state lives in the process, so the dependent sequence runs
 # through `callseq`: open -> query -> update -> query -> serialize
@@ -389,8 +335,7 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
             "owlClosure","owlIsConsistent","owlEntails",
             "rhoDfClosure","rhoDfFragmentCheck",
-            "rdfsPlusClosure","clParse","clToDataset",
-            "queryWithIklService","ops",
+            "rdfsPlusClosure","clParse","ops",
             "datasetOpen","datasetQuery","datasetUpdate",
             "datasetSerialize","datasetClose"]) <= set(r["ops"])'
 

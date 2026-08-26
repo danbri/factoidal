@@ -1555,3 +1555,82 @@ the investigation comment on
    [https://github.com/danbri/factoidal/issues/604](https://github.com/danbri/factoidal/issues/604)
    — out of scope of the Lean repair, referenced here so the polarity
    decision is not re-made independently a third time.
+
+## Hazard #34 — an absorbed `.ml` is a mid-build artifact: the sweep unpatched the shipping engine (2026-08-26)
+
+### Symptom
+
+`npm-publish.yml` run 1 — the workflow's first ever run — failed its
+extraction drift check: 8 files changed, 2736 insertions, 213 deletions
+between the committed `formal/fstar/ocaml-output/*.ml` and a fresh
+extraction of the same commit. `git status` had been clean the whole
+time. No test score had moved. No build had failed.
+
+### Root cause
+
+The same two commits as hazard #32 (`2a2d50ddee2`, `3d9b9c47188`, both
+titled "Lean N-Quads: ...", both 2026-08-24), plus `6e6f7171ce9` the
+same day. Hazard #32 records what the absorbed session LOST. This
+records what the absorbing commits GAINED.
+
+The files they swept in were extraction output captured between
+`fstar.exe --codegen OCaml` and `./ocaml-patches.sh`. Extraction writes
+the `.ml`; the patch step then realises every `assume val` into it. A
+`.ml` read off disk between those two calls is a real file, compiles,
+and is missing every glue realisation.
+
+What the shipping engine lost for two days: the whole COTTAS on-disk
+companion chain (`Cottas_offset_idx`, `Cottas_compound_po_writer`,
+`Cottas_subject_offset_idx`, the token-lookup dictionary realisation,
+the page-cache decoders), the `SPARQL11_Algebra` extension-function
+registry, the Parquet footer runtime glue, and `SHACL_Validation`'s
+`sh:sparql` dispatch marker. `bin/linux-x86_64/factoidal` was rebuilt
+from that state at 20:46 the same evening and committed.
+
+Nothing detected it. `git status` cannot: the files are tracked and the
+commit is clean. The build cannot: unpatched extraction output compiles.
+`check-extraction.yml` could not: it ran `extract` + `compile` and never
+diffed the result against the committed `.ml`, so it checked that
+extraction succeeds, not that the committed output matches it — and it
+triggered on `pull_request` only, while all three commits were direct
+pushes.
+
+### Detection
+
+- `./ocaml-patches.sh <a copy of ocaml-output>` — run the patch step
+  alone against a copy of the committed `.ml`. Anything it CHANGES is a
+  patch the committed output is missing. This needs no `fstar.exe` and
+  runs in about one second; it is the fastest way to separate patch
+  drift from extraction drift.
+- `grep -c '<marker>' ocaml-output/<M>.ml` for a marker string a patch
+  script inserts. Every patch here has one, for its own idempotency
+  test.
+- `git log --format='%h %ad' --date=short -- ocaml-output/<M>.ml` against
+  the date the patch landed. A `.ml` regenerated AFTER a patch, without
+  the patch's marker, was committed without the patch step.
+
+### The rules
+
+1. **A `.ml` under `ocaml-output/` is only committable straight after a
+   COMPLETE `./build-ocaml.sh extract`.** Extraction alone leaves the
+   tree in a state that compiles and is wrong. Never commit `.ml` from a
+   checkout where the extract step was interrupted, or where only
+   `fstar.exe` was run by hand.
+2. **Stage extraction output by explicit path, never `git add -A` / `git
+   commit -a`.** Hazard #32 gives the same rule for the shared-checkout
+   case; this is the reason it holds even in a checkout you believe is
+   yours alone.
+3. **A commit whose subject names one tree must not carry files from
+   another.** Three Lean-titled commits carried an F\* backend refactor
+   and its build artifacts. If `git status` shows files from a
+   workstream your message does not describe, they belong in their own
+   commit or in `git stash`, not in yours.
+4. **A CI job named "Check X" must diff X, not merely run it.** See
+   anti-pattern #28. `check-extraction.yml` now runs
+   `extract --force-full` and fails on `git diff --exit-code` against
+   `ocaml-output/*.ml`, on push as well as pull_request.
+5. **`build-ocaml.sh extract --force-full` was a no-op from 2026-08-15
+   to 2026-08-26** — the multi-step argument loop read `--force-full` as
+   a step name. If you are reading a log from that window that claims a
+   full re-extraction, it did not happen. Full write-up:
+   [`docs/designissues/2026-08-26-extraction-drift-root-cause.md`](../../docs/designissues/2026-08-26-extraction-drift-root-cause.md).

@@ -62,11 +62,10 @@ def queryParsedDataset (ds : Dataset) (sparql : String) : String :=
         errJson "DESCRIBE is not supported by the npm entry yet"
 
 /-- `queryDataset(nquads, sparql)`. The N-Quads argument is read in
-RDF 1.2 mode: the engine's own ops emit RDF 1.2 canonical N-Quads —
-`clToDataset`'s `urn:cl:def:rdfProjection` decoration carries a
-`<<( … )>>` triple term (`CL/ToRdf.lean`, issue 581) — so the query op must read
-back what the op family writes. RDF 1.2 N-Quads is a superset of the
-1.1 grammar; `Mode.rdf11` stays the default everywhere else. -/
+RDF 1.2 mode: the engine's own ops emit RDF 1.2 canonical N-Quads,
+including `<<( … )>>` triple terms, so the query op must read back
+what the op family writes. RDF 1.2 N-Quads is a superset of the 1.1
+grammar; `Mode.rdf11` stays the default everywhere else. -/
 def queryDataset (nq sparql : String) : String :=
   match parseNQuads nq .rdf12 with
   | .error e => errJson (fmtParseError e)
@@ -87,7 +86,7 @@ def applyUpdateText (ds : Dataset) (updateText : String) :
 
 /-- `updateDataset(nquads, sparqlUpdate)`. RDF 1.2 read mode for the
 same reason as `queryDataset` above: the stateless pair must accept
-its own (and `clToDataset`'s) canonical N-Quads output. -/
+its own canonical N-Quads output. -/
 def updateDataset (nq updateText : String) : String :=
   match parseNQuads nq .rdf12 with
   | .error e => errJson (fmtParseError e)
