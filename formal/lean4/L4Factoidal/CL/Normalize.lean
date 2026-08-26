@@ -593,4 +593,211 @@ quantifier is existential. -/
   some ["(forall ((x Human)) (FredBelieves (prop1 x)))",
         "(forall (x) (iff ((prop1 x)) (exists (y) (hasFather x y))))"]
 
+/-! ## Side conditions for the semantic theorems
+
+Three decidable conditions that `CL.NormalizeSemantics` needs, plus
+the record of which fresh name names which proposition. All of them
+mirror the traversal above, so each recursive case of a soundness
+proof gets its sub-condition by unfolding. -/
+
+mutual
+
+/-- Every name occurring in a term, binder positions included. -/
+def allNamesT : Term → List String
+  | .name n => [n]
+  | .str _ => []
+  | .funapp op args => allNamesT op ++ allNamesSeq args
+  | .that s => allNamesS s
+
+/-- Every name occurring in an argument sequence. -/
+def allNamesSeq : List SeqItem → List String
+  | [] => []
+  | .term t :: r => allNamesT t ++ allNamesSeq r
+  | .seqmark _ :: r => allNamesSeq r
+
+/-- Every name occurring in a boundlist, the bound names included. -/
+def allNamesBinds : List Binding → List String
+  | [] => []
+  | .plain n :: r => n :: allNamesBinds r
+  | .seqmark _ :: r => allNamesBinds r
+  | .restricted n g :: r => n :: (allNamesT g ++ allNamesBinds r)
+
+/-- Every name occurring in a sentence. -/
+def allNamesS : Sentence → List String
+  | .atom p args => allNamesT p ++ allNamesSeq args
+  | .eq a b => allNamesT a ++ allNamesT b
+  | .conj ss => allNamesSs ss
+  | .disj ss => allNamesSs ss
+  | .neg s => allNamesS s
+  | .impl a b => allNamesS a ++ allNamesS b
+  | .iff a b => allNamesS a ++ allNamesS b
+  | .all bs body => allNamesBinds bs ++ allNamesS body
+  | .ex bs body => allNamesBinds bs ++ allNamesS body
+
+/-- Every name occurring in a sentence list. -/
+def allNamesSs : List Sentence → List String
+  | [] => []
+  | s :: r => allNamesS s ++ allNamesSs r
+
+end
+
+/-- The fresh names this module allocates all begin `prop`. -/
+def isFreshName (n : String) : Bool := "prop".isPrefixOf n
+
+/-- No name of the sentence collides with the fresh-name space, so
+`propName` is fresh for it at every counter value. -/
+def freshFor (s : Sentence) : Bool := (allNamesS s).all (fun n => !isFreshName n)
+
+/-- Every allocated name is in the fresh-name space. -/
+theorem isFreshName_propName (k : Nat) : isFreshName (propName k) = true := by
+  simp [isFreshName, propName, String.isPrefixOf]
+
+mutual
+
+/-- No quantifier intrudes into a proposition name: at every `that`
+node the intrusion lists the traversal computes are empty. -/
+def noIntrT (bnd bm : List String) : Term → Bool
+  | .name _ => true
+  | .str _ => true
+  | .funapp op args => noIntrT bnd bm op && noIntrSeq bnd bm args
+  | .that s =>
+      (bnd.filter (fun n => (freeNamesS s).contains n)).isEmpty
+        && (bm.filter (fun m => (freeMarksS s).contains m)).isEmpty
+        && noIntrS [] [] s
+
+/-- No intrusion anywhere in an argument sequence. -/
+def noIntrSeq (bnd bm : List String) : List SeqItem → Bool
+  | [] => true
+  | .term t :: r => noIntrT bnd bm t && noIntrSeq bnd bm r
+  | .seqmark _ :: r => noIntrSeq bnd bm r
+
+/-- No intrusion anywhere in a boundlist's guards. -/
+def noIntrBinds (bnd bm : List String) : List Binding → Bool
+  | [] => true
+  | .plain n :: r => noIntrBinds (addName bnd n) bm r
+  | .seqmark m :: r => noIntrBinds bnd (addName bm m) r
+  | .restricted n g :: r => noIntrT bnd bm g && noIntrBinds (addName bnd n) bm r
+
+/-- No intrusion anywhere in a sentence. -/
+def noIntrS (bnd bm : List String) : Sentence → Bool
+  | .atom p args => noIntrT bnd bm p && noIntrSeq bnd bm args
+  | .eq a b => noIntrT bnd bm a && noIntrT bnd bm b
+  | .conj ss => noIntrSs bnd bm ss
+  | .disj ss => noIntrSs bnd bm ss
+  | .neg s => noIntrS bnd bm s
+  | .impl a b => noIntrS bnd bm a && noIntrS bnd bm b
+  | .iff a b => noIntrS bnd bm a && noIntrS bnd bm b
+  | .all bs body =>
+      noIntrBinds bnd bm bs
+        && noIntrS (addNames bnd (bindNames bs)) (addNames bm (bindMarks bs)) body
+  | .ex bs body =>
+      noIntrBinds bnd bm bs
+        && noIntrS (addNames bnd (bindNames bs)) (addNames bm (bindMarks bs)) body
+
+/-- No intrusion anywhere in a sentence list. -/
+def noIntrSs (bnd bm : List String) : List Sentence → Bool
+  | [] => true
+  | s :: r => noIntrS bnd bm s && noIntrSs bnd bm r
+
+end
+
+/-- No quantifier of the sentence intrudes into any proposition name
+it contains. All four of the paper's paradoxes satisfy this. -/
+def noIntrusion (s : Sentence) : Bool := noIntrS [] [] s
+
+mutual
+
+/-- Which proposition each allocated name names: the fresh name
+paired with the ORIGINAL `that`-body, in the order the traversal
+allocates them and with the traversal's own counter threading. -/
+def assignT (bnd bm : List String) (c : Nat) : Term → List (String × Sentence)
+  | .name _ => []
+  | .str _ => []
+  | .funapp op args =>
+      assignT bnd bm c op ++ assignSeq bnd bm (normTerm bnd bm c op).2.2 args
+  | .that s =>
+      (propName c, s) ::
+        assignS (bnd.filter (fun n => (freeNamesS s).contains n))
+          (bm.filter (fun m => (freeMarksS s).contains m)) (c + 1) s
+
+/-- Allocations down an argument sequence. -/
+def assignSeq (bnd bm : List String) (c : Nat) :
+    List SeqItem → List (String × Sentence)
+  | [] => []
+  | .term t :: r =>
+      assignT bnd bm c t ++ assignSeq bnd bm (normTerm bnd bm c t).2.2 r
+  | .seqmark _ :: r => assignSeq bnd bm c r
+
+/-- Allocations down a boundlist. -/
+def assignBinds (bnd bm : List String) (c : Nat) :
+    List Binding → List (String × Sentence)
+  | [] => []
+  | .plain n :: r => assignBinds (addName bnd n) bm c r
+  | .seqmark m :: r => assignBinds bnd (addName bm m) c r
+  | .restricted n g :: r =>
+      assignT bnd bm c g
+        ++ assignBinds (addName bnd n) bm (normTerm bnd bm c g).2.2 r
+
+/-- Allocations down a sentence. -/
+def assignS (bnd bm : List String) (c : Nat) :
+    Sentence → List (String × Sentence)
+  | .atom p args =>
+      assignT bnd bm c p ++ assignSeq bnd bm (normTerm bnd bm c p).2.2 args
+  | .eq a b => assignT bnd bm c a ++ assignT bnd bm (normTerm bnd bm c a).2.2 b
+  | .conj ss => assignSs bnd bm c ss
+  | .disj ss => assignSs bnd bm c ss
+  | .neg s => assignS bnd bm c s
+  | .impl a b => assignS bnd bm c a ++ assignS bnd bm (normSent bnd bm c a).2.2 b
+  | .iff a b => assignS bnd bm c a ++ assignS bnd bm (normSent bnd bm c a).2.2 b
+  | .all bs body =>
+      assignBinds bnd bm c bs
+        ++ assignS (addNames bnd (bindNames bs)) (addNames bm (bindMarks bs))
+             (normBinds bnd bm c bs).2.2 body
+  | .ex bs body =>
+      assignBinds bnd bm c bs
+        ++ assignS (addNames bnd (bindNames bs)) (addNames bm (bindMarks bs))
+             (normBinds bnd bm c bs).2.2 body
+
+/-- Allocations down a sentence list. -/
+def assignSs (bnd bm : List String) (c : Nat) :
+    List Sentence → List (String × Sentence)
+  | [] => []
+  | s :: r => assignS bnd bm c s ++ assignSs bnd bm (normSent bnd bm c s).2.2 r
+
+end
+
+/-! ## Scope-list membership -/
+
+/-- `addName` adds exactly its argument. -/
+theorem mem_addName {m n : String} {l : List String} :
+    m ∈ addName l n ↔ m ∈ l ∨ m = n := by
+  unfold addName
+  by_cases h : n ∈ l
+  · simp only [h, decide_true, List.contains_eq_mem, if_pos]
+    constructor
+    · exact Or.inl
+    · rintro (hm | rfl)
+      · exact hm
+      · exact h
+  · simp [h]
+
+/-- `addNames` adds exactly the names of its second argument. -/
+theorem mem_addNames {m : String} {ns : List String} :
+    ∀ {l : List String}, m ∈ addNames l ns ↔ m ∈ l ∨ m ∈ ns := by
+  induction ns with
+  | nil => intro l; simp [addNames]
+  | cons n r ih =>
+      intro l
+      rw [addNames, ih, mem_addName]
+      constructor
+      · rintro ((h | rfl) | h)
+        · exact Or.inl h
+        · exact Or.inr (by simp)
+        · exact Or.inr (by simp [h])
+      · rintro (h | h)
+        · exact Or.inl (Or.inl h)
+        · rcases List.mem_cons.mp h with rfl | h
+          · exact Or.inl (Or.inr rfl)
+          · exact Or.inr h
+
 end L4Factoidal.CL
