@@ -309,6 +309,234 @@ theorem unified_join_no_answer :
 
 end JoinWitnesses
 
+/-! ## UNION — §18.5
+
+`Union(Ω₁, Ω₂) = { μ | μ ∈ Ω₁ or μ ∈ Ω₂ }`. There is no basic graph
+pattern whose query is the union, so `UQuery` cannot carry it: the
+union enters as the DISJUNCTION of the two instantiated bodies, and
+`AnswersUnion` is entailment of that disjunction.
+
+That makes the gate a claim that has to be earned rather than
+transcribed. `Γ ⊨ A ∨ B` does NOT in general give `Γ ⊨ A` or
+`Γ ⊨ B` — `entailsSchema_disj_does_not_split` below exhibits a premise
+list where it fails. It DOES hold for the premise list this stage
+uses, because `herbQ g` is a canonical model of `rdfToTheorySk g`: a
+disjunction true in every model of the graph is true in that one, and
+there one disjunct is true outright. So `unified_adequate_union` is a
+full iff, and the reason is a property of the RDF premise class, not
+of `EntailsSchema`. -/
+
+/-- The union of two BGP bodies under one solution mapping. -/
+def bgpDisjBody (mu : Binding) (b1 b2 : Bgp) : CL.Sentence :=
+  .disj [bgpBody mu b1, bgpBody mu b2]
+
+/-- μ answers the UNION of two basic graph patterns: the disjunction of
+their instantiated bodies is entailed. -/
+def AnswersUnion (conds : CL.Interp → Prop) (S : Schema)
+    (premises : List CL.Sentence) (b1 b2 : Bgp) (mu : Binding) : Prop :=
+  EntailsSchema conds S premises (bgpDisjBody mu b1 b2)
+
+theorem satisfies_bgpDisjBody_iff (i : CL.Interp) (mu : Binding) (b1 b2 : Bgp) :
+    CL.Satisfies i (bgpDisjBody mu b1 b2) ↔
+      (CL.Satisfies i (bgpBody mu b1) ∨ CL.Satisfies i (bgpBody mu b2)) := by
+  simp only [CL.Satisfies, bgpDisjBody, CL.Sat, CL.SatAny, or_false]
+
+/-- **The disjunction of answers is an answer to the union**, for every
+condition bundle, schema and premise list. UNCONDITIONAL, and only one
+direction: the converse is `entailsSchema_disj_does_not_split`. -/
+theorem answers_union_of_or {conds : CL.Interp → Prop} {S : Schema}
+    {premises : List CL.Sentence} {b1 b2 : Bgp} {mu : Binding}
+    (h : Answers conds S premises (sparqlBgpToQuery b1) mu ∨
+         Answers conds S premises (sparqlBgpToQuery b2) mu) :
+    AnswersUnion conds S premises b1 b2 mu := by
+  intro i hc hs hp
+  rw [satisfies_bgpDisjBody_iff]
+  rcases h with h | h
+  · exact Or.inl (h i hc hs hp)
+  · exact Or.inr (h i hc hs hp)
+
+/-- **The UNION gate** — a FULL iff.
+
+The ← direction is where the work is: it instantiates the entailment at
+`herbQ g`, the term model in which "true" means "a triple of `g`", and
+reads one disjunct back off with `patternAtom_reflect`. That step is
+what a general `EntailsSchema` does not license.
+
+Hypotheses: the stage 6 gate's guards on each side, and no others. **No
+multiplicity is claimed** — `InUnion` is `Occurs` in either operand,
+and §18.5's union ADDS cardinalities, which nothing here states. -/
+theorem unified_adequate_union (b1 b2 : Bgp) (g : RDF.Graph) (mu : Binding)
+    (hg : RDF.GraphTtFree g) (hb1 : BgpTtFree b1) (hb2 : BgpTtFree b2) :
+    (BgpMatches mu b1 g ∨ BgpMatches mu b2 g) ↔
+      AnswersUnion condTrue termEqSchema [rdfToTheorySk g] b1 b2 mu := by
+  constructor
+  · intro h
+    refine answers_union_of_or ?_
+    rcases h with h | h
+    · exact Or.inl (bgp_matches_answers h)
+    · exact Or.inr (bgp_matches_answers h)
+  · intro hA
+    have hsat : CL.Satisfies (herbQ g) (bgpDisjBody mu b1 b2) :=
+      hA (herbQ g) trivial (herbQ_satisfiesSchema g) (fun s hs => by
+        obtain rfl := List.mem_singleton.mp hs
+        exact herbQ_satisfies_sk g hg)
+    rcases (satisfies_bgpDisjBody_iff (herbQ g) mu b1 b2).mp hsat with h | h
+    · exact Or.inl (fun tp htp => patternAtom_reflect (hb1 tp htp) hg
+        ((satisfies_bgpBody_iff (herbQ g) mu b1).mp h tp htp))
+    · exact Or.inr (fun tp htp => patternAtom_reflect (hb2 tp htp) hg
+        ((satisfies_bgpBody_iff (herbQ g) mu b2).mp h tp htp))
+
+/-! ### From §18.5's `InUnion` -/
+
+/-- `SMapEq` is `Extends` in both directions. -/
+theorem extends_of_smapEq {mu mu' : SMap}
+    (h : SPARQL.AlgebraSpec.SMapEq mu mu') : SPARQL.Extends mu' mu := by
+  intro v t hv
+  rw [SPARQL.AlgebraRefinement.binding_lookup_eq_sval] at hv ⊢
+  rw [h v]; exact hv
+
+/-- **§18.5's `InUnion` over two BGP evaluations gives the pivot on one
+side.** UNCONDITIONAL. -/
+theorem inUnion_bgpMatches {b1 b2 : Bgp} {g : RDF.Graph} {mu : Binding}
+    (hu : SPARQL.AlgebraSpec.InUnion (evalBgp b1 g) (evalBgp b2 g) mu) :
+    BgpMatches mu b1 g ∨ BgpMatches mu b2 g := by
+  rcases hu with ⟨mu', hmem, heq⟩ | ⟨mu', hmem, heq⟩
+  · exact Or.inl (bgpMatches_mono (extends_of_smapEq heq) (bgp_eval_sound hmem))
+  · exact Or.inr (bgpMatches_mono (extends_of_smapEq heq) (bgp_eval_sound hmem))
+
+/-- **A §18.5 union row is a unified answer to the union.**
+UNCONDITIONAL. -/
+theorem unified_union_answers {b1 b2 : Bgp} {g : RDF.Graph} {mu : Binding}
+    (hu : SPARQL.AlgebraSpec.InUnion (evalBgp b1 g) (evalBgp b2 g) mu) :
+    AnswersUnion condTrue termEqSchema [rdfToTheorySk g] b1 b2 mu := by
+  rcases inUnion_bgpMatches hu with h | h
+  · exact answers_union_of_or (Or.inl (bgp_matches_answers h))
+  · exact answers_union_of_or (Or.inr (bgp_matches_answers h))
+
+/-- A row of the RUNNING engine's `union` is a unified answer.
+UNCONDITIONAL — `SPARQL.union` is list append, so membership in it is
+membership in one operand, with no compatibility test to be coarse
+about. -/
+theorem unified_union_engine_answers {b1 b2 : Bgp} {g : RDF.Graph} {mu : Binding}
+    (h : mu ∈ SPARQL.union (evalBgp b1 g) (evalBgp b2 g)) :
+    AnswersUnion condTrue termEqSchema [rdfToTheorySk g] b1 b2 mu :=
+  unified_union_answers
+    ((SPARQL.AlgebraRefinement.occurs_append).mp
+      (SPARQL.AlgebraSpec.occurs_of_mem h))
+
+/-! ### Non-vacuity, and the exact strength of the UNION gate -/
+
+section UnionWitnesses
+
+private def uG1 : RDF.Graph := [{ s := .iri (jI "a"), p := jI "p", o := .iri (jI "b") }]
+private def uG2 : RDF.Graph := [{ s := .iri (jI "c"), p := jI "q", o := .iri (jI "d") }]
+
+/-- A graph neither branch matches. -/
+private def uG3 : RDF.Graph := [{ s := .iri (jI "b"), p := jI "p", o := .iri (jI "a") }]
+
+private def uB1 : Bgp := [{ s := .iri (jI "a"), p := .iri (jI "p"), o := .iri (jI "b") }]
+private def uB2 : Bgp := [{ s := .iri (jI "c"), p := .iri (jI "q"), o := .iri (jI "d") }]
+
+-- Each pattern matches its own graph and neither matches the other's.
+#guard bgpMatchesCheck [] uB1 uG1
+#guard bgpMatchesCheck [] uB2 uG2
+#guard ! bgpMatchesCheck [] uB1 uG2
+#guard ! bgpMatchesCheck [] uB2 uG1
+#guard ! bgpMatchesCheck [] uB1 uG3
+#guard ! bgpMatchesCheck [] uB2 uG3
+
+private theorem uG1_ttFree : RDF.GraphTtFree uG1 := by
+  intro t ht
+  simp only [uG1, List.mem_singleton] at ht
+  subst ht; simp [RDF.TermTtFree]
+
+private theorem uG2_ttFree : RDF.GraphTtFree uG2 := by
+  intro t ht
+  simp only [uG2, List.mem_singleton] at ht
+  subst ht; simp [RDF.TermTtFree]
+
+private theorem uG3_ttFree : RDF.GraphTtFree uG3 := by
+  intro t ht
+  simp only [uG3, List.mem_singleton] at ht
+  subst ht; simp [RDF.TermTtFree]
+
+private theorem uB1_ttFree : BgpTtFree uB1 := by
+  intro tp htp
+  simp only [uB1, List.mem_singleton] at htp
+  subst htp; exact ⟨trivial, trivial, trivial⟩
+
+private theorem uB2_ttFree : BgpTtFree uB2 := by
+  intro tp htp
+  simp only [uB2, List.mem_singleton] at htp
+  subst htp; exact ⟨trivial, trivial, trivial⟩
+
+/-- The term model of a graph satisfies the body of a pattern that
+matches it. -/
+private theorem herbQ_sat_body {b : Bgp} {g : RDF.Graph} (hg : RDF.GraphTtFree g)
+    (h : BgpMatches [] b g) : CL.Satisfies (herbQ g) (bgpBody [] b) :=
+  bgp_matches_answers h (herbQ g) trivial (herbQ_satisfiesSchema g) (fun s hs => by
+    obtain rfl := List.mem_singleton.mp hs
+    exact herbQ_satisfies_sk g hg)
+
+/-- The term model of a graph REFUTES the body of a pattern that does
+not match it (on the triple-term-free fragment). -/
+private theorem herbQ_refutes_body {b : Bgp} {g : RDF.Graph} (hg : RDF.GraphTtFree g)
+    (hb : BgpTtFree b) (h : ¬ BgpMatches [] b g) :
+    ¬ CL.Satisfies (herbQ g) (bgpBody [] b) := by
+  intro hsat
+  exact h (fun tp htp => patternAtom_reflect (hb tp htp) hg
+    ((satisfies_bgpBody_iff (herbQ g) [] b).mp hsat tp htp))
+
+/-- **`EntailsSchema` does NOT let a disjunction split.** The premise
+list `[A ∨ B]` entails `A ∨ B` and neither disjunct, so the ← direction
+of `unified_adequate_union` is a property of the premise list
+`[rdfToTheorySk g]` — it has a canonical model — and not a general fact
+about entailment. Recording this is what stops the gate being read as
+"an answer to a UNION is an answer to one of its branches" in general.
+
+The two refutations are the term models of the two graphs, each
+satisfying its own branch and refuting the other. -/
+theorem entailsSchema_disj_does_not_split :
+    EntailsSchema condTrue termEqSchema [bgpDisjBody [] uB1 uB2]
+      (bgpDisjBody [] uB1 uB2) ∧
+    ¬ EntailsSchema condTrue termEqSchema [bgpDisjBody [] uB1 uB2] (bgpBody [] uB1) ∧
+    ¬ EntailsSchema condTrue termEqSchema [bgpDisjBody [] uB1 uB2] (bgpBody [] uB2) := by
+  have hsat2 : CL.Satisfies (herbQ uG2) (bgpDisjBody [] uB1 uB2) :=
+    (satisfies_bgpDisjBody_iff _ _ _ _).mpr
+      (Or.inr (herbQ_sat_body uG2_ttFree (bgpMatchesCheck_iff.mp (by rfl))))
+  have hsat1 : CL.Satisfies (herbQ uG1) (bgpDisjBody [] uB1 uB2) :=
+    (satisfies_bgpDisjBody_iff _ _ _ _).mpr
+      (Or.inl (herbQ_sat_body uG1_ttFree (bgpMatchesCheck_iff.mp (by rfl))))
+  refine ⟨fun i _ _ hp => hp _ (by simp), ?_, ?_⟩
+  · intro hE
+    exact herbQ_refutes_body uG2_ttFree uB1_ttFree
+      (fun hm => absurd (bgpMatchesCheck_iff.mpr hm) (by decide))
+      (hE (herbQ uG2) trivial (herbQ_satisfiesSchema uG2) (fun s hs => by
+        obtain rfl := List.mem_singleton.mp hs; exact hsat2))
+  · intro hE
+    exact herbQ_refutes_body uG1_ttFree uB2_ttFree
+      (fun hm => absurd (bgpMatchesCheck_iff.mpr hm) (by decide))
+      (hE (herbQ uG1) trivial (herbQ_satisfiesSchema uG1) (fun s hs => by
+        obtain rfl := List.mem_singleton.mp hs; exact hsat1))
+
+/-- A real union answer: `uB1` matches `uG1`, so the union does. -/
+theorem unified_union_answer_witness :
+    AnswersUnion condTrue termEqSchema [rdfToTheorySk uG1] uB1 uB2 [] :=
+  (unified_adequate_union uB1 uB2 uG1 [] uG1_ttFree uB1_ttFree uB2_ttFree).mp
+    (Or.inl (bgpMatchesCheck_iff.mp (by rfl)))
+
+/-- And not of everything: over a graph neither branch matches, the
+union is refuted. -/
+theorem unified_union_no_answer :
+    ¬ AnswersUnion condTrue termEqSchema [rdfToTheorySk uG3] uB1 uB2 [] := by
+  intro h
+  rcases (unified_adequate_union uB1 uB2 uG3 [] uG3_ttFree uB1_ttFree uB2_ttFree).mpr h
+    with hm | hm
+  · exact absurd (bgpMatchesCheck_iff.mpr hm) (by decide)
+  · exact absurd (bgpMatchesCheck_iff.mpr hm) (by decide)
+
+end UnionWitnesses
+
 /-! ## Axiom audits -/
 
 section Audits
@@ -327,6 +555,16 @@ section Audits
 #print axioms jInJoin
 #print axioms unified_join_answer_witness
 #print axioms unified_join_no_answer
+#print axioms satisfies_bgpDisjBody_iff
+#print axioms answers_union_of_or
+#print axioms unified_adequate_union
+#print axioms extends_of_smapEq
+#print axioms inUnion_bgpMatches
+#print axioms unified_union_answers
+#print axioms unified_union_engine_answers
+#print axioms entailsSchema_disj_does_not_split
+#print axioms unified_union_answer_witness
+#print axioms unified_union_no_answer
 
 end Audits
 
