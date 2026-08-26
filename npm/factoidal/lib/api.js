@@ -1312,6 +1312,104 @@ function buildApi(driver) {
     return entryResult(e.clParse(clifText), 'clParse');
   }
 
+  /**
+   * Read Common Logic Interchange Format text and write it back out in
+   * the canonical spacing of the CLIF writer (entry_jsoo.ml's
+   * clSerialize export -> L4Factoidal's CL/Clif.lean reader/writer
+   * pair). Lean 4 only: formal/fstar has no CL/IKL parser, so this
+   * function is absent from index.js/wasm.js -- see capabilities() /
+   * factoidal/select's capability table.
+   *
+   * `roundTripProved` is always `false`. The round-trip lemma
+   * `clif_roundTrip` (`CL/ClifAdequacy.lean`) is an OPEN lemma: the
+   * fragment boundary `marksLexable` is MEASURED, not proved. The
+   * field is in the envelope, unmodified, so a caller does not have to
+   * go and find that out.
+   * @param {string} clifText
+   * @returns {Promise<{ok: boolean, clif: string, sentences: number,
+   *   roundTripProved: false}>}
+   */
+  async function clSerialize(clifText) {
+    if (typeof clifText !== 'string') {
+      throw new TypeError('clSerialize: clifText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('clSerialize');
+    requireEntryFn(e, 'clSerialize', 'Common Logic / IKL serialize');
+    return entryResult(e.clSerialize(clifText), 'clSerialize');
+  }
+
+  /**
+   * Alpha-normalise Common Logic Interchange Format text: the canonical
+   * representative of each sentence's bound-variable-renaming
+   * equivalence class (entry_jsoo.ml's clAlphaNorm export ->
+   * L4Factoidal's `CL/Alpha.lean`, `Sentence.alphaNorm`). Bound names
+   * become `v1`, `v2`, ... in traversal order, so two sentences that
+   * differ only in bound-variable names produce byte-identical output
+   * -- IKL GUIDE Appendix B condition (1): renaming a bound variable
+   * does not change the proposition expressed. Lean 4 only: formal/fstar
+   * has no CL/IKL parser, so this function is absent from
+   * index.js/wasm.js -- see capabilities() / factoidal/select's
+   * capability table.
+   * @param {string} clifText
+   * @returns {Promise<{ok: boolean, clif: string, sentences: number}>}
+   */
+  async function clAlphaNorm(clifText) {
+    if (typeof clifText !== 'string') {
+      throw new TypeError('clAlphaNorm: clifText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('clAlphaNorm');
+    requireEntryFn(e, 'clAlphaNorm', 'Common Logic / IKL alpha-normalise');
+    return entryResult(e.clAlphaNorm(clifText), 'clAlphaNorm');
+  }
+
+  /**
+   * Hayes's satisfiability-preserving reduction of IKL to Common Logic
+   * (entry_jsoo.ml's clNormalize export -> L4Factoidal's
+   * `CL/Normalize.lean`, `normalizeText`; danbri/factoidal#625), over a
+   * whole text: one head text and one shared tail, with the
+   * proposition-name counter running across the text. Lean 4 only:
+   * formal/fstar has no CL/IKL parser, so this function is absent from
+   * index.js/wasm.js -- see capabilities() / factoidal/select's
+   * capability table.
+   *
+   * Two limits, both real, both in the answer, neither hidden:
+   *  - `preserves: "satisfiability"` -- the reduction preserves
+   *    satisfiability, NOT equivalence. It suits entailment and
+   *    consistency testing; it is not a transformation to apply to
+   *    data you intend to keep.
+   *  - `noIntrusion` IS the proof hypothesis `CL.noIntrSs [] []`
+   *    decides, not a paraphrase of it. The transformation runs either
+   *    way; when `noIntrusion` is `false`, the output is still
+   *    produced, but `tails_satisfiable` / `normalize_preserves` do
+   *    not cover that case.
+   * @param {string} clifText
+   * @returns {Promise<{ok: boolean, head: string[], tail: string[],
+   *   clif: string, sentences: number, thatCount: number,
+   *   noIntrusion: boolean, preserves: 'satisfiability',
+   *   provedUnder: string}>}
+   */
+  async function clNormalize(clifText) {
+    if (typeof clifText !== 'string') {
+      throw new TypeError('clNormalize: clifText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('clNormalize');
+    requireEntryFn(e, 'clNormalize', 'Common Logic / IKL normalize');
+    return entryResult(e.clNormalize(clifText), 'clNormalize');
+  }
+
+  // clFiniteSat (entry_jsoo.ml's clFiniteSat -> L4Factoidal's
+  // CL/FiniteSatTheorems.lean) is DEFERRED, not excluded, from this
+  // typed layer (owner decision, 2026-08-26): it takes a caller-supplied
+  // finite-interpretation JSON encoding (see Wasm/Ops/CL.lean's header
+  // for the wire format) that has no user yet, and a typed wrapper here
+  // would freeze that shape before anyone knows whether it is right. It
+  // stays reachable through the raw dispatch ABI (`l4.call('clFiniteSat',
+  // [interpJson, clifText])` / factoidal/select's `call('clFiniteSat',
+  // ...)`), which needs no shape commitment on this layer.
+
   // -----------------------------------------------------------------
   // VC Data Integrity crypto (eddsa-rdfc-2022) — HACL* wasm backend.
   // entry_jsoo.ml's vc* exports realise VC_DataIntegrity's four crypto
@@ -2159,6 +2257,9 @@ function buildApi(driver) {
     xmlWellformed,
     xpathEval,
     clParse,
+    clSerialize,
+    clAlphaNorm,
+    clNormalize,
     rifEval,
     xsltTransform,
     mathmlEval,

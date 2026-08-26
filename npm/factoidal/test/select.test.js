@@ -79,8 +79,8 @@ test('capabilityTable is derived from live capabilities(), not hand-written', as
   }
   // shaclValidate/shexValidate/tableauMaterialise/rmlMap/csvwToRdf/
   // jsonldToRdf/rifEval/xsltTransform are not in the Lean engine's
-  // 13-op typed-API surface (bin/linux-x86_64/l4factoidal ops lists 21
-  // raw ops; only 13 are wired to lib/api.js's typed wrappers) --
+  // 16-op typed-API surface (bin/linux-x86_64/l4factoidal ops lists 21
+  // raw ops; only 16 are wired to lib/api.js's typed wrappers) --
   // Lean must report false for every one of them.
   for (const fn of ['shaclValidate', 'shexValidate', 'tableauMaterialise',
     'rmlMap', 'csvwToRdf', 'jsonldToRdf', 'rifEval', 'xsltTransform']) {
@@ -94,6 +94,15 @@ test('capabilityTable: clParse is Lean-only -- lean true, fstar false', async (t
   const table = await select.capabilityTable();
   assert.equal(table.clParse.lean, true);
   assert.equal(table.clParse.fstar, false);
+});
+
+test('capabilityTable: clSerialize/clAlphaNorm/clNormalize are Lean-only too', async (t) => {
+  if (skipUnlessLean(t)) return;
+  const table = await select.capabilityTable();
+  for (const fn of ['clSerialize', 'clAlphaNorm', 'clNormalize']) {
+    assert.equal(table[fn].lean, true, `lean should support ${fn}`);
+    assert.equal(table[fn].fstar, false, `fstar should NOT support ${fn}`);
+  }
 });
 
 // ---------------------------------------------------------------------
@@ -327,6 +336,45 @@ test("backend 'slowcompareboth': clParse fails the capability precondition, not 
   if (skipUnlessLean(t)) return;
   const sel = select.createSelector({ backend: 'slowcompareboth' });
   await assert.rejects(() => sel.clParse(PURE_CL_TEXT), /needs BOTH engines/);
+});
+
+// ---------------------------------------------------------------------
+// clSerialize: same four-behaviour shape as clParse above, exercised
+// for one of the three newly-wired CL/IKL ops (owner instruction,
+// 2026-08-26 -- "wire into js functional api").
+// ---------------------------------------------------------------------
+
+test("backend 'lean': clSerialize answers with the serialize envelope, roundTripProved surfaced as false", async (t) => {
+  if (skipUnlessLean(t)) return;
+  if (await skipUnlessOp(t, 'clSerialize')) return;
+  const sel = select.createSelector({ backend: 'lean' });
+  const r = await sel.clSerialize(PURE_CL_TEXT);
+  assert.equal(r.engine, 'lean');
+  assert.equal(r.backend, 'lean');
+  assert.equal(r.value.ok, true);
+  assert.equal(r.value.sentences, 1);
+  assert.equal(r.value.roundTripProved, false);
+  assert.equal(typeof r.value.clif, 'string');
+});
+
+test("backend 'fstar': clSerialize throws (never falls back to Lean) -- formal/fstar has no CL/IKL parser", async () => {
+  const sel = select.createSelector({ backend: 'fstar' });
+  await assert.rejects(() => sel.clSerialize(PURE_CL_TEXT), TypeError);
+});
+
+test("backend 'fstar1st': clSerialize falls through to Lean, since F* never implements it", async (t) => {
+  if (skipUnlessLean(t)) return;
+  if (await skipUnlessOp(t, 'clSerialize')) return;
+  const sel = select.createSelector({ backend: 'fstar1st' });
+  const r = await sel.clSerialize(PURE_CL_TEXT);
+  assert.equal(r.engine, 'lean');
+  assert.equal(r.value.roundTripProved, false);
+});
+
+test("backend 'slowcompareboth': clSerialize fails the capability precondition, not a silent one-sided answer", async (t) => {
+  if (skipUnlessLean(t)) return;
+  const sel = select.createSelector({ backend: 'slowcompareboth' });
+  await assert.rejects(() => sel.clSerialize(PURE_CL_TEXT), /needs BOTH engines/);
 });
 
 // ---------------------------------------------------------------------

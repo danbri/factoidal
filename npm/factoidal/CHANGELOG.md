@@ -21,9 +21,9 @@
   results and bag equality (blank nodes relabelled per side) for
   SELECT bindings.
 - Measured on the typed API surface at this release: 15 functions both
-  engines answer, 38 F\*-only, 1 Lean-only (out of 54). This measures
+  engines answer, 38 F\*-only, 4 Lean-only (out of 57). This measures
   the typed wrapper surface, not the Lean engine's total capability --
-  `l4-core.js` wires 13 of the engine's 21 dispatch ops.
+  `l4-core.js` wires 16 of the engine's 21 dispatch ops.
 - `clParse` (Common Logic Interchange Format text, ISO/IEC 24707:2018,
   with the IKL `that`-operator extension) is now wired into the typed
   API -- `l4-core.js`/`lib/api.js`/`select.js`, with `.d.ts` types and
@@ -37,6 +37,25 @@
   `backend:'fstar'` throws for it (never falls back to Lean), and
   `backend:'slowcompareboth'` fails the capability precondition rather
   than comparing one side against nothing.
+- `clSerialize`, `clAlphaNorm` and `clNormalize` join `clParse` on the
+  same Lean-only typed surface (owner instruction, 2026-08-26 -- "wire
+  into js functional api"), same `.d.ts`-typed, test-covered pattern:
+  `clSerialize` reads CLIF text and writes it back in canonical
+  spacing, surfacing `roundTripProved: false` unmodified (the
+  round-trip lemma `clif_roundTrip`, `CL/ClifAdequacy.lean`, is OPEN --
+  the fragment boundary `marksLexable` is measured, not proved).
+  `clAlphaNorm` gives each sentence's bound-variable-renaming canonical
+  form (IKL GUIDE Appendix B condition (1)). `clNormalize` is Hayes's
+  satisfiability-preserving reduction of IKL to Common Logic
+  ([#625](https://github.com/danbri/factoidal/issues/625)): it
+  surfaces `preserves: "satisfiability"` (not equivalence -- suited to
+  entailment/consistency testing, not to transforming data you intend
+  to keep) and `noIntrusion` (the proof hypothesis `CL.noIntrSs [] []`
+  decides, not a paraphrase of it). `clFiniteSat`, the fifth CL/IKL op,
+  is DEFERRED rather than wired: it takes a caller-supplied finite-
+  interpretation JSON encoding with no user yet, and a typed wrapper
+  would freeze that shape before it is known to be right; it stays
+  reachable through the raw dispatch ABI.
 - The IKL-to-RDF projection ops (`clToDataset`, `queryWithIklService`)
   are DELETED from the engine source (danbri/factoidal#626), along with
   the content-addressed proposition graph names they minted. They were

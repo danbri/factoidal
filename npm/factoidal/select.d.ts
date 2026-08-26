@@ -80,6 +80,37 @@ export interface Selector {
     pureCL: boolean;
     normalized: string;
   }>>;
+  /** Lean-only, same reason as clParse. `roundTripProved` is always
+   * `false` -- `clif_roundTrip` is an OPEN lemma; see l4-core.d.ts. */
+  clSerialize(clifText: string, callOptions?: CallOptions): Promise<SelectResult<{
+    ok: boolean;
+    clif: string;
+    sentences: number;
+    roundTripProved: false;
+  }>>;
+  /** Lean-only, same reason as clParse. Bound-variable-renaming
+   * canonical form (IKL GUIDE Appendix B condition (1)). */
+  clAlphaNorm(clifText: string, callOptions?: CallOptions): Promise<SelectResult<{
+    ok: boolean;
+    clif: string;
+    sentences: number;
+  }>>;
+  /** Lean-only, same reason as clParse. Preserves SATISFIABILITY, not
+   * equivalence; `noIntrusion` is the proof hypothesis itself, not a
+   * paraphrase -- see l4-core.d.ts. */
+  clNormalize(clifText: string, callOptions?: CallOptions): Promise<SelectResult<{
+    ok: boolean;
+    head: string[];
+    tail: string[];
+    clif: string;
+    sentences: number;
+    thatCount: number;
+    noIntrusion: boolean;
+    preserves: 'satisfiability';
+    provedUnder: string;
+  }>>;
+  // clFiniteSat has no named sugar here (owner decision, 2026-08-26):
+  // use call('clFiniteSat', [interpJson, clifText], callOptions).
 }
 
 export function createSelector(options?: SelectorOptions): Selector;
