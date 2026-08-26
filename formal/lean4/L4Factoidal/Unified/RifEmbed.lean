@@ -362,6 +362,61 @@ theorem rifGraphFacts_ground (g : RDF.Graph) :
   obtain ⟨t, _, rfl⟩ := List.mem_map.mp hb
   exact rifTripleFact_ground t
 
+/-! ### Literal-freeness
+
+Every `DTerm` this module builds is a variable or a STRING constant —
+`rifObjD` encodes an RDF literal as the constant
+`urn:rif:lit:<len>:<datatype><lexical>`, never as `DTerm.lit`. The
+Herbrand-universe hypotheses of `datalog_lfp_complete` are therefore
+discharged by computation, not assumed. -/
+
+theorem rifTmD_litFree (t : RIF.Tm) : (rifTmD t).litFreeB = true := by
+  cases t <;> rfl
+
+theorem rifAtomD_litFree (a : RIF.Atom) : (rifAtomD a).litFreeB = true := by
+  have hmap : ∀ ts : List RIF.Tm,
+      (ts.map rifTmD).all DTerm.litFreeB = true := by
+    intro ts
+    simp only [List.all_eq_true, List.mem_map]
+    rintro t ⟨u, _, rfl⟩
+    exact rifTmD_litFree u
+  cases a with
+  | frame o p v =>
+      simp [rifAtomD, DAtom.litFreeB, rifTmD_litFree]
+  | member o c =>
+      simp [rifAtomD, DAtom.litFreeB, rdfTypeD, rifTmD_litFree]
+  | sub c d =>
+      simp [rifAtomD, DAtom.litFreeB, rdfsSubClassOfD, rifTmD_litFree]
+  | pos fn sp args =>
+      simp [rifAtomD, DAtom.litFreeB, hmap]
+  | equal a b =>
+      simp [rifAtomD, DAtom.litFreeB, rifTmD_litFree]
+  | externalPred f args =>
+      simp [rifAtomD, DAtom.litFreeB, hmap]
+
+theorem rifDRules_litFree (rs : RifRuleSet) :
+    ∀ r ∈ rifDRules rs, r.litFreeB = true := by
+  intro r hr
+  obtain ⟨u, _, hu⟩ := List.mem_filterMap.mp hr
+  unfold rifRuleD at hu
+  split at hu
+  · cases hu
+  · next bs _ =>
+      cases hu
+      simp [DRule.litFreeB, rifAtomD_litFree, List.all_eq_true]
+
+theorem rifTripleFact_litFree (t : RDF.Triple) :
+    (rifTripleFact t).litFreeB = true := by
+  cases hs : t.s <;> cases ho : t.o <;>
+    simp [DAtom.litFreeB, rifTripleFact, DTerm.litFreeB, rifSubjD, rifObjD,
+          hs, ho]
+
+theorem rifGraphFacts_litFree (g : RDF.Graph) :
+    ∀ b ∈ rifGraphFacts g, b.litFreeB = true := by
+  intro b hb
+  obtain ⟨t, _, rfl⟩ := List.mem_map.mp hb
+  exact rifTripleFact_litFree t
+
 /-! ## The data-side fragment guard -/
 
 /-- The subject and object are both IRIs. See the module header for
@@ -472,12 +527,15 @@ side is the DATALOG least fixpoint, not the native RIF engine — see
 the module header. -/
 theorem rifCore_lfp_iff_entails_atom (rs : RifRuleSet) (p : DatalogProgram)
     (hp : p.rules = rifDRules rs) (g : RDF.Graph) (hg : GraphIriOnly g)
-    (a : DAtom) (hga : a.groundB = true) (fuel : Nat)
+    (a : DAtom) (hga : a.groundB = true) (hla : a.litFreeB = true)
+    (fuel : Nat)
     (hfa : p.FuelAdequate (rifGraphFacts g) fuel) :
     a ∈ p.lfp (rifGraphFacts g) fuel ↔
       EntailsSchema condTrue (fun s => s ∈ rifCoreToTheory rs)
         [rdfToTheorySk g] a.sentence := by
-  rw [datalog_lfp_iff_entails p (rifGraphFacts_ground g) hga hfa]
+  rw [datalog_lfp_iff_entails p (rifGraphFacts_ground g)
+        (fun r hr => rifDRules_litFree rs r (hp ▸ hr))
+        (rifGraphFacts_litFree g) hga hla hfa]
   exact entailsSchema_congr (rifCoreToTheory_schema hp)
     (fun i => by
       rw [rifGraphFacts_sentences hg]; exact satisfiesAll_tripleAtoms_iff i g)
@@ -493,7 +551,7 @@ theorem rifCore_lfp_iff_entails (rs : RifRuleSet) (p : DatalogProgram)
       EntailsSchema condTrue (fun s => s ∈ rifCoreToTheory rs)
         [rdfToTheorySk g] (rdfToTheory [t]) := by
   rw [rifCore_lfp_iff_entails_atom rs p hp g hg (rifTripleFact t)
-        (rifTripleFact_ground t) fuel hfa]
+        (rifTripleFact_ground t) (rifTripleFact_litFree t) fuel hfa]
   exact entailsSchema_congr (fun _ => Iff.rfl) (fun _ => Iff.rfl)
     (fun i => by
       rw [rifTripleFact_sentence ht]
@@ -641,7 +699,7 @@ theorem rifCore_demo_nary_entails :
     (graphIriOnly_of_check (by decide))
     ⟨.c "http://rif.example/linked",
       [.c "http://rif.example/a", .c "http://rif.example/b",
-       .c "http://rif.example/mark"]⟩ (by decide) 2
+       .c "http://rif.example/mark"]⟩ (by decide) (by decide) 2
     (demoRifProgram.fuelAdequate_of_check (by decide))).mp (by decide)
 
 /-- **The not-everything guard.** `ex:b # ex:D` is NOT entailed: the

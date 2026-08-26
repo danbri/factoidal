@@ -228,6 +228,17 @@ theorem graphFacts_ground (g : Graph) :
   obtain ⟨t, _, rfl⟩ := List.mem_map.mp hb
   exact tripleFact_ground t
 
+/-- Triple facts carry no `DTerm.lit`: every position of `tripleFact`
+is the STRING encoding of an RDF term, so the Herbrand-universe
+hypothesis of `datalog_lfp_complete` is discharged by computation. -/
+theorem tripleFact_litFree (t : Triple) : (tripleFact t).litFreeB = true := rfl
+
+theorem graphFacts_litFree (g : Graph) :
+    ∀ b ∈ graphFacts g, b.litFreeB = true := by
+  intro b hb
+  obtain ⟨t, _, rfl⟩ := List.mem_map.mp hb
+  exact tripleFact_litFree t
+
 theorem tripleFact_inj {t u : Triple} (ht : RDF.RhoDfModelObjectOk t.o)
     (hu : RDF.RhoDfModelObjectOk u.o) (h : tripleFact t = tripleFact u) :
     t = u := by
@@ -600,7 +611,8 @@ theorem rhoDf_engine_iff_datalog_entails (g : Graph) (n m : Nat)
         ((graphFacts g).map DAtom.sentence) (tripleFact t).sentence := by
   rw [← rhoDf_closure_datalog_agree g n m hcl hf hfa t hto]
   exact datalog_lfp_iff_entails rhoDfProgram (graphFacts_ground g)
-    (tripleFact_ground t) hfa
+    (by decide) (graphFacts_litFree g)
+    (tripleFact_ground t) (tripleFact_litFree t) hfa
 
 /-! ### A fully decided ρdf instance -/
 
@@ -771,7 +783,8 @@ theorem rdfsPlus_demo_entails :
       ((graphFacts plusDemoTrp).map DAtom.sentence)
       (tripleFact ⟨ps "a", pi "r", pt "c"⟩).sentence :=
   (datalog_lfp_iff_entails rdfsPlusProgram (fuel := 4)
-    (graphFacts_ground plusDemoTrp) (tripleFact_ground _)
+    (graphFacts_ground plusDemoTrp) (by decide) (graphFacts_litFree _)
+    (tripleFact_ground _) (tripleFact_litFree _)
     (rdfsPlusProgram.fuelAdequate_of_check (by decide))).mp (by decide)
 
 /-! ## The boundary, pinned -/
