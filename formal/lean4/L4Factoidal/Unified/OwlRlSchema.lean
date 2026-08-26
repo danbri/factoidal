@@ -1116,4 +1116,424 @@ theorem cond_xsdAxioms : RlCondXsdAxioms (restrictInterp i) := by
 
 end FamilyConditions
 
+
+/-! ## The clash rows
+
+A clash row is falsity-headed, so it is not a `DRule` (a
+`DatalogProgram` is definite by construction). `DNeg` carries the
+premise list alone and reads as the universal closure of the NEGATED
+conjunction — the `dExclusionSchema` / `rangeClashSchema` shape of
+`Unified/DSchema.lean` and `Unified/RdfsSchema.lean`. -/
+
+/-- A falsity-headed row: its premise atoms. -/
+structure DNeg where
+  atoms : List DAtom
+  deriving DecidableEq, Repr
+
+def DNeg.vars (r : DNeg) : List String := r.atoms.flatMap DAtom.varList
+
+def DNeg.wfB (r : DNeg) : Bool := r.atoms.all DAtom.wfB
+
+/-- The universally closed negated conjunction. -/
+def DNeg.sentence (r : DNeg) : CL.Sentence :=
+  .all (r.vars.map .plain) (.neg (.conj (r.atoms.map DAtom.sentence)))
+
+theorem DNeg.wf_atom {r : DNeg} (h : r.wfB = true) :
+    ∀ a ∈ r.atoms, a.wfB = true :=
+  fun a ha => List.all_eq_true.mp h a ha
+
+theorem DNeg.atom_scoped (r : DNeg) :
+    ∀ a ∈ r.atoms, ∀ n ∈ a.varList, n ∈ r.vars :=
+  fun a ha _ hn => List.mem_flatMap.mpr ⟨a, ha, hn⟩
+
+theorem DNeg.vars_no_colon {r : DNeg} (h : r.wfB = true) :
+    ∀ n ∈ r.vars, ':' ∉ n.toList := by
+  intro n hn
+  obtain ⟨a, ha, hna⟩ := List.mem_flatMap.mp hn
+  exact DAtom.varList_no_colon (DNeg.wf_atom h a ha) n hna
+
+/-- **The satisfaction lemma of the falsity-headed rows**: the sentence
+is satisfied exactly when no valuation makes every premise true. -/
+theorem satisfies_negSentence_iff (i : CL.Interp) {r : DNeg}
+    (hwf : r.wfB = true) :
+    CL.Satisfies i r.sentence ↔
+      ∀ f : String → i.dom, ¬ (∀ a ∈ r.atoms, a.Holds i f) := by
+  have hvars := DNeg.vars_no_colon hwf
+  unfold CL.Satisfies DNeg.sentence
+  simp only [CL.Sat]
+  rw [satForall_plains]
+  constructor
+  · intro h f hb
+    have hn := h f
+    simp only [CL.Sat] at hn
+    refine hn ?_
+    rw [satAll_forall]
+    intro u hu
+    obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hu
+    exact (sat_datom i hvars f _ (DNeg.wf_atom hwf a ha)
+      (r.atom_scoped a ha)).mpr (hb a ha)
+  · intro h f
+    simp only [CL.Sat]
+    intro hs
+    refine h f ?_
+    intro a ha
+    rw [satAll_forall] at hs
+    exact (sat_datom i hvars f _ (DNeg.wf_atom hwf a ha)
+      (r.atom_scoped a ha)).mp (hs _ (List.mem_map.mpr ⟨a, ha, rfl⟩))
+
+theorem dneg_wf_of {r : DNeg} (h : r.atoms.all DAtom.wfB = true) : r.wfB = true := h
+
+/-- Fire a falsity-headed row: no valuation satisfies its premises. -/
+theorem negRowFires {i : CL.Interp} {S : Schema} (hS : SatisfiesSchema i S)
+    {r : DNeg} (hmem : S r.sentence) (hwf : r.wfB = true)
+    (f : String → i.dom) (hb : ∀ a ∈ r.atoms, a.Holds i f) : False :=
+  (satisfies_negSentence_iff i hwf).mp (hS _ hmem) f hb
+
+/-- The nine clash rows whose premises are all binary predications over
+IRI constants and variables. The three max-cardinality rows (cls-maxc1,
+cls-maxqc1, cls-maxqc2) are NOT here: their premise relates a term to a
+cardinality LITERAL, whose CL translation is a `funapp`, not a `DTerm`.
+They are carried by `owlRlInterpCond` instead. -/
+inductive RlNegRowId where
+  | eqDiff1 | prpIrp | prpAsyp | prpPdw | prpNpa1 | prpNpa2
+  | clsNothing2 | clsCom | caxDw
+  deriving DecidableEq, Repr
+
+def rlNegRowRule : RlNegRowId → DNeg
+  | .eqDiff1 => ⟨[dbin (dk owlSameAs) (.v "x") (.v "y"),
+      dbin (dk owlDifferentFrom) (.v "x") (.v "y")]⟩
+  | .prpIrp => ⟨[dtyp (.v "p") (dk owlIrreflexiveProperty),
+      dbin (.v "p") (.v "x") (.v "x")]⟩
+  | .prpAsyp => ⟨[dtyp (.v "p") (dk owlAsymmetricProperty),
+      dbin (.v "p") (.v "x") (.v "y"),
+      dbin (.v "p") (.v "y") (.v "x")]⟩
+  | .prpPdw => ⟨[dbin (dk owlPropertyDisjointWith) (.v "p") (.v "q"),
+      dbin (.v "p") (.v "x") (.v "y"),
+      dbin (.v "q") (.v "x") (.v "y")]⟩
+  | .prpNpa1 => ⟨[dbin (dk owlSourceIndividual) (.v "w") (.v "x"),
+      dbin (dk owlAssertionProperty) (.v "w") (.v "p"),
+      dbin (dk owlTargetIndividual) (.v "w") (.v "y"),
+      dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .prpNpa2 => ⟨[dbin (dk owlSourceIndividual) (.v "w") (.v "x"),
+      dbin (dk owlAssertionProperty) (.v "w") (.v "p"),
+      dbin (dk owlTargetValue) (.v "w") (.v "y"),
+      dbin (.v "p") (.v "x") (.v "y")]⟩
+  | .clsNothing2 => ⟨[dtyp (.v "x") (dk owlNothing)]⟩
+  | .clsCom => ⟨[dbin (dk owlComplementOf) (.v "c") (.v "d"),
+      dtyp (.v "x") (.v "c"), dtyp (.v "x") (.v "d")]⟩
+  | .caxDw => ⟨[dbin (dk owlDisjointWith) (.v "c") (.v "d"),
+      dtyp (.v "x") (.v "c"), dtyp (.v "x") (.v "d")]⟩
+
+theorem rlNegRowRule_wf (row : RlNegRowId) : (rlNegRowRule row).wfB = true := by
+  cases row <;> rfl
+
+/-- **cax-adc**, at a distinct pair of member IRIs (the `RlNCondCaxAdc`
+narrowing `RLSemantics.lean` records). -/
+def negCaxAdc (c1 c2 : RDF.WfIri) : DNeg :=
+  ⟨[dtyp (.v "y") (dk owlAllDisjointClasses),
+    dbin (dk owlMembers) (.v "y") (.v "l"),
+    dbin (dk uListMem) (.v "l") (dk c1),
+    dbin (dk uListMem) (.v "l") (dk c2),
+    dtyp (.v "z") (dk c1),
+    dtyp (.v "z") (dk c2)]⟩
+
+theorem negCaxAdc_wf (c1 c2 : RDF.WfIri) : (negCaxAdc c1 c2).wfB = true :=
+  dneg_wf_of (by
+    simp only [negCaxAdc, List.all_cons, List.all_nil,
+      dtyp_wf (dv_wf "y" (by decide)) (dk_wf owlAllDisjointClasses),
+      dbin_wf (dk_wf owlMembers) (dv_wf "y" (by decide)) (dv_wf "l" (by decide)),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf c1),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf c2),
+      dtyp_wf (dv_wf "z" (by decide)) (dk_wf c1),
+      dtyp_wf (dv_wf "z" (by decide)) (dk_wf c2), Bool.and_true])
+
+/-- The clash part of the schema. -/
+def owlRlClashSchema : Schema := fun s =>
+  (∃ row : RlNegRowId, s = (rlNegRowRule row).sentence) ∨
+  (∃ c1 c2 : RDF.WfIri, c1 ≠ c2 ∧ s = (negCaxAdc c1 c2).sentence)
+
+section ClashConditions
+
+variable {i : CL.Interp} (hN : SatisfiesSchema i owlRlClashSchema)
+include hN
+
+theorem ncond_eqDiff1 : RlNCondEqDiff1 (restrictInterp i) := by
+  rintro x y ⟨h1, h2⟩
+  refine negRowFires hN (Or.inl ⟨.eqDiff1, rfl⟩) (rlNegRowRule_wf .eqDiff1)
+    (vals i [("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem ncond_prpIrp : RlNCondPrpIrp (restrictInterp i) := by
+  rintro p x ⟨h1, h2⟩
+  refine negRowFires hN (Or.inl ⟨.prpIrp, rfl⟩) (rlNegRowRule_wf .prpIrp)
+    (vals i [("p", (restrictInterp i).iIri p), ("x", x)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem ncond_prpAsyp : RlNCondPrpAsyp (restrictInterp i) := by
+  rintro p x y ⟨h1, h2, h3⟩
+  refine negRowFires hN (Or.inl ⟨.prpAsyp, rfl⟩) (rlNegRowRule_wf .prpAsyp)
+    (vals i [("p", (restrictInterp i).iIri p), ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem ncond_prpPdw : RlNCondPrpPdw (restrictInterp i) := by
+  rintro p1 p2 x y ⟨h1, h2, h3⟩
+  refine negRowFires hN (Or.inl ⟨.prpPdw, rfl⟩) (rlNegRowRule_wf .prpPdw)
+    (vals i [("p", (restrictInterp i).iIri p1), ("q", (restrictInterp i).iIri p2),
+             ("x", x), ("y", y)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem ncond_prpNpa1 : RlNCondPrpNpa1 (restrictInterp i) := by
+  rintro p w x y ⟨h1, h2, h3, h4⟩
+  refine negRowFires hN (Or.inl ⟨.prpNpa1, rfl⟩) (rlNegRowRule_wf .prpNpa1)
+    (vals i [("w", w), ("x", x), ("y", y),
+             ("p", (restrictInterp i).iIri p)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem ncond_prpNpa2 : RlNCondPrpNpa2 (restrictInterp i) := by
+  rintro p w x y ⟨h1, h2, h3, h4⟩
+  refine negRowFires hN (Or.inl ⟨.prpNpa2, rfl⟩) (rlNegRowRule_wf .prpNpa2)
+    (vals i [("w", w), ("x", x), ("y", y),
+             ("p", (restrictInterp i).iIri p)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+
+theorem ncond_clsNothing2 : RlNCondClsNothing2 (restrictInterp i) := by
+  intro x h1
+  refine negRowFires hN (Or.inl ⟨.clsNothing2, rfl⟩) (rlNegRowRule_wf .clsNothing2)
+    (vals i [("x", x)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem ncond_clsCom : RlNCondClsCom (restrictInterp i) := by
+  rintro c1 c2 x ⟨h1, h2, h3⟩
+  refine negRowFires hN (Or.inl ⟨.clsCom, rfl⟩) (rlNegRowRule_wf .clsCom)
+    (vals i [("c", c1), ("d", c2), ("x", x)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem ncond_caxDw : RlNCondCaxDw (restrictInterp i) := by
+  rintro c1 c2 x ⟨h1, h2, h3⟩
+  refine negRowFires hN (Or.inl ⟨.caxDw, rfl⟩) (rlNegRowRule_wf .caxDw)
+    (vals i [("c", c1), ("d", c2), ("x", x)]) ?_
+  intro a ha
+  simp only [rlNegRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+theorem ncond_caxAdc : RlNCondCaxAdc (restrictInterp i) := by
+  rintro c1 c2 hne y l z ⟨h1, h2, h3, h4, h5, h6⟩
+  refine negRowFires hN (Or.inr ⟨c1, c2, hne, rfl⟩) (negCaxAdc_wf c1 c2)
+    (vals i [("y", y), ("l", l), ("z", z)]) ?_
+  intro a ha
+  simp only [negCaxAdc, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+  · exact h6
+
+end ClashConditions
+
+
+/-! ## The schema, and the conditions it delivers
+
+### What the schema does NOT carry, and why
+
+Nine of the 91 rows are not object-language sentences here. They are
+carried by the interpretation-class condition bundle `OwlRlInterpCond`
+instead — the `EntailsSchema` parameter the design document §2.2 calls
+the extension mechanism, and the same device `RdfsDInterpCond` uses in
+`Unified/RdfsSchema.lean`. Each has a structural reason:
+
+* **prp-spo2, prp-key** quantify over a COLLECTION. Each needs a
+  sentence family indexed by list length (the `rdf:first`/`rdf:rest`
+  walk plus the chain or shared-value premises flattened into `n`-many
+  atoms). The reserved binary helper predicates that serve the other
+  seven collection rows cannot serve these two: the relation to encode
+  is TERNARY (cell, subject, object), and `RDF.Interp.iext` is binary,
+  so a helper predicate cannot name it.
+* **cls-maxc2, cls-maxc1, cls-maxqc1, cls-maxqc2** relate a term to a
+  cardinality LITERAL. `embedTerm` sends a literal to a `funapp` of the
+  `urn:cl:def:literalValueOf` operator, which is not a `DTerm`, so the
+  row is not a `DAtom`.
+* **cax-dw-comp, cls-maxqc1-comp, minc1-comp** have EXISTENTIAL heads
+  (they mint a comprehension witness), which `DRule.definiteB` excludes,
+  and they also mention cardinality literals.
+
+Moving these into the schema is the next increment of this stage; the
+statement of `unified_owlRl_sound` names them explicitly, so the
+boundary is visible in the theorem, not only in prose. -/
+
+/-- **The OWL 2 RL schema**: the plain Horn rows, the guarded and
+table-indexed families, and the clash rows.
+
+Deviation from the design document §4.4: the schema takes no datatype
+set `D`. The RL datatype rows (Table 7) range over the FIXED tables
+`builtinDatatypeAxioms`, `xsdAxiomTriples` and `rangeIntersectLicenses`
+of `OWL/RLRules.lean`, not over a recognised-datatype parameter. -/
+def owlRlSchema : Schema :=
+  schemaUnion owlRlHornSchema (schemaUnion owlRlFamilySchema owlRlClashSchema)
+
+/-- The nine rows the schema does not carry, as an interpretation-class
+condition (see the section header for why each one is here). -/
+def OwlRlInterpCond (i : CL.Interp) : Prop :=
+  RlCondPrpSpo2 (restrictInterp i) ∧
+  RlCondPrpKey (restrictInterp i) ∧
+  RlCondClsMaxc2 (restrictInterp i) ∧
+  RlCondCompDw (restrictInterp i) ∧
+  RlCondCompMqc (restrictInterp i) ∧
+  RlCondMinc1 (restrictInterp i) ∧
+  RlNCondClsMaxc1 (restrictInterp i) ∧
+  RlNCondClsMaxqc1 (restrictInterp i) ∧
+  RlNCondClsMaxqc2 (restrictInterp i)
+
+theorem satisfiesSchema_owlRl_parts {i : CL.Interp}
+    (hS : SatisfiesSchema i owlRlSchema) :
+    SatisfiesSchema i owlRlHornSchema ∧ SatisfiesSchema i owlRlFamilySchema ∧
+      SatisfiesSchema i owlRlClashSchema := by
+  rw [owlRlSchema, satisfiesSchema_union_iff, satisfiesSchema_union_iff] at hS
+  exact ⟨hS.1, hS.2.1, hS.2.2⟩
+
+/-- **The bridge**: schema satisfaction plus the nine bundled rows give
+the full `RlConditions` / `RlClashConditions` pair over the restricted
+interpretation. -/
+theorem owlRlSchema_conditions {i : CL.Interp}
+    (hS : SatisfiesSchema i owlRlSchema) (hc : OwlRlInterpCond i) :
+    RlConditions (restrictInterp i) ∧ RlClashConditions (restrictInterp i) := by
+  obtain ⟨hH, hF, hN⟩ := satisfiesSchema_owlRl_parts hS
+  obtain ⟨kSpo2, kKey, kMaxc2, kCompDw, kCompMqc, kMinc1,
+          kNMaxc1, kNMaxqc1, kNMaxqc2⟩ := hc
+  refine ⟨?_, ?_⟩
+  · exact
+    { eqRefS := cond_eqRefS hH
+      eqRefP := cond_eqRefP hF
+      eqRefO := cond_eqRefO hH
+      eqSym := cond_eqSym hH
+      eqTrans := cond_eqTrans hH
+      eqRepS := cond_eqRepS hH
+      eqRepP := cond_eqRepP hH
+      eqRepO := cond_eqRepO hH
+      prpDom := cond_prpDom hH
+      prpRng := cond_prpRng hH
+      prpFp := cond_prpFp hH
+      prpIfp := cond_prpIfp hH
+      prpSymp := cond_prpSymp hH
+      prpTrp := cond_prpTrp hH
+      prpSpo1 := cond_prpSpo1 hH
+      prpSpo2 := kSpo2
+      prpEqp1 := cond_prpEqp1 hH
+      prpEqp2 := cond_prpEqp2 hH
+      prpInv1 := cond_prpInv1 hH
+      prpInv2 := cond_prpInv2 hH
+      prpKey := kKey
+      clsThing := cond_clsThing hH
+      clsNothing1 := cond_clsNothing1 hH
+      clsInt1 := cond_clsInt1 hH
+      typedAllBase := cond_typedAllBase hH
+      typedAllStep := cond_typedAllStep hH
+      listMemBase := cond_listMemBase hH
+      listMemStep := cond_listMemStep hH
+      clsInt2 := cond_clsInt2 hH
+      clsUni := cond_clsUni hH
+      clsSvf1 := cond_clsSvf1 hH
+      clsSvf2 := cond_clsSvf2 hH
+      clsAvf := cond_clsAvf hH
+      clsHv1 := cond_clsHv1 hH
+      clsHv2 := cond_clsHv2 hH
+      clsMaxc2 := kMaxc2
+      clsOo := cond_clsOo hH
+      caxSco := cond_caxSco hH
+      caxEqc1 := cond_caxEqc1 hH
+      caxEqc2 := cond_caxEqc2 hH
+      scmClsSelf := cond_scmClsSelf hH
+      scmClsEqc := cond_scmClsEqc hH
+      scmClsThing := cond_scmClsThing hH
+      scmClsNothing := cond_scmClsNothing hH
+      scmSco := cond_scmSco hH
+      scmEqc1a := cond_scmEqc1a hH
+      scmEqc1b := cond_scmEqc1b hH
+      scmEqc2 := cond_scmEqc2 hH
+      scmSpo := cond_scmSpo hH
+      scmEqp1a := cond_scmEqp1a hH
+      scmEqp1b := cond_scmEqp1b hH
+      scmEqp2 := cond_scmEqp2 hH
+      scmDom1 := cond_scmDom1 hH
+      scmDom2 := cond_scmDom2 hH
+      scmRng1 := cond_scmRng1 hH
+      scmRng2 := cond_scmRng2 hH
+      scmInt := cond_scmInt hH
+      scmUni := cond_scmUni hH
+      eqDiffSym := cond_eqDiffSym hH
+      pdwToDiff := cond_pdwToDiff hH
+      caxDwToDiff := cond_caxDwToDiff hH
+      fpDiffToDiff := cond_fpDiffToDiff hH
+      ifpDiffToDiff := cond_ifpDiffToDiff hH
+      chainToTrans := cond_chainToTrans hH
+      prpRflS := cond_prpRflS hH
+      prpRflO := cond_prpRflO hH
+      xsdAxioms := cond_xsdAxioms hF
+      dtRangeIntersect := cond_dtRangeIntersect hF
+      dtType1Builtin := cond_dtType1Builtin hF
+      caxAdcToDw := cond_caxAdcToDw hF
+      invFlipDomRng := cond_invFlipDomRng hH
+      invFlipRngDom := cond_invFlipRngDom hH
+      invFlipDomRngRev := cond_invFlipDomRngRev hH
+      invFlipRngDomRev := cond_invFlipRngDomRev hH
+      compDw := kCompDw
+      compMqc := kCompMqc
+      minc1 := kMinc1 }
+  · exact
+    { eqDiff1 := ncond_eqDiff1 hN
+      prpIrp := ncond_prpIrp hN
+      prpAsyp := ncond_prpAsyp hN
+      prpPdw := ncond_prpPdw hN
+      prpNpa1 := ncond_prpNpa1 hN
+      prpNpa2 := ncond_prpNpa2 hN
+      clsNothing2 := ncond_clsNothing2 hN
+      clsCom := ncond_clsCom hN
+      clsMaxc1 := kNMaxc1
+      clsMaxqc1 := kNMaxqc1
+      clsMaxqc2 := kNMaxqc2
+      caxDw := ncond_caxDw hN
+      caxAdc := ncond_caxAdc hN }
+
 end L4Factoidal.Unified
