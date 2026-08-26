@@ -71,6 +71,15 @@ def inXsdLexicalSpace (dtIri lex : String) : Option Bool :=
       else if base == "hexBinary" then
         some (lex.toList.length % 2 == 0 && lex.toList.all isHexDigit)
       else if base == "base64Binary" then none
+      else if base == "float" || base == "double" then
+        -- XSD 1.1 admits `+INF`; XSD 1.0 does not, and the ShEx
+        -- validation corpus states the 1.0 reading —
+        -- `"+INF"^^xsd:float` is `float-pINF_fail`, a
+        -- `sht:ValidationFailure`. `CSVW.Formats.isDoubleLexical`
+        -- keeps the 1.1 reading for csv2rdf; the difference is
+        -- confined to this branch rather than resolved by changing a
+        -- lexical space two specifications disagree about.
+        some (lex != "+INF" && isXsdNumericLexical base lex)
       else if isNumericBase base then some (isXsdNumericLexical base lex)
       else if isDateBase base then
         some (match parseCanonicalDate base lex with
@@ -98,6 +107,25 @@ def inXsdLexicalSpace (dtIri lex : String) : Option Bool :=
 so they apply only to a literal whose lexical form is a decimal. One
 that is not fails the facet rather than being coerced — the same rule
 `matchesNumericFacets` already follows for the ordering facets. -/
+
+/-- The XSD types DERIVED FROM `xsd:decimal`, which are the only ones
+    `totalDigits` and `fractionDigits` are defined on (XSD 1.1 Part 2
+    §4.3.11, §4.3.12: both facets apply to `xsd:decimal` and to types
+    derived from it). `xsd:float` is NOT one of them — its value space
+    is the IEEE binary floats, and it has no digit count. -/
+def decimalDerivedBases : List String :=
+  ["decimal", "integer", "long", "int", "short", "byte",
+   "nonNegativeInteger", "positiveInteger", "unsignedLong",
+   "unsignedInt", "unsignedShort", "unsignedByte",
+   "nonPositiveInteger", "negativeInteger"]
+
+/-- Is this datatype IRI one the digit facets are defined on, with
+    `lex` in its lexical space? -/
+def digitFacetsApply (dtIri lex : String) : Bool :=
+  match xsdLocal dtIri with
+  | none      => false
+  | some base => decimalDerivedBases.contains base
+                 && (inXsdLexicalSpace dtIri lex == some true)
 
 /-- The integer-part and fraction-part digit runs of a decimal lexical
     form, `none` when it is not one. -/

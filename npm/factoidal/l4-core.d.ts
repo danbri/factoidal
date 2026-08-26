@@ -51,6 +51,21 @@ export function rhoDfClosure(data: DataInput): Promise<Dataset>;
 export function rhoDfFragmentCheck(data: DataInput): Promise<boolean>;
 export function rdfsPlusClosure(data: DataInput): Promise<Dataset>;
 
+// Lean-only: formal/fstar has no CL/IKL parser, so `clParse` does not
+// exist on index.d.ts/wasm.d.ts. Reads Common Logic Interchange Format
+// text (ISO/IEC 24707:2018), with the IKL `that`-operator extension,
+// and reports its shape -- it never produces RDF. `pureCL` is a
+// DIALECT flag, not a validity or quality signal: true while the text
+// stays inside ISO/IEC 24707 Common Logic, false once it uses IKL's
+// `that` operator. A CLIF text that fails to parse rejects instead of
+// returning either value.
+export function clParse(clifText: string): Promise<{
+  ok: boolean;
+  sentences: number;
+  pureCL: boolean;
+  normalized: string;
+}>;
+
 // Present on the surface, NOT implemented by the Lean engine: each
 // rejects with an engine-capability error so an engine swap fails
 // loudly rather than with `undefined is not a function`.

@@ -1276,6 +1276,35 @@ function buildApi(driver) {
     return entryResult(e.xpathEval(xmlText, xpathExpr), 'xpathEval');
   }
 
+  /**
+   * Parse Common Logic Interchange Format text (ISO/IEC 24707:2018),
+   * with the IKL `that`-operator extension (entry_jsoo.ml's clParse
+   * export -> L4Factoidal's CL/Clif.lean reader). Reads CLIF into a CL
+   * syntax tree and reports its shape; it never produces RDF -- the
+   * IKL-to-RDF projection is a separate, deliberately unexposed pair
+   * of ops (clToDataset/queryWithIklService; see l4-core.js's OPS
+   * comment). Lean 4 only: formal/fstar has no CL/IKL parser, so this
+   * function is absent from index.js/wasm.js -- see capabilities() /
+   * factoidal/select's capability table.
+   * @param {string} clifText
+   * @returns {Promise<{ok: boolean, sentences: number, pureCL: boolean,
+   *   normalized: string}>} `pureCL` is a DIALECT flag, not a validity
+   *   or quality signal: true while the text stays inside ISO/IEC
+   *   24707 Common Logic, false once it uses IKL's `that` operator.
+   *   Both values are returned only for text that parsed; a CLIF text
+   *   that fails to parse rejects instead (e.g. a bare `(that S)` used
+   *   as a proposition rather than a term -- see the GUIDE).
+   */
+  async function clParse(clifText) {
+    if (typeof clifText !== 'string') {
+      throw new TypeError('clParse: clifText must be a string');
+    }
+    const e = await entry();
+    if (!e) throw pendingError('clParse');
+    requireEntryFn(e, 'clParse', 'Common Logic / IKL parse');
+    return entryResult(e.clParse(clifText), 'clParse');
+  }
+
   // -----------------------------------------------------------------
   // VC Data Integrity crypto (eddsa-rdfc-2022) — HACL* wasm backend.
   // entry_jsoo.ml's vc* exports realise VC_DataIntegrity's four crypto
@@ -2122,6 +2151,7 @@ function buildApi(driver) {
     didKeyResolve,
     xmlWellformed,
     xpathEval,
+    clParse,
     rifEval,
     xsltTransform,
     mathmlEval,

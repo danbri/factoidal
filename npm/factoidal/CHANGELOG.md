@@ -21,15 +21,31 @@
   results and bag equality (blank nodes relabelled per side) for
   SELECT bindings.
 - Measured on the typed API surface at this release: 15 functions both
-  engines answer, 39 F\*-only, 0 Lean-only (out of 54). This measures
+  engines answer, 38 F\*-only, 1 Lean-only (out of 54). This measures
   the typed wrapper surface, not the Lean engine's total capability --
-  `l4-core.js` wires 12 of the engine's 21 dispatch ops.
-- The CL/IKL ops (`clParse`, `clToDataset`, `queryWithIklService`) are
-  NOT exposed through the npm API, and `x-ikl-*` entailment regimes
-  are rejected. The ops remain present in the compiled wasm; they are
-  unreachable through the package. Owner decision, 2026-08-26: the
-  IKL-to-RDF projection stays out of npm until it has a reversibility
-  theorem (danbri/factoidal#620).
+  `l4-core.js` wires 13 of the engine's 21 dispatch ops.
+- `clParse` (Common Logic Interchange Format text, ISO/IEC 24707:2018,
+  with the IKL `that`-operator extension) is now wired into the typed
+  API -- `l4-core.js`/`lib/api.js`/`select.js`, with `.d.ts` types and
+  tests. It reads CLIF text and reports its shape (sentence count,
+  `pureCL` dialect flag, canonical re-serialisation); it never produces
+  RDF. `pureCL` is a DIALECT flag, not a validity or quality signal:
+  true while the text stays inside ISO/IEC 24707 Common Logic, false
+  once it uses IKL's `that` operator. It is the first Lean-only entry
+  on the typed capability table -- formal/fstar has no CL/IKL parser at
+  all, so `index.js`/`wasm.js` never export it, `factoidal/select`'s
+  `backend:'fstar'` throws for it (never falls back to Lean), and
+  `backend:'slowcompareboth'` fails the capability precondition rather
+  than comparing one side against nothing.
+- The IKL-to-RDF projection ops (`clToDataset`, `queryWithIklService`)
+  are still NOT exposed through the npm API, and `x-ikl-*` entailment
+  regimes are still rejected. The ops remain present in the compiled
+  wasm; they are unreachable through the package. Owner decision,
+  2026-08-26: the IKL-to-RDF projection stays out of npm until it has a
+  reversibility theorem (danbri/factoidal#620). `clParse` is a
+  different op (it never produces RDF) and was never covered by this
+  ruling; an earlier draft of this changelog entry grouped all three
+  ops together, which was a misattribution -- corrected here.
 
 ## 0.2.0 — Lean 4 engine subpath
 

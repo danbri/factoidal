@@ -69,21 +69,28 @@ function assertBackend(name, who) {
 // whenever capabilities().entry is true, for whichever engine's entry
 // actually defines that op. Cross-checked against the Lean side's own
 // dispatch-ABI reflection (`bin/linux-x86_64/l4factoidal ops`, and
-// l4.call('ops', []) at runtime) -- both list exactly these 12 of the
+// l4.call('ops', []) at runtime) -- both list exactly these 13 of the
 // engine's 21 ops as the ones lib/api.js's typed wrappers reach:
 // parseToDatasetJson, queryDataset, updateDataset, serializeNQuads,
 // serializeTurtle, canonicalizeToNQuads, owlClosure, owlIsConsistent,
-// owlEntails, rhoDfClosure, rhoDfFragmentCheck, rdfsPlusClosure. The
-// other 9 are real ops on the resolved wasm with no typed-API wrapper
+// owlEntails, rhoDfClosure, rhoDfFragmentCheck, rdfsPlusClosure,
+// clParse. `clParse` is the first Lean-only entry in
+// capabilityTable(): formal/fstar has no CL/IKL parser, so
+// engineSupports(fstarApi, 'clParse') is false on the very first
+// `typeof` guard below -- index.js never exports the name at all. The
+// other 8 are real ops on the resolved wasm with no typed-API wrapper
 // in l4-core.js, so they are correctly absent from
 // ALWAYS_IF_ENTRY/CAP_FLAG below and from capabilityTable()'s output,
 // for two different reasons (see l4-core.js's OPS comment for the full
 // text):
-//   - clParse, clToDataset, queryWithIklService: withheld by OWNER
-//     DECISION, 2026-08-26 (issue #618) -- IKL has no notion of shapes
-//     or named profiles, so this stays off the npm surface. Do not add
-//     these to CAP_FLAG/ALWAYS_IF_ENTRY without fresh owner sign-off;
-//     test/select.test.js pins them absent.
+//   - clToDataset, queryWithIklService: withheld by OWNER DECISION,
+//     2026-08-26 (issue #618) -- IKL has no notion of shapes or named
+//     profiles, so this stays off the npm surface. Do not add these to
+//     CAP_FLAG/ALWAYS_IF_ENTRY without fresh owner sign-off;
+//     test/select.test.js pins them absent. `clParse` is NOT part of
+//     this ruling (see l4-core.js's OPS comment's CORRECTION note) --
+//     it reads CLIF and never produces RDF, so it is wired above
+//     instead.
 //   - ops, datasetOpen/Query/Update/Serialize/Close: not an owner
 //     ruling, just not yet wired (no typed-wrapper shape for a
 //     stateful handle exists in lib/api.js today).
@@ -93,7 +100,7 @@ const ALWAYS_IF_ENTRY = new Set([
   'parse', 'query', 'update', 'serialize', 'canonicalize', 'graphs',
   'canonicalHash', 'coreRdfsClosure', 'coreRdfsCheck', 'rhoDfClosure',
   'rhoDfFragmentCheck', 'rdfsPlusClosure', 'owlClosure', 'owlIsConsistent',
-  'owlEntails',
+  'owlEntails', 'clParse',
 ]);
 
 // Every other routable function's support is reported by a
@@ -457,6 +464,9 @@ function createSelector(options) {
     rdfsPlusClosure: (data, closureOptions, callOptions) => call('rdfsPlusClosure', [data, closureOptions], callOptions),
     shaclValidate: (data, shapes, shaclOptions, callOptions) => call('shaclValidate', [data, shapes, shaclOptions], callOptions),
     shexValidate: (data, schema, focus, shape, callOptions) => call('shexValidate', [data, schema, focus, shape], callOptions),
+    // Lean-only (see ALWAYS_IF_ENTRY's comment above): backend:'fstar'
+    // throws, since index.js never exports clParse at all.
+    clParse: (clifText, callOptions) => call('clParse', [clifText], callOptions),
   };
 }
 

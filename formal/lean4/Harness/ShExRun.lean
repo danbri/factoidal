@@ -19,7 +19,17 @@ validator be MEASURED today.
     result, and folding it into either column would report a parser
     gap as an engine verdict.
 
-Usage: `lake exe l4shex [validation-dir]`
+## Schema IMPORTs
+
+A ShExJ schema may carry `"imports": ["2RefS1"]`, naming another
+schema document RELATIVE to its own retrieval IRI. The imported
+document's shape declarations join the importing schema's, and the
+importing schema's own `start` wins when both have one (ShEx 2.1 §5.2:
+imports contribute declarations, not a start shape). Resolution is
+here, in the reader, because it is a document-retrieval step and not a
+satisfaction rule.
+
+Usage: `lake exe l4shex [validation-dir] [--verbose] [--only SUBSTR]`
 -/
 import L4Factoidal.ShEx.FromJson
 import L4Factoidal.ShEx.Satisfies
@@ -111,15 +121,204 @@ def resolveRel (dir rel : String) : String :=
     up ++ "/" ++ String.ofList (rel.toList.drop 3)
   else dir ++ "/" ++ rel
 
+/-- Merge an imported schema's declarations into the importer's. The
+    importer's own `start` wins; its declarations come first, so a
+    label it declares itself shadows an imported one. -/
+def mergeSchema (outer inner : Schema) : Schema :=
+  { start := outer.start.orElse (fun _ => inner.start)
+    startActs := outer.startActs
+    shapes := outer.shapes ++ inner.shapes.filter (fun d =>
+      !(outer.shapes.any (fun o => o.id == d.id)))
+    imports := [] }
+
+/-- Read a ShExJ document and resolve its `imports` against the
+    directory it was read from. `depth` bounds an import cycle; the
+    corpus nests at most two deep. -/
+partial def loadSchema (path : String) (depth : Nat) : IO (Option Schema) := do
+  if !(← System.FilePath.pathExists path) then return none
+  let src ← IO.FS.readFile path
+  match (parseJson? src).bind schemaOf with
+  | none => return none
+  | some sch =>
+      if depth == 0 || sch.imports.isEmpty then return some sch
+      let dir := match (path.splitOn "/").reverse with
+        | _ :: rest => String.intercalate "/" rest.reverse
+        | []        => "."
+      let mut acc := sch
+      for imp in sch.imports do
+        let ip := dir ++ "/" ++ imp ++ ".json"
+        match ← loadSchema ip (depth - 1) with
+        | some inner => acc := mergeSchema acc inner
+        | none       => pure ()
+      return some { acc with imports := [] }
+
+/-! ## Relative IRIs in the schema document
+
+A ShExJ document may be written with RELATIVE IRIs, and they resolve
+against the document's own retrieval IRI — the shape labels, the
+predicates, the datatypes and the value-set members alike. The corpus
+writes one such schema, `1dot-relative`, whose shape is `"S1"` and
+whose predicate is `"p1"`; the data file's IRIs resolve against the
+DATA file, so the two sides only meet once both are made absolute.
+
+Resolution is here rather than in `FromJson.lean` because it is a
+property of where the document was FETCHED FROM, which the reader of
+its bytes does not know.
+-/
+
+/-- Does this string already carry a scheme? Only a relative reference
+    is resolved; an absolute IRI must come through untouched. -/
+def hasScheme (s : String) : Bool :=
+  match s.toList.findIdx? (· == ':') with
+  | none   => false
+  | some i =>
+      i > 0 && (s.toList.take i).all (fun c =>
+        c.isAlpha || c.isDigit || c == '+' || c == '-' || c == '.')
+
+/-- A BLANK NODE label is not a relative IRI. ShExJ writes a
+    bnode-labelled shape as `"_:S1"`, and resolving it against the
+    document turned it into `.../validation/_:S1`, which the manifest's
+    own `_:S1` then failed to find. -/
+def absolutise (base s : String) : String :=
+  if hasScheme s || s.isEmpty || s.startsWith "_:" then s
+  else L4Factoidal.Syntax.resolveIri base s
+
+def absObjectValue (base : String) : ObjectValue → ObjectValue
+  | .iri v => .iri (absolutise base v)
+  | .literal v lang dt => .literal v lang (dt.map (absolutise base))
+
+def absStem (base : String) (k : VsvKind) : Stem → Stem
+  | .plain p => if k == .iri then .plain (absolutise base p) else .plain p
+  | .wildcard => .wildcard
+
+def absExclusion (base : String) (k : VsvKind) : Exclusion → Exclusion
+  | .value ov => .value (absObjectValue base ov)
+  | .lang t   => .lang t
+  | .stem p   => if k == .iri then .stem (absolutise base p) else .stem p
+
+def absVsv (base : String) : ValueSetValue → ValueSetValue
+  | .object v            => .object (absObjectValue base v)
+  | .stem k st           => .stem k (absStem base k st)
+  | .stemRange k st excl => .stemRange k (absStem base k st) (excl.map (absExclusion base k))
+  | .language t          => .language t
+
+def absNodeConstraint (base : String) (nc : NodeConstraint) : NodeConstraint :=
+  { nc with datatype := nc.datatype.map (absolutise base)
+            values := nc.values.map (absVsv base) }
+
+mutual
+
+partial def absShapeExpr (base : String) : ShapeExpr → ShapeExpr
+  | .ref id            => .ref (absolutise base id)
+  | .shapeAnd es       => .shapeAnd (es.map (absShapeExpr base))
+  | .shapeOr es        => .shapeOr (es.map (absShapeExpr base))
+  | .shapeNot e        => .shapeNot (absShapeExpr base e)
+  | .nodeConstraint nc => .nodeConstraint (absNodeConstraint base nc)
+  | .shape sh          => .shape (absShape base sh)
+  | .external          => .external
+
+partial def absShape (base : String) : Shape → Shape
+  | .mk closed extra expr acts anns exts =>
+      .mk closed (extra.map (absolutise base)) (expr.map (absTripleExpr base))
+          acts anns (exts.map (absolutise base))
+
+partial def absTripleExpr (base : String) : TripleExpr → TripleExpr
+  | .ref id              => .ref (absolutise base id)
+  | .tripleConstraint tc => .tripleConstraint (absTc base tc)
+  | .eachOf g            => .eachOf (absGroup base g)
+  | .oneOf g             => .oneOf (absGroup base g)
+
+partial def absGroup (base : String) : Group → Group
+  | .mk id es mn mx acts anns =>
+      .mk (id.map (absolutise base)) (es.map (absTripleExpr base)) mn mx acts anns
+
+partial def absTc (base : String) : TripleConstraint → TripleConstraint
+  | .mk id inv pred ve mn mx acts anns =>
+      .mk (id.map (absolutise base)) inv (absolutise base pred)
+          (ve.map (absShapeExpr base)) mn mx acts anns
+
+end
+
+/-- Make every IRI in a schema absolute against its retrieval IRI. -/
+def absSchema (base : String) (sch : Schema) : Schema :=
+  { sch with start := sch.start.map (absShapeExpr base)
+             shapes := sch.shapes.map (fun d =>
+               { d with id := absolutise base d.id, expr := absShapeExpr base d.expr }) }
+
+/-- Resolve `ShapeExpr.external` declarations against an EXTERNAL
+    schema the manifest entry supplies.
+
+    ShEx 2.1 §5.3 leaves an `EXTERNAL` shape to be decided by a
+    mechanism outside the schema. The corpus supplies that mechanism
+    per entry, as `"shapeExterns": "../schemas/shapeExtern.shextern"`,
+    whose ShExJ twin is the `.jsontern` file beside it. A declaration
+    whose whole expression is `EXTERNAL` takes the external schema's
+    declaration of the same label. -/
+def substituteExternals (sch ext : Schema) : Schema :=
+  { sch with shapes := sch.shapes.map (fun d =>
+      match d.expr with
+      | .external => (ext.lookup d.id).getD d
+      | _         => d) }
+
+/-- The ShExJ twin of a `.shextern` file. -/
+def jsonternBeside (p : String) : String :=
+  if p.endsWith ".shextern"
+  then String.ofList (p.toList.take (p.length - 9)) ++ ".jsontern" else p
+
+/-! ## ShapeMap entries
+
+Three entries name no `focus` and no `shape`. They carry a QUERY SHAPE
+MAP instead — a list of (node, shape) pairs to decide — and a RESULT
+shape map giving the expected verdict for each pair. The entry passes
+when every pair's verdict matches; the entry's own
+`sht:ValidationTest` / `sht:ValidationFailure` type says nothing here,
+and `node_kind_example` is a `ValidationFailure` whose result map is
+one `true` and two `false`.
+
+These were the runner's three "focus node not read" entries: it looked
+for a focus that a ShapeMap entry does not have. -/
+
+/-- The (node, shape) pairs of a query shape map. -/
+def shapeMapPairs (j : Json) : List (String × String) :=
+  match j with
+  | .array es => es.filterMap (fun e =>
+      match str? "node" e, str? "shape" e with
+      | some n, some sh => some (n, sh)
+      | _, _            => none)
+  | _ => []
+
+/-- The expected verdicts: (node, shape, result). -/
+def shapeMapResults (j : Json) : List (String × String × Bool) :=
+  match j with
+  | .object ms => ms.flatMap (fun (node, v) =>
+      match v with
+      | .array rs => rs.filterMap (fun r =>
+          match str? "shape" r, fld? "result" r with
+          | some sh, some (.bool b) => some (node, sh, b)
+          | _, _                    => none)
+      | _ => [])
+  | _ => []
+
 structure Tally where
   pass    : Nat := 0
   fail    : Nat := 0
   notRead : Nat := 0
 deriving Inhabited
 
+/-- Does `hay` contain `needle`? -/
+def hasSub (hay needle : String) : Bool :=
+  needle.isEmpty || (hay.splitOn needle).length > 1
+
 def main (args : List String) : IO UInt32 := do
-  let dir := (args.filter (fun a => !a.startsWith "--")).head?
-    |>.getD "third_party/testing/shex/validation"
+  -- `--only SUBSTR` runs just the entries whose name contains SUBSTR.
+  -- Diagnosing one family out of 1182 by re-running all of them is how
+  -- a ten-second question costs four minutes.
+  let only := match args.dropWhile (· != "--only") with
+    | _ :: v :: _ => some v
+    | _           => none
+  let positional := (args.filter (fun a => !a.startsWith "--")).filter
+    (fun a => only != some a)
+  let dir := positional.head?.getD "third_party/testing/shex/validation"
   let verbose := args.contains "--verbose"
   let manifestPath := dir ++ "/manifest.jsonld"
   if !(← System.FilePath.pathExists manifestPath) then
@@ -149,12 +348,19 @@ def main (args : List String) : IO UInt32 := do
         seen := seen + 1
         let ty := (str? "@type" e).getD ""
         let name := (str? "name" e).getD "?"
+        if !(only.all (hasSub name)) then
+          pure ()
+        else
         match fld? "action" e with
         | none => t := { t with notRead := t.notRead + 1 }
         | some act =>
             let schemaRel := (str? "schema" act).getD ""
             let dataRel := (str? "data" act).getD ""
-            let label := (str? "shape" act).getD ""
+            let schemaUrl := L4Factoidal.Syntax.resolveIri suiteBase schemaRel
+            -- A manifest `shape` may itself be relative, and resolves
+            -- against the manifest, exactly as the schema's own labels
+            -- resolve against the schema (`1dot-relative`).
+            let label := (str? "shape" act).map (absolutise suiteBase) |>.getD ""
             let dataUrl := L4Factoidal.Syntax.resolveIri suiteBase dataRel
             let focus := (fld? "focus" act).bind (focusOf dataUrl)
             let sp := jsonBeside (resolveRel dir schemaRel)
@@ -166,11 +372,21 @@ def main (args : List String) : IO UInt32 := do
               t := { t with notRead := t.notRead + 1 }
               readGaps := bump readGaps "data graph missing"
             else
-              let ssrc ← IO.FS.readFile sp
+              let schema0? ← loadSchema sp 4
+              let externs? ← (match (str? "shapeExterns" act).map
+                    (fun r => jsonternBeside (resolveRel dir r)) with
+                | some ep => loadSchema ep 4
+                | none    => pure none)
+              let schema? := (match schema0?, externs? with
+                | some sc, some ex => some (substituteExternals sc ex)
+                | other,   _       => other).map (absSchema schemaUrl)
               let dsrc ← IO.FS.readFile dp
-              match (parseJson? ssrc).bind schemaOf, parseTurtle dsrc (some dataUrl), focus with
+              match schema?, parseTurtle dsrc (some dataUrl), focus with
               | some sch, .ok g, some n =>
-                  let got := validateNode sch g label n
+                  -- No `shape` in the entry means the schema's START
+                  -- shape, not a shape whose label is the empty string.
+                  let got := if label.isEmpty then validateStart sch g n
+                             else validateNode sch g label n
                   let want := ty == "sht:ValidationTest"
                   if got == want then t := { t with pass := t.pass + 1 }
                   else
@@ -184,9 +400,42 @@ def main (args : List String) : IO UInt32 := do
                   t := { t with notRead := t.notRead + 1 }
                   readGaps := bump readGaps "data Turtle not read"
                   if verbose then IO.println s!"TURTLE {name}: {msg} ({dataRel})"
-              | _, _, none =>
-                  t := { t with notRead := t.notRead + 1 }
-                  readGaps := bump readGaps "focus node not read"
+              | some sch, .ok g, none =>
+                  -- A ShapeMap entry: no focus, a query shape map and
+                  -- an expected result shape map instead.
+                  match (str? "map" act).map (resolveRel dir),
+                        (str? "result" e).map (resolveRel dir) with
+                  | some mp, some rp =>
+                      if !(← System.FilePath.pathExists mp)
+                         || !(← System.FilePath.pathExists rp) then
+                        t := { t with notRead := t.notRead + 1 }
+                        readGaps := bump readGaps "shape map file missing"
+                      else
+                        let msrc ← IO.FS.readFile mp
+                        let rsrc ← IO.FS.readFile rp
+                        match parseJson? msrc, parseJson? rsrc with
+                        | some mj, some rj =>
+                            let pairs := shapeMapPairs mj
+                            let expected := shapeMapResults rj
+                            let ok := pairs.all (fun (node, shp) =>
+                              match (if h : isIri node then some (Term.iri ⟨node, h⟩)
+                                     else none) with
+                              | none => false
+                              | some nt =>
+                                  let got := validateNode sch g shp nt
+                                  (expected.filter (fun (en, es, _) =>
+                                     en == node && es == shp)).all
+                                       (fun (_, _, want) => got == want))
+                            if ok then t := { t with pass := t.pass + 1 }
+                            else
+                              t := { t with fail := t.fail + 1 }
+                              if verbose then IO.println s!"FAIL {name} (shapemap)"
+                        | _, _ =>
+                            t := { t with notRead := t.notRead + 1 }
+                            readGaps := bump readGaps "shape map not read"
+                  | _, _ =>
+                      t := { t with notRead := t.notRead + 1 }
+                      readGaps := bump readGaps "focus node not read"
       IO.println ""
       IO.println s!"shex validation: {t.pass} pass, {t.fail} fail (out of {t.pass + t.fail} decided)"
       IO.println s!"NOT READ: {t.notRead} entries (out of {entries.length})"

@@ -17,6 +17,33 @@ namespace L4Factoidal.ShEx
 
 open L4Factoidal.RDF
 
+/-! ## Semantic actions
+
+ShEx 2.1 §5.10: a semantic action is code in an extension language,
+and an implementation that does not know the language cannot evaluate
+it — an unknown extension's action neither passes nor fails, so it is
+ignored. The ONE extension the validation corpus relies on is the Test
+extension, whose whole language is `print(...)` and `fail(...)`:
+`fail` makes the containing expression not match, `print` does
+nothing an implementation can observe.
+
+Reading `semActs` at all is new. `FromJson.lean` was passing `[]` for
+every `semActs` slot, so `%<...Test/>{ fail(s) %}` was invisible and
+four `*fail_abort* ` entries of the suite reported conformance for
+schemas that abort. -/
+
+/-- The one extension whose language this implementation knows. -/
+def testExtension : String := "http://shex.io/extensions/Test/"
+
+private def dropLeadingSpace (s : String) : String :=
+  String.ofList (s.toList.dropWhile (fun c => c == ' ' || c == '\t' || c == '\n'))
+
+/-- Does this action ABORT? Only a Test-extension `fail(...)` does. -/
+def semActFails (a : SemAct) : Bool :=
+  a.name == testExtension && (dropLeadingSpace (a.code.getD "")).startsWith "fail"
+
+def anySemActFails (as : List SemAct) : Bool := as.any semActFails
+
 /-- §5.4.1 nodeKind. `nonLiteral` admits IRIs and blank nodes. -/
 def matchesNodeKind (k : NodeKind) (t : Term) : Bool :=
   match k, t with
@@ -61,8 +88,26 @@ def matchesObjectValue (ov : ObjectValue) (t : Term) : Bool :=
       (match dt with   | some d => l.val.datatype.val == d | none => true)
   | _, _ => false
 
-/-- Stem matching: wildcard matches anything, a plain stem is a
-    PREFIX match. -/
+/-- A LANGUAGE stem matches on SUBTAG boundaries, not on characters.
+
+    BCP 47 / RFC 4647 basic filtering: the range `fr` matches the tag
+    `fr` and every tag that extends it with a further subtag — `fr-be`,
+    `fr-CA` — and matches `frc` (Cajun French) not at all, because
+    `frc` is a DIFFERENT primary subtag rather than a refinement of
+    `fr`. A character prefix test admitted it, so `[@fr~]` accepted
+    `"septante"@frc` (`1val1languageStem_failLAtfrc`), and the
+    exclusion `- @fr-be~` removed `"septante"@fr-bel`, which it does
+    not cover either.
+
+    The empty range matches every language tag, which is how ShEx
+    writes `@~`. -/
+def langRangeMatches (range tag : String) : Bool :=
+  let r := range.toLower
+  let g := tag.toLower
+  r.isEmpty || g == r || g.startsWith (r ++ "-")
+
+/-- Stem matching: wildcard matches anything; an IRI or literal stem
+    is a character PREFIX, and a language stem is a subtag range. -/
 def matchesStem (kind : VsvKind) (s : Stem) (t : Term) : Bool :=
   let target := match kind, t with
     | .iri,      .iri i     => some i.val
@@ -72,7 +117,10 @@ def matchesStem (kind : VsvKind) (s : Stem) (t : Term) : Bool :=
   match target, s with
   | none,   _         => false
   | some _, .wildcard => true
-  | some v, .plain p  => v.startsWith p
+  | some v, .plain p  =>
+      match kind with
+      | .language => langRangeMatches p v
+      | _         => v.startsWith p
 
 /-- Does an exclusion remove this term? A nested STEM excludes a whole
     prefix, not one value — `IriStemRange` with an `IriStem` exclusion
@@ -208,12 +256,22 @@ def matchesPattern (nc : NodeConstraint) (t : Term) : Bool :=
 
 /-- §5.4.6 `totalDigits` / `fractionDigits`. A literal whose lexical
     form is not a decimal FAILS the facet rather than being coerced,
-    which is the rule the ordering facets already follow. -/
+    which is the rule the ordering facets already follow.
+
+    The facets are defined on `xsd:decimal` and the types derived from
+    it, and on nothing else, so the literal's DATATYPE decides whether
+    they can apply at all — counting digits in the lexical form was
+    not enough. `"1.23456"^^xsd:float` has no digit count (its value
+    space is the IEEE binary floats), and `"1.2345"^^xsd:integer` is
+    not in `xsd:integer`'s lexical space, so it has no value to count
+    the digits of. Both were being accepted by reading the characters
+    and ignoring the datatype. -/
 def matchesDigitFacets (nc : NodeConstraint) (t : Term) : Bool :=
   if nc.totalDigits.isNone && nc.fractionDigits.isNone then true
   else match t with
     | .literal l =>
         let lex := l.val.lexicalForm
+        if !(digitFacetsApply l.val.datatype.val lex) then false else
         (match nc.totalDigits with
          | none   => true
          | some d => match totalDigitsOf lex with

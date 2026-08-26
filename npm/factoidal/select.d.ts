@@ -73,6 +73,13 @@ export interface Selector {
   rdfsPlusClosure(data: unknown, options?: unknown, callOptions?: CallOptions): Promise<SelectResult<unknown>>;
   shaclValidate(data: unknown, shapes: unknown, options?: unknown, callOptions?: CallOptions): Promise<SelectResult<unknown>>;
   shexValidate(data: unknown, schema: string, focus: unknown, shape?: unknown, callOptions?: CallOptions): Promise<SelectResult<unknown>>;
+  /** Lean-only: `backend:'fstar'` throws (formal/fstar has no CL/IKL parser). */
+  clParse(clifText: string, callOptions?: CallOptions): Promise<SelectResult<{
+    ok: boolean;
+    sentences: number;
+    pureCL: boolean;
+    normalized: string;
+  }>>;
 }
 
 export function createSelector(options?: SelectorOptions): Selector;

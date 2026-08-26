@@ -103,8 +103,8 @@ them. It now has both.
 Present in F\*, no Lean counterpart: XSLT, MathML, the XML conformance
 corpus (1,447 of 2,585), the VC/DID stack beyond the Lean `VC/`
 modules, and the COTTAS columnar store above the byte layer. Several
-ported families are SLICES rather than complete — ShEx has no
-reference recursion, RIF no builtins, XPath only the number type,
+ported families are SLICES rather than complete — RIF has no builtins,
+XPath only the number type,
 storage only the byte primitives, CSVW no date formats. Each states
 its own scope in its module header.
 
@@ -157,7 +157,7 @@ command, and the command is named.
 | RML-Core | 60 pass, 0 fail (out of 60 compared) | `lake exe l4rml` |
 | Schematron | 8 pass, 0 fail (out of 8) | `lake exe l4schematron` |
 | MathML content | 56 pass, 0 fail (out of 56) | `lake exe l4mathml` |
-| ShEx validation | 1075 pass, 104 fail (out of 1179 decided) | `lake exe l4shex` |
+| ShEx validation | 1182 pass, 0 fail (out of 1182 decided), 0 not read — re-measured 2026-08-26, see Addendum 4 | `lake exe l4shex` |
 | XML conformance | 1840 pass, 22 fail (out of 1862 in profile) | `lake exe l4xmlconf` |
 | RIF Core | 24 pass, 2 fail (out of 26 decided) | `lake exe l4rif` |
 
@@ -275,7 +275,7 @@ runs both front doors over every fixture in
 | Suite | Score | Runner |
 | --- | --- | --- |
 | ShExC compact syntax | 442 match, 0 mismatch, 0 declined (out of 442) | `lake exe l4shexc` |
-| ShEx validation | 1075 pass, 104 fail (out of 1179 decided) | `lake exe l4shex` |
+| ShEx validation | 1075 pass, 104 fail (out of 1179 decided) — SUPERSEDED 2026-08-26, now 1182 pass, 0 fail (out of 1182 decided); see Addendum 4 | `lake exe l4shex` |
 
 The validation score is unchanged by this landing: the two readers
 now agree without either moving.
@@ -547,3 +547,88 @@ now parses to `unknown`. The F\* module guards against this and says
 reading it literally MANUFACTURES refutations of consistent premises.
 It moved no score, which is what a soundness guard that is not yet
 being violated looks like.
+
+
+# Addendum 4, 2026-08-26 — ShEx validation reaches parity with F\*
+
+Tracked in <https://github.com/danbri/factoidal/issues/619>.
+
+| Suite | Score | Runner |
+| --- | --- | --- |
+| ShEx validation | **1182 pass, 0 fail (out of 1182 decided)**, 0 not read | `formal/lean4/.lake/build/bin/l4shex` |
+| ShExC compact syntax | 442 match, 0 mismatch, 0 declined (out of 442) | `formal/lean4/.lake/build/bin/l4shexc` |
+
+Both re-measured 2026-08-26 from the repository root. The F\* engine
+scores 1182 pass, 0 fail (out of 1182) on the same corpus, so the two
+trees now agree on every entry.
+
+The starting figure was 1075 pass, 104 fail (out of 1179 decided) with
+3 not read. The 104 were classified by cause BEFORE any fix, and the
+classification is in the issue. Eleven causes, closed in this order:
+
+| Cause | Entries | What was wrong |
+| --- | ---: | --- |
+| Partition versus filter | 21 | `EachOf` matched every sub-expression against the WHOLE neighbourhood and concatenated; `OneOf` took the first branch with no backtracking; group cardinality was parsed and never read. |
+| EXTENDS / RESTRICTS | 26 | `extendsRefs` was read and never used. Now flattened into one shared partition across the ancestor chain, diamond-deduped, with `ABSTRACT` and descendant-witness semantics. |
+| Reference recursion | 16 | A fuel cap of 6 answered `false` on exhaustion. Replaced by a (label, node) bound. |
+| `IMPORT` | 14 | `Schema.imports` read and never used. |
+| XSD lexical spaces and digit facets | 8 | `-0` outside `nonNegativeInteger`; fractional seconds outside `dateTime`; `+INF` inside `float`; `totalDigits` counting characters on a datatype it is not defined on. |
+| START shape | 6 | An entry with no `shape` was looked up as the empty label. |
+| Semantic actions | 4 | `semActs` and `startActs` were dropped by the reader, so a Test-extension `fail()` was invisible. |
+| Language stems | 3 | A character prefix test where RFC 4647 wants subtag boundaries. |
+| Triple-expression inclusion | 3 | `&<label>` answered "unsatisfied". |
+| `EXTERNAL` | 2 | Hard-wired to `false`; the manifest supplies the extern schema per entry. |
+| Relative IRIs in a schema | 2 | Not resolved against the schema's retrieval IRI. |
+
+Three further entries were previously reported as "not read": they are
+ShapeMap entries, carrying a query shape map and an expected result
+shape map instead of a focus node, and the runner now decides them.
+
+## Interpretation choices recorded, and where
+
+ShEx 2.1 states satisfaction existentially and leaves the search
+undefined; these readings are stated in the module headers rather than
+left implicit in the code, which is what
+<https://github.com/danbri/factoidal/issues/616> exists to prevent.
+
+* `ShEx/Shapes.lean` header: the search is exhaustive rather than
+  greedy; a group's own cardinality repeats the whole group; a
+  repetition consuming nothing does not extend the search; `CLOSED`
+  and `EXTRA` are clauses about `arcsOut`, so a leftover INVERSE arc
+  is tolerated unconditionally; a constraint's direction is part of
+  the mentioned-predicate key; and `EXTRA` never launders a
+  cardinality over-run.
+* `ShEx/Satisfies.lean` header: recursion is bounded on the (shape
+  label, focus node) pair and re-entry ASSUMES the shape holds — the
+  GREATEST fixpoint reading, sound only for a schema whose recursion
+  does not pass through `ShapeNot`, a condition this module does not
+  check. Also the two-tier EXTENDS split, the diamond dedup, and the
+  descendant-witness rule for a shape label.
+* `ShEx/XsdLexical.lean`: `xsd:float` admits `+INF` under XSD 1.1 and
+  not under XSD 1.0. The ShEx corpus states the 1.0 reading and the
+  CSVW corpus does not exercise it, so the difference is confined to
+  the ShEx branch instead of one shared lexical space being changed
+  under two specifications that disagree.
+
+## `partial def` and what it cost
+
+<https://github.com/danbri/factoidal/issues/617> counts 40 `partial
+def` declarations in `ShEx/`. This work took the count to 50: it
+removed two (`matchTripleExpr`, `matchTripleExprWith`) and added
+twelve — `matchStates` and `tripleConstraintsWith` in `Shapes.lean`,
+and `findTeInShapeExpr`, `findTeInTripleExpr`, `flattenSE`,
+`flattenSEList`, `resolveExtends`, `directExtends`, `reachesLabel`,
+`chainResidueOk`, `satisfiesLabel` and `satisfiesExtends` in
+`Satisfies.lean`.
+
+It cost no PIN. `#guard` in this toolchain evaluates through the
+compiler rather than the kernel, so the `ShapesTests.lean` guards do
+see through `satisfiesShape` even though it calls the `partial`
+`matchStates`. That is measured, not assumed: the guard on line 77
+FAILED the build while the EXTRA rule was wrong and passed once it was
+corrected, and three new guards pinning the EXTRA over-run rule were
+added and pass. Issue 617's claim that "no `#guard` or theorem can see
+through a `partial def`" holds for the theorem half and not for
+`#guard` here.
+
+It would cost a THEOREM, and no theorem is claimed about any of it.
