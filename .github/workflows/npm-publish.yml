@@ -52,7 +52,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # submodules: recursive is REQUIRED, not tidiness. `npm publish`
+      # runs prepublishOnly -> npm test, and the npm suite reads vendored
+      # W3C fixtures from submodules under third_party/testing/ (e.g.
+      # csvw/tests/tree-ops.csv). Without them the suite dies on ENOENT
+      # and the publish aborts -- which is exactly how run 2 failed on
+      # 2026-08-27, 22 minutes AFTER the extraction drift check passed.
+      # check-extraction.yml has always had this; this workflow was
+      # copied from it without the `with:` block.
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       # --- Extraction drift check (issue #465 rung 2) --------------
       # Cache blocks mirror check-extraction.yml (#238).
