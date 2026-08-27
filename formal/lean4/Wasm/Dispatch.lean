@@ -38,6 +38,7 @@ import Wasm.Ops.Query
 import Wasm.Ops.Reason
 import Wasm.Ops.Canon
 import Wasm.Ops.CL
+import Wasm.Ops.Proof
 import Wasm.Ops.Handles
 
 namespace L4Wasm
@@ -71,6 +72,8 @@ def opNames : List String :=
   , "clAlphaNorm"
   , "clNormalize"
   , "clFiniteSat"
+  , "proofCheck"
+  , "proofInspect"
   , "ops" ]
 
 private def arity1 (op : String) (f : String → String) :
@@ -130,6 +133,8 @@ def call (op : String) (argsJson : String) : String :=
     | "clAlphaNorm"          => arity1 op clAlphaNorm args
     | "clNormalize"          => arity1 op clNormalize args
     | "clFiniteSat"          => arity2 op clFiniteSat args
+    | "proofCheck"           => arity1 op proofCheck args
+    | "proofInspect"         => arity1 op proofInspect args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"
 

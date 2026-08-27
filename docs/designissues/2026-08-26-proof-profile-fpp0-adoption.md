@@ -160,8 +160,25 @@ unconditionally, and 57 `#guard`s of which 20 are rejections with no
 defect accepted. Section 8a is implemented as REPORT, not rejection: a
 degenerate bundle is valid and carries `conclusionIsAssumption = true`
 beside `foundational steps: 0` counted over the SUPPORT of its
-conclusion. `Wasm/Ops/Proof.lean` and the `proofCheck` dispatch remain
-open.
+conclusion.
+
+The ABI half landed the same day: `Wasm/Ops/Proof.lean` adds
+`proofCheck(bundleJson)` and `proofInspect(bundleJson)` to
+`Wasm/Dispatch.lean`'s op table. The op decodes, calls `checkBundle`,
+and encodes; it checks nothing itself. The decoder rejects rather than
+defaults — a missing or unrecognised `level`, `kind`, rule row or
+`profile` is an error naming the field, and `decodeLevelName_inj`,
+`decodeKindName_inj` and `decodeRowName_inj` prove that nothing but a
+member's own name decodes to it. A decode failure is `{"ok":false}`
+and is pinned apart from the kernel's `{"ok":true,"valid":false}`. 54
+`#guard`s: the three fixture bundles both against literal values and
+against the kernel's own `checkBundle` answer, plus ten rejections.
+The whole-bundle round trip is pinned, not proved — the general
+N-Triples round trip it would rest on
+(`Syntax.SyntaxTheorems.graph_roundtrip`) is stated and unproved in
+this tree. ⚠️ The committed wasm artifact does not serve the two ops
+until `Wasm/build-wasm.sh` runs again; the npm wrapper is a separate
+landing.
 
 - **M0** freeze the model: FPP0 JSON/IKL vocabulary; F/V/R/A as part of
   checker output; canonical proposition identity via the existing CLIF

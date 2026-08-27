@@ -410,6 +410,42 @@ args "$TMP/h-open-arity.json" "just-one-arg"
 check "datasetOpen wrong arity -> error" datasetOpen "$TMP/h-open-arity.json" \
   'r["ok"] is False and "expects 3 arguments" in r["error"]'
 
+# --- FPP0 proof checker (issue 623 / M1) ------------------------------
+# The degenerate bundle of the adoption doc's section 8a: the conclusion
+# is itself a declared assumption. It is VALID and it proves nothing,
+# and the three fields that say so travel with the verdict. No digests
+# are needed for this shape, so the fixture is writable by hand.
+PROOF_DEGEN='{"profile":"fpp0/1","artifacts":[],"assumptions":[{"id":"a1","subject":{"kind":"clif","proposition":"(P jim)"},"level":"attestation"}],"steps":[],"conclusion":{"kind":"clif","proposition":"(P jim)"}}'
+
+args "$TMP/proof-degen.json" "$PROOF_DEGEN"
+check "proofCheck reports the degenerate bundle, never as a proof" proofCheck "$TMP/proof-degen.json" \
+  'r["ok"] is True and r["valid"] is True
+   and r["conclusionIsAssumption"] is True
+   and r["foundationalOnly"] is False
+   and r["counts"]["foundational"] == 0
+   and len(r["assumptions"]) == 1'
+
+# An UNKNOWN level string is refused by name — never read as the weakest
+# member, never dropped (theorem L4Wasm.Ops.decodeLevelName_inj).
+args "$TMP/proof-badlevel.json" "${PROOF_DEGEN/\"level\":\"attestation\"/\"level\":\"A\"}"
+check "proofCheck refuses an unknown evidence level" proofCheck "$TMP/proof-badlevel.json" \
+  'r["ok"] is False and "unknown evidence level" in r["error"]'
+
+# A decode failure is NOT an invalid bundle: the level below is a level
+# the decoder knows, and the KERNEL is what refuses the bundle.
+args "$TMP/proof-fnd-asm.json" "${PROOF_DEGEN/\"level\":\"attestation\"/\"level\":\"foundational\"}"
+check "proofCheck: a foundational assumption is ok:true, valid:false" proofCheck "$TMP/proof-fnd-asm.json" \
+  'r["ok"] is True and r["valid"] is False'
+
+args "$TMP/proof-inspect.json" "$PROOF_DEGEN"
+check "proofInspect reports shape and NO verdict" proofInspect "$TMP/proof-inspect.json" \
+  'r["ok"] is True and "valid" not in r and r["steps"] == 0
+   and r["conclusionDeclaredAsAssumption"] is True'
+
+args "$TMP/proof-arity.json"
+check "proofCheck wrong arity -> error" proofCheck "$TMP/proof-arity.json" \
+  'r["ok"] is False and "expects 1 argument" in r["error"]'
+
 # --- Dispatch reflection + unknown op ---------------------------------
 args "$TMP/empty.json"
 check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
@@ -419,7 +455,8 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "owlClosure","owlIsConsistent","owlEntails",
             "rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clSerialize",
-            "clAlphaNorm","clNormalize","clFiniteSat","ops",
+            "clAlphaNorm","clNormalize","clFiniteSat",
+            "proofCheck","proofInspect","ops",
             "datasetOpen","datasetQuery","datasetUpdate",
             "datasetSerialize","datasetClose"]) <= set(r["ops"])'
 
