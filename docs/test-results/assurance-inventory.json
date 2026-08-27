@@ -2004,7 +2004,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/Math_Sigmoid.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 21,
+   "shipping_function_count": 0,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -2013,13 +2013,13 @@
    "admissions_active": 0,
    "admission_sites": [],
    "lax_or_admit_pragmas": [],
-   "merely_tot": true,
+   "merely_tot": false,
    "local_refinement_lemma_count": 0,
    "local_refinement_lemma_names": [],
    "algorithm_correctness_theorems": [],
    "internal_refinement_theorems": [],
    "w3c_refinement_theorems": [],
-   "assurance_tier": "merely-tot",
+   "assurance_tier": "unclassified",
    "suites": [
     {
      "suite": "toan-matrix",
@@ -64167,7 +64167,7 @@
   "modules_with_w3c_refinement_theorem": 11,
   "modules_with_algorithm_correctness_theorem": 45,
   "modules_with_internal_refinement_theorem": 23,
-  "modules_merely_tot": 122,
+  "modules_merely_tot": 121,
   "w3c_refinement_theorem_count": 322,
   "internal_refinement_theorem_count": 163,
   "algorithm_correctness_theorem_count": 364,
@@ -64196,11 +64196,11 @@
    "algorithm-correctness": 29,
    "internal-refinement": 13,
    "local-lemmas-only": 13,
-   "merely-tot": 122,
+   "merely-tot": 121,
    "specification-and-proof": 17,
-   "unclassified": 16,
+   "unclassified": 17,
    "w3c-refinement": 11
   }
  },
- "commit": "a42aefbab"
+ "commit": "7205cca96"
 }
