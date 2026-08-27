@@ -384,7 +384,7 @@
   [384/385] #ttn01 ok
   [385/385] #ttn02 ok
 === JSON-LD 1.1 Expansion Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/expand-manifest.jsonld
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/expand-manifest.jsonld
 
 Totals: 385 test entries
 

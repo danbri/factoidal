@@ -119,7 +119,7 @@
   [119/120] presentation-vc-missing-required-type-fail.json ok
   [120/120] presentation-vc-ok.json ok
 === VC Data Model 2.0 Structural Fixture Runner (Stage 1) ===
-Fixture dir: /home/user/factoidal/third_party/testing/vc/tests/input
+Fixture dir: /home/runner/work/factoidal/factoidal/third_party/testing/vc/tests/input
 
 Totals: 120 fixture files
 

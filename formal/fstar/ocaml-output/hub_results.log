@@ -2,2127 +2,2127 @@ TAP version 13
 # Subtest: tests/hub/_helpers.mjs
 ok 1 - tests/hub/_helpers.mjs
   ---
-  duration_ms: 79.839396
+  duration_ms: 44.134571
   type: 'test'
   ...
 # Subtest: fn-surface parity: every fn.* name called by any published hub post has a hub.njk wrapper (and a browser.js export where it delegates by the same name)
 ok 2 - fn-surface parity: every fn.* name called by any published hub post has a hub.njk wrapper (and a browser.js export where it delegates by the same name)
   ---
-  duration_ms: 25.676315
+  duration_ms: 19.522084
   type: 'test'
   ...
-# (node:24083) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/npm/factoidal/l4-assets/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3122) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/npm/factoidal/l4-assets/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/npm/factoidal/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/npm/factoidal/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: factoidal/l4: assets resolvable in a repo checkout
 ok 3 - factoidal/l4: assets resolvable in a repo checkout
   ---
-  duration_ms: 5.541313
+  duration_ms: 0.730142
   type: 'test'
   ...
 # Subtest: factoidal/l4: version identifies the Lean engine
 ok 4 - factoidal/l4: version identifies the Lean engine
   ---
-  duration_ms: 161.083668
+  duration_ms: 143.243501
   type: 'test'
   ...
 # Subtest: factoidal/l4: two-pattern join agrees with the F* engine
 ok 5 - factoidal/l4: two-pattern join agrees with the F* engine
   ---
-  duration_ms: 168.056805
+  duration_ms: 102.826451
   type: 'test'
   ...
 # Subtest: factoidal/l4: missing-assets error names the remedies
 ok 6 - factoidal/l4: missing-assets error names the remedies
   ---
-  duration_ms: 0.5724
+  duration_ms: 0.43725
   type: 'test'
   ...
 # Subtest: post01: foaf:knows Turtle parses to 5 triples
 ok 7 - post01: foaf:knows Turtle parses to 5 triples
   ---
-  duration_ms: 155.658895
+  duration_ms: 90.189809
   type: 'test'
   ...
 # Subtest: post01: iterating quads shows subject/predicate/object term kinds
 ok 8 - post01: iterating quads shows subject/predicate/object term kinds
   ---
-  duration_ms: 6.598741
+  duration_ms: 3.006268
   type: 'test'
   ...
 # Subtest: post01: blank-node subject is a genuine BlankNode term
 ok 9 - post01: blank-node subject is a genuine BlankNode term
   ---
-  duration_ms: 1.886364
+  duration_ms: 2.705704
   type: 'test'
   ...
 # Subtest: post01: post has 4 live cells (turtle hoisted into its own named cell)
 ok 10 - post01: post has 4 live cells (turtle hoisted into its own named cell)
   ---
-  duration_ms: 0.235403
+  duration_ms: 0.121373
   type: 'test'
   ...
 # Subtest: post01: dependency inference wires cells 2 and 3 to the named turtle cell
 ok 11 - post01: dependency inference wires cells 2 and 3 to the named turtle cell
   ---
-  duration_ms: 5.143842
+  duration_ms: 1.931345
   type: 'test'
   ...
 # Subtest: post01 cell 1 (named turtle cell): the Turtle text itself
 ok 12 - post01 cell 1 (named turtle cell): the Turtle text itself
   ---
-  duration_ms: 14.538051
+  duration_ms: 5.815788
   type: 'test'
   ...
 # Subtest: post01 cell 2 (parse + size): returns 5
 ok 13 - post01 cell 2 (parse + size): returns 5
   ---
-  duration_ms: 5.166604
+  duration_ms: 3.254232
   type: 'test'
   ...
 # Subtest: post01 cell 3 (pretty(dataset) -> triples table): 5 rows, 2 quoted literals, 3 IRIs
 ok 14 - post01 cell 3 (pretty(dataset) -> triples table): 5 rows, 2 quoted literals, 3 IRIs
   ---
-  duration_ms: 7.473093
+  duration_ms: 3.65065
   type: 'test'
   ...
 # Subtest: post01 cell 4 (blank node): size 2, BlankNode subject, shared across both triples
 ok 15 - post01 cell 4 (blank node): size 2, BlankNode subject, shared across both triples
   ---
-  duration_ms: 1.629621
+  duration_ms: 0.849382
   type: 'test'
   ...
 # Subtest: post02: dataset has 5 triples
 ok 16 - post02: dataset has 5 triples
   ---
-  duration_ms: 149.123331
+  duration_ms: 67.897655
   type: 'test'
   ...
 # Subtest: post02: SELECT with OPTIONAL returns 3 rows (one per Q42 edge)
 ok 17 - post02: SELECT with OPTIONAL returns 3 rows (one per Q42 edge)
   ---
-  duration_ms: 25.556084
+  duration_ms: 8.988116
   type: 'test'
   ...
 # Subtest: post02: ASK confirms Douglas Adams occupation is writer
 ok 18 - post02: ASK confirms Douglas Adams occupation is writer
   ---
-  duration_ms: 19.440068
+  duration_ms: 3.956432
   type: 'test'
   ...
 # Subtest: post02: property-path alternation (wdt:P31|wdt:P106) returns both targets
 ok 19 - post02: property-path alternation (wdt:P31|wdt:P106) returns both targets
   ---
-  duration_ms: 8.909867
+  duration_ms: 4.908698
   type: 'test'
   ...
 # Subtest: post02: CONSTRUCT derives a one-triple occupation-label graph
 ok 20 - post02: CONSTRUCT derives a one-triple occupation-label graph
   ---
-  duration_ms: 6.746819
+  duration_ms: 3.190194
   type: 'test'
   ...
 # Subtest: post02: post has 6 live cells (ttl + dataset hoisted into named cells)
 ok 21 - post02: post has 6 live cells (ttl + dataset hoisted into named cells)
   ---
-  duration_ms: 0.194785
+  duration_ms: 0.096075
   type: 'test'
   ...
 # Subtest: post02: dependency inference wires ttl -> dataset -> every query cell
 ok 22 - post02: dependency inference wires ttl -> dataset -> every query cell
   ---
-  duration_ms: 3.69282
+  duration_ms: 2.261233
   type: 'test'
   ...
 # Subtest: post02 cell 3 (pretty(SELECT bindings) -> table): 3 rows, one "label" column
 ok 23 - post02 cell 3 (pretty(SELECT bindings) -> table): 3 rows, one "label" column
   ---
-  duration_ms: 19.82223
+  duration_ms: 8.792289
   type: 'test'
   ...
 # Subtest: post02 cell 4 (ASK): true
 ok 24 - post02 cell 4 (ASK): true
   ---
-  duration_ms: 16.533086
+  duration_ms: 5.812012
   type: 'test'
   ...
 # Subtest: post02 cell 5 (property-path alternation): both targets
 ok 25 - post02 cell 5 (property-path alternation): both targets
   ---
-  duration_ms: 17.18115
+  duration_ms: 6.31423
   type: 'test'
   ...
 # Subtest: post02 cell 6 (CONSTRUCT): one-triple occupation-label graph
 ok 26 - post02 cell 6 (CONSTRUCT): one-triple occupation-label graph
   ---
-  duration_ms: 12.713102
+  duration_ms: 5.449475
   type: 'test'
   ...
 # Subtest: post03: no entailment sees only the asserted type
 ok 27 - post03: no entailment sees only the asserted type
   ---
-  duration_ms: 170.237726
+  duration_ms: 95.598933
   type: 'test'
   ...
 # Subtest: post03: RDFS entailment adds schema:Thing via subClassOf
 ok 28 - post03: RDFS entailment adds schema:Thing via subClassOf
   ---
-  duration_ms: 193.164528
+  duration_ms: 99.107208
   type: 'test'
   ...
 # Subtest: post03: RDFS entailment does not know owl:equivalentClass
 ok 29 - post03: RDFS entailment does not know owl:equivalentClass
   ---
-  duration_ms: 149.086642
+  duration_ms: 81.275436
   type: 'test'
   ...
 # Subtest: post03: OWL-RL entailment derives foaf:Person and owl:Thing via equivalentClass
 ok 30 - post03: OWL-RL entailment derives foaf:Person and owl:Thing via equivalentClass
   ---
-  duration_ms: 227.053189
+  duration_ms: 103.411264
   type: 'test'
   ...
 # Subtest: post03: post has 4 live cells (the shared query hoisted into its own named cell)
 ok 31 - post03: post has 4 live cells (the shared query hoisted into its own named cell)
   ---
-  duration_ms: 0.409043
+  duration_ms: 0.220533
   type: 'test'
   ...
 # Subtest: post03: dependency inference wires all three query cells to the named q cell
 ok 32 - post03: dependency inference wires all three query cells to the named q cell
   ---
-  duration_ms: 3.898507
+  duration_ms: 2.539112
   type: 'test'
   ...
 # Subtest: post03 cell 2 (RDFS toggle): schema:Thing appears only with entailment
 ok 33 - post03 cell 2 (RDFS toggle): schema:Thing appears only with entailment
   ---
-  duration_ms: 66.545761
+  duration_ms: 24.333295
   type: 'test'
   ...
 # Subtest: post03 cell 3 (OWL-RL toggle): equivalentClass only fires under OWL-RL
 ok 34 - post03 cell 3 (OWL-RL toggle): equivalentClass only fires under OWL-RL
   ---
-  duration_ms: 189.177525
+  duration_ms: 108.464831
   type: 'test'
   ...
 # Subtest: post03 cell 4 (mutual subClassOf): equivalence in pure RDFS
 ok 35 - post03 cell 4 (mutual subClassOf): equivalence in pure RDFS
   ---
-  duration_ms: 43.022987
+  duration_ms: 14.927078
   type: 'test'
   ...
 # Subtest: post04: post has 7 live cells (fixtures hoisted into named cells)
 ok 36 - post04: post has 7 live cells (fixtures hoisted into named cells)
   ---
-  duration_ms: 1.318463
+  duration_ms: 3.767647
   type: 'test'
   ...
 # Subtest: post04: dependency inference wires SKOS_VALID_TTL -> dataset -> query cells, and SKOS_BROKEN_TTL -> the checks cells
 ok 37 - post04: dependency inference wires SKOS_VALID_TTL -> dataset -> query cells, and SKOS_BROKEN_TTL -> the checks cells
   ---
-  duration_ms: 11.453886
+  duration_ms: 6.222421
   type: 'test'
   ...
 # Subtest: post04 cell 3 (parse the concept scheme): 28 triples, four English concept labels
 ok 38 - post04 cell 3 (parse the concept scheme): 28 triples, four English concept labels
   ---
-  duration_ms: 193.452732
+  duration_ms: 119.203949
   type: 'test'
   ...
 # Subtest: post04 cell 4 (skos:broader+ property path): Dog's ancestors are Mammal then Animal
 ok 39 - post04 cell 4 (skos:broader+ property path): Dog's ancestors are Mammal then Animal
   ---
-  duration_ms: 31.264705
+  duration_ms: 25.662041
   type: 'test'
   ...
 # Subtest: post04 cell 6 (six SPARQL integrity checks): valid scheme clean, broken scheme catches exactly its planted defect
 ok 40 - post04 cell 6 (six SPARQL integrity checks): valid scheme clean, broken scheme catches exactly its planted defect
   ---
-  duration_ms: 140.393876
+  duration_ms: 61.315761
   type: 'test'
   ...
 # Subtest: post04 cell 7 (SHACL integrity check): valid conforms, broken reports 5 SHACL-checkable violations
 ok 41 - post04 cell 7 (SHACL integrity check): valid conforms, broken reports 5 SHACL-checkable violations
   ---
-  duration_ms: 88.148946
+  duration_ms: 45.351096
   type: 'test'
   ...
 # Subtest: post04: skos:broader+ from Dog reaches Mammal and Animal, direct API
 ok 42 - post04: skos:broader+ from Dog reaches Mammal and Animal, direct API
   ---
-  duration_ms: 33.240194
+  duration_ms: 9.415861
   type: 'test'
   ...
 # Subtest: post04: S9 (ConceptScheme/Concept disjoint) is clean on the valid scheme
 ok 43 - post04: S9 (ConceptScheme/Concept disjoint) is clean on the valid scheme
   ---
-  duration_ms: 20.546931
+  duration_ms: 5.833565
   type: 'test'
   ...
 # Subtest: post05: post has 4 live cells (PERSON_SHAPE_TTL hoisted into its own named cell)
 ok 44 - post05: post has 4 live cells (PERSON_SHAPE_TTL hoisted into its own named cell)
   ---
-  duration_ms: 1.065173
+  duration_ms: 0.617161
   type: 'test'
   ...
 # Subtest: post05: dependency inference wires all three later cells to the named shape cell
 ok 45 - post05: dependency inference wires all three later cells to the named shape cell
   ---
-  duration_ms: 4.418682
+  duration_ms: 2.582337
   type: 'test'
   ...
 # Subtest: post05 cell 1 (conforming data): Alice and Bob satisfy the PersonShape
 ok 46 - post05 cell 1 (conforming data): Alice and Bob satisfy the PersonShape
   ---
-  duration_ms: 195.591895
+  duration_ms: 79.209869
   type: 'test'
   ...
 # Subtest: post05 cell 2 (broken data): missing foaf:name on Bob is one minCount violation
 ok 47 - post05 cell 2 (broken data): missing foaf:name on Bob is one minCount violation
   ---
-  duration_ms: 23.612358
+  duration_ms: 6.495022
   type: 'test'
   ...
 # Subtest: post05 cell 3 (three distinct constraints): minCount/datatype/class each fire independently
 ok 48 - post05 cell 3 (three distinct constraints): minCount/datatype/class each fire independently
   ---
-  duration_ms: 37.717959
+  duration_ms: 21.83181
   type: 'test'
   ...
 # Subtest: post05: shaclValidate accepts raw Turtle text for both data and shapes
 ok 49 - post05: shaclValidate accepts raw Turtle text for both data and shapes
   ---
-  duration_ms: 12.109227
+  duration_ms: 5.623637
   type: 'test'
   ...
 # Subtest: post05: capabilities() reports SHACL support (grounds the "check first" cell pattern)
 ok 50 - post05: capabilities() reports SHACL support (grounds the "check first" cell pattern)
   ---
-  duration_ms: 0.642731
+  duration_ms: 0.301154
   type: 'test'
   ...
 # Subtest: post06: post has 10 live cells (WD_TTL/dataset/HUMAN_SHAPE_SCHEMA/tryShexValidate/HUMAN_SHAPE_SHEXC hoisted into named cells)
 ok 51 - post06: post has 10 live cells (WD_TTL/dataset/HUMAN_SHAPE_SCHEMA/tryShexValidate/HUMAN_SHAPE_SHEXC hoisted into named cells)
   ---
-  duration_ms: 1.850925
+  duration_ms: 0.827048
   type: 'test'
   ...
 # Subtest: post06: dependency inference wires the shared cells to every consumer
 ok 52 - post06: dependency inference wires the shared cells to every consumer
   ---
-  duration_ms: 11.040381
+  duration_ms: 6.666331
   type: 'test'
   ...
 # Subtest: post06 cell 3 (parse the Wikidata-shaped dataset): 3 triples
 ok 53 - post06 cell 3 (parse the Wikidata-shaped dataset): 3 triples
   ---
-  duration_ms: 218.145564
+  duration_ms: 102.155949
   type: 'test'
   ...
 # Subtest: post06 cell 6 (conforming node, ShExJ schema): Q42 matches HumanShape
 ok 54 - post06 cell 6 (conforming node, ShExJ schema): Q42 matches HumanShape
   ---
-  duration_ms: 29.836007
+  duration_ms: 9.968685
   type: 'test'
   ...
 # Subtest: post06 cell 7 (non-conforming node, ShExJ schema): Q5 does not match HumanShape
 ok 55 - post06 cell 7 (non-conforming node, ShExJ schema): Q5 does not match HumanShape
   ---
-  duration_ms: 7.310654
+  duration_ms: 4.453592
   type: 'test'
   ...
 # Subtest: post06 cell 9 (conforming node, ShExC schema text): Q42 matches HumanShape
 ok 56 - post06 cell 9 (conforming node, ShExC schema text): Q42 matches HumanShape
   ---
-  duration_ms: 17.86917
+  duration_ms: 15.105958
   type: 'test'
   ...
 # Subtest: post06 cell 10 (non-conforming node, ShExC schema text): Q5 does not match HumanShape
 ok 57 - post06 cell 10 (non-conforming node, ShExC schema text): Q5 does not match HumanShape
   ---
-  duration_ms: 6.421027
+  duration_ms: 9.390363
   type: 'test'
   ...
 # Subtest: post06: capabilities() reports ShEx support (grounds the "check first" cell pattern)
 ok 58 - post06: capabilities() reports ShEx support (grounds the "check first" cell pattern)
   ---
-  duration_ms: 0.65639
+  duration_ms: 0.373423
   type: 'test'
   ...
 # Subtest: post06: shexValidate accepts RDF/JS terms for focus/shape too
 ok 59 - post06: shexValidate accepts RDF/JS terms for focus/shape too
   ---
-  duration_ms: 2.611341
+  duration_ms: 1.542188
   type: 'test'
   ...
 # Subtest: post06: shexValidate dispatches ShExC text (no leading "{") straight to Parser.ShExC.fst
 ok 60 - post06: shexValidate dispatches ShExC text (no leading "{") straight to Parser.ShExC.fst
   ---
-  duration_ms: 3.146908
+  duration_ms: 3.149203
   type: 'test'
   ...
 # Subtest: post07: post has 5 live cells (ALICE_JSONLD hoisted into its own named cell)
 ok 61 - post07: post has 5 live cells (ALICE_JSONLD hoisted into its own named cell)
   ---
-  duration_ms: 1.874221
+  duration_ms: 0.709831
   type: 'test'
   ...
 # Subtest: post07: dependency inference wires ALICE_JSONLD to the tryJsonldToRdf and round-trip cells
 ok 62 - post07: dependency inference wires ALICE_JSONLD to the tryJsonldToRdf and round-trip cells
   ---
-  duration_ms: 5.364015
+  duration_ms: 2.501426
   type: 'test'
   ...
 # Subtest: post07 cell 1 (plain JSON, no @context): zero triples
 ok 63 - post07 cell 1 (plain JSON, no @context): zero triples
   ---
-  duration_ms: 5.814806
+  duration_ms: 2.148162
   type: 'test'
   ...
 # Subtest: post07 cell 3 (@context mapping): three triples, available
 ok 64 - post07 cell 3 (@context mapping): three triples, available
   ---
-  duration_ms: 21.705031
+  duration_ms: 12.70146
   type: 'test'
   ...
 # Subtest: post07 cell 4 (round trip): JSON-LD -> N-Quads -> query returns Alice/Engineer
 ok 65 - post07 cell 4 (round trip): JSON-LD -> N-Quads -> query returns Alice/Engineer
   ---
-  duration_ms: 33.54196
+  duration_ms: 22.480499
   type: 'test'
   ...
 # Subtest: post07 cell 5 (fromRdf): N-Quads -> expanded JSON-LD node object
 ok 66 - post07 cell 5 (fromRdf): N-Quads -> expanded JSON-LD node object
   ---
-  duration_ms: 7.449903
+  duration_ms: 2.026708
   type: 'test'
   ...
 # Subtest: post07: capabilities() reports JSON-LD support (grounds the "check first" cell pattern)
 ok 67 - post07: capabilities() reports JSON-LD support (grounds the "check first" cell pattern)
   ---
-  duration_ms: 0.746988
+  duration_ms: 0.314855
   type: 'test'
   ...
 # Subtest: post07: jsonldToRdf resolves relative @id against an explicit base option
 ok 68 - post07: jsonldToRdf resolves relative @id against an explicit base option
   ---
-  duration_ms: 3.90358
+  duration_ms: 5.769498
   type: 'test'
   ...
 # Subtest: post08: post has 4 live cells (DOC_A/DOC_B hoisted into named cells)
 ok 69 - post08: post has 4 live cells (DOC_A/DOC_B hoisted into named cells)
   ---
-  duration_ms: 2.273865
+  duration_ms: 1.705314
   type: 'test'
   ...
 # Subtest: post08: dependency inference wires DOC_A/DOC_B to both downstream cells
 ok 70 - post08: dependency inference wires DOC_A/DOC_B to both downstream cells
   ---
-  duration_ms: 3.925819
+  duration_ms: 2.240642
   type: 'test'
   ...
 # Subtest: post08 cell 3 (canonicalize twice, different bnode labels): identical bytes
 ok 71 - post08 cell 3 (canonicalize twice, different bnode labels): identical bytes
   ---
-  duration_ms: 159.69446
+  duration_ms: 93.457401
   type: 'test'
   ...
 # Subtest: post08 cell 4 (content-addressed hash): same facts hash equal, changed fact hashes differ
 ok 72 - post08 cell 4 (content-addressed hash): same facts hash equal, changed fact hashes differ
   ---
-  duration_ms: 30.369567
+  duration_ms: 24.383791
   type: 'test'
   ...
 # Subtest: post08: capabilities() reports canonicalize support (grounds the "check first" cell pattern)
 ok 73 - post08: capabilities() reports canonicalize support (grounds the "check first" cell pattern)
   ---
-  duration_ms: 0.664589
+  duration_ms: 0.350369
   type: 'test'
   ...
 # Subtest: post08: canonicalize is a fixpoint on its own output
 ok 74 - post08: canonicalize is a fixpoint on its own output
   ---
-  duration_ms: 1.221297
+  duration_ms: 0.694448
   type: 'test'
   ...
 # Subtest: post09: post has at least 2 live cells
 ok 75 - post09: post has at least 2 live cells
   ---
-  duration_ms: 1.050609
+  duration_ms: 0.668349
   type: 'test'
   ...
 # Subtest: post09 cell 1 (RMLTC0002a-JSON, rml-core): 3 triples for Venus
 ok 76 - post09 cell 1 (RMLTC0002a-JSON, rml-core): 3 triples for Venus
   ---
-  duration_ms: 155.306341
+  duration_ms: 79.291201
   type: 'test'
   ...
 # Subtest: post09 cell 2 (RMLSTC0007b, rml-io): 5 Friends rows, queried
 ok 77 - post09 cell 2 (RMLSTC0007b, rml-io): 5 Friends rows, queried
   ---
-  duration_ms: 44.32244
+  duration_ms: 27.737183
   type: 'test'
   ...
 # Subtest: post09: capabilities() reports RML support (grounds the "check first" cell pattern)
 ok 78 - post09: capabilities() reports RML support (grounds the "check first" cell pattern)
   ---
-  duration_ms: 0.475063
+  duration_ms: 0.294375
   type: 'test'
   ...
 # Subtest: post09: the post's inlined JSON mapping/source match the real rml-core fixture files on disk
 ok 79 - post09: the post's inlined JSON mapping/source match the real rml-core fixture files on disk
   ---
-  duration_ms: 19.809258
+  duration_ms: 8.499959
   type: 'test'
   ...
 # Subtest: post09: the post's inlined CSV mapping/source match the real rml-io fixture files on disk
 ok 80 - post09: the post's inlined CSV mapping/source match the real rml-io fixture files on disk
   ---
-  duration_ms: 19.927239
+  duration_ms: 8.670476
   type: 'test'
   ...
 # Subtest: post10: post has at least 2 live cells
 ok 81 - post10: post has at least 2 live cells
   ---
-  duration_ms: 1.163847
+  duration_ms: 0.57645
   type: 'test'
   ...
 # Subtest: post10 cell 1 (gold + silver rules, two customers): each derives its own discount
 ok 82 - post10 cell 1 (gold + silver rules, two customers): each derives its own discount
   ---
-  duration_ms: 36.977801
+  duration_ms: 27.620626
   type: 'test'
   ...
 # Subtest: post10 cell 2 (unmatched status): no rule fires, nothing derived
 ok 83 - post10 cell 2 (unmatched status): no rule fires, nothing derived
   ---
-  duration_ms: 19.266009
+  duration_ms: 11.810014
   type: 'test'
   ...
 # Subtest: post10: rifEval saturates the vendored Frames fixture as-is (DOCTYPE + entities, ground fact included)
 ok 84 - post10: rifEval saturates the vendored Frames fixture as-is (DOCTYPE + entities, ground fact included)
   ---
-  duration_ms: 25.828596
+  duration_ms: 16.67045
   type: 'test'
   ...
 # Subtest: post10: a cell degrades gracefully (not a thrown rejection) when the ABI lacks rifEval
 ok 85 - post10: a cell degrades gracefully (not a thrown rejection) when the ABI lacks rifEval
   ---
-  duration_ms: 1.062179
+  duration_ms: 0.382266
   type: 'test'
   ...
 # Subtest: post11: post has 4 live cells (the shared Turtle text hoisted into its own named cell)
 ok 86 - post11: post has 4 live cells (the shared Turtle text hoisted into its own named cell)
   ---
-  duration_ms: 1.305029
+  duration_ms: 0.65576
   type: 'test'
   ...
 # Subtest: post11: dependency inference wires the two comparison cells to the named turtle cell
 ok 87 - post11: dependency inference wires the two comparison cells to the named turtle cell
   ---
-  duration_ms: 4.128395
+  duration_ms: 2.359862
   type: 'test'
   ...
 # Subtest: post11 cell 2 (Turtle vs RDF/XML): identical canonical bytes
 ok 88 - post11 cell 2 (Turtle vs RDF/XML): identical canonical bytes
   ---
-  duration_ms: 183.462374
+  duration_ms: 98.466581
   type: 'test'
   ...
 # Subtest: post11 cell 3 (Turtle vs N-Triples): identical canonical bytes
 ok 89 - post11 cell 3 (Turtle vs N-Triples): identical canonical bytes
   ---
-  duration_ms: 13.978975
+  duration_ms: 7.694383
   type: 'test'
   ...
 # Subtest: post11 cell 4 (TriG vs N-Quads, named graph): identical canonical bytes
 ok 90 - post11 cell 4 (TriG vs N-Quads, named graph): identical canonical bytes
   ---
-  duration_ms: 18.002714
+  duration_ms: 5.361221
   type: 'test'
   ...
 # Subtest: post11: RDF 1.1 combined W3C score is 1031 pass, 0 fail (grounds this post's headline figure)
 ok 91 - post11: RDF 1.1 combined W3C score is 1031 pass, 0 fail (grounds this post's headline figure)
   ---
-  duration_ms: 4.207241
+  duration_ms: 2.634616
   type: 'test'
   ...
 # Subtest: post12: post has at least 2 live cells
 ok 92 - post12: post has at least 2 live cells
   ---
-  duration_ms: 1.248218
+  duration_ms: 0.636691
   type: 'test'
   ...
 # Subtest: post12 cell 1 (parse + query, the one door): SELECT returns Alice then Bob
 ok 93 - post12 cell 1 (parse + query, the one door): SELECT returns Alice then Bob
   ---
-  duration_ms: 168.940421
+  duration_ms: 87.973405
   type: 'test'
   ...
 # Subtest: post12 cell 2 (capability probe): every RIF/SHACL/ShEx/OWL/RML/CSVW/JSON-LD capability is true against the real bundle
 ok 94 - post12 cell 2 (capability probe): every RIF/SHACL/ShEx/OWL/RML/CSVW/JSON-LD capability is true against the real bundle
   ---
-  duration_ms: 0.699096
+  duration_ms: 0.362507
   type: 'test'
   ...
 # Subtest: post12 cell 2 degrades gracefully when the npm-entry bundle is unavailable
 ok 95 - post12 cell 2 degrades gracefully when the npm-entry bundle is unavailable
   ---
-  duration_ms: 0.466294
+  duration_ms: 0.212431
   type: 'test'
   ...
 # Subtest: post12: capabilities() function list matches the table this post documents
 ok 96 - post12: capabilities() function list matches the table this post documents
   ---
-  duration_ms: 0.313759
+  duration_ms: 0.145289
   type: 'test'
   ...
 # Subtest: post12: the wasm entry's capabilities() now matches the js entry (grounds the "wasm caught up" prose update)
 ok 97 - post12: the wasm entry's capabilities() now matches the js entry (grounds the "wasm caught up" prose update)
   ---
-  duration_ms: 0.281328
+  duration_ms: 0.118509
   type: 'test'
   ...
 # Subtest: post13: post has 7 live cells (credential + csvText + metadataJson hoisted into named cells)
 ok 98 - post13: post has 7 live cells (credential + csvText + metadataJson hoisted into named cells)
   ---
-  duration_ms: 1.243049
+  duration_ms: 0.786907
   type: 'test'
   ...
 # Subtest: post13: dependency inference wires both VC step cells to credential, both CSVW mode cells to csvText/metadataJson
 ok 99 - post13: dependency inference wires both VC step cells to credential, both CSVW mode cells to csvText/metadataJson
   ---
-  duration_ms: 5.725051
+  duration_ms: 2.545722
   type: 'test'
   ...
 # Subtest: post13 cell 2 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonicalized to _:c14n0
 ok 100 - post13 cell 2 (VC step 1: RDFC-1.0 canonicalize): 3 lines, bnode canonicalized to _:c14n0
   ---
-  duration_ms: 25.022111
+  duration_ms: 9.761984
   type: 'test'
   ...
 # Subtest: post13 cell 3 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable digest
 ok 101 - post13 cell 3 (VC step 2: SHA-256 of canonical form): 64 hex chars, stable digest
   ---
-  duration_ms: 11.93637
+  duration_ms: 7.833503
   type: 'test'
   ...
 # Subtest: post13 cell 6 (CSVW standard mode): 22 quads = 8 typed row data + 14 provenance
 ok 102 - post13 cell 6 (CSVW standard mode): 22 quads = 8 typed row data + 14 provenance
   ---
-  duration_ms: 27.324601
+  duration_ms: 18.759393
   type: 'test'
   ...
 # Subtest: post13 cell 7 (CSVW minimal mode): 8 typed quads, no provenance, template subjects
 ok 103 - post13 cell 7 (CSVW minimal mode): 8 typed quads, no provenance, template subjects
   ---
-  duration_ms: 15.372783
+  duration_ms: 10.179032
   type: 'test'
   ...
 # Subtest: post13: a CSVW cell degrades gracefully when the ABI lacks csvwToRdf
 ok 104 - post13: a CSVW cell degrades gracefully when the ABI lacks csvwToRdf
   ---
-  duration_ms: 4.309618
+  duration_ms: 1.186961
   type: 'test'
   ...
 # Subtest: post13: the vendored tree-ops.csv + metadata fixture converts via the real ABI, matching the post's own inline copy
 ok 105 - post13: the vendored tree-ops.csv + metadata fixture converts via the real ABI, matching the post's own inline copy
   ---
-  duration_ms: 15.166704
+  duration_ms: 6.954667
   type: 'test'
   ...
 # Subtest: post13: the vendored validVc.json fixture is the exact JSON shown statically in the post
 ok 106 - post13: the vendored validVc.json fixture is the exact JSON shown statically in the post
   ---
-  duration_ms: 5.400915
+  duration_ms: 0.42407
   type: 'test'
   ...
 # Subtest: post13: npm/factoidal exposes the vc* crypto primitives but no VC structural validator
 ok 107 - post13: npm/factoidal exposes the vc* crypto primitives but no VC structural validator
   ---
-  duration_ms: 1.201343
+  duration_ms: 0.560355
   type: 'test'
   ...
 # Subtest: post14: real npm/factoidal query() bindings carry genuine RDF/JS term instances
 ok 108 - post14: real npm/factoidal query() bindings carry genuine RDF/JS term instances
   ---
-  duration_ms: 156.911161
+  duration_ms: 71.484469
   type: 'test'
   ...
 # Subtest: post14: dataFactory-built quads round-trip through N-Quads text
 ok 109 - post14: dataFactory-built quads round-trip through N-Quads text
   ---
-  duration_ms: 0.392457
+  duration_ms: 0.187012
   type: 'test'
   ...
 # Subtest: post14: post has 3 live cells (namedNode hoisted into its own named cell)
 ok 110 - post14: post has 3 live cells (namedNode hoisted into its own named cell)
   ---
-  duration_ms: 0.265079
+  duration_ms: 0.093982
   type: 'test'
   ...
 # Subtest: post14: dependency inference wires both consuming cells to the named namedNode cell
 ok 111 - post14: dependency inference wires both consuming cells to the named namedNode cell
   ---
-  duration_ms: 3.976018
+  duration_ms: 1.945797
   type: 'test'
   ...
 # Subtest: post14 cell 2 (dataFactory-built quads, parsed and queried): SELECT returns Alice then Bob
 ok 112 - post14 cell 2 (dataFactory-built quads, parsed and queried): SELECT returns Alice then Bob
   ---
-  duration_ms: 27.524544
+  duration_ms: 12.560236
   type: 'test'
   ...
 # Subtest: post14 cell 3 (.equals() vs ===): identity differs, value-equality agrees, and a real query term has .equals()
 ok 113 - post14 cell 3 (.equals() vs ===): identity differs, value-equality agrees, and a real query term has .equals()
   ---
-  duration_ms: 11.374769
+  duration_ms: 5.899884
   type: 'test'
   ...
 # Subtest: post15: post has at least 1 live cell
 ok 114 - post15: post has at least 1 live cell
   ---
-  duration_ms: 3.432108
+  duration_ms: 1.621377
   type: 'test'
   ...
 # Subtest: post15 cell 1 (in-browser timing illustration): 3000 generated triples round-trip and count correctly
 ok 115 - post15 cell 1 (in-browser timing illustration): 3000 generated triples round-trip and count correctly
   ---
-  duration_ms: 1274.143524
+  duration_ms: 518.71255
   type: 'test'
   ...
 # Subtest: post16: post has at least 1 live cell
 ok 116 - post16: post has at least 1 live cell
   ---
-  duration_ms: 1.660072
+  duration_ms: 0.620456
   type: 'test'
   ...
 # Subtest: post16 cell 1 (extraction pipeline table): four targets, native/js/wasm/C, in order
 ok 117 - post16 cell 1 (extraction pipeline table): four targets, native/js/wasm/C, in order
   ---
-  duration_ms: 3.16312
+  duration_ms: 0.793398
   type: 'test'
   ...
 # Subtest: post16: the quoted RDF.Term.fsti banner text matches the real file
 ok 118 - post16: the quoted RDF.Term.fsti banner text matches the real file
   ---
-  duration_ms: 1.776746
+  duration_ms: 0.605895
   type: 'test'
   ...
 # Subtest: post16: the standing Iron Rule \#11 qualifier is quoted verbatim from CLAUDE.md
 ok 119 - post16: the standing Iron Rule \#11 qualifier is quoted verbatim from CLAUDE.md
   ---
-  duration_ms: 3.286227
+  duration_ms: 1.562518
   type: 'test'
   ...
 # Subtest: post16: the freshly-measured F* module/line/assume-val counts are at least what the post claims
 ok 120 - post16: the freshly-measured F* module/line/assume-val counts are at least what the post claims
   ---
-  duration_ms: 65.450934
+  duration_ms: 39.41035
   type: 'test'
   ...
 # Subtest: post17: post has at least 2 live cells
 ok 121 - post17: post has at least 2 live cells
   ---
-  duration_ms: 1.47557
+  duration_ms: 0.741709
   type: 'test'
   ...
 # Subtest: post17 cell 1 (INSERT DATA): Bob appears alongside Alice after the update
 ok 122 - post17 cell 1 (INSERT DATA): Bob appears alongside Alice after the update
   ---
-  duration_ms: 176.628773
+  duration_ms: 96.17288
   type: 'test'
   ...
 # Subtest: post17 cell 1 degrades gracefully when the npm-entry bundle is unavailable
 ok 123 - post17 cell 1 degrades gracefully when the npm-entry bundle is unavailable
   ---
-  duration_ms: 2.030862
+  duration_ms: 1.17303
   type: 'test'
   ...
 # Subtest: post17 cell 2 (DELETE/INSERT WHERE): Bob becomes Bobby, Alice untouched
 ok 124 - post17 cell 2 (DELETE/INSERT WHERE): Bob becomes Bobby, Alice untouched
   ---
-  duration_ms: 14.014288
+  duration_ms: 5.978153
   type: 'test'
   ...
 # Subtest: post17 cell 2 degrades gracefully when the npm-entry bundle is unavailable
 ok 125 - post17 cell 2 degrades gracefully when the npm-entry bundle is unavailable
   ---
-  duration_ms: 1.738635
+  duration_ms: 1.106059
   type: 'test'
   ...
 # Subtest: post17: the fn adapter now defines an update() method (grounds this post's fn.update cells)
 ok 126 - post17: the fn adapter now defines an update() method (grounds this post's fn.update cells)
   ---
-  duration_ms: 1.05098
+  duration_ms: 0.523239
   type: 'test'
   ...
 # Subtest: post17: the W3C SPARQL 1.1 Update suite is 176/176 in the committed dashboard snapshot
 ok 127 - post17: the W3C SPARQL 1.1 Update suite is 176/176 in the committed dashboard snapshot
   ---
-  duration_ms: 1.198065
+  duration_ms: 0.684823
   type: 'test'
   ...
 # Subtest: post17: the three durable-UPDATE commits cited exist on this branch
 ok 128 - post17: the three durable-UPDATE commits cited exist on this branch
   ---
-  duration_ms: 280.940844
+  duration_ms: 15.503089
   type: 'test'
   ...
 # Subtest: post17: the delta-log F* modules this post cites exist and verify without assume vals (DeltaLog/DeltaMerge)
 ok 129 - post17: the delta-log F* modules this post cites exist and verify without assume vals (DeltaLog/DeltaMerge)
   ---
-  duration_ms: 2.112847
+  duration_ms: 0.625875
   type: 'test'
   ...
 # Subtest: post17: the CLI --delta-log flag this post cites is real
 ok 130 - post17: the CLI --delta-log flag this post cites is real
   ---
-  duration_ms: 2.960748
+  duration_ms: 0.953089
   type: 'test'
   ...
 # Subtest: post17: SPARQL.GraphStore.fst is verified F* with no assume vals (grounds "specified and proven")
 ok 131 - post17: SPARQL.GraphStore.fst is verified F* with no assume vals (grounds "specified and proven")
   ---
-  duration_ms: 1.424641
+  duration_ms: 0.430389
   type: 'test'
   ...
 # Subtest: post17: factoidal-http now routes the Graph Store Protocol (grounds the "landed, routed" update)
 ok 132 - post17: factoidal-http now routes the Graph Store Protocol (grounds the "landed, routed" update)
   ---
-  duration_ms: 1.488019
+  duration_ms: 0.574928
   type: 'test'
   ...
 # Subtest: post17: the stage-8 HTTP-wiring commit cited exists on this branch
 ok 133 - post17: the stage-8 HTTP-wiring commit cited exists on this branch
   ---
-  duration_ms: 91.949907
+  duration_ms: 3.636028
   type: 'test'
   ...
 # Subtest: post18: post has at least 5 live cells (4 lifecycle steps + the runtimes table)
 ok 134 - post18: post has at least 5 live cells (4 lifecycle steps + the runtimes table)
   ---
-  duration_ms: 1.535223
+  duration_ms: 0.916363
   type: 'test'
   ...
 # Subtest: post18 cell 1 (parse + in-memory UPDATE): Carol appears alongside Alice/Bob
 ok 135 - post18 cell 1 (parse + in-memory UPDATE): Carol appears alongside Alice/Bob
   ---
-  duration_ms: 31.592548
+  duration_ms: 16.463277
   type: 'test'
   ...
 # Subtest: post18 cell 1 degrades gracefully when the npm-entry bundle is unavailable
 ok 136 - post18 cell 1 degrades gracefully when the npm-entry bundle is unavailable
   ---
-  duration_ms: 2.880081
+  duration_ms: 1.436918
   type: 'test'
   ...
 # Subtest: post18 cell 2 (deltaLogAppend): seq starts at 0 in a fresh store, opCount is 1
 ok 137 - post18 cell 2 (deltaLogAppend): seq starts at 0 in a fresh store, opCount is 1
   ---
-  duration_ms: 9.799283
+  duration_ms: 5.700072
   type: 'test'
   ...
 # Subtest: post18 cell 2: seq keeps climbing across repeated runs against the SAME store (the reload proof, in miniature)
 ok 138 - post18 cell 2: seq keeps climbing across repeated runs against the SAME store (the reload proof, in miniature)
   ---
-  duration_ms: 16.098526
+  duration_ms: 12.98002
   type: 'test'
   ...
 # Subtest: post18 cell 2 degrades gracefully when loadNpmEntry throws
 ok 139 - post18 cell 2 degrades gracefully when loadNpmEntry throws
   ---
-  duration_ms: 0.561876
+  duration_ms: 0.348126
   type: 'test'
   ...
 # Subtest: post18 cell 3 (deltaLogMerge, after cell 2 appended): reads the batch back and merges it
 ok 140 - post18 cell 3 (deltaLogMerge, after cell 2 appended): reads the batch back and merges it
   ---
-  duration_ms: 310.123293
+  duration_ms: 310.528657
   type: 'test'
   ...
 # Subtest: post18 cell 3 on a store cell 2 never touched: batchesInLog is 0, containsDana is false (no crash on an empty log)
 ok 141 - post18 cell 3 on a store cell 2 never touched: batchesInLog is 0, containsDana is false (no crash on an empty log)
   ---
-  duration_ms: 301.105904
+  duration_ms: 300.719801
   type: 'test'
   ...
 # Subtest: post18 cell 3 degrades gracefully when loadNpmEntry throws
 ok 142 - post18 cell 3 degrades gracefully when loadNpmEntry throws
   ---
-  duration_ms: 302.624586
+  duration_ms: 300.548971
   type: 'test'
   ...
 # Subtest: post18 cell 4 (torn write): Eve survives, Frank is lost to the corrupted last batch
 ok 143 - post18 cell 4 (torn write): Eve survives, Frank is lost to the corrupted last batch
   ---
-  duration_ms: 29.360331
+  duration_ms: 7.248429
   type: 'test'
   ...
 # Subtest: post18 cell 4 is self-contained: running it twice in a row still reports the same clean-prefix-survives outcome
 ok 144 - post18 cell 4 is self-contained: running it twice in a row still reports the same clean-prefix-survives outcome
   ---
-  duration_ms: 23.927592
+  duration_ms: 24.193184
   type: 'test'
   ...
 # Subtest: post18 cell 4 degrades gracefully when loadNpmEntry throws
 ok 145 - post18 cell 4 degrades gracefully when loadNpmEntry throws
   ---
-  duration_ms: 0.633239
+  duration_ms: 0.351991
   type: 'test'
   ...
 # Subtest: post18 cell 5 (the runtimes pretty() table): four rows, native/js/C/wasm in that order, wasm now proven too
 ok 146 - post18 cell 5 (the runtimes pretty() table): four rows, native/js/C/wasm in that order, wasm now proven too
   ---
-  duration_ms: 0.780842
+  duration_ms: 0.489469
   type: 'test'
   ...
 # Subtest: post18: RDF.Store.Columnar.DeltaLog.fst declares exactly five ML-effect I/O assume vals
 ok 147 - post18: RDF.Store.Columnar.DeltaLog.fst declares exactly five ML-effect I/O assume vals
   ---
-  duration_ms: 0.6745
+  duration_ms: 0.482888
   type: 'test'
   ...
 # Subtest: post18: the native realisation of the five delta-log I/O assume vals exists (issue \#282 patch)
 ok 148 - post18: the native realisation of the five delta-log I/O assume vals exists (issue \#282 patch)
   ---
-  duration_ms: 0.285337
+  duration_ms: 0.098399
   type: 'test'
   ...
 # Subtest: post18: browser.js exports the delta-log persistence surface this post's cells call
 ok 149 - post18: browser.js exports the delta-log persistence surface this post's cells call
   ---
-  duration_ms: 1.189543
+  duration_ms: 0.489468
   type: 'test'
   ...
 # Subtest: post18: entry_jsoo.ml exports the delta-log ABI AND the toCottas BaseWriter write path (grounds the "base-store write path reaches the browser too" section)
 ok 150 - post18: entry_jsoo.ml exports the delta-log ABI AND the toCottas BaseWriter write path (grounds the "base-store write path reaches the browser too" section)
   ---
-  duration_ms: 1.05929
+  duration_ms: 0.622009
   type: 'test'
   ...
 # Subtest: post18: RDF.CottasStore.BaseWriter.fst exists and is the module the zero-Python claim cites
 ok 151 - post18: RDF.CottasStore.BaseWriter.fst exists and is the module the zero-Python claim cites
   ---
-  duration_ms: 0.155587
+  duration_ms: 0.088093
   type: 'test'
   ...
 # Subtest: post18: the wasm npm-entry bundle now contains the delta-log exports (grounds the "wasm now proven too" update)
 ok 152 - post18: the wasm npm-entry bundle now contains the delta-log exports (grounds the "wasm now proven too" update)
   ---
-  duration_ms: 0.295423
+  duration_ms: 0.160102
   type: 'test'
   ...
 # Subtest: post18: the js npm-entry bundle DOES contain the delta-log exports (the contrapositive of the wasm check above)
 ok 153 - post18: the js npm-entry bundle DOES contain the delta-log exports (the contrapositive of the wasm check above)
   ---
-  duration_ms: 4.420913
+  duration_ms: 2.301744
   type: 'test'
   ...
 # Subtest: post18: the C demo transcript quoted in this post is real (formal/fstar/c-output/deltalog/demo/delta_log_demo)
 ok 154 - post18: the C demo transcript quoted in this post is real (formal/fstar/c-output/deltalog/demo/delta_log_demo)
   ---
-  duration_ms: 7.716298
+  duration_ms: 4.600673
   type: 'test'
   ...
 # Subtest: post18: the KaRaMeL C output directory this post links to exists
 ok 155 - post18: the KaRaMeL C output directory this post links to exists
   ---
-  duration_ms: 0.259923
+  duration_ms: 0.134663
   type: 'test'
   ...
 # Subtest: post18: the delta-log merge correspondence lemma this post cites is present (same lemma post17 cites)
 ok 156 - post18: the delta-log merge correspondence lemma this post cites is present (same lemma post17 cites)
   ---
-  duration_ms: 0.423133
+  duration_ms: 0.207013
   type: 'test'
   ...
 # Subtest: post18: the commits cited in this post are real, reachable commits
 ok 157 - post18: the commits cited in this post are real, reachable commits
   ---
-  duration_ms: 358.076014
+  duration_ms: 13.526244
   type: 'test'
   ...
 # Subtest: post18: the zero-Python DuckDB verdict quoted in this post matches the real commit message
 ok 158 - post18: the zero-Python DuckDB verdict quoted in this post matches the real commit message
   ---
-  duration_ms: 90.602092
+  duration_ms: 3.632131
   type: 'test'
   ...
 # Subtest: post19: post has 6 live cells (LAT_TTL + dataset hoisted into named cells)
 ok 159 - post19: post has 6 live cells (LAT_TTL + dataset hoisted into named cells)
   ---
-  duration_ms: 1.089522
+  duration_ms: 0.800198
   type: 'test'
   ...
 # Subtest: post19: dependency inference wires LAT_TTL -> dataset -> every query cell
 ok 160 - post19: dependency inference wires LAT_TTL -> dataset -> every query cell
   ---
-  duration_ms: 5.88032
+  duration_ms: 2.633134
   type: 'test'
   ...
 # Subtest: post19 cell 1 (parse the dataset): 7 triples
 ok 161 - post19 cell 1 (parse the dataset): 7 triples
   ---
-  duration_ms: 141.159294
+  duration_ms: 60.654443
   type: 'test'
   ...
 # Subtest: post19 cell 2 (plain correlated pattern): 4 rows, carol dropped
 ok 162 - post19 cell 2 (plain correlated pattern): 4 rows, carol dropped
   ---
-  duration_ms: 25.952855
+  duration_ms: 11.029196
   type: 'test'
   ...
 # Subtest: post19 cell 3 (top-N per group): one label per person
 ok 163 - post19 cell 3 (top-N per group): one label per person
   ---
-  duration_ms: 12.584062
+  duration_ms: 6.257273
   type: 'test'
   ...
 # Subtest: post19 cell 4 (LATERAL vs plain join): 2 rows vs 1 row
 ok 164 - post19 cell 4 (LATERAL vs plain join): 2 rows vs 1 row
   ---
-  duration_ms: 16.160158
+  duration_ms: 4.93613
   type: 'test'
   ...
 # Subtest: post19: SPARQL11.Algebra.fst really defines the GP_Lateral algebra node
 ok 165 - post19: SPARQL11.Algebra.fst really defines the GP_Lateral algebra node
   ---
-  duration_ms: 3.486691
+  duration_ms: 1.249335
   type: 'test'
   ...
 # Subtest: post20: post has 9 live cells (FT_TTL + dataset hoisted into named cells)
 ok 166 - post20: post has 9 live cells (FT_TTL + dataset hoisted into named cells)
   ---
-  duration_ms: 1.414932
+  duration_ms: 0.70882
   type: 'test'
   ...
 # Subtest: post20: dependency inference wires FT_TTL -> dataset -> every query cell
 ok 167 - post20: dependency inference wires FT_TTL -> dataset -> every query cell
   ---
-  duration_ms: 6.654271
+  duration_ms: 2.875359
   type: 'test'
   ...
 # Subtest: post20 cell 1 (parse the dataset): 15 triples
 ok 168 - post20 cell 1 (parse the dataset): 15 triples
   ---
-  duration_ms: 154.425287
+  duration_ms: 61.710508
   type: 'test'
   ...
 # Subtest: post20 cell 2 (2-arity "panel"): 4 subjects across labels + a title
 ok 169 - post20 cell 2 (2-arity "panel"): 4 subjects across labels + a title
   ---
-  duration_ms: 28.153964
+  duration_ms: 10.684656
   type: 'test'
   ...
 # Subtest: post20 cell 3 (AND-by-default "solar panel"): only the 2 with both tokens
 ok 170 - post20 cell 3 (AND-by-default "solar panel"): only the 2 with both tokens
   ---
-  duration_ms: 19.808565
+  duration_ms: 11.443871
   type: 'test'
   ...
 # Subtest: post20 cell 4 (list form, rdfs:label restriction): controlpanel dropped
 ok 171 - post20 cell 4 (list form, rdfs:label restriction): controlpanel dropped
   ---
-  duration_ms: 16.614201
+  duration_ms: 6.154068
   type: 'test'
   ...
 # Subtest: post20 cell 5 (list form + limit 2): capped count, no ranking claim
 ok 172 - post20 cell 5 (list form + limit 2): capped count, no ranking claim
   ---
-  duration_ms: 17.017798
+  duration_ms: 4.989791
   type: 'test'
   ...
 # Subtest: post20 cell 6 (no-match): zero rows, no error
 ok 173 - post20 cell 6 (no-match): zero rows, no error
   ---
-  duration_ms: 9.481901
+  duration_ms: 4.8966
   type: 'test'
   ...
 # Subtest: post20 cell 7 (BGP composition): text:query joins ex:status, retired dropped
 ok 174 - post20 cell 7 (BGP composition): text:query joins ex:status, retired dropped
   ---
-  duration_ms: 12.833128
+  duration_ms: 4.951853
   type: 'test'
   ...
 # Subtest: post20: SPARQL.FullText.fst exists, uses the jena-text IRI, and is honest about no scoring
 ok 175 - post20: SPARQL.FullText.fst exists, uses the jena-text IRI, and is honest about no scoring
   ---
-  duration_ms: 1.697214
+  duration_ms: 0.870594
   type: 'test'
   ...
 # Subtest: post21: post has 8 live cells (GEO_TTL hoisted into its own named cell)
 ok 176 - post21: post has 8 live cells (GEO_TTL hoisted into its own named cell)
   ---
-  duration_ms: 1.264656
+  duration_ms: 0.52397
   type: 'test'
   ...
 # Subtest: post21: dependency inference wires GEO_TTL into cells 2,3,5,6 (not the map/envelope/BOX_TTL cells)
 ok 177 - post21: dependency inference wires GEO_TTL into cells 2,3,5,6 (not the map/envelope/BOX_TTL cells)
   ---
-  duration_ms: 9.884978
+  duration_ms: 5.727234
   type: 'test'
   ...
 # Subtest: post21 cell 1 (parse the geo dataset): 15 triples
 ok 178 - post21 cell 1 (parse the geo dataset): 15 triples
   ---
-  duration_ms: 169.833818
+  duration_ms: 62.718708
   type: 'test'
   ...
 # Subtest: post21 cell 2 (geof:sfWithin): the two inside pairs, ordered
 ok 179 - post21 cell 2 (geof:sfWithin): the two inside pairs, ordered
   ---
-  duration_ms: 59.931474
+  duration_ms: 20.369963
   type: 'test'
   ...
 # Subtest: post21 map cell helper: geomToWkt serializes a simple Polygon
 ok 180 - post21 map cell helper: geomToWkt serializes a simple Polygon
   ---
-  duration_ms: 0.528073
+  duration_ms: 0.2652
   type: 'test'
   ...
 # Subtest: post21 map cell helper: geomToWkt serializes a MultiPolygon with the OGC triple-paren nesting
 ok 181 - post21 map cell helper: geomToWkt serializes a MultiPolygon with the OGC triple-paren nesting
   ---
-  duration_ms: 2.189346
+  duration_ms: 1.052709
   type: 'test'
   ...
 # Subtest: post21 map cell helper: geomToWkt serializes a LineString
 ok 182 - post21 map cell helper: geomToWkt serializes a LineString
   ---
-  duration_ms: 0.240303
+  duration_ms: 0.147262
   type: 'test'
   ...
 # Subtest: post21 choropleth query: landmark-in-borough sfWithin counts, run against the REAL engine
 ok 183 - post21 choropleth query: landmark-in-borough sfWithin counts, run against the REAL engine
   ---
-  duration_ms: 497.505866
+  duration_ms: 195.785337
   type: 'test'
   ...
 # Subtest: post21 map cell (cell 3): runs to completion with a minimal document/L/fetch stub, no throw
 ok 184 - post21 map cell (cell 3): runs to completion with a minimal document/L/fetch stub, no throw
   ---
-  duration_ms: 1846.5384
+  duration_ms: 923.562048
   type: 'test'
   ...
 # Subtest: post21 cell 4 (geof:sfDisjoint): the two cities outside the London box
 ok 185 - post21 cell 4 (geof:sfDisjoint): the two cities outside the London box
   ---
-  duration_ms: 28.138525
+  duration_ms: 10.5351
   type: 'test'
   ...
 # Subtest: post21 cell 5 (geof:distance ORDER BY): London 0 first, then Manchester, Edinburgh
 ok 186 - post21 cell 5 (geof:distance ORDER BY): London 0 first, then Manchester, Edinburgh
   ---
-  duration_ms: 13.532401
+  duration_ms: 11.325703
   type: 'test'
   ...
 # Subtest: post21 cell 6 (geof:envelope): polygon envelopes to itself, point to a degenerate box
 ok 187 - post21 cell 6 (geof:envelope): polygon envelopes to itself, point to a degenerate box
   ---
-  duration_ms: 6.425982
+  duration_ms: 3.865083
   type: 'test'
   ...
 # Subtest: post21 cell 7 (exact boundary): on-edge point is intersects+touches but NOT within
 ok 188 - post21 cell 7 (exact boundary): on-edge point is intersects+touches but NOT within
   ---
-  duration_ms: 21.89821
+  duration_ms: 13.050506
   type: 'test'
   ...
 # Subtest: post23: post has 6 live cells (DID + didDataset hoisted into named cells)
 ok 189 - post23: post has 6 live cells (DID + didDataset hoisted into named cells)
   ---
-  duration_ms: 1.660417
+  duration_ms: 0.737042
   type: 'test'
   ...
 # Subtest: post23: dependency inference wires DID -> didDataset -> every downstream cell
 ok 190 - post23: dependency inference wires DID -> didDataset -> every downstream cell
   ---
-  duration_ms: 12.121038
+  duration_ms: 2.892495
   type: 'test'
   ...
 # Subtest: post23 cell 1 (resolve did:key): 8 triples, no network
 ok 191 - post23 cell 1 (resolve did:key): 8 triples, no network
   ---
-  duration_ms: 54.665179
+  duration_ms: 15.868229
   type: 'test'
   ...
 # Subtest: post23 cell 2 (DID Document as triples): 8-row s/p/o table
 ok 192 - post23 cell 2 (DID Document as triples): 8-row s/p/o table
   ---
-  duration_ms: 13.676258
+  duration_ms: 6.144223
   type: 'test'
   ...
 # Subtest: post23 cell 3 (verification method via SPARQL): one row, typed key literal
 ok 193 - post23 cell 3 (verification method via SPARQL): one row, typed key literal
   ---
-  duration_ms: 25.422078
+  duration_ms: 12.819559
   type: 'test'
   ...
 # Subtest: post23 cell 4 (node-graph): 4 nodes, 8 edges derived from the document
 ok 194 - post23 cell 4 (node-graph): 4 nodes, 8 edges derived from the document
   ---
-  duration_ms: 13.135664
+  duration_ms: 8.605528
   type: 'test'
   ...
 # Subtest: post24: post has 4 live cells (buf fetch hoisted into its own named cell)
 ok 195 - post24: post has 4 live cells (buf fetch hoisted into its own named cell)
   ---
-  duration_ms: 1.162777
+  duration_ms: 0.426744
   type: 'test'
   ...
 # Subtest: post24: dependency inference wires buf into every query cell
 ok 196 - post24: dependency inference wires buf into every query cell
   ---
-  duration_ms: 4.128838
+  duration_ms: 3.27967
   type: 'test'
   ...
 # Subtest: post24 cell 1 (count triples): 343
 ok 197 - post24 cell 1 (count triples): 343
   ---
-  duration_ms: 69.120123
+  duration_ms: 35.227767
   type: 'test'
   ...
 # Subtest: post24 cell 2 (owl:Class labels): pretty table including RML classes
 ok 198 - post24 cell 2 (owl:Class labels): pretty table including RML classes
   ---
-  duration_ms: 190.017734
+  duration_ms: 60.849396
   type: 'test'
   ...
 # Subtest: post24 cell 3 (predicate histogram): rdf:type bar at 84
 ok 199 - post24 cell 3 (predicate histogram): rdf:type bar at 84
   ---
-  duration_ms: 168.99415
+  duration_ms: 56.374523
   type: 'test'
   ...
 # Subtest: post24: HDT count is 343 through the js_of_ocaml bundle (not just native)
 ok 200 - post24: HDT count is 343 through the js_of_ocaml bundle (not just native)
   ---
-  duration_ms: 586.309112
+  duration_ms: 220.727621
   type: 'test'
   ...
 # Subtest: post25: post has 5 live cells (XML hoisted into its own named cell)
 ok 201 - post25: post has 5 live cells (XML hoisted into its own named cell)
   ---
-  duration_ms: 0.990726
+  duration_ms: 0.663221
   type: 'test'
   ...
 # Subtest: post25: dependency inference wires XML into cells 2, 4, 5 (not the BAD cell at 3)
 ok 202 - post25: dependency inference wires XML into cells 2, 4, 5 (not the BAD cell at 3)
   ---
-  duration_ms: 3.673805
+  duration_ms: 1.774498
   type: 'test'
   ...
 # Subtest: post25 cell 1 (well-formed document): wellformed true
 ok 203 - post25 cell 1 (well-formed document): wellformed true
   ---
-  duration_ms: 20.058063
+  duration_ms: 7.260578
   type: 'test'
   ...
 # Subtest: post25 cell 2 (mismatched close tag): wellformed false
 ok 204 - post25 cell 2 (mismatched close tag): wellformed false
   ---
-  duration_ms: 2.238216
+  duration_ms: 1.133461
   type: 'test'
   ...
 # Subtest: post25 cell 3 (//book/title node-set): two title elements
 ok 205 - post25 cell 3 (//book/title node-set): two title elements
   ---
-  duration_ms: 20.512107
+  duration_ms: 4.140359
   type: 'test'
   ...
 # Subtest: post25 cell 4 (four XPath result types): number/nodeset/string/boolean
 ok 206 - post25 cell 4 (four XPath result types): number/nodeset/string/boolean
   ---
-  duration_ms: 18.97399
+  duration_ms: 10.759519
   type: 'test'
   ...
 # Subtest: post26: post ships the seven-cell reactive chain
 ok 207 - post26: post ships the seven-cell reactive chain
   ---
-  duration_ms: 1.184643
+  duration_ms: 0.684674
   type: 'test'
   ...
 # Subtest: post26: dependency inference names the right cells + inputs
 ok 208 - post26: dependency inference names the right cells + inputs
   ---
-  duration_ms: 5.244182
+  duration_ms: 2.720757
   type: 'test'
   ...
 # Subtest: post26: values propagate ttl -> graph -> results -> chartData
 ok 209 - post26: values propagate ttl -> graph -> results -> chartData
   ---
-  duration_ms: 160.514216
+  duration_ms: 80.785284
   type: 'test'
   ...
 # Subtest: post26: editing ttl re-runs graph + chartData downstream
 ok 210 - post26: editing ttl re-runs graph + chartData downstream
   ---
-  duration_ms: 39.947324
+  duration_ms: 13.953389
   type: 'test'
   ...
 # Subtest: post27: post ships four live cells
 ok 211 - post27: post ships four live cells
   ---
-  duration_ms: 2.985676
+  duration_ms: 0.685675
   type: 'test'
   ...
 # Subtest: post27: dependency inference names the cells in order
 ok 212 - post27: dependency inference names the cells in order
   ---
-  duration_ms: 10.957649
+  duration_ms: 2.547184
   type: 'test'
   ...
 # Subtest: post27: xsltResult builds the catalog via for-each/value-of
 ok 213 - post27: xsltResult builds the catalog via for-each/value-of
   ---
-  duration_ms: 177.22934
+  duration_ms: 91.70842
   type: 'test'
   ...
 # Subtest: post27: schematronBad reports one assert-fail finding as a table
 ok 214 - post27: schematronBad reports one assert-fail finding as a table
   ---
-  duration_ms: 6.32776
+  duration_ms: 3.742768
   type: 'test'
   ...
 # Subtest: post27: schematronGood clears the same rule
 ok 215 - post27: schematronGood clears the same rule
   ---
-  duration_ms: 4.362621
+  duration_ms: 1.714217
   type: 'test'
   ...
 # Subtest: post28: post ships fourteen live cells
 ok 216 - post28: post ships fourteen live cells
   ---
-  duration_ms: 1.301743
+  duration_ms: 0.814039
   type: 'test'
   ...
 # Subtest: post28: dependency inference names the cells in order
 ok 217 - post28: dependency inference names the cells in order
   ---
-  duration_ms: 16.165842
+  duration_ms: 7.818199
   type: 'test'
   ...
 # Subtest: post28: mathmlDemo evaluates 2+3 to an exact rational and 1/0 to undef
 ok 218 - post28: mathmlDemo evaluates 2+3 to an exact rational and 1/0 to undef
   ---
-  duration_ms: 141.668172
+  duration_ms: 75.641552
   type: 'test'
   ...
 # Subtest: post28: the pretty(mathmlDemo) cell renders a two-row table
 ok 219 - post28: the pretty(mathmlDemo) cell renders a two-row table
   ---
-  duration_ms: 7.01719
+  duration_ms: 3.186549
   type: 'test'
   ...
 # Subtest: post28: summationMathml carries the verified Content MathML for the sum
 ok 220 - post28: summationMathml carries the verified Content MathML for the sum
   ---
-  duration_ms: 9.485534
+  duration_ms: 3.893877
   type: 'test'
   ...
 # Subtest: post28: summationPresentation converts to Presentation MathML for display
 ok 221 - post28: summationPresentation converts to Presentation MathML for display
   ---
-  duration_ms: 5.304791
+  duration_ms: 2.672683
   type: 'test'
   ...
 # Subtest: post28: determinantPlain is -2, determinantExact is the exact fraction 1/4
 ok 222 - post28: determinantPlain is -2, determinantExact is the exact fraction 1/4
   ---
-  duration_ms: 4.68486
+  duration_ms: 3.058917
   type: 'test'
   ...
 # Subtest: post28: sigmoidFormulaMathml is the engine-serialized Presentation MathML for L/(1+exp(-k*(x-x0)))
 ok 223 - post28: sigmoidFormulaMathml is the engine-serialized Presentation MathML for L/(1+exp(-k*(x-x0)))
   ---
-  duration_ms: 6.135945
+  duration_ms: 4.813715
   type: 'test'
   ...
 # Subtest: post28: sigmoidFormulaDisplay wraps the raw MathML for the browser unchanged
 ok 224 - post28: sigmoidFormulaDisplay wraps the raw MathML for the browser unchanged
   ---
-  duration_ms: 4.168273
+  duration_ms: 2.061902
   type: 'test'
   ...
 # Subtest: post28: sigmoidParams carries the default slider values
 ok 225 - post28: sigmoidParams carries the default slider values
   ---
-  duration_ms: 3.485987
+  duration_ms: 1.309336
   type: 'test'
   ...
 # Subtest: post28: sigmoidSamples has 25 F*-computed points; the midpoint is exact
 ok 226 - post28: sigmoidSamples has 25 F*-computed points; the midpoint is exact
   ---
-  duration_ms: 41.801586
+  duration_ms: 23.413917
   type: 'test'
   ...
 # Subtest: post28: sigmoidPlot is an SVG polyline over the 25 F*-computed points
 ok 227 - post28: sigmoidPlot is an SVG polyline over the 25 F*-computed points
   ---
-  duration_ms: 18.024498
+  duration_ms: 5.809529
   type: 'test'
   ...
 # Subtest: post28: sigmoidPlotDisplay wraps the raw SVG for the browser unchanged
 ok 228 - post28: sigmoidPlotDisplay wraps the raw SVG for the browser unchanged
   ---
-  duration_ms: 11.03601
+  duration_ms: 5.443305
   type: 'test'
   ...
 # Subtest: post28: sigmoidInteractive builds three sliders and an SVG, and renders without throwing
 ok 229 - post28: sigmoidInteractive builds three sliders and an SVG, and renders without throwing
   ---
-  duration_ms: 12.003919
+  duration_ms: 4.231156
   type: 'test'
   ...
 # Subtest: post29: post ships five live cells
 ok 230 - post29: post ships five live cells
   ---
-  duration_ms: 3.196444
+  duration_ms: 1.347043
   type: 'test'
   ...
 # Subtest: post29: dependency inference names the cells in order
 ok 231 - post29: dependency inference names the cells in order
   ---
-  duration_ms: 7.062663
+  duration_ms: 2.442757
   type: 'test'
   ...
 # Subtest: post29: schemaAccept passes a well-formed instance
 ok 232 - post29: schemaAccept passes a well-formed instance
   ---
-  duration_ms: 145.402195
+  duration_ms: 82.367001
   type: 'test'
   ...
 # Subtest: post29: schemaReject fails an instance missing the required property
 ok 233 - post29: schemaReject fails an instance missing the required property
   ---
-  duration_ms: 9.132386
+  duration_ms: 5.957651
   type: 'test'
   ...
 # Subtest: post29: xformsResult recalculates sum = a + b onto the sum leaf
 ok 234 - post29: xformsResult recalculates sum = a + b onto the sum leaf
   ---
-  duration_ms: 10.104882
+  duration_ms: 5.874275
   type: 'test'
   ...
 # Subtest: post30: post ships twenty-one live cells
 ok 235 - post30: post ships twenty-one live cells
   ---
-  duration_ms: 1.979921
+  duration_ms: 0.752786
   type: 'test'
   ...
 # Subtest: post30: dependency inference names the cells in order
 ok 236 - post30: dependency inference names the cells in order
   ---
-  duration_ms: 8.879215
+  duration_ms: 3.354413
   type: 'test'
   ...
 # Subtest: post30: the tableau materialises at least one membership for the someValuesFrom ontology
 ok 237 - post30: the tableau materialises at least one membership for the someValuesFrom ontology
   ---
-  duration_ms: 150.573385
+  duration_ms: 96.462315
   type: 'test'
   ...
 # Subtest: post30: Alice is classified as a member of ParentOfDoctor (someValuesFrom)
 ok 238 - post30: Alice is classified as a member of ParentOfDoctor (someValuesFrom)
   ---
-  duration_ms: 26.037451
+  duration_ms: 19.617017
   type: 'test'
   ...
 # Subtest: post30: Alice is classified as a BritishCitizen (hasValue)
 ok 239 - post30: Alice is classified as a BritishCitizen (hasValue)
   ---
-  duration_ms: 25.407649
+  duration_ms: 15.352731
   type: 'test'
   ...
 # Subtest: post30: the DL pipeline flags the unsatisfiable restriction that RL leaves consistent
 ok 240 - post30: the DL pipeline flags the unsatisfiable restriction that RL leaves consistent
   ---
-  duration_ms: 690.876392
+  duration_ms: 366.469081
   type: 'test'
   ...
 # Subtest: post30: owlIsConsistent refutes the disjoint-classes clash with a reason
 ok 241 - post30: owlIsConsistent refutes the disjoint-classes clash with a reason
   ---
-  duration_ms: 139.773046
+  duration_ms: 58.233067
   type: 'test'
   ...
 # Subtest: post30: owlIsConsistent refutes the min/max cardinality clash
 ok 242 - post30: owlIsConsistent refutes the min/max cardinality clash
   ---
-  duration_ms: 85.073229
+  duration_ms: 47.883268
   type: 'test'
   ...
 # Subtest: post30: owlIsConsistent refutes the functional-property clash
 ok 243 - post30: owlIsConsistent refutes the functional-property clash
   ---
-  duration_ms: 110.621939
+  duration_ms: 34.016649
   type: 'test'
   ...
 # Subtest: post30: owlIsConsistent leaves the satisfiable control graph consistent
 ok 244 - post30: owlIsConsistent leaves the satisfiable control graph consistent
   ---
-  duration_ms: 91.597754
+  duration_ms: 48.141748
   type: 'test'
   ...
 # Subtest: post30: the clash-family summary is three refuted families plus one open control
 ok 245 - post30: the clash-family summary is three refuted families plus one open control
   ---
-  duration_ms: 297.184603
+  duration_ms: 150.650007
   type: 'test'
   ...
 # Subtest: post30: a fuel:0 budget-out is reported as null, never a false
 ok 246 - post30: a fuel:0 budget-out is reported as null, never a false
   ---
-  duration_ms: 68.501478
+  duration_ms: 41.739936
   type: 'test'
   ...
 # Subtest: post30: owlEntails proves the someValuesFrom entailment by refutation
 ok 247 - post30: owlEntails proves the someValuesFrom entailment by refutation
   ---
-  duration_ms: 96.24326
+  duration_ms: 57.306199
   type: 'test'
   ...
 # Subtest: post31: Turtle 1.2 parses to 7 quads (2 claims + reifier expansion + base + 2 titles)
 ok 248 - post31: Turtle 1.2 parses to 7 quads (2 claims + reifier expansion + base + 2 titles)
   ---
-  duration_ms: 151.19501
+  duration_ms: 60.891349
   type: 'test'
   ...
 # Subtest: post31: Mode_11 (default) silently skips the 1.2 constructs — opt-in is load-bearing
 ok 249 - post31: Mode_11 (default) silently skips the 1.2 constructs — opt-in is load-bearing
   ---
-  duration_ms: 12.157016
+  duration_ms: 6.407721
   type: 'test'
   ...
 # Subtest: post31: a variable binds a whole triple term (Quad term)
 ok 250 - post31: a variable binds a whole triple term (Quad term)
   ---
-  duration_ms: 33.953222
+  duration_ms: 8.450604
   type: 'test'
   ...
 # Subtest: post31: <<( ?s ?p ?o )>> pattern matches inside the triple term
 ok 251 - post31: <<( ?s ?p ?o )>> pattern matches inside the triple term
   ---
-  duration_ms: 14.832007
+  duration_ms: 5.846243
   type: 'test'
   ...
 # Subtest: post31: isTRIPLE(?t) is true for both claimed statements
 ok 252 - post31: isTRIPLE(?t) is true for both claimed statements
   ---
-  duration_ms: 20.934662
+  duration_ms: 5.362824
   type: 'test'
   ...
 # Subtest: post31: the annotation confidence is readable as a plain triple
 ok 253 - post31: the annotation confidence is readable as a plain triple
   ---
-  duration_ms: 6.412255
+  duration_ms: 3.702668
   type: 'test'
   ...
 # Subtest: post31: post has 6 live cells (ttl + dataset + 4 query cells)
 ok 254 - post31: post has 6 live cells (ttl + dataset + 4 query cells)
   ---
-  duration_ms: 0.768517
+  duration_ms: 0.145219
   type: 'test'
   ...
 # Subtest: post31: dependency inference wires ttl -> dataset -> every query cell
 ok 255 - post31: dependency inference wires ttl -> dataset -> every query cell
   ---
-  duration_ms: 5.473671
+  duration_ms: 2.889291
   type: 'test'
   ...
 # Subtest: post31 cell 3 (bind whole triple term): 2 rows, statement renders as <<( )>>
 ok 256 - post31 cell 3 (bind whole triple term): 2 rows, statement renders as <<( )>>
   ---
-  duration_ms: 25.327528
+  duration_ms: 9.871018
   type: 'test'
   ...
 # Subtest: post31 cell 4 (match inside triple term): 2 rows, 4 columns
 ok 257 - post31 cell 4 (match inside triple term): 2 rows, 4 columns
   ---
-  duration_ms: 19.553833
+  duration_ms: 10.083288
   type: 'test'
   ...
 # Subtest: post31 cell 5 (isTRIPLE): 2 rows, both true
 ok 258 - post31 cell 5 (isTRIPLE): 2 rows, both true
   ---
-  duration_ms: 14.021797
+  duration_ms: 4.145046
   type: 'test'
   ...
 # Subtest: post31 cell 6 (annotation confidence): 0.99
 ok 259 - post31 cell 6 (annotation confidence): 0.99
   ---
-  duration_ms: 7.960512
+  duration_ms: 5.11548
   type: 'test'
   ...
 # Subtest: post32: the org graph is IN the proved fragment
 ok 260 - post32: the org graph is IN the proved fragment
   ---
-  duration_ms: 136.166769
+  duration_ms: 87.060836
   type: 'test'
   ...
 # Subtest: post32: certified closure derives the two-step subclass fact (rdfs9 twice) and the domain fact (rdfs2)
 ok 261 - post32: certified closure derives the two-step subclass fact (rdfs9 twice) and the domain fact (rdfs2)
   ---
-  duration_ms: 18.059231
+  duration_ms: 6.536445
   type: 'test'
   ...
 # Subtest: post32: the certified closure is idempotent (saturation is real, not one-round luck)
 ok 262 - post32: the certified closure is idempotent (saturation is real, not one-round luck)
   ---
-  duration_ms: 29.549414
+  duration_ms: 10.519155
   type: 'test'
   ...
 # Subtest: post32: the ASK over the closure answers true — the theorem-backed answer of the page
 ok 263 - post32: the ASK over the closure answers true — the theorem-backed answer of the page
   ---
-  duration_ms: 37.384463
+  duration_ms: 12.241976
   type: 'test'
   ...
 # Subtest: post32: the fragment-escape counterexample behaves exactly as finding F-1 states
 ok 264 - post32: the fragment-escape counterexample behaves exactly as finding F-1 states
   ---
-  duration_ms: 11.334639
+  duration_ms: 2.370547
   type: 'test'
   ...
 # Subtest: post32: a literal-object subClassOf graph is OUT of the fragment — the checker is load-bearing
 ok 265 - post32: a literal-object subClassOf graph is OUT of the fragment — the checker is load-bearing
   ---
-  duration_ms: 1.074702
+  duration_ms: 2.594406
   type: 'test'
   ...
 # Subtest: post32: the perf cell runs — both closures complete on the 60-class chain and the certified one derives the chain facts
 ok 266 - post32: the perf cell runs — both closures complete on the 60-class chain and the certified one derives the chain facts
   ---
-  duration_ms: 1890.505556
+  duration_ms: 937.665743
   type: 'test'
   ...
 # Subtest: post32: BROWSER-SURFACE PARITY — every fn.* name the page calls exists in the browser adapter AND the hub fn wrapper
 ok 267 - post32: BROWSER-SURFACE PARITY — every fn.* name the page calls exists in the browser adapter AND the hub fn wrapper
   ---
-  duration_ms: 3.086789
+  duration_ms: 2.131177
   type: 'test'
   ...
 # Subtest: post32: every observable-js cell in the page parses and runs under the reactive harness
 ok 268 - post32: every observable-js cell in the page parses and runs under the reactive harness
   ---
-  duration_ms: 1417.706125
+  duration_ms: 604.510892
   type: 'test'
   ...
 # Subtest: post32: the rhoDf* literature-name aliases stay wired (node + browser adapter + hub fn)
 ok 269 - post32: the rhoDf* literature-name aliases stay wired (node + browser adapter + hub fn)
   ---
-  duration_ms: 8.931504
+  duration_ms: 3.25334
   type: 'test'
   ...
 # Subtest: post32 step 4: RDFS-Plus derives the symmetric worksWith row the corerdfs closure cannot
 ok 270 - post32 step 4: RDFS-Plus derives the symmetric worksWith row the corerdfs closure cannot
   ---
-  duration_ms: 19.098688
+  duration_ms: 5.411127
   type: 'test'
   ...
 # Subtest: post32 step 4: the SELECT over the RDFS-Plus closure returns both directions
 ok 271 - post32 step 4: the SELECT over the RDFS-Plus closure returns both directions
   ---
-  duration_ms: 28.927646
+  duration_ms: 8.857177
   type: 'test'
   ...
 # Subtest: post33: post has 6 live cells
 ok 272 - post33: post has 6 live cells
   ---
-  duration_ms: 1.13125
+  duration_ms: 0.63612
   type: 'test'
   ...
 # Subtest: post33: dependency inference wires the endpoints cell into every query cell
 ok 273 - post33: dependency inference wires the endpoints cell into every query cell
   ---
-  duration_ms: 5.467399
+  duration_ms: 2.88205
   type: 'test'
   ...
 # Subtest: post33 endpoints cell: registers both endpoints and returns their IRIs
 ok 274 - post33 endpoints cell: registers both endpoints and returns their IRIs
   ---
-  duration_ms: 142.786477
+  duration_ms: 88.140426
   type: 'test'
   ...
 # Subtest: post33 cell "remote lookup per row": both rows answer from endpoint A
 ok 275 - post33 cell "remote lookup per row": both rows answer from endpoint A
   ---
-  duration_ms: 41.940796
+  duration_ms: 27.416347
   type: 'test'
   ...
 # Subtest: post33 cell "SERVICE ?endpoint": each row dispatched to ITS OWN endpoint
 ok 276 - post33 cell "SERVICE ?endpoint": each row dispatched to ITS OWN endpoint
   ---
-  duration_ms: 17.193567
+  duration_ms: 14.784924
   type: 'test'
   ...
 # Subtest: post33 cell "SILENT vs not": silent keeps 2 unextended rows, loud keeps none
 ok 277 - post33 cell "SILENT vs not": silent keeps 2 unextended rows, loud keeps none
   ---
-  duration_ms: 19.913092
+  duration_ms: 6.067948
   type: 'test'
   ...
 # Subtest: post34: post has 7 live cells
 ok 278 - post34: post has 7 live cells
   ---
-  duration_ms: 2.551008
+  duration_ms: 0.561106
   type: 'test'
   ...
 # Subtest: post34 cell "the error is the specification": unbound in BIND, dropped in FILTER
 ok 279 - post34 cell "the error is the specification": unbound in BIND, dropped in FILTER
   ---
-  duration_ms: 200.89923
+  duration_ms: 112.814635
   type: 'test'
   ...
 # Subtest: post34 cell "sync FILTER": fn:isAdult keeps only alice
 ok 280 - post34 cell "sync FILTER": fn:isAdult keeps only alice
   ---
-  duration_ms: 16.7375
+  duration_ms: 9.317803
   type: 'test'
   ...
 # Subtest: post34 cell "async BIND": fn:category labels adult/child through the trampoline
 ok 281 - post34 cell "async BIND": fn:category labels adult/child through the trampoline
   ---
-  duration_ms: 30.596517
+  duration_ms: 21.548612
   type: 'test'
   ...
 # Subtest: post34 cell "wasm": fn:wasmAdd computes age+100 inside WebAssembly
 ok 282 - post34 cell "wasm": fn:wasmAdd computes age+100 inside WebAssembly
   ---
-  duration_ms: 8.386583
+  duration_ms: 5.764851
   type: 'test'
   ...
 # Subtest: post34 cell "F*-verified body": fn:sigmoid computes sigma(age/10) via Math.Sigmoid
 ok 283 - post34 cell "F*-verified body": fn:sigmoid computes sigma(age/10) via Math.Sigmoid
   ---
-  duration_ms: 24.283673
+  duration_ms: 17.470337
   type: 'test'
   ...
 # Subtest: post35: post has 6 live cells
 ok 284 - post35: post has 6 live cells
   ---
-  duration_ms: 1.112922
+  duration_ms: 0.678164
   type: 'test'
   ...
 # Subtest: post35 wikifn cell: registers 4 ZIDs; exactly Z11040 answers via the interpreter
 ok 285 - post35 wikifn cell: registers 4 ZIDs; exactly Z11040 answers via the interpreter
   ---
-  duration_ms: 1289.857951
+  duration_ms: 392.508189
   type: 'test'
   ...
 # Subtest: post35 cell "palindrome canals": 6 rows, four true (Mercer + three classics), controls false
 ok 286 - post35 cell "palindrome canals": 6 rows, four true (Mercer + three classics), controls false
   ---
-  duration_ms: 93.197573
+  duration_ms: 85.454242
   type: 'test'
   ...
 # Subtest: post35 cell "filter to just those": the four palindromic canals survive
 ok 287 - post35 cell "filter to just those": the four palindromic canals survive
   ---
-  duration_ms: 31.201073
+  duration_ms: 35.687721
   type: 'test'
   ...
 # Subtest: post35 cell "any ZID": interpreter-backed length, compiled ROT13, ordered by letters
 ok 288 - post35 cell "any ZID": interpreter-backed length, compiled ROT13, ordered by letters
   ---
-  duration_ms: 38.153792
+  duration_ms: 25.152281
   type: 'test'
   ...
-# (node:24364) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3402) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/docs/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/docs/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: post36: post has 13 live cells
 ok 289 - post36: post has 13 live cells
   ---
-  duration_ms: 1.166284
+  duration_ms: 0.745405
   type: 'test'
   ...
 # Subtest: post36: the committed wasm artifact exists and is a real module
 ok 290 - post36: the committed wasm artifact exists and is a real module
   ---
-  duration_ms: 0.487755
+  duration_ms: 0.248004
   type: 'test'
   ...
 # Subtest: post36 cell "loading": Lean identifies itself across the C boundary
 ok 291 - post36 cell "loading": Lean identifies itself across the C boundary
   ---
-  duration_ms: 184.745222
+  duration_ms: 110.094118
   type: 'test'
   ...
 # Subtest: post36 cell "lean parses it": the Turtle parses to two triples per person
 ok 292 - post36 cell "lean parses it": the Turtle parses to two triples per person
   ---
-  duration_ms: 189.223438
+  duration_ms: 108.491279
   type: 'test'
   ...
 # Subtest: post36 cell "lean answers it": the join returns Alice and Bob
 ok 293 - post36 cell "lean answers it": the join returns Alice and Bob
   ---
-  duration_ms: 21.652061
+  duration_ms: 17.887437
   type: 'test'
   ...
 # Subtest: post36 cell "the F* engine": the same query, parsed from the same Turtle text
 ok 294 - post36 cell "the F* engine": the same query, parsed from the same Turtle text
   ---
-  duration_ms: 149.688434
+  duration_ms: 66.411581
   type: 'test'
   ...
 # Subtest: post36 cell "do they agree": the two engines return the identical answer set
 ok 295 - post36 cell "do they agree": the two engines return the identical answer set
   ---
-  duration_ms: 11.97421
+  duration_ms: 6.67882
   type: 'test'
   ...
 # Subtest: post36 cell "one more question": both engines ASK true over the typed-literal FILTER
 ok 296 - post36 cell "one more question": both engines ASK true over the typed-literal FILTER
   ---
-  duration_ms: 19.248583
+  duration_ms: 11.156487
   type: 'test'
   ...
 # Subtest: post36: every named cell resolves to a defined value
 ok 297 - post36: every named cell resolves to a defined value
   ---
-  duration_ms: 13.536436
+  duration_ms: 7.973153
   type: 'test'
   ...
 # Subtest: post36: a dispatch parse error comes back as an error, not as a module abort
 ok 298 - post36: a dispatch parse error comes back as an error, not as a module abort
   ---
-  duration_ms: 1.619895
+  duration_ms: 0.941691
   type: 'test'
   ...
 # Subtest: post37: installed tarball version.json gitSha is an ancestor of (or equal to) HEAD
 ok 299 - post37: installed tarball version.json gitSha is an ancestor of (or equal to) HEAD
   ---
-  duration_ms: 375.021458
+  duration_ms: 16.278778
   type: 'test'
   ...
 # Subtest: post37: post has 9 live cells
 ok 300 - post37: post has 9 live cells
   ---
-  duration_ms: 0.246076
+  duration_ms: 0.21913
   type: 'test'
   ...
 # Subtest: post37 cell 0 (registry): loads @factoidal/core@0.1.0 from the real registry
 ok 301 - post37 cell 0 (registry): loads @factoidal/core@0.1.0 from the real registry
   ---
-  duration_ms: 21.328716
+  duration_ms: 11.009435
   type: 'test'
   ...
 # Subtest: post37 cell 1 (versions): registry version matches the published 0.1.0, distinct from the same-origin binding only in name not value
 ok 302 - post37 cell 1 (versions): registry version matches the published 0.1.0, distinct from the same-origin binding only in name not value
   ---
-  duration_ms: 3.129882
+  duration_ms: 2.123064
   type: 'test'
   ...
 # Subtest: post37 cell 3 (registryDataset): 4 triples parsed through the registry module
 ok 303 - post37 cell 3 (registryDataset): 4 triples parsed through the registry module
   ---
-  duration_ms: 122.652939
+  duration_ms: 65.122726
   type: 'test'
   ...
 # Subtest: post37 cell 4 (SELECT via registry): alice(30) then bob(7)
 ok 304 - post37 cell 4 (SELECT via registry): alice(30) then bob(7)
   ---
-  duration_ms: 43.182215
+  duration_ms: 11.66094
   type: 'test'
   ...
 # Subtest: post37 cell 5 (ASK via registry): true (alice is >= 18)
 ok 305 - post37 cell 5 (ASK via registry): true (alice is >= 18)
   ---
-  duration_ms: 31.090693
+  duration_ms: 5.838943
   type: 'test'
   ...
 # Subtest: post37 cell 6 (canonicalize via registry): 4 canonical N-Quads lines mentioning alice
 ok 306 - post37 cell 6 (canonicalize via registry): 4 canonical N-Quads lines mentioning alice
   ---
-  duration_ms: 12.863364
+  duration_ms: 3.785734
   type: 'test'
   ...
 # Subtest: post37 cell 7 (extension function via registry): fn:isAdult keeps only alice
 ok 307 - post37 cell 7 (extension function via registry): fn:isAdult keeps only alice
   ---
-  duration_ms: 20.703663
+  duration_ms: 4.303364
   type: 'test'
   ...
 # Subtest: post37 cell 8 (cross-check): same-origin and registry query answers agree
 ok 308 - post37 cell 8 (cross-check): same-origin and registry query answers agree
   ---
-  duration_ms: 179.757512
+  duration_ms: 67.573965
   type: 'test'
   ...
-# (node:24389) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3423) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/docs/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/docs/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: post38: post has 17 live cells
 ok 309 - post38: post has 17 live cells
   ---
-  duration_ms: 1.344055
+  duration_ms: 0.827839
   type: 'test'
   ...
 # Subtest: post38: the committed wasm artifact exists and is a real module
 ok 310 - post38: the committed wasm artifact exists and is a real module
   ---
-  duration_ms: 0.503897
+  duration_ms: 0.260813
   type: 'test'
   ...
 # Subtest: post38 cell "one triple": parse reports count 1 and the canonical echo
 ok 311 - post38 cell "one triple": parse reports count 1 and the canonical echo
   ---
-  duration_ms: 167.703986
+  duration_ms: 77.11873
   type: 'test'
   ...
 # Subtest: post38 cell "is anything there": ASK over one triple is true
 ok 312 - post38 cell "is anything there": ASK over one triple is true
   ---
-  duration_ms: 237.772552
+  duration_ms: 89.801823
   type: 'test'
   ...
 # Subtest: post38 cell "what is its name": SELECT one variable finds Alice
 ok 313 - post38 cell "what is its name": SELECT one variable finds Alice
   ---
-  duration_ms: 11.000841
+  duration_ms: 6.690388
   type: 'test'
   ...
 # Subtest: post38 cell "two triples, one join": one row carries name and age together
 ok 314 - post38 cell "two triples, one join": one row carries name and age together
   ---
-  duration_ms: 4.411061
+  duration_ms: 2.637541
   type: 'test'
   ...
 # Subtest: post38 cell "turtle in": same canonical bytes, same rows
 ok 315 - post38 cell "turtle in": same canonical bytes, same rows
   ---
-  duration_ms: 15.378348
+  duration_ms: 7.322491
   type: 'test'
   ...
 # Subtest: post38 cell "insert data": the dataset grows from 2 to 4 triples
 ok 316 - post38 cell "insert data": the dataset grows from 2 to 4 triples
   ---
-  duration_ms: 8.183586
+  duration_ms: 4.476766
   type: 'test'
   ...
 # Subtest: post38 cell "query sees the new row": the join now returns Alice and Bob
 ok 317 - post38 cell "query sees the new row": the join now returns Alice and Bob
   ---
-  duration_ms: 9.563588
+  duration_ms: 2.711823
   type: 'test'
   ...
 # Subtest: post38 cell "construct": new foaf:name triples, serialized as Turtle
 ok 318 - post38 cell "construct": new foaf:name triples, serialized as Turtle
   ---
-  duration_ms: 8.467184
+  duration_ms: 4.793975
   type: 'test'
   ...
 # Subtest: post38 cell "rdfs closure": rex is an Animal after the closure, not before
 ok 319 - post38 cell "rdfs closure": rex is an Animal after the closure, not before
   ---
-  duration_ms: 54.857061
+  duration_ms: 30.6381
   type: 'test'
   ...
 # Subtest: post38 cell "owl-rl closure": sameAs propagates the name to superman
 ok 320 - post38 cell "owl-rl closure": sameAs propagates the name to superman
   ---
-  duration_ms: 13.319942
+  duration_ms: 9.466777
   type: 'test'
   ...
 # Subtest: post38 cell "same graph": two bnode labelings canonicalize identically
 ok 321 - post38 cell "same graph": two bnode labelings canonicalize identically
   ---
-  duration_ms: 8.306717
+  duration_ms: 3.706024
   type: 'test'
   ...
 # Subtest: post38 cell "changed graph": one changed predicate breaks canonical equality
 ok 322 - post38 cell "changed graph": one changed predicate breaks canonical equality
   ---
-  duration_ms: 7.7636
+  duration_ms: 8.356212
   type: 'test'
   ...
 # Subtest: post38 cell "typed surface": fn.l4Parse/fn.l4Query reproduce the earlier join
 ok 323 - post38 cell "typed surface": fn.l4Parse/fn.l4Query reproduce the earlier join
   ---
-  duration_ms: 17.576739
+  duration_ms: 2.811393
   type: 'test'
   ...
 # Subtest: post38 cell "the F* engine": the same join from the same bytes
 ok 324 - post38 cell "the F* engine": the same join from the same bytes
   ---
-  duration_ms: 132.875498
+  duration_ms: 62.397353
   type: 'test'
   ...
 # Subtest: post38 cell "agreement": the two engines return the identical answer set
 ok 325 - post38 cell "agreement": the two engines return the identical answer set
   ---
-  duration_ms: 17.406586
+  duration_ms: 5.446711
   type: 'test'
   ...
 # Subtest: post38: a dispatch parse error throws and leaves the module alive
 ok 326 - post38: a dispatch parse error throws and leaves the module alive
   ---
-  duration_ms: 1.696087
+  duration_ms: 0.511092
   type: 'test'
   ...
 # Subtest: post38: the committed wasm serves every op the page calls
 ok 327 - post38: the committed wasm serves every op the page calls
   ---
-  duration_ms: 0.555801
+  duration_ms: 0.197828
   type: 'test'
   ...
-# (node:24402) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3430) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/docs/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/docs/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: post40: post has 12 live cells
 ok 328 - post40: post has 12 live cells
   ---
-  duration_ms: 1.371709
+  duration_ms: 0.589389
   type: 'test'
   ...
 # Subtest: post40: the committed wasm artifact exists and is a real module
 ok 329 - post40: the committed wasm artifact exists and is a real module
   ---
-  duration_ms: 0.441325
+  duration_ms: 0.24558
   type: 'test'
   ...
 # Subtest: post40 cell "orgDataset": one fn.l4Parse call opens a TriG corpus, one handle, 10 triples
 ok 330 - post40 cell "orgDataset": one fn.l4Parse call opens a TriG corpus, one handle, 10 triples
   ---
-  duration_ms: 156.353684
+  duration_ms: 75.591386
   type: 'test'
   ...
 # Subtest: post40 cell "byDept": the cross-graph GRAPH ?g query returns 4 rows over 3 named graphs
 ok 331 - post40 cell "byDept": the cross-graph GRAPH ?g query returns 4 rows over 3 named graphs
   ---
-  duration_ms: 245.782265
+  duration_ms: 91.539646
   type: 'test'
   ...
 # Subtest: post40 cell "afterInsert": fn.l4Update mutates the SAME handle -- size grows from 10 to 12
 ok 332 - post40 cell "afterInsert": fn.l4Update mutates the SAME handle -- size grows from 10 to 12
   ---
-  duration_ms: 8.978365
+  duration_ms: 4.472631
   type: 'test'
   ...
 # Subtest: post40 cell "byDeptAfter": the same handle, re-queried, now shows 5 rows including Erin
 ok 333 - post40 cell "byDeptAfter": the same handle, re-queried, now shows 5 rows including Erin
   ---
-  duration_ms: 6.619757
+  duration_ms: 4.00226
   type: 'test'
   ...
 # Subtest: post40 cell "closureCheck": rdfsPlusClosure over the handle's own data derives Employee
 ok 334 - post40 cell "closureCheck": rdfsPlusClosure over the handle's own data derives Employee
   ---
-  duration_ms: 18.864217
+  duration_ms: 16.640775
   type: 'test'
   ...
 # Subtest: post40 cell "consistentBefore": owlIsConsistent reports consistent (true) before the clash
 ok 335 - post40 cell "consistentBefore": owlIsConsistent reports consistent (true) before the clash
   ---
-  duration_ms: 34.847404
+  duration_ms: 22.082668
   type: 'test'
   ...
 # Subtest: post40 cell "consistentAfter": inserting the disjoint-class pair flips the verdict to false, with a reason
 ok 336 - post40 cell "consistentAfter": inserting the disjoint-class pair flips the verdict to false, with a reason
   ---
-  duration_ms: 14.499225
+  duration_ms: 20.800323
   type: 'test'
   ...
 # Subtest: post40 cell "finalTurtle": the closing Turtle shows both classes on :alice
 ok 337 - post40 cell "finalTurtle": the closing Turtle shows both classes on :alice
   ---
-  duration_ms: 14.678934
+  duration_ms: 15.22642
   type: 'test'
   ...
 # Subtest: post40: the handle identity is stable across parse, query, update and close
 ok 338 - post40: the handle identity is stable across parse, query, update and close
   ---
-  duration_ms: 9.442711
+  duration_ms: 5.237294
   type: 'test'
   ...
 # Subtest: post40: the committed wasm serves every op the page calls
 ok 339 - post40: the committed wasm serves every op the page calls
   ---
-  duration_ms: 0.522205
+  duration_ms: 0.272482
   type: 'test'
   ...
-# (node:24409) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3437) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/docs/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/docs/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: post41: post has 10 live cells
 ok 340 - post41: post has 10 live cells
   ---
-  duration_ms: 1.327992
+  duration_ms: 0.738194
   type: 'test'
   ...
 # Subtest: post41: the committed wasm artifact exists and is a real module
 ok 341 - post41: the committed wasm artifact exists and is a real module
   ---
-  duration_ms: 0.474226
+  duration_ms: 0.229607
   type: 'test'
   ...
 # Subtest: post41: the committed wasm serves the clParse op the page calls
 ok 342 - post41: the committed wasm serves the clParse op the page calls
   ---
-  duration_ms: 156.597115
+  duration_ms: 55.793866
   type: 'test'
   ...
 # Subtest: post41 cell "moduleAttempt": cl:text is rejected with the issue-580 error, module stays alive
 ok 343 - post41 cell "moduleAttempt": cl:text is rejected with the issue-580 error, module stays alive
   ---
-  duration_ms: 239.447611
+  duration_ms: 108.522947
   type: 'test'
   ...
 # Subtest: post41 cell "groundParse": two ground facts, pure CL, re-enclosed normal form
 ok 344 - post41 cell "groundParse": two ground facts, pure CL, re-enclosed normal form
   ---
-  duration_ms: 6.829403
+  duration_ms: 2.158698
   type: 'test'
   ...
 # Subtest: post41 cell "restrictedParse": restricted forall/exists, pure CL
 ok 345 - post41 cell "restrictedParse": restricted forall/exists, pure CL
   ---
-  duration_ms: 5.420471
+  duration_ms: 1.799816
   type: 'test'
   ...
 # Subtest: post41 cell "cheikesParse": cancelling-parentheses assertion flips pureCL false
 ok 346 - post41 cell "cheikesParse": cancelling-parentheses assertion flips pureCL false
   ---
-  duration_ms: 11.305923
+  duration_ms: 1.317659
   type: 'test'
   ...
 # Subtest: post41 cell "loisParse": the GUIDE's quantifying-in sentence parses, pureCL false
 ok 347 - post41 cell "loisParse": the GUIDE's quantifying-in sentence parses, pureCL false
   ---
-  duration_ms: 3.597631
+  duration_ms: 1.949422
   type: 'test'
   ...
 # Subtest: post41: every JSON-envelope/table cell renders under pretty()
 ok 348 - post41: every JSON-envelope/table cell renders under pretty()
   ---
-  duration_ms: 8.171841
+  duration_ms: 2.189495
   type: 'test'
   ...
 # Subtest: post42: post has exactly 8 live cells
 ok 349 - post42: post has exactly 8 live cells
   ---
-  duration_ms: 1.342548
+  duration_ms: 0.689421
   type: 'test'
   ...
 # Subtest: post42: fixture fetch cell reads the committed corpus text
 ok 350 - post42: fixture fetch cell reads the committed corpus text
   ---
-  duration_ms: 12.16862
+  duration_ms: 4.475104
   type: 'test'
   ...
 # Subtest: post42: parsed cell reports the labelled 4,000-triple count
 ok 351 - post42: parsed cell reports the labelled 4,000-triple count
   ---
-  duration_ms: 2183.037599
+  duration_ms: 818.023554
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:1
@@ -2133,7 +2133,7 @@ ok 351 - post42: parsed cell reports the labelled 4,000-triple count
 # Subtest: post42: store cell (toCottas + openCottas) produces a non-empty store byte size and a handle
 ok 352 - post42: store cell (toCottas + openCottas) produces a non-empty store byte size and a handle
   ---
-  duration_ms: 4983.837126
+  duration_ms: 1912.039999
   type: 'test'
   ...
 # [bet7-trace] ensure_graphs_loaded: lazy populate path=npmcottas:1
@@ -2145,13 +2145,13 @@ ok 352 - post42: store cell (toCottas + openCottas) produces a non-empty store b
 # Subtest: post42: storeTimings cell -- 3 queries, each run 3 times, rows match the fixture
 ok 353 - post42: storeTimings cell -- 3 queries, each run 3 times, rows match the fixture
   ---
-  duration_ms: 382.511727
+  duration_ms: 150.988709
   type: 'test'
   ...
 # Subtest: post42: memoryTimings cell -- same 3 queries against the parsed dataset, same row counts
 ok 354 - post42: memoryTimings cell -- same 3 queries against the parsed dataset, same row counts
   ---
-  duration_ms: 1441.747993
+  duration_ms: 485.857867
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:2
@@ -2169,7 +2169,7 @@ ok 354 - post42: memoryTimings cell -- same 3 queries against the parsed dataset
 # Subtest: post42: comparisonTable cell -- array of plain row objects (Table-toggle shape), store and memory agree on every row
 ok 355 - post42: comparisonTable cell -- array of plain row objects (Table-toggle shape), store and memory agree on every row
   ---
-  duration_ms: 5011.621417
+  duration_ms: 1833.569805
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:3
@@ -2185,13 +2185,13 @@ ok 355 - post42: comparisonTable cell -- array of plain row objects (Table-toggl
 # Subtest: post42: reopened cell -- openCottas() on the same bytes answers over the full corpus again
 ok 356 - post42: reopened cell -- openCottas() on the same bytes answers over the full corpus again
   ---
-  duration_ms: 479.041935
+  duration_ms: 134.11866
   type: 'test'
   ...
 # Subtest: post42: point lookup -- store and memory return the pinned name, not just a row count
 ok 357 - post42: point lookup -- store and memory return the pinned name, not just a row count
   ---
-  duration_ms: 2069.341919
+  duration_ms: 659.961624
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:4
@@ -2206,7 +2206,7 @@ ok 357 - post42: point lookup -- store and memory return the pinned name, not ju
 # Subtest: post42: star join -- store and memory return the pinned 5-predicate set for one person, and agree with each other
 ok 358 - post42: star join -- store and memory return the pinned 5-predicate set for one person, and agree with each other
   ---
-  duration_ms: 7051.969941
+  duration_ms: 2370.666074
   type: 'test'
   ...
 # [qof3-trace] cottas_ondisk_open path=npmcottas:5
@@ -2221,167 +2221,179 @@ ok 358 - post42: star join -- store and memory return the pinned 5-predicate set
 # Subtest: post42: cross-graph GRAPH join -- store and memory both resolve person -> org name across 3 named graphs
 ok 359 - post42: cross-graph GRAPH join -- store and memory both resolve person -> org name across 3 named graphs
   ---
-  duration_ms: 7152.350635
+  duration_ms: 2312.300625
   type: 'test'
   ...
 # Subtest: post42: the fixture's affiliation link for the test person matches the generator formula independently
 ok 360 - post42: the fixture's affiliation link for the test person matches the generator formula independently
   ---
-  duration_ms: 0.427347
+  duration_ms: 0.236717
   type: 'test'
   ...
-# (node:24423) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3455) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/docs/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/docs/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: post43: post has 5 live cells
 ok 361 - post43: post has 5 live cells
   ---
-  duration_ms: 1.543746
+  duration_ms: 0.615169
   type: 'test'
   ...
 # Subtest: post43: the committed wasm artifact exists and is a real module
 ok 362 - post43: the committed wasm artifact exists and is a real module
   ---
-  duration_ms: 0.68383
+  duration_ms: 0.245991
   type: 'test'
   ...
 # Subtest: post43 cell "rhoDfAnswer": the closure derives the type, and the fragment check passes
 ok 363 - post43 cell "rhoDfAnswer": the closure derives the type, and the fragment check passes
   ---
-  duration_ms: 200.158103
+  duration_ms: 92.035032
   type: 'test'
   ...
 # Subtest: post43 cell "selfLoop": Finding C-1 separates the two schemas, live
 ok 364 - post43 cell "selfLoop": Finding C-1 separates the two schemas, live
   ---
-  duration_ms: 240.070252
+  duration_ms: 93.295886
   type: 'test'
   ...
 # Subtest: post43 cell "owlRlAnswer": prp-inv1 fires and owlEntails agrees via the closure
 ok 365 - post43 cell "owlRlAnswer": prp-inv1 fires and owlEntails agrees via the closure
   ---
-  duration_ms: 17.312125
+  duration_ms: 7.336493
   type: 'test'
   ...
 # Subtest: post43: the committed wasm serves every op the page calls
 ok 366 - post43: the committed wasm serves every op the page calls
   ---
-  duration_ms: 1.2743
+  duration_ms: 0.328746
   type: 'test'
   ...
 # Subtest: post43: a dispatch parse error throws and leaves the module alive
 ok 367 - post43: a dispatch parse error throws and leaves the module alive
   ---
-  duration_ms: 1.002052
+  duration_ms: 0.512804
   type: 'test'
   ...
-# (node:24430) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/user/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
+# (node:3462) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/factoidal/factoidal/docs/web/hub/assets/l4/l4factoidal.js is not specified and it doesn't parse as CommonJS.
 # Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-# To eliminate this warning, add "type": "module" to /home/user/factoidal/docs/package.json.
+# To eliminate this warning, add "type": "module" to /home/runner/work/factoidal/factoidal/docs/package.json.
 # (Use `node --trace-warnings ...` to show where the warning was created)
 # Subtest: post44: post has 20 live cells
 ok 368 - post44: post has 20 live cells
   ---
-  duration_ms: 1.253361
+  duration_ms: 0.807529
   type: 'test'
   ...
 # Subtest: post44: the committed wasm artifact exists and is a real module
 ok 369 - post44: the committed wasm artifact exists and is a real module
   ---
-  duration_ms: 0.445145
+  duration_ms: 0.250939
   type: 'test'
   ...
 # Subtest: post44: the committed wasm serves the clParse op the page calls
 ok 370 - post44: the committed wasm serves the clParse op the page calls
   ---
-  duration_ms: 155.399969
+  duration_ms: 69.6372
+  type: 'test'
+  ...
+# Subtest: post44: the committed wasm no longer serves the deleted projection ops
+ok 371 - post44: the committed wasm no longer serves the deleted projection ops
+  ---
+  duration_ms: 0.236297
+  type: 'test'
+  ...
+# Subtest: post44: the committed wasm serves the four CL/IKL ops added by the rebuild
+ok 372 - post44: the committed wasm serves the four CL/IKL ops added by the rebuild
+  ---
+  duration_ms: 0.184488
   type: 'test'
   ...
 # Subtest: post44: no cell calls any op other than clParse
-ok 371 - post44: no cell calls any op other than clParse
+ok 373 - post44: no cell calls any op other than clParse
   ---
-  duration_ms: 4.614811
+  duration_ms: 0.558412
   type: 'test'
   ...
 # Subtest: post44 cell "testimonyParse": quoted testimony is pure CL, unchanged in normal form
-ok 372 - post44 cell "testimonyParse": quoted testimony is pure CL, unchanged in normal form
+ok 374 - post44 cell "testimonyParse": quoted testimony is pure CL, unchanged in normal form
   ---
-  duration_ms: 265.723808
+  duration_ms: 89.943176
   type: 'test'
   ...
 # Subtest: post44 cell "cludEvidenceParse": the first that-term flips pureCL false
-ok 373 - post44 cell "cludEvidenceParse": the first that-term flips pureCL false
+ok 375 - post44 cell "cludEvidenceParse": the first that-term flips pureCL false
   ---
-  duration_ms: 4.333462
+  duration_ms: 2.314563
   type: 'test'
   ...
 # Subtest: post44 cell "doubleThatAttempt": a that-term inside that is rejected, naming ((that S))
-ok 374 - post44 cell "doubleThatAttempt": a that-term inside that is rejected, naming ((that S))
+ok 376 - post44 cell "doubleThatAttempt": a that-term inside that is rejected, naming ((that S))
   ---
-  duration_ms: 4.272753
+  duration_ms: 2.807808
   type: 'test'
   ...
 # Subtest: post44 cell "scenarioAParse": three-layer that-nesting through a predication parses
-ok 375 - post44 cell "scenarioAParse": three-layer that-nesting through a predication parses
+ok 377 - post44 cell "scenarioAParse": three-layer that-nesting through a predication parses
   ---
-  duration_ms: 2.783332
+  duration_ms: 1.17286
   type: 'test'
   ...
 # Subtest: post44 cell "factivityParse": cancelling parens over a variable stay pure CL
-ok 376 - post44 cell "factivityParse": cancelling parens over a variable stay pure CL
+ok 378 - post44 cell "factivityParse": cancelling parens over a variable stay pure CL
   ---
-  duration_ms: 3.58125
+  duration_ms: 1.524751
   type: 'test'
   ...
 # Subtest: post44 cell "quantifyInParse": a variable bound outside that is used inside it
-ok 377 - post44 cell "quantifyInParse": a variable bound outside that is used inside it
+ok 379 - post44 cell "quantifyInParse": a variable bound outside that is used inside it
   ---
-  duration_ms: 3.279603
+  duration_ms: 1.124327
   type: 'test'
   ...
 # Subtest: post44 cell "transparencyParse": identity alongside a belief that-term parses
-ok 378 - post44 cell "transparencyParse": identity alongside a belief that-term parses
+ok 380 - post44 cell "transparencyParse": identity alongside a belief that-term parses
   ---
-  duration_ms: 3.915406
+  duration_ms: 1.430339
   type: 'test'
   ...
 # Subtest: post44 cell "scenarioBParse": one string, two readAs readings, both parse
-ok 379 - post44 cell "scenarioBParse": one string, two readAs readings, both parse
+ok 381 - post44 cell "scenarioBParse": one string, two readAs readings, both parse
   ---
-  duration_ms: 2.753568
+  duration_ms: 0.939168
   type: 'test'
   ...
 # Subtest: post44 cell "mixupParse": the retelling chain parses, Wren's words reading as another pair
-ok 380 - post44 cell "mixupParse": the retelling chain parses, Wren's words reading as another pair
+ok 382 - post44 cell "mixupParse": the retelling chain parses, Wren's words reading as another pair
   ---
-  duration_ms: 2.366109
+  duration_ms: 1.21921
   type: 'test'
   ...
 # Subtest: post44 cell "readAsFunctionalParse": the string-determines-proposition axiom is pure CL
-ok 381 - post44 cell "readAsFunctionalParse": the string-determines-proposition axiom is pure CL
+ok 383 - post44 cell "readAsFunctionalParse": the string-determines-proposition axiom is pure CL
   ---
-  duration_ms: 2.099912
+  duration_ms: 0.760679
   type: 'test'
   ...
 # Subtest: post44: pureCL is true exactly for the cells that quote words or quantify plainly
-ok 382 - post44: pureCL is true exactly for the cells that quote words or quantify plainly
+ok 384 - post44: pureCL is true exactly for the cells that quote words or quantify plainly
   ---
-  duration_ms: 10.432809
+  duration_ms: 2.414684
   type: 'test'
   ...
 # Subtest: post44: every JSON-envelope cell renders under pretty()
-ok 383 - post44: every JSON-envelope cell renders under pretty()
+ok 385 - post44: every JSON-envelope cell renders under pretty()
   ---
-  duration_ms: 12.512083
+  duration_ms: 2.902751
   type: 'test'
   ...
-1..383
-# tests 383
+1..385
+# tests 385
 # suites 0
-# pass 383
+# pass 385
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 41745.064849
+# duration_ms 15734.052847

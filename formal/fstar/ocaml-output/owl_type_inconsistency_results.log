@@ -67,7 +67,6 @@
   [inc-running] WebOnt-description-logic-110
   [inc-running] WebOnt-description-logic-111
   [inc-running] WebOnt-description-logic-502
-  [owl_refuter_escape] tableau_consistent abandoned (Owl_runner.Owl_closure_timeout); the clash search did not finish
   [inc-running] WebOnt-description-logic-504
   [inc-running] WebOnt-description-logic-601
   [inc-running] WebOnt-description-logic-602
@@ -131,7 +130,7 @@
 Closure regime: DL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/type-inconsistency.rdf
-  parsed 3220 triples in 0.21s
+  parsed 3220 triples in 0.10s
 Totals: 128 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    0
@@ -214,7 +213,7 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-description-logic-109
   PASS  WebOnt-description-logic-110
   PASS  WebOnt-description-logic-111
-  FAIL/unexpected-consistency  WebOnt-description-logic-502
+  PASS  WebOnt-description-logic-502
   PASS  WebOnt-description-logic-504
   PASS  WebOnt-description-logic-601
   PASS  WebOnt-description-logic-602
@@ -275,9 +274,8 @@ Running 128 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  rdfbased-sem-restrict-maxqcr-inst-obj-zero
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 125 pass, 2 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 117.36s
+Profile-RL InconsistencyTests: 126 pass, 1 fail (out of 127), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 69.76s
 
 Harness Diagnostics (escape branches, #316 + #326):
-HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:2 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:2 tests_unsupported_cap_escape:0 tests_unsupported_refuter_indeterminate:0
-HARNESS-DIAG-OWL-TEST WebOnt-description-logic-502
+HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:1 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:1 tests_unsupported_cap_escape:0 tests_unsupported_refuter_indeterminate:0
 HARNESS-DIAG-OWL-TEST WebOnt-description-logic-910

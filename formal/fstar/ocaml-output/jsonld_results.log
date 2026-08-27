@@ -466,7 +466,7 @@
   [466/467] #twf05 ok
   [467/467] #twf07 ok
 === JSON-LD 1.1 toRdf Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/toRdf-manifest.jsonld
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/toRdf-manifest.jsonld
 
 Totals: 467 test entries
 

@@ -1,6 +1,6 @@
 === GRDDL Stage 2 Runner (local docroot, no live network) ===
-suite dir: /home/user/factoidal/third_party/testing/grddl
-manifest:  /home/user/factoidal/third_party/testing/grddl/grddl-tests-normative.rdf
+suite dir: /home/runner/work/factoidal/factoidal/third_party/testing/grddl
+manifest:  /home/runner/work/factoidal/factoidal/third_party/testing/grddl/grddl-tests-normative.rdf
 
 manifest triples: 528
 test entries: 68

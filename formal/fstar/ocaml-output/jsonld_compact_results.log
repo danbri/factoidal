@@ -245,7 +245,7 @@
   [245/246] #ttn02 ok
   [246/246] #ttn03 ok
 === JSON-LD 1.1 Compaction Test Runner ===
-Manifest: /home/user/factoidal/third_party/testing/json-ld/tests/compact-manifest.jsonld
+Manifest: /home/runner/work/factoidal/factoidal/third_party/testing/json-ld/tests/compact-manifest.jsonld
 
 Totals: 246 test entries
 
