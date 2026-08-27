@@ -428,7 +428,13 @@ static list** — the surface grows (op names observed 2026-08-26:
 `clAlphaNorm`, `clNormalize`, `clFiniteSat`, `ops`, and the
 dataset-handle ops
 `datasetOpen`, `datasetQuery`, `datasetUpdate`, `datasetSerialize`,
-`datasetClose` — 23 in all through the IO entry). ✅ The committed wasm
+`datasetClose` — 23 in all through the IO entry). ⚠️ The Lean SOURCE
+gained two more on 2026-08-27 — `proofCheck(bundleJson)` and
+`proofInspect(bundleJson)`, the FPP0 proof checker of milestone M1
+(`Wasm/Ops/Proof.lean`) — and the committed wasm artifact does NOT
+serve them until `Wasm/build-wasm.sh` runs again, which is why the
+`ops` reflection op and not this list is the answer to what an
+artifact can do. ✅ The committed wasm
 artifact was rebuilt on 2026-08-26 (sha256 `91fb323e…`) and now matches
 its source: `clToDataset` and `queryWithIklService`, deleted by
 https://github.com/danbri/factoidal/issues/626, answer `unknown op`,
