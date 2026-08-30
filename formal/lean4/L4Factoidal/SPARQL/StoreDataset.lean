@@ -137,6 +137,20 @@ the module header for why, and for what that costs. -/
 def evalPatternBackend (env : EvalEnv) (dsb : DatasetBackend) :
     QueryPattern → GraphBackend → SolutionSeq
   | .bgp b, gb => evalBgpBackend b gb
+  -- A FILTER without active-graph-dependent expression forms can stay on the
+  -- backend path.  This is the intentionally conservative counterpart of the
+  -- `QueryPattern.lowerWith` closure: for `Expr.backendLocal`, existential
+  -- substitution is a no-op and `Expr.evalIn` needs only the row.  Other
+  -- filters retain the complete materialisation fallback below.
+  | .filter condition pattern, gb =>
+      if condition.backendLocal then
+        (evalPatternBackend env dsb pattern gb).filter
+          (fun row => ebvOrFalse (Expr.evalIn env row condition))
+      else
+        let ds0 := materialiseDatasetBackend dsb
+        let gCurrent := backendSearch gb patternBoundAll
+        let ds := { ds0 with default := gCurrent }
+        (QueryPattern.filter condition pattern).lowerWith env Binding.empty |>.evalIn ds gCurrent
   | .join p1 p2, gb =>
       SPARQL.join (evalPatternBackend env dsb p1 gb) (evalPatternBackend env dsb p2 gb)
   | .union p1 p2, gb =>

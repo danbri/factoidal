@@ -43,4 +43,8 @@ for source_path in "$source_dir"/manifest.sbm0 "$source_dir"/predicate-*.ibk2; d
 done
 
 echo "blockengine-postgres-shard-smoke bytea-round-trip=pass artifacts=$(find "$retrieved_dir" -type f | wc -l | tr -d ' ')"
-"$lean_dir/.lake/build/bin/l4block-shard-query" "$retrieved_dir" --query "$query"
+query_output=$("$lean_dir/.lake/build/bin/l4block-shard-query" "$retrieved_dir" --query "$query")
+printf '%s\n' "$query_output"
+grep -q 'shards=2 open-mode=predicate-selective(2)' <<<"$query_output"
+grep -q 'rows=3' <<<"$query_output"
+echo 'blockengine-postgres-shard-smoke=pass'

@@ -195,6 +195,8 @@ def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
       let l ← nativeConstantPredicates? left
       let r ← nativeConstantPredicates? right
       some (l ++ r)
+  | .filter condition pattern =>
+      if condition.backendLocal then nativeConstantPredicates? pattern else none
   | .empty => some []
   | _ => none
 
@@ -305,6 +307,9 @@ private def sampleReader (key : ArtifactKey) : Option ByteArray :=
   (mkQuery (.select .all) (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))
   == some [samplePredicate]
 #guard (nativeConstantPredicates? (.filter (.boolLit true)
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))
+  == some [samplePredicate])
+#guard (nativeConstantPredicates? (.filter (.existsPat .empty)
   (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))).isNone
 
 end L4Factoidal.Storage.ShardManifest

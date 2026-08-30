@@ -227,6 +227,20 @@ def Query.postValues : Query → Option (List Binding)
 def Query.base : Query → Option String
   | .mk _ _ _ _ _ _ _ b => b
 
+/-- Expressions whose evaluation depends only on the current solution mapping
+    and `EvalEnv`, never on the active RDF graph.  This deliberately small
+    subset permits backend-native FILTER evaluation without accidentally
+    changing the semantics of EXISTS/NOT EXISTS, extension functions, paths,
+    aggregates or graph-sensitive expression forms.  Extend it only alongside
+    a corresponding backend refinement argument. -/
+def Expr.backendLocal : Expr → Bool
+  | .var _ | .iri _ | .lit _ | .boolLit _ | .numericLit _ | .decimalLit _
+  | .doubleLit _ | .bound _ => true
+  | .arith _ left right | .compare _ left right | .and left right | .or left right
+  | .sameTerm left right => Expr.backendLocal left && Expr.backendLocal right
+  | .unaryMinus e | .unaryPlus e | .not e => Expr.backendLocal e
+  | _ => false
+
 /-- Build a query, defaulting every optional part — the shape most
 call sites (and every test below) want. -/
 def mkQuery (form : QueryForm) (pattern : QueryPattern)
