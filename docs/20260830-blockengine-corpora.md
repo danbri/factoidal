@@ -13,8 +13,8 @@ and result oracle.
 | Stage | Input | Role | Status |
 |---|---|---|---|
 | Micro | `BlockMvp` fixture | proofs and byte-corruption guards | runnable |
-| Small real RDF | `examples/wikidata/subsets/lifesci-kgx/data/active_site.ttl` | Lean Turtle -> BLK0 -> SPARQL COUNT | runnable: 486 triples, 64,731 bytes, 132 `wdt:P31` rows |
-| Medium raw KGX | `disease.ttl`, `chromosome.ttl`, `sequence_variant.ttl` | realistic Wikidata-shaped access and joins | available locally; direct Turtle probe did not finish in the initial 30-second diagnostic window on `disease.ttl` |
+| Small real RDF | `examples/wikidata/subsets/lifesci-kgx/data/active_site.ttl` | Lean Turtle -> indexed block -> parsed SPARQL SELECT/COUNT | runnable: 486 triples, 132 `wdt:P31` rows |
+| Medium raw KGX | `disease.ttl`, `chromosome.ttl`, `sequence_variant.ttl` | realistic Wikidata-shaped access and joins | `chromosome.ttl` runs through the indexed path: 9,227 triples and a `wdt:P31` COUNT in about 25 seconds including parse and build; `disease.ttl` remains a later load-path target |
 | Medium Schema.org/Bioschemas | materialize `kgx/wikidata/bioschemas/{disease,chromosome,sequence_variant}.sparql` | vocabulary-mapped benchmark for the block engine | selected; materialization not yet run in this workstream |
 
 The checked KGX Turtle files are raw Wikidata-property materializations. Their
@@ -27,12 +27,12 @@ Wikidata properties.
 
 ## Corpus tool
 
-`l4block-corpus` is a native executable-edge probe. It accepts Turtle and an
-optional predicate IRI, then runs:
+`l4block-corpus` is a native executable-edge probe. It accepts Turtle plus an
+optional predicate-count shortcut or a full SELECT query, then runs:
 
 ```text
-Lean Turtle parser -> direct-term Block -> BLK0 bytes -> decoder
-  -> backend candidate scan -> parsed SPARQL COUNT
+Lean Turtle parser -> TermId dictionary + predicate partitions
+  -> backend candidate scan -> parsed SPARQL SELECT
 ```
 
 From `formal/lean4/`:
@@ -47,13 +47,14 @@ From `formal/lean4/`:
 Observed result on 2026-08-30:
 
 ```text
-triples=486 bytes=64731 decoded=true
-count=132
+triples=486 terms=476 id-rows=486 predicate-partitions=2
+COUNT(wdt:P31)=132
 ```
 
-This is a correctness and integration probe, not a timing claim. BLK0 decodes
-the complete block on each backend access and is expected to be unsuitable for
-medium and large corpus performance.
+This is a correctness and integration probe, not a timing claim. The indexed
+path selects the predicate partition but still parses and builds the entire
+in-memory graph for each process invocation. It is not yet the stream-oriented
+canonical storage path for large corpora.
 
 ## Bioschemas conversion protocol
 
