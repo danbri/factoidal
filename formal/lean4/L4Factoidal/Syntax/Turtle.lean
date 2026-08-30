@@ -175,6 +175,13 @@ longer labels. -/
 def freshBnodePrefix (text : String) : String :=
   "anon" ++ String.ofList (List.replicate (maxUnderscoreRun text.toList 0 0 + 1) '_')
 
+/-- Character-list form used by the parser, which already owns a decoded
+    document. Keeping this separate avoids a second whole-document
+    `String.toList` allocation merely to choose a collision-free generated
+    blank-node prefix. -/
+def freshBnodePrefixChars (cs : List Char) : String :=
+  "anon" ++ String.ofList (List.replicate (maxUnderscoreRun cs 0 0 + 1) '_')
+
 /-- Port of `empty_turtle_state` / `empty_turtle_state_12`, plus the
 optional retrieval-IRI base a caller supplies (`parse_turtle_with_base`).
 `text` is the whole document, needed only to pick a collision-free
@@ -182,6 +189,13 @@ generated-label prefix. -/
 def TurtleState.init (text : String) (base : Option String) (mode : Mode) : TurtleState :=
   { prefixes := [], baseIri := base.getD "", bnodeCounter := 0,
     bnodePrefix := freshBnodePrefix text, mode := mode }
+
+/-- Parser-facing state construction from already decoded source characters.
+    It has the same state as `TurtleState.init (String.ofList cs)`, while
+    avoiding a second materialisation of those characters. -/
+def TurtleState.initChars (cs : List Char) (base : Option String) (mode : Mode) : TurtleState :=
+  { prefixes := [], baseIri := base.getD "", bnodeCounter := 0,
+    bnodePrefix := freshBnodePrefixChars cs, mode := mode }
 
 /-- Mint a fresh anonymous blank-node label. Port of `fresh_bnode`. -/
 def TurtleState.freshBnode (st : TurtleState) : BNodeId × TurtleState :=
@@ -1670,7 +1684,7 @@ the F* source's `Mode_11` default. Port of
 def parseTurtle (text : String) (base : Option String := none) (mode : Mode := .rdf11) :
     Except ParseError Graph :=
   let cs := text.toList
-  match parseStatements (cs.length + 2) (TurtleState.init text base mode) 0 cs [] with
+  match parseStatements (cs.length + 2) (TurtleState.initChars cs base mode) 0 cs [] with
   | .error e     => .error e
   | .ok (ts, _) => .ok ts
 
@@ -1680,7 +1694,7 @@ def parseTurtle (text : String) (base : Option String := none) (mode : Mode := .
 def parseTurtleFold (step : α → List Triple → α) (init : α) (text : String)
     (base : Option String := none) (mode : Mode := .rdf11) : Except ParseError α :=
   let cs := text.toList
-  match parseStatementsFold step (cs.length + 2) (TurtleState.init text base mode) 0 cs init with
+  match parseStatementsFold step (cs.length + 2) (TurtleState.initChars cs base mode) 0 cs init with
   | .error e => .error e
   | .ok (acc, _) => .ok acc
 

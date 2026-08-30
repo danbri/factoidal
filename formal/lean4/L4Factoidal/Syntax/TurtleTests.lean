@@ -169,6 +169,8 @@ def exBase : String := "http://example.org/dir/doc.ttl"
 -- Generated labels cannot collide with a document's own labels.
 #guard freshBnodePrefix "_:a _:b" == "anon__"
 #guard freshBnodePrefix "_:x__y" == "anon___"
+#guard freshBnodePrefixChars "_:a _:b".toList == freshBnodePrefix "_:a _:b"
+#guard freshBnodePrefixChars "_:x__y".toList == freshBnodePrefix "_:x__y"
 #guard (TurtleState.init "_:a" none .rdf11).freshBnode.1 == "anon__0"
 
 /-! ## [14] blankNodePropertyList -/

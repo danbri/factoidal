@@ -57,6 +57,14 @@ order do not change. This removes an independent expected
 packer bounded-memory: its remaining buckets still retain all rows for each
 predicate until the final IBK2 encoding step.
 
+The Turtle parser's collision-safe anonymous-blank-node setup now shares the
+parser's already-decoded character list. Previously `TurtleState.init` made a
+complete `String.toList` solely to find the longest underscore run, after
+which the parser materialised the same list again. The parser and fold entry
+points now make that list once and derive their initial state from it. Existing
+blank-node and full persistent-query regression tests pass; this is an
+allocation reduction, not a claim of byte-streaming input.
+
 ## Required next ingest shape
 
 Do not split Turtle naively on lines: directives, multi-line literals,
