@@ -1614,19 +1614,24 @@ is not ported — same spec/pragmatics split as `Syntax.NTriples`). Fuel
 bounds the statement count; every statement consumes at least one
 character, and the no-progress guard below turns a hypothetical
 zero-width statement into a clean stop rather than a loop. -/
+/- `accRev` is kept in reverse source order. Appending the previous complete
+   graph for every statement made ordinary one-triple-per-line Turtle
+   quadratic; prepend only the newly parsed statement and reverse once at the
+   terminal boundary instead. -/
 def parseStatements : Nat → TurtleState → Nat → List Char → List Triple →
     Except ParseError (List Triple × TurtleState)
-  | 0,        st, _,   _,  acc => .ok (acc, st)
-  | fuel + 1, st, pos, cs, acc =>
+  | 0,        st, _,   _,  accRev => .ok (accRev.reverse, st)
+  | fuel + 1, st, pos, cs, accRev =>
       let (p1, r1) := tws pos cs
       match r1 with
-      | [] => .ok (acc, st)
+      | [] => .ok (accRev.reverse, st)
       | _ =>
           match readStatement (r1.length + 2) st p1 r1 with
           | .error e => .error e
           | .ok (ts, st', p2, r2) =>
-              if r2.length ≥ r1.length then .ok (acc ++ ts, st')
-              else parseStatements fuel st' p2 r2 (acc ++ ts)
+              let nextAcc := ts.reverse ++ accRev
+              if r2.length ≥ r1.length then .ok (nextAcc.reverse, st')
+              else parseStatements fuel st' p2 r2 nextAcc
 
 /-- Parse a complete Turtle document into a `Graph`.
 
