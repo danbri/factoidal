@@ -24,9 +24,11 @@ The development machine already has Podman 5.8.2 and an Apple Hypervisor
 (`applehv`) machine configured.  On 2026-08-30, `podman machine start` reached
 the VM-ready stage, but the forwarded rootless API on port 53728 immediately
 refused connections and a subsequent inspection reported the machine as
-`stopped`.  Thus this is a local Podman VM lifecycle problem, not evidence
-about PostgreSQL or the `IBK1` format.  No container, image pull, or database
-claim has been made from it.
+`stopped`.  The guest boot log reached `multi-user.target` and enabled its
+Podman socket, so the observed failure is specifically between the host
+forwarder and the guest API / lifecycle.  Thus this is a local Podman VM
+lifecycle problem, not evidence about PostgreSQL or the `IBK1` format.  No
+container, image pull, or database claim has been made from it.
 
 ## Consequence
 
