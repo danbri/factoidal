@@ -48,3 +48,8 @@ dataset/snapshot identity, and (for segmented files) directory/segment
 identities. The Lean assurance chain is then conditional on the verified bytes
 and the trusted signature/key policy; it cannot prove that an operating-system
 or database host was never modified.
+
+`Storage.BlockArtifact` now provides the executable SHA-256 identity check and
+guards both a matching artifact and a one-byte mutation. It is intentionally
+not a signature implementation: a signed manifest and key policy remain the
+host/trust layer that supplies the trusted digest.
