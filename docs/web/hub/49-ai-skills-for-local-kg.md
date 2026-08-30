@@ -23,6 +23,25 @@ kgSkill = ({
 })
 ```
 
+The first non-toy profile is the same 43,103-triple life-sciences dataset used
+by the named-graph notebook.  The model receives this small, versioned graph
+description—not the Turtle or a browser block's contents.  A later Lean-WASM
+query ABI can execute any proposed query only after the reader approves it.
+
+```observable-js
+lifeSciKgProfile = ({
+  id: "factoidal.lifesci.kgx.v1",
+  graphs: [
+    { name: "urn:kgx:chromosome", triples: 9227, block: "chromosome.ibk1" },
+    { name: "urn:kgx:sequence_variant", triples: 6455, block: "sequence_variant.ibk1" },
+    { name: "urn:kgx:disease", triples: 27421, block: "disease.ibk1" },
+  ],
+  prefixes: { wdt: "http://www.wikidata.org/prop/direct/", wd: "http://www.wikidata.org/entity/" },
+  knownPatterns: ["?chrom wdt:P31 wd:Q37748", "?variant wdt:P1057 ?chrom"],
+  totalTriples: 43103,
+})
+```
+
 ```observable-js
 aiSkillRunner = {
   const root = html`<div>
@@ -35,7 +54,7 @@ aiSkillRunner = {
   const bundle = root.querySelector("button");
   const ask = root.querySelector(".ask");
   const output = root.querySelector("pre");
-  const request = () => ({ skill: kgSkill, question: question.value, provider: "browser LanguageModel", seed: null, note: "Chrome built-in AI does not currently provide a portable seeded-reproducibility contract." });
+  const request = () => ({ skill: kgSkill, dataset: lifeSciKgProfile, question: question.value, provider: "browser LanguageModel", seed: null, note: "Chrome built-in AI does not currently provide a portable seeded-reproducibility contract." });
   bundle.addEventListener("click", () => output.textContent = JSON.stringify(request(), null, 2));
   ask.addEventListener("click", async () => {
     if (!globalThis.LanguageModel?.availability || !globalThis.LanguageModel?.create) {
@@ -46,7 +65,7 @@ aiSkillRunner = {
       const availability = await LanguageModel.availability();
       if (availability === "unavailable") throw new Error("LanguageModel reports unavailable");
       const session = await LanguageModel.create({ initialPrompts: [{ role: "system", content: JSON.stringify(kgSkill) }] });
-      const result = await session.prompt(`Question: ${question.value}\nPropose only a read-only SPARQL SELECT query and explanation.`);
+      const result = await session.prompt(`Dataset profile: ${JSON.stringify(lifeSciKgProfile)}\nQuestion: ${question.value}\nPropose only a read-only SPARQL SELECT query and explanation.`);
       output.textContent = JSON.stringify({ request: request(), availability, result }, null, 2);
       session.destroy?.();
     } catch (error) { output.textContent = `Browser AI did not run: ${error.message}`; }
