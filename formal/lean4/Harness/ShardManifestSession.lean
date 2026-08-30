@@ -95,7 +95,7 @@ private def execute (directory : System.FilePath) (manifest : Manifest)
 
 private def run (directory : System.FilePath) : IO UInt32 := do
   try
-    let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm0")
+    let manifestBytes ← try IO.FS.readBinFile (directory / "manifest.sbm1") catch _ => IO.FS.readBinFile (directory / "manifest.sbm0")
     match decode? manifestBytes with
     | none =>
         IO.eprintln "l4block-shard-session rejected: malformed or unsupported SBM0 manifest"

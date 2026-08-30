@@ -17,7 +17,8 @@ private def safeLeafKey (key : ArtifactKey) : Bool :=
 
 private def run (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
-    let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm0")
+    let manifestPath := directory / "manifest.sbm1"
+    let manifestBytes ← try IO.FS.readBinFile manifestPath catch _ => IO.FS.readBinFile (directory / "manifest.sbm0")
     match decode? manifestBytes with
     | none =>
         IO.eprintln "l4block-shard-query rejected: malformed or unsupported SBM0 manifest"
@@ -61,7 +62,7 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                 let mode := match selectedPredicates with
                   | some predicates => s!"predicate-selective({predicates.length})"
                   | none => "full-manifest"
-                IO.println s!"l4block-shard-query manifest={directory / "manifest.sbm0"} shards={store.blocks.length} open-mode={mode} artifact-bytes={loadedBytes}/{totalBytes}"
+                IO.println s!"l4block-shard-query manifest={manifestPath} shards={store.blocks.length} open-mode={mode} artifact-bytes={loadedBytes}/{totalBytes}"
                 IO.println s!"l4block-shard-query sse={q.toSse}"
                 IO.println s!"l4block-shard-query rows={rows.length} preview={toString (repr (rows.take 10))}"
                 return 0

@@ -229,6 +229,14 @@ predicate artifacts (two hits, five new admissions). This is an observable
 modest warm state, not an assertion that mmap, PostgreSQL workers, TiKV, or
 per-segment positioned reads are complete.
 
+The predicate-shard packer now emits both `manifest.sbm1` (64 KiB fixed chunk
+commitments) and a compatibility `manifest.sbm0` from the same IBK2 children.
+The native one-shot and bounded-session query hosts prefer SBM1 whenever it is
+present and fall back to SBM0 for older packed directories. The current host
+continues whole-artifact SHA-256 admission, so this operational change proves
+version selection and compatibility only; the subsequent range host will use
+the SBM1 root plus `ChunkedArtifact` proofs to avoid that full read.
+
 The same admission boundary now verifies that an SBM0 entry's declared row
 count agrees both with the complete decoded IBK2 block and with the entry's
 declared predicate segment. Only then may `readOps.estimate` use that count as
