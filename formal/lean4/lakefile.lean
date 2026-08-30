@@ -156,6 +156,7 @@ extern_lib libl4hacl pkg := do
 -- Direct shared-dictionary/ID-row persistence and query vertical.
 @[default_target] lean_exe «l4block-id-pack» where root := `Harness.IndexedBlockPack
 @[default_target] lean_exe «l4block-id-file-query» where root := `Harness.IndexedBlockFileQuery
+@[default_target] lean_exe «l4block-id-diff» where root := `Harness.IndexedBlockDiff
 
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean

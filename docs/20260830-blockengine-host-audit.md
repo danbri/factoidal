@@ -18,6 +18,16 @@ docker image inspect postgres:16-alpine
 
 No PostgreSQL smoke was therefore claimed or added.
 
+## Podman follow-up
+
+The development machine already has Podman 5.8.2 and an Apple Hypervisor
+(`applehv`) machine configured.  On 2026-08-30, `podman machine start` reached
+the VM-ready stage, but the forwarded rootless API on port 53728 immediately
+refused connections and a subsequent inspection reported the machine as
+`stopped`.  Thus this is a local Podman VM lifecycle problem, not evidence
+about PostgreSQL or the `IBK1` format.  No container, image pull, or database
+claim has been made from it.
+
 ## Consequence
 
 The direct `IBK1` file path is the currently executable host realization:
@@ -32,5 +42,6 @@ extension behavior.
 
 The next database-host vertical requires a running PostgreSQL instance and a
 thin client/worker that reads and writes opaque `IBK1` bytes only. Its
-differential test must compare the direct-file and PostgreSQL retrieved bytes,
-then execute the same Lean query kernel over both.
+differential test must compare the direct-file and PostgreSQL-retrieved bytes,
+then execute the same Lean query kernel over both.  It can be run with Podman
+once the local machine remains reachable.

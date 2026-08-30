@@ -182,6 +182,13 @@ are input-order dictionary IDs, one whole block, executable round-trip guards,
 and the inherited restricted term codec. See
 `docs/20260830-indexedblockwirev1.md` before extending it.
 
+Use `l4block-id-diff INPUT.ttl --query 'SELECT ...'` as the integration gate
+while strengthening proofs. It compares exact query results from the ordinary
+list-backed dataset evaluator with the `IndexedBlock -> IBK1 -> decode ->
+BackendReadOps` route. It is evidence for the executable byte/query seam, not
+a replacement for the general codec theorem. See
+`docs/20260830-indexedblock-differential.md`.
+
 Do not sort V1 rows merely to obtain input-order-independent bytes. The current
 block and SPARQL refinements preserve exact list order from the source graph.
 Canonical encoding of an ordered physical block and content-addressed RDF graph
@@ -192,6 +199,13 @@ TiKV may persist the same bytes only after it. A backend read must decode
 those bytes before the proved scan runs. This is also why a separate Rust
 kernel is out of scope: the Lean-derived kernel owns the common physical
 object and execution semantics.
+
+For local PostgreSQL smoke tests, prefer Podman over Docker. Verify that the
+Podman machine remains reachable before drawing any database conclusion: the
+development host has previously reported a successful VM start while its
+rootless API immediately stopped/refused connections. Record host-runtime
+failures in a dated worknote; they do not validate or invalidate the Lean
+format.
 
 Add plan DAGs and execution records after the tree plan. Add compression,
 Roaring, PushIR, all permutations, and TiKV after this vertical unless a newer
