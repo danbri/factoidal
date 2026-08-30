@@ -355,3 +355,11 @@ because the fixed 64 KiB Merkle chunks span the requested portions. The followin
 P31-only query is a cache hit and reports zero new logical/requested/fetched
 bytes and chunks. These numbers are measured host-boundary accounting, not a
 throughput claim and not an assertion about OS page-cache behaviour.
+
+The native Merkle query driver also has an initial non-executing
+`--explain SELECT...` surface. It prints the existing SPARQL SSE under an
+`(explain ...)` form, the manifest-selected predicate scan nodes, their
+declared row estimates, local-file placement and the SBM1/Merkle admission
+requirement. It neither opens nor decodes a child artifact. This is the first
+planned-explanation projection; `EXPLAIN ANALYZE` still needs the structured
+per-node runtime measurements described in `20260830-query-observability.md`.
