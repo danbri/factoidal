@@ -67,3 +67,6 @@ The current query executable accepts the first profile directly:
 `l4block-id-file-query BLOCK.ibk1 --digest-file SHA256.bin --query 'SELECT …'`.
 The digest file is exactly the 32 SHA-256 bytes expected from a trusted
 deployment manifest; a mismatch rejects the artifact before SPARQL evaluation.
+This executable path was checked on the 27,256-byte active-site artifact using
+`openssl dgst -sha256 -binary` to supply the digest file; the verified Lean
+query returned `COUNT(*) = 132`.
