@@ -313,7 +313,14 @@ reported `logical-read-bytes` excludes the four-byte IBK2 CRC trailer, which
 this narrow selective decoder does not need; it is not a physical-I/O or cache
 claim.
 
-This is a predicate-local physical scanner, not yet the ordinary parsed
-multi-pattern SPARQL host. The next integration gate is for parsed,
-predicate-bound triple patterns to choose this verified-range backend while
-unbound-predicate patterns retain the current full-manifest route.
+The standalone scanner is a predicate-local physical primitive. Its parsed
+SPARQL integration is `l4block-shard-merkle-query`, which accepts the
+same ordinary parsed SELECT surface as `l4block-shard-query`, but only for the
+already-conservative native fragment in which every triple pattern has a
+constant IRI predicate. It selects those predicate-local entries, verifies
+each artifact's required IBK2 ranges, checks the scanned row count against the
+manifest entry, materialises the admitted triples, and invokes the existing
+`DatasetBackend` evaluator. Its output labels the route
+`predicate-selective-merkle(n)`. Queries outside that syntactic fragment are
+explicitly refused by this host rather than silently falling back to unchecked
+range reads; `l4block-shard-query` remains the full-manifest reference path.
