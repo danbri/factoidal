@@ -211,26 +211,27 @@ line terminators. -/
 def isTurtleWs (c : Char) : Bool :=
   c == ' ' || c == '\t' || c == '\n' || c == '\r'
 
-/-- Skip whitespace and `#`-comments. Port of `skip_ws_and_comments`,
-keeping its fuel: a comment consumes an unbounded run through
-`skipToEol` (`Syntax.Lexing`), so the remaining list is not a syntactic
-sub-term of the argument. -/
-def skipWsComments : Nat → Nat → List Char → Nat × List Char
-  | 0,        pos, cs => (pos, cs)
-  | fuel + 1, pos, cs =>
-      match cs with
-      | []      => (pos, [])
-      | c :: rest =>
-          if isTurtleWs c then skipWsComments fuel (pos + 1) rest
-          else if c == '#' then
-            let (p, r) := skipToEol (pos + 1) rest
-            skipWsComments fuel p r
-          else (pos, cs)
+/-- Skip whitespace and `#`-comments without measuring the remaining input.
+    The Boolean tracks whether we are consuming comment text; one structural
+    recursion thereby avoids the old `cs.length + 1` fuel calculation at every
+    whitespace boundary. -/
+def skipWsCommentsLoop : Bool → Nat → List Char → Nat × List Char
+  | _,          pos, [] => (pos, [])
+  | inComment,  pos, c :: rest =>
+      if inComment then
+        if c == '\n' || c == '\r' then skipWsCommentsLoop false (pos + 1) rest
+        else skipWsCommentsLoop true (pos + 1) rest
+      else if isTurtleWs c then skipWsCommentsLoop false (pos + 1) rest
+      else if c == '#' then skipWsCommentsLoop true (pos + 1) rest
+      else (pos, c :: rest)
+
+def skipWsComments (pos : Nat) (cs : List Char) : Nat × List Char :=
+  skipWsCommentsLoop false pos cs
 
 /-- `turtle_ws`: skip zero or more whitespace characters and comments.
 Fuel is the remaining input length, so it can never bind first. -/
 def tws (pos : Nat) (cs : List Char) : Nat × List Char :=
-  skipWsComments (cs.length + 1) pos cs
+  skipWsComments pos cs
 
 /-! ## Name characters — productions [163s]–[166s]
 
@@ -289,24 +290,24 @@ taken whole, and any non-ASCII character (the F* scanner's
 `is_turtle_token_delim` is false on every non-ASCII codepoint, so the
 non-ASCII branch always consumes; validation afterwards is what rejects
 a character outside `PN_CHARS`). Port of `scan_name_body_end`; fuel is
-the F* source's. Returns `(token, rest)`. -/
-def scanNameBody : Nat → List Char → List Char × List Char
-  | 0,        cs => ([], cs)
-  | fuel + 1, cs =>
-      match cs with
-      | []               => ([], [])
-      | '\\' :: e :: rest =>
-          let (t, r) := scanNameBody fuel rest
-          ('\\' :: e :: t, r)
-      | c :: rest =>
-          if c.toNat < 0x80 then
-            if isAsciiNameBody c then
-              let (t, r) := scanNameBody fuel rest
-              (c :: t, r)
-            else ([], c :: rest)
-          else
-            let (t, r) := scanNameBody fuel rest
-            (c :: t, r)
+the F* source's. Every recursive branch consumes one or two input
+characters, so the Lean version can use structural recursion and avoid a
+full remaining-list-length calculation for every IRI token. Returns
+`(token, rest)`. -/
+def scanNameBody : List Char → List Char × List Char
+  | []               => ([], [])
+  | '\\' :: e :: rest =>
+      let (t, r) := scanNameBody rest
+      ('\\' :: e :: t, r)
+  | c :: rest =>
+      if c.toNat < 0x80 then
+        if isAsciiNameBody c then
+          let (t, r) := scanNameBody rest
+          (c :: t, r)
+        else ([], c :: rest)
+      else
+        let (t, r) := scanNameBody rest
+        (c :: t, r)
 
 /-- Trim trailing UNESCAPED `.` characters off a scanned PN_LOCAL, per
 [168s] PN_LOCAL's rule that a local name may contain dots but never end
@@ -399,12 +400,12 @@ def readPrefixedName (pos : Nat) (cs : List Char) :
   match cs with
   | [] => .error ⟨"expected prefixed name", pos⟩
   | ':' :: rest =>
-      let (localRaw, r) := scanNameBody (rest.length + 1) rest
+      let (localRaw, r) := scanNameBody rest
       finish [] localRaw (1 + localRaw.length) r
   | c :: _ =>
       if !isNameStartChar c then .error ⟨"expected prefixed name", pos⟩
       else
-        let (body, r) := scanNameBody (cs.length + 1) cs
+        let (body, r) := scanNameBody cs
         match splitAtFirstColon body with
         | none => .error ⟨"expected ':' in prefixed name", pos + body.length⟩
         | some (pfx, localRaw) => finish pfx localRaw body.length r

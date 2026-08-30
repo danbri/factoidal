@@ -28,6 +28,17 @@ the remaining full-document `String.toList`/character-list parser and
 whole-graph construction. It must be addressed with a real incremental parser
 state and sink, not a naive newline splitter.
 
+Further inspection found that every prefixed IRI token had also computed the
+length of its entire remaining input to fuel its name-body scanner. That
+scanner and Turtle whitespace/comment skipping are now structurally recursive;
+the normal KGX shape no longer takes a full-tail length just to scan each IRI
+or whitespace boundary. As a bounded confirmation, the 9,227-triple
+`chromosome.ttl` KGX graph packed into one predicate shard in 2.46 seconds
+and produced a 568 KiB SBM1/IBK2/Merkle collection on this macOS host. This is
+a local wall-clock observation, not a general performance claim. The
+889k-triple `gene.ttl` gate remains open until an incremental reader and
+bounded block publication are implemented.
+
 ## Required next ingest shape
 
 Do not split Turtle naively on lines: directives, multi-line literals,
