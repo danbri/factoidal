@@ -39,6 +39,25 @@ chromosome block plans essentially its entire 562,985-byte artifact. A useful
 selectivity benchmark therefore needs a larger multi-predicate corpus with a
 comparatively smaller shared dictionary.
 
+A 1.3 MiB local country-information corpus supplied a better immediate check:
+38,776 triples encoded as a 2,593,670-byte IBK2 artifact, and its `:capital`
+segment is 3,936 bytes. The current plan still reads 1,977,186 bytes because
+the one shared dictionary has 34,554 terms. That is an honest result: segment
+pruning works, but it identifies dictionary structure/filtering as the next
+physical design problem. The corpus is local, untracked benchmark input; it
+does not become a repository fixture.
+
+### Next external corpus: YAGO
+
+YAGO 4.6 is a suitable scale target because its maintainers describe it as
+Schema.org-aligned, Turtle-distributed data with 167 million facts. Start from
+its published sample, then materialise a documented bounded facts subset;
+do not add a full dump to this repository. Downloaded Turtle, generated IBK2
+artifacts, timings and logs belong in a separate `factoidal-builds` location,
+while this repository retains the fetch URL/version/checksum, import command,
+query corpus and measured-result manifest. This gives reproducibility without
+turning source control into an artifact store.
+
 ## Problem
 
 `IBK1` stores all ID rows in one source-order sequence.  Its decoded
