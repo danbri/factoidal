@@ -54,6 +54,28 @@ V1 is a direct ID-row layout, but not yet the requested fully canonical format:
   `decode (encode b) = some b` or a denotation-preservation theorem;
 - it inherits the restricted term codec.
 
+### Ordering decision exposed by V1
+
+The existing Lean block and SPARQL refinement path uses exact list equality and
+preserves source graph row order. A byte format that sorts ID rows solely to
+make byte identity independent of source order would change that observable
+solution sequence for an unordered BGP.
+
+There are therefore two distinct targets that must not be conflated:
+
+```text
+canonical representation of an ordered physical block
+  -> preserve row order; dictionary ordering may be specified separately
+
+content-addressed representation of an RDF graph independent of input order
+  -> sort or otherwise normalize rows; define the SPARQL result-order contract
+     and prove it separately
+```
+
+The first target is the next persistence step. The second is a later artifact
+identity/provenance feature. V1 deliberately retains source order until that
+semantic choice is made.
+
 The next codec revision must settle those points before its bytes become the
 common PostgreSQL or TiKV persisted object. V1 nevertheless supplies the
 first direct file-to-indexed-SPARQL implementation on which that revision can

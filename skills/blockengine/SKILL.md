@@ -182,6 +182,11 @@ are input-order dictionary IDs, one whole block, executable round-trip guards,
 and the inherited restricted term codec. See
 `docs/20260830-indexedblockwirev1.md` before extending it.
 
+Do not sort V1 rows merely to obtain input-order-independent bytes. The current
+block and SPARQL refinements preserve exact list order from the source graph.
+Canonical encoding of an ordered physical block and content-addressed RDF graph
+normalization are different contracts; decide and prove the latter separately.
+
 The canonical-byte theorem is the persistence gate. PostgreSQL `bytea` and
 TiKV may persist the same bytes only after it. A backend read must decode
 those bytes before the proved scan runs. This is also why a separate Rust
