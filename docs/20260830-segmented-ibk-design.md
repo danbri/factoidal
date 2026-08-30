@@ -143,6 +143,28 @@ range reads so it can retrieve the header/dictionary/directory and one segment
 without materialising the rest of the artifact.  This is intentionally a
 separate integration step from the canonical byte-format and validation work.
 
+### Native positioned-read probe
+
+`l4block-id-v2-pread BLOCK.ibk2 PREDICATE-IRI` is the first actual host
+realisation of that boundary. It is a native-only executable-edge adapter: a
+small POSIX C `pread` bridge reads exactly the pure Lean `ByteRange`s, while
+the Lean code performs prefix/directory planning and `scanPredicateRanges`.
+It is deliberately not imported by the WASM closure and contains no RDF or
+SPARQL logic.
+
+On the deterministic 77-triple music fixture, the `ex:by` scan returns eight
+rows after reading 3,513 bytes of a 4,621-byte `IBK2` artifact. The number is
+a byte-accounting result, not a throughput claim. The shared dictionary still
+dominates this small artifact; predicate-local Shardborough blocks remain the
+more useful immediate layout for that case.
+
+This probe assumes a trusted/admitted artifact identity. `pread` alone cannot
+prove that a file has not changed since admission; the full SHA-256/manifest
+check remains the integrity boundary, with later Merkle range proofs as the
+way to combine independent range reads with per-read cryptographic evidence.
+Run `tools/blockengine-v2-pread-smoke.sh` after building the two native
+executables to exercise the C/Lean boundary and its expected byte count.
+
 The executable regression gate is `l4block-id-v2-diff INPUT.ttl --query
 SELECT...`; it compares ordinary graph evaluation with an `IBK2` full decode
 and the existing indexed SPARQL backend.  `l4block-id-v2-segment INPUT.ttl

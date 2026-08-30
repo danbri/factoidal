@@ -16,7 +16,7 @@ carried over.
 
 package l4factoidal
 
-/-! ## HACL* Ed25519 (the Lean tree's single `@[extern]` family)
+/-! ## Native executable-edge externs
 
 `L4Factoidal/Crypto/Ed25519.lean` declares three `opaque`s with
 `@[extern "l4_hacl_ed25519_*"]`. They are realised by
@@ -61,6 +61,17 @@ extern_lib libl4hacl pkg := do
   let name := nameToStaticLib "l4hacl"
   buildStaticLib (pkg.staticLibDir / name) #[shim, ed, curve, sha2]
 
+/-- Build the deliberately small POSIX `pread` host adapter used only by the
+    native IBK2 range-read probe. The pure planner/decoder remains in Lean;
+    this C object is not part of the WASM closure. -/
+target block_pread.o pkg : FilePath :=
+  buildHaclO pkg "block_pread" (pkg.dir / "ffi" / "block_pread.c")
+
+extern_lib libl4blockhost pkg := do
+  let pread ← block_pread.o.fetch
+  let name := nameToStaticLib "l4blockhost"
+  buildStaticLib (pkg.staticLibDir / name) #[pread]
+
 @[default_target] lean_lib L4Factoidal
 
 -- The W3C harness's shared modules. They live in a lib rather than
@@ -69,7 +80,8 @@ extern_lib libl4hacl pkg := do
 -- library: these do file I/O and print scores. The probes
 -- (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
 @[default_target] lean_lib Harness where globs :=
-  #[`Harness.Common, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests]
+  #[`Harness.Common, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests,
+    `Harness.PosixRangeIO]
 
 -- The WebAssembly export surface: the JSON string-in / string-out ABI
 -- (Wasm/Abi.lean) and the `@[export]` C symbols (Wasm/Exports.lean).
@@ -163,6 +175,7 @@ extern_lib libl4hacl pkg := do
 @[default_target] lean_exe «l4block-id-v2-pack» where root := `Harness.IndexedBlockV2Pack
 @[default_target] lean_exe «l4block-id-v2-file-query» where root := `Harness.IndexedBlockV2FileQuery
 @[default_target] lean_exe «l4block-id-v2-range-plan» where root := `Harness.IndexedBlockV2RangePlan
+@[default_target] lean_exe «l4block-id-v2-pread» where root := `Harness.IndexedBlockV2Pread
 @[default_target] lean_exe «l4block-predicate-shards» where root := `Harness.PredicateBlocksProbe
 @[default_target] lean_exe «l4block-predicate-query» where root := `Harness.PredicateBlocksQuery
 @[default_target] lean_exe «l4block-shard-pack» where root := `Harness.PredicateShardPack
