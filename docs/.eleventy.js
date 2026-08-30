@@ -85,6 +85,11 @@ module.exports = function(eleventyConfig) {
   // Larger generated corpora belong outside this source repository.
   eleventyConfig.addPassthroughCopy("web/hub/assets/blocks");
 
+  // Reusable, dependency-free custom elements for rendering SELECT, ASK,
+  // graph and error results in Hub notebooks.  Kept as a normal module asset
+  // so it can also be reused by non-notebook documentation pages.
+  eleventyConfig.addPassthroughCopy("web/hub/assets/sparql-result-elements.mjs");
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an
