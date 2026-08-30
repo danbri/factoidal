@@ -16,9 +16,17 @@ the complete Turtle graph and predicate store have been constructed.
 The parser previously accumulated top-level triples as `acc ++ ts`, which is
 quadratic for normal one-triple-per-line Turtle. The Lean implementation now
 uses a reverse accumulator and reverses once at the terminal boundary,
-preserving source order. The current scale observation demonstrates that this
-necessary repair is not sufficient: `String.toList`, full-document parsing and
-whole-graph materialisation remain an ingest gate.
+preserving source order. It also no longer traverses the full remaining
+character list twice per statement merely to compute a fuel bound and a
+no-progress check: it uses the existing absolute positions and document-level
+fuel instead. The Turtle guards and the persistent Merkle-SPARQL smoke pass
+with these changes.
+
+A second controlled observation still had no emitted artifact after roughly
+1:43. This does not invalidate the repairs; it shows the next bottleneck is
+the remaining full-document `String.toList`/character-list parser and
+whole-graph construction. It must be addressed with a real incremental parser
+state and sink, not a naive newline splitter.
 
 ## Required next ingest shape
 

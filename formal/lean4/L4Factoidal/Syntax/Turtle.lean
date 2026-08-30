@@ -1626,11 +1626,19 @@ def parseStatements : Nat → TurtleState → Nat → List Char → List Triple 
       match r1 with
       | [] => .ok (accRev.reverse, st)
       | _ =>
-          match readStatement (r1.length + 2) st p1 r1 with
+          /- `fuel` starts above the document's character count and declines
+             once per completed statement. Since every accepted statement
+             consumes at least one character, it remains a safe bound for the
+             current statement without traversing the complete remaining list
+             to compute `r1.length` at every iteration. -/
+          match readStatement fuel st p1 r1 with
           | .error e => .error e
           | .ok (ts, st', p2, r2) =>
               let nextAcc := ts.reverse ++ accRev
-              if r2.length ≥ r1.length then .ok (nextAcc.reverse, st')
+              /- Positions are absolute character offsets, so this is the
+                 previous no-progress guard without another full-list length
+                 traversal. -/
+              if p2 ≤ p1 then .ok (nextAcc.reverse, st')
               else parseStatements fuel st' p2 r2 nextAcc
 
 /-- Parse a complete Turtle document into a `Graph`.
