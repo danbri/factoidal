@@ -14,6 +14,15 @@ Turtle -> Lean IndexedBlock -> IBK1 bytes
        -> Lean IBK1 decoder -> IndexedBlock.readOps -> parsed SPARQL SELECT
 ```
 
+Before persistence, it runs `l4block-id-diff` on the same query.  Consequently
+the smoke establishes this transitive three-way condition:
+
+```text
+ordinary graph SPARQL results = direct IBK1 SPARQL results
+PostgreSQL-retrieved IBK1 bytes = direct IBK1 bytes
+therefore PostgreSQL-retrieved IBK1 runs the same Lean query path
+```
+
 The database schema is only:
 
 ```sql

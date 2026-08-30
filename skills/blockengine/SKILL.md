@@ -209,9 +209,10 @@ format.
 
 `tools/blockengine-postgres-smoke.sh` is the landed local PostgreSQL 16 smoke.
 It proves `IBK1 -> bytea -> exact retrieved bytes -> Lean decoder -> Lean
-SPARQL`, currently on the active-site fixture. PostgreSQL is opaque persistence
-only; production code must use a parameterized binary client rather than the
-local smoke's `pg_read_binary_file` convenience. See
+SPARQL`, preceded by `l4block-id-diff` for ordinary-graph/direct-IBK1 result
+equality, currently on the active-site fixture. PostgreSQL is opaque
+persistence only; production code must use a parameterized binary client rather
+than the local smoke's `pg_read_binary_file` convenience. See
 `docs/20260830-blockengine-postgres-smoke.md`.
 
 Add plan DAGs and execution records after the tree plan. Add compression,

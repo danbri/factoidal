@@ -18,6 +18,10 @@ if [[ ! -x "$psql_bin" ]]; then
   exit 2
 fi
 
+# First establish the semantic side of the triangle.  The differential harness
+# evaluates ordinary graph data and direct decoded IBK1 bytes with the same
+# parsed query; an exit status of zero means their solution sequences match.
+"$lean_dir/.lake/build/bin/l4block-id-diff" "$ttl_path" --query "$query"
 "$lean_dir/.lake/build/bin/l4block-id-pack" "$ttl_path" "$run_dir/source.ibk1"
 
 # The local smoke cluster owns its data files under the current user.  The SQL

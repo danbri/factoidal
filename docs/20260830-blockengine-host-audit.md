@@ -27,11 +27,14 @@ inserted those opaque bytes into a PostgreSQL `bytea` column, retrieved a
 base64 representation, decoded it back to bytes, and checked exact byte
 equality.  It then executed `l4block-id-file-query` on the retrieved file.
 
-The parsed predicate-and-object-bound SELECT returned 132 rows.  PostgreSQL
-therefore acted only as byte persistence; the decoded `IndexedBlock.readOps`
-and SPARQL evaluation remained the Lean executable path.  This is a local
-development smoke, not yet a parameterized production client or a PostgreSQL
-extension.
+The parsed predicate-and-object-bound SELECT returned 132 rows.  Before the
+database write, the same script runs `l4block-id-diff`, which establishes exact
+solution-sequence equality between the ordinary graph evaluator and direct
+decoded `IBK1`.  Byte equality then makes the PostgreSQL-retrieved execution
+the same direct-byte path. PostgreSQL therefore acted only as byte persistence;
+the decoded `IndexedBlock.readOps` and SPARQL evaluation remained the Lean
+executable path. This is a local development smoke, not yet a parameterized
+production client or a PostgreSQL extension.
 
 ## Podman follow-up
 
