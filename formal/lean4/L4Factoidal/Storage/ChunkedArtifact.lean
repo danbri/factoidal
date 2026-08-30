@@ -19,9 +19,23 @@ structure Ref where
 def expectedCount (totalBytes chunkBytes : Nat) : Nat :=
   if chunkBytes == 0 then 0 else (totalBytes + chunkBytes - 1) / chunkBytes
 
+/-- Canonical fixed-width chunking. The fuel is exactly the derived count, so
+    the final chunk is short only when the byte length is not a multiple. -/
+def chunksOf (width : Nat) (bytes : ByteArray) : List ByteArray :=
+  if width == 0 then []
+  else (List.range (expectedCount bytes.size width)).map fun index =>
+    ByteArray.mk ((bytes.data.toList.drop (index * width)).take width |>.toArray)
+
 def valid (ref : Ref) : Bool :=
   ref.totalBytes > 0 && ref.chunkBytes > 0 && ref.root.size == 32 &&
     ref.chunkCount == expectedCount ref.totalBytes ref.chunkBytes
+
+def fromChunks? (width : Nat) (chunks : List ByteArray) : Option Ref :=
+  let totalBytes := chunks.foldl (fun n chunk => n + chunk.size) 0
+  let ref : Ref := { totalBytes, chunkBytes := width, chunkCount := chunks.length, root := rootOfChunks chunks }
+  if valid ref && chunks == chunksOf width (chunks.foldl (fun all chunk =>
+      ByteArray.mk ((all.data.toList ++ chunk.data.toList).toArray)) ByteArray.empty)
+  then some ref else none
 
 def offset? (ref : Ref) (index : Nat) : Option Nat :=
   if valid ref && index < ref.chunkCount then some (index * ref.chunkBytes) else none
@@ -46,6 +60,8 @@ private def sample : Ref :=
   { totalBytes := 5, chunkBytes := 2, chunkCount := 3, root := root leaves }
 
 #guard valid sample
+#guard chunksOf 2 (ByteArray.mk #[1, 2, 3, 4, 5]) == chunks
+#guard (fromChunks? 2 chunks) == some sample
 #guard offset? sample 0 == some 0
 #guard offset? sample 2 == some 4
 #guard expectedBytes? sample 2 == some 1
