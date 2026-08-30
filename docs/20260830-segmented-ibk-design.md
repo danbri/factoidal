@@ -288,3 +288,15 @@ unknown versions remain rejected. Both version-zero and version-one
 encode/decode round trips are guarded in Lean. Current pack/query tools still
 emit and consume SBM0, so the operational behaviour is unchanged while the
 wire contract is ready for a chunk-aware packer and host.
+
+### First proof-carrying positioned read (landed)
+
+`l4block-shard-merkle-pread SHARD-DIR PREDICATE-IRI` is the first native host
+to consume the SBM1 commitment and `.merkle` sidecar. It reads the selected
+artifact chunk with POSIX `pread`, derives an inclusion proof from the
+untrusted leaf sidecar, and admits the bytes only when that proof reaches the
+SBM1 root and the fixed-chunk offset/length contract holds. The smoke packs
+the music fixture then proves the `m:by` artifact's 579-byte first chunk under
+its 32-byte root. The current primitive deliberately refuses a requested range
+that crosses a chunk boundary; multi-chunk proof assembly and direct use by
+the IBK2 SPARQL scan are the next step, rather than an unverified fallback.

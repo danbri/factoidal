@@ -4,10 +4,13 @@
    operating-system realization of the pure IBK2 ByteRange contract, not part
    of the verified block semantics and not available to the WASM target. -/
 import L4Factoidal.Storage.IndexedBlockWireV2
+import L4Factoidal.Storage.ChunkedArtifact
 
 namespace Harness.PosixRangeIO
 
 open L4Factoidal.Storage.IndexedBlockWireV2
+open L4Factoidal.Storage.ChunkedArtifact
+open L4Factoidal.Storage.BlockMerkle
 
 /-- Read at an absolute file offset without changing any shared file cursor.
     The C implementation returns an empty array on open/read/short-read
@@ -19,5 +22,40 @@ opaque preadRaw (path : @& String) (offset length : UInt64) : IO ByteArray
 def readRange? (path : String) (range : ByteRange) : IO (Option ByteArray) := do
   let bytes ← preadRaw path (UInt64.ofNat range.offset) (UInt64.ofNat range.length)
   if bytes.size == range.length then pure (some bytes) else pure none
+
+/-- Decode untrusted raw 32-byte leaf hashes from a packer's `.merkle`
+    sidecar. Their authority comes only from a successful proof to an SBM1
+    root, never from the sidecar file itself. -/
+def leaves? (expected : Nat) (bytes : ByteArray) : Option (List Digest) :=
+  if bytes.size != expected * 32 then none
+  else some <| (List.range expected).map fun index =>
+    ByteArray.mk ((bytes.data.toList.drop (index * 32)).take 32 |>.toArray)
+
+private def singleChunkIndex? (ref : Ref) (range : ByteRange) : Option Nat := do
+  if range.length == 0 || range.offset + range.length > ref.totalBytes then none else do
+  let first := range.offset / ref.chunkBytes
+  let last := (range.offset + range.length - 1) / ref.chunkBytes
+  if first == last then some first else none
+
+/-- Read and admit a range wholly contained in one fixed SBM1 chunk. The
+    caller supplies the untrusted leaf sidecar; the artifact root in `ref` is
+    the commitment. Cross-chunk ranges are refused until their concatenation
+    and proof accounting gets a dedicated tested implementation. -/
+def readVerifiedSingleChunkRange? (path : String) (ref : Ref) (leaves : List Digest)
+    (range : ByteRange) : IO (Option ByteArray) := do
+  if leaves.length != ref.chunkCount then return none
+  match singleChunkIndex? ref range with
+  | none => pure none
+  | some index =>
+      match offset? ref index, expectedBytes? ref index, proof? leaves index with
+      | some offset, some length, some proof =>
+          match ← readRange? path { offset, length } with
+          | some chunk =>
+              if !verifyChunk ref index chunk proof then pure none
+              else
+                let localOffset := range.offset - offset
+                pure (some (ByteArray.mk ((chunk.data.toList.drop localOffset).take range.length |>.toArray)))
+          | none => pure none
+      | _, _, _ => pure none
 
 end Harness.PosixRangeIO

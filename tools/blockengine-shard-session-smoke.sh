@@ -16,6 +16,13 @@ test -s "$run_dir/store/manifest.sbm1"
 test -s "$run_dir/store/manifest.sbm0"
 test -s "$run_dir/store/predicate-0.ibk2.merkle"
 
+merkle=$(
+  "$lean_dir/.lake/build/bin/l4block-shard-merkle-pread" "$run_dir/store" \
+    'http://example.org/music/by'
+)
+printf '%s\n' "$merkle"
+grep -q 'predicate=http://example.org/music/by verified-bytes=' <<<"$merkle"
+
 output=$(printf '%s\n' \
   'PREFIX m: <http://example.org/music/> PREFIX dc: <http://purl.org/dc/terms/> SELECT ?album ?title WHERE { ?album m:by ?band . ?album dc:title ?title . } ORDER BY ?album' \
   'PREFIX m: <http://example.org/music/> SELECT ?album WHERE { ?album m:by ?band . FILTER(?band = <http://example.org/music/radiohead>) }' \
