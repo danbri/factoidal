@@ -334,3 +334,11 @@ counts. This is deliberately a process-scoped warm cache, not a claim that
 the on-disk artifact remains unchanged after admission: manifest generation,
 snapshot replacement and cross-process cache invalidation remain explicit
 host-policy work.
+
+The native materializer coalesces IBK2's framing, dictionary and directory
+into the one canonical `planningRange` before requesting it from the range
+host. It still reads the fixed prefix first to discover the planning extent,
+then reads the selected segment. This removes three separately planned
+dictionary/directory reads; a future per-artifact verified-chunk cache can
+also eliminate the temporary overlap between the discovery-prefix read and
+the first planning chunk.

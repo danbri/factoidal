@@ -36,21 +36,32 @@ def scanEntry (directory : System.FilePath) (entry : Entry) :
               match decodePrefix prefixRead with
               | none => pure none
               | some header =>
-                  match ← readVerifiedRange? path chunked leaves (dictionaryRange header),
-                      ← readVerifiedRange? path chunked leaves (directoryRange header) with
-                  | some dictionary, some directory =>
+                  /- IBK2 makes the framing, dictionary and directory one
+                     contiguous planning extent. Coalesce it into one verified
+                     range rather than re-fetching its shared chunks three
+                     times; the short prefix above only discovers this extent. -/
+                  let planning := planningRange header
+                  match ← readVerifiedRange? path chunked leaves planning with
+                  | none => pure none
+                  | some planningBytes =>
+                      let dictionaryRange := dictionaryRange header
+                      let directoryRange := directoryRange header
+                      let dictionary := planningBytes.extract dictionaryRange.offset
+                        (dictionaryRange.offset + dictionaryRange.length)
+                      let directory := planningBytes.extract directoryRange.offset
+                        (directoryRange.offset + directoryRange.length)
                       match predicateRange? header dictionary directory entry.predicate with
-                      | none => pure (some ([], prefixRead.size + dictionary.size + directory.size))
+                      | none => pure (some ([], planningBytes.size))
                       | some segmentRange =>
                           match ← readVerifiedRange? path chunked leaves segmentRange with
                           | none => pure none
                           | some segment =>
+                              let prefixRead := planningBytes.extract 0 prefixBytes
                               let triples := scanPredicateRanges { p := some entry.predicate }
                                 prefixRead dictionary directory segment
                               if triples.length == entry.rows then
-                                pure (some (triples, prefixRead.size + dictionary.size + directory.size + segment.size))
+                                pure (some (triples, planningBytes.size + segment.size))
                               else pure none
-                  | _, _ => pure none
 
 def scanEntries (directory : System.FilePath) : List Entry →
     IO (Option (List Triple × Nat))
