@@ -21,6 +21,8 @@ query=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" 
   'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant ?chrom WHERE { ?variant wdt:P31 wd:Q15304597 . ?variant wdt:P1057 ?chrom . } LIMIT 5')
 explain=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --explain \
   'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant ?chrom WHERE { ?variant wdt:P31 wd:Q15304597 . ?variant wdt:P1057 ?chrom . } LIMIT 5')
+analyze=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --explain-analyze \
+  'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant ?chrom WHERE { ?variant wdt:P31 wd:Q15304597 . ?variant wdt:P1057 ?chrom . } LIMIT 5')
 session=$(printf '%s\n' \
   'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant ?chrom WHERE { ?variant wdt:P31 wd:Q15304597 . ?variant wdt:P1057 ?chrom . } LIMIT 5' \
   'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant WHERE { ?variant wdt:P31 wd:Q15304597 . } LIMIT 3' |
@@ -31,6 +33,7 @@ printf '%s\n' "$p31"
 printf '%s\n' "$p1057"
 printf '%s\n' "$query"
 printf '%s\n' "$explain"
+printf '%s\n' "$analyze"
 printf '%s\n' "$session"
 grep -q 'verified-bytes=1000 offset=65000 chunks=0-1' <<<"$pread"
 grep -q 'rows=1800 predicate=http://www.wikidata.org/prop/direct/P31' <<<"$p31"
@@ -41,6 +44,11 @@ grep -q 'explain format=sexp .* executes=false' <<<"$explain"
 grep -q '(node scan-0' <<<"$explain"
 grep -q '(node scan-4' <<<"$explain"
 grep -q '(node sparql-eval' <<<"$explain"
+grep -q 'explain-analyze format=sexp .* executes=true' <<<"$analyze"
+grep -q '(profile query-1' <<<"$analyze"
+grep -q ':physical-bytes 110020 :chunks 2 :range-requests 3 :cache miss' <<<"$analyze"
+grep -q ':physical-bytes 82835 :chunks 2 :range-requests 3 :cache miss' <<<"$analyze"
+grep -q '(node sparql-eval' <<<"$analyze"
 grep -q 'query=1 shards=2 open-mode=predicate-selective-merkle(2) cache-hit=0 cache-miss=2' <<<"$session"
 grep -q '^l4block-shard-merkle-session rows=5 ' <<<"$session"
 grep -q 'query=1 shards=2 open-mode=predicate-selective-merkle(2) cache-hit=0 cache-miss=2 logical-bytes=192847 requested-range-bytes=192889 fetched-chunk-bytes=192855 verified-chunks=4 range-requests=6' <<<"$session"

@@ -364,11 +364,12 @@ requirement. It neither opens nor decodes a child artifact. This is the first
 planned-explanation projection; `EXPLAIN ANALYZE` still needs the structured
 per-node runtime measurements described in `20260830-query-observability.md`.
 
-The bounded warm-session host now also emits an S-expression execution profile
-after each successful read-only SELECT. It uses the same `scan-<manifest
-ordinal>` node identities as `--explain`, and adds actual decoded rows,
-millisecond timing, logical bytes, newly fetched whole-chunk bytes, proof
-count, range-request count and explicit `hit`/`miss` cache state. The final
-`sparql-eval` node records returned rows and evaluator time. The profile is a
-native-host diagnostic projection; it is not yet a typed public profile AST,
-JSON representation or OTLP exporter.
+`--explain-analyze SELECT...` is the explicit native-host execution-profile
+surface. The bounded warm-session host emits the same profile after each
+successful read-only SELECT. It uses the same `scan-<manifest ordinal>` node
+identities as `--explain`, and adds actual decoded rows, millisecond timing,
+logical bytes, newly fetched whole-chunk bytes, proof count, range-request
+count and explicit `hit`/`miss` cache state. The final `sparql-eval` node
+records returned rows and evaluator time. The profile is a native-host
+diagnostic projection; it is not yet a typed public profile AST, JSON
+representation or OTLP exporter.

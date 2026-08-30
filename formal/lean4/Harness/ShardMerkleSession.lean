@@ -2,6 +2,7 @@
    Merkle-verified ranges. Once admitted, immutable decoded triples are cached
    in process memory; no later query consults unchecked disk bytes. -/
 import Harness.ShardMerkleMaterialize
+import Harness.ShardMerkleProfile
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
@@ -9,6 +10,7 @@ import L4Factoidal.SPARQL.StoreDataset
 namespace Harness.ShardMerkleSession
 
 open Harness.ShardMerkleMaterialize
+open Harness.ShardMerkleProfile
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreDataset
 open L4Factoidal.Storage.ShardManifest
@@ -17,15 +19,9 @@ structure CachedArtifact where
   key : ArtifactKey
   materialized : Materialized
 
-structure ProfileNode where
-  entry : Entry
-  materialized : Materialized
-  cacheHit : Bool
-  elapsedMs : Nat
-
 structure Loaded where
   triples : List L4Factoidal.RDF.Triple
-  nodes : List ProfileNode
+  nodes : List Node
   hits : Nat
   misses : Nat
   newlyLogicalBytes : Nat
@@ -72,21 +68,6 @@ private def readEntries (directory : System.FilePath) (cache : IO.Ref (List Cach
             newlyRangeRequests := tail.newlyRangeRequests + if hit then 0 else materialized.rangeRequests })
       | _, _ => pure none
 
-private def profileScanSse (node : ProfileNode) : String :=
-  let materialized := node.materialized
-  let logicalBytes := if node.cacheHit then 0 else materialized.logicalBytes
-  let fetchedBytes := if node.cacheHit then 0 else materialized.fetchedBytes
-  let chunks := if node.cacheHit then 0 else materialized.verifiedChunks
-  let requests := if node.cacheHit then 0 else materialized.rangeRequests
-  let cacheState := if node.cacheHit then "hit" else "miss"
-  s!"(node scan-{node.entry.ordinal}\n    (scan :predicate <{node.entry.predicate.val}>)\n    (placement local-file)\n    (estimate :rows {node.entry.rows})\n    (actual :rows {materialized.triples.length} :elapsed-ms {node.elapsedMs})\n    (io :logical-bytes {logicalBytes} :physical-bytes {fetchedBytes} :chunks {chunks} :range-requests {requests} :cache {cacheState})\n    (integrity :manifest SBM1 :merkle verified))"
-
-private def profileSse (queryNumber : Nat) (query : Query) (loaded : Loaded)
-    (rows : List Solution) (evalMs : Nat) : String :=
-  let scans := String.intercalate "\n  " (loaded.nodes.map profileScanSse)
-  let inputs := String.intercalate " " (loaded.nodes.map fun node => s!"@scan-{node.entry.ordinal}")
-  s!"(profile query-{queryNumber}\n  (logical {query.toSse})\n  (flow\n  {scans}\n  (node sparql-eval\n    (sparql-select :inputs ({inputs}))\n    (placement lean-native)\n    (actual :rows {rows.length} :elapsed-ms {evalMs})\n    (integrity :manifest SBM1 :merkle verified))))"
-
 private def execute (directory : System.FilePath) (manifest : Manifest)
     (cache : IO.Ref (List CachedArtifact)) (queryNumber : Nat) (queryText : String) : IO Bool := do
   match parseSparql queryText with
@@ -116,7 +97,7 @@ private def execute (directory : System.FilePath) (manifest : Manifest)
                   let cacheArtifacts := (← cache.get).length
                   IO.println s!"l4block-shard-merkle-session query={queryNumber} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) cache-hit={loaded.hits} cache-miss={loaded.misses} logical-bytes={loaded.newlyLogicalBytes} requested-range-bytes={loaded.newlyRequestedBytes} fetched-chunk-bytes={loaded.newlyFetchedBytes} verified-chunks={loaded.newlyVerifiedChunks} range-requests={loaded.newlyRangeRequests} cache-artifacts={cacheArtifacts} integrity=sbm1-merkle-verified"
                   IO.println s!"l4block-shard-merkle-session profile format=sexp query={queryNumber}"
-                  IO.println (profileSse queryNumber query loaded rows (evalEnd - evalStart))
+                  IO.println (profileSse s!"query-{queryNumber}" query loaded.nodes rows.length (evalEnd - evalStart))
                   IO.println s!"l4block-shard-merkle-session rows={rows.length} preview={toString (repr (rows.take 10))}"
                   pure true
 
