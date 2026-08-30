@@ -71,6 +71,50 @@ canonicalization has graph-wide and potentially adversarially costly behaviour.
 Runtime blocks use established compact IDs and sorted layouts after the
 canonicalization/assurance step.
 
+## Partitioning must respect identity neighbourhoods
+
+Block boundaries must not be a rigid byte, character, or quad count.  A
+payload block may contain five execution quads while its manifest records a
+larger declared identity/canonicalization neighbourhood used to establish the
+term references in those quads.  This is particularly important for blank
+nodes and richly described entities: splitting away all identifying context can
+make canonicalization and entity reconciliation unstable or needlessly
+expensive.
+
+The required distinction is:
+
+```text
+payload quads                 -- scanned by the physical operator
+identity neighbourhood        -- bounded contextual evidence used at derivation
+assertion/evidence links      -- provenance and duplicate observations
+```
+
+Term identity itself remains stable and is not recomputed per block.  The
+neighbourhood yields a checked mapping from source terms/blank nodes to
+canonical and compact IDs at ingest/derivation time; runtime blocks carry the
+resulting IDs plus an artifact reference to the evidence that established
+them.
+
+Publisher partition hints should be accepted as advisory, provenance-bearing
+input: entity roots, record boundaries, blank-node closure groups, stable
+Skolem IRIs, and safe co-location groups.  The importer must validate bounds
+and may enlarge a declared neighbourhood or reject a malformed one.  This
+allows a publisher to keep an entity description together without making an
+untrusted page author control execution layout.
+
+`owl:FunctionalProperty` and `owl:InverseFunctionalProperty` statements are
+logical evidence, not licence to silently merge arbitrary Web terms.  They may
+inform a separately named reconciliation/entailment profile with explicit
+scope, source trust, time/version, and explanation.  Physical partitioning
+should retain the relevant declaration and supporting neighbourhood together
+where practical, but never detach it and then claim unconditional identity.
+
+Duplication is permitted at the physical/evidence level when it improves
+locality: a context quad or entity neighbourhood can be present in several
+derived blocks.  Canonical assertion identity and artifact provenance ensure
+this does not become duplicated logical content or double-counted query
+results.
+
 ## Follow-on implementation work
 
 1. Define the canonical predicate-shard manifest, including row-order and
