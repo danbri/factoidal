@@ -13,6 +13,11 @@ with a browser-local knowledge graph? The key is that the skill is data, not
 ambient authority: it describes the graph and SPARQL conventions, while the
 reader remains in control of any query execution.
 
+Try it in two steps: **Show request bundle** displays exactly the skill,
+life-sciences profile, question and reproducibility metadata a provider would
+receive. **Ask browser AI** uses Chrome's local model only when that capability
+is installed; it proposes a query but does not run it or upload the dataset.
+
 ```observable-js
 kgSkill = ({
   id: "factoidal.local-kg.sparql.v0",
@@ -46,15 +51,16 @@ lifeSciKgProfile = ({
 aiSkillRunner = {
   const root = html`<div>
     <p><strong>Local-KG AI skill experiment.</strong> Nothing is sent to a service by this notebook.</p>
-    <label>Question about a local RDF graph<br><textarea rows="3">Find people and their names.</textarea></label>
-    <p><button type="button">Create reproducible request bundle</button> <button type="button" class="ask">Ask browser AI if available</button></p>
+    <label>Question about the life-sciences named graphs<br><textarea rows="3">Find sequence variants and the chromosomes they are located on, restricted to chromosome entities.</textarea></label>
+    <p><button type="button">Show request bundle</button> <button type="button" class="ask">Ask browser AI for a SPARQL proposal</button></p>
     <pre aria-live="polite">Waiting for a question.</pre>
   </div>`;
   const question = root.querySelector("textarea");
   const bundle = root.querySelector("button");
   const ask = root.querySelector(".ask");
   const output = root.querySelector("pre");
-  const request = () => ({ skill: kgSkill, dataset: lifeSciKgProfile, question: question.value, provider: "browser LanguageModel", seed: null, note: "Chrome built-in AI does not currently provide a portable seeded-reproducibility contract." });
+  const modelOptions = { expectedOutputLanguage: "en" };
+  const request = () => ({ skill: kgSkill, dataset: lifeSciKgProfile, question: question.value, provider: "browser LanguageModel", expectedOutputLanguage: "en", seed: null, note: "Chrome built-in AI does not currently provide a portable seeded-reproducibility contract." });
   bundle.addEventListener("click", () => output.textContent = JSON.stringify(request(), null, 2));
   ask.addEventListener("click", async () => {
     if (!globalThis.LanguageModel?.availability || !globalThis.LanguageModel?.create) {
@@ -62,9 +68,9 @@ aiSkillRunner = {
     }
     ask.disabled = true;
     try {
-      const availability = await LanguageModel.availability();
+      const availability = await LanguageModel.availability(modelOptions);
       if (availability === "unavailable") throw new Error("LanguageModel reports unavailable");
-      const session = await LanguageModel.create({ initialPrompts: [{ role: "system", content: JSON.stringify(kgSkill) }] });
+      const session = await LanguageModel.create({ ...modelOptions, initialPrompts: [{ role: "system", content: JSON.stringify(kgSkill) }] });
       const result = await session.prompt(`Dataset profile: ${JSON.stringify(lifeSciKgProfile)}\nQuestion: ${question.value}\nPropose only a read-only SPARQL SELECT query and explanation.`);
       output.textContent = JSON.stringify({ request: request(), availability, result }, null, 2);
       session.destroy?.();
