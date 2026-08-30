@@ -164,6 +164,7 @@ extern_lib libl4hacl pkg := do
 @[default_target] lean_exe «l4block-id-v2-range-plan» where root := `Harness.IndexedBlockV2RangePlan
 @[default_target] lean_exe «l4block-predicate-shards» where root := `Harness.PredicateBlocksProbe
 @[default_target] lean_exe «l4block-predicate-query» where root := `Harness.PredicateBlocksQuery
+@[default_target] lean_exe «l4block-shard-pack» where root := `Harness.PredicateShardPack
 
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean
