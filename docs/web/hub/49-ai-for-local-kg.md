@@ -6,6 +6,7 @@ series: docs-hub
 series_order: 49
 vocab: sparql
 status: experimental
+tests: tests/hub/post49_test.mjs
 ---
 
 This is deliberately a small experiment, not an autonomous agent. First check
@@ -32,29 +33,24 @@ localAiForKg = {
     expectedInputLanguages: ["en"],
     expectedOutputLanguages: ["en"],
   };
-  const root = html`<div><p><strong>1. Check local AI.</strong> <button class="check">Check availability</button> <span class="status" aria-live="polite">Not checked.</span></p><p><strong>2. Ask about the local graph.</strong><br><textarea rows="3">Find sequence variants and their chromosome entities.</textarea></p><p><button class="ask">Propose read-only SPARQL</button></p><pre aria-live="polite">No request made.</pre></div>`;
-  const check = root.querySelector(".check"), ask = root.querySelector(".ask"), status = root.querySelector(".status"), question = root.querySelector("textarea"), out = root.querySelector("pre");
+  const root = html`<div><p><strong>1. Check local AI.</strong> <button class="check">Check availability</button> <span class="status" aria-live="polite">Not checked.</span></p><p><strong>2. Ask about the local graph.</strong><br><textarea rows="3">Find sequence variants and their chromosome entities.</textarea></p><p><button class="ask">Propose read-only SPARQL</button> <button class="release" disabled>Release local AI</button></p><p class="result-status" aria-live="polite"></p><pre aria-live="polite">No request made.</pre></div>`;
+  const check = root.querySelector(".check"), ask = root.querySelector(".ask"), release = root.querySelector(".release"), status = root.querySelector(".status"), resultStatus = root.querySelector(".result-status"), question = root.querySelector("textarea"), out = root.querySelector("pre");
+  let session = null, creating = null;
   async function availability() {
     if (!globalThis.LanguageModel?.availability || !globalThis.LanguageModel?.create) return "unavailable (this browser exposes no LanguageModel API)";
     return await LanguageModel.availability(languageOptions);
   }
-  check.addEventListener("click", async () => { status.textContent = "Checking…"; try { status.textContent = await availability(); } catch (e) { status.textContent = `failed: ${e.message}`; } });
-  ask.addEventListener("click", async () => {
-    ask.disabled = true; out.textContent = "Preparing local AI…";
-    let clock = null, giveUp = null;
-    try {
-      const a = await availability(); if (a === "unavailable") throw new Error(a);
-      status.textContent = a === "available" ? "Chrome reports the model available; creating a local session…" : "Preparing Chrome's local AI model…";
-      const controller = new AbortController();
-      let seconds = 0;
-      clock = setInterval(() => {
-        seconds += 5;
-        status.textContent = `Creating local AI session… ${seconds}s (Chrome reported ${a})`;
-      }, 5000);
-      giveUp = setTimeout(() => controller.abort(), 60000);
-      const session = await LanguageModel.create({
+  async function getSession() {
+    if (session) return session;
+    if (creating) return creating;
+    creating = (async () => {
+      const a = await availability();
+      if (String(a).startsWith("unavailable")) throw new Error(a);
+      status.textContent = a === "available"
+        ? "Chrome reports the model available; creating one local session…"
+        : `Chrome reports “${a}”; preparing its local model…`;
+      const created = await LanguageModel.create({
         ...languageOptions,
-        signal: controller.signal,
         monitor(monitor) {
           monitor.addEventListener("downloadprogress", event => {
             status.textContent = `Downloading Chrome's local AI model: ${Math.round(event.loaded * 100)}%`;
@@ -62,23 +58,47 @@ localAiForKg = {
         },
         initialPrompts: [{ role: "system", content: "Propose one read-only SPARQL SELECT query. Never propose UPDATE. Explain briefly." }],
       });
+      session = created;
+      release.disabled = false;
+      status.textContent = "Local AI session ready. It will stay ready for another proposal until released.";
+      return created;
+    })();
+    try { return await creating; } finally { creating = null; }
+  }
+  check.addEventListener("click", async () => {
+    status.textContent = "Checking…";
+    try {
+      const a = await availability();
+      status.textContent = String(a).startsWith("unavailable")
+        ? `Chrome reports “${a}”.`
+        : a === "available"
+        ? "Chrome reports “available”. Generate a proposal when ready."
+        : `Chrome reports “${a}”. Generating a proposal will prepare the model after this click.`;
+    } catch (e) { status.textContent = `failed: ${e.message}`; }
+  });
+  ask.addEventListener("click", async () => {
+    ask.disabled = true; resultStatus.textContent = ""; out.textContent = "Preparing local AI…";
+    try {
+      const localSession = await getSession();
       status.textContent = "Local AI is ready. Proposing a query…";
+      out.textContent = "Generating a read-only SPARQL proposal…";
       const prompt = `Local dataset profile: ${JSON.stringify(profile)}\nQuestion: ${question.value}`;
-      const proposal = await session.prompt(prompt);
-      out.textContent = JSON.stringify({ provider: "Chrome LanguageModel", availability: a, expectedInputs: ["text/en"], expectedOutputs: ["text/en"], graphProfile: profile, question: question.value, proposal, execution: "not run; copy it to Shardborough only after review" }, null, 2);
+      const proposal = await localSession.prompt(prompt);
+      resultStatus.textContent = "Proposal below — it has not run a query.";
+      out.textContent = String(proposal).trim() || "(The local model returned no proposal.)";
       status.textContent = "Local AI proposal ready. It has not run a query.";
-      session.destroy?.();
     } catch (e) {
-      const timedOut = e?.name === "AbortError";
-      status.textContent = timedOut ? "Chrome did not create a local session within one minute." : "Local AI was not ready.";
-      out.textContent = timedOut
-        ? "Chrome reported the model available, but session creation timed out. Open chrome://on-device-internals, check Model Status and free-space requirements, then retry."
-        : `No local AI proposal: ${e.message}`;
+      status.textContent = "Local AI was not ready.";
+      out.textContent = `No local AI proposal: ${e.message}`;
     } finally {
-      if (clock) clearInterval(clock);
-      if (giveUp) clearTimeout(giveUp);
       ask.disabled = false;
     }
+  });
+  release.addEventListener("click", () => {
+    session?.destroy?.();
+    session = null;
+    release.disabled = true;
+    status.textContent = "Local AI session released. Chrome may unload the model when no session remains.";
   });
   return root;
 }
