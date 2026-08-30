@@ -26,6 +26,35 @@ observable source ordering: rows from a selected segment are reordered by this
 position before they reach the existing SPARQL backend.  An unbound scan uses
 the same positions to reconstruct all source order.
 
+## Landed initial codec
+
+`Storage.IndexedBlockWireV2` now implements this layout as `IBK2`.  Its
+CRC-covered payload is dictionary count, row count, segment count, variable
+length dictionary, fixed-width `(predicate, offset, length)` directory, then
+16-byte `(sourcePosition, subjectId, predicateId, objectId)` segment rows.
+Directory offsets are relative to the segment area, so the layout does not
+depend on the enclosing storage API.
+
+The decoder rejects directory holes/overlaps/trailing data, non-row-aligned or
+empty ranges, duplicate predicate entries, a segment row whose predicate does
+not equal its directory predicate, and non-contiguous or duplicate source
+positions.  A complete decode rebuilds source order before constructing the
+existing indexed SPARQL backend.  `scanPredicateDecoded` parses only the
+dictionary, directory and requested predicate segment; it is the executable
+meaning a future `pread`/mmap/OPFS/TiKV range reader must preserve.
+
+The current function is selective in *decoding*, not yet in host I/O: its
+first signature accepts one `ByteArray`.  The next host boundary must expose
+range reads so it can retrieve the header/dictionary/directory and one segment
+without materialising the rest of the artifact.  This is intentionally a
+separate integration step from the canonical byte-format and validation work.
+
+The executable regression gate is `l4block-id-v2-diff INPUT.ttl --query
+SELECT...`; it compares ordinary graph evaluation with an `IBK2` full decode
+and the existing indexed SPARQL backend.  `l4block-id-v2-segment INPUT.ttl
+PREDICATE-IRI` independently compares a source predicate match to
+`scanPredicateDecoded`, so it exercises the directory-selected decode path.
+
 ## Safety gates
 
 - offsets and lengths must lie within the CRC-covered payload;

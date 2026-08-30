@@ -1,0 +1,208 @@
+/-
+L4Factoidal.Storage.IndexedBlockWireV2 — predicate-segmented bytes for IndexedBlock.
+
+`IBK2` retains V1's one shared term dictionary, but places ID rows in
+predicate-local contiguous segments.  Its fixed-width directory makes the
+physical segment of a predicate discoverable after only the header, dictionary
+and directory have been read.  Each segment row carries its original source
+position; full decode reconstructs the V1 source order and a selected scan
+keeps the same observable order.
+
+The offsets below are relative to the start of the segment area.  This makes a
+future range reader independent of whether the enclosing artifact is a local
+file, `bytea`, object storage, OPFS, or a TiKV value.
+-/
+import L4Factoidal.Storage.IndexedBlockWireV1
+
+namespace L4Factoidal.Storage.IndexedBlockWireV2
+
+open L4Factoidal.RDF
+open L4Factoidal.SPARQL
+open L4Factoidal.Storage
+open L4Factoidal.Storage.IndexedBlock
+open L4Factoidal.Storage.IndexedBlockWireV1
+open L4Factoidal.Storage.BlockWireV0
+
+/-- `'IBK2'` in little-endian form. -/
+def magic : UInt32 := 0x324B4249
+def version : UInt8 := 2
+
+structure DirectoryEntry where
+  predicate : TermId
+  offset : Nat
+  length : Nat
+  deriving Repr, DecidableEq, Inhabited
+
+private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
+private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
+
+private def encodePositioned (entry : PositionedIdTriple) : List UInt8 :=
+  writeU32LE (UInt32.ofNat entry.position) ++
+  writeU32LE (UInt32.ofNat entry.row.s) ++ writeU32LE (UInt32.ofNat entry.row.p) ++
+  writeU32LE (UInt32.ofNat entry.row.o)
+
+private def encodeDirectory (entry : DirectoryEntry) : List UInt8 :=
+  writeU32LE (UInt32.ofNat entry.predicate) ++ writeU32LE (UInt32.ofNat entry.offset) ++
+  writeU32LE (UInt32.ofNat entry.length)
+
+private def predicateIds (rows : List IdTriple) : List TermId :=
+  rows.foldl (fun ids row => if ids.contains row.p then ids else ids ++ [row.p]) []
+
+private def segments (block : Block) : List (TermId × List UInt8) :=
+  (predicateIds block.rows.toList).map fun predicate =>
+    (predicate, (predicateSegment predicate block).flatMap encodePositioned)
+
+private def directoryFor (segments : List (TermId × List UInt8)) : List DirectoryEntry :=
+  let (_, reversed) := segments.foldl (fun (state : Nat × List DirectoryEntry) segment =>
+    let (offset, entries) := state
+    let (predicate, bytes) := segment
+    (offset + bytes.length, { predicate := predicate, offset := offset, length := bytes.length } :: entries)) (0, [])
+  reversed.reverse
+
+def supported (block : Block) : Bool :=
+  IndexedBlockWireV1.supported block &&
+    (segments block).all fun segment => fitsU32 segment.1 && fitsU32 segment.2.length
+
+/-- Deterministic V2 bytes for a supported block.  Header: magic + version;
+    CRC-covered payload: dictionary count, row count, segment count, terms,
+    fixed-width directory, then contiguous segment bytes; trailer: CRC32C. -/
+def encodeList (block : Block) : List UInt8 :=
+  let segs := segments block
+  let directory := directoryFor segs
+  let payload := writeU32LE (UInt32.ofNat block.dict.size) ++
+    writeU32LE (UInt32.ofNat block.rows.size) ++ writeU32LE (UInt32.ofNat segs.length) ++
+    block.dict.toList.flatMap serializeTerm ++ directory.flatMap encodeDirectory ++
+    segs.flatMap (fun segment => segment.2)
+  writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload)
+
+def encode? (block : Block) : Option ByteArray :=
+  if supported block then some (byteArrayOfList (encodeList block)) else none
+
+private def decodeTerms : Nat → List UInt8 → Option (List Term × List UInt8)
+  | 0, bytes => some ([], bytes)
+  | n + 1, bytes => do
+      let (term, afterTerm) ← parseTerm bytes
+      let (terms, rest) ← decodeTerms n afterTerm
+      some (term :: terms, rest)
+
+private def decodeDirectory : Nat → List UInt8 → Option (List DirectoryEntry × List UInt8)
+  | 0, bytes => some ([], bytes)
+  | n + 1, bytes => do
+      let predicate ← readU32LE bytes 0
+      let offset ← readU32LE bytes 4
+      let length ← readU32LE bytes 8
+      let (entries, rest) ← decodeDirectory n (bytes.drop 12)
+      some ({ predicate := predicate.toNat, offset := offset.toNat, length := length.toNat } :: entries, rest)
+
+private def distinctPredicates : List DirectoryEntry → Bool
+  | [] => true
+  | entry :: rest => !((rest.map DirectoryEntry.predicate).contains entry.predicate) && distinctPredicates rest
+
+/-- Directory entries are deliberately required to be an exact partition of
+    the segment area in on-disk order.  This rejects holes, overlaps, trailing
+    bytes and non-row-aligned ranges before a selected segment is decoded. -/
+private def directoryCovers (bytes : List UInt8) : List DirectoryEntry → Nat → Bool
+  | [], expected => expected == bytes.length
+  | entry :: rest, expected =>
+      entry.length > 0 && entry.length % 16 == 0 && entry.offset == expected &&
+        entry.offset + entry.length <= bytes.length &&
+        directoryCovers bytes rest (entry.offset + entry.length)
+
+private def decodeSegmentRows (predicate : TermId) : Nat → List UInt8 → Option (List PositionedIdTriple)
+  | 0, _ => some []
+  | n + 1, bytes => do
+      let position ← readU32LE bytes 0
+      let s ← readU32LE bytes 4
+      let p ← readU32LE bytes 8
+      let o ← readU32LE bytes 12
+      if p.toNat != predicate then none
+      else do
+        let rows ← decodeSegmentRows predicate n (bytes.drop 16)
+        some ({ position := position.toNat, row := { s := s.toNat, p := p.toNat, o := o.toNat } } :: rows)
+
+private def decodeSegment (segmentBytes : List UInt8) (entry : DirectoryEntry) : Option (List PositionedIdTriple) :=
+  if entry.length % 16 != 0 || entry.offset + entry.length > segmentBytes.length then none
+  else decodeSegmentRows entry.predicate (entry.length / 16)
+    (segmentBytes.drop entry.offset |>.take entry.length)
+
+private def orderedRows? (rowCount : Nat) (rows : List PositionedIdTriple) : Option (Array IdTriple) :=
+  let ordered := rows.toArray.qsort (fun left right => left.position < right.position) |>.toList
+  if ordered.length != rowCount then none
+  else if (ordered.zipIdx.all fun (entry, position) => entry.position == position) then
+    some (ordered.map PositionedIdTriple.row |>.toArray)
+  else none
+
+private def decodePayload (payload : List UInt8) : Option (Array Term × Array IdTriple) := do
+  let dictCount ← readU32LE payload 0
+  let rowCount ← readU32LE payload 4
+  let segmentCount ← readU32LE payload 8
+  let (terms, afterTerms) ← decodeTerms dictCount.toNat (payload.drop 12)
+  let (directory, segmentBytes) ← decodeDirectory segmentCount.toNat afterTerms
+  if !distinctPredicates directory || !directoryCovers segmentBytes directory 0 then none
+  else do
+    let segments ← directory.mapM (decodeSegment segmentBytes)
+    let rows ← orderedRows? rowCount.toNat segments.flatten
+    some (terms.toArray, rows)
+
+/-- Decode one complete V2 block.  As well as V1's dictionary/reference and
+    CRC checks, V2 rejects an ill-formed directory, mismatched segment
+    predicates, non-contiguous segment bytes, duplicate source positions, and
+    missing source positions. -/
+def decode (bytes : ByteArray) : Option Block := do
+  let allBytes := listOfByteArray bytes
+  let foundMagic ← readU32LE allBytes 0
+  if foundMagic != magic then none
+  else do
+    let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
+    if foundVersion != version || afterVersion.length < 16 then none
+    else do
+      let payloadLen := afterVersion.length - 4
+      let payload := afterVersion.take payloadLen
+      let storedCrc ← readU32LE afterVersion payloadLen
+      if storedCrc != crc32c payload then none
+      else do
+        let (dict, rows) ← decodePayload payload
+        fromParts? dict rows
+
+private def idForPredicate? (dict : Array Term) (predicate : WfIri) : Option TermId :=
+  (dict.toList.zipIdx.find? fun (term, _) => term == .iri predicate).map (fun (_, id) => id)
+
+private def decodeForPredicate? (payload : List UInt8) (predicate : WfIri) : Option (Array Term × List PositionedIdTriple) := do
+  let dictCount ← readU32LE payload 0
+  let _rowCount ← readU32LE payload 4
+  let segmentCount ← readU32LE payload 8
+  let (terms, afterTerms) ← decodeTerms dictCount.toNat (payload.drop 12)
+  let (directory, segmentBytes) ← decodeDirectory segmentCount.toNat afterTerms
+  if !distinctPredicates directory || !directoryCovers segmentBytes directory 0 then none
+  else do
+    let dict := terms.toArray
+    let predicateId ← idForPredicate? dict predicate
+    let entry ← directory.find? fun candidate => candidate.predicate == predicateId
+    let rows ← decodeSegment segmentBytes entry
+    some (dict, rows)
+
+/-- Decode only the dictionary/directory and the one predicate segment named by
+    a bound predicate.  This is the executable selective-read meaning of V2;
+    a range-capable host can supply exactly those same byte ranges later. -/
+def scanPredicateDecoded (bound : PatternBound) (bytes : ByteArray) : List Triple :=
+  match bound.p with
+  | none => []
+  | some predicate =>
+      let allBytes := listOfByteArray bytes
+      match readU32LE allBytes 0, parseU8 (allBytes.drop 4) with
+      | some foundMagic, some (foundVersion, afterVersion) =>
+          if foundMagic != magic || foundVersion != version || afterVersion.length < 16 then []
+          else
+            let payloadLen := afterVersion.length - 4
+            let payload := afterVersion.take payloadLen
+            match readU32LE afterVersion payloadLen with
+            | some storedCrc =>
+                if storedCrc != crc32c payload then []
+                else match decodeForPredicate? payload predicate with
+                  | some (dict, rows) =>
+                      (rows.filterMap (fun entry => decodeTriple? dict entry.row)).filter (boundMatches bound)
+                  | none => []
+            | none => []
+      | _, _ => []
+
+end L4Factoidal.Storage.IndexedBlockWireV2
