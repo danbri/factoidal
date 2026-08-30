@@ -6,6 +6,7 @@ open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.Storage.IndexedBlock
 open L4Factoidal.Storage.IndexedBlockWireV1
+open L4Factoidal.Storage.BlockArtifact
 
 private def p : WfIri := ⟨"http://example.org/name", by simp [isIri]⟩
 private def graph : Graph :=
@@ -28,5 +29,7 @@ private def checksumCorrupt : ByteArray :=
   | some b => scanBound { p := some p } b == tripleMatchesBound { p := some p } graph
   | none => false
 #guard (decode checksumCorrupt).isNone
+#guard (decodeVerified (digest bytes) bytes).isSome
+#guard (decodeVerified (digest bytes) checksumCorrupt).isNone
 
 end L4Factoidal.Storage.IndexedBlockWireV1Tests

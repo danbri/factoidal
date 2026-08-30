@@ -16,6 +16,7 @@ BLK0 on the supported RDF subset, not yet the final RDF 1.2 codec.
 import L4Factoidal.Storage.IndexedBlock
 import L4Factoidal.Storage.BlockWireV0
 import L4Factoidal.Storage.DeltaLog
+import L4Factoidal.Storage.BlockArtifact
 
 namespace L4Factoidal.Storage.IndexedBlockWireV1
 
@@ -23,6 +24,7 @@ open L4Factoidal.RDF
 open L4Factoidal.Storage
 open L4Factoidal.Storage.IndexedBlock
 open L4Factoidal.Storage.BlockWireV0
+open L4Factoidal.Storage.BlockArtifact
 
 /-- `'IBK1'` in little-endian form. -/
 def magic : UInt32 := 0x314B4249
@@ -90,5 +92,12 @@ def decode (bytes : ByteArray) : Option Block := do
           let (dict, afterDict) ← decodeTerms dictCount.toNat (payload.drop 8)
           let (rows, rest) ← decodeRows rowCount.toNat afterDict
           if rest.isEmpty then fromParts? dict.toArray rows.toArray else none
+
+/-- Decode only bytes whose SHA-256 identity matches a caller-supplied trusted
+    manifest digest. Signature and key-policy validation live above this byte
+    boundary; this function binds that verified identity to the existing total
+    wire decoder. -/
+def decodeVerified (trustedDigest : Digest256) (bytes : ByteArray) : Option Block :=
+  if verify trustedDigest bytes then decode bytes else none
 
 end L4Factoidal.Storage.IndexedBlockWireV1
