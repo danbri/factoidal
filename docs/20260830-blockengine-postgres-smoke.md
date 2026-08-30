@@ -23,6 +23,9 @@ PostgreSQL-retrieved IBK1 bytes = direct IBK1 bytes
 therefore PostgreSQL-retrieved IBK1 runs the same Lean query path
 ```
 
+For constrained runners, `SKIP_DIRECT_DIFF=1` reruns only the persistence leg
+after the exact Turtle/query pair has already passed the differential command.
+
 The database schema is only:
 
 ```sql
@@ -57,6 +60,11 @@ and routes the parsed query through the existing backend seam.  Thus the
 smoke proves the intended host separation, but does **not** claim PostgreSQL
 native SPARQL evaluation, snapshot semantics, concurrent transactions, or a
 production pool/extension.
+
+The PostgreSQL retrieval leg also passed on `chromosome.ttl`: 9,227 triples and
+9,229 terms packed to 526,057 bytes, preserved exactly in `bytea`, then yielded
+the Lean aggregate result `COUNT(*) = 9227`. The ordinary/direct differential
+for that exact corpus/query passed immediately beforehand.
 
 ## Next
 

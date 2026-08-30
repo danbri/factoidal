@@ -21,7 +21,11 @@ fi
 # First establish the semantic side of the triangle.  The differential harness
 # evaluates ordinary graph data and direct decoded IBK1 bytes with the same
 # parsed query; an exit status of zero means their solution sequences match.
-"$lean_dir/.lake/build/bin/l4block-id-diff" "$ttl_path" --query "$query"
+# Set SKIP_DIRECT_DIFF=1 only when this exact Turtle/query pair has already
+# passed in the current benchmark run and only the persistence leg is needed.
+if [[ ${SKIP_DIRECT_DIFF:-0} != 1 ]]; then
+  "$lean_dir/.lake/build/bin/l4block-id-diff" "$ttl_path" --query "$query"
+fi
 "$lean_dir/.lake/build/bin/l4block-id-pack" "$ttl_path" "$run_dir/source.ibk1"
 
 # The local smoke cluster owns its data files under the current user.  The SQL
