@@ -16,10 +16,22 @@ open L4Factoidal.Storage.ShardManifest
 def safeLeafKey (key : ArtifactKey) : Bool :=
   !key.value.isEmpty && !(key.value.contains '/') && !(key.value.contains '\\')
 
+/- The three byte counts deliberately have different meanings:
+   `logicalBytes` is the non-overlapping IBK2 plan, `requestedBytes` includes
+   the prefix discovery request, and `fetchedBytes` is full native chunks. -/
+structure Materialized where
+  triples : List Triple
+  logicalBytes : Nat
+  requestedBytes : Nat
+  fetchedBytes : Nat
+  verifiedChunks : Nat
+  rangeRequests : Nat
+  deriving Repr
+
 /-- Materialise exactly the selected predicate-local artifact through four
     Merkle-verified IBK2 ranges. -/
-def scanEntry (directory : System.FilePath) (entry : Entry) :
-    IO (Option (List Triple × Nat)) := do
+def scanEntryProfile (directory : System.FilePath) (entry : Entry) :
+    IO (Option Materialized) := do
   if !safeLeafKey entry.artifact.key then
     throw <| IO.userError s!"unsafe manifest artifact key: {entry.artifact.key.value}"
   match entry.artifact.chunked with
@@ -30,9 +42,10 @@ def scanEntry (directory : System.FilePath) (entry : Entry) :
       match leaves? chunked.chunkCount leafBytes with
       | none => pure none
       | some leaves =>
-          match ← readVerifiedRange? path chunked leaves { offset := 0, length := prefixBytes } with
-          | none => pure none
-          | some prefixRead =>
+          let prefixRange := { offset := 0, length := prefixBytes }
+          match verifiedReadFootprint? chunked prefixRange,
+              ← readVerifiedRange? path chunked leaves prefixRange with
+          | some prefixFootprint, some prefixRead =>
               match decodePrefix prefixRead with
               | none => pure none
               | some header =>
@@ -41,9 +54,9 @@ def scanEntry (directory : System.FilePath) (entry : Entry) :
                      range rather than re-fetching its shared chunks three
                      times; the short prefix above only discovers this extent. -/
                   let planning := planningRange header
-                  match ← readVerifiedRange? path chunked leaves planning with
-                  | none => pure none
-                  | some planningBytes =>
+                  match verifiedReadFootprint? chunked planning,
+                      ← readVerifiedRange? path chunked leaves planning with
+                  | some planningFootprint, some planningBytes =>
                       let dictionaryRange := dictionaryRange header
                       let directoryRange := directoryRange header
                       let dictionary := planningBytes.extract dictionaryRange.offset
@@ -51,17 +64,38 @@ def scanEntry (directory : System.FilePath) (entry : Entry) :
                       let directory := planningBytes.extract directoryRange.offset
                         (directoryRange.offset + directoryRange.length)
                       match predicateRange? header dictionary directory entry.predicate with
-                      | none => pure (some ([], planningBytes.size))
+                      | none => pure (some {
+                          triples := []
+                          logicalBytes := planningBytes.size
+                          requestedBytes := prefixFootprint.requestedBytes + planningFootprint.requestedBytes
+                          fetchedBytes := prefixFootprint.fetchedBytes + planningFootprint.fetchedBytes
+                          verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks
+                          rangeRequests := 2 })
                       | some segmentRange =>
-                          match ← readVerifiedRange? path chunked leaves segmentRange with
-                          | none => pure none
-                          | some segment =>
+                          match verifiedReadFootprint? chunked segmentRange,
+                              ← readVerifiedRange? path chunked leaves segmentRange with
+                          | some segmentFootprint, some segment =>
                               let prefixRead := planningBytes.extract 0 prefixBytes
                               let triples := scanPredicateRanges { p := some entry.predicate }
                                 prefixRead dictionary directory segment
                               if triples.length == entry.rows then
-                                pure (some (triples, planningBytes.size + segment.size))
+                                pure (some {
+                                  triples
+                                  logicalBytes := planningBytes.size + segment.size
+                                  requestedBytes := prefixFootprint.requestedBytes + planningFootprint.requestedBytes + segmentFootprint.requestedBytes
+                                  fetchedBytes := prefixFootprint.fetchedBytes + planningFootprint.fetchedBytes + segmentFootprint.fetchedBytes
+                                  verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks + segmentFootprint.chunks
+                                  rangeRequests := 3 })
                               else pure none
+                          | _, _ => pure none
+                  | _, _ => pure none
+          | _, _ => pure none
+
+def scanEntry (directory : System.FilePath) (entry : Entry) :
+    IO (Option (List Triple × Nat)) := do
+  match ← scanEntryProfile directory entry with
+  | some materialized => pure (some (materialized.triples, materialized.logicalBytes))
+  | none => pure none
 
 def scanEntries (directory : System.FilePath) : List Entry →
     IO (Option (List Triple × Nat))

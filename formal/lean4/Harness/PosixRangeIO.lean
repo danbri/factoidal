@@ -43,6 +43,22 @@ private def chunkIndices? (ref : Ref) (range : ByteRange) : Option (Nat × List 
   let last := (range.offset + range.length - 1) / ref.chunkBytes
   some (first, (List.range (last - first + 1)).map fun delta => first + delta)
 
+/-- Honest positioned-read accounting for one verified range. `requestedBytes`
+    is the logical range length; `fetchedBytes` is the sum of complete fixed
+    chunks the native host must obtain before it can return that range. -/
+structure VerifiedReadFootprint where
+  requestedBytes : Nat
+  fetchedBytes : Nat
+  chunks : Nat
+  deriving Repr, DecidableEq
+
+def verifiedReadFootprint? (ref : Ref) (range : ByteRange) : Option VerifiedReadFootprint := do
+  let (_, indices) ← chunkIndices? ref range
+  let lengths ← indices.mapM (expectedBytes? ref)
+  some { requestedBytes := range.length
+         fetchedBytes := lengths.foldl (fun total length => total + length) 0
+         chunks := lengths.length }
+
 private def readVerifiedChunks (path : String) (ref : Ref) (leaves : List Digest) :
     List Nat → IO (Option (List ByteArray))
   | [] => pure (some [])

@@ -342,3 +342,14 @@ then reads the selected segment. This removes three separately planned
 dictionary/directory reads; a future per-artifact verified-chunk cache can
 also eliminate the temporary overlap between the discovery-prefix read and
 the first planning chunk.
+
+The warm Merkle session now reports distinct `logical-bytes`,
+`requested-range-bytes`, `fetched-chunk-bytes`, `verified-chunks` and
+`range-requests` fields, plus cache hits/misses and `integrity=sbm1-merkle-verified`.
+For the two-artifact life-sciences join, the current uncached host reports
+192,847 logical bytes, 192,889 explicitly requested bytes (the prefix is used
+to plan then appears in the planning range), and 433,947 full fixed-chunk bytes
+obtained by `pread` across eight independently verified chunks. The following
+P31-only query is a cache hit and reports zero new logical/requested/fetched
+bytes and chunks. These numbers are measured host-boundary accounting, not a
+throughput claim and not an assertion about OS page-cache behaviour.

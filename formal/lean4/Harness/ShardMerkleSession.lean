@@ -15,38 +15,49 @@ open L4Factoidal.Storage.ShardManifest
 
 structure CachedArtifact where
   key : ArtifactKey
-  triples : List L4Factoidal.RDF.Triple
+  materialized : Materialized
 
 structure Loaded where
   triples : List L4Factoidal.RDF.Triple
   hits : Nat
   misses : Nat
-  newlyVerifiedBytes : Nat
+  newlyLogicalBytes : Nat
+  newlyRequestedBytes : Nat
+  newlyFetchedBytes : Nat
+  newlyVerifiedChunks : Nat
+  newlyRangeRequests : Nat
 
-private def emptyLoaded : Loaded := { triples := [], hits := 0, misses := 0, newlyVerifiedBytes := 0 }
+private def emptyLoaded : Loaded :=
+  { triples := [], hits := 0, misses := 0, newlyLogicalBytes := 0,
+    newlyRequestedBytes := 0, newlyFetchedBytes := 0, newlyVerifiedChunks := 0,
+    newlyRangeRequests := 0 }
 
 private def readOne (directory : System.FilePath) (cache : IO.Ref (List CachedArtifact))
-    (entry : Entry) : IO (Option (List L4Factoidal.RDF.Triple × Bool × Nat)) := do
+    (entry : Entry) : IO (Option (Materialized × Bool)) := do
   match (← cache.get).find? (fun cached => cached.key == entry.artifact.key) with
-  | some cached => pure (some (cached.triples, true, 0))
+  | some cached => pure (some (cached.materialized, true))
   | none =>
-      match ← scanEntry directory entry with
+      match ← scanEntryProfile directory entry with
       | none => pure none
-      | some (triples, logicalBytes) =>
-          cache.modify fun entries => { key := entry.artifact.key, triples } :: entries
-          pure (some (triples, false, logicalBytes))
+      | some materialized =>
+          cache.modify fun entries => { key := entry.artifact.key, materialized } :: entries
+          pure (some (materialized, false))
 
 private def readEntries (directory : System.FilePath) (cache : IO.Ref (List CachedArtifact)) :
     List Entry → IO (Option Loaded)
   | [] => pure (some emptyLoaded)
   | entry :: rest => do
       match ← readOne directory cache entry, ← readEntries directory cache rest with
-      | some (triples, hit, bytes), some tail =>
+      | some (materialized, hit), some tail =>
           pure (some {
-            triples := triples ++ tail.triples
+            triples := materialized.triples ++ tail.triples
             hits := tail.hits + if hit then 1 else 0
             misses := tail.misses + if hit then 0 else 1
-            newlyVerifiedBytes := tail.newlyVerifiedBytes + bytes })
+            newlyLogicalBytes := tail.newlyLogicalBytes + if hit then 0 else materialized.logicalBytes
+            newlyRequestedBytes := tail.newlyRequestedBytes + if hit then 0 else materialized.requestedBytes
+            newlyFetchedBytes := tail.newlyFetchedBytes + if hit then 0 else materialized.fetchedBytes
+            newlyVerifiedChunks := tail.newlyVerifiedChunks + if hit then 0 else materialized.verifiedChunks
+            newlyRangeRequests := tail.newlyRangeRequests + if hit then 0 else materialized.rangeRequests })
       | _, _ => pure none
 
 private def execute (directory : System.FilePath) (manifest : Manifest)
@@ -74,7 +85,7 @@ private def execute (directory : System.FilePath) (manifest : Manifest)
                   pure false
               | some rows =>
                   let cacheArtifacts := (← cache.get).length
-                  IO.println s!"l4block-shard-merkle-session query={queryNumber} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) cache-hit={loaded.hits} cache-miss={loaded.misses} newly-verified-bytes={loaded.newlyVerifiedBytes} cache-artifacts={cacheArtifacts}"
+                  IO.println s!"l4block-shard-merkle-session query={queryNumber} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) cache-hit={loaded.hits} cache-miss={loaded.misses} logical-bytes={loaded.newlyLogicalBytes} requested-range-bytes={loaded.newlyRequestedBytes} fetched-chunk-bytes={loaded.newlyFetchedBytes} verified-chunks={loaded.newlyVerifiedChunks} range-requests={loaded.newlyRangeRequests} cache-artifacts={cacheArtifacts} integrity=sbm1-merkle-verified"
                   IO.println s!"l4block-shard-merkle-session rows={rows.length} preview={toString (repr (rows.take 10))}"
                   pure true
 
