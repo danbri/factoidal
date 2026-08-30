@@ -8,14 +8,18 @@ namespace Harness.IndexedBlockFileQuery
 open L4Factoidal.SPARQL
 open L4Factoidal.Storage.IndexedBlock
 open L4Factoidal.Storage.IndexedBlockWireV1
+open L4Factoidal.Storage.BlockArtifact
 open L4Factoidal.SPARQL.StoreDataset
 
-private def run (path queryText : String) : IO UInt32 := do
+private def run (path queryText : String) (trustedDigest : Option Digest256 := none) : IO UInt32 := do
   try
     let bytes ← IO.FS.readBinFile path
-    match decode bytes with
+    let decoded := match trustedDigest with
+      | none => decode bytes
+      | some digest => decodeVerified digest bytes
+    match decoded with
     | none =>
-        IO.eprintln "l4block-id-file-query rejected: malformed, unsupported, or checksum-failing IBK1 file"
+        IO.eprintln "l4block-id-file-query rejected: digest mismatch, malformed, unsupported, or checksum-failing IBK1 file"
         return 1
     | some block =>
         let dataset : DatasetBackend := { default := .hdt (readOps block), named := [] }
@@ -44,8 +48,18 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln "l4block-id-file-query requires a query after --query"
         return 2
       else run path (String.intercalate " " queryParts)
+  | path :: "--digest-file" :: digestPath :: "--query" :: queryParts =>
+      if queryParts.isEmpty then
+        IO.eprintln "l4block-id-file-query requires a query after --query"
+        return 2
+      else try
+        let digest ← IO.FS.readBinFile digestPath
+        run path (String.intercalate " " queryParts) (some digest)
+      catch e =>
+        IO.eprintln s!"l4block-id-file-query digest read failure: {e}"
+        return 1
   | _ =>
-      IO.eprintln "usage: l4block-id-file-query BLOCK.ibk1 --query SELECT..."
+      IO.eprintln "usage: l4block-id-file-query BLOCK.ibk1 [--digest-file SHA256.bin] --query SELECT..."
       return 2
 
 end Harness.IndexedBlockFileQuery

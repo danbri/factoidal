@@ -62,3 +62,8 @@ The next layer is a signed manifest binding that digest to a snapshot and
 format version. A Merkle-tree manifest/root is an optional later layer for a
 large collection of blocks: it permits compact dataset identity and inclusion
 proofs without changing individual block bytes or the Lean query kernel.
+
+The current query executable accepts the first profile directly:
+`l4block-id-file-query BLOCK.ibk1 --digest-file SHA256.bin --query 'SELECT …'`.
+The digest file is exactly the 32 SHA-256 bytes expected from a trusted
+deployment manifest; a mismatch rejects the artifact before SPARQL evaluation.
