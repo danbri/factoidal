@@ -14,7 +14,12 @@ whether this browser has local AI. Then ask a question about the life-sciences
 Shardborough. If available, the model proposes a read-only SPARQL query; it
 does not receive the Turtle files, execute the query, or send data to a cloud
 service. The [Shardborough notebook](../50-shardborough-life-sciences/) owns
-the inspectable graph manifest and user-run query.
+the inspectable graph manifest and its fixed user-run query.
+
+Shardborough does not yet accept an arbitrary pasted query. To try a proposal,
+use the [life-sciences browser playground](../../../fstar-extracted/demo-lifesci.html):
+replace the query in its editor, then press **Run** (or Cmd/Ctrl+Enter). That
+page loads the same three named graphs and evaluates entirely in this browser.
 
 ```observable-js
 localAiForKg = {
@@ -56,7 +61,7 @@ localAiForKg = {
             status.textContent = `Downloading Chrome's local AI model: ${Math.round(event.loaded * 100)}%`;
           });
         },
-        initialPrompts: [{ role: "system", content: "Propose one read-only SPARQL SELECT query. Never propose UPDATE. Explain briefly." }],
+        initialPrompts: [{ role: "system", content: "Propose one read-only SPARQL SELECT query. Never propose UPDATE. This dataset has named graphs only: put every triple pattern inside an explicit GRAPH <...> block, using only graph URIs in the supplied profile. Use the supplied prefixes and facts, include LIMIT 20, then explain briefly." }],
       });
       session = created;
       release.disabled = false;

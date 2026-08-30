@@ -19,5 +19,7 @@ test('post49: presents the proposal separately and never executes it', () => {
   const [cell] = extractObservableCells('49-ai-for-local-kg.md');
   assert.match(cell, /Proposal below — it has not run a query\./);
   assert.match(cell, /out\.textContent = String\(proposal\)/);
+  assert.match(cell, /named graphs only/);
+  assert.match(cell, /include LIMIT 20/);
   assert.doesNotMatch(cell, /Factoidal\.(query|queryDataset)\(/);
 });
