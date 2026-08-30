@@ -267,3 +267,12 @@ claims partial-range integrity from a whole-file SHA-256 digest. The next wire
 format must bind its chunk size/alignment, algorithm and Merkle root, then a
 native/PostgreSQL/TiKV range reader can admit only the fetched chunks plus
 their proof before invoking the existing IBK2 range decoder.
+
+`L4Factoidal.Storage.ChunkedArtifact` now makes that host contract explicit:
+the trusted sidecar binds total byte length, fixed chunk size/count and Merkle
+root. Given a chunk index, the Lean validator derives its exact byte offset and
+permitted length (including the short final chunk), then accepts supplied bytes
+only if their inclusion proof reaches the declared root. Guards cover valid
+first/final chunks, substituted content, out-of-range indices and an
+inconsistent chunk count. This is the direct interface an SBM1 entry should
+embed; it is still deliberately separate from the stable SBM0 wire format.
