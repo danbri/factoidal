@@ -62,6 +62,11 @@ def directoryRange (header : Prefix) : ByteRange :=
 def segmentAreaOffset (header : Prefix) : Nat :=
   prefixBytes + header.dictBytes + header.segmentCount * 12
 
+/-- The contiguous prefix a storage provider reads before it can select a
+    predicate segment: framing, dictionary and directory. -/
+def planningRange (header : Prefix) : ByteRange :=
+  { offset := 0, length := segmentAreaOffset header }
+
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
 
@@ -246,6 +251,17 @@ def predicateRange? (header : Prefix) (dictionaryBytes directoryBytes : ByteArra
   let predicateId ← idForPredicate? dict predicate
   let entry ← directory.find? fun candidate => candidate.predicate == predicateId
   some { offset := segmentAreaOffset header + entry.offset, length := entry.length }
+
+/-- The exact two-request plan for a predicate-bound IBK2 scan. The first
+    range is contiguous framing/dictionary/directory; the second is the one
+    selected segment. A provider may coalesce adjacent ranges. -/
+def predicateReadRanges? (header : Prefix) (dictionaryBytes directoryBytes : ByteArray)
+    (predicate : WfIri) : Option (List ByteRange) := do
+  let segment ← predicateRange? header dictionaryBytes directoryBytes predicate
+  some [planningRange header, segment]
+
+def rangeBytes (ranges : List ByteRange) : Nat :=
+  ranges.foldl (fun total range => total + range.length) 0
 
 /-- Execute a predicate-bound scan from exactly four independently obtained
     IBK2 ranges: fixed header, dictionary, directory and selected segment.

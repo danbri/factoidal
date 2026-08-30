@@ -30,6 +30,15 @@ the established seam for a mmap, PostgreSQL `bytea` slice, TiKV value-range,
 or WASM/OPFS provider; the next increment must make that provider physically
 read only the planned ranges and report its measured byte count.
 
+`l4block-id-v2-range-plan BLOCK.ibk2 PREDICATE-IRI` exposes the exact logical
+two-range request (contiguous framing/dictionary/directory, then the selected
+segment). Initial measurements are deliberately diagnostic rather than a
+performance claim: the 77-triple music block's `ex:by` segment plans 3,513 of
+4,621 bytes because its term dictionary dominates, while the single-predicate
+chromosome block plans essentially its entire 562,985-byte artifact. A useful
+selectivity benchmark therefore needs a larger multi-predicate corpus with a
+comparatively smaller shared dictionary.
+
 ## Problem
 
 `IBK1` stores all ID rows in one source-order sequence.  Its decoded
