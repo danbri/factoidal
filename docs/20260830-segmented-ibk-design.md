@@ -37,3 +37,14 @@ the same positions to reconstruct all source order.
 
 This deliberately separates an ordered physical-block codec from later
 content-addressed RDF graph normalization.
+
+## Artifact integrity boundary
+
+CRC32C protects framing against accidental corruption; it is not an adversarial
+integrity mechanism. Before a block is accepted as an identified dataset
+artifact, the host path must verify a cryptographic content hash against a
+trusted manifest. A signed manifest should bind the hash, format version,
+dataset/snapshot identity, and (for segmented files) directory/segment
+identities. The Lean assurance chain is then conditional on the verified bytes
+and the trusted signature/key policy; it cannot prove that an operating-system
+or database host was never modified.
