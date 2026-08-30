@@ -81,6 +81,10 @@ module.exports = function(eleventyConfig) {
   // that produced it -- docs/web/hub/assets/data/gen-cottas-corpus.mjs).
   eleventyConfig.addPassthroughCopy("web/hub/assets/data");
 
+  // Small checked block artifacts used by the browser-inspection notebook.
+  // Larger generated corpora belong outside this source repository.
+  eleventyConfig.addPassthroughCopy("web/hub/assets/blocks");
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an

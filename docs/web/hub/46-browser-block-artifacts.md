@@ -76,7 +76,7 @@ blockArtifactPicker = {
     sample.disabled = true;
     output.textContent = "Fetching the bundled IBK1 sample…";
     try {
-      const response = await fetch(new URL("assets/blocks/music.ibk1", location.href));
+      const response = await fetch(new URL("../assets/blocks/music.ibk1", location.href));
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       await inspect(new File([await response.blob()], "music.ibk1", { type: "application/octet-stream" }));
     } catch (e) {
