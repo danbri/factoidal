@@ -26,5 +26,7 @@ private def block := fromGraph graph
 #guard (predicateSegment 1 block).map (fun entry => entry.position) == [0, 2]
 #guard (predicateSegment 1 block).map (fun entry => entry.row) ==
   candidateRows { p := some pName } block
+#guard scanPredicateSegment 1 { p := some pName } block ==
+  scanBound { p := some pName } block
 
 end L4Factoidal.Storage.IndexedBlockTests

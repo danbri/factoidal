@@ -137,6 +137,13 @@ def predicateSegment (predicate : TermId) (block : Block) : List PositionedIdTri
   block.rows.toList.zipIdx.filterMap fun (row, position) =>
     if row.p == predicate then some { position := position, row := row } else none
 
+/-- The semantic scan over a predicate-local segment. This is deliberately
+    derived from rows, not the cache, and is the direct executable meaning for
+    a future independently decoded IBK2 predicate segment. -/
+def scanPredicateSegment (predicate : TermId) (bound : PatternBound) (block : Block) : List Triple :=
+  ((predicateSegment predicate block).filterMap (fun entry => decodeTriple? block.dict entry.row)).filter
+    (boundMatches bound)
+
 /-- A predicate-aware candidate scan of the ID block. -/
 def scanBound (bound : PatternBound) (block : Block) : List Triple :=
   ((candidateRows bound block).filterMap (decodeTriple? block.dict)).filter (boundMatches bound)
