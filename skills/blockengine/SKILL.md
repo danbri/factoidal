@@ -52,8 +52,12 @@ Re-measure when the dated baseline changes. At commit `73209342c232`:
   fixture is `l4block-mvp`, which parses SPARQL and searches decoded bytes.
   This transition MVP does not provide persistent IDs, sorting, a canonical
   codec proof, or backend I/O.
-- There is no backend-neutral Block model, cross-position `TermId`, Physical
-  Plan IR, PushIR, PostgreSQL adapter, or TiKV adapter yet.
+- `Storage.IndexedBlock` now supplies an executable cross-position local
+  `TermId` dictionary, ID rows, predicate partitions, and backend read seam.
+  `Storage.IndexedBlockWireV1` frames that shape directly for its supported
+  RDF subset; its general codec theorem and canonical ordering are pending.
+- There is no Physical Plan IR, PushIR, PostgreSQL adapter, or TiKV adapter
+  yet.
 - The current Cottas IDs are separate per subject, predicate, object, and graph
   role. Do not expose them as the common `TermId` contract.
 - The native Lean toolchain has C output. The repository has a WASM route.
