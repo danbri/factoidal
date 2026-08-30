@@ -180,6 +180,7 @@ extern_lib libl4blockhost pkg := do
 @[default_target] lean_exe «l4block-predicate-query» where root := `Harness.PredicateBlocksQuery
 @[default_target] lean_exe «l4block-shard-pack» where root := `Harness.PredicateShardPack
 @[default_target] lean_exe «l4block-shard-query» where root := `Harness.ShardManifestQuery
+@[default_target] lean_exe «l4block-shard-session» where root := `Harness.ShardManifestSession
 
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean

@@ -201,3 +201,30 @@ the Lean verifier and ordinary parsed SPARQL evaluation run on the retrieved
 objects.  This demonstrates an interchangeable persistence realization, not
 yet PostgreSQL-side execution.  TiKV should implement this exact artifact and
 reader contract before any coprocessor/pushdown work is attempted.
+
+## Landed bounded warm-session host
+
+`Harness/ShardManifestSession.lean` adds `l4block-shard-session`, a native
+batch-session host for the same `SBM0`/IBK2 reader contract. It reads the
+manifest once, accepts one complete `SELECT` query per input line, and keeps
+only successfully length- and SHA-256-verified `OpenBlock` values in a local
+in-memory cache for the duration of that request batch. A cache hit therefore
+uses the immutable already-admitted bytes; an external change to the file
+after admission cannot alter that session's cached execution input. A cache
+miss repeats the normal safe leaf-name, file read, digest, and IBK2 structural
+validation path before it is admitted.
+
+The session remains deliberately bounded and line-oriented rather than using
+an unbounded Lean `partial` loop. It is a host-level warm-working-set building
+block: a supervisor can choose request batching/process lifetime, while the
+shared parser, physical-planner guard, `OpenStore.readOps`, and SPARQL
+evaluator are unchanged. Each result reports its shard count, selective or
+full-manifest mode, cache hits/misses, newly admitted bytes, and cache size.
+
+`tools/blockengine-shard-session-smoke.sh` establishes the concrete behavior
+on the music fixture: a two-predicate parsed join admits two artifacts; a
+subsequent native `FILTER` query over `m:by` has one cache hit and zero new
+artifact bytes; a later variable-predicate query safely expands to all seven
+predicate artifacts (two hits, five new admissions). This is an observable
+modest warm state, not an assertion that mmap, PostgreSQL workers, TiKV, or
+per-segment positioned reads are complete.
