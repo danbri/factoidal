@@ -45,6 +45,10 @@ runs its built-in ordered name query:
 ./.lake/build/bin/l4block-mvp 'SELECT ?person WHERE { ?person <http://example.org/name> "Alice"@en . FILTER(?person = <http://example.org/alice>) }'
 ```
 
+For a real-Turtle BLK0 probe, see
+[`20260830-blockengine-corpora.md`](20260830-blockengine-corpora.md) and run
+`l4block-corpus`.
+
 ## What this tests
 
 The MVP tests the central implementation route:
@@ -115,7 +119,7 @@ Verified on 2026-08-30:
 lake build l4block-mvp  -> Build completed successfully (104 jobs)
 l4block-mvp default     -> rows=2; exit 0
 l4block-mvp FILTER      -> rows=1; exit 0
-lake build               -> Build completed successfully (739 jobs)
+lake build               -> Build completed successfully (742 jobs)
 ```
 
 ## Next increment

@@ -7,11 +7,12 @@ Commit base: `73209342c23212dca31d7f9ef7dbc37cbbdab814`
 ## Delivered
 
 `L4Factoidal.Storage.BlockWireV0` adds a versioned `BLK0` direct-term block
-format. It contains a magic number, version, row count, and the established
-length-delimited triple encoding from `Storage.DeltaLog`.
+format. It contains a magic number, version, row count, the established
+length-delimited triple encoding from `Storage.DeltaLog`, and a CRC32C trailer
+over the triple payload.
 
-`decode` rejects a wrong magic, a wrong version, malformed triples, and trailing
-bytes. `scanDecoded` and `scanBoundDecoded` decode first, then invoke the
+`decode` rejects a wrong magic, a wrong version, a checksum mismatch, malformed
+triples, and trailing bytes. `scanDecoded` and `scanBoundDecoded` decode first, then invoke the
 existing proved block scans. Their theorems recover `evalTP` and
 `tripleMatchesBound` whenever a byte sequence decodes to a block.
 
@@ -40,9 +41,13 @@ From `formal/lean4/` on 2026-08-30:
 lake build L4Factoidal.Storage.BlockWireV0      -> Build completed successfully (10 jobs)
 lake build L4Factoidal.Storage.BlockWireV0Tests -> Build completed successfully (11 jobs)
 lake build l4block-mvp                          -> Build completed successfully (106 jobs)
-l4block-mvp                                    -> BLK0 bytes=265, decoded=true, rows=2
-lake build                                      -> Build completed successfully (739 jobs)
+l4block-mvp                                    -> BLK0 bytes=269, decoded=true, rows=2
+lake build l4block-corpus                       -> Build completed successfully (110 jobs)
+lake build                                      -> Build completed successfully (742 jobs)
 ```
+
+`BlockWireV0Tests` also changes one CRC byte of its fixture and checks that
+`decode` returns `none`.
 
 ## Next unit
 

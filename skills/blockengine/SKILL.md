@@ -156,6 +156,13 @@ and has fixture-level round trips. Do not persist it as the common PostgreSQL
 or TiKV object. Replace it with the canonical TermId block codec and its
 general denotation theorem.
 
+Use `l4block-corpus` for the real-RDF executable probe. It drives a Turtle
+file through `BlockWireV0` and the parsed SPARQL backend seam; see
+`docs/20260830-blockengine-corpora.md` for the corpus ladder. The checked
+small fixture is `examples/wikidata/subsets/lifesci-kgx/data/active_site.ttl`.
+It is an integration check only: this whole-block decoder is intentionally not
+the medium-corpus storage path.
+
 The canonical-byte theorem is the persistence gate. PostgreSQL `bytea` and
 TiKV may persist the same bytes only after it. A backend read must decode
 those bytes before the proved scan runs. This is also why a separate Rust

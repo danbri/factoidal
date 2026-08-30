@@ -42,10 +42,12 @@ private def byteArrayOfList (xs : List UInt8) : ByteArray :=
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
 
 /-- The portable byte sequence. Header: magic, version, row count; body:
-    the inherited length-delimited triple encodings in physical row order. -/
+    the inherited length-delimited triple encodings in physical row order;
+    trailer: CRC32C of that body. -/
 def encodeList (block : Block) : List UInt8 :=
+  let payload := block.rows.flatMap serializeTriple
   writeU32LE magic ++ [version] ++ writeU32LE (UInt32.ofNat block.rows.length) ++
-    block.rows.flatMap serializeTriple
+    payload ++ writeU32LE (crc32c payload)
 
 /-- Encode when every row belongs to the v0 direct-term subset. -/
 def encode? (block : Block) : Option ByteArray :=
@@ -61,16 +63,24 @@ def decodeRows : Nat → List UInt8 → Option (List Triple × List UInt8)
 /-- Decode one complete v0 block. Unknown versions, malformed rows, and
     trailing bytes are rejected. -/
 def decode (bytes : ByteArray) : Option Block := do
-  let bs := listOfByteArray bytes
-  let foundMagic ← readU32LE bs 0
+  let allBytes := listOfByteArray bytes
+  let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none
   else do
-    let (foundVersion, afterVersion) ← parseU8 (bs.drop 4)
+    let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
     if foundVersion != version then none
     else do
       let count ← readU32LE afterVersion 0
-      let (rows, rest) ← decodeRows count.toNat (afterVersion.drop 4)
-      if rest.isEmpty then some { rows := rows } else none
+      let bodyAndCrc := afterVersion.drop 4
+      if bodyAndCrc.length < 4 then none
+      else do
+        let payloadLen := bodyAndCrc.length - 4
+        let payload := bodyAndCrc.take payloadLen
+        let storedCrc ← readU32LE bodyAndCrc payloadLen
+        if storedCrc != crc32c payload then none
+        else do
+          let (rows, rest) ← decodeRows count.toNat payload
+          if rest.isEmpty then some { rows := rows } else none
 
 /-- Run the proved candidate scan only after a complete block decode. A bad
     byte sequence produces no candidates; a production backend reports this
