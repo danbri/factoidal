@@ -42,6 +42,12 @@ a local wall-clock observation, not a general performance claim. The
 889k-triple `gene.ttl` gate remains open until an incremental reader and
 bounded block publication are implemented.
 
+The packer now uses `parseTurtleFold` to feed predicate buckets directly,
+rather than materialising a source `Graph` and then grouping it a second time.
+The same chromosome pack took 2.32 seconds and produced the same 568 KiB
+collection through that path. The result establishes the no-duplicate-graph
+ingest seam, not a meaningful benchmark delta at this small size.
+
 ## Required next ingest shape
 
 Do not split Turtle naively on lines: directives, multi-line literals,

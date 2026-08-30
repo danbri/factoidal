@@ -1639,6 +1639,25 @@ def parseStatements : Nat → TurtleState → Nat → List Char → List Triple 
               if p2 ≤ p1 then .ok (nextAcc.reverse, st')
               else parseStatements fuel st' p2 r2 nextAcc
 
+/-- Parse complete statements into a caller-supplied pure accumulator. This
+    keeps the same grammar/state/error behaviour as `parseStatements`, while
+    allowing ingestion code to avoid constructing a second whole-document
+    graph merely to repartition its triples. -/
+def parseStatementsFold (step : α → List Triple → α) :
+    Nat → TurtleState → Nat → List Char → α → Except ParseError (α × TurtleState)
+  | 0,        st, _,   _,  acc => .ok (acc, st)
+  | fuel + 1, st, pos, cs, acc =>
+      let (p1, r1) := tws pos cs
+      match r1 with
+      | [] => .ok (acc, st)
+      | _ =>
+          match readStatement fuel st p1 r1 with
+          | .error e => .error e
+          | .ok (ts, st', p2, r2) =>
+              let nextAcc := step acc ts
+              if p2 ≤ p1 then .ok (nextAcc, st')
+              else parseStatementsFold step fuel st' p2 r2 nextAcc
+
 /-- Parse a complete Turtle document into a `Graph`.
 
 `base` is the retrieval IRI (the W3C suites supply
@@ -1654,5 +1673,15 @@ def parseTurtle (text : String) (base : Option String := none) (mode : Mode := .
   match parseStatements (cs.length + 2) (TurtleState.init text base mode) 0 cs [] with
   | .error e     => .error e
   | .ok (ts, _) => .ok ts
+
+/-- Fold complete Turtle statements without first materialising a `Graph`.
+    The document is still represented as characters in this first step; a
+    byte-streaming host can later drive the same statement/state boundary. -/
+def parseTurtleFold (step : α → List Triple → α) (init : α) (text : String)
+    (base : Option String := none) (mode : Mode := .rdf11) : Except ParseError α :=
+  let cs := text.toList
+  match parseStatementsFold step (cs.length + 2) (TurtleState.init text base mode) 0 cs init with
+  | .error e => .error e
+  | .ok (acc, _) => .ok acc
 
 end L4Factoidal.Syntax

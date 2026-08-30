@@ -21,12 +21,14 @@ private def chunkBytes : Nat := 65536
 
 private def pack (input output : String) : IO UInt32 := do
   let text ← IO.FS.readFile input
-  match parseTurtle text (some ("file://" ++ input)) with
+  match parseTurtleFold
+      (fun (state : Nat × Buckets) triples => (state.1 + triples.length, addTriples state.2 triples))
+      (0, []) text (some ("file://" ++ input)) with
   | .error e => IO.eprintln s!"l4block-shard-pack Turtle parse error at {e.pos}: {e.msg}"; return 1
-  | .ok graph =>
-      let store := fromGraph graph
+  | .ok (tripleCount, buckets) =>
+      let blocks := blocksOfBuckets buckets
       IO.FS.createDirAll output
-      let packed ← store.blocks.zipIdx.mapM fun ((predicate, block), index) => do
+      let packed ← blocks.zipIdx.mapM fun ((predicate, block), index) => do
         match encode? block with
         | none => throw <| IO.userError s!"unsupported block for {predicate.val}"
         | some bytes =>
@@ -63,7 +65,7 @@ private def pack (input output : String) : IO UInt32 := do
       | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm0") manifestBytes
       IO.FS.writeFile (output ++ "/manifest.tsv")
         ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\n" ++ String.intercalate "\n" lines ++ "\n")
-      IO.println s!"l4block-shard-pack input={input} triples={graph.length} shards={store.blocks.length} output={output} manifests=manifest.sbm1,manifest.sbm0 chunk-bytes={chunkBytes}"
+      IO.println s!"l4block-shard-pack input={input} triples={tripleCount} shards={blocks.length} output={output} manifests=manifest.sbm1,manifest.sbm0 chunk-bytes={chunkBytes}"
       return 0
 
 def main (args : List String) : IO UInt32 := do

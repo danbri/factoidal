@@ -29,27 +29,34 @@ structure Store where
   /-- Predicate identity and its independently decodable local block. -/
   blocks : List (WfIri × Block)
 
+/-- Predicate buckets are a packer-facing construction state. Rows are held
+    in reverse source order until `blocksOfBuckets`, so extending a frequent
+    predicate remains constant-time. -/
+abbrev Buckets := List (WfIri × Graph)
+
 /- Predicate buckets are held in reverse source order while building. Appending
    to a `Graph` for every occurrence makes a frequent Wikidata predicate
    quadratic before any IBK2 bytes can be written. -/
 private def prependFor (predicate : WfIri) (triple : Triple) :
-    List (WfIri × Graph) → List (WfIri × Graph)
+    Buckets → Buckets
   | [] => [(predicate, [triple])]
   | (current, graph) :: rest =>
       if current == predicate then (current, triple :: graph) :: rest
       else (current, graph) :: prependFor predicate triple rest
 
-private def groupByPredicate (graph : Graph) : List (WfIri × Graph) :=
-  (graph.foldl (fun groups triple => prependFor triple.p triple groups) []).map
-    fun (predicate, rowsRev) => (predicate, rowsRev.reverse)
+def addTriples (buckets : Buckets) (triples : List Triple) : Buckets :=
+  triples.foldl (fun groups triple => prependFor triple.p triple groups) buckets
+
+def blocksOfBuckets (buckets : Buckets) : List (WfIri × Block) :=
+  let ordered := buckets.map fun (predicate, rowsRev) => (predicate, rowsRev.reverse)
+  ordered.map fun (predicate, rows) => (predicate, IndexedBlock.fromGraph rows)
 
 /-- Build predicate-local dictionaries from an RDF graph.  This is a compact,
     correctness-first loader; the eventual streaming writer can construct the
     same manifest without the intermediate lists. -/
 def fromGraph (graph : Graph) : Store :=
   { source := graph
-  , blocks := (groupByPredicate graph).map fun (predicate, rows) =>
-      (predicate, IndexedBlock.fromGraph rows) }
+  , blocks := blocksOfBuckets (addTriples [] graph) }
 
 /-- Find the independently decodable block for a predicate. -/
 def blockFor? (predicate : WfIri) (store : Store) : Option Block :=
