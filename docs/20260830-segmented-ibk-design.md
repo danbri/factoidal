@@ -254,3 +254,16 @@ They prove a narrower and useful conditional claim: the bytes accepted by the
 Lean decoder are the bytes committed by the already-trusted manifest/root.
 Key custody, signature validation, manifest distribution, rollback protection
 and a database's access-control/audit policy remain deployment obligations.
+
+### Lean Merkle proof primitive (landed)
+
+`L4Factoidal.Storage.BlockMerkle` now supplies the format-neutral core for the
+later profile: domain-separated SHA-256 leaf and interior-node hashes,
+deterministic duplication of an odd final leaf, and compact ordered sibling
+proofs. Its executable guards accept all three chunks of a sample artifact,
+reject a substituted chunk under a genuine proof, and reject an out-of-range
+proof request. This is intentionally not yet `SBM1`: no current `SBM0` reader
+claims partial-range integrity from a whole-file SHA-256 digest. The next wire
+format must bind its chunk size/alignment, algorithm and Merkle root, then a
+native/PostgreSQL/TiKV range reader can admit only the fetched chunks plus
+their proof before invoking the existing IBK2 range decoder.

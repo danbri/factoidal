@@ -400,6 +400,7 @@ import L4Factoidal.Storage.IndexedBlock
 import L4Factoidal.Storage.IndexedBlockTests
 import L4Factoidal.Storage.BlockArtifact
 import L4Factoidal.Storage.BlockArtifactTests
+import L4Factoidal.Storage.BlockMerkle
 import L4Factoidal.Storage.IndexedBlockWireV1
 import L4Factoidal.Storage.IndexedBlockWireV1Tests
 import L4Factoidal.Storage.IndexedBlockWireV2
