@@ -40,17 +40,18 @@ production client or a PostgreSQL extension.
 
 `tools/blockengine-postgres-shard-smoke.sh` exercises the next object shape:
 the Lean packer turns the 77-triple music fixture into seven predicate-local
-IBK2 objects and a strict SBM0 Shardborough manifest.  The local PostgreSQL
-smoke stores all eight opaque objects in a dedicated `bytea` test table,
-retrieves each one as base64, and establishes byte-for-byte equality before
-opening the retrieved directory through `l4block-shard-query`.
+IBK2 objects, their Merkle leaf sidecars, and both compatibility SBM0 and
+current SBM1 Shardborough manifests. The local PostgreSQL smoke stores every
+opaque object in a dedicated `bytea` test table, retrieves each one as base64,
+and establishes byte-for-byte equality before opening the retrieved directory.
 
 The resulting ordinary parsed SPARQL query contains two predicate-bound triple
 patterns, a filter and `ORDER BY`; it returns the expected three Radiohead
-albums.  Child length/SHA-256 commitments in SBM0 and the IBK2 decoder are
-checked by Lean after retrieval.  This is still an integration smoke rather
-than a PostgreSQL extension, transaction/snapshot model, or server-side
-pushdown implementation.
+albums through both the compatibility SBM0 reader and the SBM1 Merkle range
+reader. Child length/SHA-256 commitments in SBM0, and range-level Merkle
+commitments in SBM1, are checked by Lean after retrieval. This is still an
+integration smoke rather than a PostgreSQL extension, transaction/snapshot
+model, or server-side pushdown implementation.
 
 ## Podman follow-up
 
