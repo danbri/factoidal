@@ -1,11 +1,14 @@
 /- Versioned logical manifest for a Shardborough collection of independently
    decodable block artifacts.  This is deliberately separate from host I/O. -/
 import L4Factoidal.Crypto.SHA2
+import L4Factoidal.Storage.BlockArtifact
 import L4Factoidal.Storage.IndexedBlockWireV2
 
 namespace L4Factoidal.Storage.ShardManifest
 
 open L4Factoidal.RDF
+open L4Factoidal.SPARQL
+open L4Factoidal.SPARQL.StoreBackend
 
 /-- `'SBM0'` in little-endian form: Shardborough Manifest, layout zero. -/
 def magic : UInt32 := 0x304D4253
@@ -84,6 +87,74 @@ def valid (manifest : Manifest) : Bool :=
 def select? (manifest : Manifest) (predicate : WfIri) : Option Entry :=
   if valid manifest then manifest.entries.find? fun entry => entry.predicate == predicate else none
 
+/-- A host supplies bytes by relative artifact key.  Keeping this interface
+    pure is what lets files, mmap, `bytea`, TiKV values, OPFS and WASM buffers
+    share the same integrity-before-decode contract. -/
+abbrev Reader := ArtifactKey → Option ByteArray
+
+/-- Check the manifest's immutable child-artifact commitment before allowing
+    any IBK2 parser to inspect those bytes. -/
+def verifyEntry (entry : Entry) (bytes : ByteArray) : Bool :=
+  bytes.size == entry.artifact.bytes &&
+    L4Factoidal.Storage.BlockArtifact.verify entry.artifact.sha256 bytes
+
+/-- Open a manifest child only after its declared extent and SHA-256 match.
+    `none` deliberately conflates unavailable, substituted and malformed
+    artifacts at this low-level boundary; hosts can attach richer diagnostics
+    without weakening the acceptance rule. -/
+def openVerified? (reader : Reader) (entry : Entry) : Option IndexedBlockWireV2.OpenBlock := do
+  let bytes ← reader entry.artifact.key
+  if verifyEntry entry bytes then IndexedBlockWireV2.open? bytes else none
+
+/-- The first executable Shardborough read: choose exactly the committed
+    predicate-local artifact, verify it, then run the established IBK2
+    selective scan.  No unlisted artifact and no full-manifest fallback is
+    consulted. -/
+def scanPredicate? (reader : Reader) (manifest : Manifest) (predicate : WfIri) : Option (List Triple) := do
+  let entry ← select? manifest predicate
+  let block ← openVerified? reader entry
+  some (IndexedBlockWireV2.scanBoundRange { p := some predicate } block)
+
+/-- A Shardborough collection whose manifest and every child artifact have
+    been accepted.  This eager opener is the correctness-first reference;
+    later range/lazy variants must preserve its observable `readOps` results. -/
+structure OpenStore where
+  manifest : Manifest
+  blocks : List (Entry × IndexedBlockWireV2.OpenBlock)
+
+private def openEntries? (reader : Reader) : List Entry → Option (List (Entry × IndexedBlockWireV2.OpenBlock))
+  | [] => some []
+  | entry :: rest => do
+      let block ← openVerified? reader entry
+      let opened ← openEntries? reader rest
+      some ((entry, block) :: opened)
+
+/-- Verify and open every manifest child.  Failure is atomic at the API level:
+    callers receive no partially trusted store. -/
+def openStore? (reader : Reader) (manifest : Manifest) : Option OpenStore := do
+  if !valid manifest then none else do
+  let blocks ← openEntries? reader manifest.entries
+  some { manifest, blocks }
+
+/-- The total physical scan behind the existing SPARQL backend seam.  A
+    predicate-bound request touches exactly its committed child; unbound scans
+    are the reference concatenation over manifest order until a source-order
+    / graph-aware layout is introduced. -/
+def scanBound (bound : PatternBound) (store : OpenStore) : List Triple :=
+  match bound.p with
+  | some predicate =>
+      match store.blocks.find? (fun pair => pair.1.predicate == predicate) with
+      | none => []
+      | some (_, block) => IndexedBlockWireV2.scanBoundRange bound block
+  | none => store.blocks.flatMap fun (_, block) => IndexedBlockWireV2.scanBoundRange bound block
+
+/-- Ordinary parsed SPARQL reaches the manifested physical collection through
+    precisely the same `BackendReadOps` interface as Cottas, HDT and IBK2. -/
+def readOps (store : OpenStore) : BackendReadOps :=
+  { search := fun bound => scanBound bound store
+  , estimate := fun bound => (scanBound bound store).length
+  , predicatePresent := fun predicate => !(scanBound { p := some predicate } store).isEmpty }
+
 /-- The field widths in SBM0.  Oversized manifests are refused rather than
     being truncated into an ambiguous byte stream. -/
 private def fitsU32 (n : Nat) : Bool := n < 4294967296
@@ -157,15 +228,27 @@ def decode? (bytes : ByteArray) : Option Manifest := do
   if rest.isEmpty && valid manifest then some manifest else none
 
 private def samplePredicate : WfIri := ⟨"https://example.test/p", by decide⟩
-private def sampleDigest : ByteArray := ByteArray.mk (List.replicate 32 7 |>.toArray)
+private def sampleSubject : Subject := .iri ⟨"https://example.test/s", by decide⟩
+private def sampleObject : Term := .iri ⟨"https://example.test/o", by decide⟩
+private def sampleBlock : IndexedBlock.Block :=
+  IndexedBlock.fromGraph [{ s := sampleSubject, p := samplePredicate, o := sampleObject }]
+private def sampleBlockBytes : ByteArray :=
+  (IndexedBlockWireV2.encode? sampleBlock).getD ByteArray.empty
+private def sampleDigest : ByteArray := L4Factoidal.Crypto.sha256 sampleBlockBytes
 private def sampleManifest : Manifest :=
   { version := 0, sourceIdentity := ByteArray.mk #[1, 2, 3], termRegistryVersion := "terms-v0",
     layout := "predicate-ibk2-v0",
     entries := [{ predicate := samplePredicate,
-                  artifact := { key := { value := "blocks/p.ibk2" }, bytes := 91,
-                                sha256 := sampleDigest }, rows := 2, ordinal := 0 }] }
+                  artifact := { key := { value := "blocks/p.ibk2" }, bytes := sampleBlockBytes.size,
+                                sha256 := sampleDigest }, rows := 1, ordinal := 0 }] }
+private def sampleReader (key : ArtifactKey) : Option ByteArray :=
+  if key.value == "blocks/p.ibk2" then some sampleBlockBytes else none
 
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
 #guard (decode? (ByteArray.mk #[83, 66, 77, 48, 1])).isNone
+#guard (scanPredicate? sampleReader sampleManifest samplePredicate).map List.length == some 1
+#guard (scanPredicate? (fun _ => some ByteArray.empty) sampleManifest samplePredicate).isNone
+#guard (openStore? sampleReader sampleManifest).map (fun store =>
+  (readOps store).search { p := some samplePredicate } |>.length) == some 1
 
 end L4Factoidal.Storage.ShardManifest

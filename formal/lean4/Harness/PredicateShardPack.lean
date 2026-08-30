@@ -1,9 +1,9 @@
-/- Persist one independently decodable IBK2 artifact per predicate.  The
-   accompanying TSV manifest is deliberately human-inspectable during this
-   transitional stage; a checked binary manifest follows once its row-order
-   contract is settled. -/
+/- Persist one independently decodable IBK2 artifact per predicate, with both
+   a human-inspectable TSV and a strict host-neutral SBM0 Shardborough
+   manifest. -/
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.IndexedBlockWireV2
+import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Crypto.SHA2
 
@@ -12,6 +12,7 @@ namespace Harness.PredicateShardPack
 open L4Factoidal.Syntax
 open L4Factoidal.Storage.PredicateBlocks
 open L4Factoidal.Storage.IndexedBlockWireV2
+open L4Factoidal.Storage.ShardManifest
 open L4Factoidal.Crypto
 
 private def pack (input output : String) : IO UInt32 := do
@@ -21,16 +22,33 @@ private def pack (input output : String) : IO UInt32 := do
   | .ok graph =>
       let store := fromGraph graph
       IO.FS.createDirAll output
-      let lines ← store.blocks.zipIdx.mapM fun ((predicate, block), index) => do
+      let packed ← store.blocks.zipIdx.mapM fun ((predicate, block), index) => do
         match encode? block with
         | none => throw <| IO.userError s!"unsupported block for {predicate.val}"
         | some bytes =>
             let name := s!"predicate-{index}.ibk2"
             IO.FS.writeBinFile (output ++ "/" ++ name) bytes
-            pure s!"{index}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex (sha256 bytes)}"
+            let digest := sha256 bytes
+            let entry : Entry :=
+              { predicate
+                artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest }
+                rows := block.rows.size
+                ordinal := index }
+            pure (entry, s!"{index}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex digest}")
+      let entries := packed.map Prod.fst
+      let lines := packed.map Prod.snd
+      let manifest : Manifest :=
+        { version := 0
+          sourceIdentity := sha256 text.toUTF8
+          termRegistryVersion := "local-ibk2-dict-v0"
+          layout := "predicate-ibk2-v0"
+          entries }
+      match L4Factoidal.Storage.ShardManifest.encode? manifest with
+      | none => throw <| IO.userError "could not encode structurally valid SBM0 manifest"
+      | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm0") manifestBytes
       IO.FS.writeFile (output ++ "/manifest.tsv")
         ("# index\tpredicate\tfile\trows\tbytes\tsha256\n" ++ String.intercalate "\n" lines ++ "\n")
-      IO.println s!"l4block-shard-pack input={input} triples={graph.length} shards={store.blocks.length} output={output}"
+      IO.println s!"l4block-shard-pack input={input} triples={graph.length} shards={store.blocks.length} output={output} manifest=manifest.sbm0"
       return 0
 
 def main (args : List String) : IO UInt32 := do

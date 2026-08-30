@@ -157,3 +157,18 @@ local file/range, PostgreSQL `bytea`, a TiKV value, browser OPFS, or object
 storage.  It is not yet a general graph/quad manifest or a Merkle tree; those
 belong in the next layout versions once the checked child-artifact opening path
 exists.
+
+The next increment landed that opening path and the reference local host
+vertical.  `ShardManifest.openStore?` takes an injected `ArtifactKey →
+Option ByteArray` reader, checks each child's listed byte length and SHA-256,
+then accepts it only if `IndexedBlockWireV2.open?` accepts its framing,
+dictionary, directory and checksum.  Its `readOps` is the established Lean
+SPARQL backend capability.  `l4block-shard-pack` now writes `manifest.sbm0`
+as well as its TSV, while `l4block-shard-query DIR --query SELECT...` is the
+first local-file host harness.
+
+Its 2026-08-30 smoke used the 77-triple music Turtle fixture.  A parsed,
+two-predicate join with a filter and `ORDER BY` returned the three Radiohead
+albums via seven verified child blocks.  The eager opener is deliberately a
+correctness reference; a lazy/mmap/range reader must preserve the same
+acceptance and `readOps` behavior before replacing it.
