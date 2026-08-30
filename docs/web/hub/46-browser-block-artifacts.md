@@ -27,6 +27,7 @@ blockFormat = ({
 })
 ```
 
+Try the bundled 77-triple music sample first, or inspect a file of your own.
 The ordinary file input works in current browsers. Where the File System Access
 picker is available, the button uses it; the input is the portable fallback.
 The optional cache is the origin-private file system (OPFS), not an upload: it
@@ -36,12 +37,13 @@ block cache. Delete the browser's site data to remove it.
 ```observable-js
 blockArtifactPicker = {
   const root = html`<div>
-    <p><strong>IBK1 artifact inspector.</strong> Select a local <code>.ibk1</code> file.</p>
-    <p><button type="button">Choose block</button> <input type="file" accept=".ibk1,application/octet-stream" hidden></p>
+    <p><strong>IBK1 artifact inspector.</strong> Start with the bundled music sample, or select a local <code>.ibk1</code> file.</p>
+    <p><button type="button" class="sample">Inspect bundled music sample</button> <button type="button" class="choose">Choose block</button> <input type="file" accept=".ibk1,application/octet-stream" hidden></p>
     <label><input type="checkbox"> Cache a copy in this browser's OPFS after inspection</label>
     <pre aria-live="polite">No file selected.</pre>
   </div>`;
-  const choose = root.querySelector("button");
+  const sample = root.querySelector(".sample");
+  const choose = root.querySelector(".choose");
   const input = root.querySelector('input[type="file"]');
   const cache = root.querySelector('input[type="checkbox"]');
   const output = root.querySelector("pre");
@@ -70,6 +72,19 @@ blockArtifactPicker = {
     }, null, 2);
   }
   input.addEventListener("change", () => input.files?.[0] && inspect(input.files[0]).catch((e) => output.textContent = `Inspection failed: ${e.message}`));
+  sample.addEventListener("click", async () => {
+    sample.disabled = true;
+    output.textContent = "Fetching the bundled IBK1 sample…";
+    try {
+      const response = await fetch(new URL("assets/blocks/music.ibk1", location.href));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await inspect(new File([await response.blob()], "music.ibk1", { type: "application/octet-stream" }));
+    } catch (e) {
+      output.textContent = `Sample inspection failed: ${e.message}`;
+    } finally {
+      sample.disabled = false;
+    }
+  });
   choose.addEventListener("click", async () => {
     try {
       if (window.showOpenFilePicker) {
