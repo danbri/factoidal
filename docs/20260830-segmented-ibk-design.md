@@ -47,6 +47,41 @@ pruning works, but it identifies dictionary structure/filtering as the next
 physical design problem. The corpus is local, untracked benchmark input; it
 does not become a repository fixture.
 
+## Follow-up: independently decodable predicate shards
+
+The country result identifies a layout limitation, not a reason to abandon
+range planning.  IBK2's directory is keyed by numeric predicate `TermId`, and
+both resolving an RDF predicate to that ID and decoding result rows presently
+depend on the one global term dictionary.  The directory is consequently not
+an associative `IRI -> segment` lookup and a tiny selected segment can still
+have a very large prerequisite read.
+
+`Storage.PredicateBlocks` now establishes the simpler next abstraction: an
+immutable store with one local `IndexedBlock` dictionary per predicate.  A
+predicate-bound call uses exactly that local block through the established
+`BackendReadOps`/`DatasetBackend` seam; no second SPARQL evaluator is added.
+Unbound-predicate scans retain the source sequence until a manifest-level
+multi-shard merge has an explicit ordering contract.
+
+The executable probe is:
+
+```text
+l4block-predicate-shards INPUT.ttl PREDICATE-IRI
+l4block-predicate-query INPUT.ttl --query 'SELECT ...'
+```
+
+On the 77-triple music fixture, `http://example.org/music/by` has eight rows,
+a 12-term local dictionary, and a 579-byte independently encodable IBK2 block,
+against 4,621 bytes for the present shared-dictionary IBK2 artifact.  This is
+an executable size observation, not a timing claim.
+
+The persistence design to pursue is therefore a small checked manifest (with
+an associative predicate index) plus canonical local block bytes.  A later
+alternative may retain a global dictionary with a hash index and paged term
+tables, but must demonstrate the same bounded-read property.  Either layout
+can use mmap, `pread`, OPFS, PostgreSQL `bytea`, or TiKV range values once its
+byte-level manifest and integrity contract are defined.
+
 ### Next external corpus: YAGO
 
 YAGO 4.6 is a suitable scale target because its maintainers describe it as
