@@ -42,8 +42,16 @@ more than an SSE wrapper: the SPARQL evaluator receives only the decoded
 indexed block's `BackendReadOps`, whose bound-predicate branch reads a physical
 predicate posting partition.
 
+The same gate also passed on the 9,227-triple `chromosome.ttl` corpus with a
+parsed aggregate query over a predicate-bound triple pattern.  It produced one
+`COUNT(*)` solution after a 526,057-byte `IBK1` round trip.  The end-to-end
+differential run took 25.2 seconds on the development laptop; that includes
+Turtle parsing, index construction, encoding, decoding, and both evaluator
+routes, so it is not a query-only performance claim.
+
 ## Boundary
 
 This is a real Lean storage/query vertical, but it is still an in-process
 memory/file implementation.  PostgreSQL `bytea`, mmap, TiKV, range partitions,
 and a canonical cross-input graph identity remain separate next milestones.
+The PostgreSQL acceptance criteria are tracked in GitHub issue #635.
