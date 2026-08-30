@@ -37,6 +37,7 @@ import Wasm.Ops.Parse
 import Wasm.Ops.Query
 import Wasm.Ops.Reason
 import Wasm.Ops.Canon
+import Wasm.Ops.Block
 import Wasm.Ops.CL
 import Wasm.Ops.Proof
 import Wasm.Ops.Handles
@@ -61,6 +62,7 @@ def opNames : List String :=
   , "serializeNQuads"
   , "serializeTurtle"
   , "canonicalizeToNQuads"
+  , "scanIBK2Predicate"
   , "owlClosure"
   , "owlIsConsistent"
   , "owlEntails"
@@ -122,6 +124,7 @@ def call (op : String) (argsJson : String) : String :=
     | "serializeNQuads"      => arity1 op serializeNQuads args
     | "serializeTurtle"      => arity1 op serializeTurtle args
     | "canonicalizeToNQuads" => arity1 op canonicalizeToNQuads args
+    | "scanIBK2Predicate"    => arity2 op scanIBK2Predicate args
     | "owlClosure"           => arity2 op owlClosure args
     | "owlIsConsistent"      => arity2 op owlIsConsistent args
     | "owlEntails"           => arity3 op owlEntails args

@@ -70,6 +70,7 @@ model, Factoidal API, and test contract.
   <li><a href="./47-writing-hub-notebooks/">Writing Hub notebooks</a> — the Observable-style cell model, Factoidal's browser API, and the pinned-test contract (none)</li>
   <li><a href="./48-json-ld-playground/">JSON-LD playground</a> — paste JSON-LD and inspect RDF plus canonical N-Quads locally in the browser (schema.org)</li>
   <li><a href="./49-ai-for-local-kg/">AI beside a local knowledge graph</a> — an optional browser-AI proposal over the life-sciences graph profile: check availability, ask a question, inspect read-only SPARQL, then choose whether to run it in Shardborough (sparql)</li>
+  <li><a href="./50-shardborough-life-sciences/">Shardborough: compose a local graph neighbourhood</a> — select a reusable life-sciences working set of named graphs, inspect its explicit membership, then run a cross-graph read-only query; today this is the reference browser route, with cached Lean block execution the next step (wikidata)</li>
 </ul>
 
 See also: the <a href="../perf/">performance hub</a> — measured

@@ -139,3 +139,21 @@ results.
 4. Build a bounded crawl/YAGO-style corpus outside the source repository in
    `factoidal-builds`, retaining only provenance, commands, queries and result
    manifests here.
+
+## Landed first manifest boundary
+
+The first executable manifestation of this direction is `SBM0`, a deliberately
+small Shardborough manifest format in
+`formal/lean4/L4Factoidal/Storage/ShardManifest.lean`.  It names an ordered
+set of predicate-local IBK2 artifacts, each with a relative key, byte length,
+SHA-256 digest and row count, together with source identity, term-registry
+version and layout label.
+
+`SBM0` has strict Lean `encode?` and `decode?` functions.  The decoder rejects
+bad magic/version, malformed UTF-8 or predicate IRI, truncated fields,
+incorrect digest width, trailing bytes and structurally invalid manifests.
+This is a host-neutral control plane: an artifact key may later resolve to a
+local file/range, PostgreSQL `bytea`, a TiKV value, browser OPFS, or object
+storage.  It is not yet a general graph/quad manifest or a Merkle tree; those
+belong in the next layout versions once the checked child-artifact opening path
+exists.

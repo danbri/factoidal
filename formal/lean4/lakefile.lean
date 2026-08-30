@@ -80,6 +80,7 @@ extern_lib libl4hacl pkg := do
   roots := #[`Wasm.Abi, `Wasm.Exports, `Wasm.Dispatch,
              `Wasm.Ops.Support, `Wasm.Ops.Parse, `Wasm.Ops.Query,
              `Wasm.Ops.Reason, `Wasm.Ops.Canon, `Wasm.Ops.CL,
+             `Wasm.Ops.Block,
              `Wasm.Ops.Proof,
              `Wasm.Ops.Handles]
 

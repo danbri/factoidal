@@ -405,6 +405,7 @@ import L4Factoidal.Storage.IndexedBlockWireV1Tests
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV2Tests
 import L4Factoidal.Storage.PredicateBlocks
+import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.CL.Syntax
 import L4Factoidal.CL.Clif
 import L4Factoidal.CL.Alpha
