@@ -44,8 +44,16 @@ LIMIT 20`
 
 ```observable-js
 lifeSciRunner = {
+  // Keep the click handler self-contained.  The catalogue cell above remains
+  // a readable notebook datum, while this prevents a delayed/re-run cell from
+  // depending on a previously disposed Observable variable.
+  const catalog = [
+    { graph: "urn:kgx:chromosome", file: "chromosome.ttl", triples: 9227 },
+    { graph: "urn:kgx:sequence_variant", file: "sequence_variant.ttl", triples: 6455 },
+    { graph: "urn:kgx:disease", file: "disease.ttl", triples: 27421 },
+  ];
   const root = html`<div>
-    <p><strong>${lifeSciCatalog.length} files, ${lifeSciCatalog.reduce((n, f) => n + f.triples, 0).toLocaleString()} triples.</strong></p>
+    <p><strong>${catalog.length} files, ${catalog.reduce((n, f) => n + f.triples, 0).toLocaleString()} triples.</strong></p>
     <button type="button">Load the named graphs and run the join</button>
     <pre aria-live="polite">Waiting for a click.</pre>
   </div>`;
@@ -55,7 +63,7 @@ lifeSciRunner = {
     button.disabled = true;
     output.textContent = "Fetching Turtle files…";
     try {
-      const files = await Promise.all(lifeSciCatalog.map(async (entry) => {
+      const files = await Promise.all(catalog.map(async (entry) => {
         const url = new URL("../../../fstar-extracted/lifesci/" + entry.file, location.href);
         const response = await fetch(url);
         if (!response.ok) throw new Error(`${entry.file}: HTTP ${response.status}`);
