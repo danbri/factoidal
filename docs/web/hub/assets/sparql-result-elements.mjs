@@ -9,9 +9,11 @@
  *
  * `data` accepts a JSON-encoded SPARQL Results JSON document.  In script,
  * setting `.results = result` is preferable: no JSON attribute escaping and
- * no limit on the payload size.  `view=table|cards`, `palette=sage|ocean|
- * plum|sand`, `tags=show|hide`, `transpose`, `card-direction=horizontal|
- * vertical`, and `max-rows` are all declarative customisation points.
+ * no limit on the payload size. `view=table|cards`, `palette=sage|ocean|plum|sand`,
+ * `language-tags=show|hide`, `datatypes=show|hide`, `tags=show|hide`
+ * (a backwards-compatible shorthand for both), `transpose`,
+ * `card-direction=horizontal|vertical`, and `max-rows` are declarative
+ * customisation points.
  */
 
 const XSD_STRING = "http://www.w3.org/2001/XMLSchema#string";
@@ -86,12 +88,17 @@ function normalizeTerm(t) {
   }
   return { type:"literal", value:String(t ?? "") };
 }
-function values(rows, key) { return [...new Set(rows.map(r => termMeta(normalizeTerm(r[key]))).filter(Boolean))].sort(); }
+function rowMetadata(row, kind) {
+  return Object.values(row).map(normalizeTerm).map(t => kind === "language"
+    ? (t.lang || t.language || t["xml:lang"] || "")
+    : (t.datatype && t.datatype !== XSD_STRING ? t.datatype : ""))
+    .filter(Boolean).sort()[0] || "";
+}
 
 class ResultBase extends HTMLElement {
   constructor() { super(); this.attachShadow({mode:"open"}); this._data = null; }
   connectedCallback() { this.render(); }
-  static get observedAttributes() { return ["data", "palette", "view", "tags", "transpose", "card-direction", "max-rows", "message", "label"]; }
+  static get observedAttributes() { return ["data", "palette", "view", "tags", "language-tags", "datatypes", "transpose", "card-direction", "max-rows", "message", "label"]; }
   attributeChangedCallback() { if (this.isConnected) this.render(); }
   set results(v) { this._data = v; this.render(); }
   get results() { return this._data; }
@@ -101,7 +108,16 @@ class ResultBase extends HTMLElement {
 }
 
 export class FactoidalSparqlResults extends ResultBase {
-  constructor() { super(); this.state={ view:null, tags:null, lang:"", datatype:"", sort:"", dir:1, transpose:false }; }
+  constructor() { super(); this.state={ view:null, languageTags:null, datatypes:null, lang:"", datatype:"", sort:"", dir:1, transpose:false }; }
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (oldValue !== newValue) {
+      if (name === "view") this.state.view = newValue || "table";
+      if (name === "language-tags" || name === "tags") this.state.languageTags = this.getAttribute("language-tags") || this.getAttribute("tags") || "show";
+      if (name === "datatypes" || name === "tags") this.state.datatypes = this.getAttribute("datatypes") || this.getAttribute("tags") || "show";
+      if (name === "transpose") this.state.transpose = this.hasAttribute("transpose");
+    }
+    if (this.isConnected) this.render();
+  }
   getRows() { const d=this.readData(); return Array.isArray(d) ? d : (d?.results?.bindings || d?.bindings || []); }
   getVars(rows) { const d=this.readData(); return d?.head?.vars || d?.vars || [...new Set(rows.flatMap(r => Object.keys(r)))]; }
   makeTerm(t) {
@@ -110,7 +126,11 @@ export class FactoidalSparqlResults extends ResultBase {
     main.className="term-main"; main.title=String(term.value || "");
     if (term.type === "uri") { main.href=term.value; main.target="_blank"; main.rel="noreferrer"; main.setAttribute("aria-label", `Open IRI ${term.value}`); }
     wrap.append(main);
-    const meta=termMeta(term); if (this.state.tags !== "hide") { wrap.append(classed("span", termKind(term), "kind")); if (meta) wrap.append(classed("span", meta, "meta")); }
+    const language=term.lang || term.language || term["xml:lang"] || "";
+    const datatype=term.datatype && term.datatype !== XSD_STRING ? term.datatype : "";
+    if (this.state.languageTags !== "hide" || this.state.datatypes !== "hide") wrap.append(classed("span", termKind(term), "kind"));
+    if (language && this.state.languageTags !== "hide") wrap.append(classed("span", "@" + language, "meta"));
+    if (datatype && this.state.datatypes !== "hide") wrap.append(classed("span", compactIri(datatype), "meta"));
     return wrap;
   }
   control(labelText, options, current, onChange) { const label=element("label", labelText), select=element("select"); for (const [v,t] of options) { const o=element("option",t); o.value=v; o.selected=v===current; select.append(o); } select.addEventListener("change", () => onChange(select.value)); label.append(select); return label; }
@@ -118,11 +138,14 @@ export class FactoidalSparqlResults extends ResultBase {
     const root=this.shadowRoot; root.replaceChildren(); this.styles(root); const p=this.palette;
     const shell=element("section"); shell.className="shell"; Object.entries(p).forEach(([k,v])=>shell.style.setProperty(`--fr-${k}`,v)); root.append(shell);
     const rawRows=this.getRows(), vars=this.getVars(rawRows);
-    this.state.view ||= this.getAttribute("view") || "table"; this.state.tags ||= this.getAttribute("tags") || "show"; this.state.transpose ||= this.hasAttribute("transpose");
+    this.state.view ||= this.getAttribute("view") || "table";
+    this.state.languageTags ||= this.getAttribute("language-tags") || this.getAttribute("tags") || "show";
+    this.state.datatypes ||= this.getAttribute("datatypes") || this.getAttribute("tags") || "show";
+    this.state.transpose ||= this.hasAttribute("transpose");
     const languageValues=[...new Set(rawRows.flatMap(r=>Object.values(r).map(x=>{const t=normalizeTerm(x); return t.lang || t.language || t["xml:lang"] || "";}).filter(Boolean)))].sort();
     const datatypeValues=[...new Set(rawRows.flatMap(r=>Object.values(r).map(x=>{const t=normalizeTerm(x); return t.datatype && t.datatype !== XSD_STRING ? t.datatype : "";}).filter(Boolean)))].sort();
     let rows=rawRows.filter(r => (!this.state.lang || Object.values(r).some(x => {const t=normalizeTerm(x); return (t.lang||t.language||t["xml:lang"]||"")===this.state.lang;})) && (!this.state.datatype || Object.values(r).some(x => normalizeTerm(x).datatype===this.state.datatype)));
-    if (this.state.sort) rows=rows.slice().sort((a,b)=>String(normalizeTerm(a[this.state.sort]).value).localeCompare(String(normalizeTerm(b[this.state.sort]).value), undefined, {numeric:true})*this.state.dir);
+    if (this.state.sort) rows=rows.slice().sort((a,b)=>this.sortText(a).localeCompare(this.sortText(b), undefined, {numeric:true, sensitivity:"base"})*this.state.dir);
     const max=Number(this.getAttribute("max-rows")); if (Number.isFinite(max) && max>0) rows=rows.slice(0,max);
     const top=element("div"); top.className="top"; top.append(classed("p", `${rawRows.length.toLocaleString()} result ${rawRows.length===1?"row":"rows"}${rows.length!==rawRows.length ? ` · ${rows.length.toLocaleString()} shown` : ""}`, "summary")); shell.append(top);
     if (!rawRows.length) { shell.append(classed("div", "This query returned no solution bindings.", "empty")); return; }
@@ -130,18 +153,27 @@ export class FactoidalSparqlResults extends ResultBase {
     toolbar.append(this.control("View", [["table","Table"],["cards","Record cards"]], this.state.view, v=>{this.state.view=v; this.render();}));
     toolbar.append(this.control("Language", [["","All languages"], ...languageValues.map(x=>[x,"@"+x])], this.state.lang, v=>{this.state.lang=v; this.render();}));
     toolbar.append(this.control("Datatype", [["","All datatypes"], ...datatypeValues.map(x=>[x,compactIri(x)])], this.state.datatype, v=>{this.state.datatype=v; this.render();}));
-    const tags=element("button", this.state.tags === "hide" ? "Show term detail" : "Hide term detail"); tags.type="button"; tags.setAttribute("aria-pressed", String(this.state.tags !== "hide")); tags.addEventListener("click",()=>{this.state.tags=this.state.tags === "hide" ? "show":"hide";this.render();}); toolbar.append(tags);
+    toolbar.append(this.control("Sort", [["","Document order"], ...vars.map(v=>["var:"+v,"?"+v]), ["language","Language tag"], ["datatype","Datatype"]], this.state.sort, v=>{this.state.sort=v;this.state.dir=1;this.render();}));
+    const languageTags=element("button", this.state.languageTags === "hide" ? "Show language tags" : "Hide language tags"); languageTags.type="button"; languageTags.setAttribute("aria-pressed", String(this.state.languageTags !== "hide")); languageTags.addEventListener("click",()=>{this.state.languageTags=this.state.languageTags === "hide" ? "show":"hide";this.render();}); toolbar.append(languageTags);
+    const datatypes=element("button", this.state.datatypes === "hide" ? "Show datatypes" : "Hide datatypes"); datatypes.type="button"; datatypes.setAttribute("aria-pressed", String(this.state.datatypes !== "hide")); datatypes.addEventListener("click",()=>{this.state.datatypes=this.state.datatypes === "hide" ? "show":"hide";this.render();}); toolbar.append(datatypes);
     if (this.state.view === "table") { const flip=element("button", this.state.transpose ? "Rows as records" : "Columns as records"); flip.type="button"; flip.setAttribute("aria-pressed",String(this.state.transpose)); flip.addEventListener("click",()=>{this.state.transpose=!this.state.transpose;this.render();}); toolbar.append(flip); }
     if (this.state.view === "cards") toolbar.append(this.control("Cards", [["vertical","Vertical"],["horizontal","Swipeable row"]], this.getAttribute("card-direction") || "vertical", v=>{this.setAttribute("card-direction",v); this.render();}));
     toolbar.append(classed("span", `${vars.length} variables`, "count")); shell.append(toolbar);
     shell.append(this.state.view === "cards" ? this.cards(rows,vars) : this.table(rows,vars));
   }
-  header(name) { const th=element("th"), b=element("button", name + (this.state.sort===name ? (this.state.dir>0?" ▲":" ▼") : "")); b.type="button"; b.title="Sort by this variable"; b.addEventListener("click",()=>{if(this.state.sort===name)this.state.dir*=-1;else{this.state.sort=name;this.state.dir=1;}this.render();}); th.append(b); return th; }
+  sortText(row) {
+    if (this.state.sort === "language") return rowMetadata(row, "language");
+    if (this.state.sort === "datatype") return rowMetadata(row, "datatype");
+    if (this.state.sort.startsWith("var:")) return String(normalizeTerm(row[this.state.sort.slice(4)]).value);
+    return "";
+  }
+  chooseSort(sort) { if(this.state.sort===sort)this.state.dir*=-1;else{this.state.sort=sort;this.state.dir=1;}this.render(); }
+  header(name) { const sort="var:"+name, th=element("th"), b=element("button", name + (this.state.sort===sort ? (this.state.dir>0?" ▲":" ▼") : "")); th.scope="col"; b.type="button"; b.title="Sort by this variable"; b.addEventListener("click",()=>this.chooseSort(sort)); th.append(b); return th; }
   table(rows, vars) {
     const wrap=element("div"); wrap.className="table-wrap"; const table=element("table"); table.append(element("caption", "SPARQL SELECT results"));
     const head=element("thead"), hr=element("tr"); if (this.state.transpose) { hr.append(element("th","Variable")); rows.forEach((_,i)=>hr.append(element("th",`Result ${i+1}`))); } else vars.forEach(v=>hr.append(this.header(v))); head.append(hr); table.append(head);
     const body=element("tbody");
-    if (this.state.transpose) vars.forEach(v=>{const tr=element("tr"); tr.append(this.header(v)); rows.forEach(r=>{const td=element("td"); if(r[v]===undefined) td.append(classed("span", "—", "missing")); else td.append(this.makeTerm(r[v])); tr.append(td);}); body.append(tr);});
+    if (this.state.transpose) vars.forEach(v=>{const tr=element("tr"); const name=element("th",v);name.scope="row";tr.append(name); rows.forEach(r=>{const td=element("td"); if(r[v]===undefined) td.append(classed("span", "—", "missing")); else td.append(this.makeTerm(r[v])); tr.append(td);}); body.append(tr);});
     else rows.forEach(r=>{const tr=element("tr"); vars.forEach(v=>{const td=element("td"); if(r[v]===undefined) td.append(classed("span", "—", "missing")); else td.append(this.makeTerm(r[v])); tr.append(td);}); body.append(tr);});
     table.append(body); wrap.append(table); return wrap;
   }
@@ -150,7 +182,7 @@ export class FactoidalSparqlResults extends ResultBase {
 
 export class FactoidalSparqlGraph extends ResultBase {
   get graph() { return this._data; } set graph(v) { this._data=v; this.render(); }
-  render() { const root=this.shadowRoot;root.replaceChildren();this.styles(root);const p=this.palette,shell=element("section");shell.className="shell";Object.entries(p).forEach(([k,v])=>shell.style.setProperty(`--fr-${k}`,v));root.append(shell);const d=this.readData();const rows=Array.isArray(d)?d:(d?.triples||d?.quads||[]);shell.append(classed("div",`${rows.length.toLocaleString()} RDF ${rows.length===1?"statement":"statements"}`, "top"));if(!rows.length){shell.append(classed("div","This graph is empty.", "empty"));return;}const results=document.createElement("factoidal-sparql-results");results.setAttribute("palette",this.getAttribute("palette")||"sage");results.setAttribute("view",this.getAttribute("view")||"table");results.results={head:{vars:["subject","predicate","object","graph"]},results:{bindings:rows.map(q=>({subject:normalizeTerm(q.subject||q.s),predicate:normalizeTerm(q.predicate||q.p),object:normalizeTerm(q.object||q.o),graph:normalizeTerm(q.graph||q.g||{type:"uri",value:"default graph"})}))}};shell.append(results); }
+  render() { const root=this.shadowRoot;root.replaceChildren();this.styles(root);const p=this.palette,shell=element("section");shell.className="shell";Object.entries(p).forEach(([k,v])=>shell.style.setProperty(`--fr-${k}`,v));root.append(shell);const d=this.readData();const rows=Array.isArray(d)?d:(d?.triples||d?.quads||[]);shell.append(classed("div",`${rows.length.toLocaleString()} RDF ${rows.length===1?"statement":"statements"}`, "top"));if(!rows.length){shell.append(classed("div","This graph is empty.", "empty"));return;}const results=document.createElement("factoidal-sparql-results");for(const name of ["palette","view","tags","language-tags","datatypes","transpose","card-direction","max-rows"]) if(this.hasAttribute(name)) results.setAttribute(name,this.getAttribute(name) || "");results.results={head:{vars:["subject","predicate","object","graph"]},results:{bindings:rows.map(q=>({subject:normalizeTerm(q.subject||q.s),predicate:normalizeTerm(q.predicate||q.p),object:normalizeTerm(q.object||q.o),graph:normalizeTerm(q.graph||q.g||{type:"uri",value:"default graph"})}))}};shell.append(results); }
 }
 
 export class FactoidalSparqlBoolean extends ResultBase {

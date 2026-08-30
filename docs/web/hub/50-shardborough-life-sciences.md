@@ -42,17 +42,20 @@ shardboroughRunner = {
     const start = performance.now(); const result = await Factoidal.queryDataset(files, q, { output: "json" });
     const elapsed = Math.round(performance.now() - start); const rows = result.results?.bindings?.length || 0;
     status.textContent = `${rows.toLocaleString()} matching variants in ${elapsed.toLocaleString()} ms. Current plan: chromosome type scan ⋈ sequence-variant location scan.`;
-    const view = document.createElement("factoidal-sparql-results"); view.setAttribute("palette", "ocean"); view.setAttribute("view", "cards"); view.setAttribute("card-direction", "horizontal"); view.results = result; resultEl.append(view);
+    const view = document.createElement("factoidal-sparql-results"); view.setAttribute("palette", "ocean"); view.results = result; resultEl.append(view);
   } catch (e) { status.textContent = "The query did not complete."; const error = document.createElement("factoidal-sparql-error"); error.setAttribute("message", e.message); resultEl.append(error); } finally { run.disabled = false; } }); return root;
 }
 ```
 
-The `factoidal-sparql-results` element defaults to a sortable table. Its own
-controls let a reader choose record cards, transpose a table, filter language
-tags or datatypes, and hide/show term detail. The same module also provides
+The `factoidal-sparql-results` element defaults to a sortable table, with
+variables as columns and result bindings as rows. Its own controls let a
+reader choose record cards, transpose the table, filter and independently
+hide/show language tags or datatypes, and sort by a variable, language tag, or
+datatype. The same module also provides
 `factoidal-sparql-graph`, `factoidal-sparql-boolean`, and
 `factoidal-sparql-error`; each is configurable with ordinary attributes such
-as `palette="ocean"`, `view="cards"`, `tags="hide"`, and
+as `palette="ocean"`, `view="cards"`, `language-tags="hide"`,
+`datatypes="hide"`, and
 `card-direction="horizontal"`.
 
 The AI-skills notebook can propose a read-only query against this manifest, but

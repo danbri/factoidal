@@ -32,5 +32,8 @@ test('SPARQL result elements expose all four standard result views', () => {
   ]) assert.match(source, new RegExp(`customElements\\.define\\("${tag}"`));
   assert.match(source, /All languages/);
   assert.match(source, /All datatypes/);
+  assert.match(source, /Language tag/);
+  assert.match(source, /language-tags/);
+  assert.match(source, /datatypes/);
   assert.match(source, /Swipeable row/);
 });

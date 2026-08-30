@@ -13,18 +13,22 @@ The public elements are:
 - `factoidal-sparql-boolean` for `ASK` results; and
 - `factoidal-sparql-error` for an accessible query failure message.
 
-`factoidal-sparql-results` defaults to a sortable result table, carries full
-IRI/literal detail in the rendered terms, and offers reader controls for
-language and datatype filtering, term-detail visibility, table transposition,
-and record-card views. Card direction and the gentle named palettes are
-ordinary attributes (`palette`, `view`, `tags`, `transpose`,
-`card-direction`, `max-rows`), so most pages need no custom JavaScript.
+`factoidal-sparql-results` defaults to a sortable result table, with variables
+as columns and bindings as rows. It carries full IRI/literal detail in the
+rendered terms and offers reader controls for language and datatype filtering,
+independent language-tag/datatype visibility, value/language/datatype sorting,
+table transposition, and record-card views. Card direction and the gentle named
+palettes are ordinary attributes (`palette`, `view`, `language-tags`,
+`datatypes`, `tags`, `transpose`, `card-direction`, `max-rows`), so most pages
+need no custom JavaScript. `tags` remains as a backwards-compatible shorthand
+for hiding both kinds of term metadata.
 
 Post 50, the life-sciences Shardborough notebook, is the first consumer. Its
 runner now has explicit progress and error states and displays the actual
-cross-graph SELECT result instead of a JSON diagnostic dump. This is UI work
-only: it does not change the documented present execution boundary (Turtle
-loaded into the existing browser evaluator).
+cross-graph SELECT result in its default table rather than a JSON diagnostic
+dump or forced card view. This is UI work only: it does not change the
+documented present execution boundary (Turtle loaded into the existing browser
+evaluator).
 
 Verification on 2026-08-30:
 
