@@ -29,9 +29,12 @@ the same positions to reconstruct all source order.
 ## Landed initial codec
 
 `Storage.IndexedBlockWireV2` now implements this layout as `IBK2`.  Its
-CRC-covered payload is dictionary count, row count, segment count, variable
-length dictionary, fixed-width `(predicate, offset, length)` directory, then
-16-byte `(sourcePosition, subjectId, predicateId, objectId)` segment rows.
+CRC-covered payload is dictionary count, row count, segment count, dictionary
+byte length, variable-length dictionary, fixed-width `(predicate, offset,
+length)` directory, then 16-byte `(sourcePosition, subjectId, predicateId,
+objectId)` segment rows.  The dictionary byte length is essential: it makes
+the directory location discoverable from a fixed prefix rather than requiring
+the host to speculate across variable-length term encodings.
 Directory offsets are relative to the segment area, so the layout does not
 depend on the enclosing storage API.
 

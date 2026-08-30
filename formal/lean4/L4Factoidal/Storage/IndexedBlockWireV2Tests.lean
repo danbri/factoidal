@@ -21,6 +21,9 @@ private def bytes : ByteArray := (encode? block).getD ByteArray.empty
 private def corrupt : ByteArray := ByteArray.mk ((encodeList block).drop 1 |>.toArray)
 
 #guard supported block
+#guard match decodePrefix bytes with
+  | some header => header.dictCount == block.dict.size && header.rowCount == block.rows.size && header.segmentCount == 2
+  | none => false
 #guard match decode bytes with | some decoded => decoded.denotes == graph | none => false
 #guard match decode bytes with
   | some decoded => scanBound { p := some pName } decoded == tripleMatchesBound { p := some pName } graph

@@ -8,7 +8,9 @@ and directory have been read.  Each segment row carries its original source
 position; full decode reconstructs the V1 source order and a selected scan
 keeps the same observable order.
 
-The offsets below are relative to the start of the segment area.  This makes a
+The fixed prefix includes the dictionary byte length.  A host can therefore
+find the directory without speculative scanning of variable-length RDF terms.
+Offsets below are relative to the start of the segment area.  This makes a
 future range reader independent of whether the enclosing artifact is a local
 file, `bytea`, object storage, OPFS, or a TiKV value.
 -/
@@ -32,6 +34,16 @@ structure DirectoryEntry where
   offset : Nat
   length : Nat
   deriving Repr, DecidableEq, Inhabited
+
+/-- The fixed, 16-byte CRC-covered prefix after magic/version. -/
+structure Prefix where
+  dictCount : Nat
+  rowCount : Nat
+  segmentCount : Nat
+  dictBytes : Nat
+  deriving Repr, DecidableEq, Inhabited
+
+def prefixBytes : Nat := 4 + 1 + 16
 
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -69,9 +81,10 @@ def supported (block : Block) : Bool :=
 def encodeList (block : Block) : List UInt8 :=
   let segs := segments block
   let directory := directoryFor segs
+  let encodedDict := block.dict.toList.flatMap serializeTerm
   let payload := writeU32LE (UInt32.ofNat block.dict.size) ++
     writeU32LE (UInt32.ofNat block.rows.size) ++ writeU32LE (UInt32.ofNat segs.length) ++
-    block.dict.toList.flatMap serializeTerm ++ directory.flatMap encodeDirectory ++
+    writeU32LE (UInt32.ofNat encodedDict.length) ++ encodedDict ++ directory.flatMap encodeDirectory ++
     segs.flatMap (fun segment => segment.2)
   writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload)
 
@@ -93,6 +106,23 @@ private def decodeDirectory : Nat → List UInt8 → Option (List DirectoryEntry
       let length ← readU32LE bytes 8
       let (entries, rest) ← decodeDirectory n (bytes.drop 12)
       some ({ predicate := predicate.toNat, offset := offset.toNat, length := length.toNat } :: entries, rest)
+
+/-- Parse only the fixed prefix.  This is deliberately independent of CRC:
+    a range reader obtains CRC/integrity evidence from its opened artifact
+    manifest and verifies every subsequently supplied range before use. -/
+def decodePrefix (bytes : ByteArray) : Option Prefix := do
+  let allBytes := listOfByteArray bytes
+  let foundMagic ← readU32LE allBytes 0
+  if foundMagic != magic then none
+  else do
+    let (foundVersion, payloadPrefix) ← parseU8 (allBytes.drop 4)
+    if foundVersion != version then none
+    else do
+      let dictCount ← readU32LE payloadPrefix 0
+      let rowCount ← readU32LE payloadPrefix 4
+      let segmentCount ← readU32LE payloadPrefix 8
+      let dictBytes ← readU32LE payloadPrefix 12
+      some (Prefix.mk dictCount.toNat rowCount.toNat segmentCount.toNat dictBytes.toNat)
 
 private def distinctPredicates : List DirectoryEntry → Bool
   | [] => true
@@ -136,8 +166,14 @@ private def decodePayload (payload : List UInt8) : Option (Array Term × Array I
   let dictCount ← readU32LE payload 0
   let rowCount ← readU32LE payload 4
   let segmentCount ← readU32LE payload 8
-  let (terms, afterTerms) ← decodeTerms dictCount.toNat (payload.drop 12)
-  let (directory, segmentBytes) ← decodeDirectory segmentCount.toNat afterTerms
+  let dictBytes ← readU32LE payload 12
+  if dictBytes.toNat > (payload.drop 16).length then none
+  else do
+  let dictSection := (payload.drop 16).take dictBytes.toNat
+  let (terms, dictRest) ← decodeTerms dictCount.toNat dictSection
+  if !dictRest.isEmpty then none
+  else do
+  let (directory, segmentBytes) ← decodeDirectory segmentCount.toNat (payload.drop (16 + dictBytes.toNat))
   if !distinctPredicates directory || !directoryCovers segmentBytes directory 0 then none
   else do
     let segments ← directory.mapM (decodeSegment segmentBytes)
@@ -154,7 +190,7 @@ def decode (bytes : ByteArray) : Option Block := do
   if foundMagic != magic then none
   else do
     let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-    if foundVersion != version || afterVersion.length < 16 then none
+    if foundVersion != version || afterVersion.length < 20 then none
     else do
       let payloadLen := afterVersion.length - 4
       let payload := afterVersion.take payloadLen
@@ -171,8 +207,14 @@ private def decodeForPredicate? (payload : List UInt8) (predicate : WfIri) : Opt
   let dictCount ← readU32LE payload 0
   let _rowCount ← readU32LE payload 4
   let segmentCount ← readU32LE payload 8
-  let (terms, afterTerms) ← decodeTerms dictCount.toNat (payload.drop 12)
-  let (directory, segmentBytes) ← decodeDirectory segmentCount.toNat afterTerms
+  let dictBytes ← readU32LE payload 12
+  if dictBytes.toNat > (payload.drop 16).length then none
+  else do
+  let dictSection := (payload.drop 16).take dictBytes.toNat
+  let (terms, dictRest) ← decodeTerms dictCount.toNat dictSection
+  if !dictRest.isEmpty then none
+  else do
+  let (directory, segmentBytes) ← decodeDirectory segmentCount.toNat (payload.drop (16 + dictBytes.toNat))
   if !distinctPredicates directory || !directoryCovers segmentBytes directory 0 then none
   else do
     let dict := terms.toArray
@@ -191,7 +233,7 @@ def scanPredicateDecoded (bound : PatternBound) (bytes : ByteArray) : List Tripl
       let allBytes := listOfByteArray bytes
       match readU32LE allBytes 0, parseU8 (allBytes.drop 4) with
       | some foundMagic, some (foundVersion, afterVersion) =>
-          if foundMagic != magic || foundVersion != version || afterVersion.length < 16 then []
+          if foundMagic != magic || foundVersion != version || afterVersion.length < 20 then []
           else
             let payloadLen := afterVersion.length - 4
             let payload := afterVersion.take payloadLen
