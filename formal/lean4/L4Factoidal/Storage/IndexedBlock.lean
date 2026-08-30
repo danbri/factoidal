@@ -29,6 +29,13 @@ structure IdTriple where
   o : TermId
   deriving Repr, DecidableEq, Inhabited
 
+/-- One row in a contiguous predicate segment. `position` preserves the source
+    sequence when segments are decoded independently. -/
+structure PositionedIdTriple where
+  position : Nat
+  row : IdTriple
+  deriving Repr, DecidableEq, Inhabited
+
 /-- An immutable RDF block with source-order ID rows and predicate partitions.
     Partitions accumulate backwards for constant-time load and are reversed
     before a scan, restoring SPARQL sequence order. -/
@@ -120,6 +127,15 @@ def candidateRows (bound : PatternBound) (block : Block) : List IdTriple :=
       match block.idByTerm[Term.iri predicate]? with
       | none => []
       | some pid => (block.byPredicate.getD pid []).reverse
+
+/-- Predicate-local physical rows annotated with their original row positions.
+    V2 uses this total layout to make a predicate segment contiguous without
+    weakening the observable source-order contract.  It deliberately derives
+    from authoritative rows rather than trusting the cache: `Block` does not
+    yet carry a proof that an arbitrary `byPredicate` map agrees with `rows`. -/
+def predicateSegment (predicate : TermId) (block : Block) : List PositionedIdTriple :=
+  block.rows.toList.zipIdx.filterMap fun (row, position) =>
+    if row.p == predicate then some { position := position, row := row } else none
 
 /-- A predicate-aware candidate scan of the ID block. -/
 def scanBound (bound : PatternBound) (block : Block) : List Triple :=
