@@ -294,20 +294,17 @@ the F* source's. Every recursive branch consumes one or two input
 characters, so the Lean version can use structural recursion and avoid a
 full remaining-list-length calculation for every IRI token. Returns
 `(token, rest)`. -/
-def scanNameBody : List Char → List Char × List Char
-  | []               => ([], [])
-  | '\\' :: e :: rest =>
-      let (t, r) := scanNameBody rest
-      ('\\' :: e :: t, r)
-  | c :: rest =>
+def scanNameBodyLoop : List Char → List Char → List Char × List Char
+  | [],               accRev => (accRev.reverse, [])
+  | '\\' :: e :: rest, accRev => scanNameBodyLoop rest (e :: '\\' :: accRev)
+  | c :: rest, accRev =>
       if c.toNat < 0x80 then
-        if isAsciiNameBody c then
-          let (t, r) := scanNameBody rest
-          (c :: t, r)
-        else ([], c :: rest)
-      else
-        let (t, r) := scanNameBody rest
-        (c :: t, r)
+        if isAsciiNameBody c then scanNameBodyLoop rest (c :: accRev)
+        else (accRev.reverse, c :: rest)
+      else scanNameBodyLoop rest (c :: accRev)
+
+def scanNameBody (cs : List Char) : List Char × List Char :=
+  scanNameBodyLoop cs []
 
 /-- Trim trailing UNESCAPED `.` characters off a scanned PN_LOCAL, per
 [168s] PN_LOCAL's rule that a local name may contain dots but never end

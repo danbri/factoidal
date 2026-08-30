@@ -29,15 +29,19 @@ structure Store where
   /-- Predicate identity and its independently decodable local block. -/
   blocks : List (WfIri × Block)
 
-private def appendFor (predicate : WfIri) (triple : Triple) :
+/- Predicate buckets are held in reverse source order while building. Appending
+   to a `Graph` for every occurrence makes a frequent Wikidata predicate
+   quadratic before any IBK2 bytes can be written. -/
+private def prependFor (predicate : WfIri) (triple : Triple) :
     List (WfIri × Graph) → List (WfIri × Graph)
   | [] => [(predicate, [triple])]
   | (current, graph) :: rest =>
-      if current == predicate then (current, graph ++ [triple]) :: rest
-      else (current, graph) :: appendFor predicate triple rest
+      if current == predicate then (current, triple :: graph) :: rest
+      else (current, graph) :: prependFor predicate triple rest
 
 private def groupByPredicate (graph : Graph) : List (WfIri × Graph) :=
-  graph.foldl (fun groups triple => appendFor triple.p triple groups) []
+  (graph.foldl (fun groups triple => prependFor triple.p triple groups) []).map
+    fun (predicate, rowsRev) => (predicate, rowsRev.reverse)
 
 /-- Build predicate-local dictionaries from an RDF graph.  This is a compact,
     correctness-first loader; the eventual streaming writer can construct the

@@ -32,7 +32,10 @@ Further inspection found that every prefixed IRI token had also computed the
 length of its entire remaining input to fuel its name-body scanner. That
 scanner and Turtle whitespace/comment skipping are now structurally recursive;
 the normal KGX shape no longer takes a full-tail length just to scan each IRI
-or whitespace boundary. As a bounded confirmation, the 9,227-triple
+or whitespace boundary. The name scanner additionally uses a tail-recursive
+reverse accumulator. Predicate buckets use the same append-free strategy
+before local `IndexedBlock` construction, avoiding quadratic collection for
+frequent properties such as P31. As a bounded confirmation, the 9,227-triple
 `chromosome.ttl` KGX graph packed into one predicate shard in 2.46 seconds
 and produced a 568 KiB SBM1/IBK2/Merkle collection on this macOS host. This is
 a local wall-clock observation, not a general performance claim. The
