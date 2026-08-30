@@ -15,11 +15,15 @@ test('post49: keeps one local-AI session for repeated proposals', () => {
   assert.doesNotMatch(cell, /session\.destroy\?\.\(\);\n    } catch/);
 });
 
-test('post49: presents the proposal separately and never executes it', () => {
+test('post49: presents a reviewable proposal and runs it only on explicit action', () => {
   const [cell] = extractObservableCells('49-ai-for-local-kg.md');
   assert.match(cell, /Proposal below — it has not run a query\./);
   assert.match(cell, /out\.textContent = String\(proposal\)/);
   assert.match(cell, /named graphs only/);
   assert.match(cell, /include LIMIT 20/);
-  assert.doesNotMatch(cell, /Factoidal\.(query|queryDataset)\(/);
+  assert.match(cell, /Review and run this proposal locally/);
+  assert.match(cell, /run\.addEventListener\("click"/);
+  assert.match(cell, /Factoidal\.queryDataset\(data, query/);
+  assert.match(cell, /Only a reviewed read-only SELECT, ASK, CONSTRUCT, or DESCRIBE/);
+  assert.match(cell, /INSERT\|DELETE\|LOAD\|CLEAR\|CREATE\|DROP\|COPY\|MOVE\|ADD\|WITH\|USING\|SERVICE/);
 });

@@ -11,15 +11,11 @@ tests: tests/hub/post49_test.mjs
 
 This is deliberately a small experiment, not an autonomous agent. First check
 whether this browser has local AI. Then ask a question about the life-sciences
-Shardborough. If available, the model proposes a read-only SPARQL query; it
-does not receive the Turtle files, execute the query, or send data to a cloud
-service. The [Shardborough notebook](../50-shardborough-life-sciences/) owns
-the inspectable graph manifest and its fixed user-run query.
-
-Shardborough does not yet accept an arbitrary pasted query. To try a proposal,
-use the [life-sciences browser playground](../../../fstar-extracted/demo-lifesci.html):
-replace the query in its editor, then press **Run** (or Cmd/Ctrl+Enter). That
-page loads the same three named graphs and evaluates entirely in this browser.
+Shardborough. If available, the model proposes a read-only SPARQL query. It
+does not receive Turtle files or send data to a cloud service. You may then
+review and explicitly run that proposal in this notebook against the same
+three browser-local named graphs. The [Shardborough notebook](../50-shardborough-life-sciences/)
+continues to own the inspectable graph manifest and its fixed user-run query.
 
 ```observable-js
 localAiForKg = {
@@ -38,8 +34,13 @@ localAiForKg = {
     expectedInputLanguages: ["en"],
     expectedOutputLanguages: ["en"],
   };
-  const root = html`<div><p><strong>1. Check local AI.</strong> <button class="check">Check availability</button> <span class="status" aria-live="polite">Not checked.</span></p><p><strong>2. Ask about the local graph.</strong><br><textarea rows="3">Find sequence variants and their chromosome entities.</textarea></p><p><button class="ask">Propose read-only SPARQL</button> <button class="release" disabled>Release local AI</button></p><p class="result-status" aria-live="polite"></p><pre aria-live="polite">No request made.</pre></div>`;
-  const check = root.querySelector(".check"), ask = root.querySelector(".ask"), release = root.querySelector(".release"), status = root.querySelector(".status"), resultStatus = root.querySelector(".result-status"), question = root.querySelector("textarea"), out = root.querySelector("pre");
+  const files = [
+    { graph: "urn:kgx:chromosome", file: "chromosome.ttl" },
+    { graph: "urn:kgx:sequence_variant", file: "sequence_variant.ttl" },
+    { graph: "urn:kgx:disease", file: "disease.ttl" },
+  ];
+  const root = html`<div><p><strong>1. Check local AI.</strong> <button class="check">Check availability</button> <span class="status" aria-live="polite">Not checked.</span></p><p><strong>2. Ask about the local graph.</strong><br><textarea rows="3">Find sequence variants and their chromosome entities.</textarea></p><p><button class="ask">Propose read-only SPARQL</button> <button class="release" disabled>Release local AI</button></p><p class="result-status" aria-live="polite"></p><pre class="proposal" aria-live="polite">No request made.</pre><details class="runner" hidden><summary><strong>3. Review and run this proposal locally</strong></summary><p>Edit the query if needed. Running fetches the committed named-graph files and evaluates only in this browser.</p><textarea class="candidate" rows="12" spellcheck="false"></textarea><p><button class="run">Run reviewed query locally</button> <span class="run-status" aria-live="polite"></span></p><pre class="run-output" aria-live="polite"></pre></details></div>`;
+  const check = root.querySelector(".check"), ask = root.querySelector(".ask"), release = root.querySelector(".release"), status = root.querySelector(".status"), resultStatus = root.querySelector(".result-status"), question = root.querySelector("textarea"), out = root.querySelector(".proposal"), runner = root.querySelector(".runner"), candidate = root.querySelector(".candidate"), run = root.querySelector(".run"), runStatus = root.querySelector(".run-status"), runOutput = root.querySelector(".run-output");
   let session = null, creating = null;
   async function availability() {
     if (!globalThis.LanguageModel?.availability || !globalThis.LanguageModel?.create) return "unavailable (this browser exposes no LanguageModel API)";
@@ -81,6 +82,14 @@ localAiForKg = {
         : `Chrome reports “${a}”. Generating a proposal will prepare the model after this click.`;
     } catch (e) { status.textContent = `failed: ${e.message}`; }
   });
+  function proposalQuery(text) {
+    return new RegExp("`{3}(?:sparql)?\\s*([\\s\\S]*?)`{3}", "i").exec(text)?.[1]?.trim() || "";
+  }
+  function isSafeReadOnly(query) {
+    const upper = query.toUpperCase();
+    return /\b(SELECT|ASK|CONSTRUCT|DESCRIBE)\b/.test(upper)
+      && !/\b(INSERT|DELETE|LOAD|CLEAR|CREATE|DROP|COPY|MOVE|ADD|WITH|USING|SERVICE)\b/.test(upper);
+  }
   ask.addEventListener("click", async () => {
     ask.disabled = true; resultStatus.textContent = ""; out.textContent = "Preparing local AI…";
     try {
@@ -91,12 +100,48 @@ localAiForKg = {
       const proposal = await localSession.prompt(prompt);
       resultStatus.textContent = "Proposal below — it has not run a query.";
       out.textContent = String(proposal).trim() || "(The local model returned no proposal.)";
+      const query = proposalQuery(String(proposal));
+      if (query) {
+        candidate.value = query;
+        runner.hidden = false;
+        runStatus.textContent = "Review the extracted query, then choose whether to run it.";
+      } else {
+        runner.hidden = true;
+        runStatus.textContent = "No fenced SPARQL query was found in this proposal.";
+      }
       status.textContent = "Local AI proposal ready. It has not run a query.";
     } catch (e) {
       status.textContent = "Local AI was not ready.";
       out.textContent = `No local AI proposal: ${e.message}`;
     } finally {
       ask.disabled = false;
+    }
+  });
+  run.addEventListener("click", async () => {
+    const query = candidate.value.trim();
+    if (!isSafeReadOnly(query)) {
+      runStatus.textContent = "Only a reviewed read-only SELECT, ASK, CONSTRUCT, or DESCRIBE query without SERVICE may run here.";
+      return;
+    }
+    run.disabled = true;
+    runStatus.textContent = "Fetching the three named graphs and running the reviewed query locally…";
+    runOutput.textContent = "";
+    try {
+      const data = await Promise.all(files.map(async entry => {
+        const response = await fetch(new URL("../../../fstar-extracted/lifesci/" + entry.file, location.href));
+        if (!response.ok) throw new Error(`${entry.file}: HTTP ${response.status}`);
+        return { graph: entry.graph, content: await response.text(), dataFormat: "turtle" };
+      }));
+      const started = performance.now();
+      const result = await Factoidal.queryDataset(data, query, { output: "json" });
+      const elapsedMs = Math.round(performance.now() - started);
+      runOutput.textContent = JSON.stringify({ elapsedMs, result }, null, 2);
+      runStatus.textContent = "Finished locally. No query was sent to a server.";
+    } catch (e) {
+      runStatus.textContent = "The local query did not complete.";
+      runOutput.textContent = e.message;
+    } finally {
+      run.disabled = false;
     }
   });
   release.addEventListener("click", () => {
