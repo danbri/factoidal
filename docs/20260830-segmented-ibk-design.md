@@ -53,3 +53,12 @@ or database host was never modified.
 guards both a matching artifact and a one-byte mutation. It is intentionally
 not a signature implementation: a signed manifest and key policy remain the
 host/trust layer that supplies the trusted digest.
+
+### Staged assurance profile
+
+Start with the cheapest useful profile: CRC32C for malformed/accidental damage
+plus one SHA-256 digest supplied by a trusted caller or deployment manifest.
+The next layer is a signed manifest binding that digest to a snapshot and
+format version. A Merkle-tree manifest/root is an optional later layer for a
+large collection of blocks: it permits compact dataset identity and inclusion
+proofs without changing individual block bytes or the Lean query kernel.
