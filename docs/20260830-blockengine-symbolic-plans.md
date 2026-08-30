@@ -100,3 +100,23 @@ not required for PostgreSQL `bytea`, TiKV, or the first codec.
 The symbolic-plan update began as documentation-only work. The SPARQL MVP
 extension changed Lean source and is verified above. The latest full-build
 result remains recorded in `20260829-blockengine-mvp.md`.
+
+## Lean-derived WASM physical scan (2026-08-30)
+
+The regenerated browser artifact now exports `scanIBK2Predicate` through the
+existing `l4_call_c` dispatch ABI.  It accepts canonical IBK2 bytes and a
+predicate IRI, validates the complete block, and invokes the same selective
+scan used by the native code.  The current JSON transport uses hexadecimal
+bytes only as a portable diagnostic ABI; a worker-grade ABI must pass bounded
+byte buffers directly.
+
+The generated 4.3 MiB artifact was exercised under Node against the 4,621-byte
+music IBK2 object.  Its dispatch table contained the operation and the scan of
+`http://example.org/music/by` returned eight rows.  The repeatable check is:
+
+```text
+node tools/wasm-ibk2-smoke.mjs BLOCK.ibk2 PREDICATE_IRI EXPECTED_ROWS
+```
+
+This is a narrow Lean-derived physical helper, not the final `PushIR` kernel
+or evidence of a PostgreSQL/TiKV embedded worker.
