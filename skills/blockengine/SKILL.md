@@ -165,6 +165,12 @@ predicate partitions, but is intentionally not the canonical medium-corpus
 storage path. `IndexedBlock` uses `Array Term`, ID triples, and a predicate
 `HashMap`; retain semantic `boundMatches` after decoding IDs.
 
+For the current no-Turtle-reparse persistence vertical, use `l4block-pack` to
+write supported Turtle as CRC-checked BLK0 and `l4block-file-query` to decode
+that file, construct `IndexedBlock`, and run a parsed SELECT. This is a
+transition-only file seam. See `docs/20260830-blockfile-e2e.md`; replace BLK0
+with the canonical ID-row codec before PostgreSQL, TiKV, or mmap-backed storage.
+
 The canonical-byte theorem is the persistence gate. PostgreSQL `bytea` and
 TiKV may persist the same bytes only after it. A backend read must decode
 those bytes before the proved scan runs. This is also why a separate Rust

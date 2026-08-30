@@ -144,10 +144,14 @@ extern_lib libl4hacl pkg := do
 -- protocol, persistence, or W3C conformance coverage.
 @[default_target] lean_exe «l4block-mvp» where root := `Harness.BlockMvp
 
--- Real-Turtle corpus probe for the BLK0 byte-boundary MVP. It is outside the
--- library because file I/O and timing/corpus measurements are executable-edge
--- concerns.
+-- Real-Turtle corpus probe for the indexed block. It is outside the library
+-- because file I/O and timing/corpus measurements are executable-edge concerns.
 @[default_target] lean_exe «l4block-corpus» where root := `Harness.BlockCorpus
+
+-- Transitional persistent-file vertical: pack supported Turtle as framed BLK0
+-- then decode it into the indexed query block without reparsing Turtle.
+@[default_target] lean_exe «l4block-pack» where root := `Harness.BlockPack
+@[default_target] lean_exe «l4block-file-query» where root := `Harness.BlockFileQuery
 
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean
