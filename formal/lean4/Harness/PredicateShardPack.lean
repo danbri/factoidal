@@ -23,7 +23,7 @@ private def pack (input output : String) : IO UInt32 := do
   let text ← IO.FS.readFile input
   match parseTurtleFold
       (fun (state : Nat × Buckets) triples => (state.1 + triples.length, addTriples state.2 triples))
-      (0, []) text (some ("file://" ++ input)) with
+      (0, {}) text (some ("file://" ++ input)) with
   | .error e => IO.eprintln s!"l4block-shard-pack Turtle parse error at {e.pos}: {e.msg}"; return 1
   | .ok (tripleCount, buckets) =>
       let blocks := blocksOfBuckets buckets

@@ -48,6 +48,15 @@ The same chromosome pack took 2.32 seconds and produced the same 568 KiB
 collection through that path. The result establishes the no-duplicate-graph
 ingest seam, not a meaningful benchmark delta at this small size.
 
+Predicate grouping is now backed by `Std.HashMap WfIri Graph`, rather than a
+linear association-list search for every input triple. The construction state
+keeps a separate reverse first-seen predicate list and restores it at
+publication, so existing manifest ordinals, artifact order and source-row
+order do not change. This removes an independent expected
+`O(triples × distinct-predicates)` cost. It does **not** make the current
+packer bounded-memory: its remaining buckets still retain all rows for each
+predicate until the final IBK2 encoding step.
+
 ## Required next ingest shape
 
 Do not split Turtle naively on lines: directives, multi-line literals,

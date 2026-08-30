@@ -14,6 +14,7 @@ scan uses exactly one local block, giving the intended access shape without a
 second SPARQL evaluator.
 -/
 import L4Factoidal.Storage.IndexedBlock
+import Std.Data.HashMap
 
 namespace L4Factoidal.Storage.PredicateBlocks
 
@@ -29,34 +30,34 @@ structure Store where
   /-- Predicate identity and its independently decodable local block. -/
   blocks : List (WfIri × Block)
 
-/-- Predicate buckets are a packer-facing construction state. Rows are held
-    in reverse source order until `blocksOfBuckets`, so extending a frequent
-    predicate remains constant-time. -/
-abbrev Buckets := List (WfIri × Graph)
+/-- Predicate buckets are a packer-facing construction state. `rows` supplies
+    expected constant-time predicate lookup; `orderRev` records first-seen
+    predicates in reverse so construction remains constant-time, while
+    `blocksOfBuckets` restores the reference encoder's publication order.
+    Rows are held in reverse source order until `blocksOfBuckets`. -/
+structure Buckets where
+  rows : Std.HashMap WfIri Graph := ∅
+  orderRev : List WfIri := []
 
-/- Predicate buckets are held in reverse source order while building. Appending
-   to a `Graph` for every occurrence makes a frequent Wikidata predicate
-   quadratic before any IBK2 bytes can be written. -/
-private def prependFor (predicate : WfIri) (triple : Triple) :
-    Buckets → Buckets
-  | [] => [(predicate, [triple])]
-  | (current, graph) :: rest =>
-      if current == predicate then (current, triple :: graph) :: rest
-      else (current, graph) :: prependFor predicate triple rest
+/-- Add one row without a linear search over unrelated predicates. -/
+def addTriple (buckets : Buckets) (triple : Triple) : Buckets :=
+  let known := buckets.rows.contains triple.p
+  { rows := buckets.rows.insert triple.p (triple :: buckets.rows.getD triple.p [])
+  , orderRev := if known then buckets.orderRev else triple.p :: buckets.orderRev }
 
 def addTriples (buckets : Buckets) (triples : List Triple) : Buckets :=
-  triples.foldl (fun groups triple => prependFor triple.p triple groups) buckets
+  triples.foldl addTriple buckets
 
 def blocksOfBuckets (buckets : Buckets) : List (WfIri × Block) :=
-  let ordered := buckets.map fun (predicate, rowsRev) => (predicate, rowsRev.reverse)
-  ordered.map fun (predicate, rows) => (predicate, IndexedBlock.fromGraph rows)
+  buckets.orderRev.reverse.map fun predicate =>
+    (predicate, IndexedBlock.fromGraph (buckets.rows.getD predicate []).reverse)
 
 /-- Build predicate-local dictionaries from an RDF graph.  This is a compact,
     correctness-first loader; the eventual streaming writer can construct the
     same manifest without the intermediate lists. -/
 def fromGraph (graph : Graph) : Store :=
   { source := graph
-  , blocks := blocksOfBuckets (addTriples [] graph) }
+  , blocks := blocksOfBuckets (addTriples {} graph) }
 
 /-- Find the independently decodable block for a predicate. -/
 def blockFor? (predicate : WfIri) (store : Store) : Option Block :=
@@ -95,6 +96,9 @@ private def fixture : Graph :=
 private def fixtureStore := fromGraph fixture
 
 #guard fixtureStore.blocks.length == 2
+-- Bucket lookup is hashed, but publication retains first-seen order so
+-- manifest ordinals remain stable for existing artifacts.
+#guard fixtureStore.blocks.map Prod.fst == [pName, pKind]
 #guard scanBound { p := some pName } fixtureStore == tripleMatchesBound { p := some pName } fixture
 #guard scanBound { p := some pKind } fixtureStore == tripleMatchesBound { p := some pKind } fixture
 #guard scanBound {} fixtureStore == fixture
