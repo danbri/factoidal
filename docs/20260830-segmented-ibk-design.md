@@ -285,18 +285,35 @@ SBM0 artifact field and appends, per artifact, a fixed chunk size, chunk count
 and 32-byte Merkle root. Version-one validation requires that this commitment
 has the artifact's declared total byte length and a valid derived count;
 unknown versions remain rejected. Both version-zero and version-one
-encode/decode round trips are guarded in Lean. Current pack/query tools still
-emit and consume SBM0, so the operational behaviour is unchanged while the
-wire contract is ready for a chunk-aware packer and host.
+encode/decode round trips are guarded in Lean. The packer emits SBM1 plus a
+compatibility SBM0 manifest and untrusted per-artifact leaf sidecars; existing
+query hosts prefer SBM1 where it is present while retaining an SBM0 fallback.
 
-### First proof-carrying positioned read (landed)
+### Proof-carrying positioned reads and a verified-range scanner (landed)
 
-`l4block-shard-merkle-pread SHARD-DIR PREDICATE-IRI` is the first native host
-to consume the SBM1 commitment and `.merkle` sidecar. It reads the selected
-artifact chunk with POSIX `pread`, derives an inclusion proof from the
-untrusted leaf sidecar, and admits the bytes only when that proof reaches the
-SBM1 root and the fixed-chunk offset/length contract holds. The smoke packs
-the music fixture then proves the `m:by` artifact's 579-byte first chunk under
-its 32-byte root. The current primitive deliberately refuses a requested range
-that crosses a chunk boundary; multi-chunk proof assembly and direct use by
-the IBK2 SPARQL scan are the next step, rather than an unverified fallback.
+`l4block-shard-merkle-pread SHARD-DIR PREDICATE-IRI [OFFSET LENGTH]` consumes
+the SBM1 commitment and `.merkle` sidecar. It verifies every fixed chunk
+touched by the requested non-empty range through the artifact's committed root
+before returning its interior bytes. A malformed sidecar, wrong leaf count,
+short positioned read, invalid proof, or out-of-bounds range is a refusal;
+there is no unchecked-read fallback.
+
+`l4block-shard-merkle-scan` is the first consumer which turns those admitted
+bytes back into RDF values. It obtains the IBK2 fixed prefix, dictionary,
+directory and selected predicate segment through `readVerifiedRange?`, then
+calls the existing `scanPredicateRanges`. Its input is therefore four
+structurally required IBK2 ranges, each verified to the SBM1 root, rather than
+a whole artifact admitted by a SHA-256 check.
+
+`tools/blockengine-shard-merkle-scan-smoke.sh` packs the 6,455-triple
+life-sciences `sequence_variant.ttl` source. Its P31 artifact is 110,020 bytes:
+the smoke first verifies `[65000, 66000)` across chunks 0 and 1, then obtains
+1,800 P31 rows and 1,357 P1057 rows through the verified-range scanner. The
+reported `logical-read-bytes` excludes the four-byte IBK2 CRC trailer, which
+this narrow selective decoder does not need; it is not a physical-I/O or cache
+claim.
+
+This is a predicate-local physical scanner, not yet the ordinary parsed
+multi-pattern SPARQL host. The next integration gate is for parsed,
+predicate-bound triple patterns to choose this verified-range backend while
+unbound-predicate patterns retain the current full-manifest route.

@@ -1,4 +1,4 @@
-/- Native proof-carrying positioned-read probe for one SBM1 artifact chunk. -/
+/- Native proof-carrying positioned-read probe for an SBM1 artifact range. -/
 import Harness.PosixRangeIO
 import L4Factoidal.Storage.ShardManifest
 
@@ -10,7 +10,7 @@ open L4Factoidal.Storage.ShardManifest
 private def predicate? (text : String) : Option L4Factoidal.RDF.WfIri :=
   if h : L4Factoidal.RDF.isIri text then some ⟨text, h⟩ else none
 
-private def run (directory iri : String) : IO UInt32 := do
+private def run (directory iri : String) (requested : Option (Nat × Nat)) : IO UInt32 := do
   match predicate? iri with
   | none => IO.eprintln s!"l4block-shard-merkle-pread invalid predicate IRI: {iri}"; return 2
   | some predicate =>
@@ -25,9 +25,15 @@ private def run (directory iri : String) : IO UInt32 := do
                   let sidecar ← IO.FS.readBinFile (artifactPath ++ ".merkle")
                   match leaves? chunked.chunkCount sidecar with
                   | some hashes =>
-                      let wanted := min chunked.chunkBytes entry.artifact.bytes
-                      match ← readVerifiedSingleChunkRange? artifactPath chunked hashes { offset := 0, length := wanted } with
-                      | some bytes => IO.println s!"l4block-shard-merkle-pread predicate={iri} verified-bytes={bytes.size} chunk=0 root-bytes={chunked.root.size}"; return 0
+                      let range := match requested with
+                        | some (offset, length) => { offset, length }
+                        | none => { offset := 0, length := min chunked.chunkBytes entry.artifact.bytes }
+                      match ← readVerifiedRange? artifactPath chunked hashes range with
+                      | some bytes =>
+                          let firstChunk := range.offset / chunked.chunkBytes
+                          let lastChunk := (range.offset + range.length - 1) / chunked.chunkBytes
+                          IO.println s!"l4block-shard-merkle-pread predicate={iri} verified-bytes={bytes.size} offset={range.offset} chunks={firstChunk}-{lastChunk} root-bytes={chunked.root.size}"
+                          return 0
                       | none => IO.eprintln "l4block-shard-merkle-pread rejected: chunk/proof/range verification failed"; return 1
                   | none => IO.eprintln "l4block-shard-merkle-pread rejected: malformed leaf-hash sidecar"; return 1
               | none => IO.eprintln "l4block-shard-merkle-pread rejected: SBM1 entry lacks chunk commitment"; return 1
@@ -36,8 +42,13 @@ private def run (directory iri : String) : IO UInt32 := do
 
 def main (args : List String) : IO UInt32 := do
   match args with
-  | [directory, iri] => try run directory iri catch e => IO.eprintln s!"l4block-shard-merkle-pread failure: {e}"; return 1
-  | _ => IO.eprintln "usage: l4block-shard-merkle-pread SHARD-DIR PREDICATE-IRI"; return 2
+  | [directory, iri] => try run directory iri none catch e => IO.eprintln s!"l4block-shard-merkle-pread failure: {e}"; return 1
+  | [directory, iri, offset, length] =>
+      match offset.toNat?, length.toNat? with
+      | some start, some count =>
+          try run directory iri (some (start, count)) catch e => IO.eprintln s!"l4block-shard-merkle-pread failure: {e}"; return 1
+      | _, _ => IO.eprintln "l4block-shard-merkle-pread offset and length must be natural numbers"; return 2
+  | _ => IO.eprintln "usage: l4block-shard-merkle-pread SHARD-DIR PREDICATE-IRI [OFFSET LENGTH]"; return 2
 
 end Harness.ShardMerklePread
 

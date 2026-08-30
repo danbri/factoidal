@@ -37,10 +37,33 @@ private def singleChunkIndex? (ref : Ref) (range : ByteRange) : Option Nat := do
   let last := (range.offset + range.length - 1) / ref.chunkBytes
   if first == last then some first else none
 
-/-- Read and admit a range wholly contained in one fixed SBM1 chunk. The
-    caller supplies the untrusted leaf sidecar; the artifact root in `ref` is
-    the commitment. Cross-chunk ranges are refused until their concatenation
-    and proof accounting gets a dedicated tested implementation. -/
+private def chunkIndices? (ref : Ref) (range : ByteRange) : Option (Nat × List Nat) := do
+  if range.length == 0 || range.offset + range.length > ref.totalBytes then none else do
+  let first := range.offset / ref.chunkBytes
+  let last := (range.offset + range.length - 1) / ref.chunkBytes
+  some (first, (List.range (last - first + 1)).map fun delta => first + delta)
+
+private def readVerifiedChunks (path : String) (ref : Ref) (leaves : List Digest) :
+    List Nat → IO (Option (List ByteArray))
+  | [] => pure (some [])
+  | index :: rest => do
+      match offset? ref index, expectedBytes? ref index, proof? leaves index with
+      | some offset, some length, some proof =>
+          match ← readRange? path { offset, length } with
+          | some chunk =>
+              if !verifyChunk ref index chunk proof then pure none else do
+                match ← readVerifiedChunks path ref leaves rest with
+                | some chunks => pure (some (chunk :: chunks))
+                | none => pure none
+          | none => pure none
+      | _, _, _ => pure none
+
+private def concatChunks (chunks : List ByteArray) : ByteArray :=
+  ByteArray.mk (chunks.flatMap (fun chunk => chunk.data.toList) |>.toArray)
+
+/-- Compatibility helper for one fixed SBM1 chunk. The generic verified-range
+    reader below now handles cross-chunk requests; this narrower form remains
+    useful to callers that intentionally require a single inclusion proof. -/
 def readVerifiedSingleChunkRange? (path : String) (ref : Ref) (leaves : List Digest)
     (range : ByteRange) : IO (Option ByteArray) := do
   if leaves.length != ref.chunkCount then return none
@@ -57,5 +80,22 @@ def readVerifiedSingleChunkRange? (path : String) (ref : Ref) (leaves : List Dig
                 pure (some (ByteArray.mk ((chunk.data.toList.drop localOffset).take range.length |>.toArray)))
           | none => pure none
       | _, _, _ => pure none
+
+/-- Read an exact contiguous range by verifying every fixed chunk it touches
+    to the same SBM1 root, then returning only the requested interior bytes. -/
+def readVerifiedRange? (path : String) (ref : Ref) (leaves : List Digest)
+    (range : ByteRange) : IO (Option ByteArray) := do
+  if leaves.length != ref.chunkCount then return none
+  match chunkIndices? ref range with
+  | none => pure none
+  | some (first, indices) =>
+      match ← readVerifiedChunks path ref leaves indices with
+      | none => pure none
+      | some chunks =>
+          let all := concatChunks chunks
+          let localOffset := range.offset - first * ref.chunkBytes
+          if localOffset + range.length <= all.size then
+            pure (some (ByteArray.mk ((all.data.toList.drop localOffset).take range.length |>.toArray)))
+          else pure none
 
 end Harness.PosixRangeIO
