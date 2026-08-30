@@ -1,5 +1,19 @@
 # Web corpus working sets and derived RDF blocks — 2026-08-30
 
+## Design provenance and attribution
+
+The architectural proposals in this note were supplied by **Dan Brickley** in
+the Factoidal working session dated 2026-08-30.  They include the Web-scale
+crawl/named-graph working-set model; modest warm composition of many prepared
+graphs; decentralized numeric IDs; reusable merged/resorted derived blocks;
+the distinction between page graphs and site/user/product/offer views;
+assertion-plus-evidence deduplication; RDFC-1.0 as a derivation boundary; and
+identity-neighbourhood-aware partitioning with publisher hints.  Codex
+recorded, organized, and elaborated the proposals in this repository.
+
+This is contemporaneous project provenance, not a legal conclusion about
+ownership, inventorship, patentability, copyright, or contractual rights.
+
 ## Architectural direction captured from design discussion
 
 The target is a Web-scale collection of immutable crawl/extraction snapshots,
