@@ -48,7 +48,7 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                 | some rows =>
                     IO.println s!"l4block-shard-query manifest={directory / "manifest.sbm0"} shards={store.blocks.length}"
                     IO.println s!"l4block-shard-query sse={q.toSse}"
-                    IO.println s!"l4block-shard-query rows={rows.length} result={toString (repr rows)}"
+                    IO.println s!"l4block-shard-query rows={rows.length} preview={toString (repr (rows.take 10))}"
                     return 0
   catch e =>
     IO.eprintln s!"l4block-shard-query read failure: {e}"

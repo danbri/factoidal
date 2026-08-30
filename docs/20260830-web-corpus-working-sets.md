@@ -172,3 +172,18 @@ two-predicate join with a filter and `ORDER BY` returned the three Radiohead
 albums via seven verified child blocks.  The eager opener is deliberately a
 correctness reference; a lazy/mmap/range reader must preserve the same
 acceptance and `readOps` behavior before replacing it.
+
+The same route was exercised on the bundled life-sciences `chromosome.ttl`
+fixture: 9,227 triples packed to one predicate-local IBK2 child plus SBM0,
+occupying 560 KiB, in approximately 25.5 seconds on the development Mac.
+The parsed `P31` `SELECT … ORDER BY` returned 9,227 rows from the manifested
+artifact.  The current packer is correctness-first and its load time is not a
+throughput claim; it establishes the next corpus-sized regression point for
+streaming and mmap/range work.
+
+The same canonical-object contract has now crossed PostgreSQL `bytea` in a
+local smoke: the manifest and every child block round-trip byte-for-byte, then
+the Lean verifier and ordinary parsed SPARQL evaluation run on the retrieved
+objects.  This demonstrates an interchangeable persistence realization, not
+yet PostgreSQL-side execution.  TiKV should implement this exact artifact and
+reader contract before any coprocessor/pushdown work is attempted.
