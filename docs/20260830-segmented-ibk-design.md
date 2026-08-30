@@ -338,18 +338,20 @@ host-policy work.
 The native materializer coalesces IBK2's framing, dictionary and directory
 into the one canonical `planningRange` before requesting it from the range
 host. It still reads the fixed prefix first to discover the planning extent,
-then reads the selected segment. This removes three separately planned
-dictionary/directory reads; a future per-artifact verified-chunk cache can
-also eliminate the temporary overlap between the discovery-prefix read and
-the first planning chunk.
+then reads the selected segment. A per-artifact verified-chunk cache now
+eliminates the temporary overlap between discovery, planning and segment
+reads: a cache miss is always a positioned read followed by the SBM1 Merkle
+check, while a cache hit reuses only bytes already admitted in that process.
 
 The warm Merkle session now reports distinct `logical-bytes`,
 `requested-range-bytes`, `fetched-chunk-bytes`, `verified-chunks` and
 `range-requests` fields, plus cache hits/misses and `integrity=sbm1-merkle-verified`.
 For the two-artifact life-sciences join, the current uncached host reports
 192,847 logical bytes, 192,889 explicitly requested bytes (the prefix is used
-to plan then appears in the planning range), and 433,947 full fixed-chunk bytes
-obtained by `pread` across eight independently verified chunks. The following
+to plan then appears in the planning range), and 192,855 full fixed-chunk bytes
+obtained by `pread` across four independently verified chunks. The latter is
+the complete size of the two selected artifacts, including their framing,
+because the fixed 64 KiB Merkle chunks span the requested portions. The following
 P31-only query is a cache hit and reports zero new logical/requested/fetched
 bytes and chunks. These numbers are measured host-boundary accounting, not a
 throughput claim and not an assertion about OS page-cache behaviour.

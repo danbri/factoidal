@@ -43,9 +43,9 @@ def scanEntryProfile (directory : System.FilePath) (entry : Entry) :
       | none => pure none
       | some leaves =>
           let prefixRange := { offset := 0, length := prefixBytes }
-          match verifiedReadFootprint? chunked prefixRange,
-              ← readVerifiedRange? path chunked leaves prefixRange with
-          | some prefixFootprint, some prefixRead =>
+          let cache ← newVerifiedChunkCache
+          match ← readVerifiedRangeCached? path chunked leaves cache prefixRange with
+          | some (prefixRead, prefixFootprint) =>
               match decodePrefix prefixRead with
               | none => pure none
               | some header =>
@@ -54,9 +54,8 @@ def scanEntryProfile (directory : System.FilePath) (entry : Entry) :
                      range rather than re-fetching its shared chunks three
                      times; the short prefix above only discovers this extent. -/
                   let planning := planningRange header
-                  match verifiedReadFootprint? chunked planning,
-                      ← readVerifiedRange? path chunked leaves planning with
-                  | some planningFootprint, some planningBytes =>
+                  match ← readVerifiedRangeCached? path chunked leaves cache planning with
+                  | some (planningBytes, planningFootprint) =>
                       let dictionaryRange := dictionaryRange header
                       let directoryRange := directoryRange header
                       let dictionary := planningBytes.extract dictionaryRange.offset
@@ -72,9 +71,8 @@ def scanEntryProfile (directory : System.FilePath) (entry : Entry) :
                           verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks
                           rangeRequests := 2 })
                       | some segmentRange =>
-                          match verifiedReadFootprint? chunked segmentRange,
-                              ← readVerifiedRange? path chunked leaves segmentRange with
-                          | some segmentFootprint, some segment =>
+                          match ← readVerifiedRangeCached? path chunked leaves cache segmentRange with
+                          | some (segment, segmentFootprint) =>
                               let prefixRead := planningBytes.extract 0 prefixBytes
                               let triples := scanPredicateRanges { p := some entry.predicate }
                                 prefixRead dictionary directory segment
@@ -87,9 +85,9 @@ def scanEntryProfile (directory : System.FilePath) (entry : Entry) :
                                   verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks + segmentFootprint.chunks
                                   rangeRequests := 3 })
                               else pure none
-                          | _, _ => pure none
-                  | _, _ => pure none
-          | _, _ => pure none
+                          | none => pure none
+                  | none => pure none
+          | none => pure none
 
 def scanEntry (directory : System.FilePath) (entry : Entry) :
     IO (Option (List Triple × Nat)) := do

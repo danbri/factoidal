@@ -59,20 +59,31 @@ def verifiedReadFootprint? (ref : Ref) (range : ByteRange) : Option VerifiedRead
          fetchedBytes := lengths.foldl (fun total length => total + length) 0
          chunks := lengths.length }
 
+/-- A chunk retained here was admitted through `verifyChunk` in this process.
+    It is a native-host cache only; its contents are never accepted directly
+    from an artifact sidecar or another process. -/
+structure VerifiedChunk where
+  index : Nat
+  bytes : ByteArray
+
+def newVerifiedChunkCache : IO (IO.Ref (List VerifiedChunk)) := IO.mkRef []
+
+private def readVerifiedChunk? (path : String) (ref : Ref) (leaves : List Digest)
+    (index : Nat) : IO (Option ByteArray) := do
+  match offset? ref index, expectedBytes? ref index, proof? leaves index with
+  | some offset, some length, some proof =>
+      match ← readRange? path { offset, length } with
+      | some chunk => if verifyChunk ref index chunk proof then pure (some chunk) else pure none
+      | none => pure none
+  | _, _, _ => pure none
+
 private def readVerifiedChunks (path : String) (ref : Ref) (leaves : List Digest) :
     List Nat → IO (Option (List ByteArray))
   | [] => pure (some [])
   | index :: rest => do
-      match offset? ref index, expectedBytes? ref index, proof? leaves index with
-      | some offset, some length, some proof =>
-          match ← readRange? path { offset, length } with
-          | some chunk =>
-              if !verifyChunk ref index chunk proof then pure none else do
-                match ← readVerifiedChunks path ref leaves rest with
-                | some chunks => pure (some (chunk :: chunks))
-                | none => pure none
-          | none => pure none
-      | _, _, _ => pure none
+      match ← readVerifiedChunk? path ref leaves index, ← readVerifiedChunks path ref leaves rest with
+      | some chunk, some chunks => pure (some (chunk :: chunks))
+      | _, _ => pure none
 
 private def concatChunks (chunks : List ByteArray) : ByteArray :=
   ByteArray.mk (chunks.flatMap (fun chunk => chunk.data.toList) |>.toArray)
@@ -112,6 +123,45 @@ def readVerifiedRange? (path : String) (ref : Ref) (leaves : List Digest)
           let localOffset := range.offset - first * ref.chunkBytes
           if localOffset + range.length <= all.size then
             pure (some (ByteArray.mk ((all.data.toList.drop localOffset).take range.length |>.toArray)))
+          else pure none
+
+private def readCachedChunks (path : String) (ref : Ref) (leaves : List Digest)
+    (cache : IO.Ref (List VerifiedChunk)) : List Nat → IO (Option (List ByteArray × Nat × Nat))
+  | [] => pure (some ([], 0, 0))
+  | index :: rest => do
+      match (← cache.get).find? (fun cached => cached.index == index) with
+      | some cached =>
+          match ← readCachedChunks path ref leaves cache rest with
+          | some (chunks, freshChunks, freshBytes) => pure (some (cached.bytes :: chunks, freshChunks, freshBytes))
+          | none => pure none
+      | none =>
+          match ← readVerifiedChunk? path ref leaves index with
+          | none => pure none
+          | some chunk =>
+              cache.modify fun chunks => { index, bytes := chunk } :: chunks
+              match ← readCachedChunks path ref leaves cache rest with
+              | some (chunks, freshChunks, freshBytes) =>
+                  pure (some (chunk :: chunks, freshChunks + 1, freshBytes + chunk.size))
+              | none => pure none
+
+/-- Cached variant of `readVerifiedRange?`. Cache misses still perform the
+    full positioned read and proof check; the returned footprint counts only
+    those newly obtained chunks, not chunks already admitted by this cache. -/
+def readVerifiedRangeCached? (path : String) (ref : Ref) (leaves : List Digest)
+    (cache : IO.Ref (List VerifiedChunk)) (range : ByteRange) :
+    IO (Option (ByteArray × VerifiedReadFootprint)) := do
+  if leaves.length != ref.chunkCount then return none
+  match chunkIndices? ref range with
+  | none => pure none
+  | some (first, indices) =>
+      match ← readCachedChunks path ref leaves cache indices with
+      | none => pure none
+      | some (chunks, freshChunks, freshBytes) =>
+          let all := concatChunks chunks
+          let localOffset := range.offset - first * ref.chunkBytes
+          if localOffset + range.length <= all.size then
+            let bytes := ByteArray.mk ((all.data.toList.drop localOffset).take range.length |>.toArray)
+            pure (some (bytes, { requestedBytes := range.length, fetchedBytes := freshBytes, chunks := freshChunks }))
           else pure none
 
 end Harness.PosixRangeIO
