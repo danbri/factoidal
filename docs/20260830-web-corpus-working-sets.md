@@ -228,3 +228,11 @@ artifact bytes; a later variable-predicate query safely expands to all seven
 predicate artifacts (two hits, five new admissions). This is an observable
 modest warm state, not an assertion that mmap, PostgreSQL workers, TiKV, or
 per-segment positioned reads are complete.
+
+The same admission boundary now verifies that an SBM0 entry's declared row
+count agrees both with the complete decoded IBK2 block and with the entry's
+declared predicate segment. Only then may `readOps.estimate` use that count as
+the exact cost of a predicate-only pattern; subject/object-constrained and
+unbound patterns still take the ordinary scan path. This removes repeated
+whole-block scans during the common first-stage join ordering decision without
+turning unverified manifest metadata into planner truth.

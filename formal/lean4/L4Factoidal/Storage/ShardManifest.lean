@@ -105,7 +105,16 @@ def verifyEntry (entry : Entry) (bytes : ByteArray) : Bool :=
     without weakening the acceptance rule. -/
 def openVerified? (reader : Reader) (entry : Entry) : Option IndexedBlockWireV2.OpenBlock := do
   let bytes ← reader entry.artifact.key
-  if verifyEntry entry bytes then IndexedBlockWireV2.open? bytes else none
+  if verifyEntry entry bytes then do
+    let block ← IndexedBlockWireV2.open? bytes
+    /- `rows` is executable planning metadata only after it agrees with both
+       the decoded row count and the declared predicate-local segment. This
+       prevents a well-formed but incorrectly labelled manifest from feeding
+       an unsound "exact" cardinality to the SPARQL join planner. -/
+    if block.decoded.rows.size == entry.rows &&
+        (IndexedBlockWireV2.scanBoundRange { p := some entry.predicate } block).length == entry.rows
+    then some block else none
+  else none
 
 /-- The first executable Shardborough read: choose exactly the committed
     predicate-local artifact, verify it, then run the established IBK2
@@ -168,11 +177,20 @@ def scanBound (bound : PatternBound) (store : OpenStore) : List Triple :=
       | some (_, block) => IndexedBlockWireV2.scanBoundRange bound block
   | none => store.blocks.flatMap fun (_, block) => IndexedBlockWireV2.scanBoundRange bound block
 
+/-- A predicate-local SBM0 entry has an exact admitted row count for an
+    otherwise unbound triple pattern. More selective bounds still scan, so the
+    planner never mistakes an upper bound for an exact estimate. -/
+def estimateBound (bound : PatternBound) (store : OpenStore) : Nat :=
+  match bound.s, bound.p, bound.o with
+  | none, some predicate, none =>
+      ((store.blocks.find? fun pair => pair.1.predicate == predicate).map (fun pair => pair.1.rows)).getD 0
+  | _, _, _ => (scanBound bound store).length
+
 /-- Ordinary parsed SPARQL reaches the manifested physical collection through
     precisely the same `BackendReadOps` interface as Cottas, HDT and IBK2. -/
 def readOps (store : OpenStore) : BackendReadOps :=
   { search := fun bound => scanBound bound store
-  , estimate := fun bound => (scanBound bound store).length
+  , estimate := fun bound => estimateBound bound store
   , predicatePresent := fun predicate => !(scanBound { p := some predicate } store).isEmpty }
 
 /-- Conservative syntactic admission test for the selective manifest opener.
@@ -298,6 +316,8 @@ private def sampleReader (key : ArtifactKey) : Option ByteArray :=
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
 #guard (decode? (ByteArray.mk #[83, 66, 77, 48, 1])).isNone
 #guard (scanPredicate? sampleReader sampleManifest samplePredicate).map List.length == some 1
+#guard (openStore? sampleReader sampleManifest).map
+  (fun store => estimateBound { p := some samplePredicate } store) == some 1
 #guard (scanPredicate? (fun _ => some ByteArray.empty) sampleManifest samplePredicate).isNone
 #guard (openStore? sampleReader sampleManifest).map (fun store =>
   (readOps store).search { p := some samplePredicate } |>.length) == some 1
