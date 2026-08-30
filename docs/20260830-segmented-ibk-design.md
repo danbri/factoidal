@@ -324,3 +324,13 @@ manifest entry, materialises the admitted triples, and invokes the existing
 `predicate-selective-merkle(n)`. Queries outside that syntactic fragment are
 explicitly refused by this host rather than silently falling back to unchecked
 range reads; `l4block-shard-query` remains the full-manifest reference path.
+
+`l4block-shard-merkle-session` makes that same admitted material useful for a
+bounded sequence of newline-delimited SELECTs. The first reference to an
+artifact verifies and decodes its required ranges; later queries reuse only
+the immutable in-process triples already admitted under the same manifest.
+The session prints separate cache-hit/cache-miss and newly-verified-byte
+counts. This is deliberately a process-scoped warm cache, not a claim that
+the on-disk artifact remains unchanged after admission: manifest generation,
+snapshot replacement and cross-process cache invalidation remain explicit
+host-policy work.
