@@ -70,3 +70,42 @@ deployment manifest; a mismatch rejects the artifact before SPARQL evaluation.
 This executable path was checked on the 27,256-byte active-site artifact using
 `openssl dgst -sha256 -binary` to supply the digest file; the verified Lean
 query returned `COUNT(*) = 132`.
+
+### Concrete implementation status
+
+The first profile is implemented, rather than merely planned.  The canonical
+`IBK1` bytes are framed with CRC32C, and `Storage.BlockArtifact` defines their
+SHA-256 content identity.  `IndexedBlockWireV1.decodeVerified` refuses bytes
+whose digest does not equal the caller's trusted 32-byte digest; the native
+file-query executable exposes that gate through `--digest-file` before it
+calls the existing indexed SPARQL path.
+
+The authoritative trust source is intentionally outside the block decoder.
+Initially it can be an operator-pinned digest file.  The compatible next
+format is a signed snapshot manifest containing at least the digest, `IBK`
+format/version, dataset and snapshot identifiers.  For a snapshot containing
+many blocks, the manifest may instead commit to an ordered Merkle root, with
+each read supplying its block bytes, leaf metadata and inclusion path.  A
+Lean-side verifier would recompute the leaf and root before calling
+`decodeVerified`; this leaves the block codec and query kernel unchanged.
+
+This yields a clean assurance boundary:
+
+```text
+trusted digest / signed manifest / Merkle root + proof
+                         |
+                         v
+                 SHA-256 block-byte check
+                         |
+                         v
+                  CRC + IBK decoder
+                         |
+                         v
+               indexed scan and SPARQL evaluation
+```
+
+Neither a digest nor a Merkle tree proves that a host was never tampered with.
+They prove a narrower and useful conditional claim: the bytes accepted by the
+Lean decoder are the bytes committed by the already-trusted manifest/root.
+Key custody, signature validation, manifest distribution, rollback protection
+and a database's access-control/audit policy remain deployment obligations.
