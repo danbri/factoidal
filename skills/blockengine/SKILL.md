@@ -207,6 +207,13 @@ rootless API immediately stopped/refused connections. Record host-runtime
 failures in a dated worknote; they do not validate or invalidate the Lean
 format.
 
+`tools/blockengine-postgres-smoke.sh` is the landed local PostgreSQL 16 smoke.
+It proves `IBK1 -> bytea -> exact retrieved bytes -> Lean decoder -> Lean
+SPARQL`, currently on the active-site fixture. PostgreSQL is opaque persistence
+only; production code must use a parameterized binary client rather than the
+local smoke's `pg_read_binary_file` convenience. See
+`docs/20260830-blockengine-postgres-smoke.md`.
+
 Add plan DAGs and execution records after the tree plan. Add compression,
 Roaring, PushIR, all permutations, and TiKV after this vertical unless a newer
 dated decision changes the order.

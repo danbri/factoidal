@@ -18,9 +18,24 @@ docker image inspect postgres:16-alpine
 
 No PostgreSQL smoke was therefore claimed or added.
 
+## PostgreSQL `bytea` smoke (landed)
+
+The host fallback installed Homebrew PostgreSQL 16.15 and ran
+`tools/blockengine-postgres-smoke.sh` against its local cluster.  The smoke
+packed the 486-triple `active_site.ttl` fixture to a 27,256-byte `IBK1` file,
+inserted those opaque bytes into a PostgreSQL `bytea` column, retrieved a
+base64 representation, decoded it back to bytes, and checked exact byte
+equality.  It then executed `l4block-id-file-query` on the retrieved file.
+
+The parsed predicate-and-object-bound SELECT returned 132 rows.  PostgreSQL
+therefore acted only as byte persistence; the decoded `IndexedBlock.readOps`
+and SPARQL evaluation remained the Lean executable path.  This is a local
+development smoke, not yet a parameterized production client or a PostgreSQL
+extension.
+
 ## Podman follow-up
 
-The development machine already has Podman 5.8.2 and an Apple Hypervisor
+The development machine also has Podman 5.8.2 and an Apple Hypervisor
 (`applehv`) machine configured.  On 2026-08-30, `podman machine start` reached
 the VM-ready stage, but the forwarded rootless API on port 53728 immediately
 refused connections and a subsequent inspection reported the machine as
