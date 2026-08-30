@@ -171,6 +171,13 @@ that file, construct `IndexedBlock`, and run a parsed SELECT. This is a
 transition-only file seam. See `docs/20260830-blockfile-e2e.md`; replace BLK0
 with the canonical ID-row codec before PostgreSQL, TiKV, or mmap-backed storage.
 
+The direct-ID prototype is `IndexedBlockWireV1`, with `l4block-id-pack` and
+`l4block-id-file-query`. It stores dictionary terms once and fixed-width ID
+triples, then opens those rows directly into `IndexedBlock`. Its active limits
+are input-order dictionary IDs, one whole block, executable round-trip guards,
+and the inherited restricted term codec. See
+`docs/20260830-indexedblockwirev1.md` before extending it.
+
 The canonical-byte theorem is the persistence gate. PostgreSQL `bytea` and
 TiKV may persist the same bytes only after it. A backend read must decode
 those bytes before the proved scan runs. This is also why a separate Rust

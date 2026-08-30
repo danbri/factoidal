@@ -153,6 +153,10 @@ extern_lib libl4hacl pkg := do
 @[default_target] lean_exe «l4block-pack» where root := `Harness.BlockPack
 @[default_target] lean_exe «l4block-file-query» where root := `Harness.BlockFileQuery
 
+-- Direct shared-dictionary/ID-row persistence and query vertical.
+@[default_target] lean_exe «l4block-id-pack» where root := `Harness.IndexedBlockPack
+@[default_target] lean_exe «l4block-id-file-query» where root := `Harness.IndexedBlockFileQuery
+
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean
 -- Turtle parser and scores the Lean engine in the same score-line

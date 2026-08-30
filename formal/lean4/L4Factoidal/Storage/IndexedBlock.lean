@@ -44,6 +44,10 @@ private structure BuildState where
   rows : Array IdTriple := #[]
   byPredicate : Std.HashMap TermId (List IdTriple) := ∅
 
+private def addPartition (partitions : Std.HashMap TermId (List IdTriple))
+    (row : IdTriple) : Std.HashMap TermId (List IdTriple) :=
+  partitions.insert row.p (row :: partitions.getD row.p [])
+
 /-- Add a structurally distinct RDF term to the build dictionary in amortised
     constant time. This preserves original terms exactly; matching semantics
     are still applied by `boundMatches` after decoding. -/
@@ -61,13 +65,35 @@ private def internTriple (state : BuildState) (triple : Triple) : BuildState :=
   let row := { s := s, p := p, o := o }
   { state3 with
     rows := state3.rows.push row
-    byPredicate := state3.byPredicate.insert p (row :: state3.byPredicate.getD p []) }
+    byPredicate := addPartition state3.byPredicate row }
 
 /-- Build the shared dictionary and source-order predicate partitions. -/
 def fromGraph (graph : Graph) : Block :=
   let state := graph.foldl internTriple {}
   { dict := state.dict, idByTerm := state.idByTerm, rows := state.rows,
     byPredicate := state.byPredicate }
+
+private def buildIdMap : List Term → TermId → Std.HashMap Term TermId →
+    Option (Std.HashMap Term TermId)
+  | [], _, ids => some ids
+  | term :: rest, next, ids =>
+      if ids[term]?.isSome then none
+      else buildIdMap rest (next + 1) (ids.insert term next)
+
+private def rowWellFormed (dict : Array Term) (row : IdTriple) : Bool :=
+  match dict[row.s]?, dict[row.p]?, dict[row.o]? with
+  | some s, some (.iri _), some _ => s.toSubject?.isSome
+  | _, _, _ => false
+
+/-- Reconstruct a block from decoded dictionary and ID rows. The constructor
+    refuses duplicate dictionary keys and references that cannot decode to RDF
+    triple positions. -/
+def fromParts? (dict : Array Term) (rows : Array IdTriple) : Option Block := do
+  let ids ← buildIdMap dict.toList 0 ∅
+  if rows.toList.all (rowWellFormed dict) then
+    some { dict := dict, idByTerm := ids, rows := rows,
+           byPredicate := rows.foldl addPartition ∅ }
+  else none
 
 /-- Decode one ID triple. Invalid references are rejected rather than mapped to
     a fabricated term. -/

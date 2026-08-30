@@ -14,7 +14,7 @@ and result oracle.
 |---|---|---|---|
 | Micro | `BlockMvp` fixture | proofs and byte-corruption guards | runnable |
 | Small real RDF | `examples/wikidata/subsets/lifesci-kgx/data/active_site.ttl` | Lean Turtle -> indexed block -> parsed SPARQL SELECT/COUNT | runnable: 486 triples, 132 `wdt:P31` rows |
-| Medium raw KGX | `disease.ttl`, `chromosome.ttl`, `sequence_variant.ttl` | realistic Wikidata-shaped access and joins | `chromosome.ttl` runs through the indexed path: 9,227 triples and a `wdt:P31` COUNT in about 25 seconds including parse and build; `disease.ttl` remains a later load-path target |
+| Medium raw KGX | `disease.ttl`, `chromosome.ttl`, `sequence_variant.ttl` | realistic Wikidata-shaped access and joins | `chromosome.ttl`: 9,227 triples; one-time Turtle-to-IBK1 pack about 25 seconds, then a separate persisted-file `wdt:P31` COUNT in 0.04 seconds; `disease.ttl` remains a later load-path target |
 | Medium Schema.org/Bioschemas | materialize `kgx/wikidata/bioschemas/{disease,chromosome,sequence_variant}.sparql` | vocabulary-mapped benchmark for the block engine | selected; materialization not yet run in this workstream |
 
 The checked KGX Turtle files are raw Wikidata-property materializations. Their
