@@ -58,6 +58,22 @@ def ttlCount (s : String) (base : Option String := none) : Nat :=
   | .error _ => 0
   | .ok g    => g.length
 
+/-- The fold entry point is allowed to choose its accumulator representation,
+but must retain the ordinary parser's exact source graph order. -/
+def ttlFold (s : String) (base : Option String := none) : Except ParseError Graph := do
+  let reversed ← parseTurtleFold
+    (fun accRev triples => triples.reverse ++ accRev) [] s base
+  pure reversed.reverse
+
+/-- The fold parser and ordinary parser produce the same successful graph.
+This deliberately avoids comparing parser-error payloads, which are diagnostics
+rather than part of RDF graph semantics. -/
+def ttlFoldMatches (s : String) (base : Option String := none) : Bool :=
+  match ttlFold s base, parseTurtle s base with
+  | .ok folded, .ok ordinary => folded == ordinary
+  | .error _, .error _ => true
+  | _, _ => false
+
 /-- Parse Turtle, serialise to N-Triples, parse THAT, and check the two
 graphs are isomorphic — the round-trip the W3C eval tests perform. -/
 def ttlRoundTrips (s : String) (base : Option String := none) : Bool :=
@@ -78,6 +94,7 @@ def exBase : String := "http://example.org/dir/doc.ttl"
 
 #guard ttlToNT "@prefix p: <http://a/> . p:s p:p p:o ." ==
   "<http://a/s> <http://a/p> <http://a/o> .\n"
+#guard ttlFoldMatches "@prefix p: <http://a/> . p:s p:p p:o .\n@prefix p: <http://b/> . p:s p:p p:o ."
 #guard ttlToNT "PREFIX p: <http://a/>\np:s p:p p:o ." ==
   "<http://a/s> <http://a/p> <http://a/o> .\n"
 -- `PREFIX` is case-insensitive; `@prefix` is not.
@@ -142,6 +159,7 @@ def exBase : String := "http://example.org/dir/doc.ttl"
 #guard ttlToNT "_:a <http://a/p> _:b ." == "_:a <http://a/p> _:b .\n"
 -- ANON `[]` in subject and object position.
 #guard ttlCount "[] <http://a/p> [] ." == 1
+#guard ttlFoldMatches "[] <http://a/p> [] ."
 -- `[]` alone is not a statement; `[ … ]` alone is ([6] triples).
 #guard ttlRejects "[] ."
 #guard ttlCount "[ <http://a/p> <http://a/o> ] ." == 1
