@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 — Lean block-worker preview
+
+- The bundled Lean-derived WASM artifact exports
+  `scanIBK2Predicate(ibk2Hex, predicateIri)` through `factoidal/l4`.
+  It validates a canonical IBK2 block and executes its selective predicate
+  scan, returning N-Triples plus a row count.  This is a narrow physical
+  helper for the Shardborough work, not full SPARQL execution inside a storage
+  backend and not a high-throughput buffer ABI (the current hex transport is
+  intentionally diagnostic).
+- The regenerated Lean artifact is synchronized across the package's
+  `l4-assets/` and the Hub build, and is exercised against the music IBK2
+  fixture by `tools/wasm-ibk2-smoke.mjs` in the repository.
+
 ## 0.2.0 — both engines in one package, with a backend selector
 
 - The Lean 4 engine (`L4Factoidal`, wasm) now ships INSIDE

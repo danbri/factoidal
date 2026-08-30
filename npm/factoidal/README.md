@@ -1,6 +1,6 @@
 # @factoidal/core
 
-> First published cut (0.1.0). The API surface is early and may
+> Release 0.3.0. The API surface is early and may
 > change before 1.0. This package was previously developed in-tree
 > under the placeholder names `factoidal` and `@danbri/foafos`; it was
 > never published under those names. See [CHANGELOG.md](CHANGELOG.md).
@@ -311,6 +311,13 @@ const saturated = await rif(data, rifRulesXml); // RIF Core forward chaining
 Two engines now ship in one package. `factoidal` and `factoidal/wasm`
 are the F\*-extracted engine, unchanged. The subpaths below are the
 Lean 4 engine (`L4Factoidal`, compiled to wasm).
+
+`factoidal/l4` also exposes a deliberately narrow physical helper:
+`scanIBK2Predicate(ibk2Hex, predicateIri)`. It validates one canonical IBK2
+RDF block and selectively scans its named predicate, returning N-Triples and a
+row count. The hexadecimal argument is a portable diagnostic ABI, not the
+intended high-throughput buffer interface; it exists so a host can exercise
+the same Lean-defined physical scan used by the emerging Shardborough store.
 
 ```js
 const l4 = require('factoidal/l4-core');       // Lean engine, same API shape

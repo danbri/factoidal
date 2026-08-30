@@ -31,7 +31,7 @@
 // (see skills/lean4-wasm-export, "the naming trap").
 //
 // API surface mirrors docs/web/hub/assets/l4/l4factoidal.js (phase-1
-// ABI: version + bgpQuery). New exports appear here when they are
+// ABI: version + bgpQuery + narrow block scans). New exports appear here when they are
 // added to formal/lean4/Wasm/Exports.lean and the wasm is rebuilt.
 
 'use strict';
@@ -87,4 +87,11 @@ module.exports = {
    * see docs/web/hub/36-lean-in-the-browser.md for worked examples.
    */
   bgpQuery: async (triples, bgp) => (await loadL4()).bgpQuery(triples, bgp),
+  /**
+   * Validate a canonical IBK2 artifact and selectively scan one predicate.
+   * `ibk2Hex` is a diagnostic transport; high-throughput users should use a
+   * future bounded-buffer worker ABI rather than converting block bytes to hex.
+   */
+  scanIBK2Predicate: async (ibk2Hex, predicateIri) =>
+    (await loadL4()).call('scanIBK2Predicate', [ibk2Hex, predicateIri]),
 };

@@ -24,6 +24,12 @@ export interface L4ResultsDoc {
   results: { bindings: Array<Record<string, L4Term>> };
 }
 
+/** Result of the narrow canonical-block predicate scan. */
+export interface L4IBK2PredicateScan {
+  rows: number;
+  ntriples: string;
+}
+
 export interface L4Engine {
   version(): string;
   bgpQuery(triples: L4Triple[], bgp: L4Triple[]): Promise<L4ResultsDoc> | L4ResultsDoc;
@@ -34,3 +40,4 @@ export function available(): boolean;
 export function loadL4(): Promise<L4Engine>;
 export function version(): Promise<string>;
 export function bgpQuery(triples: L4Triple[], bgp: L4Triple[]): Promise<L4ResultsDoc>;
+export function scanIBK2Predicate(ibk2Hex: string, predicateIri: string): Promise<L4IBK2PredicateScan>;
