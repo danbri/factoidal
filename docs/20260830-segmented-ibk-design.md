@@ -2,6 +2,34 @@
 
 Date: 2026-08-30
 
+## 2026-08-30 executable vertical
+
+The first persisted IBK2 vertical is now executable in Lean:
+
+```text
+Turtle → l4block-id-v2-pack → .ibk2 → open? → readOpsRange
+       → existing DatasetBackend / SPARQL planner → SELECT results
+```
+
+`open?` performs one complete structural/CRC validation and retains the
+canonical bytes. For a predicate-bound triple pattern, `readOpsRange` calls
+`scanBoundRange`, which obtains the fixed prefix, dictionary range, directory
+range and exactly one predicate segment through the V2 range contract. The
+backend is the existing `BackendReadOps` route, not a second SPARQL evaluator.
+
+The corpus command below succeeds against the 9,227-triple chromosome graph:
+
+```sh
+lake exe l4block-id-v2-pack -- ../../docs/fstar-extracted/lifesci/chromosome.ttl /tmp/chromosome.ibk2
+lake exe l4block-id-v2-file-query -- /tmp/chromosome.ibk2 --query 'SELECT ?s WHERE { ?s <http://www.wikidata.org/prop/direct/P31> <http://www.wikidata.org/entity/Q37748> } LIMIT 5'
+```
+
+This is intentionally not yet a claim of OS-level selective I/O: the Lean
+host currently uses `IO.FS.readBinFile` at open. The byte-range contract is
+the established seam for a mmap, PostgreSQL `bytea` slice, TiKV value-range,
+or WASM/OPFS provider; the next increment must make that provider physically
+read only the planned ranges and report its measured byte count.
+
 ## Problem
 
 `IBK1` stores all ID rows in one source-order sequence.  Its decoded

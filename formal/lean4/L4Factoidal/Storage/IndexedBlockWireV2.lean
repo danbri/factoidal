@@ -20,6 +20,7 @@ namespace L4Factoidal.Storage.IndexedBlockWireV2
 
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
+open L4Factoidal.SPARQL.StoreBackend
 open L4Factoidal.Storage
 open L4Factoidal.Storage.IndexedBlock
 open L4Factoidal.Storage.IndexedBlockWireV1
@@ -44,6 +45,22 @@ structure Prefix where
   deriving Repr, DecidableEq, Inhabited
 
 def prefixBytes : Nat := 4 + 1 + 16
+
+/-- A byte range in the canonical IBK2 artifact.  Offsets are absolute from
+    byte zero, so this is also the narrow storage-backend contract. -/
+structure ByteRange where
+  offset : Nat
+  length : Nat
+  deriving Repr, DecidableEq, Inhabited
+
+def dictionaryRange (header : Prefix) : ByteRange :=
+  { offset := prefixBytes, length := header.dictBytes }
+
+def directoryRange (header : Prefix) : ByteRange :=
+  { offset := prefixBytes + header.dictBytes, length := header.segmentCount * 12 }
+
+def segmentAreaOffset (header : Prefix) : Nat :=
+  prefixBytes + header.dictBytes + header.segmentCount * 12
 
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -128,6 +145,12 @@ private def distinctPredicates : List DirectoryEntry → Bool
   | [] => true
   | entry :: rest => !((rest.map DirectoryEntry.predicate).contains entry.predicate) && distinctPredicates rest
 
+private def directoryContiguous : List DirectoryEntry → Nat → Bool
+  | [], _ => true
+  | entry :: rest, expected =>
+      entry.length > 0 && entry.length % 16 == 0 && entry.offset == expected &&
+        directoryContiguous rest (entry.offset + entry.length)
+
 /-- Directory entries are deliberately required to be an exact partition of
     the segment area in on-disk order.  This rejects holes, overlaps, trailing
     bytes and non-row-aligned ranges before a selected segment is decoded. -/
@@ -137,6 +160,17 @@ private def directoryCovers (bytes : List UInt8) : List DirectoryEntry → Nat �
       entry.length > 0 && entry.length % 16 == 0 && entry.offset == expected &&
         entry.offset + entry.length <= bytes.length &&
         directoryCovers bytes rest (entry.offset + entry.length)
+
+private def decodeDictionaryAndDirectory? (header : Prefix) (dictionaryBytes directoryBytes : ByteArray) :
+    Option (Array Term × List DirectoryEntry) := do
+  if dictionaryBytes.size != header.dictBytes || directoryBytes.size != header.segmentCount * 12 then none
+  else do
+    let (terms, dictRest) ← decodeTerms header.dictCount (listOfByteArray dictionaryBytes)
+    if !dictRest.isEmpty then none
+    else do
+      let (directory, directoryRest) ← decodeDirectory header.segmentCount (listOfByteArray directoryBytes)
+      if !directoryRest.isEmpty || !distinctPredicates directory || !directoryContiguous directory 0 then none
+      else some (terms.toArray, directory)
 
 private def decodeSegmentRows (predicate : TermId) : Nat → List UInt8 → Option (List PositionedIdTriple)
   | 0, _ => some []
@@ -203,6 +237,44 @@ def decode (bytes : ByteArray) : Option Block := do
 private def idForPredicate? (dict : Array Term) (predicate : WfIri) : Option TermId :=
   (dict.toList.zipIdx.find? fun (term, _) => term == .iri predicate).map (fun (_, id) => id)
 
+/-- Plan the one segment required by a predicate-bound triple pattern using
+    only the fixed header, dictionary and directory ranges.  It intentionally
+    does not read the segment itself. -/
+def predicateRange? (header : Prefix) (dictionaryBytes directoryBytes : ByteArray)
+    (predicate : WfIri) : Option ByteRange := do
+  let (dict, directory) ← decodeDictionaryAndDirectory? header dictionaryBytes directoryBytes
+  let predicateId ← idForPredicate? dict predicate
+  let entry ← directory.find? fun candidate => candidate.predicate == predicateId
+  some { offset := segmentAreaOffset header + entry.offset, length := entry.length }
+
+/-- Execute a predicate-bound scan from exactly four independently obtained
+    IBK2 ranges: fixed header, dictionary, directory and selected segment.
+    Integrity of those ranges is supplied by the artifact/manifest layer; this
+    function validates their structural relation before decoding RDF values. -/
+def scanPredicateRanges (bound : PatternBound) (headerBytes dictionaryBytes directoryBytes segmentBytes : ByteArray) :
+    List Triple :=
+  match bound.p with
+  | none => []
+  | some predicate =>
+      match decodePrefix headerBytes with
+      | none => []
+      | some header =>
+          match decodeDictionaryAndDirectory? header dictionaryBytes directoryBytes,
+              predicateRange? header dictionaryBytes directoryBytes predicate with
+          | some (dict, directory), some range =>
+              if segmentBytes.size != range.length then []
+              else
+                match idForPredicate? dict predicate,
+                    directory.find? (fun entry => segmentAreaOffset header + entry.offset == range.offset) with
+                | some predicateId, some entry =>
+                    let localEntry := { predicate := predicateId, offset := 0, length := entry.length }
+                    match decodeSegment (listOfByteArray segmentBytes) localEntry with
+                    | some rows =>
+                        (rows.filterMap (fun positioned => decodeTriple? dict positioned.row)).filter (boundMatches bound)
+                    | none => []
+                | _, _ => []
+          | _, _ => []
+
 private def decodeForPredicate? (payload : List UInt8) (predicate : WfIri) : Option (Array Term × List PositionedIdTriple) := do
   let dictCount ← readU32LE payload 0
   let _rowCount ← readU32LE payload 4
@@ -246,5 +318,50 @@ def scanPredicateDecoded (bound : PatternBound) (bytes : ByteArray) : List Tripl
                   | none => []
             | none => []
       | _, _ => []
+
+private def sliceBytes (bytes : ByteArray) (range : ByteRange) : ByteArray :=
+  ByteArray.mk ((bytes.data.toList.drop range.offset).take range.length |>.toArray)
+
+/-- An IBK2 artifact that has passed the whole-artifact decoder once at open
+    time. Subsequent predicate-bound scans use the fixed header/dictionary/
+    directory/segment range layout instead of rebuilding a predicate index. -/
+structure OpenBlock where
+  bytes : ByteArray
+  decoded : Block
+  header : Prefix
+
+def open? (bytes : ByteArray) : Option OpenBlock := do
+  let decoded ← decode bytes
+  let header ← decodePrefix (sliceBytes bytes { offset := 0, length := prefixBytes })
+  some { bytes := bytes, decoded := decoded, header := header }
+
+/-- The range-layout scan used after `open?` establishes whole-artifact
+    integrity. An unbound predicate necessarily falls back to the decoded
+    block; a bound predicate obtains exactly its dictionary, directory, and
+    one segment from the canonical layout. -/
+def scanBoundRange (bound : PatternBound) (opened : OpenBlock) : List Triple :=
+  match bound.p with
+  | none => IndexedBlock.scanBound bound opened.decoded
+  | some predicate =>
+      let dictionary := dictionaryRange opened.header
+      let directory := directoryRange opened.header
+      match predicateRange? opened.header (sliceBytes opened.bytes dictionary)
+          (sliceBytes opened.bytes directory) predicate with
+      | none => []
+      | some segment =>
+          scanPredicateRanges bound
+            (sliceBytes opened.bytes { offset := 0, length := prefixBytes })
+            (sliceBytes opened.bytes dictionary)
+            (sliceBytes opened.bytes directory)
+            (sliceBytes opened.bytes segment)
+
+/-- The existing SPARQL backend seam for a verified/opened IBK2 artifact.
+    This is intentionally the same `BackendReadOps` used by COTTAS/HDT and
+    indexed blocks, so algebra and planning do not gain a second execution
+    route for the new physical format. -/
+def readOpsRange (opened : OpenBlock) : BackendReadOps :=
+  { search := fun bound => scanBoundRange bound opened
+  , estimate := fun bound => (scanBoundRange bound opened).length
+  , predicatePresent := fun predicate => !(scanBoundRange { p := some predicate } opened).isEmpty }
 
 end L4Factoidal.Storage.IndexedBlockWireV2

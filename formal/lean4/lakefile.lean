@@ -159,6 +159,8 @@ extern_lib libl4hacl pkg := do
 @[default_target] lean_exe «l4block-id-diff» where root := `Harness.IndexedBlockDiff
 @[default_target] lean_exe «l4block-id-v2-diff» where root := `Harness.IndexedBlockV2Diff
 @[default_target] lean_exe «l4block-id-v2-segment» where root := `Harness.IndexedBlockV2Segment
+@[default_target] lean_exe «l4block-id-v2-pack» where root := `Harness.IndexedBlockV2Pack
+@[default_target] lean_exe «l4block-id-v2-file-query» where root := `Harness.IndexedBlockV2FileQuery
 
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean
