@@ -276,3 +276,15 @@ only if their inclusion proof reaches the declared root. Guards cover valid
 first/final chunks, substituted content, out-of-range indices and an
 inconsistent chunk count. This is the direct interface an SBM1 entry should
 embed; it is still deliberately separate from the stable SBM0 wire format.
+
+### SBM1 wire commitment (landed)
+
+`ShardManifest` now accepts both `SBM0` and `SBM1`. SBM0 remains byte-for-byte
+the existing layout and permits no range-integrity claim. SBM1 preserves every
+SBM0 artifact field and appends, per artifact, a fixed chunk size, chunk count
+and 32-byte Merkle root. Version-one validation requires that this commitment
+has the artifact's declared total byte length and a valid derived count;
+unknown versions remain rejected. Both version-zero and version-one
+encode/decode round trips are guarded in Lean. Current pack/query tools still
+emit and consume SBM0, so the operational behaviour is unchanged while the
+wire contract is ready for a chunk-aware packer and host.

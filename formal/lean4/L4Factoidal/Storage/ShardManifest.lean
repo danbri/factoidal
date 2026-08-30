@@ -2,6 +2,7 @@
    decodable block artifacts.  This is deliberately separate from host I/O. -/
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.BlockArtifact
+import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.SPARQL.Query
 
@@ -13,7 +14,8 @@ open L4Factoidal.SPARQL.StoreBackend
 
 /-- `'SBM0'` in little-endian form: Shardborough Manifest, layout zero. -/
 def magic : UInt32 := 0x304D4253
-def wireVersion : UInt8 := 0
+def wireVersion0 : UInt8 := 0
+def wireVersion1 : UInt8 := 1
 
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -47,6 +49,9 @@ structure ArtifactRef where
   key : ArtifactKey
   bytes : Nat
   sha256 : ByteArray
+  /-- Present and mandatory for SBM1. SBM0 deliberately has no range-proof
+      claim, so this remains absent in its byte-compatible layout. -/
+  chunked : Option ChunkedArtifact.Ref := none
   deriving DecidableEq
 
 /-- The first Shardborough layout names one predicate-local IBK2 block.
@@ -78,10 +83,17 @@ def contiguousOrdinals : List Entry → Nat → Bool
   | entry :: rest, expected => entry.ordinal == expected && contiguousOrdinals rest (expected + 1)
 
 /-- Structural acceptance before any host artifact is opened. -/
+private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
+  artifact.bytes > 0 && artifact.sha256.size == 32 &&
+    match version, artifact.chunked with
+    | 0, none => true
+    | 1, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
+    | _, _ => false
+
 def valid (manifest : Manifest) : Bool :=
-  manifest.version == 0 && uniquePredicates manifest.entries &&
+  (manifest.version == 0 || manifest.version == 1) && uniquePredicates manifest.entries &&
     contiguousOrdinals manifest.entries 0 &&
-    manifest.entries.all fun entry => entry.artifact.bytes > 0 && entry.rows > 0 && entry.artifact.sha256.size == 32
+    manifest.entries.all fun entry => entry.rows > 0 && artifactValidFor manifest.version entry.artifact
 
 /-- Predicate selection is total and deterministic; a missing key means no
     candidate artifact, never a fallback that could hide an index error. -/
@@ -228,70 +240,89 @@ def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
     being truncated into an ambiguous byte stream. -/
 private def fitsU32 (n : Nat) : Bool := n < 4294967296
 
-private def encodableEntry (entry : Entry) : Bool :=
+private def encodableEntry (version : Nat) (entry : Entry) : Bool :=
   fitsU32 entry.predicate.val.toUTF8.size && fitsU32 entry.artifact.key.value.toUTF8.size &&
     fitsU32 entry.artifact.bytes && fitsU32 entry.rows && fitsU32 entry.ordinal &&
-    entry.artifact.sha256.size == 32
+    entry.artifact.sha256.size == 32 &&
+    match version, entry.artifact.chunked with
+    | 0, none => true
+    | 1, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
+    | _, _ => false
 
 private def encodable (manifest : Manifest) : Bool :=
   fitsU32 manifest.sourceIdentity.size && fitsU32 manifest.termRegistryVersion.toUTF8.size &&
     fitsU32 manifest.layout.toUTF8.size && fitsU32 manifest.entries.length &&
-    manifest.entries.all encodableEntry
+    manifest.entries.all (encodableEntry manifest.version)
 
-private def encodeEntry (entry : Entry) : List UInt8 :=
-  encodeString entry.predicate.val ++ encodeString entry.artifact.key.value ++
+private def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
+  let common := encodeString entry.predicate.val ++ encodeString entry.artifact.key.value ++
     writeU32LE (UInt32.ofNat entry.artifact.bytes) ++ entry.artifact.sha256.toList ++
     writeU32LE (UInt32.ofNat entry.rows) ++ writeU32LE (UInt32.ofNat entry.ordinal)
+  match version, entry.artifact.chunked with
+  | 0, none => common
+  | 1, some chunked => common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
+      writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
+  | _, _ => []
 
-/-- Canonical SBM0 bytes: fixed magic/version, source identity, two
-    length-prefixed UTF-8 labels, then predicate-ordered local block entries.
-    There is intentionally no host path semantics in this representation. -/
+/-- Canonical SBM0/SBM1 bytes. SBM1 retains every SBM0 field and appends a
+    fixed chunk-policy/root commitment to each artifact entry. -/
 def encode? (manifest : Manifest) : Option ByteArray :=
   if valid manifest && encodable manifest then
     some <| byteArrayOfList <|
-      writeU32LE magic ++ [wireVersion] ++
+      writeU32LE magic ++ [UInt8.ofNat manifest.version] ++
       writeU32LE (UInt32.ofNat manifest.sourceIdentity.size) ++ manifest.sourceIdentity.toList ++
       encodeString manifest.termRegistryVersion ++ encodeString manifest.layout ++
-      writeU32LE (UInt32.ofNat manifest.entries.length) ++ manifest.entries.flatMap encodeEntry
+      writeU32LE (UInt32.ofNat manifest.entries.length) ++ manifest.entries.flatMap (encodeEntry manifest.version)
   else none
 
-private def decodeEntry (bytes : List UInt8) : Option (Entry × List UInt8) := do
+private def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UInt8) := do
   let (predicateText, afterPredicate) ← decodeString bytes
   let (keyText, afterKey) ← decodeString afterPredicate
   let artifactBytes ← readU32LE afterKey 0
   let (digest, afterDigest) ← takeExact 32 (afterKey.drop 4)
   let rows ← readU32LE afterDigest 0
   let ordinal ← readU32LE afterDigest 4
+  let afterCommon := afterDigest.drop 8
+  let chunked ← match version with
+    | 0 => some none
+    | 1 => do
+      let chunkBytes ← readU32LE afterCommon 0
+      let chunkCount ← readU32LE afterCommon 4
+      let (root, _) ← takeExact 32 (afterCommon.drop 8)
+      some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
+                   chunkCount := chunkCount.toNat, root := byteArrayOfList root })
+    | _ => none
+  let rest := match version with | 0 => afterCommon | 1 => afterCommon.drop 40 | _ => afterCommon
   if h : isIri predicateText then
     some
       ({ predicate := ⟨predicateText, h⟩
          artifact := { key := { value := keyText }, bytes := artifactBytes.toNat,
-                       sha256 := byteArrayOfList digest }
+                       sha256 := byteArrayOfList digest, chunked }
          rows := rows.toNat
-         ordinal := ordinal.toNat }, afterDigest.drop 8)
+         ordinal := ordinal.toNat }, rest)
   else none
 
-private def decodeEntries : Nat → List UInt8 → Option (List Entry × List UInt8)
+private def decodeEntries (version : Nat) : Nat → List UInt8 → Option (List Entry × List UInt8)
   | 0, bytes => some ([], bytes)
   | n + 1, bytes => do
-      let (entry, afterEntry) ← decodeEntry bytes
-      let (entries, rest) ← decodeEntries n afterEntry
+      let (entry, afterEntry) ← decodeEntry version bytes
+      let (entries, rest) ← decodeEntries version n afterEntry
       some (entry :: entries, rest)
 
-/-- Strict SBM0 decoding.  A decoder refuses bad framing, unknown versions,
+/-- Strict SBM0/SBM1 decoding. A decoder refuses bad framing, unknown versions,
     invalid UTF-8/IRIs, trailing bytes and structurally invalid manifests. -/
 def decode? (bytes : ByteArray) : Option Manifest := do
   let allBytes := listOfByteArray bytes
   let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none else do
   let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-  if foundVersion != wireVersion then none else do
+  if foundVersion != wireVersion0 && foundVersion != wireVersion1 then none else do
   let sourceLength ← readU32LE afterVersion 0
   let (sourceIdentity, afterSource) ← takeExact sourceLength.toNat (afterVersion.drop 4)
   let (termRegistryVersion, afterRegistry) ← decodeString afterSource
   let (layout, afterLayout) ← decodeString afterRegistry
   let entryCount ← readU32LE afterLayout 0
-  let (entries, rest) ← decodeEntries entryCount.toNat (afterLayout.drop 4)
+  let (entries, rest) ← decodeEntries foundVersion.toNat entryCount.toNat (afterLayout.drop 4)
   let manifest := { version := foundVersion.toNat, sourceIdentity := byteArrayOfList sourceIdentity,
                     termRegistryVersion, layout, entries }
   if rest.isEmpty && valid manifest then some manifest else none
@@ -313,6 +344,18 @@ private def sampleManifest : Manifest :=
 private def sampleReader (key : ArtifactKey) : Option ByteArray :=
   if key.value == "blocks/p.ibk2" then some sampleBlockBytes else none
 
+private def sampleChunked : ChunkedArtifact.Ref :=
+  match ChunkedArtifact.fromChunks? 64 (ChunkedArtifact.chunksOf 64 sampleBlockBytes) with
+  | some ref => ref
+  | none => { totalBytes := 1, chunkBytes := 1, chunkCount := 1, root := ByteArray.empty }
+
+private def sampleManifestV1 : Manifest :=
+  match sampleManifest.entries with
+  | entry :: _ =>
+      { { sampleManifest with version := 1 } with
+        entries := [{ entry with artifact := { entry.artifact with chunked := some sampleChunked } }] }
+  | [] => sampleManifest
+
 /-- This remains structurally valid and carries the right artifact digest, but
     its planning cardinality is a lie. Admission must reject it rather than
     allowing an exact-estimate shortcut to influence join ordering. -/
@@ -322,6 +365,7 @@ private def sampleManifestWrongRows : Manifest :=
   | [] => sampleManifest
 
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
+#guard decode? (encode? sampleManifestV1 |>.getD ByteArray.empty) == some sampleManifestV1
 #guard (decode? (ByteArray.mk #[83, 66, 77, 48, 1])).isNone
 #guard (scanPredicate? sampleReader sampleManifest samplePredicate).map List.length == some 1
 #guard (openStore? sampleReader sampleManifest).map
