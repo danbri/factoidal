@@ -3,6 +3,7 @@
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.BlockArtifact
 import L4Factoidal.Storage.IndexedBlockWireV2
+import L4Factoidal.SPARQL.Query
 
 namespace L4Factoidal.Storage.ShardManifest
 
@@ -136,6 +137,25 @@ def openStore? (reader : Reader) (manifest : Manifest) : Option OpenStore := do
   let blocks ← openEntries? reader manifest.entries
   some { manifest, blocks }
 
+/-- The manifest entries needed for a set of predicate-bound scans.  The order
+    remains manifest order rather than query order, and duplicate predicates
+    do not cause a block to be opened twice.  A predicate missing from the
+    manifest deliberately contributes no entry: its backend search is empty,
+    which is the same result as searching the complete store. -/
+def entriesForPredicates (manifest : Manifest) (predicates : List WfIri) : List Entry :=
+  manifest.entries.filter fun entry => predicates.contains entry.predicate
+
+/-- Open only the manifest children selected by an already-established
+    predicate-bound plan.  This is not a general replacement for `openStore?`:
+    an unbound backend search over this store would be incomplete.  The query
+    planner guard below exposes it only for native pattern shapes where every
+    backend request has a syntactically constant predicate. -/
+def openStoreForPredicates? (reader : Reader) (manifest : Manifest)
+    (predicates : List WfIri) : Option OpenStore := do
+  if !valid manifest then none else do
+  let blocks ← openEntries? reader (entriesForPredicates manifest predicates)
+  some { manifest, blocks }
+
 /-- The total physical scan behind the existing SPARQL backend seam.  A
     predicate-bound request touches exactly its committed child; unbound scans
     are the reference concatenation over manifest order until a source-order
@@ -154,6 +174,35 @@ def readOps (store : OpenStore) : BackendReadOps :=
   { search := fun bound => scanBound bound store
   , estimate := fun bound => (scanBound bound store).length
   , predicatePresent := fun predicate => !(scanBound { p := some predicate } store).isEmpty }
+
+/-- Conservative syntactic admission test for the selective manifest opener.
+    It accepts only evaluator-native pattern forms whose triple patterns all
+    carry a constant IRI predicate.  Filter, OPTIONAL, property paths, graph
+    clauses, SERVICE and sub-SELECT deliberately return `none`: those forms
+    can materialise the active backend or introduce a nested pattern, so the
+    complete-store opener remains the sound default until they receive their
+    own planning proof. -/
+def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
+  | .bgp patterns =>
+      patterns.foldr (fun pattern rest => do
+        let predicates ← rest
+        match pattern.p with
+        | .iri predicate => some (predicate :: predicates)
+        | _ => none) (some [])
+  | .join left right
+  | .union left right
+  | .minus left right => do
+      let l ← nativeConstantPredicates? left
+      let r ← nativeConstantPredicates? right
+      some (l ++ r)
+  | .empty => some []
+  | _ => none
+
+/-- The query-level form of `nativeConstantPredicates?`.  It is a planner
+    capability, not a semantic shortcut: `none` means "open the full
+    manifest", never "return no answers". -/
+def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
+  nativeConstantPredicates? query.pattern
 
 /-- The field widths in SBM0.  Oversized manifests are refused rather than
     being truncated into an ambiguous byte stream. -/
@@ -250,5 +299,12 @@ private def sampleReader (key : ArtifactKey) : Option ByteArray :=
 #guard (scanPredicate? (fun _ => some ByteArray.empty) sampleManifest samplePredicate).isNone
 #guard (openStore? sampleReader sampleManifest).map (fun store =>
   (readOps store).search { p := some samplePredicate } |>.length) == some 1
+#guard (openStoreForPredicates? sampleReader sampleManifest [samplePredicate]).map
+  (fun store => store.blocks.length) == some 1
+#guard queryNativeConstantPredicates?
+  (mkQuery (.select .all) (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))
+  == some [samplePredicate]
+#guard (nativeConstantPredicates? (.filter (.boolLit true)
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))).isNone
 
 end L4Factoidal.Storage.ShardManifest

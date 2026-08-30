@@ -169,9 +169,19 @@ first local-file host harness.
 
 Its 2026-08-30 smoke used the 77-triple music Turtle fixture.  A parsed,
 two-predicate join with a filter and `ORDER BY` returned the three Radiohead
-albums via seven verified child blocks.  The eager opener is deliberately a
-correctness reference; a lazy/mmap/range reader must preserve the same
-acceptance and `readOps` behavior before replacing it.
+albums via seven verified child blocks.  The eager opener was deliberately a
+correctness reference. The local query host now adds a conservative first
+lazy-selection step for ordinary parsed SPARQL: when the pattern is a native
+BGP/join/union/minus composition and every triple pattern has a constant IRI
+predicate, it reads, hash-verifies and opens only the corresponding predicate
+artifacts. Its status line reports `open-mode=predicate-selective(n)` and
+`artifact-bytes=loaded/total`. Any filter, OPTIONAL, property path, GRAPH,
+SERVICE, sub-SELECT, or variable predicate deliberately uses
+`open-mode=full-manifest`, because those current evaluator paths can
+materialise the active graph. This is a sound artifact-level I/O reduction,
+not yet mmap/range I/O inside a selected IBK2 artifact. A later lazy/mmap/range
+reader must preserve the same acceptance and `readOps` behavior before
+replacing it.
 
 The same route was exercised on the bundled life-sciences `chromosome.ttl`
 fixture: 9,227 triples packed to one predicate-local IBK2 child plus SBM0,

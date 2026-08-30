@@ -23,33 +23,48 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
         IO.eprintln "l4block-shard-query rejected: malformed or unsupported SBM0 manifest"
         return 1
     | some manifest =>
-        let loaded ← manifest.entries.mapM fun entry => do
+        match parseSparql queryText with
+        | .error e =>
+            IO.eprintln s!"l4block-shard-query query parse error at {e.pos}: {e.msg}"
+            return 1
+        | .ok q =>
+        /- A partial opened store is sound only for native algebra shapes where
+           every search carries a syntactically constant predicate.  All other
+           parsed SPARQL remains on the full verified-manifest path. -/
+        let selectedPredicates := queryNativeConstantPredicates? q
+        let entries := match selectedPredicates with
+          | some predicates => entriesForPredicates manifest predicates
+          | none => manifest.entries
+        let loaded ← entries.mapM fun entry => do
           if !safeLeafKey entry.artifact.key then
             throw <| IO.userError s!"unsafe manifest artifact key: {entry.artifact.key.value}"
           let bytes ← IO.FS.readBinFile (directory / entry.artifact.key.value)
           pure (entry.artifact.key, bytes)
+        let loadedBytes := loaded.foldl (fun total pair => total + pair.2.size) 0
+        let totalBytes := manifest.entries.foldl (fun total entry => total + entry.artifact.bytes) 0
         let reader : Reader := fun key =>
           (loaded.find? fun pair => pair.1 == key).map Prod.snd
-        match openStore? reader manifest with
+        let opened := match selectedPredicates with
+          | some predicates => openStoreForPredicates? reader manifest predicates
+          | none => openStore? reader manifest
+        match opened with
         | none =>
             IO.eprintln "l4block-shard-query rejected: unavailable, changed, or malformed child artifact"
             return 1
         | some store =>
             let dataset : DatasetBackend := { default := .hdt (readOps store), named := [] }
-            match parseSparql queryText with
-            | .error e =>
-                IO.eprintln s!"l4block-shard-query query parse error at {e.pos}: {e.msg}"
+            match runSelectQueryBackendDataset emptyEnv q dataset with
+            | none =>
+                IO.eprintln "l4block-shard-query failed: query was not evaluated as SELECT"
                 return 1
-            | .ok q =>
-                match runSelectQueryBackendDataset emptyEnv q dataset with
-                | none =>
-                    IO.eprintln "l4block-shard-query failed: query was not evaluated as SELECT"
-                    return 1
-                | some rows =>
-                    IO.println s!"l4block-shard-query manifest={directory / "manifest.sbm0"} shards={store.blocks.length}"
-                    IO.println s!"l4block-shard-query sse={q.toSse}"
-                    IO.println s!"l4block-shard-query rows={rows.length} preview={toString (repr (rows.take 10))}"
-                    return 0
+            | some rows =>
+                let mode := match selectedPredicates with
+                  | some predicates => s!"predicate-selective({predicates.length})"
+                  | none => "full-manifest"
+                IO.println s!"l4block-shard-query manifest={directory / "manifest.sbm0"} shards={store.blocks.length} open-mode={mode} artifact-bytes={loadedBytes}/{totalBytes}"
+                IO.println s!"l4block-shard-query sse={q.toSse}"
+                IO.println s!"l4block-shard-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+                return 0
   catch e =>
     IO.eprintln s!"l4block-shard-query read failure: {e}"
     return 1
