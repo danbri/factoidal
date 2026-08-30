@@ -313,11 +313,20 @@ private def sampleManifest : Manifest :=
 private def sampleReader (key : ArtifactKey) : Option ByteArray :=
   if key.value == "blocks/p.ibk2" then some sampleBlockBytes else none
 
+/-- This remains structurally valid and carries the right artifact digest, but
+    its planning cardinality is a lie. Admission must reject it rather than
+    allowing an exact-estimate shortcut to influence join ordering. -/
+private def sampleManifestWrongRows : Manifest :=
+  match sampleManifest.entries with
+  | entry :: _ => { sampleManifest with entries := [{ entry with rows := 2 }] }
+  | [] => sampleManifest
+
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
 #guard (decode? (ByteArray.mk #[83, 66, 77, 48, 1])).isNone
 #guard (scanPredicate? sampleReader sampleManifest samplePredicate).map List.length == some 1
 #guard (openStore? sampleReader sampleManifest).map
   (fun store => estimateBound { p := some samplePredicate } store) == some 1
+#guard (openStore? sampleReader sampleManifestWrongRows).isNone
 #guard (scanPredicate? (fun _ => some ByteArray.empty) sampleManifest samplePredicate).isNone
 #guard (openStore? sampleReader sampleManifest).map (fun store =>
   (readOps store).search { p := some samplePredicate } |>.length) == some 1
