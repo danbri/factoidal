@@ -69,7 +69,7 @@ model, Factoidal API, and test contract.
   <li><a href="./46-browser-block-artifacts/">Bring a block: browser artifact inspection</a> — choose an IBK1 block, inspect its versioned header, calculate SHA-256, and optionally cache the exact bytes in OPFS; browser-side block query execution is named as the pending Lean-WASM ABI increment, not implied (none)</li>
   <li><a href="./47-writing-hub-notebooks/">Writing Hub notebooks</a> — the Observable-style cell model, Factoidal's browser API, and the pinned-test contract (none)</li>
   <li><a href="./48-json-ld-playground/">JSON-LD playground</a> — paste JSON-LD and inspect RDF plus canonical N-Quads locally in the browser (schema.org)</li>
-  <li><a href="./49-ai-skills-for-local-kg/">Could browser AI load skills for a local knowledge graph?</a> — a capability-gated experiment in declarative read-only SPARQL skills and reproducible request bundles over the life-sciences graph profile, without uploading RDF or exposing an API key (sparql)</li>
+  <li><a href="./49-ai-for-local-kg/">AI beside a local knowledge graph</a> — an optional browser-AI proposal over the life-sciences graph profile: check availability, ask a question, inspect read-only SPARQL, then choose whether to run it in Shardborough (sparql)</li>
 </ul>
 
 See also: the <a href="../perf/">performance hub</a> — measured
