@@ -263,6 +263,18 @@ the F\* file is marked, not transcribed.
   XSLT (read from "cslt"), Schematron.
 - **Not urgent:** COTTAS. Possible future split into a FactoidalDB repo.
 
+### Lean 4 is the intended full-scope target (owner, 2026-08-29)
+
+> "The Lean port is only a week old, but improved quickly enough that I am
+> inclined to make the switch. It hasn't yet been applied to the full scope of
+> Factoidal but that is my intent."
+
+This newer direction makes the Lean 4 tree the target for the full Factoidal
+scope. It changes the 2026-08-24 COTTAS ordering for the block-engine
+workstream. It does not claim current Lean/F* parity. Keep the existing F*
+path executable as lineage and a differential oracle until the corresponding
+Lean functionality and gates land. Port functionality, not files.
+
 ### Issue 566 — the hex layer. RULED, do not ask again.
 
 > "Yeah DO NOT PORT THAT TERRIBLE HEX CRAP!!!"
@@ -578,10 +590,15 @@ session.
   automatically, skill-symlink regeneration, and the never-again
   rules from the 90-minutes-of-compiles incident.
 - [`factoidal-lean-basics`](skills/factoidal-lean-basics/SKILL.md)
-  — the Lean 4 side (formal/lean4/, L4Factoidal, #466): toolchain,
+  — the Lean 4 side (formal/lean4/, L4Factoidal,
+  https://github.com/danbri/factoidal/issues/466): toolchain,
   build/demo/test, the no-sorry/no-axiom policy + audit, the purity
   doctrine replacing `assume val`, lean-lsp-mcp + lemma search, and
   the paid-for Lean pitfalls.
+- [`blockengine`](skills/blockengine/SKILL.md) — design, implement, and
+  review the Lean-generated RDF block engine: landed Cottas/SPARQL reuse,
+  term and graph IDs, block denotation, physical plans, PushIR, bitmap
+  indexes, PostgreSQL/TiKV adapters, and refinement gates.
 - [`lean4-wasm-export`](skills/lean4-wasm-export/SKILL.md) — compile the
   Lean 4 port to ONE wasm module for browser + Node + Deno (#466): the
   toolchain route and the three rejected, rebuilding Lean's runtime and

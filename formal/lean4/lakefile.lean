@@ -139,6 +139,11 @@ extern_lib libl4hacl pkg := do
   srcDir := "."
   root := `Wasm.Cli
 
+-- Native executable for the first RDF block MVP. It exercises the total
+-- `Storage.BlockMvp.scan` path over a small in-memory graph; it does not claim
+-- protocol, persistence, or W3C conformance coverage.
+@[default_target] lean_exe «l4block-mvp» where root := `Harness.BlockMvp
+
 -- The MANIFEST-DRIVEN W3C conformance runner (issue #466, ladder rung
 -- 3). Reads the real `manifest.ttl` files off disk with the Lean
 -- Turtle parser and scores the Lean engine in the same score-line

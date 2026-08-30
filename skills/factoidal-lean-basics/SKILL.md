@@ -1,11 +1,11 @@
 ---
 name: factoidal-lean-basics
-description: Everything a session needs for the Lean 4 side of Factoidal (formal/lean4/, library L4Factoidal, issue #466) — what exists and how complete it honestly is, toolchain setup (elan/lake, the PATH trap), how to build/run/demo/test, the no-sorry/no-axiom/no-native_decide proof policy and its audit, the purity doctrine replacing F* assume vals, interactive tooling (lean-lsp-mcp, loogle, leansearch), and the Lean pitfalls this project has already paid for. Use when touching anything under formal/lean4/, planning the next porting rung, answering "can we run it?", or bootstrapping Lean on a fresh machine.
+description: Work with Factoidal's Lean 4 tree under formal/lean4/, including scope inspection, builds, tests, proof policy, executable and WASM paths, and recorded workflow failures. Use for Lean changes, port planning, capability questions, or environment setup.
 ---
 
 # Factoidal Lean basics
 
-## What exists (2026-08-22 baseline)
+## What exists (started 2026-08-22; re-measure before scope claims)
 
 `formal/lean4/` is a self-contained lake project, library name
 `L4Factoidal` (naming deliberately not finalised — owner: "don't rush
@@ -18,6 +18,9 @@ https://github.com/danbri/factoidal/issues/466
 | Isomorphism | `RDF/Isomorphism*.lean` | §3.6 spec + witness-returning bounded search, soundness proved |
 | Canonicalisation | `RDF/Canonical*.lean`, `Harness/CanonProbe.lean` | RDFC-1.0 parameterised by `HashAlgorithm`; §3 sortedness + issuer injectivity proved; rdf-canon suite 86 pass, 0 fail (of 86) |
 | SPARQL algebra | `SPARQL/Algebra.lean`, `PropertyPath.lean`, `Invariants.lean` | 15-constructor GraphPattern (GRAPH/LATERAL/BIND/VALUES/SERVICE/sub-SELECT/paths), dataset-aware `evalIn`; monotonicity/merge/empty laws proved |
+| SPARQL physical paths | `SPARQL/IndexedEvalRefinement.lean`, `AlgebraRefinement.lean`, `StoreBackend.lean`, `StorePlan.lean`, `StoreFastPath.lean`, `StoreDataset.lean` | exact-list indexed BGP/hash-join refinement; partial declarative algebra refinement; backend capabilities, planning, fast paths, and dataset routing |
+| Cottas | `Cottas/*.lean` (33 files at `73209342c232`) | total reader/writer, dictionaries, on-disk search, selective decode, planning, pruning, counts, presence and offset indexes |
+| HDT | `HDT/*.lean` (5 files at `73209342c232`) | container, theorems, dictionary, triples, and static store |
 | SPARQL expressions | `SPARQL/Expr*.lean` | §17 EBV, scaled numerics (order proved), §17.3 logic, builtins; EXISTS/NOW/extension fns/SERVICE via `EvalEnv` parameters |
 | SPARQL query | `SPARQL/Query*.lean` | QueryPattern→GraphPattern lowering, forms, modifiers, aggregates; ORDER BY permutation + DISTINCT laws proved; LATERAL cases pinned |
 | SPARQL results | `SPARQL/Results*.lean` | SRX/SRJ/CSV/TSV parse+serialise; SRJ N-row shape theorem proved |
@@ -32,7 +35,7 @@ https://github.com/danbri/factoidal/issues/466
 | Tests/demo | `Tests.lean`, `Demo.lean` | build-time guards + `#print axioms` audit; runnable tour |
 | Docs | `README.md` / `PORT_NOTES.md` | reviewer reading order / F\* correspondence, decisions, assumption report |
 
-Measured 2026-08-22, late: the library has zero `sorry`, zero user `axiom`, zero `native_decide`, and exactly ONE `@[extern]`/`opaque` family (HACL* Ed25519, `Crypto/Ed25519.lean`). ⚠️ `partial def` is NOT zero and is GROWING FAST. **Re-measured 2026-08-26 (late): 212 declarations across 35 files** — the earlier same-day figure of 202 moved by exactly one area, **ShEx 40 → 50**, with every other area unchanged; the cause is named here because a count that moves without one is a bug report (anti-pattern #31), and this one was chased and is not. Breakdown (XPath 44, ShEx 50, OWL 37, XSLT 27, RIF 15, Math 11, Geo 6, MathML 5, Testing 4, GRDDL 3, XForms/JSONSchema/CSVW 2 each, XSD/Storage/Schematron/HTTP 1 each) — up from 18 across 10 files five days earlier. `formal/lean4/Wasm/` contains none, and is excluded by the method's path anyway. The 2026-08-22 text here claimed 'none in the RDF/SPARQL/RDFS/OWL/SHACL/JSON-LD core'; **that claim is now FALSE**. RDF, RDFS, SPARQL, SHACL, JSON-LD and `Unified/` are still clean, but OWL is not: the 37 include `OWL/Refute.lean`'s `search` (the tableau search itself), `repOf`, `nnf`/`nnfNeg`, `normalizeUnsat`; `OWL/Materialise.lean`'s `isMember`, `ceEntailsCe`, `namedSuperCEs`; and the `OWL/ClassExpr.lean` parser family. WHY IT COSTS: a `partial def` compiles to an opaque constant — no equation lemmas, no kernel reduction, invisible to `decide`. ⚠️ It is NOT invisible to `#guard`: `#guard` evaluates through the INTERPRETER, so a guard whose expression calls a `partial def` does run and does fail the build when the expression is false. Measured 2026-08-26 on a `partial def loopy`: `#guard loopy 3 == 99` errors with "did not evaluate to `true`", while `example : loopy 3 = 7 := by decide` fails with "its `Decidable` instance did not reduce to `isTrue` or `isFalse`". The line is interpreter vs kernel. So a `partial def` CAN be pinned by `#guard` and CANNOT be the subject of a theorem — which is the whole cost, and it is narrower than "opaque to everything". A theorem stated ABOUT one cannot exist, and nothing warns you until you try to state it. That happened on 2026-08-26: design doc §4.7 puts `RIF.Engine.saturate` on the left of `unified_adequate_rifCore`, and `groundTm`/`matchFormula`/`qualifyTm` being `partial` forced the landed theorem onto `DatalogProgram.lfp` instead, with engine agreement demoted to a `#guard` pin (https://github.com/danbri/factoidal/issues/612). Whether these are accepted debt or must be made total is an OPEN OWNER DECISION, unanswered since 2026-08-22 — tracked with the full breakdown and the work items at https://github.com/danbri/factoidal/issues/617. Do not quote any `partial def` figure without re-measuring; the count moved 11x in four days with no signal. Method that excludes prose mentions inside comments (an unanchored grep over-counts): `grep -rn '^ *\(private \)\?partial def ' --include='*.lean' formal/lean4/L4Factoidal/ | wc -l`.
+Measured 2026-08-22, late: the library has zero `sorry`, zero user `axiom`, zero `native_decide`, and exactly ONE `@[extern]`/`opaque` family (HACL* Ed25519, `Crypto/Ed25519.lean`). ⚠️ `partial def` is NOT zero and is GROWING FAST. **Re-measured 2026-08-29: 212 declarations across 35 library files, plus 14 across 9 harness files.** The library breakdown is XPath 44, ShEx 50, OWL 37, XSLT 27, RIF 15, Math 11, Geo 6, MathML 5, Testing 4, GRDDL 3, XForms/JSONSchema/CSVW 2 each, and XSD/Storage/Schematron/HTTP 1 each. `formal/lean4/Wasm/` contains none. RDF, RDFS, SPARQL, Cottas, HDT, SHACL, JSON-LD and `Unified/` have no live `partial def` declarations. OWL is not clean: its 37 include the tableau search and materialization functions. WHY IT COSTS: a `partial def` compiles to an opaque constant — no equation lemmas, no kernel reduction, invisible to `decide`. ⚠️ It is NOT invisible to `#guard`: `#guard` evaluates through the INTERPRETER, so a guard whose expression calls a `partial def` does run and does fail the build when the expression is false. Measured 2026-08-26 on a `partial def loopy`: `#guard loopy 3 == 99` errors with "did not evaluate to `true`", while `example : loopy 3 = 7 := by decide` fails with "its `Decidable` instance did not reduce to `isTrue` or `isFalse`". The line is interpreter vs kernel. So a `partial def` CAN be pinned by `#guard` and CANNOT be the direct subject of the same equation proof. That happened on 2026-08-26: design doc §4.7 puts `RIF.Engine.saturate` on the left of `unified_adequate_rifCore`, and `groundTm`/`matchFormula`/`qualifyTm` being `partial` forced the landed theorem onto `DatalogProgram.lfp`, with engine agreement demoted to a `#guard` pin (https://github.com/danbri/factoidal/issues/612). Whether these are accepted debt or must be made total is tracked with the full breakdown at https://github.com/danbri/factoidal/issues/617. Do not quote any `partial def` figure without re-measuring. Method that excludes prose mentions inside comments: `rg '^\s*(private\s+|protected\s+)?partial def\b' formal/lean4/L4Factoidal`.
 
 ## Toolchain
 
@@ -96,10 +99,11 @@ Measured 2026-08-22, late: the library has zero `sorry`, zero user `axiom`, zero
 
 ## Proof policy (stricter than the F\* tree's)
 
-- **No `sorry`. No user `axiom`. No `native_decide`** (it smuggles in
-  trust of the compiled evaluator via `Lean.ofReduceBool`). Partial
-  functions (`partial def`) also count as debt — everything so far is
-  total and should stay so.
+- **No `sorry`. No user `axiom`. No `native_decide`** (it adds trust in
+  the compiled evaluator via `Lean.ofReduceBool`). Partial functions
+  (`partial def`) also count as debt. New semantic, SPARQL, storage, and block-
+  engine definitions must be total. Existing partial declarations outside
+  those areas are measured above and tracked separately.
 - Audit: `#print axioms <theorem>`. Acceptable base is exactly
   `propext`, `Classical.choice`, `Quot.sound` (Lean's standard
   foundations). `Tests.lean` keeps audit lines on the headline
@@ -270,16 +274,13 @@ executable edge only.
 
 - Every definition's doc comment cites the W3C document + section it
   implements; module headers state what is and is NOT ported and why.
-- Spec/engine split (WORKING ASSUMPTION, not an owner directive —
-  see the provenance note below): so far `formal/lean4` holds a plain
-  evaluator (list scans, nested-loop join) and the F\* tree's planner /
-  index seam / hash join / fuel bounds / `*_tr` rewrites have not been
-  ported. This is a description of where the port has got to, plus a
-  default that keeps proofs small — NOT a decided prohibition. Whether
-  the Lean tree should grow performance machinery (and prove it
-  refines the plain evaluator) is OPEN: raise it on
-  https://github.com/danbri/factoidal/issues/466 rather than citing
-  this bullet as a settled no.
+- Spec/engine split: keep the plain evaluator as an executable semantic
+  reference. The current tree also has hash joins, indexed BGP evaluation,
+  backend planning, Cottas/HDT stores, and exact-list refinement proofs for
+  the indexed SPARQL path. The owner chose on 2026-08-29 to make Lean the
+  intended full-scope target. Add performance machinery in Lean and state its
+  relation to the plain evaluator. The Block model, PushIR, PostgreSQL adapter,
+  and TiKV adapter remain proposed; follow `skills/blockengine/SKILL.md`.
 
   PROVENANCE NOTE (2026-08-22, recorded after the owner rejected a
   fabricated rationale): the sentence above previously read "the split
@@ -305,4 +306,5 @@ executable edge only.
   table and assumption report with every ported module.
 - Iron-rule-#6 discipline carries over: NO conformance claims for
   the Lean side until a Lean executable reads the same W3C manifests
-  `bin/w3c-runner` does (ladder rung 3 on #466).
+  `bin/w3c-runner` does (the continuation ladder at
+  https://github.com/danbri/factoidal/issues/466).

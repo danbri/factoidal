@@ -326,6 +326,10 @@ import L4Factoidal.XForms.BindTests
 import L4Factoidal.GRDDL.Discovery
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.DeltaLogTests
+import L4Factoidal.Storage.BlockMvp
+import L4Factoidal.Storage.BlockMvpTests
+import L4Factoidal.Storage.BlockWireV0
+import L4Factoidal.Storage.BlockWireV0Tests
 import L4Factoidal.VC.Credential
 import L4Factoidal.VC.CredentialTests
 import L4Factoidal.HDT.Container
