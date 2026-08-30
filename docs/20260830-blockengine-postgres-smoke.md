@@ -68,6 +68,14 @@ for that exact corpus/query passed immediately beforehand.
 
 ## Next
 
+`tools/blockengine-postgres-load.sh` and
+`tools/blockengine-postgres-query.sh` now provide a reusable development
+catalogue: load an existing `IBK1` once, then retrieve its `bytea` and run the
+Lean query executable without Turtle parsing or packing. The active-site
+aggregate query returned `COUNT(*) = 132` through that query-only path.
+
+## Next
+
 Extend the script into a parameterized client adapter and three-way gate:
 
 ```text
