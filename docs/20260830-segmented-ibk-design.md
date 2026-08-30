@@ -371,5 +371,12 @@ identities as `--explain`, and adds actual decoded rows, millisecond timing,
 logical bytes, newly fetched whole-chunk bytes, proof count, range-request
 count and explicit `hit`/`miss` cache state. The final `sparql-eval` node
 records returned rows and evaluator time. The profile is a native-host
-diagnostic projection; it is not yet a typed public profile AST, JSON
-representation or OTLP exporter.
+diagnostic projection; it is not yet a typed public profile AST or OTLP
+exporter.
+
+The same node model now has compact JSON projections via `--explain-json` and
+`--explain-analyze-json`. The JSON carries the plan node ID, operation,
+predicate, placement, row estimates/actuals, timing, logical and physical byte
+counts, verified chunks, range requests, cache state and integrity status. It
+is intended for a future Hub visualizer and backend APIs; it is deliberately a
+diagnostic opt-in because the logical SSE can contain query details.

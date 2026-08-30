@@ -19,7 +19,7 @@ open L4Factoidal.Storage.ShardManifest
 /-- A planned, non-executing S-expression view. It deliberately exposes only
     the manifest-selected artifacts and their declared row estimates: no child
     file is opened, decoded, or trusted by `EXPLAIN`. -/
-private def explain (directory : System.FilePath) (queryText : String) : IO UInt32 := do
+private def explain (asJson : Bool) (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
     let manifestPath := directory / "manifest.sbm1"
     let manifestBytes ← IO.FS.readBinFile manifestPath
@@ -36,8 +36,10 @@ private def explain (directory : System.FilePath) (queryText : String) : IO UInt
             return 1
         | some predicates =>
             let entries := entriesForPredicates manifest predicates
-            IO.println s!"l4block-shard-merkle-query explain format=sexp manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) executes=false"
-            IO.println (explainSse query entries)
+            let format := if asJson then "json" else "sexp"
+            IO.println s!"l4block-shard-merkle-query explain format={format} manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) executes=false"
+            if asJson then IO.println (jsonString (explainJson query entries))
+            else IO.println (explainSse query entries)
             return 0
   catch e => IO.eprintln s!"l4block-shard-merkle-query explain failure: {e}"; return 1
 
@@ -57,7 +59,7 @@ private def materializeProfiled (directory : System.FilePath) : List Entry →
 /-- Explicit `EXPLAIN ANALYZE` analogue for one read-only query. Unlike
     `--explain`, this opens the selected artifacts and reports observed scan
     and evaluator measurements in the same S-expression node family. -/
-private def explainAnalyze (directory : System.FilePath) (queryText : String) : IO UInt32 := do
+private def explainAnalyze (asJson : Bool) (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
     let manifestPath := directory / "manifest.sbm1"
     let manifestBytes ← IO.FS.readBinFile manifestPath
@@ -86,8 +88,10 @@ private def explainAnalyze (directory : System.FilePath) (queryText : String) : 
                 | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
                 | some rows =>
                     let t1 ← IO.monoMsNow
-                    IO.println s!"l4block-shard-merkle-query explain-analyze format=sexp manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) executes=true"
-                    IO.println (profileSse "query-1" query nodes rows.length (t1 - t0))
+                    let format := if asJson then "json" else "sexp"
+                    IO.println s!"l4block-shard-merkle-query explain-analyze format={format} manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) executes=true"
+                    if asJson then IO.println (jsonString (profileJson "query-1" query nodes rows.length (t1 - t0)) )
+                    else IO.println (profileSse "query-1" query nodes rows.length (t1 - t0))
                     return 0
   catch e => IO.eprintln s!"l4block-shard-merkle-query explain-analyze failure: {e}"; return 1
 
@@ -125,16 +129,22 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
 
 def main (args : List String) : IO UInt32 := do
   match args with
+  | directory :: "--explain-analyze-json" :: queryParts =>
+      if queryParts.isEmpty then IO.eprintln "l4block-shard-merkle-query requires a query after --explain-analyze-json"; return 2
+      else explainAnalyze true (System.FilePath.mk directory) (String.intercalate " " queryParts)
   | directory :: "--explain-analyze" :: queryParts =>
       if queryParts.isEmpty then IO.eprintln "l4block-shard-merkle-query requires a query after --explain-analyze"; return 2
-      else explainAnalyze (System.FilePath.mk directory) (String.intercalate " " queryParts)
+      else explainAnalyze false (System.FilePath.mk directory) (String.intercalate " " queryParts)
+  | directory :: "--explain-json" :: queryParts =>
+      if queryParts.isEmpty then IO.eprintln "l4block-shard-merkle-query requires a query after --explain-json"; return 2
+      else explain true (System.FilePath.mk directory) (String.intercalate " " queryParts)
   | directory :: "--explain" :: queryParts =>
       if queryParts.isEmpty then IO.eprintln "l4block-shard-merkle-query requires a query after --explain"; return 2
-      else explain (System.FilePath.mk directory) (String.intercalate " " queryParts)
+      else explain false (System.FilePath.mk directory) (String.intercalate " " queryParts)
   | directory :: "--query" :: queryParts =>
       if queryParts.isEmpty then IO.eprintln "l4block-shard-merkle-query requires a query after --query"; return 2
       else run (System.FilePath.mk directory) (String.intercalate " " queryParts)
-  | _ => IO.eprintln "usage: l4block-shard-merkle-query SHARD-DIR --explain|--explain-analyze|--query SELECT..."; return 2
+  | _ => IO.eprintln "usage: l4block-shard-merkle-query SHARD-DIR --explain|--explain-json|--explain-analyze|--explain-analyze-json|--query SELECT..."; return 2
 
 end Harness.ShardMerkleQuery
 
