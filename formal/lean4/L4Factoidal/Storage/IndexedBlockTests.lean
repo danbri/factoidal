@@ -23,5 +23,8 @@ private def block := fromGraph graph
 #guard (scanBound { p := some pName } block).length == 2
 #guard scanBound { p := some pName } block == tripleMatchesBound { p := some pName } graph
 #guard scanBound {} block == tripleMatchesBound {} graph
+#guard (predicateSegment 1 block).map (fun entry => entry.position) == [0, 2]
+#guard (predicateSegment 1 block).map (fun entry => entry.row) ==
+  candidateRows { p := some pName } block
 
 end L4Factoidal.Storage.IndexedBlockTests
