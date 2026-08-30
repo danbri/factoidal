@@ -347,32 +347,6 @@
     display: none;
   }
 
-  /* Output-format toggle: a small radio-style segmented control in the
-     cell toolbar choosing how the cell's returned value renders --
-     "Auto" (the Observable Inspector's default js/json widget) or
-     "Table" (wrapped in the pretty() helper). Flipping it re-renders the
-     cached value; it does NOT re-run the cell's computation. Tap targets
-     stay >= 44px tall and the group wraps, so it never forces page-level
-     horizontal scroll at a ~390px viewport. */
-  .observable-cell-render-toggle {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.3em;
-  }
-  .observable-cell-render-label {
-    font-size: 0.78em;
-    color: #888;
-  }
-  .observable-cell-render-btn {
-    padding: 0.5em 0.7em;
-  }
-  .observable-cell-btn[aria-checked="true"] {
-    background: #2d6a4f;
-    color: #fff;
-    border-color: #2d6a4f;
-  }
-
   /* Reader-added cells (the "Add a cell" affordance): the reader can
      append their own live cells running in the same fn/Factoidal/Plot/
      d3/pretty scope as the pinned cells, and remove the ones they added.
@@ -390,6 +364,26 @@
     border-left: 3px solid #2d6a4f;
   }
   .hub-add-cell-btn { margin-top: 0.5em; }
+  .jsonld-playground {
+    border: 1px solid #c8d8cf;
+    border-radius: 0.65rem;
+    padding: 1rem;
+    background: #f7fbf8;
+  }
+  .jsonld-playground label { display: grid; gap: 0.4rem; font-weight: 600; }
+  .jsonld-playground textarea {
+    box-sizing: border-box;
+    min-height: 15rem;
+    width: 100%;
+    resize: vertical;
+    border: 1px solid #aebfb5;
+    border-radius: 0.35rem;
+    padding: 0.75rem;
+    background: #fff;
+    color: inherit;
+    font: 0.88rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .jsonld-playground pre { max-height: 22rem; overflow: auto; white-space: pre-wrap; }
 
   @media (prefers-color-scheme: dark) {
     .observable-cell { background: #1a1e23; border-color: #333a42; }
@@ -398,7 +392,6 @@
     .observable-cell-btn:hover { background: #232830; }
     .observable-cell-btn:active { background: #272d36; }
     .observable-cell-btn[aria-pressed="true"] { background: #7fd0a7; color: #10130f; border-color: #7fd0a7; }
-    .observable-cell-btn[aria-checked="true"] { background: #7fd0a7; color: #10130f; border-color: #7fd0a7; }
     .observable-cell-render-label { color: #98a2ad; }
     .observable-cell-hint { color: #98a2ad; }
     .observable-cell-editor { background: #1a1e23; border-color: #333a42; border-left-color: #7fd0a7; }
@@ -412,7 +405,7 @@
 <nav>
   <a href="{{ '/' | url }}">Home</a>
   <a href="{{ '/web/hub/' | url }}">Hub</a>
-  <a href="{{ '/fstar-extracted/' | url }}">Demos</a>
+  <a href="{{ '/web/hub/47-writing-hub-notebooks/' | url }}">Notebook guide</a>
   <a href="{{ '/test-results/' | url }}">Test Results</a>
   <a href="https://github.com/danbri/factoidal">GitHub</a>
 </nav>
@@ -1564,15 +1557,9 @@ function compileCell(source) {
   return { name: info.name, inputs, definition: makeDefinition(inputs, info.body) };
 }
 
-// Output controller: owns a cell's output box + its Observable
-// Inspector, caches the last computed value, and can re-render that
-// cached value either through the Inspector's default js/json widget
-// ("auto") or wrapped in pretty() ("pretty") -- the output-format
-// toggle -- WITHOUT re-running the cell's computation. The default is
-// "auto", byte-identical to the pre-toggle behavior, so no pinned cell
-// regresses. The .observable-cell-error class handling (add on reject,
-// clear on a later fulfil) is preserved from the previous inline
-// wrapper.
+// Output controller: values receive the same shape-aware `pretty()`
+// rendering automatically. SPARQL bindings and RDF datasets become
+// compact, scrollable tables; charts and DOM output pass through unchanged.
 function createOutput(name) {
   const container = document.createElement("div");
   container.className = "observable-cell";
@@ -1581,21 +1568,12 @@ function createOutput(name) {
   const inspectorFulfilled = inspector.fulfilled.bind(inspector);
   const inspectorRejected = inspector.rejected.bind(inspector);
 
-  let lastValue;
-  let hasValue = false;
-  let mode = "auto"; // "auto" = Inspector default; "pretty" = pretty() table
-
   function paint(value) {
     container.classList.remove("observable-cell-error");
-    // pretty() returns the value unchanged for shapes it doesn't handle
-    // (DOM nodes, null, empty arrays, ...), so wrapping is always safe:
-    // the Inspector then renders exactly what it would have rendered raw.
-    inspectorFulfilled(mode === "pretty" ? pretty(value) : value, name);
+    inspectorFulfilled(pretty(value), name);
   }
 
   inspector.fulfilled = (value) => {
-    lastValue = value;
-    hasValue = true;
     paint(value);
   };
   inspector.rejected = (error, varName) => {
@@ -1606,51 +1584,7 @@ function createOutput(name) {
   return {
     container,
     inspector,
-    getMode() { return mode; },
-    setMode(next) {
-      if (next === mode) return;
-      mode = next;
-      if (hasValue) paint(lastValue); // re-render from cache -- no recompute
-    },
   };
-}
-
-// The output-format toggle itself: a small radio-style segmented control
-// (Auto | Table) wired to an output controller's setMode(). Lives in the
-// cell toolbar; flipping it re-renders the cached value in place.
-function createRenderToggle(output) {
-  const group = document.createElement("span");
-  group.className = "observable-cell-render-toggle";
-  group.setAttribute("role", "radiogroup");
-  group.setAttribute("aria-label", "Output format");
-
-  const label = document.createElement("span");
-  label.className = "observable-cell-render-label";
-  label.textContent = "Output:";
-  group.appendChild(label);
-
-  const modes = [["auto", "Auto"], ["pretty", "Table"]];
-  const btns = [];
-  for (const [value, text] of modes) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "observable-cell-btn observable-cell-render-btn";
-    b.textContent = text;
-    b.setAttribute("role", "radio");
-    b.setAttribute("aria-checked", value === output.getMode() ? "true" : "false");
-    b.title = value === "pretty"
-      ? "Render this cell's value as a pretty() table"
-      : "Render this cell's value with the default inspector";
-    b.addEventListener("click", () => {
-      output.setMode(value);
-      for (const other of btns) {
-        other.setAttribute("aria-checked", other === b ? "true" : "false");
-      }
-    });
-    btns.push(b);
-    group.appendChild(b);
-  }
-  return group;
 }
 
 function mountCell(codeEl, index) {
@@ -1738,7 +1672,6 @@ function mountCell(codeEl, index) {
 
   toolbar.appendChild(editBtn);
   toolbar.appendChild(runBtn);
-  toolbar.appendChild(createRenderToggle(output));
 
   // Discoverability: a phone has no hover, so a title attribute alone
   // (the desktop affordance above) is invisible on mobile -- the owner
@@ -1901,7 +1834,6 @@ function mountUserCell(listEl, initialSource) {
 
   toolbar.appendChild(runBtn);
   toolbar.appendChild(removeBtn);
-  toolbar.appendChild(createRenderToggle(output));
 
   block.appendChild(editor);
   block.appendChild(toolbar);

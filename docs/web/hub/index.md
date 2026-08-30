@@ -5,74 +5,19 @@ layout: hub.njk
 
 # Documentation Hub
 
-A home for longer-form, interactive write-ups about how Factoidal
-works — RDF/SPARQL concepts demonstrated by running the real
-F\*-extracted engine in your browser, not by prose alone.
+A collection of maintained, runnable RDF/SPARQL notebooks. Each post
+shows a real Factoidal capability rather than a screenshot: parse and
+query RDF, follow property paths, validate data, transform it, or
+inspect a storage experiment.
 
-Each post takes one thing you can do with RDF data — parse it, query
-it, validate it, transform it, canonicalize it, serve it — and shows
-it running. Most carry live runnable cells; one is a
-CLI-transcript-and-architecture page for the network/native features a
-sandboxed browser cell can't run. The
-[series plan](../../designissues/2026-07-05-docs-hub-plan/) records
-each post's central vocabulary and live elements.
-
-## How the interactive cells work
-
-A fenced code block tagged `observable-js` becomes a **live cell**:
-the page's runtime script (see `docs/_includes/hub.njk`) finds every
-` ```observable-js ` block, wraps its body in an async function, and
-runs it through a vendored
-[Observable Runtime](https://github.com/observablehq/runtime) +
-[Inspector](https://github.com/observablehq/inspector) pair — the same
-reactive-execution model observablehq.com notebooks use, vendored
-under `third_party/observable/` so nothing loads from a CDN.
-
-Each cell's function body receives six fixed bindings by parameter
-name:
-
-| Name | What it is |
-|---|---|
-| `Factoidal` | the raw npm package entry (`../npm/factoidal/browser.js`) — the primitives `fn` is built on, running the F\*-extracted engine in-browser. Cells call `fn`, not this, directly. |
-| `fn` | the typed cell-facing API — `fn.parse()` returns a `Dataset` you can iterate and check `.size` on, `fn.query()` returns `Map<string, Term>[]` / `boolean` / another `Dataset` depending on the query form. Every post below calls a Factoidal capability through this. |
-| `d3` | vendored `d3` 7.9.0, for hand-rolled charts |
-| `Plot` | vendored `@observablehq/plot` 0.6.17, for declarative charts |
-| `html` | vendored `@observablehq/stdlib`'s tagged-template HTML helper |
-| `md` | vendored `@observablehq/stdlib`'s tagged-template Markdown helper |
-
-The full cell-authoring contract — the `fn` typed API in detail, why
-it's an adapter rather than a direct import, and the testing
-discipline every live cell is held to — is documented in
-[`README.md`](README/).
-
-<!-- Note: linked as a pre-resolved `README/` path, not `./README.md`.
-     docs/.eleventy.js's mdlink-to-slug transform assumes every page
-     it rewrites links on is nested one pretty-URL directory below its
-     source's directory (true for the three posts, which each get
-     their own subdirectory) -- but this page IS the directory index
-     (`web/hub/index.md` serves at `/web/hub/`, no nesting), so the
-     transform's blanket `../` prefix would point one level too high.
-     A `.md`-suffixed link here would resolve to a broken URL. -->
+Start with [SPARQL queries and property paths](./02-asking-questions-sparql/),
+then try the [life-sciences named-graph workload](./45-life-sciences-named-graphs/)
+or [browser block artifacts](./46-browser-block-artifacts/).
 
 
-Write a `return` statement to produce the value the Inspector renders
-(a string, number, DOM node, or `Plot`/`html` output all work — the
-Inspector knows how to display each). Here's a real cell, computing a
-value with the npm module right now:
-
-```observable-js
-const graph = await fn.parse('<http://example.org/a> <http://example.org/b> "42" .');
-const rows = await fn.query(graph, 'SELECT ?o WHERE { ?s ?p ?o }');
-return `hub scaffold smoke test: ${rows.length} binding(s), o = ${rows[0].get("o").value}`;
-```
-
-If the cell's rendered output above ends with `1 binding(s), o = 42`
-(the Observable Inspector prefixes it with the cell's internal name
-and quotes the string — that's expected, not a bug), the whole
-chain — vendored Eleventy build, vendored Observable runtime, the
-fenced-block convention, and the npm-packaged engine — is working end
-to end. `tests/web-demos/hub_smoke.sh` asserts exactly this,
-headlessly.
+The pages use a small, vendored Observable-style runtime. The
+[Hub notebook guide](./47-writing-hub-notebooks/) covers the live-cell
+model, Factoidal API, and test contract.
 
 ## The series
 
@@ -122,6 +67,8 @@ headlessly.
   <li><a href="./44-a-little-ikl-walkthrough/">A little IKL walkthrough</a> — one squirrel story written down twice in short question-and-answer steps: a witness’s words held as a CLIF quoted string, the rule that <code>(that S)</code> is a term and cannot be <code>that</code>’s own argument, three-layer <code>that</code>-nesting through a predication, factivity as an axiom you write rather than one the logic assumes, quantifying into a <code>that</code>-term — and, because IKL is referentially transparent, a misunderstanding that has to be stated about the string rather than inside a belief (none)</li>
   <li><a href="./45-life-sciences-named-graphs/">Life sciences: named graphs, on demand</a> — the established 43,103-triple Wikidata/KGX browser workload recast as a click-to-run named-graph notebook, retaining its chromosome/sequence-variant cross-graph join without making every documentation visit parse the corpus (wikidata)</li>
   <li><a href="./46-browser-block-artifacts/">Bring a block: browser artifact inspection</a> — choose an IBK1 block, inspect its versioned header, calculate SHA-256, and optionally cache the exact bytes in OPFS; browser-side block query execution is named as the pending Lean-WASM ABI increment, not implied (none)</li>
+  <li><a href="./47-writing-hub-notebooks/">Writing Hub notebooks</a> — the Observable-style cell model, Factoidal's browser API, and the pinned-test contract (none)</li>
+  <li><a href="./48-json-ld-playground/">JSON-LD playground</a> — paste JSON-LD and inspect RDF plus canonical N-Quads locally in the browser (schema.org)</li>
 </ul>
 
 See also: the <a href="../perf/">performance hub</a> — measured

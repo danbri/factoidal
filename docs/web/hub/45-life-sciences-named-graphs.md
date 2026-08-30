@@ -9,12 +9,10 @@ status: published
 tests: tests/hub/post45_test.mjs
 ---
 
-The older [life-sciences page]({{ '/fstar-extracted/demo-lifesci.html' | url }})
-is a useful workload, but it is a page-sized custom application: it starts
-loading all three files as soon as the page opens and carries its own controls.
-This is its Hub form: the data catalogue, the query and the runner are separate
-notebook cells. It uses the same F\*-derived browser evaluator and the same
-committed KGX Turtle files; no service receives the data or the query.
+This established life-sciences workload is presented here as a Hub notebook:
+the data catalogue, the query and the runner are separate cells. It uses the
+same committed KGX Turtle files and F\*-derived browser evaluator; no service
+receives the data or the query.
 
 The runner is deliberately click-to-run. The three files total 43,103 RDF
 triples, so loading them should be an intentional experiment, not a cost paid
@@ -87,11 +85,11 @@ step with checked binary blocks and bounded reads. The next notebook makes
 that binary boundary visible without pretending that the browser can query an
 IBK file before the corresponding Lean-WASM operation is exported.
 
-## Relationship to the older demos
+## Related notebooks
 
-- [Life sciences, original custom page]({{ '/fstar-extracted/demo-lifesci.html' | url }}) remains available as the full query gallery, including disease aggregation.
-- [RIF Core]({{ '/fstar-extracted/demo-rif.html' | url }}) has a maintained Hub counterpart in [post 10](../10-rules-rif-core/); use the Hub notebook for the current concise explanation and pinned live cells.
-- [Post 42](../42-cottas-a-store-at-scale/) is the existing browser-byte-store demo: it opens COTTAS bytes and queries them. It is the closest current browser analogue of the block-engine direction.
+- [RIF Core](../10-rules-rif-core/) is the maintained rules notebook.
+- [Post 42](../42-cottas-a-store-at-scale/) opens COTTAS bytes and queries
+  them: the closest current browser analogue of the block-engine direction.
 
 The cells that define the dataset catalogue and SPARQL workload are pinned in
 [`tests/hub/post45_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post45_test.mjs).

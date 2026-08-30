@@ -13,19 +13,11 @@ command line, in Node, and in your browser with nothing on a server.
 
 ## Try it in your browser
 
-**[Launch the SPARQL demo &rarr;]({{ '/fstar-extracted/' | url }})** —
-paste Turtle data, write a query, see the results. The engine is
-F\*-extracted OCaml compiled to JavaScript; nothing runs on a server.
-
-## Learn it from your data
-
-**[The documentation hub &rarr;]({{ '/web/hub/' | url }})** — a
-task-oriented series that takes one thing you can do with RDF data and
-shows it running: triples and Turtle, SPARQL queries and property
-paths, RDFS/OWL inference, SHACL and ShEx validation, JSON-LD, RDFC-1.0
-canonicalization, table-to-RDF mapping, SPARQL Update, full-text
-search, GeoSPARQL, and more. Every page has live code cells that run
-the engine in the browser — no server, no CDN.
+**[Explore the documentation Hub &rarr;]({{ '/web/hub/' | url }})** —
+maintained, runnable RDF/SPARQL notebooks. Start with
+[SPARQL and property paths]({{ '/web/hub/02-asking-questions-sparql/' | url }})
+or the [life-sciences named-graph workload]({{ '/web/hub/45-life-sciences-named-graphs/' | url }}).
+They run in the browser without sending your data to a server.
 
 ## What it covers
 

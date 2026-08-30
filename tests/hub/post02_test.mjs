@@ -94,15 +94,15 @@ test('post02: CONSTRUCT derives a one-triple occupation-label graph', async () =
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post02: post has 6 live cells (ttl + dataset hoisted into named cells)', () => {
-  assert.equal(cells.length, 6, `expected 6 live cells, found ${cells.length}`);
+test('post02: post has 9 live cells (including the music property-path notebook)', () => {
+  assert.equal(cells.length, 9, `expected 9 live cells, found ${cells.length}`);
 });
 
 test('post02: dependency inference wires ttl -> dataset -> every query cell', () => {
   const post = runReactivePost(cells, { fn: factoidal, pretty });
   assert.deepEqual(post.names.slice(0, 2), ['ttl', 'dataset']);
   assert.ok(post.infos[1].refs.includes('ttl'), 'dataset cell references ttl');
-  for (const i of [2, 3, 4, 5]) {
+  for (const i of [2, 3, 4, 8]) {
     assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
   }
 });
@@ -140,10 +140,15 @@ test('post02 cell 6 (CONSTRUCT): one-triple occupation-label graph', async () =>
   const caps = await factoidal.capabilities();
   if (!caps.construct) return;
   const post = runReactivePost(cells, { fn: factoidal, pretty });
-  const result = await post.value(post.names[5]);
+  const result = await post.value(post.names[8]);
   assert.equal(result.size, 1);
   assert.equal(
     result.nquads,
     '<http://www.wikidata.org/entity/Q42> <http://example.org/hasOccupationLabel> "writer" .\n'
   );
+});
+
+test('post02: music notebook retains the album-to-band-to-musician property path', () => {
+  assert.match(cells[5], /fstar-extracted\/samples\/music\.ttl/);
+  assert.match(cells[7], /ex:by\/ex:member/);
 });

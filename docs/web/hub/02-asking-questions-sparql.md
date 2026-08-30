@@ -123,6 +123,37 @@ closure of `P279` in one query instead of writing a recursive client.
 This dataset only has the direct `P31` edge, so the `*` part matches
 zero additional hops here; the syntax is identical either way.
 
+## A music path in practice
+
+The compact music corpus behind the original query gallery is also available
+here. This two-hop path walks from an album to its band and then to each
+musician, without exposing the intermediate band variable.
+
+```observable-js
+musicTurtle = await fetch("../../../fstar-extracted/samples/music.ttl").then(async (response) => {
+  if (!response.ok) throw new Error(`music.ttl: HTTP ${response.status}`);
+  return response.text();
+})
+```
+
+```observable-js
+musicDataset = fn.parse(musicTurtle)
+```
+
+```observable-js
+const performers = await fn.query(musicDataset, `
+  PREFIX ex: <http://example.org/music/>
+  PREFIX dc: <http://purl.org/dc/terms/>
+  PREFIX mo: <http://purl.org/ontology/mo/>
+  SELECT ?album ?musician WHERE {
+    ?a a mo:Album ; dc:title ?album ; ex:by/ex:member ?m .
+    ?m dc:title ?musician .
+  }
+  ORDER BY ?album ?musician
+`);
+return pretty(performers);
+```
+
 ## CONSTRUCT
 
 SELECT returns bindings; CONSTRUCT returns a new graph:

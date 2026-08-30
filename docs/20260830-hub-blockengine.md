@@ -2,6 +2,24 @@
 
 Date: 2026-08-30
 
+## Hub consolidation follow-up
+
+- The maintained public navigation now directs readers to the Hub rather than
+  the ageing `/fstar-extracted/` gallery. Legacy assets remain fixtures and
+  browser-engine inputs; they are no longer the advertised demo surface.
+- Post 02 includes the original music corpus's `ex:by/ex:member` property
+  path, making the two-hop album-to-performer example visible in the main
+  SPARQL notebook.
+- Post 48 is the editable JSON-LD playground: it performs `toRdf` and
+  canonicalization locally, with an explicit unsupported-remote-context
+  boundary. Post 47 contains the Hub/Observable-style authoring guide, leaving
+  the Hub landing page as a short route into demonstrations.
+- Hub output rendering is automatic. RDF datasets and binding rows use the
+  existing responsive `pretty()` table renderer; DOM and chart values retain
+  their native rendering. The reader-facing `Auto | Table` control was removed.
+- Verified with the three focused Hub Node tests and a full Eleventy build from
+  `docs/` into `/private/tmp/factoidal-hub-site`.
+
 ## Landed Hub notebooks
 
 - `web/hub/45-life-sciences-named-graphs.md` is the concise Hub form of
