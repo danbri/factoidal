@@ -17,8 +17,15 @@ structure CachedArtifact where
   key : ArtifactKey
   materialized : Materialized
 
+structure ProfileNode where
+  entry : Entry
+  materialized : Materialized
+  cacheHit : Bool
+  elapsedMs : Nat
+
 structure Loaded where
   triples : List L4Factoidal.RDF.Triple
+  nodes : List ProfileNode
   hits : Nat
   misses : Nat
   newlyLogicalBytes : Nat
@@ -28,29 +35,34 @@ structure Loaded where
   newlyRangeRequests : Nat
 
 private def emptyLoaded : Loaded :=
-  { triples := [], hits := 0, misses := 0, newlyLogicalBytes := 0,
+  { triples := [], nodes := [], hits := 0, misses := 0, newlyLogicalBytes := 0,
     newlyRequestedBytes := 0, newlyFetchedBytes := 0, newlyVerifiedChunks := 0,
     newlyRangeRequests := 0 }
 
 private def readOne (directory : System.FilePath) (cache : IO.Ref (List CachedArtifact))
-    (entry : Entry) : IO (Option (Materialized × Bool)) := do
+    (entry : Entry) : IO (Option (Materialized × Bool × Nat)) := do
+  let t0 ← IO.monoMsNow
   match (← cache.get).find? (fun cached => cached.key == entry.artifact.key) with
-  | some cached => pure (some (cached.materialized, true))
+  | some cached =>
+      let t1 ← IO.monoMsNow
+      pure (some (cached.materialized, true, t1 - t0))
   | none =>
       match ← scanEntryProfile directory entry with
       | none => pure none
       | some materialized =>
           cache.modify fun entries => { key := entry.artifact.key, materialized } :: entries
-          pure (some (materialized, false))
+          let t1 ← IO.monoMsNow
+          pure (some (materialized, false, t1 - t0))
 
 private def readEntries (directory : System.FilePath) (cache : IO.Ref (List CachedArtifact)) :
     List Entry → IO (Option Loaded)
   | [] => pure (some emptyLoaded)
   | entry :: rest => do
       match ← readOne directory cache entry, ← readEntries directory cache rest with
-      | some (materialized, hit), some tail =>
+      | some (materialized, hit, elapsedMs), some tail =>
           pure (some {
             triples := materialized.triples ++ tail.triples
+            nodes := { entry, materialized, cacheHit := hit, elapsedMs } :: tail.nodes
             hits := tail.hits + if hit then 1 else 0
             misses := tail.misses + if hit then 0 else 1
             newlyLogicalBytes := tail.newlyLogicalBytes + if hit then 0 else materialized.logicalBytes
@@ -59,6 +71,21 @@ private def readEntries (directory : System.FilePath) (cache : IO.Ref (List Cach
             newlyVerifiedChunks := tail.newlyVerifiedChunks + if hit then 0 else materialized.verifiedChunks
             newlyRangeRequests := tail.newlyRangeRequests + if hit then 0 else materialized.rangeRequests })
       | _, _ => pure none
+
+private def profileScanSse (node : ProfileNode) : String :=
+  let materialized := node.materialized
+  let logicalBytes := if node.cacheHit then 0 else materialized.logicalBytes
+  let fetchedBytes := if node.cacheHit then 0 else materialized.fetchedBytes
+  let chunks := if node.cacheHit then 0 else materialized.verifiedChunks
+  let requests := if node.cacheHit then 0 else materialized.rangeRequests
+  let cacheState := if node.cacheHit then "hit" else "miss"
+  s!"(node scan-{node.entry.ordinal}\n    (scan :predicate <{node.entry.predicate.val}>)\n    (placement local-file)\n    (estimate :rows {node.entry.rows})\n    (actual :rows {materialized.triples.length} :elapsed-ms {node.elapsedMs})\n    (io :logical-bytes {logicalBytes} :physical-bytes {fetchedBytes} :chunks {chunks} :range-requests {requests} :cache {cacheState})\n    (integrity :manifest SBM1 :merkle verified))"
+
+private def profileSse (queryNumber : Nat) (query : Query) (loaded : Loaded)
+    (rows : List Solution) (evalMs : Nat) : String :=
+  let scans := String.intercalate "\n  " (loaded.nodes.map profileScanSse)
+  let inputs := String.intercalate " " (loaded.nodes.map fun node => s!"@scan-{node.entry.ordinal}")
+  s!"(profile query-{queryNumber}\n  (logical {query.toSse})\n  (flow\n  {scans}\n  (node sparql-eval\n    (sparql-select :inputs ({inputs}))\n    (placement lean-native)\n    (actual :rows {rows.length} :elapsed-ms {evalMs})\n    (integrity :manifest SBM1 :merkle verified))))"
 
 private def execute (directory : System.FilePath) (manifest : Manifest)
     (cache : IO.Ref (List CachedArtifact)) (queryNumber : Nat) (queryText : String) : IO Bool := do
@@ -79,13 +106,17 @@ private def execute (directory : System.FilePath) (manifest : Manifest)
               pure false
           | some loaded =>
               let dataset : DatasetBackend := { default := .hdt (readOpsOf loaded.triples), named := [] }
+              let evalStart ← IO.monoMsNow
               match runSelectQueryBackendDataset emptyEnv query dataset with
               | none =>
                   IO.eprintln s!"l4block-shard-merkle-session query={queryNumber} failed: query was not evaluated as SELECT"
                   pure false
               | some rows =>
+                  let evalEnd ← IO.monoMsNow
                   let cacheArtifacts := (← cache.get).length
                   IO.println s!"l4block-shard-merkle-session query={queryNumber} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) cache-hit={loaded.hits} cache-miss={loaded.misses} logical-bytes={loaded.newlyLogicalBytes} requested-range-bytes={loaded.newlyRequestedBytes} fetched-chunk-bytes={loaded.newlyFetchedBytes} verified-chunks={loaded.newlyVerifiedChunks} range-requests={loaded.newlyRangeRequests} cache-artifacts={cacheArtifacts} integrity=sbm1-merkle-verified"
+                  IO.println s!"l4block-shard-merkle-session profile format=sexp query={queryNumber}"
+                  IO.println (profileSse queryNumber query loaded rows (evalEnd - evalStart))
                   IO.println s!"l4block-shard-merkle-session rows={rows.length} preview={toString (repr (rows.take 10))}"
                   pure true
 
