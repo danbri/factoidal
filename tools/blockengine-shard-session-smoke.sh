@@ -12,6 +12,10 @@ trap 'rm -rf "$run_dir"' EXIT
 "$lean_dir/.lake/build/bin/l4block-shard-pack" \
   "$repo_root/docs/fstar-extracted/samples/music.ttl" "$run_dir/store" >/dev/null
 
+test -s "$run_dir/store/manifest.sbm1"
+test -s "$run_dir/store/manifest.sbm0"
+test -s "$run_dir/store/predicate-0.ibk2.merkle"
+
 output=$(printf '%s\n' \
   'PREFIX m: <http://example.org/music/> PREFIX dc: <http://purl.org/dc/terms/> SELECT ?album ?title WHERE { ?album m:by ?band . ?album dc:title ?title . } ORDER BY ?album' \
   'PREFIX m: <http://example.org/music/> SELECT ?album WHERE { ?album m:by ?band . FILTER(?band = <http://example.org/music/radiohead>) }' \

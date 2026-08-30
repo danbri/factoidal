@@ -36,12 +36,15 @@ private def pack (input output : String) : IO UInt32 := do
             let chunked ← match fromChunks? chunkBytes (chunksOf chunkBytes bytes) with
               | some value => pure value
               | none => throw <| IO.userError s!"could not commit fixed chunks for {predicate.val}"
+            let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
+            let proofBytes := ByteArray.mk (leaves.flatMap (fun digest => digest.data.toList) |>.toArray)
+            IO.FS.writeBinFile (output ++ "/" ++ name ++ ".merkle") proofBytes
             let entry : Entry :=
               { predicate
                 artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
                 rows := block.rows.size
                 ordinal := index }
-            pure (entry, s!"{index}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex digest}")
+            pure (entry, s!"{index}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex digest}\t{name}.merkle")
       let entries := packed.map Prod.fst
       let lines := packed.map Prod.snd
       let manifest : Manifest :=
@@ -59,7 +62,7 @@ private def pack (input output : String) : IO UInt32 := do
       | none => throw <| IO.userError "could not encode compatibility SBM0 manifest"
       | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm0") manifestBytes
       IO.FS.writeFile (output ++ "/manifest.tsv")
-        ("# index\tpredicate\tfile\trows\tbytes\tsha256\n" ++ String.intercalate "\n" lines ++ "\n")
+        ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\n" ++ String.intercalate "\n" lines ++ "\n")
       IO.println s!"l4block-shard-pack input={input} triples={graph.length} shards={store.blocks.length} output={output} manifests=manifest.sbm1,manifest.sbm0 chunk-bytes={chunkBytes}"
       return 0
 
