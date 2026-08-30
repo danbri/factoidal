@@ -20,10 +20,12 @@ test('post49: presents a reviewable proposal and runs it only on explicit action
   assert.match(cell, /Proposal below — it has not run a query\./);
   assert.match(cell, /out\.textContent = String\(proposal\)/);
   assert.match(cell, /named graphs only/);
-  assert.match(cell, /include LIMIT 20/);
+  assert.match(cell, /LIMIT 20 as the final clause/);
   assert.match(cell, /Review and run this proposal locally/);
   assert.match(cell, /run\.addEventListener\("click"/);
   assert.match(cell, /Factoidal\.queryDataset\(data, query/);
   assert.match(cell, /Only a reviewed read-only SELECT, ASK, CONSTRUCT, or DESCRIBE/);
   assert.match(cell, /INSERT\|DELETE\|LOAD\|CLEAR\|CREATE\|DROP\|COPY\|MOVE\|ADD\|WITH\|USING\|SERVICE/);
+  assert.match(cell, /SPARQL requires WHERE before LIMIT/);
+  assert.match(cell, /does not declare PREFIX wdt/);
 });

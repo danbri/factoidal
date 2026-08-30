@@ -62,7 +62,7 @@ localAiForKg = {
             status.textContent = `Downloading Chrome's local AI model: ${Math.round(event.loaded * 100)}%`;
           });
         },
-        initialPrompts: [{ role: "system", content: "Propose one read-only SPARQL SELECT query. Never propose UPDATE. This dataset has named graphs only: put every triple pattern inside an explicit GRAPH <...> block, using only graph URIs in the supplied profile. Use the supplied prefixes and facts, include LIMIT 20, then explain briefly." }],
+        initialPrompts: [{ role: "system", content: "Return only one read-only SPARQL SELECT query in a sparql code fence; no explanation. Never propose UPDATE. This dataset has named graphs only: put every triple pattern inside an explicit GRAPH <...> block, using only graph URIs in the supplied profile. Declare PREFIX wdt: <http://www.wikidata.org/prop/direct/> when using wdt:. Clause order must be PREFIX, SELECT, WHERE { ... }, then LIMIT 20 as the final clause." }],
       });
       session = created;
       release.disabled = false;
@@ -89,6 +89,12 @@ localAiForKg = {
     const upper = query.toUpperCase();
     return /\b(SELECT|ASK|CONSTRUCT|DESCRIBE)\b/.test(upper)
       && !/\b(INSERT|DELETE|LOAD|CLEAR|CREATE|DROP|COPY|MOVE|ADD|WITH|USING|SERVICE)\b/.test(upper);
+  }
+  function reviewProblem(query) {
+    if (!isSafeReadOnly(query)) return "Only a reviewed read-only SELECT, ASK, CONSTRUCT, or DESCRIBE query without SERVICE may run here.";
+    if (/\bLIMIT\s+\d+\s+WHERE\b/i.test(query)) return "SPARQL requires WHERE before LIMIT; move LIMIT to the end of the query.";
+    if (/\bwdt:/.test(query) && !/^\s*PREFIX\s+wdt:/im.test(query)) return "This query uses wdt: but does not declare PREFIX wdt: <http://www.wikidata.org/prop/direct/>.";
+    return "";
   }
   ask.addEventListener("click", async () => {
     ask.disabled = true; resultStatus.textContent = ""; out.textContent = "Preparing local AI…";
@@ -119,8 +125,9 @@ localAiForKg = {
   });
   run.addEventListener("click", async () => {
     const query = candidate.value.trim();
-    if (!isSafeReadOnly(query)) {
-      runStatus.textContent = "Only a reviewed read-only SELECT, ASK, CONSTRUCT, or DESCRIBE query without SERVICE may run here.";
+    const problem = reviewProblem(query);
+    if (problem) {
+      runStatus.textContent = problem;
       return;
     }
     run.disabled = true;
