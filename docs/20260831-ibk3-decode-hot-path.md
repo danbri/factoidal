@@ -186,3 +186,23 @@ term-to-local-ID relation against the IBK3 PTD1 dictionary, and refuses a
 sidecar whose target digest does not equal the entry's IBK3 digest. The
 persistent smoke test also corrupts a TLI1 byte and establishes that
 activation fails closed. This is a real immutable-object admission boundary.
+
+### Large-fixture activation observation
+
+The 889k-triple `gene.ttl` source has been repacked as SBM4 (about 43 MiB of
+block and sidecar artifacts). Activation deliberately performs complete
+IBK3/TLI1 dictionary agreement, in addition to hashes and Merkle checks. It
+therefore takes materially longer than a small-fixture activation and is a
+publication-time admission cost, not query latency. The gene benchmark begins
+only after that immutable generation has completed activation.
+
+### First multi-page result
+
+On the repacked gene fixture, the parsed P682-to-P684 subject join returns the
+same 14 result rows through `ibk3-sri1-tli1-subject-join(2)`. Its reported
+logical reads are 317,826 bytes, compared with 16,429,434 bytes for the older
+full-materialisation IBK3 store: about a 98% reduction in logical block bytes.
+The first cold run still fetched 1,049,085 whole fixed-size chunks. Wall-clock
+time must not yet be advertised as improved: repeated TLI lookup/page planning
+and the deliberately simple sidecar implementation need further profiling and
+cache-aware batching.
