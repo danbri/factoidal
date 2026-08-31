@@ -232,11 +232,11 @@ private def rowTermIds (rows : List L4Factoidal.Storage.IndexedBlock.IdTriple) :
   rows.flatMap fun row => [row.s, row.p, row.o]
 
 private def distinctPtdPages (header : L4Factoidal.Storage.PagedTermDictionary.Prefix) :
-    List Nat → List Nat → List Nat
-  | [], seen => seen.reverse
+    List Nat → List Nat → Option (List Nat)
+  | [], seen => some seen.reverse
   | termId :: rest, seen =>
       match L4Factoidal.Storage.PagedTermDictionary.pageIndex? header termId with
-      | none => []
+      | none => none
       | some page =>
           if seen.contains page then distinctPtdPages header rest seen
           else distinctPtdPages header rest (page :: seen)
@@ -360,15 +360,18 @@ def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
                                                 match L4Factoidal.Storage.PagedTermDictionary.decodeDirectory? ptdHeader directoryBytes with
                                                 | none => pure none
                                                 | some ptdDirectory =>
-                                                    let pages := distinctPtdPages ptdHeader (rowTermIds rows) []
-                                                    let beforePages := addRead (addRead rowCounters ptdPrefixFootprint) directoryFootprint
-                                                    match ← readSparsePtdPages path ref leaves cache header ptdHeader ptdDirectory pages beforePages with
+                                                    let requiredIds := rowTermIds rows ++ indexed.map Prod.snd
+                                                    match distinctPtdPages ptdHeader requiredIds [] with
                                                     | none => pure none
-                                                    | some (decodedPages, counters) =>
-                                                        if !sparseIndexedTermsAgree ptdHeader decodedPages indexed then pure none else
-                                                        match sparseRowsToTriples? ptdHeader decodedPages predicate rows with
-                                                        | some triples => pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                                                    | some pages =>
+                                                        let beforePages := addRead (addRead rowCounters ptdPrefixFootprint) directoryFootprint
+                                                        match ← readSparsePtdPages path ref leaves cache header ptdHeader ptdDirectory pages beforePages with
                                                         | none => pure none
+                                                        | some (decodedPages, counters) =>
+                                                            if !sparseIndexedTermsAgree ptdHeader decodedPages indexed then pure none else
+                                                            match sparseRowsToTriples? ptdHeader decodedPages predicate rows with
+                                                            | some triples => pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                                                            | none => pure none
                                         | _, _ => pure none
       | _, _ => pure none
 

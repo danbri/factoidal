@@ -23,23 +23,25 @@ pagePairs             u32le  256
 pageCount             u32le
 directoryBytes        u32le
 pageBytes             u32le
-directory             (firstSubjectId, offset, length) × pageCount
+directory             (firstSubjectId, lastSubjectId, offset, length) × pageCount
 pages                 sorted (subjectId, sourceRowOffset) u32 pairs
 crc32c                u32le over post-version bytes
 ```
 
 Pairs retain SRI1's strict ordering: first by subject local ID, then by source
-row offset. A directory entry names a page's first subject ID. Lookup fetches
-the directory, binary-searches the candidate page, and may fetch the following
-page only when a one-subject posting list straddles a page boundary. This is a
-bounded and deterministic read protocol.
+row offset. A directory entry names its inclusive subject range. Lookup fetches
+the directory and fetches every page whose range can contain the requested
+subject. This deliberately handles a very frequent subject whose posting list
+spans several pages: it never guesses from a duplicated first-subject boundary
+and silently omits earlier postings. Normal lookups select one page; the
+multi-page case remains bounded and deterministic.
 
 ## Admission and execution rules
 
 - The target digest must equal the paired IBK3 artifact digest.
 - `pairCount == rowCount`; offsets are a permutation of `0 .. rowCount-1`.
-- Directory ranges are contiguous, non-empty and strictly increasing by first
-  subject ID except that a subject may continue in the following page.
+- Directory byte ranges are contiguous and non-empty. Subject ranges are
+  inclusive and a subject may continue in following pages.
 - Each page is internally canonical; the boundary pair ordering across pages
   is checked by complete decode at activation.
 - A range query proves framing and Merkle inclusion for the prefix, directory

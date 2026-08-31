@@ -208,6 +208,11 @@ only after that immutable generation has completed activation.
   mapping, decoded only for the needed pages on the sparse join path.
 - **SRI1** — subject-row index: an IBK3-local subject ID to source-row-offset
   mapping used by the two-predicate shared-subject join.
+- **SRI2** — proposed pageable successor to SRI1. It keeps the same canonical
+  postings but has a checksummed prefix and an inclusive subject-range
+  directory, so a range reader can fetch only candidate pages without losing a
+  posting list that crosses several page boundaries. It is implemented as a
+  standalone Lean codec and is not yet committed by a manifest version.
 - **TLI1** — term-local-ID index: canonical RDF term bytes to the *target*
   IBK3 local ID, explicitly bound to the target IBK3 SHA-256.
 - **SBM0** — original Shardborough Manifest: immutable artifact listing.
@@ -233,3 +238,16 @@ The first cold run still fetched 1,049,085 whole fixed-size chunks. Wall-clock
 time must not yet be advertised as improved: repeated TLI lookup/page planning
 and the deliberately simple sidecar implementation need further profiling and
 cache-aware batching.
+
+### Sparse PTD1 audit repair (2026-08-31)
+
+An independent audit found an edge case in the SBM4 TLI1/SRI1 join path: a
+queried RDF term may exist in a target block's dictionary only as an object,
+and therefore have a valid TLI1 local ID but no SRI1 subject postings. The old
+page plan used only selected row IDs, loaded no PTD1 page, then incorrectly
+failed the deliberate TLI1-to-PTD1 equality check. The repaired planner loads
+pages for both selected rows and TLI-returned local IDs; the valid query now
+contributes zero rows while retaining the equality check. It also treats an
+out-of-range ID as an explicit failed plan rather than as an indistinguishable
+empty page list. `tools/blockengine-ibk3-persistent-smoke.sh` passes after the
+repair.
