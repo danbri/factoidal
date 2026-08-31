@@ -307,3 +307,14 @@ The variable-length RDF-term parser for selected PTD1 pages still uses the
 existing list-oriented parser; moving that parser is a separate, proof- and
 benchmark-driven increment. The PTD1 module build and the complete persistent
 IBK3 smoke suite pass after this narrow change.
+
+### SRI2 fixed-range decoder (2026-08-31)
+
+SRI2 now reads its fixed 61-byte prefix, fixed 16-byte directory entries, and
+fixed eight-byte subject/row postings directly from bounds-checked
+`ByteArray` offsets. These are the ranges read by the SBM5 shared-subject join,
+so this removes another avoidable `ByteArray → List UInt8` copy on the actual
+selective-query route. Full SRI2 admission decoding remains available and
+unchanged; the wire format and its ordering, bounds, and cross-artifact
+activation checks are unchanged. The direct codec build and complete
+persistent IBK3 smoke suite pass.
