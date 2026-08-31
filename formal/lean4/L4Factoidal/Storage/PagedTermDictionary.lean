@@ -47,6 +47,14 @@ private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toA
 private def listOfByteArray (bytes : ByteArray) : List UInt8 := bytes.data.toList
 private def fitsU32 (n : Nat) : Bool := n < 4294967296
 
+private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
+  let b0 ← bytes[offset]?
+  let b1 ← bytes[offset + 1]?
+  let b2 ← bytes[offset + 2]?
+  let b3 ← bytes[offset + 3]?
+  some (b0.toUInt32 ||| (b1.toUInt32 <<< 8) |||
+    (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24))
+
 private def at? : List α → Nat → Option α
   | [], _ => none
   | term :: _, 0 => some term
@@ -89,14 +97,14 @@ def encode? (terms : Array Term) : Option ByteArray :=
     some <| byteArrayOfList (writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload))
 
 def decodePrefix (bytes : ByteArray) : Option Prefix := do
-  let input := listOfByteArray bytes
-  let foundMagic ← readU32LE input 0
+  if bytes.size != prefixBytes then none else do
+  let foundMagic ← readU32At? bytes 0
   if foundMagic != magic then none else do
-  let (foundVersion, rest) ← parseU8 (input.drop 4)
+  let foundVersion ← bytes[4]?
   if foundVersion != version then none else do
-  let termCount ← readU32LE rest 0
-  let pageTerms ← readU32LE rest 4
-  let pageCount ← readU32LE rest 8
+  let termCount ← readU32At? bytes 5
+  let pageTerms ← readU32At? bytes 9
+  let pageCount ← readU32At? bytes 13
   if pageTerms.toNat == 0 then none
   else if pageCount.toNat != (termCount.toNat + pageTerms.toNat - 1) / pageTerms.toNat then none
   else some { termCount := termCount.toNat, pageTerms := pageTerms.toNat, pageCount := pageCount.toNat }
@@ -106,18 +114,13 @@ def directoryRange (header : Prefix) : ByteRange :=
 
 def pageAreaOffset (header : Prefix) : Nat := prefixBytes + header.pageCount * 8
 
-private def decodeDirectoryGo : Nat → List UInt8 → List PageEntry →
-    Option (List PageEntry × List UInt8)
-  | 0, bytes, reversed => some (reversed.reverse, bytes)
-  | count + 1, bytes, reversed => do
-      let offset ← readU32LE bytes 0
-      let length ← readU32LE bytes 4
-      decodeDirectoryGo count (bytes.drop 8)
-        ({ offset := offset.toNat, length := length.toNat } :: reversed)
-
-private def decodeDirectory (count : Nat) (bytes : List UInt8) :
-    Option (List PageEntry × List UInt8) :=
-  decodeDirectoryGo count bytes []
+private def decodeDirectoryGo : Nat → ByteArray → Nat → List PageEntry → Option (List PageEntry)
+  | 0, _, _, reversed => some reversed.reverse
+  | count + 1, bytes, offset, reversed => do
+      let pageOffset ← readU32At? bytes offset
+      let length ← readU32At? bytes (offset + 4)
+      decodeDirectoryGo count bytes (offset + 8)
+        ({ offset := pageOffset.toNat, length := length.toNat } :: reversed)
 
 private def directoryContiguous : List PageEntry → Nat → Bool
   | [], _ => true
@@ -130,8 +133,8 @@ private def directoryCovers (directory : List PageEntry) (total : Nat) : Bool :=
 
 def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageEntry) := do
   if bytes.size != header.pageCount * 8 then none else do
-  let (directory, rest) ← decodeDirectory header.pageCount (listOfByteArray bytes)
-  if !rest.isEmpty || !directoryContiguous directory 0 then none else some directory
+  let directory ← decodeDirectoryGo header.pageCount bytes 0 []
+  if !directoryContiguous directory 0 then none else some directory
 
 def pageIndex? (header : Prefix) (termId : Nat) : Option Nat :=
   if termId >= header.termCount then none else some (termId / header.pageTerms)

@@ -198,39 +198,52 @@ only after that immutable generation has completed activation.
 
 ## Format and protocol map
 
-- **BLK0** — early MVP bytes for direct RDF-term blocks; a real byte boundary,
-  not the current physical layout.
-- **IBK2** — predicate-local immutable indexed block with a coarse dictionary
-  and selective scan layout.
-- **IBK3** — current predicate-local block: fixed-width local-ID rows followed
-  by a pageable dictionary.
-- **PTD1** — paged term dictionary: one IBK3 block's local ID to RDF-term
-  mapping, decoded only for the needed pages on the sparse join path.
-- **SRI1** — subject-row index: an IBK3-local subject ID to source-row-offset
-  mapping used by the two-predicate shared-subject join.
-- **SRI2** — current pageable successor to SRI1. It keeps the same canonical
-  postings but has a checksummed prefix and an inclusive subject-range
-  directory, so a range reader can fetch only candidate pages without losing a
-  posting list that crosses several page boundaries. SBM5 commits it with the
-  same artifact, SHA-256 and Merkle discipline as the primary block and TLI1
-  sidecar.
-- **TLI1** — term-local-ID index: canonical RDF term bytes to the *target*
-  IBK3 local ID, explicitly bound to the target IBK3 SHA-256.
-- **SBM0** — original Shardborough Manifest: immutable artifact listing.
-- **SBM1** — adds fixed-chunk Merkle commitment for verified range reads.
-- **SBM2** — permits several bounded immutable blocks per predicate.
-- **SBM3** — commits mandatory SRI1 sidecars for IBK3 entries.
-- **SBM4** — legacy manifest: commits both SRI1 and TLI1 sidecars, with
-  non-aliasing keys, checksums, Merkle roots and version/layout consistency.
-- **SBM5** — current manifest: replaces the SRI1 sidecar with SRI2 while
-  retaining TLI1; activation fully checks SRI2's canonical posting relation
-  against the IBK3 block before making a generation active.
-- **DLE1 / DLB1 / DLOG** — respectively framed delta entry, sequenced batch,
-  and append-only durable SPARQL Update log.
-- **CEP1** — compacted-epoch marker: tells replay to skip update batches
-  already folded into a newly published base.
-- **CURRENT** — atomic generation-selection pointer, updated only after a
-  candidate has passed activation checks.
+### Physical artifacts
+
+- **BLK0** — original MVP: direct RDF-term block bytes. Useful as the first
+  canonical byte boundary, but not the current query layout.
+- **IBK1** — first dictionary-plus-ID-row encoding: one complete shared term
+  dictionary followed by ID triples. It established framed/checksummed ID
+  blocks, but is not selective enough for large persistent reads.
+- **IBK2** — adds a predicate-local selective-scan layout and coarse directory.
+  It is still supported for existing artifacts.
+- **IBK3** — current primary block: one predicate per immutable artifact,
+  fixed-width local-ID rows first, then a pageable term dictionary. A host can
+  fetch rows before fetching the term pages those rows reference.
+- **PTD1** — the pageable term dictionary embedded in IBK3: local ID → RDF
+  term. Only the needed pages are read on the sparse path.
+- **SRI1** — flat subject-row sidecar: local subject ID → IBK3 row offsets.
+  It is the retained legacy index for SBM3/SBM4 artifacts.
+- **SRI2** — current paged SRI successor: the same canonical postings with a
+  checksummed prefix and inclusive subject-range directory. It can read only
+  candidate pages, including a posting list spanning page boundaries.
+- **TLI1** — target term lookup sidecar: canonical RDF-term bytes → the
+  *target* IBK3 local ID, explicitly bound to that IBK3 SHA-256.
+
+### Manifest generations
+
+- **SBM0** — original Shardborough Manifest: lists immutable artifacts.
+- **SBM1** — SBM0 plus fixed-chunk Merkle commitments for verified range reads.
+- **SBM2** — SBM1 plus multiple bounded immutable blocks for a predicate.
+- **SBM3** — SBM2 plus mandatory SRI1 sidecars for IBK3 entries.
+- **SBM4** — legacy current-readable form: SRI1 + TLI1, non-aliasing keys,
+  checksums, Merkle roots, and layout/version consistency checks.
+- **SBM5** — current writable form: replaces SRI1 with paged SRI2 and retains
+  TLI1. Activation checks SRI2's complete canonical posting relation against
+  IBK3 before publishing the generation.
+
+### Update and publication protocols
+
+- **DLE1** — one framed, checksummed durable delta operation.
+- **DLB1** — one framed, sequenced, checksummed batch of DLE1 operations: the
+  all-or-nothing durable unit for a SPARQL Update request.
+- **DLOG** — an append-only file header followed by DLB1 batches, replayed in
+  commit order over the immutable base.
+- **CEP1** — framed compacted-epoch sidecar: recovery skips log batches already
+  folded into an immutable compacted base, avoiding double replay.
+- **CURRENT** — small atomically replaced generation pointer. It is written
+  only after activation has admitted the manifest, hashes, Merkle commitments,
+  and cross-artifact sidecar relations.
 
 ### First multi-page result
 
@@ -283,3 +296,14 @@ the row-prefix decoder used by selective scans and to the predicate-validation
 pass used by ASK/count operators. The wire layout and acceptance conditions are
 unchanged; `tools/blockengine-ibk3-persistent-smoke.sh` exercises SELECT,
 join, ASK, CONSTRUCT, COUNT, grouping, updates and activation after the change.
+
+### PTD1 fixed-framing decoder (2026-08-31)
+
+PTD1's 17-byte prefix and its fixed eight-byte-per-page directory now decode
+directly from bounds-checked `ByteArray` offsets. This removes an avoidable
+whole-range `ByteArray → List UInt8` copy from the IBK3 sparse path while
+keeping the bytes, rejection conditions, and pageable term semantics the same.
+The variable-length RDF-term parser for selected PTD1 pages still uses the
+existing list-oriented parser; moving that parser is a separate, proof- and
+benchmark-driven increment. The PTD1 module build and the complete persistent
+IBK3 smoke suite pass after this narrow change.
