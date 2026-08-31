@@ -54,6 +54,21 @@ avoided bound scans. That implementation was removed rather than retained as
 a nominal fast path. The useful next design is a reusable on-disk or
 session-cached subject/object access structure, not a per-query index build.
 
+## Subject posting-index meaning
+
+The first implementation step is now
+`formal/lean4/L4Factoidal/Storage/SubjectRowIndex.lean`. It defines the
+total meaning of a predicate-local subject posting index before any byte
+layout is selected. Each subject maps to source-row offsets; selected
+postings are restored to ascending source order. The reference function
+`expectedOffsets` states the same result directly over the ID rows, and the
+build-time guards cover repeated, singleton, and absent subjects.
+
+This is not yet an IBK3 extension and does not claim a persisted speedup. It
+is the contract for a versioned successor: its encoder and range reader must
+commit and recover this mapping, reject invalid offsets, and preserve the
+existing row denotation. IBK3 remains readable unchanged.
+
 ## Verification
 
 ```text
