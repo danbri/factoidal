@@ -135,8 +135,11 @@ target PTD1 dictionary to reconstruct RDF terms. It avoids the much larger
 target *row* area. TLI1 is now committed and activation-verified and the join
 uses its Merkle-checked prefix, directory and selected page(s) to obtain local
 IDs. Every returned ID is cross-checked against PTD1 before row selection. A
-miss avoids opening PTD1 and target rows; a hit does not yet avoid PTD1. Sparse
-PTD1 page reconstruction and a paged SRI successor remain the next steps.
+miss avoids opening PTD1 and target rows. A hit now reads the selected fixed-
+width rows first, plans their referenced PTD1 pages, and decodes only those
+Merkle-verified pages to reconstruct RDF terms. The old complete-PTD1 path is
+retained only for pre-SBM4 stores. A paged SRI successor and a large-fixture
+benchmark remain the next performance steps.
 
 ## Local term-ID boundary
 

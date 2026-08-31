@@ -110,6 +110,7 @@ now emitted by the IBK3 packer and compactor, referenced by SBM4, and checked
 at activation for full digest, Merkle consistency, decoder framing, target
 IBK3 digest equality, and complete PTD1 dictionary agreement. The SRI1 join
 uses the Merkle-verified TLI1 prefix/directory/selected-page reader and checks
-returned IDs against PTD1 at execution. Sparse PTD1 reconstruction for the
-selected rows remains necessary to avoid reading the whole target dictionary
-when a join has hits.
+returned IDs against PTD1 at execution. For matching joins it now fetches the
+selected ID rows first and decodes only the PTD1 pages named by those rows,
+rather than the whole target dictionary. The remaining benchmark work is to
+measure that sparse path on the multi-page gene fixture.
