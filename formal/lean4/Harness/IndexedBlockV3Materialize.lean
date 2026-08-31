@@ -3,6 +3,7 @@
    L4Factoidal.Storage.IndexedBlockWireV3. -/
 import Harness.PosixRangeIO
 import L4Factoidal.Storage.IndexedBlockWireV3
+import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.ShardManifest
 
 namespace Harness.IndexedBlockV3Materialize
@@ -45,6 +46,37 @@ def safeLeafKey (key : ArtifactKey) : Bool :=
 private def ioRange (range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange) :
     L4Factoidal.Storage.IndexedBlockWireV2.ByteRange :=
   { offset := range.offset, length := range.length }
+
+/-- Open a subject-posting sidecar only after all its independent integrity
+    boundaries agree: SBM3 extent/SHA-256, fixed-chunk Merkle proof, SRI1
+    framing/checksum, and the IBK entry's declared row count. `none` means no
+    postings are exposed; a future subject-bound scan must then fail closed or
+    use a separately established fallback plan. -/
+def subjectPostings? (directory : System.FilePath) (entry : Entry) :
+    IO (Option (List (Nat × Nat))) := do
+  match entry.subjectIndex with
+  | none => pure none
+  | some index =>
+      if !safeLeafKey index.key then return none
+      match index.chunked with
+      | none => pure none
+      | some ref =>
+          let path := (directory / index.key.value).toString
+          let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+          match leaves? ref.chunkCount leafBytes with
+          | none => pure none
+          | some leaves =>
+              let cache ← newVerifiedChunkCache
+              let fullRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+                { offset := 0, length := index.bytes }
+              match ← readVerifiedRangeCached? path ref leaves cache (ioRange fullRange) with
+              | none => pure none
+              | some (bytes, _) =>
+                  if bytes.size != index.bytes ||
+                      !L4Factoidal.Storage.BlockArtifact.verify index.sha256 bytes then pure none else
+                  match L4Factoidal.Storage.SubjectRowIndexWire.decode bytes with
+                  | some (rows, pairs) => if rows == entry.rows then pure (some pairs) else pure none
+                  | none => pure none
 
 private def readPages (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref (List VerifiedChunk)) : List L4Factoidal.Storage.IndexedBlockWireV3.ByteRange → Counters →

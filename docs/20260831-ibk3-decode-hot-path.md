@@ -1,5 +1,14 @@
 # IBK3 decode hot-path: total streaming accumulators
 
+## Names used here
+
+- **IBK3**: Indexed Block, format version 3; the predicate-local RDF data
+  artifact.
+- **SRI1**: Subject Row Index, format version 1; its subject-to-IBK-row
+  posting artifact.
+- **SBM3**: Shardborough Manifest, wire version 3; the manifest that commits
+  both artifacts and their integrity metadata.
+
 ## Change
 
 `PagedTermDictionary.lean` and `IndexedBlockWireV3.lean` previously decoded
@@ -86,6 +95,12 @@ manifest. On 2026-08-31, a fresh store packed from the checked-in W3C
 the SRI1 file, its Merkle leaves, and `manifest.sbm2`; parsed SPARQL over the
 new store returned the two expected `:p1` rows. Existing IBK3/SBM2 stores
 remain readable.
+
+`Harness/IndexedBlockV3Materialize.subjectPostings?` is the matching reader.
+It returns no postings unless the manifest digest and extent, Merkle leaves,
+SRI1 framing/checksum, and SRI1 row count all agree. It is intentionally not
+used for query selection yet: the next scan must also read each selected IBK3
+row and verify that its subject ID matches the SRI1 posting.
 
 ## Verification
 
