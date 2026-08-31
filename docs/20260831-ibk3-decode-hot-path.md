@@ -610,3 +610,17 @@ decimal, a typed lexical decimal, and positive/negative numeric constants.
 The unbound-predicate cases deliberately use the full-manifest mode and the
 `rdf:type` case remains selective.  This makes typed-term equality part of the
 disk-path regression boundary rather than relying only on custom fixtures.
+
+### Persisted W3C RDF-list traversal (2026-08-31)
+
+The disk gate now also publishes W3C Basic `data-2.ttl` as a six-block SBM6
+generation and runs `list-1` through `list-4` from the approved W3C suite.
+Those queries traverse the Turtle RDF collection structure, including its
+blank nodes and several predicates, so each intentionally reports
+`ibk3-paged-merkle-full-manifest(6)`.  The gate asserts the expected one-row
+results: `ns:list0`, `ns:list1`, and typed `xsd:integer` values `1` and `11`.
+This adds a useful persisted-path check that is neither a simple constant
+predicate scan nor a custom fixture.  It does not establish general blank-node
+query optimisation: the safe parsed evaluator/materialisation path remains
+the correct route while blank-node identity and more general planning are
+developed.

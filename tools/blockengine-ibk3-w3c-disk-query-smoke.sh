@@ -12,6 +12,9 @@ trap 'rm -rf "$run_dir"' EXIT
 for fixture in data-6.ttl spoo-1.rq spoo-1.srx data-7.ttl bgp-no-match.rq bgp-no-match.srx; do
   test -f "$fixture_dir/$fixture"
 done
+for fixture in data-2.ttl list-1.rq list-1.srx list-2.rq list-2.srx list-3.rq list-3.srx list-4.rq list-4.srx; do
+  test -f "$fixture_dir/$fixture"
+done
 
 matching_root="$run_dir/spoo-1"
 matching_store="$matching_root/first"
@@ -62,6 +65,27 @@ for number in 1 2 3 4 5; do
       grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$value"
       grep -q 'z:x z:p' <<<"$value"
       ;;
+  esac
+done
+
+# RDF collection cases introduce Turtle blank nodes and multi-predicate list
+# traversal. They deliberately take the safe full-manifest path and confirm
+# that the stored RDF terms retain the typed xsd:integer list values.
+list_root="$run_dir/lists"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$fixture_dir/data-2.ttl" "$list_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$list_root" first >/dev/null
+for number in 1 2 3 4; do
+  value=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$list_root" --query \
+    "$(<"$fixture_dir/list-$number.rq")")
+  printf '%s\n' "$value"
+  grep -q 'open-mode=ibk3-paged-merkle-full-manifest(6)' <<<"$value"
+  grep -q 'rows=1 ' <<<"$value"
+  case "$number" in
+    1) grep -q 'http://example.org/ns#list0' <<<"$value" ;;
+    2) grep -q 'http://example.org/ns#list1' <<<"$value" ;;
+    3) grep -q 'literal ("1", "http://www.w3.org/2001/XMLSchema#integer"' <<<"$value" ;;
+    4) grep -q 'literal ("11", "http://www.w3.org/2001/XMLSchema#integer"' <<<"$value" ;;
   esac
 done
 
