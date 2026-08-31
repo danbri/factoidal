@@ -2,6 +2,7 @@
    admitted by the shared Merkle/paged materializer, then ordinary Lean SPARQL
    evaluates the parsed algebra. -/
 import Harness.IndexedBlockV3Materialize
+import Harness.ShardMerkleMaterialize
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
 import L4Factoidal.SPARQL.StoreFastPath
@@ -10,6 +11,7 @@ import L4Factoidal.Storage.ShardManifest
 namespace Harness.IndexedBlockV3Query
 
 open Harness.IndexedBlockV3Materialize
+open Harness.ShardMerkleMaterialize
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreBackend
@@ -39,14 +41,18 @@ private def run (directoryText queryText : String) : IO UInt32 := do
             match ← materializeEntries directory entries with
             | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
             | some (triples, counters) =>
-                let dataset : DatasetBackend := { default := .hdt (readOpsOf triples), named := [] }
-                match runSelectQueryBackendDataset emptyEnv query dataset with
-                | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
-                | some rows =>
-                    IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
-                    IO.println s!"l4block-id-v3-query sse={query.toSse}"
-                    IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
-                    return 0
+                match ← readDefaultDelta? directory with
+                | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1
+                | some delta =>
+                    let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
+                    match runSelectQueryBackendDataset emptyEnv query dataset with
+                    | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
+                    | some rows =>
+                        let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+                        IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+                        IO.println s!"l4block-id-v3-query sse={query.toSse}"
+                        IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+                        return 0
   catch error => IO.eprintln s!"l4block-id-v3-query failure: {error}"; return 1
 
 def main (args : List String) : IO UInt32 := do

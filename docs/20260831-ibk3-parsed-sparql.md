@@ -37,3 +37,16 @@ This is not yet a complete remote SPARQL service. It deliberately rejects
 unbound-predicate plans, named-graph routing, SERVICE, and update/delta
 composition until those physical plans are separately connected to the
 corresponding existing semantics.
+
+## Durable update replay
+
+The query host now composes the existing epoch-aware DLOG reader and
+`mergeOnRead` backend seam with the verified IBK3 base. It therefore uses the
+same durable update framing, compacted-epoch filtering, and malformed-sidecar
+refusal already exercised by the IBK2 path.
+
+An `INSERT DATA` into the direct IBK3 test store committed one DLOG batch at
+epoch 1. A subsequent parsed query for the inserted P31 object reported
+`delta=base-plus-delta` and returned the inserted subject. The writer still
+rejects update forms which require WHERE evaluation or fresh blank-node
+allocation; those remain the next explicitly scoped update extensions.
