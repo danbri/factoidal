@@ -127,3 +127,8 @@ had written zero artifacts at the same point, while the new packer has made
 forward physical progress without exposing an incomplete collection to a
 reader. It is evidence of the new publication boundary, not a claim that the
 17 MiB source completes in twenty seconds.
+
+With the later bounded 4 MiB publication policy, the same cap wrote 11 files
+instead. This indicates substantially less artifact fragmentation while
+retaining bounded memory; it was still interrupted before a manifest, so it
+is not a completed throughput measurement.
