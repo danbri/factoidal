@@ -16,6 +16,7 @@ open L4Factoidal.SPARQL.StoreBackend
 def magic : UInt32 := 0x304D4253
 def wireVersion0 : UInt8 := 0
 def wireVersion1 : UInt8 := 1
+def wireVersion2 : UInt8 := 2
 
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -54,9 +55,8 @@ structure ArtifactRef where
   chunked : Option ChunkedArtifact.Ref := none
   deriving DecidableEq
 
-/-- The first Shardborough layout names one predicate-local IBK2 block.
-    Later layouts retain the same artifact identity fields while adding graph,
-    evidence and sort-order columns. -/
+/-- One predicate-local IBK2 block. SBM0/SBM1 admit one entry per predicate;
+    SBM2 permits several bounded immutable blocks for one predicate. -/
 structure Entry where
   predicate : WfIri
   artifact : ArtifactRef
@@ -88,17 +88,28 @@ private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
     match version, artifact.chunked with
     | 0, none => true
     | 1, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
+    | 2, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | _, _ => false
 
 def valid (manifest : Manifest) : Bool :=
-  (manifest.version == 0 || manifest.version == 1) && uniquePredicates manifest.entries &&
+  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2) &&
+    (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
     contiguousOrdinals manifest.entries 0 &&
     manifest.entries.all fun entry => entry.rows > 0 && artifactValidFor manifest.version entry.artifact
+
+/-- SBM1 and later retain the fixed-chunk Merkle commitment required by the
+range-backed local-file and remote readers. -/
+def rangeCommitted (manifest : Manifest) : Bool :=
+  manifest.version == 1 || manifest.version == 2
 
 /-- Predicate selection is total and deterministic; a missing key means no
     candidate artifact, never a fallback that could hide an index error. -/
 def select? (manifest : Manifest) (predicate : WfIri) : Option Entry :=
   if valid manifest then manifest.entries.find? fun entry => entry.predicate == predicate else none
+
+/-- All committed blocks for a predicate, in manifest order. -/
+def selectAll (manifest : Manifest) (predicate : WfIri) : List Entry :=
+  if valid manifest then manifest.entries.filter fun entry => entry.predicate == predicate else []
 
 /-- A host supplies bytes by relative artifact key.  Keeping this interface
     pure is what lets files, mmap, `bytea`, TiKV values, OPFS and WASM buffers
@@ -133,9 +144,12 @@ def openVerified? (reader : Reader) (entry : Entry) : Option IndexedBlockWireV2.
     selective scan.  No unlisted artifact and no full-manifest fallback is
     consulted. -/
 def scanPredicate? (reader : Reader) (manifest : Manifest) (predicate : WfIri) : Option (List Triple) := do
-  let entry ← select? manifest predicate
-  let block ← openVerified? reader entry
-  some (IndexedBlockWireV2.scanBoundRange { p := some predicate } block)
+  let entries := selectAll manifest predicate
+  if entries.isEmpty then none else do
+  let blocks ← entries.mapM fun entry => do
+    let block ← openVerified? reader entry
+    some (entry, block)
+  some (blocks.flatMap fun (_, block) => IndexedBlockWireV2.scanBoundRange { p := some predicate } block)
 
 /-- A Shardborough collection whose manifest and every child artifact have
     been accepted.  This eager opener is the correctness-first reference;
@@ -184,9 +198,8 @@ def openStoreForPredicates? (reader : Reader) (manifest : Manifest)
 def scanBound (bound : PatternBound) (store : OpenStore) : List Triple :=
   match bound.p with
   | some predicate =>
-      match store.blocks.find? (fun pair => pair.1.predicate == predicate) with
-      | none => []
-      | some (_, block) => IndexedBlockWireV2.scanBoundRange bound block
+      store.blocks.filter (fun pair => pair.1.predicate == predicate) |>.flatMap
+        fun (_, block) => IndexedBlockWireV2.scanBoundRange bound block
   | none => store.blocks.flatMap fun (_, block) => IndexedBlockWireV2.scanBoundRange bound block
 
 /-- A predicate-local SBM0 entry has an exact admitted row count for an
@@ -195,7 +208,8 @@ def scanBound (bound : PatternBound) (store : OpenStore) : List Triple :=
 def estimateBound (bound : PatternBound) (store : OpenStore) : Nat :=
   match bound.s, bound.p, bound.o with
   | none, some predicate, none =>
-      ((store.blocks.find? fun pair => pair.1.predicate == predicate).map (fun pair => pair.1.rows)).getD 0
+      store.blocks.foldl (fun total pair =>
+        if pair.1.predicate == predicate then total + pair.1.rows else total) 0
   | _, _, _ => (scanBound bound store).length
 
 /-- Ordinary parsed SPARQL reaches the manifested physical collection through
@@ -247,6 +261,7 @@ private def encodableEntry (version : Nat) (entry : Entry) : Bool :=
     match version, entry.artifact.chunked with
     | 0, none => true
     | 1, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
+    | 2, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
     | _, _ => false
 
 private def encodable (manifest : Manifest) : Bool :=
@@ -262,10 +277,12 @@ private def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
   | 0, none => common
   | 1, some chunked => common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
       writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
+  | 2, some chunked => common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
+      writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
   | _, _ => []
 
-/-- Canonical SBM0/SBM1 bytes. SBM1 retains every SBM0 field and appends a
-    fixed chunk-policy/root commitment to each artifact entry. -/
+/-- Canonical SBM0/SBM1/SBM2 bytes. SBM1 and SBM2 retain every SBM0 field and
+    append a fixed chunk-policy/root commitment to each artifact entry. -/
 def encode? (manifest : Manifest) : Option ByteArray :=
   if valid manifest && encodable manifest then
     some <| byteArrayOfList <|
@@ -291,8 +308,18 @@ private def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × 
       let (root, _) ← takeExact 32 (afterCommon.drop 8)
       some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
                    chunkCount := chunkCount.toNat, root := byteArrayOfList root })
+    | 2 => do
+      let chunkBytes ← readU32LE afterCommon 0
+      let chunkCount ← readU32LE afterCommon 4
+      let (root, _) ← takeExact 32 (afterCommon.drop 8)
+      some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
+                   chunkCount := chunkCount.toNat, root := byteArrayOfList root })
     | _ => none
-  let rest := match version with | 0 => afterCommon | 1 => afterCommon.drop 40 | _ => afterCommon
+  let rest := match version with
+    | 0 => afterCommon
+    | 1 => afterCommon.drop 40
+    | 2 => afterCommon.drop 40
+    | _ => afterCommon
   if h : isIri predicateText then
     some
       ({ predicate := ⟨predicateText, h⟩
@@ -309,14 +336,14 @@ private def decodeEntries (version : Nat) : Nat → List UInt8 → Option (List 
       let (entries, rest) ← decodeEntries version n afterEntry
       some (entry :: entries, rest)
 
-/-- Strict SBM0/SBM1 decoding. A decoder refuses bad framing, unknown versions,
+/-- Strict SBM0/SBM1/SBM2 decoding. A decoder refuses bad framing, unknown versions,
     invalid UTF-8/IRIs, trailing bytes and structurally invalid manifests. -/
 def decode? (bytes : ByteArray) : Option Manifest := do
   let allBytes := listOfByteArray bytes
   let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none else do
   let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-  if foundVersion != wireVersion0 && foundVersion != wireVersion1 then none else do
+  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 then none else do
   let sourceLength ← readU32LE afterVersion 0
   let (sourceIdentity, afterSource) ← takeExact sourceLength.toNat (afterVersion.drop 4)
   let (termRegistryVersion, afterRegistry) ← decodeString afterSource
@@ -356,6 +383,18 @@ private def sampleManifestV1 : Manifest :=
         entries := [{ entry with artifact := { entry.artifact with chunked := some sampleChunked } }] }
   | [] => sampleManifest
 
+/-- SBM2 keeps SBM1's range commitment but permits several committed blocks
+for one predicate, which is the bounded-publication shape a spooler needs. -/
+private def sampleManifestV2 : Manifest :=
+  match sampleManifestV1.entries with
+  | entry :: _ =>
+      { { sampleManifestV1 with version := 2, layout := "predicate-ibk2-merkle-v2" } with
+        entries := [entry, { entry with artifact := { entry.artifact with key := { value := "blocks/p-1.ibk2" } }, ordinal := 1 }] }
+  | [] => sampleManifestV1
+
+private def sampleReaderV2 (key : ArtifactKey) : Option ByteArray :=
+  if key.value == "blocks/p.ibk2" || key.value == "blocks/p-1.ibk2" then some sampleBlockBytes else none
+
 /-- This remains structurally valid and carries the right artifact digest, but
     its planning cardinality is a lie. Admission must reject it rather than
     allowing an exact-estimate shortcut to influence join ordering. -/
@@ -366,14 +405,20 @@ private def sampleManifestWrongRows : Manifest :=
 
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
 #guard decode? (encode? sampleManifestV1 |>.getD ByteArray.empty) == some sampleManifestV1
+#guard decode? (encode? sampleManifestV2 |>.getD ByteArray.empty) == some sampleManifestV2
 #guard (decode? (ByteArray.mk #[83, 66, 77, 48, 1])).isNone
 #guard (scanPredicate? sampleReader sampleManifest samplePredicate).map List.length == some 1
+#guard (scanPredicate? sampleReaderV2 sampleManifestV2 samplePredicate).map List.length == some 2
 #guard (openStore? sampleReader sampleManifest).map
   (fun store => estimateBound { p := some samplePredicate } store) == some 1
+#guard (openStore? sampleReaderV2 sampleManifestV2).map
+  (fun store => estimateBound { p := some samplePredicate } store) == some 2
 #guard (openStore? sampleReader sampleManifestWrongRows).isNone
 #guard (scanPredicate? (fun _ => some ByteArray.empty) sampleManifest samplePredicate).isNone
 #guard (openStore? sampleReader sampleManifest).map (fun store =>
   (readOps store).search { p := some samplePredicate } |>.length) == some 1
+#guard (openStore? sampleReaderV2 sampleManifestV2).map (fun store =>
+  (readOps store).search { p := some samplePredicate } |>.length) == some 2
 #guard (openStoreForPredicates? sampleReader sampleManifest [samplePredicate]).map
   (fun store => store.blocks.length) == some 1
 #guard queryNativeConstantPredicates?

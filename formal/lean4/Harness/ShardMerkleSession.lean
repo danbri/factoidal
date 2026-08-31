@@ -107,7 +107,7 @@ private def run (directory : System.FilePath) : IO UInt32 := do
     match decode? manifestBytes with
     | none => IO.eprintln "l4block-shard-merkle-session rejected: malformed or unsupported SBM1 manifest"; return 1
     | some manifest =>
-        if manifest.version != 1 then
+        if !rangeCommitted manifest then
           IO.eprintln "l4block-shard-merkle-session rejected: manifest has no SBM1 range commitment"
           return 1
         let stdin ← IO.getStdin

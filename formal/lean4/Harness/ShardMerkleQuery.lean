@@ -27,7 +27,7 @@ private def explain (asJson : Bool) (directory : System.FilePath) (queryText : S
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
     | _, .error e => IO.eprintln s!"l4block-shard-merkle-query query parse error at {e.pos}: {e.msg}"; return 1
     | some manifest, .ok query =>
-        if manifest.version != 1 then
+        if !rangeCommitted manifest then
           IO.eprintln "l4block-shard-merkle-query rejected: manifest has no SBM1 range commitment"
           return 1
         match queryNativeConstantPredicates? query with
@@ -67,7 +67,7 @@ private def explainAnalyze (asJson : Bool) (directory : System.FilePath) (queryT
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
     | _, .error e => IO.eprintln s!"l4block-shard-merkle-query query parse error at {e.pos}: {e.msg}"; return 1
     | some manifest, .ok query =>
-        if manifest.version != 1 then
+        if !rangeCommitted manifest then
           IO.eprintln "l4block-shard-merkle-query rejected: manifest has no SBM1 range commitment"
           return 1
         match queryNativeConstantPredicates? query with
@@ -103,7 +103,7 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
     | _, .error e => IO.eprintln s!"l4block-shard-merkle-query query parse error at {e.pos}: {e.msg}"; return 1
     | some manifest, .ok query =>
-        if manifest.version != 1 then
+        if !rangeCommitted manifest then
           IO.eprintln "l4block-shard-merkle-query rejected: manifest has no SBM1 range commitment"
           return 1
         match queryNativeConstantPredicates? query with

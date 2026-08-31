@@ -79,3 +79,18 @@ suite passes through this actual packer, including verified SBM1 range reads
 and parsed SPARQL execution. Predicate buckets are still in-memory until the
 final IBK2 encoding/publish phase, so this is no claim of bounded **total**
 ingest memory yet.
+
+## Multi-block publication prerequisite
+
+The original SBM0/SBM1 invariant deliberately required exactly one artifact
+per predicate, which would merely move the memory wall to a very frequent
+predicate such as Wikidata `P31`. SBM2 now retains the same fixed-chunk Merkle
+entry encoding while permitting multiple immutable IBK2 artifacts for a
+predicate. Its verified opener, predicate scan and exact unbound-predicate
+row estimate aggregate all matching entries in manifest order. SBM0/SBM1 keep
+their unique-predicate acceptance rule; Merkle query/session hosts accept both
+range-committed SBM1 and SBM2. Executable guards cover SBM2 encode/decode and
+two committed blocks returning/estimating two rows.
+
+The packer still emits SBM1 today. A spooler can now publish bounded SBM2
+blocks without needing to weaken the persistent SPARQL reader contract.
