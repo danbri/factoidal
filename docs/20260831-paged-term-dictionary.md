@@ -30,6 +30,11 @@ Pages currently contain 256 consecutive `TermId` positions. The reader can:
 3. verify/fetch that page through the enclosing artifact Merkle commitment;
 4. decode just that page and obtain the requested RDF term.
 
+The component also plans distinct pages for a list of row IDs in deterministic
+first-use order, so a future block reader can turn a decoded row prefix into a
+small, de-duplicated list of term-page range reads. Its complete decoder
+validates every declared page boundary, not only the concatenated term stream.
+
 The module has full encode/decode round-trip guards and a two-page (257 term)
 boundary guard that resolves the first term of the second page through the
 range-planning API. It is imported by the Lean umbrella module, so this is

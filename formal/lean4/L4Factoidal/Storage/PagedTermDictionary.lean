@@ -139,12 +139,40 @@ def pageRange? (header : Prefix) (directory : List PageEntry) (termId : Nat) : O
   let entry ← at? directory page
   some { offset := pageAreaOffset header + entry.offset, length := entry.length }
 
+private def appendUnique (seen : List Nat) (value : Nat) : List Nat :=
+  if seen.contains value then seen else seen ++ [value]
+
+/-- Plan the distinct term pages required by a collection of row IDs. Ordering
+    follows first occurrence in `termIds`, which makes the host's read trace
+    deterministic and avoids re-fetching a page when a row mentions an ID
+    twice. -/
+def pageRangesForTerms? (header : Prefix) (directory : List PageEntry)
+    (termIds : List Nat) : Option (List ByteRange) := do
+  let pageIds ← termIds.foldl (fun pages termId =>
+    pages.bind fun current => pageIndex? header termId |>.map (appendUnique current)) (some [])
+  pageIds.mapM fun page => do
+    let entry ← at? directory page
+    some { offset := pageAreaOffset header + entry.offset, length := entry.length }
+
 private def decodeTerms : Nat → List UInt8 → Option (List Term × List UInt8)
   | 0, bytes => some ([], bytes)
   | count + 1, bytes => do
       let (term, afterTerm) ← parseTerm bytes
       let (terms, rest) ← decodeTerms count afterTerm
       some (term :: terms, rest)
+
+/-- Full decoding uses the declared page boundaries too, not merely one
+    concatenated term stream. That makes malformed page lengths fail at the
+    canonical admission boundary before a range reader can rely on them. -/
+private def decodePages? (header : Prefix) : Nat → List PageEntry → List UInt8 → Option (List Term)
+  | _, [], [] => some []
+  | _, [], _ => none
+  | page, entry :: rest, bytes => do
+      let current := bytes.take entry.length
+      let (terms, trailing) ← decodeTerms (pageTermCount header page) current
+      if !trailing.isEmpty then none else do
+      let later ← decodePages? header (page + 1) rest (bytes.drop entry.length)
+      some (terms ++ later)
 
 /-- Decode the one page selected by `termId`. The caller supplies exactly the
     planned page range, normally after a Merkle inclusion check. -/
@@ -168,8 +196,8 @@ def decode? (bytes : ByteArray) : Option (Array Term) := do
   let directory ← decodeDirectory? header directoryBytes
   let pageBytes := input.drop (pageAreaOffset header) |>.take (input.length - pageAreaOffset header - 4)
   if !directoryCovers directory pageBytes.length then none else
-  let (terms, trailing) ← decodeTerms header.termCount pageBytes
-  if !trailing.isEmpty || terms.length != header.termCount then none else some terms.toArray
+  let terms ← decodePages? header 0 directory pageBytes
+  if terms.length != header.termCount then none else some terms.toArray
 
 private def ex : WfIri := ⟨"https://example.test/t", by decide⟩
 private def ex2 : WfIri := ⟨"https://example.test/u", by decide⟩
@@ -192,5 +220,8 @@ private def twoPageBytes : ByteArray := (encode? twoPageSample).getD ByteArray.e
     pageRange? p d defaultPageTerms |>.bind fun r =>
       decodeTermFromPage? p d defaultPageTerms (twoPageBytes.extract r.offset (r.offset + r.length)))
   == at? twoPageSample.toList defaultPageTerms
+#guard (((decodePrefix (twoPageBytes.extract 0 prefixBytes)).bind (fun p =>
+  decodeDirectory? p (twoPageBytes.extract prefixBytes (prefixBytes + p.pageCount * 8)) |>.bind fun d =>
+    pageRangesForTerms? p d [0, defaultPageTerms, 1, defaultPageTerms]) |>.map List.length) == some 2)
 
 end L4Factoidal.Storage.PagedTermDictionary
