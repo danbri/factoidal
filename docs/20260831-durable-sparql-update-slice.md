@@ -65,10 +65,25 @@ The existing `RDF.StoreDeltaMerge` Lean module has the important semantic
 bridge: `mergeOnRead_matches_applyEntries` proves membership equivalence
 between base-plus-delta reads and literal application of the same entries.
 
-This work makes its durable input real. It does **not** yet connect the
-Shardborough IBK2 query host to `deltas.dlog`; so an appended update is not
-yet visible through `l4block-shard-merkle-query`. That is the next end-to-end
-implementation task.
+This work now connects its durable input to the default-graph Shardborough
+IBK2 query host. `l4block-shard-merkle-query` reads a clean `deltas.dlog`,
+folds it with `foldDeltaBatches`, and passes the selected Merkle-verified base
+rows through `mergeOnRead` before invoking the normal Lean SPARQL evaluator.
+The repeatable smoke test
+`tools/blockengine-shard-delta-smoke.sh` proves that an inserted triple becomes
+visible and a base triple deleted through SPARQL Update disappears.
+
+The base-only `LIMIT` prefix scan is deliberately disabled while a non-empty
+delta is present. A tombstone could remove early base matches, so applying the
+optimization in that state could return too few results. The implementation
+therefore takes the complete selected base scan and overlays the delta; this is
+correct now and gives a clear target for a later delta-aware bounded scan.
+
+The first query integration is default graph only. The delta format and update
+translator preserve named-graph targets, but this predicate-local triple store
+does not yet have named-graph manifests or a named-graph query reader; those
+operations need their corresponding graph-aware physical path before they can
+be exposed through this executable.
 
 The native append utility currently relies on Lean's file append primitive;
 it is not yet the assurance-grade `write → fsync → report success` host
@@ -80,11 +95,10 @@ evidence.
 
 ## Next implementation sequence
 
-1. Read a clean `deltas.dlog` beside an SBM2 collection and fold batches by
-   graph with `foldDeltaBatches`.
-2. Wrap selected IBK2 base scans with `mergeOnRead`, then prove/guard that
-   parsed SELECT observes an INSERT and DELETE.
-3. Allocate SPARQL request-fresh blank-node prefixes from the composed store.
+1. Allocate SPARQL request-fresh blank-node prefixes from the composed store.
+2. Add named-graph manifests and an equivalent named-graph delta overlay.
+3. Add a delta-aware bounded scan, preserving the exact `LIMIT` result while
+   avoiding a full base scan where possible.
 4. Add a native fsync append/compaction adapter and manifest/epoch update.
 5. Compact base plus committed delta into a new immutable, Merkle-committed
    generation; only then retire the old delta sidecar.

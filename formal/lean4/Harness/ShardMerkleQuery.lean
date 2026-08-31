@@ -120,7 +120,17 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
             return 1
         | some predicates =>
             let entries := entriesForPredicates manifest predicates
-            match detectLimitSingleTp query with
+            match ← readDefaultDelta? directory with
+            | none =>
+                IO.eprintln "l4block-shard-merkle-query rejected: DLOG sidecar is malformed or has an uncommitted suffix"
+                return 1
+            | some delta =>
+            /- A live delta may tombstone early base rows or add an earlier
+               matching row.  The base-only LIMIT-prefix shortcut would then
+               be incomplete, so it is used exactly when the resolved delta
+               is empty and otherwise falls through to a complete merged
+               scan. -/
+            match if deltaResolvedIsEmpty delta then detectLimitSingleTp query else none with
             | some (tp, limit) =>
                 let empty : Materialized := {
                   triples := []
@@ -134,7 +144,7 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                     IO.eprintln "l4block-shard-merkle-query rejected: unavailable, changed, or malformed proof-carrying child artifact"
                     return 1
                 | some materialized =>
-                    let dataset : DatasetBackend := { default := .hdt (readOpsOf materialized.triples), named := [] }
+                    let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta materialized.triples delta), named := [] }
                     match runSelectQueryBackendDataset emptyEnv query dataset with
                     | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
                     | some rows =>
@@ -148,11 +158,12 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                     IO.eprintln "l4block-shard-merkle-query rejected: unavailable, changed, or malformed proof-carrying child artifact"
                     return 1
                 | some (triples, logicalBytes) =>
-                    let dataset : DatasetBackend := { default := .hdt (readOpsOf triples), named := [] }
+                    let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
                     match runSelectQueryBackendDataset emptyEnv query dataset with
                     | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
                     | some rows =>
-                        IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) logical-read-bytes={logicalBytes}"
+                        let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+                        IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={logicalBytes}"
                         IO.println s!"l4block-shard-merkle-query sse={query.toSse}"
                         IO.println s!"l4block-shard-merkle-query rows={rows.length} preview={toString (repr (rows.take 10))}"
                         return 0

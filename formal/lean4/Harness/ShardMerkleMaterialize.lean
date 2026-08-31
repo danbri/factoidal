@@ -3,6 +3,7 @@
    has been verified to the artifact's committed Merkle root. -/
 import Harness.PosixRangeIO
 import L4Factoidal.Storage.ShardManifest
+import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.SPARQL.StorePlan
 
 namespace Harness.ShardMerkleMaterialize
@@ -14,6 +15,7 @@ open L4Factoidal.SPARQL.StoreBackend
 open L4Factoidal.SPARQL.StorePlan
 open L4Factoidal.Storage.IndexedBlockWireV2
 open L4Factoidal.Storage.ShardManifest
+open L4Factoidal.Storage
 
 def safeLeafKey (key : ArtifactKey) : Bool :=
   !key.value.isEmpty && !(key.value.contains '/') && !(key.value.contains '\\')
@@ -219,5 +221,30 @@ def readOpsOf (triples : List Triple) : BackendReadOps :=
   { search := fun bound => tripleMatchesBound bound triples
     estimate := fun bound => (tripleMatchesBound bound triples).length
     predicatePresent := fun predicate => !(tripleMatchesBound { p := some predicate } triples).isEmpty }
+
+/-- Read the default-graph DLOG sidecar.  No sidecar means an empty delta;
+    a malformed header or torn suffix is an admission failure, never a
+    best-effort query over a potentially stale prefix. -/
+def readDefaultDelta? (directory : System.FilePath) : IO (Option DeltaResolved) := do
+  let path := directory / "deltas.dlog"
+  try
+    let bytes ← IO.FS.readBinFile path
+    match parseLog bytes.toList with
+    | some (batches, []) => pure (some (foldDeltaBatches batches none))
+    | _ => pure none
+  catch _ =>
+    if (← path.pathExists) then pure none else pure (some deltaResolvedEmpty)
+
+/-- The same compact backend seam used for a base-only materialisation, but
+    composed with the already-replayed default-graph delta.  The merge itself
+    is the existing Lean `mergeOnRead` definition whose membership theorem is
+    in `RDF.StoreDeltaMerge`; this wrapper deliberately adds no second update
+    semantics. -/
+def readOpsOfDelta (triples : List Triple) (delta : DeltaResolved) : BackendReadOps :=
+  let base := readOpsOf triples
+  { search := fun bound => mergeOnRead (base.search bound) delta bound
+    estimate := fun bound => (mergeOnRead (base.search bound) delta bound).length
+    predicatePresent := fun predicate =>
+      base.predicatePresent predicate || deltaAddedHasPredicate delta.added predicate }
 
 end Harness.ShardMerkleMaterialize
