@@ -491,12 +491,21 @@ def parseDeltaBatchBody (bs : List UInt8) : Option DeltaBatch := do
   let (ops, tail) ← parseNFramedDeltaEntries count.toNat (bs.drop 20)
   if tail.isEmpty then some { seq := seq.toNat, epoch := epoch.toNat, ops } else none
 
+/-- Total DLB1 writer admission. A caller that cannot encode a batch receives
+    `none`, rather than an empty frame that could be silently omitted by a
+    whole-log writer. -/
+def serializeDeltaBatch? (b : DeltaBatch) : Option (List UInt8) := do
+  let body ← serializeDeltaBatchBody? b
+  if body.length >= UInt32.size then none else
+  some (writeU32LE deltaBatchMagic ++ writeU32LE deltaBatchVersion ++
+    writeU32LE (UInt32.ofNat body.length) ++ body ++ writeU32LE (simpleChecksum body))
+
+/-- Compatibility writer for existing in-memory callers. Durable writers must
+    use `serializeDeltaBatch?` and reject `none`; this legacy total projection
+    is retained only so older pure call sites do not acquire an unsound
+    implicit fallback. -/
 def serializeDeltaBatch (b : DeltaBatch) : List UInt8 :=
-  match serializeDeltaBatchBody? b with
-  | none => []
-  | some body =>
-      writeU32LE deltaBatchMagic ++ writeU32LE deltaBatchVersion ++
-      writeU32LE (UInt32.ofNat body.length) ++ body ++ writeU32LE (simpleChecksum body)
+  (serializeDeltaBatch? b).getD []
 
 def parseDeltaBatch (bs : List UInt8) : Option (DeltaBatch × List UInt8) := do
   let magic ← readU32LE bs 0
@@ -522,8 +531,17 @@ def replayDeltaBatches (bs : List UInt8) : List DeltaBatch × List UInt8 :=
         | some (batch, rest) => go fuel rest (acc ++ [batch])
   go bs.length bs []
 
+/-- Total DLOG writer admission: all committed batches must be representable.
+    Unlike `List.flatMap serializeDeltaBatch`, this cannot turn one rejected
+    batch into a log that silently lacks an UPDATE. -/
+def serializeLog? (batches : List DeltaBatch) : Option (List UInt8) := do
+  let frames ← batches.mapM serializeDeltaBatch?
+  pure (writeU32LE deltaLogMagic ++ writeU32LE deltaLogVersion ++ frames.flatten)
+
+/-- Compatibility writer for existing pure callers. New durable paths must use
+    `serializeLog?` and surface encoding refusal. -/
 def serializeLog (batches : List DeltaBatch) : List UInt8 :=
-  writeU32LE deltaLogMagic ++ writeU32LE deltaLogVersion ++ batches.flatMap serializeDeltaBatch
+  (serializeLog? batches).getD []
 
 def parseLog (bs : List UInt8) : Option (List DeltaBatch × List UInt8) := do
   let magic ← readU32LE bs 0

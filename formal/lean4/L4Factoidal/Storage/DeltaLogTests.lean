@@ -82,6 +82,10 @@ private def batch : DeltaBatch := {
 -- and round-trips with an arbitrary following batch untouched.
 #guard parseDeltaBatch (serializeDeltaBatch batch ++ [0xAA]) == some (batch, [0xAA])
 #guard parseLog (serializeLog [batch]) == some ([batch], [])
+#guard serializeDeltaBatch? batch == some (serializeDeltaBatch batch)
+#guard serializeLog? [batch] == some (serializeLog [batch])
+#guard (serializeDeltaBatch? { batch with seq := UInt64.size }).isNone
+#guard (serializeLog? [{ batch with epoch := UInt64.size }]).isNone
 #guard parseLog (serializeLog [batch] ++ (serializeDeltaBatch { batch with seq := 8 }).take 11)
   == some ([batch], (serializeDeltaBatch { batch with seq := 8 }).take 11)
 

@@ -45,6 +45,22 @@ The later proof chain should make public writer refusal explicit for all u32
 length fields, then port string, RDF term, triple, typed entry, batch,
 whole-log, and compaction-filter refinement results in that order.
 
+The durable writer boundary now uses explicit admission APIs:
+
+* `serializeDeltaBatch? : DeltaBatch → Option (List UInt8)`;
+* `serializeLog? : List DeltaBatch → Option (List UInt8)`.
+
+They reject out-of-range sequence/epoch/count/body values. The legacy
+list-returning functions remain only for compatibility with pure existing
+callers; `Harness/DeltaLogTool.lean`, the path that appends a real durable log,
+uses only the option-returning functions and reports wire-limit refusal rather
+than silently dropping a batch. Regression guards cover u64 overflow refusal.
+
+The executable delta and compaction smokes were also rerun: two updates are
+read through the Merkle-verified SPARQL path, compaction publishes and
+activates a new base, and a post-compaction update is written at epoch 2 and
+visible through base-plus-delta evaluation.
+
 Validation for this increment:
 
 ```sh

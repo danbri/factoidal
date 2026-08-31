@@ -62,12 +62,16 @@ private def commitUpdate (path : System.FilePath) (epoch : Nat) (update : Update
           IO.eprintln "l4block-delta-log rejected: update needs WHERE evaluation or unsupported graph-wide operation"
           pure 1
       | some batch =>
-          let frame := serializeDeltaBatch batch
-          let bytes := if expectedSize == 0 then serializeLog [] ++ frame else frame
-          if ← appendSyncAtSizeRaw path.toString (UInt64.ofNat expectedSize) (asBytes bytes) then
-            IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={frame.length} sync=file retries={3 - retries}"
-            pure 0
-          else commitUpdate path epoch update retries
+          match serializeDeltaBatch? batch, if expectedSize == 0 then serializeLog? [] else some [] with
+          | some frame, some initial =>
+              let bytes := initial ++ frame
+              if ← appendSyncAtSizeRaw path.toString (UInt64.ofNat expectedSize) (asBytes bytes) then
+                IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={frame.length} sync=file retries={3 - retries}"
+                pure 0
+              else commitUpdate path epoch update retries
+          | _, _ =>
+              IO.eprintln "l4block-delta-log rejected: batch exceeds the DLOG wire-format limits"
+              pure 1
 
 private def appendUpdate (directory : System.FilePath) (updateText : String) : IO UInt32 := do
   let directory ← resolveStoreDirectory directory
