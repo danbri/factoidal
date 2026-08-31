@@ -17,15 +17,15 @@ pack=$("$lean_dir/.lake/build/bin/l4block-shard-pack" \
   "$repo_root/examples/wikidata/subsets/lifesci-kgx/data/binding_site.ttl" \
   "$store" ibk3)
 printf '%s\n' "$pack"
-grep -q 'format=predicate-ibk3-ptd1-sri2-tli1-merkle-v0.*wire-version=5' <<<"$pack"
+grep -q 'format=predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0.*wire-version=6' <<<"$pack"
 grep -q 'triples=368 blocks=2' <<<"$pack"
 
 # SRI2's selective pages are admitted as a complete subject index only by the
 # activation pass. A bare generation directory must not be treated as an
-# activated SBM5 collection.
+# activated SBM6 collection.
 if "$lean_dir/.lake/build/bin/l4block-id-v3-query" "$store" --query \
   "SELECT ?x WHERE { ?x <$predicate> ?type . }" >/dev/null 2>&1; then
-  echo 'SBM5 query accepted an unactivated direct generation directory' >&2
+  echo 'SBM6 query accepted an unactivated direct generation directory' >&2
   exit 1
 fi
 
@@ -39,6 +39,15 @@ base=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
 printf '%s\n' "$base"
 grep -q 'shards=1 open-mode=ibk3-paged-merkle(1) delta=base' <<<"$base"
 grep -q 'rows=2' <<<"$base"
+
+# A constant object uses the separately role-labelled OLI2 sidecar, maps the
+# RDF object through TLI1, and verifies every returned fixed row has that
+# object local ID before normal parsed SPARQL produces bindings.
+object_scan=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT ?x WHERE { ?x <$predicate> <http://www.wikidata.org/entity/Q616005> . }")
+printf '%s\n' "$object_scan"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$object_scan"
+grep -q 'rows=78' <<<"$object_scan"
 
 # The smaller P31 side drives a two-pattern subject join. The executor must
 # announce the SRI2 path; result construction remains the parsed evaluator.
@@ -122,7 +131,7 @@ inspect=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$root" --inspect)
 printf '%s\n' "$inspect"
 grep -q 'committed-batches=2 committed-ops=2 clean-tail=true' <<<"$inspect"
 
-# An SBM5 subject index is a committed generation artifact.  Corrupting its
+# An SBM6 subject index is a committed generation artifact.  Corrupting its
 # bytes while retaining the old manifest and Merkle leaves must prevent
 # activation, rather than merely disabling a future selective scan.
 bad_generation='bad-subject-index'
@@ -132,7 +141,7 @@ bad_store="$root/$bad_generation"
   "$bad_store" ibk3 >/dev/null
 printf '\377' | dd of="$bad_store/predicate-0.ibk3.sri2" bs=1 seek=16 conv=notrunc status=none
 if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" >/dev/null 2>&1; then
-  echo 'activation accepted a corrupted SBM5 subject-index sidecar' >&2
+  echo 'activation accepted a corrupted SBM6 subject-index sidecar' >&2
   exit 1
 fi
 # TLI1 is equally committed and bound to its own IBK3 digest.  Its checksum
@@ -144,7 +153,18 @@ bad_store="$root/$bad_generation"
   "$bad_store" ibk3 >/dev/null
 printf '\377' | dd of="$bad_store/predicate-0.ibk3.tli1" bs=1 seek=16 conv=notrunc status=none
 if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" >/dev/null 2>&1; then
-  echo 'activation accepted a corrupted SBM4 term-index sidecar' >&2
+  echo 'activation accepted a corrupted SBM6 term-index sidecar' >&2
+  exit 1
+fi
+# OLI2 has a separately typed manifest role and is recomputed from `row.o`.
+bad_generation='bad-object-index'
+bad_store="$root/$bad_generation"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$repo_root/examples/wikidata/subsets/lifesci-kgx/data/binding_site.ttl" \
+  "$bad_store" ibk3 >/dev/null
+printf '\377' | dd of="$bad_store/predicate-0.ibk3.oli2" bs=1 seek=16 conv=notrunc status=none
+if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" >/dev/null 2>&1; then
+  echo 'activation accepted a corrupted SBM6 object-index sidecar' >&2
   exit 1
 fi
 echo 'blockengine-ibk3-persistent-smoke=pass'

@@ -31,10 +31,12 @@ private def isIbk3Layout (layout : String) : Bool :=
     layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0" ||
+    layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1" ||
     layout == "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1" ||
     layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1" ||
-    layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1"
+    layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1" ||
+    layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
 
 /-- A physically safe bounded-prefix shape. Subject/object must be distinct
     variables: constants or repeated variables could make early rows fail the
@@ -185,6 +187,34 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
+/-- The first object-bound physical admission stays deliberately small:
+    default graph, one BGP triple, a constant IRI predicate, and an IRI or
+    literal object.  The parsed evaluator still supplies all SPARQL result
+    semantics over the exact, OLI2-selected fragment. -/
+private def objectBoundPredicate? (query : Query) : Option (WfIri × Term) :=
+  if !query.dataset.isEmpty || query.postValues.isSome then none else
+  match query.pattern with
+  | .bgp [tp] =>
+      match tp.p, tp.o with
+      | .iri predicate, .iri object => some (predicate, .iri object)
+      | .iri predicate, .literal object => some (predicate, .literal object)
+      | _, _ => none
+  | _ => none
+
+private def tryObjectIndexScan (directory : System.FilePath) (manifest : Manifest) (query : Query) :
+    IO (Option UInt32) := do
+  match objectBoundPredicate? query, ← readDefaultDelta? directory with
+  | some (predicate, object), some delta =>
+      if manifest.version != 6 || !deltaResolvedIsEmpty delta then pure none else
+      let entries := selectAll manifest predicate
+      if entries.isEmpty then pure none else
+      match ← scanEntriesForObjectsV2 directory predicate [object] entries [] {} 0 with
+      | none => pure none
+      | some (triples, counters, _) =>
+          some <$> finish query entries [predicate] triples counters delta
+            "ibk3-sri2-tli1-oli2-object-scan"
+  | _, _ => pure none
+
 private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
   match sharedSubjectJoin? query, ← readDefaultDelta? directory with
@@ -202,7 +232,7 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
       | some (driveTriples, driveCounters) =>
           let subjects := driveTriples.map (fun triple => triple.s.toTerm) |>.eraseDups
           let targetScan ←
-            if manifest.version == 5 then
+            if manifest.version >= 5 then
               scanEntriesForSubjectsV2 directory targetPredicate subjects targetEntries [] {} 0
             else
               scanEntriesForSubjects directory targetPredicate subjects targetEntries [] {} 0
@@ -213,7 +243,7 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
               let counters := addCounters driveCounters targetCounters
               let code ← finish query entries [drivePredicate, targetPredicate]
                 (driveTriples ++ targetTriples) counters delta
-                  (if manifest.version == 5 then "ibk3-sri2-tli1-subject-join" else "ibk3-sri1-tli1-subject-join")
+                  (if manifest.version >= 5 then "ibk3-sri2-tli1-subject-join" else "ibk3-sri1-tli1-subject-join")
               pure (some code)
   | _, _ => pure none
 
@@ -228,9 +258,11 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | some manifest, .ok query =>
         if !rangeCommitted manifest || !isIbk3Layout manifest.layout then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
-        if manifest.version == 5 && !(← (root / currentName).pathExists) then
-          IO.eprintln "l4block-id-v3-query rejected: SBM5 requires an activated collection root (CURRENT)"; return 1
-        match ← trySubjectIndexJoin directory manifest query with
+        if manifest.version >= 5 && !(← (root / currentName).pathExists) then
+          IO.eprintln "l4block-id-v3-query rejected: SBM5 and later require an activated collection root (CURRENT)"; return 1
+        match ← tryObjectIndexScan directory manifest query with
+        | some code => return code
+        | none => match ← trySubjectIndexJoin directory manifest query with
         | some code => return code
         | none => match queryNativeConstantPredicates? query with
         | none =>

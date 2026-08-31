@@ -35,12 +35,23 @@ private def rawPairsGo : Nat → List IdTriple → List (Nat × Nat) → List (N
   | _, [], reversed => reversed.reverse
   | offset, row :: rest, reversed => rawPairsGo (offset + 1) rest ((row.s, offset) :: reversed)
 
+private def rawObjectPairsGo : Nat → List IdTriple → List (Nat × Nat) → List (Nat × Nat)
+  | _, [], reversed => reversed.reverse
+  | offset, row :: rest, reversed => rawObjectPairsGo (offset + 1) rest ((row.o, offset) :: reversed)
+
 private def pairBefore (left right : Nat × Nat) : Bool :=
   left.1 < right.1 || (left.1 == right.1 && left.2 < right.2)
 
 /-- Canonical posting pairs for source-order rows. -/
 def pairsOfRows (rows : Array IdTriple) : List (Nat × Nat) :=
   (rawPairsGo 0 rows.toList []).toArray.qsort pairBefore |>.toList
+
+/-- Canonical object-local-ID postings for the same fixed source rows.  The
+    wire relation is intentionally generic `(local ID, row offset)`; SBM6
+    gives this separately committed value an `objectIndex` role so it cannot
+    be substituted for the subject sidecar at generation activation. -/
+def pairsOfObjects (rows : Array IdTriple) : List (Nat × Nat) :=
+  (rawObjectPairsGo 0 rows.toList []).toArray.qsort pairBefore |>.toList
 
 private def encodePair (pair : Nat × Nat) : List UInt8 :=
   writeU32LE (UInt32.ofNat pair.1) ++ writeU32LE (UInt32.ofNat pair.2)

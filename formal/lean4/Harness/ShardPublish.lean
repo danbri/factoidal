@@ -103,11 +103,40 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
                         bytes := indexBytes.size
                         sha256 := indexDigest
                         chunked := some indexChunked })
+          /- The OLI2 role deliberately reuses the checked, pageable local-ID
+             to row-offset encoding of SRI2.  Its distinct manifest field and
+             activation recomputation bind those pairs to `row.o`, so a
+             subject index cannot be substituted for it. -/
+          let objectIndex ← match format with
+            | .ibk2 => pure none
+            | .ibk3 =>
+                let index : L4Factoidal.Storage.SubjectRowIndexWireV2.Index :=
+                  { targetIBKSha256 := digest
+                    rowCount := block.rows.size
+                    pairs := L4Factoidal.Storage.SubjectRowIndexWire.pairsOfObjects block.rows |>.toArray }
+                match L4Factoidal.Storage.SubjectRowIndexWireV2.encode? index with
+                | none => throw <| IO.userError s!"could not encode OLI2 index for {predicate.val}"
+                | some indexBytes =>
+                    let indexName := name ++ ".oli2"
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
+                    let indexDigest := sha256 indexBytes
+                    let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
+                      | some value => pure value
+                      | none => throw <| IO.userError s!"could not commit OLI2 chunks for {predicate.val}"
+                    let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
+                      (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
+                    pure (some
+                      { key := { value := indexName }
+                        bytes := indexBytes.size
+                        sha256 := indexDigest
+                        chunked := some indexChunked })
           let entry : Entry :=
             { predicate
               artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
               subjectIndex
               termIndex
+              objectIndex
               rows := block.rows.size
               ordinal }
           publishBlocks format output
@@ -132,11 +161,11 @@ private def publishTriplesAs (format : PublishFormat) (registryVersion : String)
   let published ← publishBlocks format output {} (blocksOfBuckets (addTriples {} triples))
   let entries := published.entriesRev.reverse
   let lines := published.linesRev.reverse
-  let version := match format with | .ibk2 => 2 | .ibk3 => 5
+  let version := match format with | .ibk2 => 2 | .ibk3 => 6
   let manifest : Manifest :=
     { version, sourceIdentity, termRegistryVersion := registryVersion, layout, entries }
   match L4Factoidal.Storage.ShardManifest.encode? manifest with
-  | none => throw <| IO.userError "could not encode structurally valid SBM2 manifest"
+  | none => throw <| IO.userError "could not encode structurally valid manifest"
   | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
   IO.FS.writeFile (output ++ "/manifest.tsv")
     ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\n" ++ String.intercalate "\n" lines ++ "\n")

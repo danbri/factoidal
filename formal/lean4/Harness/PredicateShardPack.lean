@@ -41,7 +41,7 @@ private def artifactName : PackFormat → Nat → String
 
 private def layoutName : PackFormat → String
   | .ibk2 => "predicate-ibk2-merkle-v2-streaming"
-  | .ibk3 => "predicate-ibk3-ptd1-sri2-tli1-merkle-v0"
+  | .ibk3 => "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0"
 
 private def registryVersion : PackFormat → String
   | .ibk2 => "local-ibk2-dict-v0"
@@ -146,20 +146,41 @@ private def publishBlocks (format : PackFormat) (output : String) : PackState �
                     match artifactRef? indexName indexBytes with
                     | some value => pure (some value)
                     | none => throw <| IO.userError s!"could not commit TLI1 chunks for {predicate.val}"
+          /- OLI2 uses the same canonical pageable `(local ID, row offset)`
+             framing as SRI2, but is published in SBM6's distinct
+             `objectIndex` role and recomputed against row.o at activation. -/
+          let objectIndex ← match format with
+            | .ibk2 => pure none
+            | .ibk3 =>
+                let index : L4Factoidal.Storage.SubjectRowIndexWireV2.Index :=
+                  { targetIBKSha256 := artifact.sha256
+                    rowCount := block.rows.size
+                    pairs := L4Factoidal.Storage.SubjectRowIndexWire.pairsOfObjects block.rows |>.toArray }
+                match L4Factoidal.Storage.SubjectRowIndexWireV2.encode? index with
+                | none => throw <| IO.userError s!"could not encode OLI2 index for {predicate.val}"
+                | some indexBytes =>
+                    let indexName := name ++ ".oli2"
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
+                    writeMerkle (output ++ "/" ++ indexName) indexBytes
+                    match artifactRef? indexName indexBytes with
+                    | some value => pure (some value)
+                    | none => throw <| IO.userError s!"could not commit OLI2 chunks for {predicate.val}"
           let entry : Entry :=
             { predicate
               artifact
               subjectIndex
               termIndex
+              objectIndex
               rows := block.rows.size
               ordinal }
           let indexName := subjectIndex.map (fun index => index.key.value) |>.getD ""
           let termIndexName := termIndex.map (fun index => index.key.value) |>.getD ""
+          let objectIndexName := objectIndex.map (fun index => index.key.value) |>.getD ""
           publishBlocks format output
             { tripleCount := state.tripleCount + block.rows.size
               nextOrdinal := ordinal + 1
               entriesRev := entry :: state.entriesRev
-              linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{indexName}\t{termIndexName}" :: state.linesRev }
+              linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{indexName}\t{termIndexName}\t{objectIndexName}" :: state.linesRev }
             rest
 
 /-- Commit all complete statements seen since the prior decoded input chunk.
@@ -222,15 +243,15 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
     let entries := published.entriesRev.reverse
     let lines := published.linesRev.reverse
     let manifest : Manifest :=
-      { version := (match format with | .ibk2 => 2 | .ibk3 => 5), sourceIdentity := prepass.sourceIdentity,
+      { version := (match format with | .ibk2 => 2 | .ibk3 => 6), sourceIdentity := prepass.sourceIdentity,
         termRegistryVersion := registryVersion format,
         layout := layoutName format, entries }
     match L4Factoidal.Storage.ShardManifest.encode? manifest with
     | none => throw <| IO.userError "could not encode structurally valid SBM2 manifest"
     | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
     IO.FS.writeFile (output ++ "/manifest.tsv")
-      ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tsubject-index\tterm-index\n" ++ String.intercalate "\n" lines ++ "\n")
-    let manifestVersion := match format with | .ibk2 => 2 | .ibk3 => 5
+      ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tsubject-index\tterm-index\tobject-index\n" ++ String.intercalate "\n" lines ++ "\n")
+    let manifestVersion := match format with | .ibk2 => 2 | .ibk3 => 6
     IO.println s!"l4block-shard-pack format={layoutName format} input={input} triples={published.tripleCount} blocks={entries.length} output={output} manifest=manifest.sbm2 wire-version={manifestVersion} chunk-bytes={chunkBytes}"
     return 0
   catch error =>

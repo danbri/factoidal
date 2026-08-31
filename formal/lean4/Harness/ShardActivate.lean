@@ -38,6 +38,9 @@ private def ibk3Sri1Tli1Layout : String :=
 private def ibk3Sri2Tli1Layout : String :=
   "predicate-ibk3-ptd1-sri2-tli1-merkle-v0"
 
+private def ibk3Sri2Tli1Oli2Layout : String :=
+  "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0"
+
 private def compactedIbk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
@@ -50,15 +53,20 @@ private def compactedIbk3Sri1Tli1Layout : String :=
 private def compactedIbk3Sri2Tli1Layout : String :=
   "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1"
 
+private def compactedIbk3Sri2Tli1Oli2Layout : String :=
+  "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
+
 private def isIbk3Layout (layout : String) : Bool :=
   layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||
     layout == compactedIbk3Sri1Layout || layout == ibk3Sri1Tli1Layout ||
     layout == compactedIbk3Sri1Tli1Layout || layout == ibk3Sri2Tli1Layout ||
-    layout == compactedIbk3Sri2Tli1Layout
+    layout == compactedIbk3Sri2Tli1Layout || layout == ibk3Sri2Tli1Oli2Layout ||
+    layout == compactedIbk3Sri2Tli1Oli2Layout
 
 private def isCompactedLayout (layout : String) : Bool :=
   layout == compactedDefaultLayout || layout == compactedIbk3Layout || layout == compactedIbk3Sri1Layout ||
-    layout == compactedIbk3Sri1Tli1Layout || layout == compactedIbk3Sri2Tli1Layout
+    layout == compactedIbk3Sri1Tli1Layout || layout == compactedIbk3Sri2Tli1Layout ||
+    layout == compactedIbk3Sri2Tli1Oli2Layout
 
 private def readManifest (directory : System.FilePath) : IO ByteArray := do
   let sbm2 := directory / "manifest.sbm2"
@@ -133,7 +141,11 @@ private def verifyFullEntries (directory : System.FilePath) : List Entry → IO 
               | none => verifyFullEntries directory rest
               | some term =>
                   if !(← verifyFullArtifact directory term) then pure false
-                  else verifyFullEntries directory rest
+                  else match entry.objectIndex with
+                    | none => verifyFullEntries directory rest
+                    | some object =>
+                        if !(← verifyFullArtifact directory object) then pure false
+                        else verifyFullEntries directory rest
 
 /-- TLI1 is a physical identity bridge, not advisory planner metadata: it is
    admissible only when its framing/checksum decode and its target digest binds
@@ -167,7 +179,7 @@ private def verifySubjectIndexes (directory : System.FilePath) (version : Nat) :
       match entry.subjectIndex with
       | none => verifySubjectIndexes directory version rest
       | some index =>
-          if version == 5 then
+          if version >= 5 then
             try
               let indexBytes ← IO.FS.readBinFile (directory / index.key.value)
               let primary ← IO.FS.readBinFile (directory / entry.artifact.key.value)
@@ -186,6 +198,29 @@ private def verifySubjectIndexes (directory : System.FilePath) (version : Nat) :
               | some _ => verifySubjectIndexes directory version rest
               | none => pure false
             catch _ => pure false
+
+/-- SBM6's OLI2 bytes use the pageable local-ID/row-offset framing, but are
+    separately manifest-typed and must equal the canonical object-to-row
+    relation of their IBK3 artifact before activation. -/
+private def verifyObjectIndexes (directory : System.FilePath) (version : Nat) : List Entry → IO Bool
+  | [] => pure true
+  | entry :: rest => do
+      match entry.objectIndex with
+      | none => verifyObjectIndexes directory version rest
+      | some index =>
+          if version != 6 || !safeLeafKey index.key then pure false else
+          try
+            let indexBytes ← IO.FS.readBinFile (directory / index.key.value)
+            let primary ← IO.FS.readBinFile (directory / entry.artifact.key.value)
+            match L4Factoidal.Storage.SubjectRowIndexWireV2.decode? indexBytes,
+                L4Factoidal.Storage.IndexedBlockWireV3.decode primary with
+            | some decoded, some block =>
+                if decoded.targetIBKSha256 == entry.artifact.sha256 && decoded.rowCount == entry.rows &&
+                    decoded.pairs.toList == L4Factoidal.Storage.SubjectRowIndexWire.pairsOfObjects block.rows then
+                  verifyObjectIndexes directory version rest
+                else pure false
+            | _, _ => pure false
+          catch _ => pure false
 
 /-- Validate the selected physical layout after full-file SHA-256 admission.
     IBK2 uses its existing all-entry materializer; IBK3 uses the paged reader,
@@ -221,6 +256,8 @@ private def activate (rootText generation : String) : IO UInt32 := do
           throw <| IO.userError "candidate subject-index sidecar is missing, changed, or malformed"
         if !(← verifyTermIndexes candidate manifest.entries) then
           throw <| IO.userError "candidate term-index sidecar is missing, changed, malformed, or bound to another block"
+        if !(← verifyObjectIndexes candidate manifest.version manifest.entries) then
+          throw <| IO.userError "candidate object-index sidecar is missing, changed, malformed, or inconsistent with its block"
         match ← verifyReadableEntries candidate manifest with
         | none => throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
         | some verifiedBytes =>

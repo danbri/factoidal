@@ -479,3 +479,34 @@ after the SRI2 repair.  `lake build L4Factoidal.Storage.TermLocalIndexWire`,
 the full persistent IBK3 update/compaction smoke suite, and the activated W3C
 disk gate pass after the change.  A fresh large-generation activation timing
 is intentionally left for a separate, reproducible benchmark increment.
+
+### SBM6 OLI2 object-bound physical scan (2026-08-31)
+
+SBM6 adds `Entry.objectIndex`, a separately role-labelled `.oli2` sidecar.
+Its bytes intentionally use the already checked pageable local-ID-to-row-
+offset encoding used by SRI2; the distinct manifest field and full activation
+recomputation bind OLI2 specifically to `row.o`.  Thus an SRI2 subject index
+cannot be substituted as an object index even though both share the generic
+wire codec.  The publisher now emits SRI2, TLI1 and OLI2 for every IBK3
+predicate block, and the manifest requires all three.  Compaction preserves
+that arrangement by publishing an SBM6 OLI2 generation rather than silently
+downgrading its access paths.
+
+The first reader/planner admission is intentionally narrow: a default-graph,
+one-triple BGP with a constant IRI predicate and constant IRI or literal
+object.  It resolves the object by the committed TLI1 mapping, uses the
+committed OLI2 pages for candidate offsets, then checks every selected fixed
+row has that object local ID before sparse PTD1 decoding.  The existing parsed
+Lean SPARQL evaluator still computes projection, filter, ordering and bag
+semantics over the resulting exact triples.  The command labels this route
+`ibk3-sri2-tli1-oli2-object-scan`, rather than claiming general reverse-join
+planning.
+
+On the 368-triple `binding_site.ttl` fixture, the activated query
+`SELECT ?x WHERE { ?x wdt:P31 wd:Q616005 }` returns 78 bindings through this
+route.  The persistent smoke now checks that result and confirms activation
+rejects independently corrupted SRI2, TLI1 and OLI2 bytes.  Manifest guards
+also cover SBM6 encode/decode and refusal of a version-6 entry lacking its
+mandatory object index.  Large-corpus benchmarks and multi-pattern
+object-driven joins remain the next measurement work; this is a correctness-
+first physical foundation, not a broad performance claim.

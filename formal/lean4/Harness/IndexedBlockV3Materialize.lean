@@ -308,7 +308,8 @@ private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
 
 /-- Fetch exactly the SRI1-selected fixed-width rows before deciding which
     PTD1 term pages are required to render them as RDF. -/
-private def scanSubjectIdRows (path : String) (ref : Ref) (leaves : List Digest)
+private def scanIndexedIdRows (keyOf : L4Factoidal.Storage.IndexedBlock.IdTriple → Nat)
+    (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref VerifiedChunkCache) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix) :
     List (Nat × Nat) → Counters → IO (Option (List L4Factoidal.Storage.IndexedBlock.IdTriple × Counters))
   | [], counters => pure (some ([], counters))
@@ -323,11 +324,17 @@ private def scanSubjectIdRows (path : String) (ref : Ref) (leaves : List Digest)
       | some (rowBytes, footprint) =>
           match L4Factoidal.Storage.IndexedBlockWireV3.decodeRowPrefix? rowBytes with
           | some [row] =>
-              if row.s != expectedSubject then pure none else
-              match ← scanSubjectIdRows path ref leaves cache header rest (addRead counters footprint) with
+              if keyOf row != expectedSubject then pure none else
+              match ← scanIndexedIdRows keyOf path ref leaves cache header rest (addRead counters footprint) with
               | some (later, next) => pure (some (row :: later, next))
               | none => pure none
           | _ => pure none
+
+private def scanSubjectIdRows := scanIndexedIdRows fun row => row.s
+
+/-- OLI2-selected rows are independently checked against `row.o`; the
+    sidecar is only an offset hint, never authority to reinterpret a row. -/
+private def scanObjectIdRows := scanIndexedIdRows fun row => row.o
 
 private def rowTermIds (rows : List L4Factoidal.Storage.IndexedBlock.IdTriple) : List Nat :=
   rows.flatMap fun row => [row.s, row.p, row.o]
@@ -560,6 +567,82 @@ def scanEntriesForSubjectsV2 (directory : System.FilePath) (predicate : WfIri) (
       | none => pure none
       | some current =>
           scanEntriesForSubjectsV2 directory predicate subjects rest (triples ++ current.triples)
+            (addCounters counters current.counters) (opened + 1)
+
+/-- SBM6's OLI2 counterpart to the subject-selective path.  OLI2 has the
+    same generic `(local ID, row offset)` bytes as SRI2, but is obtained from
+    the separately role-labelled manifest field and checked against `row.o`.
+    TLI1 and sparse PTD1 checks ensure the selected local ID still denotes the
+    requested RDF object before triples reach the ordinary SPARQL evaluator. -/
+def scanEntryForObjectsV2 (directory : System.FilePath) (predicate : WfIri)
+    (objects : List Term) (entry : Entry) : IO (Option ScanResult) := do
+  if !safeLeafKey entry.artifact.key then return none
+  match entry.artifact.chunked, entry.termIndex, entry.objectIndex with
+  | some ref, some _, some objectIndex =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes, ← subjectIdsViaTli? directory entry objects with
+      | some leaves, some (indexed, termCounters) =>
+          if indexed.isEmpty then
+            pure (some { triples := [], counters := termCounters, artifactBytes := entry.artifact.bytes })
+          else
+            let ids := indexed.map Prod.snd |>.eraseDups
+            match ← subjectPostingsV2For? directory entry objectIndex ids with
+            | none => pure none
+            | some (selected, objectCounters) =>
+                let cache ← newVerifiedChunkCache ref
+                let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+                  { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
+                match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
+                | none => pure none
+                | some (headerBytes, headerFootprint) =>
+                    match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
+                    | none => pure none
+                    | some header =>
+                        if header.rowCount != entry.rows then pure none else
+                        let initial := addCounters (addCounters termCounters objectCounters) (addRead {} headerFootprint)
+                        match ← scanObjectIdRows path ref leaves cache header selected initial with
+                        | none => pure none
+                        | some (rows, rowCounters) =>
+                            match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header with
+                            | none => pure none
+                            | some ptdPrefixRange =>
+                                match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdPrefixRange) with
+                                | none => pure none
+                                | some (ptdPrefixBytes, ptdPrefixFootprint) =>
+                                    match L4Factoidal.Storage.PagedTermDictionary.decodePrefix ptdPrefixBytes,
+                                        L4Factoidal.Storage.IndexedBlockWireV3.dictionaryDirectoryRange? header ptdPrefixBytes with
+                                    | some ptdHeader, some directoryRange =>
+                                        match ← readVerifiedRangeCached? path ref leaves cache (ioRange directoryRange) with
+                                        | none => pure none
+                                        | some (directoryBytes, directoryFootprint) =>
+                                            match L4Factoidal.Storage.PagedTermDictionary.decodeDirectory? ptdHeader directoryBytes with
+                                            | none => pure none
+                                            | some ptdDirectory =>
+                                                let requiredIds := rowTermIds rows ++ indexed.map Prod.snd
+                                                match distinctPtdPages ptdHeader requiredIds [] with
+                                                | none => pure none
+                                                | some pages =>
+                                                    let beforePages := addRead (addRead rowCounters ptdPrefixFootprint) directoryFootprint
+                                                    match ← readSparsePtdPages path ref leaves cache header ptdHeader ptdDirectory pages beforePages with
+                                                    | none => pure none
+                                                    | some (decodedPages, counters) =>
+                                                        if !sparseIndexedTermsAgree ptdHeader decodedPages indexed then pure none else
+                                                        match sparseRowsToTriples? ptdHeader decodedPages predicate rows with
+                                                        | some triples => pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                                                        | none => pure none
+                                    | _, _ => pure none
+      | _, _ => pure none
+  | _, _, _ => pure none
+
+def scanEntriesForObjectsV2 (directory : System.FilePath) (predicate : WfIri) (objects : List Term) :
+    List Entry → List Triple → Counters → Nat → IO (Option (List Triple × Counters × Nat))
+  | [], triples, counters, opened => pure (some (triples, counters, opened))
+  | entry :: rest, triples, counters, opened => do
+      match ← scanEntryForObjectsV2 directory predicate objects entry with
+      | none => pure none
+      | some current =>
+          scanEntriesForObjectsV2 directory predicate objects rest (triples ++ current.triples)
             (addCounters counters current.counters) (opened + 1)
 
 private def readPages (path : String) (ref : Ref) (leaves : List Digest)

@@ -52,6 +52,9 @@ private def ibk3Sri1Tli1Layout : String :=
 private def ibk3Sri2Tli1Layout : String :=
   "predicate-ibk3-ptd1-sri2-tli1-merkle-v0"
 
+private def ibk3Sri2Tli1Oli2Layout : String :=
+  "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0"
+
 private def compactedIbk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
@@ -64,11 +67,15 @@ private def compactedIbk3Sri1Tli1Layout : String :=
 private def compactedIbk3Sri2Tli1Layout : String :=
   "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1"
 
+private def compactedIbk3Sri2Tli1Oli2Layout : String :=
+  "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
+
 private def isIbk3Layout (layout : String) : Bool :=
   layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||
     layout == compactedIbk3Sri1Layout || layout == ibk3Sri1Tli1Layout ||
     layout == compactedIbk3Sri1Tli1Layout || layout == ibk3Sri2Tli1Layout ||
-    layout == compactedIbk3Sri2Tli1Layout
+    layout == compactedIbk3Sri2Tli1Layout || layout == ibk3Sri2Tli1Oli2Layout ||
+    layout == compactedIbk3Sri2Tli1Oli2Layout
 
 private def defaultGraphOnly (batches : List DeltaBatch) : Bool :=
   batches.all fun batch => batch.ops.all isDefaultGraphEntry
@@ -108,7 +115,7 @@ private def compact (source output : String) : IO UInt32 := do
               let delta := foldDeltaBatches batches none
               let compacted := mergeOnRead base delta {}
               let identity := sha256 (manifestBytes ++ deltaBytes)
-              let written ← publishTriplesV3 output identity compactedIbk3Sri2Tli1Layout compacted
+              let written ← publishTriplesV3 output identity compactedIbk3Sri2Tli1Oli2Layout compacted
               let epoch := foldedThrough baseEpoch batches
               let outputPath := System.FilePath.mk output
               if ← CompactedEpoch.write outputPath epoch then
