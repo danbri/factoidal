@@ -75,11 +75,12 @@ The repeatable smoke test
 `tools/blockengine-shard-delta-smoke.sh` proves that an inserted triple becomes
 visible and a base triple deleted through SPARQL Update disappears.
 
-The base-only `LIMIT` prefix scan is deliberately disabled while a non-empty
-delta is present. A tombstone could remove early base matches, so applying the
-optimization in that state could return too few results. The implementation
-therefore takes the complete selected base scan and overlays the delta; this is
-correct now and gives a clear target for a later delta-aware bounded scan.
+The bounded single-triple-pattern `LIMIT` scan is delta-aware. A tombstoned
+base row does not count toward the prefix, so the reader continues until it
+has enough surviving base rows; the normal overlay then supplies matching
+additions. A `CLEAR` skips base reads entirely. The smoke test deletes the
+first base row and verifies that a later base row plus a newly inserted row
+still satisfy `LIMIT 2`.
 
 The first query integration is default graph only. The delta format and update
 translator preserve named-graph targets, but this predicate-local triple store
@@ -98,8 +99,8 @@ only a torn-write detector, not tamper evidence.
 
 1. Allocate SPARQL request-fresh blank-node prefixes from the composed store.
 2. Add named-graph manifests and an equivalent named-graph delta overlay.
-3. Add a delta-aware bounded scan, preserving the exact `LIMIT` result while
-   avoiding a full base scan where possible.
+3. Extend the delta-aware bounded scan beyond this single triple-pattern,
+   unordered `LIMIT` fragment.
 4. Add a native fsync append/compaction adapter and manifest/epoch update.
 5. Compact base plus committed delta into a new immutable, Merkle-committed
    generation; only then retire the old delta sidecar.

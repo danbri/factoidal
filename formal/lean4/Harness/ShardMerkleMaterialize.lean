@@ -109,10 +109,20 @@ def scanEntry (directory : System.FilePath) (entry : Entry) :
     evaluator: callers feed the exact candidate prefix back through the
     existing StoreDataset path for projection and result construction. -/
 def scanEntryPrefixForLimit (directory : System.FilePath) (entry : Entry)
-    (tp : TriplePattern) (limit : Nat) : IO (Option Materialized) := do
+    (tp : TriplePattern) (limit : Nat) (delta : DeltaResolved) : IO (Option Materialized) := do
   if !safeLeafKey entry.artifact.key then
     throw <| IO.userError s!"unsafe manifest artifact key: {entry.artifact.key.value}"
   if limit == 0 then
+    return some {
+      triples := []
+      logicalBytes := 0
+      requestedBytes := 0
+      fetchedBytes := 0
+      verifiedChunks := 0
+      rangeRequests := 0 }
+  /- A CLEAR/DROP leaves no base triples to inspect.  Delta additions are
+     supplied by `readOpsOfDelta` after this physical stage. -/
+  if delta.cleared then
     return some {
       triples := []
       logicalBytes := 0
@@ -174,9 +184,15 @@ def scanEntryPrefixForLimit (directory : System.FilePath) (entry : Entry)
                             | some (segmentBytes, footprint) =>
                                 let candidates := (scanPredicateSegmentPrefix bound prefixRead dictionary directory segmentBytes)
                                   |>.filter fun triple => (tpMatch tp triple Binding.empty).isSome
-                                if candidates.length >= limit || prefixLength == segmentRange.length then
+                                /- A tombstoned base row cannot satisfy LIMIT.
+                                   Keep scanning until this surviving prefix is
+                                   sufficient; additions stay in the normal
+                                   merge-on-read path and therefore cannot
+                                   cause an incomplete early stop. -/
+                                let surviving := candidates.filter fun triple => !Graph.mem triple delta.removed
+                                if surviving.length >= limit || prefixLength == segmentRange.length then
                                   pure (some {
-                                    triples := candidates.take limit
+                                    triples := surviving.take limit
                                     logicalBytes := planningBytes.size + prefixLength
                                     requestedBytes := prefixFootprint.requestedBytes + planningFootprint.requestedBytes + requests + footprint.requestedBytes
                                     fetchedBytes := prefixFootprint.fetchedBytes + planningFootprint.fetchedBytes + fetched + footprint.fetchedBytes
@@ -192,16 +208,16 @@ def scanEntryPrefixForLimit (directory : System.FilePath) (entry : Entry)
     prefix reader is only asked for the rows still needed, so a LIMIT satisfied
     in an early artifact never opens later selected artifacts. -/
 def scanEntriesPrefixForLimit (directory : System.FilePath) (tp : TriplePattern)
-    (limit : Nat) : List Entry → List Triple → Materialized → IO (Option Materialized)
+    (limit : Nat) (delta : DeltaResolved) : List Entry → List Triple → Materialized → IO (Option Materialized)
   | [], triples, totals => pure (some { totals with triples := triples })
   | entry :: rest, triples, totals =>
       if triples.length >= limit then pure (some { totals with triples := triples.take limit })
       else do
         let remaining := limit - triples.length
-        match ← scanEntryPrefixForLimit directory entry tp remaining with
+        match ← scanEntryPrefixForLimit directory entry tp remaining delta with
         | none => pure none
         | some materialized =>
-            scanEntriesPrefixForLimit directory tp limit rest (triples ++ materialized.triples)
+            scanEntriesPrefixForLimit directory tp limit delta rest (triples ++ materialized.triples)
               { triples := []
                 logicalBytes := totals.logicalBytes + materialized.logicalBytes
                 requestedBytes := totals.requestedBytes + materialized.requestedBytes

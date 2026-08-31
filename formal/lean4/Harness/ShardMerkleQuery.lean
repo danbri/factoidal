@@ -125,12 +125,11 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                 IO.eprintln "l4block-shard-merkle-query rejected: DLOG sidecar is malformed or has an uncommitted suffix"
                 return 1
             | some delta =>
-            /- A live delta may tombstone early base rows or add an earlier
-               matching row.  The base-only LIMIT-prefix shortcut would then
-               be incomplete, so it is used exactly when the resolved delta
-               is empty and otherwise falls through to a complete merged
-               scan. -/
-            match if deltaResolvedIsEmpty delta then detectLimitSingleTp query else none with
+            /- The physical reader is delta-aware: tombstoned rows do not
+               count toward the base prefix.  It therefore remains safe for
+               a single triple-pattern LIMIT even with a live update log;
+               additions are still supplied by the ordinary merged seam. -/
+            match detectLimitSingleTp query with
             | some (tp, limit) =>
                 let empty : Materialized := {
                   triples := []
@@ -139,7 +138,7 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                   fetchedBytes := 0
                   verifiedChunks := 0
                   rangeRequests := 0 }
-                match ← scanEntriesPrefixForLimit directory tp limit entries [] empty with
+                match ← scanEntriesPrefixForLimit directory tp limit delta entries [] empty with
                 | none =>
                     IO.eprintln "l4block-shard-merkle-query rejected: unavailable, changed, or malformed proof-carrying child artifact"
                     return 1
@@ -148,7 +147,8 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
                     match runSelectQueryBackendDataset emptyEnv query dataset with
                     | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
                     | some rows =>
-                        IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle-limit-prefix({predicates.length}) logical-read-bytes={materialized.logicalBytes} fetched-chunk-bytes={materialized.fetchedBytes} verified-chunks={materialized.verifiedChunks} range-requests={materialized.rangeRequests}"
+                        let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+                        IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle-delta-limit-prefix({predicates.length}) delta={deltaMode} logical-read-bytes={materialized.logicalBytes} fetched-chunk-bytes={materialized.fetchedBytes} verified-chunks={materialized.verifiedChunks} range-requests={materialized.rangeRequests}"
                         IO.println s!"l4block-shard-merkle-query sse={query.toSse}"
                         IO.println s!"l4block-shard-merkle-query rows={rows.length} preview={toString (repr (rows.take 10))}"
                         return 0

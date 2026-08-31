@@ -24,12 +24,15 @@ limited=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store
   'DELETE DATA { <http://example.org/alice> <http://example.org/name> "Alice" . }' >/dev/null
 deleted=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --query \
   'SELECT ?person WHERE { ?person <http://example.org/name> "Alice" }')
+after_delete_limit=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --query \
+  'SELECT ?person ?name WHERE { ?person <http://example.org/name> ?name } LIMIT 2')
 inspect=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$run_dir/store" --inspect)
 
 printf '%s\n' "$before"
 printf '%s\n' "$inserted"
 printf '%s\n' "$limited"
 printf '%s\n' "$deleted"
+printf '%s\n' "$after_delete_limit"
 printf '%s\n' "$inspect"
 grep -q 'rows=1' <<<"$before"
 grep -q 'http://example.org/alice' <<<"$before"
@@ -37,11 +40,12 @@ grep -q 'delta=base-plus-delta' <<<"$inserted"
 grep -q 'rows=1' <<<"$inserted"
 grep -q 'http://example.org/carol' <<<"$inserted"
 grep -q 'delta=base-plus-delta' <<<"$limited"
-if grep -q 'limit-prefix' <<<"$limited"; then
-  echo 'live delta incorrectly enabled base-only LIMIT prefix' >&2
-  exit 1
-fi
+grep -q 'open-mode=predicate-selective-merkle-delta-limit-prefix(1)' <<<"$limited"
 grep -q 'rows=1' <<<"$limited"
 grep -q 'rows=0' <<<"$deleted"
+grep -q 'open-mode=predicate-selective-merkle-delta-limit-prefix(1)' <<<"$after_delete_limit"
+grep -q 'rows=2' <<<"$after_delete_limit"
+grep -q 'http://example.org/bob' <<<"$after_delete_limit"
+grep -q 'http://example.org/carol' <<<"$after_delete_limit"
 grep -q 'committed-batches=2 committed-ops=2 clean-tail=true' <<<"$inspect"
 echo 'blockengine-shard-delta-smoke=pass'
