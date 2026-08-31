@@ -291,6 +291,35 @@ def scanPredicateRanges (bound : PatternBound) (headerBytes dictionaryBytes dire
                 | _, _ => []
           | _, _ => []
 
+/-- Decode a row-aligned prefix of one predicate segment.  Unlike
+    `scanPredicateRanges`, this is intentionally not a whole-segment answer:
+    it is the range-reader primitive for a future bounded scan which keeps
+    fetching prefixes until enough *matching* triples have been found.  The
+    decoder refuses a prefix that is not an exact sequence of 16-byte rows or
+    that exceeds the committed predicate segment. -/
+def scanPredicateSegmentPrefix (bound : PatternBound) (headerBytes dictionaryBytes directoryBytes
+    segmentPrefix : ByteArray) : List Triple :=
+  match bound.p with
+  | none => []
+  | some predicate =>
+      match decodePrefix headerBytes with
+      | none => []
+      | some header =>
+          match decodeDictionaryAndDirectory? header dictionaryBytes directoryBytes,
+              predicateRange? header dictionaryBytes directoryBytes predicate with
+          | some (dict, _), some range =>
+              if segmentPrefix.size > range.length || segmentPrefix.size % 16 != 0 then []
+              else match idForPredicate? dict predicate with
+                | none => []
+                | some predicateId =>
+                    let entry := { predicate := predicateId, offset := 0, length := segmentPrefix.size }
+                    match decodeSegment (listOfByteArray segmentPrefix) entry with
+                    | some rows =>
+                        (rows.filterMap (fun positioned => decodeTriple? dict positioned.row)).filter
+                          (boundMatches bound)
+                    | none => []
+          | _, _ => []
+
 private def decodeForPredicate? (payload : List UInt8) (predicate : WfIri) : Option (Array Term × List PositionedIdTriple) := do
   let dictCount ← readU32LE payload 0
   let _rowCount ← readU32LE payload 4
