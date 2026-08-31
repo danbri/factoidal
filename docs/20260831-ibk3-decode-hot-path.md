@@ -511,6 +511,17 @@ mandatory object index.  Large-corpus benchmarks and multi-pattern
 object-driven joins remain the next measurement work; this is a correctness-
 first physical foundation, not a broad performance claim.
 
+The next admission is a two-pattern shared-subject join with one constant
+object: OLI2/TLI1 selects the driver triple's exact rows; their RDF subjects
+then select rows from a different constant predicate through SRI2/TLI1.  On
+the `binding_site.ttl` fixture, `?x wdt:P31 wd:Q616005; wdt:P361 ?whole`
+returns the same 290 bindings through
+`ibk3-sri2-tli1-oli2-object-subject-join`.  This is still not a general join
+planner: it accepts only default-graph, two-triple BGPs with a shared subject,
+different constant predicates, no trailing VALUES, no delta overlay, and an
+IRI/literal object.  These boundaries prevent accidental semantic claims while
+giving the future cost-based planner a verified physical primitive to choose.
+
 ### Corpus evidence and SBM6 large-pack attempt (2026-08-31)
 
 The repository has a useful starting ladder but not yet sufficient evidence to

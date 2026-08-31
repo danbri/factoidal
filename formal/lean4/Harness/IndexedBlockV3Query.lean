@@ -187,6 +187,14 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
+/-- The OLI2-safe object-bound triple shape. Blank labels and RDF 1.2 triple
+    terms deliberately wait for a separate scoped-identity admission. -/
+private def objectBoundTriple? (tp : TriplePattern) : Option (WfIri × Term) :=
+  match tp.p, tp.o with
+  | .iri predicate, .iri object => some (predicate, .iri object)
+  | .iri predicate, .literal object => some (predicate, .literal object)
+  | _, _ => none
+
 /-- The first object-bound physical admission stays deliberately small:
     default graph, one BGP triple, a constant IRI predicate, and an IRI or
     literal object.  The parsed evaluator still supplies all SPARQL result
@@ -194,11 +202,7 @@ private def entryRows (entries : List Entry) : Nat :=
 private def objectBoundPredicate? (query : Query) : Option (WfIri × Term) :=
   if !query.dataset.isEmpty || query.postValues.isSome then none else
   match query.pattern with
-  | .bgp [tp] =>
-      match tp.p, tp.o with
-      | .iri predicate, .iri object => some (predicate, .iri object)
-      | .iri predicate, .literal object => some (predicate, .literal object)
-      | _, _ => none
+  | .bgp [tp] => objectBoundTriple? tp
   | _ => none
 
 private def tryObjectIndexScan (directory : System.FilePath) (manifest : Manifest) (query : Query) :
@@ -213,6 +217,56 @@ private def tryObjectIndexScan (directory : System.FilePath) (manifest : Manifes
       | some (triples, counters, _) =>
           some <$> finish query entries [predicate] triples counters delta
             "ibk3-sri2-tli1-oli2-object-scan"
+  | _, _ => pure none
+
+/-- An object-selected triple can drive a second constant-predicate triple
+    through its RDF subjects.  This is the reverse of the existing SRI2 join:
+    OLI2/TLI1 first returns exact driver triples; their subjects then select
+    exact rows from the other predicate via SRI2/TLI1.  Different predicates
+    avoid duplicating one physical fragment in the evaluator's input. -/
+private def tryObjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
+    IO (Option UInt32) := do
+  if !query.dataset.isEmpty || query.postValues.isSome || manifest.version != 6 then pure none else
+  match query.pattern, ← readDefaultDelta? directory with
+  | .bgp [left, right], some delta =>
+      if !deltaResolvedIsEmpty delta then pure none else
+      let plan :=
+        match objectBoundTriple? left, prefixPredicate? right with
+        | some (drivePredicate, object), some targetPredicate =>
+            match left.s, right.s with
+            | .var driveSubject, .var targetSubject =>
+                if driveSubject == targetSubject && drivePredicate != targetPredicate then
+                  some (drivePredicate, object, targetPredicate)
+                else none
+            | _, _ => none
+        | _, _ =>
+            match objectBoundTriple? right, prefixPredicate? left with
+            | some (drivePredicate, object), some targetPredicate =>
+                match right.s, left.s with
+                | .var driveSubject, .var targetSubject =>
+                    if driveSubject == targetSubject && drivePredicate != targetPredicate then
+                      some (drivePredicate, object, targetPredicate)
+                    else none
+                | _, _ => none
+            | _, _ => none
+      match plan with
+      | none => pure none
+      | some (drivePredicate, object, targetPredicate) =>
+          let driveEntries := selectAll manifest drivePredicate
+          let targetEntries := selectAll manifest targetPredicate
+          if driveEntries.isEmpty || targetEntries.isEmpty then pure none else
+          match ← scanEntriesForObjectsV2 directory drivePredicate [object] driveEntries [] {} 0 with
+          | none => pure none
+          | some (driveTriples, driveCounters, _) =>
+              let subjects := driveTriples.map (fun triple => triple.s.toTerm) |>.eraseDups
+              match ← scanEntriesForSubjectsV2 directory targetPredicate subjects targetEntries [] {} 0 with
+              | none => pure none
+              | some (targetTriples, targetCounters, _) =>
+                  let entries := driveEntries ++ targetEntries
+                  let counters := addCounters driveCounters targetCounters
+                  some <$> finish query entries [drivePredicate, targetPredicate]
+                    (driveTriples ++ targetTriples) counters delta
+                    "ibk3-sri2-tli1-oli2-object-subject-join"
   | _, _ => pure none
 
 private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
@@ -261,6 +315,8 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         if manifest.version >= 5 && !(← (root / currentName).pathExists) then
           IO.eprintln "l4block-id-v3-query rejected: SBM5 and later require an activated collection root (CURRENT)"; return 1
         match ← tryObjectIndexScan directory manifest query with
+        | some code => return code
+        | none => match ← tryObjectIndexJoin directory manifest query with
         | some code => return code
         | none => match ← trySubjectIndexJoin directory manifest query with
         | some code => return code
