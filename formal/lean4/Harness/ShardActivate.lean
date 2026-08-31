@@ -27,11 +27,15 @@ private def ibk3Sri1Layout : String :=
 private def compactedIbk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
+private def compactedIbk3Sri1Layout : String :=
+  "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1"
+
 private def isIbk3Layout (layout : String) : Bool :=
-  layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout
+  layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||
+    layout == compactedIbk3Sri1Layout
 
 private def isCompactedLayout (layout : String) : Bool :=
-  layout == compactedDefaultLayout || layout == compactedIbk3Layout
+  layout == compactedDefaultLayout || layout == compactedIbk3Layout || layout == compactedIbk3Sri1Layout
 
 private def readManifest (directory : System.FilePath) : IO ByteArray := do
   let sbm2 := directory / "manifest.sbm2"
