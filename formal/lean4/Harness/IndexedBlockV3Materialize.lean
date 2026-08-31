@@ -76,6 +76,7 @@ def scanEntry (directory : System.FilePath) (predicate : WfIri) (rowLimit : Nat)
           | some (headerBytes, headerFootprint) =>
               match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
               | some header =>
+                  if header.rowCount != entry.rows then pure none else
                   match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header with
                   | some ptdRange =>
                       match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdRange) with
@@ -122,6 +123,89 @@ def scanEntries (directory : System.FilePath) (predicate : WfIri) (limit : Nat) 
         | some result =>
             scanEntries directory predicate limit rest (triples ++ result.triples)
               (addCounters counters result.counters) (opened + 1)
+
+/-- Exact predicate-local cardinality without RDF-row materialisation. It
+    verifies all fixed-width rows, confirms that their one shared predicate ID
+    denotes the requested IRI through its PTD1 page, and verifies every read
+    range against the manifest Merkle commitment. Subject/object pages are not
+    needed for this SPARQL `COUNT(*)` physical operator. -/
+def countEntry (directory : System.FilePath) (predicate : WfIri) (entry : Entry) :
+    IO (Option (Nat × Counters)) := do
+  if !safeLeafKey entry.artifact.key then return none
+  match entry.artifact.chunked with
+  | none => pure none
+  | some ref =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes with
+      | none => pure none
+      | some leaves =>
+          let cache ← newVerifiedChunkCache
+          let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+            { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
+          match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
+          | none => pure none
+          | some (headerBytes, headerFootprint) =>
+              match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
+              | none => pure none
+              | some header =>
+                  if header.rowCount != entry.rows then pure none else
+                  match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header with
+                  | none => pure none
+                  | some ptdRange =>
+                      match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdRange) with
+                      | none => pure none
+                      | some (ptdPrefix, ptdFootprint) =>
+                          match L4Factoidal.Storage.PagedTermDictionary.decodePrefix ptdPrefix with
+                          | none => pure none
+                          | some ptdHeader =>
+                              if ptdHeader.pageTerms != L4Factoidal.Storage.PagedTermDictionary.defaultPageTerms then pure none else
+                              match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryDirectoryRange? header ptdPrefix with
+                              | none => pure none
+                              | some directoryRange =>
+                                  match ← readVerifiedRangeCached? path ref leaves cache (ioRange directoryRange) with
+                                  | none => pure none
+                                  | some (directoryBytes, directoryFootprint) =>
+                                      match L4Factoidal.Storage.PagedTermDictionary.decodeDirectory? ptdHeader directoryBytes with
+                                      | none => pure none
+                                      | some directory =>
+                                          let rowRange := L4Factoidal.Storage.IndexedBlockWireV3.rowsRange header
+                                          match ← readVerifiedRangeCached? path ref leaves cache (ioRange rowRange) with
+                                          | none => pure none
+                                          | some (rowBytes, rowFootprint) =>
+                                              match L4Factoidal.Storage.IndexedBlockWireV3.decodeRowPrefix? rowBytes with
+                                              | none => pure none
+                                              | some [] => pure none
+                                              | some (first :: rows) =>
+                                                  if !rows.all (fun row => row.p == first.p) then pure none else
+                                                  match L4Factoidal.Storage.PagedTermDictionary.pageIndex? ptdHeader first.p,
+                                                        L4Factoidal.Storage.PagedTermDictionary.pageRange? ptdHeader directory first.p with
+                                                  | some page, some relative =>
+                                                      let absolute : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+                                                        { offset := (L4Factoidal.Storage.IndexedBlockWireV3.dictionaryRange header).offset + relative.offset,
+                                                          length := relative.length }
+                                                      match ← readVerifiedRangeCached? path ref leaves cache (ioRange absolute) with
+                                                      | none => pure none
+                                                      | some (pageBytes, pageFootprint) =>
+                                                          match L4Factoidal.Storage.PagedTermDictionary.decodePageArray? ptdHeader directory page pageBytes with
+                                                          | none => pure none
+                                                          | some terms =>
+                                                              match terms[first.p % ptdHeader.pageTerms]? with
+                                                              | some (.iri actual) =>
+                                                                  if actual == predicate then
+                                                                    let initial := addRead (addRead (addRead (addRead {} headerFootprint) ptdFootprint) directoryFootprint) rowFootprint
+                                                                    pure (some (header.rowCount, addRead initial pageFootprint))
+                                                                  else pure none
+                                                              | _ => pure none
+                                                  | _, _ => pure none
+
+def countEntries (directory : System.FilePath) (predicate : WfIri) : List Entry → Nat → Counters →
+    IO (Option (Nat × Counters))
+  | [], count, counters => pure (some (count, counters))
+  | entry :: rest, count, counters => do
+      match ← countEntry directory predicate entry with
+      | none => pure none
+      | some (next, current) => countEntries directory predicate rest (count + next) (addCounters counters current)
 
 /-- Materialise every row from the entries selected by a constant-predicate
     physical plan. This is the conservative bridge for the general SPARQL

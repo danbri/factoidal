@@ -31,6 +31,19 @@ printf '%s\n' "$base"
 grep -q 'shards=1 open-mode=ibk3-paged-merkle(1) delta=base' <<<"$base"
 grep -q 'rows=2' <<<"$base"
 
+count=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT (COUNT(*) AS ?count) WHERE { ?x <$predicate> ?type . }")
+printf '%s\n' "$count"
+grep -q 'open-mode=ibk3-paged-merkle-count(1) delta=base' <<<"$count"
+grep -q 'rows=1' <<<"$count"
+grep -q '"78"' <<<"$count"
+
+count_zero=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT (COUNT(*) AS ?count) WHERE { ?x <$predicate> ?type . } LIMIT 0")
+printf '%s\n' "$count_zero"
+grep -q 'open-mode=ibk3-paged-merkle-count(1) delta=base' <<<"$count_zero"
+grep -q 'rows=0' <<<"$count_zero"
+
 insert=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$root" --update \
   "INSERT DATA { <http://example.org/ibk3-smoke> <$predicate> <http://example.org/SmokeType> . }")
 printf '%s\n' "$insert"
@@ -42,6 +55,13 @@ printf '%s\n' "$present"
 grep -q 'delta=base-plus-delta' <<<"$present"
 grep -q 'rows=1' <<<"$present"
 grep -q 'ibk3-smoke' <<<"$present"
+
+count_with_delta=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT (COUNT(*) AS ?count) WHERE { ?x <$predicate> ?type . }")
+printf '%s\n' "$count_with_delta"
+grep -q 'open-mode=ibk3-paged-merkle(1) delta=base-plus-delta' <<<"$count_with_delta"
+grep -q 'rows=1' <<<"$count_with_delta"
+grep -q '"79"' <<<"$count_with_delta"
 
 delete=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$root" --update \
   "DELETE DATA { <http://example.org/ibk3-smoke> <$predicate> <http://example.org/SmokeType> . }")

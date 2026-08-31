@@ -35,6 +35,16 @@ private def prefixPredicate? (tp : TriplePattern) : Option WfIri :=
       if subject == object then none else some predicate
   | _, _, _ => none
 
+/-- The physical count path is narrower than the already-conservative Lean
+    detector: this store has only a default graph, no query dataset clauses,
+    and must establish one constant predicate by reading its rows. -/
+private def countPredicate? (query : Query) : Option (VarName × WfIri) := do
+  if !query.dataset.isEmpty then none else
+  let (alias, tp, scope) ← detectStreamingCountStar query
+  if scope.isSome then none else do
+  let predicate ← prefixPredicate? tp
+  some (alias, predicate)
+
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
   let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
@@ -46,6 +56,14 @@ private def finish (query : Query) (entries : List Entry) (predicates : List WfI
       IO.println s!"l4block-id-v3-query sse={query.toSse}"
       IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
       return 0
+
+private def finishCount (query : Query) (entries : List Entry)
+    (alias : VarName) (count : Nat) (counters : Counters) : IO UInt32 := do
+  let rows := sliceSolutions query.modifier.offset query.modifier.limit (countStarSolution alias count)
+  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle-count(1) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+  IO.println s!"l4block-id-v3-query sse={query.toSse}"
+  IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr rows)}"
+  return 0
 
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
@@ -64,7 +82,18 @@ private def run (directoryText queryText : String) : IO UInt32 := do
             match ← readDefaultDelta? directory with
             | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1
             | some delta =>
-                match detectLimitSingleTp query with
+                match countPredicate? query with
+                | some (alias, predicate) =>
+                    if !deltaResolvedIsEmpty delta then
+                      match ← materializeEntries directory entries with
+                      | some (triples, counters) => finish query entries predicates triples counters delta
+                      | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                    else
+                      let countEntries := selectAll manifest predicate
+                      match ← Harness.IndexedBlockV3Materialize.countEntries directory predicate countEntries 0 {} with
+                      | some (count, counters) => finishCount query countEntries alias count counters
+                      | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                | none => match detectLimitSingleTp query with
                 | some (tp, limit) =>
                     match prefixPredicate? tp with
                     | some predicate =>

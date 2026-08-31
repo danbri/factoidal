@@ -83,6 +83,30 @@ logical bytes and 131,072 fetched bytes. The same path still passes candidate
 triples through the established evaluator; the prefix reader is a physical
 admission optimisation, not a second SELECT semantics.
 
+## Exact physical `COUNT(*)`
+
+The IBK3 host also uses the existing Lean `detectStreamingCountStar` and
+`countStarSolution` contracts for a narrower storage-adjacent case: one
+default-graph triple pattern with a constant predicate, two distinct unbound
+subject/object variables, and no dataset clause or live DLOG batch. It does
+not trust the manifest row count alone. For every selected artifact it
+Merkle-verifies the entire fixed-width row range, checks that every row has
+one predicate ID, reads the one PTD1 page for that ID, and checks that it
+denotes the requested predicate IRI. It then produces the standard one-row
+SPARQL count solution, including the normal aggregate `OFFSET`/`LIMIT`
+slice.
+
+With an active delta log, or any shape outside that contract, the host falls
+back to the composed base-plus-delta evaluator. This avoids claiming a count
+that omits inserts or tombstones.
+
+On the 759,263-row `wdt:P684` portion of the direct gene store, the parsed
+count returned `759263` in 1.11 seconds (1.07 seconds user CPU), reporting
+12,209,178 logical bytes and 12,320,768 fetched bytes across five artifacts.
+It avoids subject/object term pages and RDF triple construction; it still
+reads all row IDs because that is the evidence that every counted row has the
+requested predicate.
+
 ## Immutable generation activation
 
 Both IBK3 native front ends now resolve the existing optional `CURRENT`
