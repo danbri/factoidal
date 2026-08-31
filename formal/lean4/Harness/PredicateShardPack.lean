@@ -144,7 +144,12 @@ private def ingestFile (input output : System.FilePath) (prepass : SourcePrepass
 private def pack (input output : String) : IO UInt32 := do
   try
     let prepass ← prepassFile input
-    IO.FS.createDirAll output
+    let outputPath := System.FilePath.mk output
+    if ← (outputPath / "manifest.sbm2").pathExists then
+      throw <| IO.userError s!"refusing to replace committed collection at {output}; choose a fresh output directory"
+    if ← (outputPath / "manifest.sbm1").pathExists then
+      throw <| IO.userError s!"refusing to replace committed legacy collection at {output}; choose a fresh output directory"
+    IO.FS.createDirAll outputPath
     let published ← ingestFile input output prepass
     let entries := published.entriesRev.reverse
     let lines := published.linesRev.reverse
