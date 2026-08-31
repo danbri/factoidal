@@ -1,0 +1,43 @@
+name: Verify Lean 4 corpus
+
+# The Lean tree contains executable semantics, proof modules, and build-time
+# #guard tests.  A focused executable build is not a substitute for checking
+# the whole package: this workflow makes `lake build L4Factoidal` a required,
+# visible repository gate.
+on:
+  push:
+    branches:
+      - claude/main
+  pull_request:
+    paths:
+      - 'formal/lean4/**'
+      - '.github/workflows/verify-lean4.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-lean4-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Lake build (full Lean corpus)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The package's lean-toolchain is authoritative.  Keep setup separate
+      # from the command below so the exact full-corpus gate is explicit.
+      - uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          build: false
+          test: false
+          lint: false
+          lake-package-directory: formal/lean4
+
+      - name: Build library, proofs, and build-time guards
+        working-directory: formal/lean4
+        run: lake build L4Factoidal

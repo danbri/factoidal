@@ -290,19 +290,33 @@ theorem parseTurtle_empty : parseTurtle "" = .ok [] := rfl
 /-- Whitespace and comments alone are still an empty document. -/
 theorem parseTurtle_comment_only : parseTurtle "# nothing here\n" = .ok [] := rfl
 
+/-- Feeding characters cannot reduce the largest underscore run observed so
+far.  This is stated over the streaming state machine, rather than its legacy
+`maxUnderscoreRun` wrapper, so it remains valid when callers split input into
+chunks. -/
+theorem UnderscoreRun.longest_le_feedChars (cs : List Char) :
+    ∀ state : UnderscoreRun, state.longest ≤ (state.feedChars cs).longest := by
+  induction cs with
+  | nil =>
+    intro state
+    simp [UnderscoreRun.feedChars]
+  | cons c cs ih =>
+    intro state
+    have hStep : state.longest ≤ (state.feedChar c).longest := by
+      unfold UnderscoreRun.feedChar
+      split
+      · exact Nat.le_max_right _ _
+      · exact Nat.le_refl _
+    exact Nat.le_trans hStep (ih (state.feedChar c))
+
 /-- `maxUnderscoreRun` never reports less than the best seen so far —
 the monotonicity that makes `freshBnodePrefix` pick a run strictly
 longer than anything in the document. -/
 theorem maxUnderscoreRun_ge_best (cs : List Char) :
     ∀ cur best : Nat, best ≤ maxUnderscoreRun cs cur best := by
-  induction cs with
-  | nil => intro cur best; simp [maxUnderscoreRun]; omega
-  | cons c cs ih =>
-    intro cur best
-    rw [maxUnderscoreRun]
-    split
-    · have := ih (cur + 1) (max (cur + 1) best); omega
-    · exact ih 0 best
+  intro cur best
+  simpa [maxUnderscoreRun] using
+    (UnderscoreRun.longest_le_feedChars cs { current := cur, longest := best })
 
 -- Concrete witnesses that a generated label cannot be written by the
 -- document: the prefix carries a longer underscore run than the text.
