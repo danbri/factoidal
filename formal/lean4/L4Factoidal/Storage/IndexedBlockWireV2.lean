@@ -365,7 +365,7 @@ def scanPredicateDecoded (bound : PatternBound) (bytes : ByteArray) : List Tripl
       | _, _ => []
 
 private def sliceBytes (bytes : ByteArray) (range : ByteRange) : ByteArray :=
-  ByteArray.mk ((bytes.data.toList.drop range.offset).take range.length |>.toArray)
+  bytes.extract range.offset (range.offset + range.length)
 
 /-- An IBK2 artifact that has passed the whole-artifact decoder once at open
     time. Subsequent predicate-bound scans use the fixed header/dictionary/
