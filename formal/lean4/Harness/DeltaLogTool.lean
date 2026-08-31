@@ -25,15 +25,15 @@ private def logPath (directory : System.FilePath) : System.FilePath := directory
 
 private def asBytes (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 
-private def readExisting (path : System.FilePath) : IO (List DeltaBatch) := do
+private def readExisting (path : System.FilePath) : IO (List DeltaBatch × Nat) := do
   try
     let bytes ← IO.FS.readBinFile path
     match parseLog bytes.toList with
     | none => throw <| IO.userError "DLOG header is malformed or unsupported"
-    | some (batches, []) => pure batches
+    | some (batches, []) => pure (batches, bytes.size)
     | some (_, _) => throw <| IO.userError "DLOG has a torn or uncommitted suffix; recover it before appending"
   catch e =>
-    if (← path.pathExists) then throw e else pure []
+    if (← path.pathExists) then throw e else pure ([], 0)
 
 private def nextSeq : List DeltaBatch → Nat
   | [] => 1
@@ -47,28 +47,33 @@ private def hasInsertBnode : List UpdateOp → Bool
       (collectQuads none quads).any (fun q => q.2.hasBnode) || hasInsertBnode rest
   | _ :: rest => hasInsertBnode rest
 
+private def commitUpdate (path : System.FilePath) (update : Update) : Nat → IO UInt32
+  | 0 => do
+      IO.eprintln "l4block-delta-log failed: concurrent writers prevented a stable append after 3 retries"
+      pure 1
+  | retries + 1 => do
+      let (batches, expectedSize) ← readExisting path
+      match deltaBatchForUpdate? (nextSeq batches) 0 id update with
+      | none =>
+          IO.eprintln "l4block-delta-log rejected: update needs WHERE evaluation or unsupported graph-wide operation"
+          pure 1
+      | some batch =>
+          let frame := serializeDeltaBatch batch
+          let bytes := if expectedSize == 0 then serializeLog [] ++ frame else frame
+          if ← appendSyncAtSizeRaw path.toString (UInt64.ofNat expectedSize) (asBytes bytes) then
+            IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={frame.length} sync=file retries={3 - retries}"
+            pure 0
+          else commitUpdate path update retries
+
 private def appendUpdate (directory : System.FilePath) (updateText : String) : IO UInt32 := do
   let path := logPath directory
-  let batches ← readExisting path
   match parseSparqlUpdate updateText with
   | .error error => IO.eprintln s!"l4block-delta-log update parse error at {error.pos}: {error.msg}"; pure 1
   | .ok update =>
       if hasInsertBnode update.ops then
         IO.eprintln "l4block-delta-log rejected: INSERT DATA blank nodes await composed-store freshness allocation"
         pure 1
-      else match deltaBatchForUpdate? (nextSeq batches) 0 id update with
-        | none =>
-            IO.eprintln "l4block-delta-log rejected: update needs WHERE evaluation or unsupported graph-wide operation"
-            pure 1
-        | some batch =>
-            let frame := serializeDeltaBatch batch
-            let bytes := if (← path.pathExists) then frame else serializeLog [] ++ frame
-            if ← appendSyncRaw path.toString (asBytes bytes) then
-              IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={frame.length} sync=file"
-              pure 0
-            else
-              IO.eprintln "l4block-delta-log failed: write or file fsync was not acknowledged"
-              pure 1
+      else commitUpdate path update 3
 
 private def inspect (directory : System.FilePath) : IO UInt32 := do
   let path := logPath directory

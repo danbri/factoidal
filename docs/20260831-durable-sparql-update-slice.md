@@ -55,6 +55,13 @@ write-all loop and calls file `fsync` before it reports success. A local run
 committed two parsed requests (`seq=1`, `seq=2`) and then reported
 `committed-batches=2 committed-ops=2 clean-tail=true`.
 
+Concurrent writers use an exclusive advisory lock and a compare-on-file-size
+append. The writer first parses the exact clean byte prefix, then the native
+edge appends only if that same length still holds under the lock. A competing
+writer reloads and retries with the next sequence number. The repeatable
+`tools/blockengine-delta-log-race-smoke.sh` test starts two writers from an
+empty log and verifies two distinct committed batches.
+
 The tool deliberately refuses `INSERT DATA` blank nodes for now. SPARQL
 requires a request-fresh scope; obtaining a collision-free prefix means
 consulting the composed base-plus-delta state. The semantic translator already
