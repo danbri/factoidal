@@ -40,6 +40,7 @@ def deltaLogMagic : UInt32 := 0x474F4C44
 def deltaLogVersion : UInt32 := 1
 /-- `'CEP1'` — the compacted-epoch marker. -/
 def compactedEpochMagic : UInt32 := 0x31504543
+def compactedEpochVersion : UInt32 := 1
 
 /-- Term tags. Each tag space is disjoint and under 256, so one byte
     suffices. -/
@@ -65,6 +66,20 @@ def EntryKind.ofTag : UInt8 → Option EntryKind
 /-- The additive mod-2^32 checksum. -/
 def simpleChecksum (bs : List UInt8) : UInt32 :=
   bs.foldl (fun acc b => acc + b.toUInt32) 0
+
+/-- The log's sequence and epoch fields have the same u64 representation.
+Keeping these primitives near the epoch marker makes the companion format
+match the established F* `CEP1` framing rather than accidentally introducing
+a Lean-only u32 variant. -/
+def writeU64LE (n : UInt64) : List UInt8 :=
+  writeU32LE n.toUInt32 ++ writeU32LE (n >>> 32).toUInt32
+
+def readU64LE (bs : List UInt8) (pos : Nat) : Option UInt64 := do
+  let lo ← readU32LE bs pos
+  let hi ← readU32LE bs (pos + 4)
+  pure (lo.toUInt64 ||| (hi.toUInt64 <<< 32))
+
+def natFitsU64 (n : Nat) : Bool := n.toUInt64.toNat == n
 
 /-- One log record, framed.  The length is part of the record, so a replay
     can safely move across records of different kinds and sizes. -/
@@ -115,35 +130,54 @@ def entryFrameSize (payloadLen : Nat) : Nat := 4 + 4 + 4 + payloadLen + 4
     from the first that does not". Returning the clean flag lets the
     caller distinguish a tidy shutdown from a crash without changing
     what it recovered. -/
-partial def replay (bs : List UInt8) : List (List UInt8) × Bool :=
-  let rec go (bs : List UInt8) (acc : List (List UInt8)) : List (List UInt8) × Bool :=
-    if bs.isEmpty then (acc, true)
-    else match parseEntry bs with
-      | none => (acc, false)          -- torn tail: stop here
-      | some (p, rest) => go rest (acc ++ [p])
-  go bs []
+def replay (bs : List UInt8) : List (List UInt8) × Bool :=
+  let rec go : Nat → List UInt8 → List (List UInt8) → List (List UInt8) × Bool
+    | 0, remaining, acc => (acc, remaining.isEmpty)
+    | fuel + 1, remaining, acc =>
+      if remaining.isEmpty then (acc, true)
+      else match parseEntry remaining with
+        | none => (acc, false)          -- torn tail: stop here
+        | some (payload, rest) => go fuel rest (acc ++ [payload])
+  go bs.length bs []
 
 /-- The compacted-epoch marker. A store whose base file was rebuilt
     at epoch `n` must IGNORE log records from an earlier epoch, or a
     replay would re-apply updates the compaction already folded in —
     the double-apply bug this marker exists to prevent. -/
 structure EpochMarker where
-  epoch : UInt32
+  epoch : Nat
 deriving Repr, DecidableEq, Inhabited
 
+/-- `CEP1` has the same explicit magic/version/length/checksum framing as a
+delta record. It records the largest epoch already folded into this immutable
+base. An empty result is an explicit refusal of an unrepresentable epoch. -/
 def frameEpoch (m : EpochMarker) : List UInt8 :=
-  writeU32LE compactedEpochMagic ++ writeU32LE m.epoch
+  if !natFitsU64 m.epoch then [] else
+  let body := writeU64LE m.epoch.toUInt64
+  writeU32LE compactedEpochMagic ++ writeU32LE compactedEpochVersion ++
+    writeU32LE (UInt32.ofNat body.length) ++ body ++ writeU32LE (simpleChecksum body)
 
 def parseEpoch (bs : List UInt8) : Option EpochMarker :=
-  match readU32LE bs 0, readU32LE bs 4 with
-  | some magic, some e =>
-      if magic == compactedEpochMagic then some ⟨e⟩ else none
-  | _, _ => none
+  do
+    let magic ← readU32LE bs 0
+    if magic != compactedEpochMagic then none else
+    let version ← readU32LE bs 4
+    if version != compactedEpochVersion then none else
+    let bodyLen ← readU32LE bs 8
+    if bodyLen != 8 then none else
+    let afterHeader := bs.drop 12
+    let body := afterHeader.take bodyLen.toNat
+    if body.length != bodyLen.toNat then none else
+    let checksum ← readU32LE afterHeader bodyLen.toNat
+    let tail := (afterHeader.drop bodyLen.toNat).drop 4
+    if checksum != simpleChecksum body || !tail.isEmpty then none else
+    let epoch ← readU64LE body 0
+    some ⟨epoch.toNat⟩
 
 /-- Should a record from `recordEpoch` be replayed against a base
     compacted at `baseEpoch`? Only records STRICTLY NEWER than the
     base survive. -/
-def shouldReplay (baseEpoch recordEpoch : UInt32) : Bool := recordEpoch > baseEpoch
+def shouldReplay (baseEpoch recordEpoch : Nat) : Bool := recordEpoch > baseEpoch
 
 /-! ## The delta entry itself
 
@@ -348,6 +382,13 @@ structure DeltaBatch where
   ops : List DeltaEntry
   deriving Repr, DecidableEq
 
+/-- Remove batches whose effects are already included in the immutable base.
+    A missing marker means a never-compacted collection, so every committed
+    batch remains visible. -/
+def filterBatchesSinceEpoch : Option Nat → List DeltaBatch → List DeltaBatch
+  | none, batches => batches
+  | some baseEpoch, batches => batches.filter fun batch => shouldReplay baseEpoch batch.epoch
+
 /-! ### DLB1 committed batches and DLOG files
 
 `DeltaEntry` is intentionally framed on its own: a batch can therefore hold
@@ -356,16 +397,6 @@ size.  A `DLB1` frame commits the complete SPARQL Update request as one unit;
 the enclosing `DLOG` file is a header followed by such frames.  On recovery we
 accept only the valid prefix and return the untouched suffix, which is the
 expected result of a process dying during its final append. -/
-
-def writeU64LE (n : UInt64) : List UInt8 :=
-  writeU32LE n.toUInt32 ++ writeU32LE (n >>> 32).toUInt32
-
-def readU64LE (bs : List UInt8) (pos : Nat) : Option UInt64 := do
-  let lo ← readU32LE bs pos
-  let hi ← readU32LE bs (pos + 4)
-  pure (lo.toUInt64 ||| (hi.toUInt64 <<< 32))
-
-def natFitsU64 (n : Nat) : Bool := n.toUInt64.toNat == n
 
 def serializeFramedDeltaEntry (e : DeltaEntry) : List UInt8 :=
   frameEntry (serializeDeltaEntryPayload e)
@@ -415,13 +446,15 @@ def parseDeltaBatch (bs : List UInt8) : Option (DeltaBatch × List UInt8) := do
   let batch ← parseDeltaBatchBody body
   some (batch, (afterHeader.drop bodyLen.toNat).drop 4)
 
-partial def replayDeltaBatches (bs : List UInt8) : List DeltaBatch × List UInt8 :=
-  let rec go (remaining : List UInt8) (acc : List DeltaBatch) : List DeltaBatch × List UInt8 :=
-    if remaining.isEmpty then (acc, [])
-    else match parseDeltaBatch remaining with
-      | none => (acc, remaining)
-      | some (batch, rest) => go rest (acc ++ [batch])
-  go bs []
+def replayDeltaBatches (bs : List UInt8) : List DeltaBatch × List UInt8 :=
+  let rec go : Nat → List UInt8 → List DeltaBatch → List DeltaBatch × List UInt8
+    | 0, remaining, acc => (acc, remaining)
+    | fuel + 1, remaining, acc =>
+      if remaining.isEmpty then (acc, [])
+      else match parseDeltaBatch remaining with
+        | none => (acc, remaining)
+        | some (batch, rest) => go fuel rest (acc ++ [batch])
+  go bs.length bs []
 
 def serializeLog (batches : List DeltaBatch) : List UInt8 :=
   writeU32LE deltaLogMagic ++ writeU32LE deltaLogVersion ++ batches.flatMap serializeDeltaBatch

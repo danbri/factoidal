@@ -81,7 +81,7 @@ extern_lib libl4blockhost pkg := do
 -- (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
 @[default_target] lean_lib Harness where globs :=
   #[`Harness.Common, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests,
-    `Harness.PosixRangeIO, `Harness.GenerationPointer, `Harness.ShardMerkleMaterialize, `Harness.ShardMerkleProfile, `Harness.ShardPublish]
+    `Harness.PosixRangeIO, `Harness.CompactedEpoch, `Harness.GenerationPointer, `Harness.ShardMerkleMaterialize, `Harness.ShardMerkleProfile, `Harness.ShardPublish]
 
 -- The WebAssembly export surface: the JSON string-in / string-out ABI
 -- (Wasm/Abi.lean) and the `@[export]` C symbols (Wasm/Exports.lean).

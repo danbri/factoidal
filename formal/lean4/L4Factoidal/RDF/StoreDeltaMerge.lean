@@ -314,6 +314,33 @@ theorem mergeOnRead_matches_applyEntries (graphKey : Option Iri) (gBase : Graph)
     cases Graph.mem t (foldEntriesForGraph graphKey entries deltaResolvedEmpty).added <;>
     rfl
 
+/-- Applying an older log prefix to a base and then a newer suffix is the
+same reference history as applying their concatenation. This is the algebraic
+form a compactor needs before it may discard the prefix from replay. -/
+theorem applyEntriesRef_append (graphKey : Option Iri) (gBase : Graph)
+    (older newer : List DeltaEntry) :
+    applyEntriesRef graphKey gBase (older ++ newer) =
+      applyEntriesRef graphKey (applyEntriesRef graphKey gBase older) newer := by
+  induction older generalizing gBase with
+  | nil => rfl
+  | cons entry older ih =>
+    simp only [List.cons_append, applyEntriesRef]
+    exact ih (applyEntryRefStep graphKey gBase entry)
+
+/-- **Compaction bridge.** If `older` has been folded into a fresh immutable
+base, replaying only `newer` through `mergeOnRead` has the same membership
+answer as applying the full pre-compaction history. Epoch filtering supplies
+that `newer` suffix at the durable-store boundary. -/
+theorem mergeOnRead_after_compaction (graphKey : Option Iri) (gBase : Graph)
+    (older newer : List DeltaEntry) (b : PatternBound) (t : Triple) :
+    Graph.mem t (tripleMatchesBound b (applyEntriesRef graphKey gBase (older ++ newer))) =
+    Graph.mem t (mergeOnRead
+      (tripleMatchesBound b (applyEntriesRef graphKey gBase older))
+      (foldEntriesForGraph graphKey newer deltaResolvedEmpty) b) := by
+  rw [applyEntriesRef_append]
+  exact mergeOnRead_matches_applyEntries graphKey
+    (applyEntriesRef graphKey gBase older) newer b t
+
 /-! ## Graph Store Protocol write verbs
 
 Unlike a general UPDATE request, all three of these translate

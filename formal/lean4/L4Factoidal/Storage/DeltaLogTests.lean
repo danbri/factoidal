@@ -61,6 +61,8 @@ private def tornLog : List UInt8 := frameEntry pay ++ (frameEntry [1, 2, 3]).tak
 -- compaction's own folded-in updates get applied twice.
 #guard parseEpoch (frameEpoch ⟨7⟩) == some ⟨7⟩
 #guard parseEpoch [0, 0, 0, 0, 0, 0, 0, 0] == none
+#guard parseEpoch ((frameEpoch ⟨7⟩).take 13) == none
+#guard parseEpoch ((frameEpoch ⟨7⟩).set 12 99) == none
 #guard shouldReplay 5 6
 #guard !(shouldReplay 5 5)
 #guard !(shouldReplay 5 4)
@@ -71,6 +73,10 @@ private def batch : DeltaBatch := {
   seq := 7, epoch := 3,
   ops := [.add ⟨.iri exIri, exP, .literal (Literal.string "hello")⟩ none,
           .remove ⟨.iri exIri, exP, .iri exIri⟩ (some "http://example.org/g")] }
+
+-- A compacted base through epoch 3 replays only the later request.
+#guard (filterBatchesSinceEpoch (some 3) [batch, { batch with seq := 8, epoch := 4 }]).map (·.seq) == [8]
+#guard (filterBatchesSinceEpoch none [batch]).map (·.seq) == [7]
 
 -- A committed batch carries variable-size entry frames, its own checksum,
 -- and round-trips with an arbitrary following batch untouched.

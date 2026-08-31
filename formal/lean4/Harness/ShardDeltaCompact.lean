@@ -12,6 +12,8 @@ against a live source directory.
 import Harness.ShardPublish
 import Harness.ShardMerkleMaterialize
 import Harness.GenerationPointer
+import Harness.CompactedEpoch
+import Harness.PosixRangeIO
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.ShardManifest
@@ -21,6 +23,8 @@ namespace Harness.ShardDeltaCompact
 open Harness.ShardPublish
 open Harness.ShardMerkleMaterialize
 open Harness.GenerationPointer
+open Harness.CompactedEpoch
+open Harness.PosixRangeIO
 open L4Factoidal.Crypto
 open L4Factoidal.RDF
 open L4Factoidal.Storage
@@ -57,7 +61,9 @@ private def compact (source output : String) : IO UInt32 := do
     | some manifest =>
         if !rangeCommitted manifest then
           throw <| IO.userError "source manifest has no IBK2 Merkle range commitment"
-        let (batches, deltaBytes) ← readDelta sourcePath
+        let baseEpoch ← CompactedEpoch.read? sourcePath
+        let (allBatches, deltaBytes) ← readDelta sourcePath
+        let batches := filterBatchesSinceEpoch baseEpoch allBatches
         if !defaultGraphOnly batches then
           throw <| IO.userError "this first compactor refuses named-graph or graph-management DLOG entries"
         match ← scanEntries sourcePath manifest.entries with
@@ -68,8 +74,14 @@ private def compact (source output : String) : IO UInt32 := do
             let identity := sha256 (manifestBytes ++ deltaBytes)
             let written ← publishTriples output identity
               "predicate-ibk2-merkle-v2-compacted-default-dlog-v1" compacted
-            IO.println s!"l4block-shard-compact source={source} output={output} base-triples={base.length} delta-batches={batches.length} compacted-triples={written} verified-logical-bytes={logicalBytes}"
-            pure 0
+            let epoch := foldedThrough baseEpoch batches
+            let outputPath := System.FilePath.mk output
+            if ← CompactedEpoch.write outputPath epoch then
+              if !(← atomicReplaceFileSyncRaw (outputPath / "compacted.source.sha256").toString identity) then
+                throw <| IO.userError "could not persist compaction source identity"
+              IO.println s!"l4block-shard-compact source={source} output={output} base-triples={base.length} delta-batches={batches.length} compacted-triples={written} epoch={epoch} verified-logical-bytes={logicalBytes}"
+              pure 0
+            else throw <| IO.userError "could not persist compacted.epoch"
   catch e => IO.eprintln s!"l4block-shard-compact failure: {e}"; pure 1
 
 def main (args : List String) : IO UInt32 :=

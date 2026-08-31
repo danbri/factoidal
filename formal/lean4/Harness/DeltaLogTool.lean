@@ -14,6 +14,7 @@ import L4Factoidal.SPARQL.UpdateDelta
 import L4Factoidal.Storage.DeltaLog
 import Harness.PosixRangeIO
 import Harness.GenerationPointer
+import Harness.CompactedEpoch
 
 namespace Harness.DeltaLogTool
 
@@ -22,6 +23,7 @@ open L4Factoidal.SPARQL
 open L4Factoidal.Storage
 open Harness.PosixRangeIO
 open Harness.GenerationPointer
+open Harness.CompactedEpoch
 
 private def logPath (directory : System.FilePath) : System.FilePath := directory / "deltas.dlog"
 
@@ -49,13 +51,13 @@ private def hasInsertBnode : List UpdateOp → Bool
       (collectQuads none quads).any (fun q => q.2.hasBnode) || hasInsertBnode rest
   | _ :: rest => hasInsertBnode rest
 
-private def commitUpdate (path : System.FilePath) (update : Update) : Nat → IO UInt32
+private def commitUpdate (path : System.FilePath) (epoch : Nat) (update : Update) : Nat → IO UInt32
   | 0 => do
       IO.eprintln "l4block-delta-log failed: concurrent writers prevented a stable append after 3 retries"
       pure 1
   | retries + 1 => do
       let (batches, expectedSize) ← readExisting path
-      match deltaBatchForUpdate? (nextSeq batches) 0 id update with
+      match deltaBatchForUpdate? (nextSeq batches) epoch id update with
       | none =>
           IO.eprintln "l4block-delta-log rejected: update needs WHERE evaluation or unsupported graph-wide operation"
           pure 1
@@ -65,10 +67,12 @@ private def commitUpdate (path : System.FilePath) (update : Update) : Nat → IO
           if ← appendSyncAtSizeRaw path.toString (UInt64.ofNat expectedSize) (asBytes bytes) then
             IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={frame.length} sync=file retries={3 - retries}"
             pure 0
-          else commitUpdate path update retries
+          else commitUpdate path epoch update retries
 
 private def appendUpdate (directory : System.FilePath) (updateText : String) : IO UInt32 := do
   let directory ← resolveStoreDirectory directory
+  let baseEpoch ← CompactedEpoch.read? directory
+  let epoch := nextWriteEpoch baseEpoch
   let path := logPath directory
   match parseSparqlUpdate updateText with
   | .error error => IO.eprintln s!"l4block-delta-log update parse error at {error.pos}: {error.msg}"; pure 1
@@ -76,7 +80,7 @@ private def appendUpdate (directory : System.FilePath) (updateText : String) : I
       if hasInsertBnode update.ops then
         IO.eprintln "l4block-delta-log rejected: INSERT DATA blank nodes await composed-store freshness allocation"
         pure 1
-      else commitUpdate path update 3
+      else commitUpdate path epoch update 3
 
 private def inspect (directory : System.FilePath) : IO UInt32 := do
   let directory ← resolveStoreDirectory directory

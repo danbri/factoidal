@@ -2,6 +2,7 @@
    It turns the four required IBK2 ranges into triples only after every range
    has been verified to the artifact's committed Merkle root. -/
 import Harness.PosixRangeIO
+import Harness.CompactedEpoch
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.SPARQL.StorePlan
@@ -9,6 +10,7 @@ import L4Factoidal.SPARQL.StorePlan
 namespace Harness.ShardMerkleMaterialize
 
 open Harness.PosixRangeIO
+open Harness.CompactedEpoch
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreBackend
@@ -242,11 +244,13 @@ def readOpsOf (triples : List Triple) : BackendReadOps :=
     a malformed header or torn suffix is an admission failure, never a
     best-effort query over a potentially stale prefix. -/
 def readDefaultDelta? (directory : System.FilePath) : IO (Option DeltaResolved) := do
+  let baseEpoch ← CompactedEpoch.read? directory
   let path := directory / "deltas.dlog"
   try
     let bytes ← IO.FS.readBinFile path
     match parseLog bytes.toList with
-    | some (batches, []) => pure (some (foldDeltaBatches batches none))
+    | some (batches, []) =>
+        pure (some (foldDeltaBatches (filterBatchesSinceEpoch baseEpoch batches) none))
     | _ => pure none
   catch _ =>
     if (← path.pathExists) then pure none else pure (some deltaResolvedEmpty)
