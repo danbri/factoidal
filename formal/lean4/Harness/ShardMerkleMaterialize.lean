@@ -3,6 +3,7 @@
    has been verified to the artifact's committed Merkle root. -/
 import Harness.PosixRangeIO
 import L4Factoidal.Storage.ShardManifest
+import L4Factoidal.SPARQL.StorePlan
 
 namespace Harness.ShardMerkleMaterialize
 
@@ -10,6 +11,7 @@ open Harness.PosixRangeIO
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreBackend
+open L4Factoidal.SPARQL.StorePlan
 open L4Factoidal.Storage.IndexedBlockWireV2
 open L4Factoidal.Storage.ShardManifest
 
@@ -94,6 +96,111 @@ def scanEntry (directory : System.FilePath) (entry : Entry) :
   match ← scanEntryProfile directory entry with
   | some materialized => pure (some (materialized.triples, materialized.logicalBytes))
   | none => pure none
+
+/-- Read only a row-aligned prefix of one selected predicate segment.  Each
+    range is admitted to the manifest root before it is decoded; the cache
+    means increasing the prefix verifies only newly needed chunks.  `tpMatch`
+    is applied here (rather than trusting a bound alone) so repeated variables
+    such as `?x p ?x` cannot make a LIMIT stop before a later real match.
+
+    This is deliberately an execution acceleration, not a new SPARQL
+    evaluator: callers feed the exact candidate prefix back through the
+    existing StoreDataset path for projection and result construction. -/
+def scanEntryPrefixForLimit (directory : System.FilePath) (entry : Entry)
+    (tp : TriplePattern) (limit : Nat) : IO (Option Materialized) := do
+  if !safeLeafKey entry.artifact.key then
+    throw <| IO.userError s!"unsafe manifest artifact key: {entry.artifact.key.value}"
+  if limit == 0 then
+    return some {
+      triples := []
+      logicalBytes := 0
+      requestedBytes := 0
+      fetchedBytes := 0
+      verifiedChunks := 0
+      rangeRequests := 0 }
+  match entry.artifact.chunked with
+  | none => pure none
+  | some chunked =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? chunked.chunkCount leafBytes with
+      | none => pure none
+      | some leaves =>
+          let cache ← newVerifiedChunkCache
+          let prefixRange := { offset := 0, length := prefixBytes }
+          match ← readVerifiedRangeCached? path chunked leaves cache prefixRange with
+          | none => pure none
+          | some (prefixRead, prefixFootprint) =>
+              match decodePrefix prefixRead with
+              | none => pure none
+              | some header =>
+                  let planning := planningRange header
+                  match ← readVerifiedRangeCached? path chunked leaves cache planning with
+                  | none => pure none
+                  | some (planningBytes, planningFootprint) =>
+                      let dictionaryRange := dictionaryRange header
+                      let directoryRange := directoryRange header
+                      let dictionary := planningBytes.extract dictionaryRange.offset
+                        (dictionaryRange.offset + dictionaryRange.length)
+                      let directory := planningBytes.extract directoryRange.offset
+                        (directoryRange.offset + directoryRange.length)
+                      match predicateRange? header dictionary directory entry.predicate with
+                      | none =>
+                          pure (some {
+                            triples := []
+                            logicalBytes := planningBytes.size
+                            requestedBytes := prefixFootprint.requestedBytes + planningFootprint.requestedBytes
+                            fetchedBytes := prefixFootprint.fetchedBytes + planningFootprint.fetchedBytes
+                            verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks
+                            rangeRequests := 2 })
+                      | some segmentRange =>
+                          let rowBytes := 16
+                          let step := max rowBytes ((chunked.chunkBytes / rowBytes) * rowBytes)
+                          let initial := min segmentRange.length step
+                          let bound := patternBoundFor tp Binding.empty
+                          let rec readUntil : Nat → Nat → Nat → Nat → Nat → IO (Option Materialized)
+                            | 0, _, _, _, _ => pure none
+                            | fuel + 1, prefixLength, requests, fetched, chunks => do
+                            let segmentPrefix := { offset := segmentRange.offset, length := prefixLength }
+                            match ← readVerifiedRangeCached? path chunked leaves cache segmentPrefix with
+                            | none => pure none
+                            | some (segmentBytes, footprint) =>
+                                let candidates := (scanPredicateSegmentPrefix bound prefixRead dictionary directory segmentBytes)
+                                  |>.filter fun triple => (tpMatch tp triple Binding.empty).isSome
+                                if candidates.length >= limit || prefixLength == segmentRange.length then
+                                  pure (some {
+                                    triples := candidates.take limit
+                                    logicalBytes := planningBytes.size + prefixLength
+                                    requestedBytes := prefixFootprint.requestedBytes + planningFootprint.requestedBytes + requests + footprint.requestedBytes
+                                    fetchedBytes := prefixFootprint.fetchedBytes + planningFootprint.fetchedBytes + fetched + footprint.fetchedBytes
+                                    verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks + chunks + footprint.chunks
+                                    rangeRequests := 2 + requests + 1 })
+                                else
+                                  readUntil fuel (min segmentRange.length (prefixLength + step))
+                                    (requests + 1) (fetched + footprint.fetchedBytes) (chunks + footprint.chunks)
+                          if initial == 0 then pure none
+                          else readUntil (segmentRange.length / step + 1) initial 0 0 0
+
+/-- Manifest-order limited counterpart of `scanEntries`.  The per-entry
+    prefix reader is only asked for the rows still needed, so a LIMIT satisfied
+    in an early artifact never opens later selected artifacts. -/
+def scanEntriesPrefixForLimit (directory : System.FilePath) (tp : TriplePattern)
+    (limit : Nat) : List Entry → List Triple → Materialized → IO (Option Materialized)
+  | [], triples, totals => pure (some { totals with triples := triples })
+  | entry :: rest, triples, totals =>
+      if triples.length >= limit then pure (some { totals with triples := triples.take limit })
+      else do
+        let remaining := limit - triples.length
+        match ← scanEntryPrefixForLimit directory entry tp remaining with
+        | none => pure none
+        | some materialized =>
+            scanEntriesPrefixForLimit directory tp limit rest (triples ++ materialized.triples)
+              { triples := []
+                logicalBytes := totals.logicalBytes + materialized.logicalBytes
+                requestedBytes := totals.requestedBytes + materialized.requestedBytes
+                fetchedBytes := totals.fetchedBytes + materialized.fetchedBytes
+                verifiedChunks := totals.verifiedChunks + materialized.verifiedChunks
+                rangeRequests := totals.rangeRequests + materialized.rangeRequests }
 
 def scanEntries (directory : System.FilePath) : List Entry →
     IO (Option (List Triple × Nat))

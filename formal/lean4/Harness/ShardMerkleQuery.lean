@@ -6,6 +6,7 @@ import Harness.ShardMerkleProfile
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
+import L4Factoidal.SPARQL.StoreFastPath
 
 namespace Harness.ShardMerkleQuery
 
@@ -14,6 +15,7 @@ open Harness.ShardMerkleProfile
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreDataset
+open L4Factoidal.SPARQL.StoreFastPath
 open L4Factoidal.Storage.ShardManifest
 
 /-- SBM2 is the streaming-publisher manifest.  Retain SBM1 discovery so
@@ -118,19 +120,42 @@ private def run (directory : System.FilePath) (queryText : String) : IO UInt32 :
             return 1
         | some predicates =>
             let entries := entriesForPredicates manifest predicates
-            match ← scanEntries directory entries with
+            match detectLimitSingleTp query with
+            | some (tp, limit) =>
+                let empty : Materialized := {
+                  triples := []
+                  logicalBytes := 0
+                  requestedBytes := 0
+                  fetchedBytes := 0
+                  verifiedChunks := 0
+                  rangeRequests := 0 }
+                match ← scanEntriesPrefixForLimit directory tp limit entries [] empty with
+                | none =>
+                    IO.eprintln "l4block-shard-merkle-query rejected: unavailable, changed, or malformed proof-carrying child artifact"
+                    return 1
+                | some materialized =>
+                    let dataset : DatasetBackend := { default := .hdt (readOpsOf materialized.triples), named := [] }
+                    match runSelectQueryBackendDataset emptyEnv query dataset with
+                    | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
+                    | some rows =>
+                        IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle-limit-prefix({predicates.length}) logical-read-bytes={materialized.logicalBytes} fetched-chunk-bytes={materialized.fetchedBytes} verified-chunks={materialized.verifiedChunks} range-requests={materialized.rangeRequests}"
+                        IO.println s!"l4block-shard-merkle-query sse={query.toSse}"
+                        IO.println s!"l4block-shard-merkle-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+                        return 0
             | none =>
-                IO.eprintln "l4block-shard-merkle-query rejected: unavailable, changed, or malformed proof-carrying child artifact"
-                return 1
-            | some (triples, logicalBytes) =>
-                let dataset : DatasetBackend := { default := .hdt (readOpsOf triples), named := [] }
-                match runSelectQueryBackendDataset emptyEnv query dataset with
-                | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
-                | some rows =>
-                    IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) logical-read-bytes={logicalBytes}"
-                    IO.println s!"l4block-shard-merkle-query sse={query.toSse}"
-                    IO.println s!"l4block-shard-merkle-query rows={rows.length} preview={toString (repr (rows.take 10))}"
-                    return 0
+                match ← scanEntries directory entries with
+                | none =>
+                    IO.eprintln "l4block-shard-merkle-query rejected: unavailable, changed, or malformed proof-carrying child artifact"
+                    return 1
+                | some (triples, logicalBytes) =>
+                    let dataset : DatasetBackend := { default := .hdt (readOpsOf triples), named := [] }
+                    match runSelectQueryBackendDataset emptyEnv query dataset with
+                    | none => IO.eprintln "l4block-shard-merkle-query failed: query was not evaluated as SELECT"; return 1
+                    | some rows =>
+                        IO.println s!"l4block-shard-merkle-query manifest={manifestPath} shards={entries.length} open-mode=predicate-selective-merkle({predicates.length}) logical-read-bytes={logicalBytes}"
+                        IO.println s!"l4block-shard-merkle-query sse={query.toSse}"
+                        IO.println s!"l4block-shard-merkle-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+                        return 0
   catch e => IO.eprintln s!"l4block-shard-merkle-query read failure: {e}"; return 1
 
 def main (args : List String) : IO UInt32 := do

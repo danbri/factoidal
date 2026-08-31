@@ -151,3 +151,31 @@ selected exactly the two P1057 artifacts (18,890 and 6,168 rows), admitted
 1,586,092 logical IBK2 bytes through their Merkle commitments, and returned
 five gene/chromosome bindings. This is a real persistent-file → verified
 block → existing Lean SPARQL evaluator run, not an in-memory Turtle demo.
+
+## Bounded `LIMIT` range execution
+
+The native Merkle query host now recognizes the existing conservative Lean
+`detectLimitSingleTp` shape: one bare triple pattern, a `SELECT`, and a
+`LIMIT`, with no ordering, offset, DISTINCT, grouping, aggregate, VALUES or
+other modifier that could change sequence semantics. For that shape it does
+not materialize every selected predicate segment. It reads the IBK2 planning
+prefix, then grows one predicate segment in row-aligned (16-byte) prefixes,
+verifying every newly needed fixed Merkle chunk. It stops before opening later
+manifest entries as soon as enough exact `tpMatch` candidates have been
+obtained. Projection and final result formation still use the existing Lean
+`StoreDataset` SPARQL evaluator.
+
+This exact-match check is important: a physical `PatternBound` alone is not a
+complete SPARQL match. In particular, `?x p ?x` can have candidates whose
+subject and object differ. The prefix reader applies `tpMatch` before deciding
+that the limit is satisfied, so it cannot return a short result merely because
+the first bound candidates fail that equality constraint.
+
+On the completed gene store, the ordinary P1057 `LIMIT 5` query above now
+reports `predicate-selective-merkle-limit-prefix(1)`: it reads 959,508 logical
+IBK2 bytes / 983,040 Merkle-admitted physical bytes rather than 1,586,092
+logical bytes for the unbounded single-pattern scan. The shared per-block term
+dictionary still dominates this small-limit read, which makes predicate-local
+dictionary or dictionary-page work a concrete next optimization rather than a
+claim that every `LIMIT` is already cheap. The smoke suite separately asserts
+the new execution mode and the same three-row result on a small fixture.

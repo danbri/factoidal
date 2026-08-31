@@ -19,6 +19,8 @@ p1057=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-scan" "$run_dir/store" \
   http://www.wikidata.org/prop/direct/P1057)
 query=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --query \
   'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant ?chrom WHERE { ?variant wdt:P31 wd:Q15304597 . ?variant wdt:P1057 ?chrom . } LIMIT 5')
+limited=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --query \
+  'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant WHERE { ?variant wdt:P31 wd:Q15304597 . } LIMIT 3')
 explain=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --explain \
   'PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?variant ?chrom WHERE { ?variant wdt:P31 wd:Q15304597 . ?variant wdt:P1057 ?chrom . } LIMIT 5')
 analyze=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$run_dir/store" --explain-analyze \
@@ -36,6 +38,7 @@ printf '%s\n' "$pread"
 printf '%s\n' "$p31"
 printf '%s\n' "$p1057"
 printf '%s\n' "$query"
+printf '%s\n' "$limited"
 printf '%s\n' "$explain"
 printf '%s\n' "$analyze"
 printf '%s\n' "$explain_json"
@@ -46,6 +49,8 @@ grep -q 'rows=1800 predicate=http://www.wikidata.org/prop/direct/P31' <<<"$p31"
 grep -q 'rows=1357 predicate=http://www.wikidata.org/prop/direct/P1057' <<<"$p1057"
 grep -q 'open-mode=predicate-selective-merkle(2)' <<<"$query"
 grep -q 'rows=5' <<<"$query"
+grep -q 'open-mode=predicate-selective-merkle-limit-prefix(1)' <<<"$limited"
+grep -q 'rows=3' <<<"$limited"
 grep -q 'explain format=sexp .* executes=false' <<<"$explain"
 grep -q '(node scan-0' <<<"$explain"
 grep -q '(node scan-4' <<<"$explain"
