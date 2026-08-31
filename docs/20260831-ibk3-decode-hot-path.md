@@ -575,3 +575,13 @@ logical bytes and 851,968 fetched bytes.  These are warm-OS-cache local
 samples, not a cross-machine throughput claim.  The exact command and result
 checks are captured in `tools/blockengine-sbm6-anatomy-benchmark.sh`; it
 accepts an already activated SBM6 root and emits one JSON line per process.
+
+Separating the same object's first triple pattern showed 58,930 logical bytes
+and 393,216 fetched bytes for `?x wdt:P361 wd:Q729`; adding the SRI2-selected
+`wdt:P31` target accounts for the remaining 81,281 logical / 458,752 fetched
+bytes.  The difference between logical and fetched bytes is expected under
+the current 64-KiB fixed Merkle-chunk contract: small verified reads admit the
+complete chunks that contain their prefix, directory, index page and row page.
+This establishes an evidence-backed future tuning question—chunk granularity
+and co-location of hot sidecar pages—not a reason to weaken integrity checks
+or claim an OLI2 regression from one workload.
