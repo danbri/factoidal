@@ -66,7 +66,11 @@ uses a maliciously chosen term.
 
 ## Proof and executable gates
 
-The pure Lean reference is already:
+The pure Lean reference is now
+`formal/lean4/L4Factoidal/Storage/TermLocalIndex.lean`. Its `entriesOf`
+constructs the canonical term-byte order and `lookup?` uses a total binary
+search followed by structural RDF-term equality. The existing direct
+dictionary reference remains:
 
 ```lean
 PagedTermDictionary.findTermId? dictionary wanted
