@@ -32,6 +32,8 @@ open L4Factoidal.Storage.PagedTermDictionary
 /-- `'IBK3'` in little-endian form. -/
 def magic : UInt32 := 0x334B4249
 def version : UInt8 := 3
+def magicVersionBytes : Nat := 4 + 1
+def crcBytes : Nat := 4
 
 /-- Fixed header: magic/version, row count and PTD1 byte length. -/
 structure Prefix where
@@ -233,8 +235,8 @@ def decode (bytes : ByteArray) : Option Block := do
   let input := listOfByteArray bytes
   let header ← decodePrefix (bytes.extract 0 prefixBytes)
   if input.length < prefixBytes + header.rowCount * rowBytes + header.dictionaryBytes + 4 then none else do
-  let payload := input.drop 5 |>.take (input.length - 9)
-  let storedCrc ← readU32LE input (input.length - 4)
+  let payload := input.drop magicVersionBytes |>.take (input.length - magicVersionBytes - crcBytes)
+  let storedCrc ← readU32LE input (input.length - crcBytes)
   if storedCrc != crc32c payload then none else do
   let rowsStart := prefixBytes
   let rowEnd := rowsStart + header.rowCount * rowBytes
