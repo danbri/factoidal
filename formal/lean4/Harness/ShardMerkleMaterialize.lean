@@ -250,7 +250,9 @@ def readDefaultDelta? (directory : System.FilePath) : IO (Option DeltaResolved) 
     let bytes ← IO.FS.readBinFile path
     match parseLog bytes.toList with
     | some (batches, []) =>
-        pure (some (foldDeltaBatches (filterBatchesSinceEpoch baseEpoch batches) none))
+        if validBatchHistory batches then
+          pure (some (foldDeltaBatches (filterBatchesSinceEpoch baseEpoch batches) none))
+        else pure none
     | _ => pure none
   catch _ =>
     if (← path.pathExists) then pure none else pure (some deltaResolvedEmpty)

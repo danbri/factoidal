@@ -45,7 +45,9 @@ private def sourceIdentity? (directory : System.FilePath) : IO ByteArray := do
   let delta ← try
     let bytes ← IO.FS.readBinFile dlog
     match parseLog bytes.toList with
-    | some (_, []) => pure bytes
+    | some (batches, []) =>
+        if validBatchHistory batches then pure bytes
+        else throw <| IO.userError "source DLOG batch sequence or epoch order is invalid"
     | _ => throw <| IO.userError "source DLOG is malformed or has an uncommitted suffix"
   catch e =>
     if (← dlog.pathExists) then throw e else pure ByteArray.empty

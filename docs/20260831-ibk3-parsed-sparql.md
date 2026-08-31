@@ -169,3 +169,11 @@ compacted base has the same triple membership as applying the complete DLOG
 history. This is the no-double-replay statement used by compaction. The
 remaining I/O obligation is to establish those two hypotheses from committed
 on-disk batches and the marker; the smoke test exercises that host boundary.
+
+The DLOG reader now admits only a history with strictly increasing commit
+sequence numbers and non-decreasing base epochs. Several writes against one
+base may share its epoch; a later entry may not return to an earlier epoch.
+`readDefaultDelta?`, compaction, activation's source check, and the writer's
+pre-append read all reject an invalid history. This makes the CEP1 replay
+filter a suffix of the history emitted by the durable writer, rather than an
+assumption about externally modified bytes.

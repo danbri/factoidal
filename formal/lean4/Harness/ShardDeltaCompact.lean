@@ -57,7 +57,9 @@ private def readDelta (directory : System.FilePath) : IO (List DeltaBatch × Byt
   try
     let bytes ← IO.FS.readBinFile path
     match parseLog bytes.toList with
-    | some (batches, []) => pure (batches, bytes)
+    | some (batches, []) =>
+        if validBatchHistory batches then pure (batches, bytes)
+        else throw <| IO.userError "DLOG batch sequence or epoch order is invalid"
     | _ => throw <| IO.userError "DLOG is malformed or has an uncommitted suffix"
   catch e =>
     if (← path.pathExists) then throw e else pure ([], ByteArray.empty)

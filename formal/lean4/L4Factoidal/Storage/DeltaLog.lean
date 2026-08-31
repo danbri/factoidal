@@ -601,6 +601,21 @@ def filterBatchesSinceEpoch : Option Nat → List DeltaBatch → List DeltaBatch
   | none, batches => batches
   | some baseEpoch, batches => batches.filter fun batch => shouldReplay baseEpoch batch.epoch
 
+/-- Durable DLOG history is in commit order. Sequence numbers must increase
+    strictly; epochs may repeat for several writes against one immutable base,
+    but must never decrease. Rejecting a malformed order makes the CEP1
+    replay filter a suffix of the admitted history, rather than trusting a
+    hand-crafted log to have that property. -/
+private def validBatchHistoryGo : Option Nat → Option Nat → List DeltaBatch → Bool
+  | _, _, [] => true
+  | previousSeq, previousEpoch, batch :: rest =>
+      let seqOK := previousSeq.map (fun previous => decide (previous < batch.seq)) |>.getD true
+      let epochOK := previousEpoch.map (fun previous => decide (previous ≤ batch.epoch)) |>.getD true
+      seqOK && epochOK && validBatchHistoryGo (some batch.seq) (some batch.epoch) rest
+
+def validBatchHistory (batches : List DeltaBatch) : Bool :=
+  validBatchHistoryGo none none batches
+
 /-! ### DLB1 committed batches and DLOG files
 
 `DeltaEntry` is intentionally framed on its own: a batch can therefore hold
@@ -746,5 +761,11 @@ counts BYTES, and a character count would be wrong here. -/
     returning a short string: the prefix claims 9 bytes and 3 follow. -/
 
 #guard (parseLString (writeU32LE 9 ++ [97, 98, 99])).isNone
+
+private def historyBatch (seq epoch : Nat) : DeltaBatch := { seq, epoch, ops := [] }
+
+#guard validBatchHistory [historyBatch 1 1, historyBatch 2 1, historyBatch 3 2]
+#guard !validBatchHistory [historyBatch 1 2, historyBatch 2 1]
+#guard !validBatchHistory [historyBatch 2 1, historyBatch 1 1]
 
 end L4Factoidal.Storage

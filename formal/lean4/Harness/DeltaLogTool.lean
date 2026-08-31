@@ -34,7 +34,9 @@ private def readExisting (path : System.FilePath) : IO (List DeltaBatch × Nat) 
     let bytes ← IO.FS.readBinFile path
     match parseLog bytes.toList with
     | none => throw <| IO.userError "DLOG header is malformed or unsupported"
-    | some (batches, []) => pure (batches, bytes.size)
+    | some (batches, []) =>
+        if validBatchHistory batches then pure (batches, bytes.size)
+        else throw <| IO.userError "DLOG batch sequence or epoch order is invalid"
     | some (_, _) => throw <| IO.userError "DLOG has a torn or uncommitted suffix; recover it before appending"
   catch e =>
     if (← path.pathExists) then throw e else pure ([], 0)
