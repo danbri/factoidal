@@ -132,3 +132,20 @@ With the later bounded 4 MiB publication policy, the same cap wrote 11 files
 instead. This indicates substantially less artifact fragmentation while
 retaining bounded memory; it was still interrupted before a manifest, so it
 is not a completed throughput measurement.
+
+## First completed medium-corpus result
+
+The full 17 MiB `gene.ttl` corpus now completed in about 66 seconds on the
+reference native packer: 888,949 triples were committed as 13 SBM2 blocks.
+An ordinary parsed query
+
+```sparql
+SELECT ?gene ?chrom WHERE {
+  ?gene <http://www.wikidata.org/prop/direct/P1057> ?chrom
+} LIMIT 5
+```
+
+selected exactly the two P1057 artifacts (18,890 and 6,168 rows), admitted
+1,586,092 logical IBK2 bytes through their Merkle commitments, and returned
+five gene/chromosome bindings. This is a real persistent-file → verified
+block → existing Lean SPARQL evaluator run, not an in-memory Turtle demo.
