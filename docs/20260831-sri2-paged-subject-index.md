@@ -50,14 +50,13 @@ multi-page case remains bounded and deterministic.
 
 ## Delivery sequence
 
-1. Pure Lean SRI2 encoder/strict decoder with single- and two-page guards.
-2. Prefix/directory/page reader plus reference lookup agreement with SRI1.
-3. A coherent SBM5 sidecar commitment, writer, activation check and smoke.
-4. Replace full SRI1 decoding only for newly packed SBM5 generations.
+1. Pure Lean SRI2 encoder/strict decoder with single- and two-page guards. ✓
+2. Prefix/directory/page reader plus reference lookup agreement with SRI1. ✓
+3. A coherent SBM5 sidecar commitment, writer, activation check and smoke. ✓
+4. Benchmark SBM5 on the large gene fixture and tighten page-directory search.
 
-SBM4 and SRI1 remain readable throughout. The new format is deliberately not
-being attached to a manifest until the codec, activation relation and range
-reader agree as one increment.
+SBM4 and SRI1 remain readable throughout. New packs publish SBM5; the older
+format remains a compatibility reader, rather than being silently rewritten.
 
 ## Implemented reader boundary (2026-08-31)
 
@@ -68,8 +67,11 @@ only candidate pages. It verifies the SRI2 target digest and row count against
 the IBK3 entry before returning postings, and returns the read footprints in
 the normal query counters.
 
-The function is intentionally not called by the SBM4 query planner: SBM4
-commits SRI1, not SRI2. The next coherent change is SBM5, in which the packer,
-compactor, activation pass and join planner all agree that the committed
-subject sidecar is SRI2. This avoids an uncommitted convenience file silently
-altering query answers.
+SBM5 now uses this reader for the parsed two-predicate shared-subject join.
+The packer and compactor write `predicate-N.ibk3.sri2`; activation fully
+decodes it, verifies its target digest, row count and complete posting relation
+against the paired IBK3 block, then atomically permits `CURRENT` to select the
+generation. The query route announces
+`ibk3-sri2-tli1-subject-join`; its first persistent smoke run returns the
+established 290 result rows. This avoids an uncommitted convenience file
+silently altering query answers.

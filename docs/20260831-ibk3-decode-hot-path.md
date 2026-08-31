@@ -208,19 +208,23 @@ only after that immutable generation has completed activation.
   mapping, decoded only for the needed pages on the sparse join path.
 - **SRI1** — subject-row index: an IBK3-local subject ID to source-row-offset
   mapping used by the two-predicate shared-subject join.
-- **SRI2** — proposed pageable successor to SRI1. It keeps the same canonical
+- **SRI2** — current pageable successor to SRI1. It keeps the same canonical
   postings but has a checksummed prefix and an inclusive subject-range
   directory, so a range reader can fetch only candidate pages without losing a
   posting list that crosses several page boundaries. It is implemented as a
-  standalone Lean codec and is not yet committed by a manifest version.
+  SBM5 commits it with the same artifact, SHA-256 and Merkle discipline as the
+  primary block and TLI1 sidecar.
 - **TLI1** — term-local-ID index: canonical RDF term bytes to the *target*
   IBK3 local ID, explicitly bound to the target IBK3 SHA-256.
 - **SBM0** — original Shardborough Manifest: immutable artifact listing.
 - **SBM1** — adds fixed-chunk Merkle commitment for verified range reads.
 - **SBM2** — permits several bounded immutable blocks per predicate.
 - **SBM3** — commits mandatory SRI1 sidecars for IBK3 entries.
-- **SBM4** — current manifest: commits both SRI1 and TLI1 sidecars, with
+- **SBM4** — legacy manifest: commits both SRI1 and TLI1 sidecars, with
   non-aliasing keys, checksums, Merkle roots and version/layout consistency.
+- **SBM5** — current manifest: replaces the SRI1 sidecar with SRI2 while
+  retaining TLI1; activation fully checks SRI2's canonical posting relation
+  against the IBK3 block before making a generation active.
 - **DLE1 / DLB1 / DLOG** — respectively framed delta entry, sequenced batch,
   and append-only durable SPARQL Update log.
 - **CEP1** — compacted-epoch marker: tells replay to skip update batches
@@ -251,3 +255,14 @@ contributes zero rows while retaining the equality check. It also treats an
 out-of-range ID as an explicit failed plan rather than as an indistinguishable
 empty page list. `tools/blockengine-ibk3-persistent-smoke.sh` passes after the
 repair.
+
+### SBM5 paged subject index (2026-08-31)
+
+New IBK3 packs and compacted generations now publish the
+`predicate-ibk3-ptd1-sri2-tli1-merkle-v0` layout under manifest wire version
+five. SRI2 supplies a Merkle-verified prefix, directory and selected subject
+pages to the parsed two-predicate join; a normal small persistent fixture
+still returns the established 290 rows and the full update/compaction smoke
+tests pass. SRI1/SBM4 remains readable for pre-existing generations. A fresh
+large-fixture measurement is still required before making any I/O-performance
+claim for SRI2.

@@ -5,6 +5,7 @@ import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
@@ -40,7 +41,7 @@ private def artifactName : PackFormat → Nat → String
 
 private def layoutName : PackFormat → String
   | .ibk2 => "predicate-ibk2-merkle-v2-streaming"
-  | .ibk3 => "predicate-ibk3-ptd1-sri1-tli1-merkle-v0"
+  | .ibk3 => "predicate-ibk3-ptd1-sri2-tli1-merkle-v0"
 
 private def registryVersion : PackFormat → String
   | .ibk2 => "local-ibk2-dict-v0"
@@ -117,15 +118,19 @@ private def publishBlocks (format : PackFormat) (output : String) : PackState �
           let subjectIndex ← match format with
             | .ibk2 => pure none
             | .ibk3 =>
-                match L4Factoidal.Storage.SubjectRowIndexWire.encode? block.rows with
-                | none => throw <| IO.userError s!"could not encode SRI1 index for {predicate.val}"
+                let index : L4Factoidal.Storage.SubjectRowIndexWireV2.Index :=
+                  { targetIBKSha256 := artifact.sha256
+                    rowCount := block.rows.size
+                    pairs := L4Factoidal.Storage.SubjectRowIndexWire.pairsOfRows block.rows |>.toArray }
+                match L4Factoidal.Storage.SubjectRowIndexWireV2.encode? index with
+                | none => throw <| IO.userError s!"could not encode SRI2 index for {predicate.val}"
                 | some indexBytes =>
-                    let indexName := name ++ ".sri1"
+                    let indexName := name ++ ".sri2"
                     IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
                     writeMerkle (output ++ "/" ++ indexName) indexBytes
                     match artifactRef? indexName indexBytes with
                     | some value => pure (some value)
-                    | none => throw <| IO.userError s!"could not commit SRI1 chunks for {predicate.val}"
+                    | none => throw <| IO.userError s!"could not commit SRI2 chunks for {predicate.val}"
           let termIndex ← match format with
             | .ibk2 => pure none
             | .ibk3 =>
@@ -217,7 +222,7 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
     let entries := published.entriesRev.reverse
     let lines := published.linesRev.reverse
     let manifest : Manifest :=
-      { version := (match format with | .ibk2 => 2 | .ibk3 => 4), sourceIdentity := prepass.sourceIdentity,
+      { version := (match format with | .ibk2 => 2 | .ibk3 => 5), sourceIdentity := prepass.sourceIdentity,
         termRegistryVersion := registryVersion format,
         layout := layoutName format, entries }
     match L4Factoidal.Storage.ShardManifest.encode? manifest with
@@ -225,7 +230,7 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
     | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
     IO.FS.writeFile (output ++ "/manifest.tsv")
       ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tsubject-index\tterm-index\n" ++ String.intercalate "\n" lines ++ "\n")
-    let manifestVersion := match format with | .ibk2 => 2 | .ibk3 => 4
+    let manifestVersion := match format with | .ibk2 => 2 | .ibk3 => 5
     IO.println s!"l4block-shard-pack format={layoutName format} input={input} triples={published.tripleCount} blocks={entries.length} output={output} manifest=manifest.sbm2 wire-version={manifestVersion} chunk-bytes={chunkBytes}"
     return 0
   catch error =>

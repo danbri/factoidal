@@ -30,9 +30,11 @@ private def isIbk3Layout (layout : String) : Bool :=
     layout == "predicate-ibk3-ptd1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0" ||
+    layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1" ||
     layout == "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1" ||
-    layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1"
+    layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1" ||
+    layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1"
 
 /-- A physically safe bounded-prefix shape. Subject/object must be distinct
     variables: constants or repeated variables could make early rows fail the
@@ -199,13 +201,19 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
       | none => pure none
       | some (driveTriples, driveCounters) =>
           let subjects := driveTriples.map (fun triple => triple.s.toTerm) |>.eraseDups
-          match ← scanEntriesForSubjects directory targetPredicate subjects targetEntries [] {} 0 with
+          let targetScan ←
+            if manifest.version == 5 then
+              scanEntriesForSubjectsV2 directory targetPredicate subjects targetEntries [] {} 0
+            else
+              scanEntriesForSubjects directory targetPredicate subjects targetEntries [] {} 0
+          match targetScan with
           | none => pure none
           | some (targetTriples, targetCounters, _) =>
               let entries := driveEntries ++ targetEntries
               let counters := addCounters driveCounters targetCounters
               let code ← finish query entries [drivePredicate, targetPredicate]
-                (driveTriples ++ targetTriples) counters delta "ibk3-sri1-tli1-subject-join"
+                (driveTriples ++ targetTriples) counters delta
+                  (if manifest.version == 5 then "ibk3-sri2-tli1-subject-join" else "ibk3-sri1-tli1-subject-join")
               pure (some code)
   | _, _ => pure none
 

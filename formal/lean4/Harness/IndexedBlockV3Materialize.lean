@@ -457,6 +457,82 @@ def scanEntriesForSubjects (directory : System.FilePath) (predicate : WfIri) (su
           scanEntriesForSubjects directory predicate subjects rest (triples ++ current.triples)
             (addCounters counters current.counters) (opened + 1)
 
+/-- SBM5 SRI2 counterpart to `scanEntryForSubjects`.  The only planner change
+    is the subject-posting source: terms are first resolved with the committed
+    TLI1, then SRI2 provides verified pages for those local IDs. The fixed-row
+    and sparse PTD1 checks remain exactly the same as the established SBM4
+    path. -/
+def scanEntryForSubjectsV2 (directory : System.FilePath) (predicate : WfIri)
+    (subjects : List Term) (entry : Entry) : IO (Option ScanResult) := do
+  if !safeLeafKey entry.artifact.key then return none
+  match entry.artifact.chunked, entry.termIndex, entry.subjectIndex with
+  | some ref, some _, some subjectIndex =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes, ← subjectIdsViaTli? directory entry subjects with
+      | some leaves, some (indexed, termCounters) =>
+          if indexed.isEmpty then
+            pure (some { triples := [], counters := termCounters, artifactBytes := entry.artifact.bytes })
+          else
+            let ids := indexed.map Prod.snd |>.eraseDups
+            match ← subjectPostingsV2For? directory entry subjectIndex ids with
+            | none => pure none
+            | some (selected, sriCounters) =>
+                let cache ← newVerifiedChunkCache
+                let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+                  { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
+                match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
+                | none => pure none
+                | some (headerBytes, headerFootprint) =>
+                    match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
+                    | none => pure none
+                    | some header =>
+                        if header.rowCount != entry.rows then pure none else
+                        let initial := addCounters (addCounters termCounters sriCounters) (addRead {} headerFootprint)
+                        match ← scanSubjectIdRows path ref leaves cache header selected initial with
+                        | none => pure none
+                        | some (rows, rowCounters) =>
+                            match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header with
+                            | none => pure none
+                            | some ptdPrefixRange =>
+                                match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdPrefixRange) with
+                                | none => pure none
+                                | some (ptdPrefixBytes, ptdPrefixFootprint) =>
+                                    match L4Factoidal.Storage.PagedTermDictionary.decodePrefix ptdPrefixBytes,
+                                        L4Factoidal.Storage.IndexedBlockWireV3.dictionaryDirectoryRange? header ptdPrefixBytes with
+                                    | some ptdHeader, some directoryRange =>
+                                        match ← readVerifiedRangeCached? path ref leaves cache (ioRange directoryRange) with
+                                        | none => pure none
+                                        | some (directoryBytes, directoryFootprint) =>
+                                            match L4Factoidal.Storage.PagedTermDictionary.decodeDirectory? ptdHeader directoryBytes with
+                                            | none => pure none
+                                            | some ptdDirectory =>
+                                                let requiredIds := rowTermIds rows ++ indexed.map Prod.snd
+                                                match distinctPtdPages ptdHeader requiredIds [] with
+                                                | none => pure none
+                                                | some pages =>
+                                                    let beforePages := addRead (addRead rowCounters ptdPrefixFootprint) directoryFootprint
+                                                    match ← readSparsePtdPages path ref leaves cache header ptdHeader ptdDirectory pages beforePages with
+                                                    | none => pure none
+                                                    | some (decodedPages, counters) =>
+                                                        if !sparseIndexedTermsAgree ptdHeader decodedPages indexed then pure none else
+                                                        match sparseRowsToTriples? ptdHeader decodedPages predicate rows with
+                                                        | some triples => pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                                                        | none => pure none
+                                    | _, _ => pure none
+      | _, _ => pure none
+  | _, _, _ => pure none
+
+def scanEntriesForSubjectsV2 (directory : System.FilePath) (predicate : WfIri) (subjects : List Term) :
+    List Entry → List Triple → Counters → Nat → IO (Option (List Triple × Counters × Nat))
+  | [], triples, counters, opened => pure (some (triples, counters, opened))
+  | entry :: rest, triples, counters, opened => do
+      match ← scanEntryForSubjectsV2 directory predicate subjects entry with
+      | none => pure none
+      | some current =>
+          scanEntriesForSubjectsV2 directory predicate subjects rest (triples ++ current.triples)
+            (addCounters counters current.counters) (opened + 1)
+
 private def readPages (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref (List VerifiedChunk)) : List L4Factoidal.Storage.IndexedBlockWireV3.ByteRange → Counters →
     IO (Option (List (L4Factoidal.Storage.IndexedBlockWireV3.ByteRange × ByteArray) × Counters))

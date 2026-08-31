@@ -17,7 +17,7 @@ pack=$("$lean_dir/.lake/build/bin/l4block-shard-pack" \
   "$repo_root/examples/wikidata/subsets/lifesci-kgx/data/binding_site.ttl" \
   "$store" ibk3)
 printf '%s\n' "$pack"
-grep -q 'format=predicate-ibk3-ptd1-sri1-tli1-merkle-v0.*wire-version=4' <<<"$pack"
+grep -q 'format=predicate-ibk3-ptd1-sri2-tli1-merkle-v0.*wire-version=5' <<<"$pack"
 grep -q 'triples=368 blocks=2' <<<"$pack"
 
 activate=$("$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$generation")
@@ -32,11 +32,11 @@ grep -q 'shards=1 open-mode=ibk3-paged-merkle(1) delta=base' <<<"$base"
 grep -q 'rows=2' <<<"$base"
 
 # The smaller P31 side drives a two-pattern subject join. The executor must
-# announce the SRI1 path; result construction remains the parsed evaluator.
+# announce the SRI2 path; result construction remains the parsed evaluator.
 join=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   'SELECT ?x ?type ?whole WHERE { ?x <http://www.wikidata.org/prop/direct/P31> ?type . ?x <http://www.wikidata.org/prop/direct/P361> ?whole . }')
 printf '%s\n' "$join"
-grep -q 'open-mode=ibk3-sri1-tli1-subject-join(2) delta=base' <<<"$join"
+grep -q 'open-mode=ibk3-sri2-tli1-subject-join(2) delta=base' <<<"$join"
 grep -q 'rows=290' <<<"$join"
 
 ask=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
@@ -113,7 +113,7 @@ inspect=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$root" --inspect)
 printf '%s\n' "$inspect"
 grep -q 'committed-batches=2 committed-ops=2 clean-tail=true' <<<"$inspect"
 
-# An SBM4 subject index is a committed generation artifact.  Corrupting its
+# An SBM5 subject index is a committed generation artifact.  Corrupting its
 # bytes while retaining the old manifest and Merkle leaves must prevent
 # activation, rather than merely disabling a future selective scan.
 bad_generation='bad-subject-index'
@@ -121,9 +121,9 @@ bad_store="$root/$bad_generation"
 "$lean_dir/.lake/build/bin/l4block-shard-pack" \
   "$repo_root/examples/wikidata/subsets/lifesci-kgx/data/binding_site.ttl" \
   "$bad_store" ibk3 >/dev/null
-printf '\377' | dd of="$bad_store/predicate-0.ibk3.sri1" bs=1 seek=16 conv=notrunc status=none
+printf '\377' | dd of="$bad_store/predicate-0.ibk3.sri2" bs=1 seek=16 conv=notrunc status=none
 if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" >/dev/null 2>&1; then
-  echo 'activation accepted a corrupted SBM4 subject-index sidecar' >&2
+  echo 'activation accepted a corrupted SBM5 subject-index sidecar' >&2
   exit 1
 fi
 # TLI1 is equally committed and bound to its own IBK3 digest.  Its checksum

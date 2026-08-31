@@ -4,6 +4,7 @@ import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
@@ -58,15 +59,19 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
           let subjectIndex ← match format with
             | .ibk2 => pure none
             | .ibk3 =>
-                match L4Factoidal.Storage.SubjectRowIndexWire.encode? block.rows with
-                | none => throw <| IO.userError s!"could not encode SRI1 index for {predicate.val}"
+                let index : L4Factoidal.Storage.SubjectRowIndexWireV2.Index :=
+                  { targetIBKSha256 := digest
+                    rowCount := block.rows.size
+                    pairs := L4Factoidal.Storage.SubjectRowIndexWire.pairsOfRows block.rows |>.toArray }
+                match L4Factoidal.Storage.SubjectRowIndexWireV2.encode? index with
+                | none => throw <| IO.userError s!"could not encode SRI2 index for {predicate.val}"
                 | some indexBytes =>
-                    let indexName := name ++ ".sri1"
+                    let indexName := name ++ ".sri2"
                     IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
                     let indexDigest := sha256 indexBytes
                     let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
                       | some value => pure value
-                      | none => throw <| IO.userError s!"could not commit SRI1 chunks for {predicate.val}"
+                      | none => throw <| IO.userError s!"could not commit SRI2 chunks for {predicate.val}"
                     let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
                     IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
                       (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
@@ -127,7 +132,7 @@ private def publishTriplesAs (format : PublishFormat) (registryVersion : String)
   let published ← publishBlocks format output {} (blocksOfBuckets (addTriples {} triples))
   let entries := published.entriesRev.reverse
   let lines := published.linesRev.reverse
-  let version := match format with | .ibk2 => 2 | .ibk3 => 4
+  let version := match format with | .ibk2 => 2 | .ibk3 => 5
   let manifest : Manifest :=
     { version, sourceIdentity, termRegistryVersion := registryVersion, layout, entries }
   match L4Factoidal.Storage.ShardManifest.encode? manifest with
