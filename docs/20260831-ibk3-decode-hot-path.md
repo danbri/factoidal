@@ -510,3 +510,28 @@ also cover SBM6 encode/decode and refusal of a version-6 entry lacking its
 mandatory object index.  Large-corpus benchmarks and multi-pattern
 object-driven joins remain the next measurement work; this is a correctness-
 first physical foundation, not a broad performance claim.
+
+### Corpus evidence and SBM6 large-pack attempt (2026-08-31)
+
+The repository has a useful starting ladder but not yet sufficient evidence to
+choose a mature block layout: W3C/micro fixtures establish semantics, the
+368-triple `binding_site.ttl` fixture exercises all integrity sidecars, and
+the 888,949-triple 17-MiB `gene.ttl` export supplies a real skewed
+life-science workload.  It does *not* yet include a reproducible heterogeneous
+medium corpus, controlled skew cases, or fixed cross-engine differential
+workloads.  Those are required before treating a physical choice as more than
+a local optimisation.
+
+The query benchmark now records an OLI2 workload as well as the existing
+P682→P684 subject join and P684 count: the checked KGX source contains exactly
+one `wdt:P684 wd:Q7072306` triple, so `SELECT ?s WHERE { ?s wdt:P684
+wd:Q7072306 }` is a deterministic real-data object-selectivity probe.  It
+requires an activated SBM6 store and asserts the explicit
+`ibk3-sri2-tli1-oli2-object-scan` mode.
+
+An attempted fresh SBM6 publication of `gene.ttl` wrote about 43 MiB of child
+artifacts but did not reach `manifest.sbm2`/`CURRENT` before the observed
+process ended.  The partial directory is deliberately not considered a store
+or a benchmark result.  This is a concrete reminder that large ingestion must
+have resumable/progress-observable execution before it becomes a dependable
+scale gate; no performance claim is drawn from the attempt.

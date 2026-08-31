@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible process-cold/process-warm benchmark for an already activated
-# SBM5 Shardborough collection. It does not claim to evict the OS page cache:
+# SBM6 Shardborough collection. It does not claim to evict the OS page cache:
 # “cold” means the first fresh query process; “warm” means subsequent fresh
 # processes against the same immutable generation.
 set -euo pipefail
@@ -11,6 +11,11 @@ store_root=${1:?usage: tools/blockengine-ibk3-query-benchmark.sh ACTIVATED-COLLE
 warm_runs=${2:-3}
 join_query='PREFIX wdt: <http://www.wikidata.org/prop/direct/> SELECT ?s ?o1 ?o2 WHERE { ?s wdt:P684 ?o1 . ?s wdt:P682 ?o2 }'
 count_query='PREFIX wdt: <http://www.wikidata.org/prop/direct/> SELECT (COUNT(*) AS ?c) WHERE { ?s wdt:P684 ?o }'
+# This is a real one-row P684 object value in the checked-in KGX gene export.
+# It exercises the OLI2→TLI1→row.o verification path rather than a generic
+# predicate materialisation.  Keep the expected cardinality with the corpus
+# provenance; it must be revised intentionally if the pinned source changes.
+object_query='PREFIX wdt: <http://www.wikidata.org/prop/direct/> PREFIX wd: <http://www.wikidata.org/entity/> SELECT ?s WHERE { ?s wdt:P684 wd:Q7072306 }'
 runner="$repo_root/tools/bench_rusage_run.py"
 binary="$lean_dir/.lake/build/bin/l4block-id-v3-query"
 run_dir=$(mktemp -d "$repo_root/tmp/blockengine-ibk3-query-benchmark.XXXXXX")
@@ -59,3 +64,4 @@ run_workload() {
 
 run_workload ibk3-sri2-gene-p682-p684 "$join_query" 'open-mode=ibk3-sri2-tli1-subject-join(2)' 'rows=14'
 run_workload ibk3-gene-p684-count "$count_query" 'open-mode=ibk3-paged-merkle-count(1)' '"c", L4Factoidal.RDF.Term.literal ("759263"'
+run_workload ibk3-oli2-gene-p684-q7072306 "$object_query" 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1)' 'rows=1'
