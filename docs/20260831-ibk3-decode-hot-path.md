@@ -554,3 +554,24 @@ process ended.  The partial directory is deliberately not considered a store
 or a benchmark result.  This is a concrete reminder that large ingestion must
 have resumable/progress-observable execution before it becomes a dependable
 scale gate; no performance claim is drawn from the attempt.
+
+### Medium real-data OLI2/SRI2 join sample (2026-08-31)
+
+The checked-in `anatomical_structure.ttl` export provides an intermediate
+real-data scale: 3.6 MiB of Turtle, 112,742 triples and three published SBM6
+blocks.  A fresh local pack and activation completed, then the sparse query
+
+```sparql
+SELECT ?x ?type WHERE {
+  ?x wdt:P361 wd:Q729 .
+  ?x wdt:P31 ?type .
+}
+```
+
+returned four rows through the OLI2-driver/SRI2-target join.  Three separate
+fresh query processes on this Mac observed 70.3 ms, 82.6 ms and 84.9 ms peak
+wall time, with 10.8–10.9 MiB peak resident memory.  Each reported 140,211
+logical bytes and 851,968 fetched bytes.  These are warm-OS-cache local
+samples, not a cross-machine throughput claim.  The exact command and result
+checks are captured in `tools/blockengine-sbm6-anatomy-benchmark.sh`; it
+accepts an already activated SBM6 root and emits one JSON line per process.
