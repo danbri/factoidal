@@ -86,6 +86,13 @@ def contiguousOrdinals : List Entry → Nat → Bool
   | [], _ => true
   | entry :: rest, expected => entry.ordinal == expected && contiguousOrdinals rest (expected + 1)
 
+/-- No immutable artifact key may play two manifest roles.  In particular an
+    SBM3 subject-index sidecar cannot alias another block or sidecar. -/
+def uniqueArtifactKeys (entries : List Entry) : Bool :=
+  let keys := entries.flatMap fun entry =>
+    entry.artifact.key :: (entry.subjectIndex.map ArtifactRef.key).toList
+  keys.length == keys.eraseDups.length
+
 /-- Structural acceptance before any host artifact is opened. -/
 private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
   artifact.bytes > 0 && artifact.sha256.size == 32 &&
@@ -99,6 +106,7 @@ private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
 def valid (manifest : Manifest) : Bool :=
   (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3) &&
     (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
+    uniqueArtifactKeys manifest.entries &&
     contiguousOrdinals manifest.entries 0 &&
     manifest.entries.all fun entry => entry.rows > 0 && artifactValidFor manifest.version entry.artifact &&
       match manifest.version, entry.subjectIndex with

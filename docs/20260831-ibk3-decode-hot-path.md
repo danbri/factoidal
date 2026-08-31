@@ -102,6 +102,17 @@ SRI1 framing/checksum, and SRI1 row count all agree. It is intentionally not
 used for query selection yet: the next scan must also read each selected IBK3
 row and verify that its subject ID matches the SRI1 posting.
 
+Activation now makes the same distinction. `l4block-shard-activate` accepts
+the `predicate-ibk3-ptd1-sri1-merkle-v0` layout and, before it replaces the
+collection's `CURRENT` pointer, checks every IBK3 and SRI1 artifact's declared
+full SHA-256 digest. It then opens every SRI1 object through its committed
+Merkle leaves and checks its framing, checksum and row count. Manifest keys
+must be globally unique: a block cannot alias another block or an index. The
+persistent smoke test packs a second generation, corrupts one SRI1 byte, and
+proves that activation refuses it. This is an admission check, not yet a proof
+that an otherwise well-formed SRI1 posting names the same subject as its IBK3
+row; the selective scan will verify that relationship per selected row.
+
 Within an admitted SRI1 payload, lookup now uses a total binary search over
 canonical subject ordering, followed by a scan of only that subject's
 contiguous offsets. This removes a full posting-list CPU scan. The current

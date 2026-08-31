@@ -21,11 +21,14 @@ private def compactedDefaultLayout : String :=
 private def ibk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0"
 
+private def ibk3Sri1Layout : String :=
+  "predicate-ibk3-ptd1-sri1-merkle-v0"
+
 private def compactedIbk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
 private def isIbk3Layout (layout : String) : Bool :=
-  layout == ibk3Layout || layout == compactedIbk3Layout
+  layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout
 
 private def isCompactedLayout (layout : String) : Bool :=
   layout == compactedDefaultLayout || layout == compactedIbk3Layout
@@ -71,15 +74,38 @@ private def sourceStillCurrent (root candidate : System.FilePath) (manifest : Ma
     later range scan checks the Merkle roots; this pass checks full SHA-256.
     Thus a hand-crafted manifest whose digest and root describe different
     artifacts is rejected at activation rather than deferred to a query path. -/
+private def verifyFullArtifact (directory : System.FilePath) (artifact : ArtifactRef) : IO Bool := do
+  if !safeLeafKey artifact.key then pure false else
+  try
+    let bytes ← IO.FS.readBinFile (directory / artifact.key.value)
+    pure <| bytes.size == artifact.bytes && BlockArtifact.verify artifact.sha256 bytes
+  catch _ => pure false
+
 private def verifyFullEntries (directory : System.FilePath) : List Entry → IO Bool
   | [] => pure true
   | entry :: rest => do
-      if !safeLeafKey entry.artifact.key then pure false else
-      try
-        let bytes ← IO.FS.readBinFile (directory / entry.artifact.key.value)
-        if !verifyEntry entry bytes then pure false
-        else verifyFullEntries directory rest
-      catch _ => pure false
+      if !(← verifyFullArtifact directory entry.artifact) then pure false
+      else
+        match entry.subjectIndex with
+        | none => verifyFullEntries directory rest
+        | some index =>
+            if !(← verifyFullArtifact directory index) then pure false
+            else verifyFullEntries directory rest
+
+/-- SBM3's subject index is part of the generation, not optional query
+    advice.  Before publishing a generation verify its Merkle admission,
+    SRI1 framing/checksum, and agreement with the committed IBK3 row count. -/
+private def verifySubjectIndexes (directory : System.FilePath) : List Entry → IO Bool
+  | [] => pure true
+  | entry :: rest => do
+      match entry.subjectIndex with
+      | none => verifySubjectIndexes directory rest
+      | some _ =>
+          try
+            match ← Harness.IndexedBlockV3Materialize.subjectPostings? directory entry with
+            | some _ => verifySubjectIndexes directory rest
+            | none => pure false
+          catch _ => pure false
 
 /-- Validate the selected physical layout after full-file SHA-256 admission.
     IBK2 uses its existing all-entry materializer; IBK3 uses the paged reader,
@@ -111,6 +137,8 @@ private def activate (rootText generation : String) : IO UInt32 := do
           throw <| IO.userError "candidate source changed since compaction; compact again before activation"
         if !(← verifyFullEntries candidate manifest.entries) then
           throw <| IO.userError "candidate child artifact fails its declared SHA-256 commitment"
+        if !(← verifySubjectIndexes candidate manifest.entries) then
+          throw <| IO.userError "candidate subject-index sidecar is missing, changed, or malformed"
         match ← verifyReadableEntries candidate manifest with
         | none => throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
         | some verifiedBytes =>
