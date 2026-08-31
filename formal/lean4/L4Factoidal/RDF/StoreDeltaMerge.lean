@@ -52,7 +52,8 @@ namespace L4Factoidal.RDF
 
 open L4Factoidal.SPARQL (PatternBound boundMatches tripleMatchesBound
   mem_tripleMatchesBound)
-open L4Factoidal.Storage (DeltaEntry DeltaBatch filterBatchesSinceEpoch)
+open L4Factoidal.Storage (DeltaEntry DeltaBatch filterBatchesSinceEpoch
+  splitBatchesSinceEpoch? splitBatchesSinceEpoch?_sound)
 
 /-! ## One graph's resolved diff -/
 
@@ -361,6 +362,26 @@ theorem mergeOnRead_after_epoch_compaction (baseEpoch : Nat)
       (foldDeltaBatches (filterBatchesSinceEpoch (some baseEpoch) batches) graphKey) b) := by
   rw [hHistory, hFiltered]
   exact mergeOnRead_after_compaction graphKey gBase older (newer.flatMap (·.ops)) b t
+
+/-- The directly usable no-double-replay form. A successful CEP1 partition
+    supplies both facts required by `mergeOnRead_after_epoch_compaction`, so
+    callers do not need to assume a separate history split or filter result. -/
+theorem mergeOnRead_after_epoch_partition (baseEpoch : Nat)
+    (graphKey : Option Iri) (gBase : Graph) (batches older newer : List DeltaBatch)
+    (hPartition : splitBatchesSinceEpoch? baseEpoch batches = some (older, newer))
+    (b : PatternBound) (t : Triple) :
+    Graph.mem t (tripleMatchesBound b
+      (applyEntriesRef graphKey gBase (batches.flatMap (·.ops)))) =
+    Graph.mem t (mergeOnRead
+      (tripleMatchesBound b (applyEntriesRef graphKey gBase (older.flatMap (·.ops))))
+      (foldDeltaBatches newer graphKey) b) := by
+  obtain ⟨hHistory, hFilter⟩ :=
+    splitBatchesSinceEpoch?_sound baseEpoch batches older newer hPartition
+  have hOps := congrArg (List.flatMap fun batch => batch.ops) hHistory
+  simp only [List.flatMap_append] at hOps
+  simpa only [hFilter] using
+    (mergeOnRead_after_epoch_compaction baseEpoch graphKey gBase batches newer
+      (older.flatMap (·.ops)) hOps hFilter b t)
 
 /-! ## Graph Store Protocol write verbs
 

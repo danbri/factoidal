@@ -163,12 +163,14 @@ The existing IBK2 compaction smoke continues to pass.
 
 The pure storage proof is also extended in
 `L4Factoidal/RDF/StoreDeltaMerge.lean` as
-`mergeOnRead_after_epoch_compaction`. Given the recorded history split and
-the CEP1 filter result, it proves that an epoch-filtered merge against the
-compacted base has the same triple membership as applying the complete DLOG
-history. This is the no-double-replay statement used by compaction. The
-remaining I/O obligation is to establish those two hypotheses from committed
-on-disk batches and the marker; the smoke test exercises that host boundary.
+`mergeOnRead_after_epoch_partition`. It consumes the successful CEP1 history
+partition directly and proves that replay against the compacted base has the
+same triple membership as applying the complete DLOG history. The partitioner
+proves that its old part is a prefix and its replay part is exactly the CEP1
+filter suffix. This is the no-double-replay statement used by compaction.
+The remaining I/O boundary is only to read committed bytes and admit a valid
+partition; both persistent query replay and compaction now call that same
+total partitioner.
 
 The DLOG reader now admits only a history with strictly increasing commit
 sequence numbers and non-decreasing base epochs. Several writes against one

@@ -601,6 +601,78 @@ def filterBatchesSinceEpoch : Option Nat → List DeltaBatch → List DeltaBatch
   | none, batches => batches
   | some baseEpoch, batches => batches.filter fun batch => shouldReplay baseEpoch batch.epoch
 
+/-- Split a committed history at a compacted epoch. Once a batch newer than
+    the base is seen, every remaining batch must also be newer. This is the
+    exact suffix form needed by compaction; an epoch that moves back across
+    the marker is refused rather than being silently reordered. -/
+def splitBatchesSinceEpoch? (baseEpoch : Nat) : List DeltaBatch → Option (List DeltaBatch × List DeltaBatch)
+  | [] => some ([], [])
+  | batch :: rest =>
+      if shouldReplay baseEpoch batch.epoch then
+        if rest.all (fun later => shouldReplay baseEpoch later.epoch) then
+          some ([], batch :: rest)
+        else none
+      else do
+        let (older, newer) ← splitBatchesSinceEpoch? baseEpoch rest
+        some (batch :: older, newer)
+
+/-- The partitioner's first output is a committed prefix and its second is
+    the exact `filterBatchesSinceEpoch` suffix. -/
+theorem splitBatchesSinceEpoch?_sound (baseEpoch : Nat) :
+    ∀ (batches older newer : List DeltaBatch),
+      splitBatchesSinceEpoch? baseEpoch batches = some (older, newer) →
+      batches = older ++ newer ∧
+        filterBatchesSinceEpoch (some baseEpoch) batches = newer
+  | [], older, newer, h => by
+      simp [splitBatchesSinceEpoch?, filterBatchesSinceEpoch] at h
+      rcases h with ⟨rfl, rfl⟩
+      simp [filterBatchesSinceEpoch]
+  | batch :: rest, older, newer, h => by
+      simp only [splitBatchesSinceEpoch?] at h
+      by_cases replay : shouldReplay baseEpoch batch.epoch
+      · simp only [if_pos replay] at h
+        by_cases later : rest.all (fun item => shouldReplay baseEpoch item.epoch)
+        · simp only [if_pos later, Option.some.injEq] at h
+          have hOlder : older = [] := (congrArg Prod.fst h).symm
+          have hNewer : newer = batch :: rest := (congrArg Prod.snd h).symm
+          subst older
+          subst newer
+          constructor
+          · simp
+          · have hAll : ∀ item, item ∈ rest → shouldReplay baseEpoch item.epoch = true := by
+              intro item hItem
+              exact List.all_eq_true.mp later item hItem
+            change (batch :: rest).filter (fun item => shouldReplay baseEpoch item.epoch) = batch :: rest
+            simp only [List.filter_cons, replay, if_true]
+            exact congrArg (batch :: ·) (List.filter_eq_self.mpr hAll)
+        · simp only [if_neg later] at h
+          cases h
+      · simp only [if_neg replay] at h
+        cases hSplit : splitBatchesSinceEpoch? baseEpoch rest with
+        | none => simp [hSplit] at h
+        | some pair =>
+            rcases pair with ⟨olderTail, newerTail⟩
+            simp [hSplit] at h
+            rcases h with ⟨hOlder, hNewer⟩
+            symm at hOlder
+            symm at hNewer
+            subst older
+            subst newer
+            obtain ⟨hHistory, hFilter⟩ :=
+              splitBatchesSinceEpoch?_sound baseEpoch rest olderTail newerTail hSplit
+            constructor
+            · simp [hHistory]
+            · change (batch :: rest).filter (fun item => shouldReplay baseEpoch item.epoch) = newerTail
+              simp only [List.filter_cons, replay, if_false]
+              exact hFilter
+
+/-- Replay admission used at the storage boundary. A legacy generation has no
+    marker and replays all committed batches. A compacted generation must
+    produce the proved epoch prefix/suffix partition. -/
+def replayBatchesSinceEpoch? : Option Nat → List DeltaBatch → Option (List DeltaBatch)
+  | none, batches => some batches
+  | some baseEpoch, batches => (splitBatchesSinceEpoch? baseEpoch batches).map Prod.snd
+
 /-- Durable DLOG history is in commit order. Sequence numbers must increase
     strictly; epochs may repeat for several writes against one immutable base,
     but must never decrease. Rejecting a malformed order makes the CEP1

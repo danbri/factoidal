@@ -75,7 +75,9 @@ private def compact (source output : String) : IO UInt32 := do
           throw <| IO.userError "source manifest has no IBK2 Merkle range commitment"
         let baseEpoch ← CompactedEpoch.read? sourcePath
         let (allBatches, deltaBytes) ← readDelta sourcePath
-        let batches := filterBatchesSinceEpoch baseEpoch allBatches
+        let batches ← match replayBatchesSinceEpoch? baseEpoch allBatches with
+          | some replay => pure replay
+          | none => throw <| IO.userError "DLOG epochs do not form a compacted-prefix/replay-suffix history"
         if !defaultGraphOnly batches then
           throw <| IO.userError "this first compactor refuses named-graph or graph-management DLOG entries"
         if isIbk3Layout manifest.layout then

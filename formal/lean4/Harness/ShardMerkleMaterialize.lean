@@ -251,7 +251,9 @@ def readDefaultDelta? (directory : System.FilePath) : IO (Option DeltaResolved) 
     match parseLog bytes.toList with
     | some (batches, []) =>
         if validBatchHistory batches then
-          pure (some (foldDeltaBatches (filterBatchesSinceEpoch baseEpoch batches) none))
+          match replayBatchesSinceEpoch? baseEpoch batches with
+          | some replay => pure (some (foldDeltaBatches replay none))
+          | none => pure none
         else pure none
     | _ => pure none
   catch _ =>
