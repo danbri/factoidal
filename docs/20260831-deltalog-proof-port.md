@@ -67,10 +67,25 @@ read through the Merkle-verified SPARQL path, compaction publishes and
 activates a new base, and a post-compaction update is written at epoch 2 and
 visible through base-plus-delta evaluation.
 
+The CEP1 companion marker now also has a landed Lean theorem:
+
+```lean
+natFitsU64 n = true →
+  parseEpoch (frameEpoch ⟨n⟩) = some ⟨n⟩
+```
+
+The proof composes the new `readU64LE_writeU64LE_append` theorem with the
+existing u32 framing inverses, verifies the fixed 24-byte CEP1 shape and uses
+the representability premise to prove that `Nat → UInt64 → Nat` preserves the
+epoch. This is a **landed Lean theorem** corresponding to F*'s
+`lemma_compacted_epoch_roundtrip`; it does not yet prove complete DLB1/DLOG
+decode/encode inversion or full RDF-term payload round trips.
+
 Validation for this increment:
 
 ```sh
 cd formal/lean4
 lake build L4Factoidal.Storage.Bytes
 lake build L4Factoidal.Storage.DeltaLog
+lake build L4Factoidal.Storage.DeltaLogTests
 ```

@@ -75,10 +75,32 @@ a Lean-only u32 variant. -/
 def writeU64LE (n : UInt64) : List UInt8 :=
   writeU32LE n.toUInt32 ++ writeU32LE (n >>> 32).toUInt32
 
+@[simp] theorem writeU64LE_length (n : UInt64) : (writeU64LE n).length = 8 := by
+  simp [writeU64LE]
+
 def readU64LE (bs : List UInt8) (pos : Nat) : Option UInt64 := do
   let lo ← readU32LE bs pos
   let hi ← readU32LE bs (pos + 4)
   pure (lo.toUInt64 ||| (hi.toUInt64 <<< 32))
+
+/-- The u64 framing primitive is an inverse in front of arbitrary subsequent
+    bytes. It is expressed as two proved u32 fields and a checked bit-vector
+    reconstruction, matching the F* DLOG/CEP1 representation. -/
+theorem readU64LE_writeU64LE_append (n : UInt64) (rest : List UInt8) :
+    readU64LE (writeU64LE n ++ rest) 0 = some n := by
+  unfold readU64LE writeU64LE
+  rw [List.append_assoc]
+  rw [readU32LE_writeU32LE_append]
+  simp only [Nat.zero_add]
+  have hi : readU32LE
+      (writeU32LE n.toUInt32 ++ (writeU32LE (n >>> 32).toUInt32 ++ rest)) 4 =
+      some (n >>> 32).toUInt32 := by
+    simpa only [writeU32LE_length, List.append_assoc] using
+      (readU32LE_append_writeU32LE (writeU32LE n.toUInt32)
+        (n >>> 32).toUInt32 rest)
+  rw [hi]
+  simp
+  bv_decide
 
 def natFitsU64 (n : Nat) : Bool := n.toUInt64.toNat == n
 
@@ -239,6 +261,68 @@ def parseEpoch (bs : List UInt8) : Option EpochMarker :=
     if checksum != simpleChecksum body || !tail.isEmpty then none else
     let epoch ← readU64LE body 0
     some ⟨epoch.toNat⟩
+
+private theorem readEpochMagic (n : Nat) (h : natFitsU64 n = true) :
+    readU32LE (frameEpoch ⟨n⟩) 0 = some compactedEpochMagic := by
+  unfold frameEpoch
+  simp only [h, Bool.not_true]
+  exact readU32LE_writeU32LE_append _ _
+
+private theorem readEpochVersion (n : Nat) (h : natFitsU64 n = true) :
+    readU32LE (frameEpoch ⟨n⟩) 4 = some compactedEpochVersion := by
+  unfold frameEpoch
+  simp only [h, Bool.not_true]
+  exact readU32LE_append_writeU32LE (writeU32LE compactedEpochMagic) _ _
+
+private theorem readEpochLength (n : Nat) (h : natFitsU64 n = true) :
+    readU32LE (frameEpoch ⟨n⟩) 8 = some 8 := by
+  unfold frameEpoch
+  simp only [h, Bool.not_true, writeU64LE_length]
+  simpa using
+    (readU32LE_append_writeU32LE
+      (writeU32LE compactedEpochMagic ++ writeU32LE compactedEpochVersion) 8 _)
+
+private theorem dropEpochHeader (n : Nat) (h : natFitsU64 n = true) :
+    (frameEpoch ⟨n⟩).drop 12 =
+      writeU64LE n.toUInt64 ++ writeU32LE (simpleChecksum (writeU64LE n.toUInt64)) := by
+  simp [frameEpoch, h, writeU32LE]
+
+private theorem frameEpoch_length (n : Nat) (h : natFitsU64 n = true) :
+    (frameEpoch ⟨n⟩).length = 24 := by
+  simp [frameEpoch, h, writeU32LE]
+
+/-- The CEP1 companion codec preserves a representable compacted epoch.
+    This is the first Lean theorem for the crash-window marker; the parallel
+    F* result is `lemma_compacted_epoch_roundtrip` in
+    `RDF.Store.Columnar.DeltaLog.fst`. -/
+theorem parseEpoch_frameEpoch (n : Nat) (h : natFitsU64 n = true) :
+    parseEpoch (frameEpoch ⟨n⟩) = some ⟨n⟩ := by
+  have hnBound : n < UInt64.size := by
+    simpa [natFitsU64] using h
+  have hn : n.toUInt64.toNat = n := by
+    change (UInt64.ofNat n).toNat = n
+    rw [← UInt64.ofNatClamp_eq_ofNat n hnBound]
+    exact UInt64.toNat_ofNatClamp_of_lt hnBound
+  unfold parseEpoch
+  rw [readEpochMagic n h]
+  simp
+  rw [readEpochVersion n h]
+  simp
+  rw [readEpochLength n h]
+  simp
+  rw [dropEpochHeader n h]
+  simp [writeU64LE_length, frameEpoch_length n h]
+  have hchecksum : readU32LE
+      (writeU64LE n.toUInt64 ++ writeU32LE (simpleChecksum (writeU64LE n.toUInt64))) 8 =
+      some (simpleChecksum (writeU64LE n.toUInt64)) := by
+    simpa only [writeU64LE_length, List.append_assoc, List.append_nil] using
+      (readU32LE_append_writeU32LE (writeU64LE n.toUInt64)
+        (simpleChecksum (writeU64LE n.toUInt64)) [])
+  rw [hchecksum]
+  simp
+  rw [show readU64LE (writeU64LE n.toUInt64) 0 = some n.toUInt64 by
+    simpa using readU64LE_writeU64LE_append n.toUInt64 []]
+  simp [hn]
 
 /-- Should a record from `recordEpoch` be replayed against a base
     compacted at `baseEpoch`? Only records STRICTLY NEWER than the
