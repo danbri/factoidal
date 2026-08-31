@@ -13,12 +13,15 @@ Usage:
   bench_rusage_run.py <stdout_file> <stderr_file> <cmd...>
 
 Prints one JSON object to its OWN stdout (not the child's):
-  {"wall_s": <float>, "peak_rss_kb": <int>, "returncode": <int>}
+  {"wall_s": <float>, "peak_rss_kb": <int>, "peak_rss_bytes": <int>,
+   "rss_raw_unit": <string>, "returncode": <int>}
 
-peak_rss_kb is resource.ru_maxrss, which on Linux is already
-kilobytes (not pages, and not bytes -- see `man getrusage`).
+`ru_maxrss` is KiB on Linux but bytes on macOS. The normalized output preserves
+both KiB and bytes, and records the platform-native unit so benchmark results
+do not silently mislabel macOS measurements.
 """
 import json
+import platform
 import resource
 import subprocess
 import sys
@@ -38,9 +41,20 @@ def main() -> int:
     wall_s = time.perf_counter() - t0
 
     ru = resource.getrusage(resource.RUSAGE_CHILDREN)
+    raw_rss = ru.ru_maxrss
+    if platform.system() == "Darwin":
+        peak_rss_bytes = raw_rss
+        peak_rss_kb = raw_rss // 1024
+        raw_unit = "bytes"
+    else:
+        peak_rss_kb = raw_rss
+        peak_rss_bytes = raw_rss * 1024
+        raw_unit = "kilobytes"
     print(json.dumps({
         "wall_s": wall_s,
-        "peak_rss_kb": ru.ru_maxrss,
+        "peak_rss_kb": peak_rss_kb,
+        "peak_rss_bytes": peak_rss_bytes,
+        "rss_raw_unit": raw_unit,
         "returncode": proc.returncode,
     }))
     return 0

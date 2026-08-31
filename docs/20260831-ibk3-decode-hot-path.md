@@ -370,3 +370,13 @@ returned its established 14 rows in 0.08 seconds with the already recorded
 186,459 logical / 852,477 fetched-byte footprint. This is the first elapsed
 time datapoint for the new route; it is explicitly not a cold-cache or
 cross-version timing comparison.
+
+`tools/blockengine-ibk3-query-benchmark.sh` now makes that query measurement
+repeatable against an explicitly activated collection root. It labels the
+first fresh process as `cold` and subsequent fresh processes as `warm`, while
+disclosing that it does not evict the OS page cache. On the already activated
+local gene store, a four-run sample recorded 83.6 ms / 10.38 MiB for the first
+process and 70.19, 70.13, and 70.29 ms / about 10.4 MiB for the following
+processes. `tools/bench_rusage_run.py` now normalizes `ru_maxrss`: macOS
+reports bytes whereas Linux reports KiB, and benchmark JSON records both
+normalized units plus the platform-native source unit.
