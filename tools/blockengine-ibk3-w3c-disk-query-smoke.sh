@@ -65,6 +65,34 @@ for number in 1 2 3 4 5; do
   esac
 done
 
+# W3C term cases pin canonical RDF literal identity after Turtle -> IBK3
+# publication.  Unbound predicate patterns intentionally exercise the full
+# manifest path; rdf:type remains predicate-selective.
+term_root="$run_dir/terms"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$fixture_dir/data-4.ttl" "$term_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$term_root" first >/dev/null
+for number in 1 2 3 4 6 8 9; do
+  value=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$term_root" --query \
+    "$(<"$fixture_dir/term-$number.rq")")
+  printf '%s\n' "$value"
+  grep -q 'rows=1 ' <<<"$value"
+  if [[ "$number" == 3 ]]; then
+    grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$value"
+    grep -q 'http://example.org/ns#C' <<<"$value"
+  else
+    grep -q 'open-mode=ibk3-paged-merkle-full-manifest(7)' <<<"$value"
+    case "$number" in
+      1) grep -q 'http://example.org/ns#p1' <<<"$value" ;;
+      2) grep -q 'http://example.org/ns#p2' <<<"$value" ;;
+      4) grep -q 'http://example.org/ns#n1' <<<"$value" ;;
+      6) grep -q 'http://example.org/ns#n2' <<<"$value" ;;
+      8) grep -q 'http://example.org/ns#n3' <<<"$value" ;;
+      9) grep -q 'http://example.org/ns#n4' <<<"$value" ;;
+    esac
+  fi
+done
+
 printf '%s\n' "$matching"
 printf '%s\n' "$empty"
 

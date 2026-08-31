@@ -603,3 +603,10 @@ one-block selective reads.  Together with the existing `spoo-1` and
 bindings, selective BGPs, an SRI2 join, and an empty result.  It is still a
 small conformance slice rather than a substitute for running the full W3C
 manifest through the disk backend.
+
+The same gate now also executes seven approved W3C Basic term cases over a
+separate persisted `data-4.ttl` generation: boolean constants, `rdf:type`, a
+decimal, a typed lexical decimal, and positive/negative numeric constants.
+The unbound-predicate cases deliberately use the full-manifest mode and the
+`rdf:type` case remains selective.  This makes typed-term equality part of the
+disk-path regression boundary rather than relying only on custom fixtures.
