@@ -219,7 +219,8 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
 
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
-    let directory ← resolveStoreDirectory (System.FilePath.mk directoryText)
+    let root := System.FilePath.mk directoryText
+    let directory ← resolveStoreDirectory root
     let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm2")
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-id-v3-query rejected: malformed SBM2 manifest"; return 1
@@ -227,6 +228,8 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | some manifest, .ok query =>
         if !rangeCommitted manifest || !isIbk3Layout manifest.layout then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
+        if manifest.version == 5 && !(← (root / currentName).pathExists) then
+          IO.eprintln "l4block-id-v3-query rejected: SBM5 requires an activated collection root (CURRENT)"; return 1
         match ← trySubjectIndexJoin directory manifest query with
         | some code => return code
         | none => match queryNativeConstantPredicates? query with

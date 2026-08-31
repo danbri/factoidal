@@ -71,7 +71,9 @@ SBM5 now uses this reader for the parsed two-predicate shared-subject join.
 The packer and compactor write `predicate-N.ibk3.sri2`; activation fully
 decodes it, verifies its target digest, row count and complete posting relation
 against the paired IBK3 block, then atomically permits `CURRENT` to select the
-generation. The query route announces
+generation. Accordingly, the native SBM5 query route requires the collection
+root with its `CURRENT` pointer; a bare unactivated SRI2 directory is rejected
+rather than being treated as proof of a complete subject index. The query route announces
 `ibk3-sri2-tli1-subject-join`; its first persistent smoke run returns the
 established 290 result rows. This avoids an uncommitted convenience file
 silently altering query answers.

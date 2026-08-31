@@ -20,6 +20,15 @@ printf '%s\n' "$pack"
 grep -q 'format=predicate-ibk3-ptd1-sri2-tli1-merkle-v0.*wire-version=5' <<<"$pack"
 grep -q 'triples=368 blocks=2' <<<"$pack"
 
+# SRI2's selective pages are admitted as a complete subject index only by the
+# activation pass. A bare generation directory must not be treated as an
+# activated SBM5 collection.
+if "$lean_dir/.lake/build/bin/l4block-id-v3-query" "$store" --query \
+  "SELECT ?x WHERE { ?x <$predicate> ?type . }" >/dev/null 2>&1; then
+  echo 'SBM5 query accepted an unactivated direct generation directory' >&2
+  exit 1
+fi
+
 activate=$("$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$generation")
 printf '%s\n' "$activate"
 grep -q 'generation=first.*pointer=CURRENT' <<<"$activate"
