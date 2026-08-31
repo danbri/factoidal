@@ -22,7 +22,9 @@ support, MAM and the PubSub support MIX needs. `pilot.sh` deliberately exports
 only XMPP client and HTTP API ports on `127.0.0.1`; it owns only the disposable
 container named `factoidal-foafmixer` and a separate
 `factoidal-foafmixer-state` volume. It never removes or reuses any older
-Podman container.
+Podman container. Factoidal container tooling requires the caller's default
+Podman connection to be rootless. It never hard-codes a connection, socket,
+machine name, or host-platform assumption.
 
 Once `tools/foafmixer/podman-preflight.sh` reports that Podman is ready, start
 the pilot with a pilot-only password:

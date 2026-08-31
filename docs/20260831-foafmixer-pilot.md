@@ -17,13 +17,11 @@ The launcher is deliberately bounded:
 * never removes, resets or reads legacy containers, including the retained
   `parliament_native` container.
 
-Podman remains unavailable on this Mac at the time of writing: its retained
-`podman-machine-default` says it started, but its API forwarder exits
-immediately and the client gets connection-refused at port 53728. The new
-`podman-preflight.sh` is intentionally read-only and makes that distinction
-visible. The pilot must be validated with `ejabberdctl` and a MIX-capable
-client after the Podman installation/machine is repaired; do not claim that a
-local server is running before then.
+The pilot must run through rootless Podman, using the caller's default
+connection. `podman-preflight.sh` is intentionally read-only and rejects a
+non-rootless connection; it does not assume a host operating system, socket,
+or machine name. The pilot must be validated with `ejabberdctl` and a
+MIX-capable client before claiming that a local server is running.
 
 The design follows ejabberd's documented MIX requirement for `mod_mix` and
 `mod_mix_pam`, and its documented container image and Podman use. MIX remains

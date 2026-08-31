@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Start, stop, or inspect the disposable loopback-only Foafmixer MIX pilot.
 # This script only ever names/removes `factoidal-foafmixer`; it does not touch
-# legacy Podman containers (notably `parliament_native`).
+# unrelated Podman containers. Factoidal container pilots require rootless
+# Podman on every host platform.
 set -euo pipefail
 
 pilot_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -13,10 +14,19 @@ usage() {
   echo "usage: $0 {start|stop|status|logs}" >&2
 }
 
+require_rootless_podman() {
+  podman info >/dev/null
+  rootless=$(podman info --format '{{.Host.Security.Rootless}}')
+  if [ "$rootless" != true ]; then
+    echo "Foafmixer requires rootless Podman; select a rootless default connection." >&2
+    exit 1
+  fi
+}
+
 case "${1:-}" in
   start)
     : "${FOAFMIXER_ADMIN_PASSWORD:?set a non-empty pilot-only password in FOAFMIXER_ADMIN_PASSWORD}"
-    podman info >/dev/null
+    require_rootless_podman
     podman run -d --replace --name "$container" \
       --label io.factoidal.purpose=foafmixer-mix-pilot \
       -e "EJABBERD_MACRO_HOST=foafmixer.test" \
@@ -32,12 +42,15 @@ case "${1:-}" in
     echo "MIX service: mix.foafmixer.test; intended channels: factoidal and factoidal-shardborough."
     ;;
   stop)
+    require_rootless_podman
     podman rm -f "$container" 2>/dev/null || true
     ;;
   status)
+    require_rootless_podman
     podman ps -a --filter "name=^${container}$"
     ;;
   logs)
+    require_rootless_podman
     podman logs "$container"
     ;;
   *) usage; exit 2 ;;
