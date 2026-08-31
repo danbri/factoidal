@@ -108,6 +108,21 @@ contiguous offsets. This removes a full posting-list CPU scan. The current
 sidecar reader still reads the complete SRI1 object; a paged SRI successor is
 needed to reduce cold I/O for very large predicate blocks.
 
+## Local term-ID boundary
+
+IBK3 currently assigns dictionary IDs per artifact. Therefore an SRI1 posting
+key such as subject ID `42` has meaning only with its own IBK3 dictionary; it
+cannot be sent directly to another predicate artifact. A cross-predicate join
+must first resolve its RDF subject term to the target artifact's local ID, then
+use that artifact's SRI1 offsets, and finally validate the selected rows.
+
+This is not a defect in SRI1. It makes the next required component visible: a
+committed term-to-local-ID lookup structure, or a later globally coordinated
+term-ID regime. The former is the near-term compatibility path. A hash can be
+used to narrow candidate terms, but must never be treated as identity without
+checking the encoded RDF term, because collisions would otherwise change query
+answers.
+
 ## Verification
 
 ```text
