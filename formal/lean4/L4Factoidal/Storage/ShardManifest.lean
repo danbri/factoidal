@@ -91,6 +91,17 @@ def contiguousOrdinals : List Entry → Nat → Bool
   | [], _ => true
   | entry :: rest, expected => entry.ordinal == expected && contiguousOrdinals rest (expected + 1)
 
+/-- The manifest wire version owns the sidecar contract; layout names must not
+    silently select a weaker reader.  Versions zero through two predate the
+    IBK3 sidecars and deliberately remain layout-extensible. -/
+def layoutConsistent (version : Nat) (layout : String) : Bool :=
+  match version with
+  | 3 => layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
+      layout == "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1"
+  | 4 => layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0" ||
+      layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1"
+  | _ => true
+
 /-- No immutable artifact key may play two manifest roles.  In particular an
     SBM3 subject-index sidecar cannot alias another block or sidecar. -/
 def uniqueArtifactKeys (entries : List Entry) : Bool :=
@@ -112,6 +123,7 @@ private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
 
 def valid (manifest : Manifest) : Bool :=
   (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4) &&
+    layoutConsistent manifest.version manifest.layout &&
     (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
     uniqueArtifactKeys manifest.entries &&
     contiguousOrdinals manifest.entries 0 &&
@@ -494,7 +506,7 @@ private def sampleManifestV3 : Manifest :=
       let index : ArtifactRef :=
         { key := { value := "blocks/p.sri1" }, bytes := sampleBlockBytes.size,
           sha256 := sampleDigest, chunked := some sampleChunked }
-      { { sampleManifestV1 with version := 3, layout := "predicate-ibk3-sri1-merkle-v0" } with
+      { { sampleManifestV1 with version := 3, layout := "predicate-ibk3-ptd1-sri1-merkle-v0" } with
         entries := [{ entry with subjectIndex := some index }] }
   | [] => sampleManifestV1
 

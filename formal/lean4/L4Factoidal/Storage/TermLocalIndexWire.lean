@@ -57,6 +57,10 @@ def keyBefore (left right : List UInt8) : Bool := lessKey left right
 
 private def entryBefore (left right : Entry) : Bool := lessKey left.key right.key
 
+private def strictlyIncreasing : List Entry → Bool
+  | [] | [_] => true
+  | left :: right :: rest => lessKey left.key right.key && strictlyIncreasing (right :: rest)
+
 private def takeExact (n : Nat) (xs : List UInt8) : Option (List UInt8 × List UInt8) :=
   let taken := xs.take n
   if taken.length == n then some (taken, xs.drop n) else none
@@ -95,7 +99,7 @@ def encode? (index : Index) : Option ByteArray := do
   if !supported index then none else
   let entries := index.entries.toList
   let sorted := entries.toArray.qsort entryBefore |>.toList
-  if sorted != entries then none else
+  if sorted != entries || !strictlyIncreasing entries then none else
   let entryPages := chunks entries.length entries
   let pages := pageBytes entries
   let refs := pageRefs pages entryPages
@@ -154,8 +158,12 @@ private def refsContiguous : List PageRef → Nat → Bool
   | [], _ => true
   | ref :: rest, expected => ref.length > 0 && ref.offset == expected && refsContiguous rest (expected + ref.length)
 
+private def refsStrictlyIncreasing : List PageRef → Bool
+  | [] | [_] => true
+  | left :: right :: rest => lessKey left.firstKey right.firstKey && refsStrictlyIncreasing (right :: rest)
+
 private def canonicalEntries (entries : List Entry) (termCount : Nat) : Bool :=
-  entries.length == termCount && (entries.toArray.qsort entryBefore).toList == entries &&
+  entries.length == termCount && strictlyIncreasing entries &&
   entries.all (fun entry => entry.localId < termCount) &&
   (entries.map Entry.localId).eraseDups.length == termCount
 
@@ -184,7 +192,7 @@ def decodePrefix? (bytes : ByteArray) : Option Prefix := do
 def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageRef) := do
   if bytes.size != header.directoryBytes then none else do
   let (refs, trailing) ← parseRefs header.pageCount (listOfByteArray bytes) []
-  if !trailing.isEmpty || !refsContiguous refs 0 ||
+  if !trailing.isEmpty || !refsContiguous refs 0 || !refsStrictlyIncreasing refs ||
       refs.foldl (fun total ref => total + ref.length) 0 != header.pagesBytes then none else
     some refs
 
@@ -210,7 +218,7 @@ def decodePage? (header : Prefix) (ordinal : Nat) (ref : PageRef) (bytes : ByteA
   | [] => none
   | first :: _ =>
       if !trailing.isEmpty || first.key != ref.firstKey ||
-          (entries.toArray.qsort entryBefore).toList != entries ||
+          !strictlyIncreasing entries ||
           !entries.all (fun entry => entry.localId < header.termCount) then none else
         some entries.toArray
 
