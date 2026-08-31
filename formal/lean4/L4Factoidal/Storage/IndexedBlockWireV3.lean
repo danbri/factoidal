@@ -119,23 +119,30 @@ def decodePrefix (bytes : ByteArray) : Option Prefix := do
   let dictionaryBytes ← readU32LE rest 4
   some { rowCount := rowCount.toNat, dictionaryBytes := dictionaryBytes.toNat }
 
-private def decodeRowsGo : Nat → List UInt8 → List PositionedIdTriple →
-    Option (List PositionedIdTriple × List UInt8)
-  | 0, bytes, reversed => some (reversed.reverse, bytes)
-  | count + 1, bytes, reversed => do
-      let position ← readU32LE bytes 0
-      let s ← readU32LE bytes 4
-      let p ← readU32LE bytes 8
-      let o ← readU32LE bytes 12
-      decodeRowsGo count (bytes.drop rowBytes)
+private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
+  let b0 ← bytes[offset]?
+  let b1 ← bytes[offset + 1]?
+  let b2 ← bytes[offset + 2]?
+  let b3 ← bytes[offset + 3]?
+  some (b0.toUInt32 ||| (b1.toUInt32 <<< 8) |||
+    (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24))
+
+private def decodeRowsGo : Nat → ByteArray → Nat → List PositionedIdTriple →
+    Option (List PositionedIdTriple)
+  | 0, _, _, reversed => some reversed.reverse
+  | count + 1, bytes, offset, reversed => do
+      let position ← readU32At? bytes offset
+      let s ← readU32At? bytes (offset + 4)
+      let p ← readU32At? bytes (offset + 8)
+      let o ← readU32At? bytes (offset + 12)
+      decodeRowsGo count bytes (offset + rowBytes)
         ({ position := position.toNat, row := { s := s.toNat, p := p.toNat, o := o.toNat } } :: reversed)
 
 /-- Fixed-width row decoding consumes the byte stream with a reverse
     accumulator. The final reversal restores wire order once, without a
     data-sized post-recursion call stack. -/
-private def decodeRows (count : Nat) (bytes : List UInt8) :
-    Option (List PositionedIdTriple × List UInt8) :=
-  decodeRowsGo count bytes []
+private def decodeRows (count : Nat) (bytes : ByteArray) : Option (List PositionedIdTriple) :=
+  if bytes.size != count * rowBytes then none else decodeRowsGo count bytes 0 []
 
 private def orderedRows? (rowCount : Nat) (rows : List PositionedIdTriple) : Option (Array IdTriple) :=
   let ordered := rows.toArray.qsort (fun left right => left.position < right.position) |>.toList
@@ -155,21 +162,21 @@ private def predicateLocal (rows : Array IdTriple) : Bool :=
     row IDs determine which PTD1 term pages to obtain next. -/
 def decodeRowPrefix? (bytes : ByteArray) : Option (List IdTriple) := do
   if bytes.size % rowBytes != 0 then none else do
-  let (rows, rest) ← decodeRows (bytes.size / rowBytes) (listOfByteArray bytes)
-  if !rest.isEmpty then none else some (rows.map PositionedIdTriple.row)
+  let rows ← decodeRows (bytes.size / rowBytes) bytes
+  some (rows.map PositionedIdTriple.row)
 
-private def validatedRowPredicateGo : Nat → Nat → List UInt8 → Option Nat → Option Nat
-  | 0, _, bytes, first => if bytes.isEmpty then first else none
-  | count + 1, termCount, bytes, first => do
-      let subject ← readU32LE bytes 4
-      let predicate ← readU32LE bytes 8
-      let object ← readU32LE bytes 12
+private def validatedRowPredicateGo : Nat → Nat → ByteArray → Nat → Option Nat → Option Nat
+  | 0, _, _, _, first => first
+  | count + 1, termCount, bytes, offset, first => do
+      let subject ← readU32At? bytes (offset + 4)
+      let predicate ← readU32At? bytes (offset + 8)
+      let object ← readU32At? bytes (offset + 12)
       if subject.toNat >= termCount || predicate.toNat >= termCount || object.toNat >= termCount then none else
       match first with
-      | none => validatedRowPredicateGo count termCount (bytes.drop rowBytes) (some predicate.toNat)
+      | none => validatedRowPredicateGo count termCount bytes (offset + rowBytes) (some predicate.toNat)
       | some expected =>
           if predicate.toNat == expected then
-            validatedRowPredicateGo count termCount (bytes.drop rowBytes) first
+            validatedRowPredicateGo count termCount bytes (offset + rowBytes) first
           else none
 
 /-- Validate a nonempty fixed-width row range for the aggregate/ASK physical
@@ -178,7 +185,7 @@ private def validatedRowPredicateGo : Nat → Nat → List UInt8 → Option Nat 
     that ID is returned for one PTD1-page lookup. -/
 def validatedRowPredicate? (termCount : Nat) (bytes : ByteArray) : Option Nat :=
   if bytes.isEmpty || bytes.size % rowBytes != 0 then none else
-  validatedRowPredicateGo (bytes.size / rowBytes) termCount (listOfByteArray bytes) none
+  validatedRowPredicateGo (bytes.size / rowBytes) termCount bytes 0 none
 
 private def termIdsOfRows (rows : List IdTriple) : List Nat :=
   rows.flatMap fun row => [row.s, row.p, row.o]
@@ -270,8 +277,7 @@ def decode (bytes : ByteArray) : Option Block := do
   let dictionaryBytes := bytes.extract rowEnd dictionaryEnd
   let ptd ← PagedTermDictionary.decodePrefix (dictionaryBytes.extract 0 PagedTermDictionary.prefixBytes)
   if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
-  let (positioned, rowRest) ← decodeRows header.rowCount (input.drop rowsStart |>.take (rowEnd - rowsStart))
-  if !rowRest.isEmpty then none else do
+  let positioned ← decodeRows header.rowCount (bytes.extract rowsStart rowEnd)
   let rows ← orderedRows? header.rowCount positioned
   if !predicateLocal rows then none else do
   let dictionary ← PagedTermDictionary.decode? dictionaryBytes

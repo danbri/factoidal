@@ -274,3 +274,12 @@ logical bytes and 852,477 newly fetched bytes: reductions of about 60% and
 36% respectively. Both measurements intentionally exclude the small plaintext
 `.merkle` leaf-file reads; they include all Merkle-verified artifact ranges.
 They are single cold-process observations, not wall-clock performance claims.
+
+### Fixed-width row decoder (2026-08-31)
+
+IBK3 fixed-width rows are now decoded with bounds-checked `ByteArray` offsets
+instead of first copying a row range into `List UInt8`. This applies both to
+the row-prefix decoder used by selective scans and to the predicate-validation
+pass used by ASK/count operators. The wire layout and acceptance conditions are
+unchanged; `tools/blockengine-ibk3-persistent-smoke.sh` exercises SELECT,
+join, ASK, CONSTRUCT, COUNT, grouping, updates and activation after the change.
