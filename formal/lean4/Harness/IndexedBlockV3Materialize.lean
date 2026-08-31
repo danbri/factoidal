@@ -37,6 +37,11 @@ structure ScanResult where
   counters : Counters
   artifactBytes : Nat
 
+/-- Manifest artifact keys denote leaf files, never paths supplied by a query.
+    Keep the same admission rule as the earlier IBK2 range materializer. -/
+def safeLeafKey (key : ArtifactKey) : Bool :=
+  !key.value.isEmpty && !(key.value.contains '/') && !(key.value.contains '\\')
+
 private def ioRange (range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange) :
     L4Factoidal.Storage.IndexedBlockWireV2.ByteRange :=
   { offset := range.offset, length := range.length }
@@ -55,6 +60,7 @@ private def readPages (path : String) (ref : Ref) (leaves : List Digest)
 
 def scanEntry (directory : System.FilePath) (predicate : WfIri) (rowLimit : Nat)
     (entry : Entry) : IO (Option ScanResult) := do
+  if !safeLeafKey entry.artifact.key then return none
   match entry.artifact.chunked with
   | none => pure none
   | some ref =>

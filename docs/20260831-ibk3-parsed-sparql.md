@@ -10,6 +10,10 @@ materialisation. Two thin executables use it:
 - `l4block-id-v3-query` for ordinary parsed `SELECT` over the conservative
   constant-predicate fragment.
 
+Manifest keys are admitted as leaf names only: empty names, `/`, and `\\` are
+rejected before an artifact path is constructed. A query never supplies an
+artifact path; it can only select entries already admitted from `manifest.sbm2`.
+
 The query executable does not introduce another query evaluator. It parses
 SPARQL, selects exactly the manifest artifacts for its constant predicates,
 materialises those through the shared verified IBK3 reader, then invokes the
@@ -55,6 +59,14 @@ The reciprocal `DELETE DATA` then committed a second clean batch. Re-running
 the same query reported `delta=base-plus-delta` and zero rows; DLOG inspection
 reported two committed batches with no torn suffix. This confirms both delta
 addition and tombstone replay against the IBK3 immutable base.
+
+`tools/blockengine-ibk3-persistent-smoke.sh` makes this a repeatable native
+test. It publishes the checked-in life-sciences `binding_site.ttl` fixture
+directly to a fresh IBK3 directory, verifies a parsed base query, applies an
+`INSERT DATA`, observes its result, applies the reciprocal `DELETE DATA`, and
+verifies that the result disappears. It also verifies that the durable log has
+two clean committed batches. The script creates and removes only its own
+`/private/tmp/factoidal-ibk3-persistent.*` test directory.
 
 ## Safe parsed LIMIT pushdown
 
