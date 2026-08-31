@@ -49,6 +49,12 @@ printf '%s\n' "$object_scan"
 grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$object_scan"
 grep -q 'rows=78' <<<"$object_scan"
 
+object_absent=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT ?x WHERE { ?x <$predicate> <http://example.org/not-in-binding-site> . }")
+printf '%s\n' "$object_absent"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$object_absent"
+grep -q 'rows=0' <<<"$object_absent"
+
 # The OLI2-selected P31 rows can also drive the existing SRI2 subject path
 # for a second predicate.  The ordinary parsed evaluator receives both exact
 # fragments and retains the final join/project semantics.
@@ -176,4 +182,18 @@ if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" 
   echo 'activation accepted a corrupted SBM6 object-index sidecar' >&2
   exit 1
 fi
+
+# Literal terms use the same TLI1/OLI2 path as IRI terms.  Keep this separate
+# tiny fixture because the Wikidata binding-site graph intentionally contains
+# only IRI objects.
+literal_root="$run_dir/literal-collection"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$lean_dir/Harness/TestData/delta-overlay.ttl" "$literal_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$literal_root" first >/dev/null
+literal_object=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$literal_root" --query \
+  'SELECT ?person WHERE { ?person <http://example.org/name> "Alice" . }')
+printf '%s\n' "$literal_object"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$literal_object"
+grep -q 'rows=1' <<<"$literal_object"
+grep -q 'http://example.org/alice' <<<"$literal_object"
 echo 'blockengine-ibk3-persistent-smoke=pass'

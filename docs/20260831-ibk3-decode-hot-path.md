@@ -522,6 +522,13 @@ different constant predicates, no trailing VALUES, no delta overlay, and an
 IRI/literal object.  These boundaries prevent accidental semantic claims while
 giving the future cost-based planner a verified physical primitive to choose.
 
+The persistent gate additionally checks an absent IRI object stays on the
+OLI2 route and yields zero rows, plus a separate two-row Turtle fixture in
+which `"Alice"` selects `ex:alice` through OLI2/TLI1.  Language-tagged and
+typed literal variants belong in the forthcoming corpus ladder; this confirms
+the base RDF literal representation reaches the physical path rather than
+falling back only because the real binding-site extract has IRI objects.
+
 ### Corpus evidence and SBM6 large-pack attempt (2026-08-31)
 
 The repository has a useful starting ladder but not yet sufficient evidence to
