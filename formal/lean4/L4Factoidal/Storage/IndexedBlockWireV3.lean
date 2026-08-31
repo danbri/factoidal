@@ -167,21 +167,37 @@ def dictionaryPagesForRowPrefix? (header : Prefix) (ptdPrefix ptdDirectory rowPr
 private def lookupPageBytes? (pages : List (ByteRange × ByteArray)) (wanted : ByteRange) : Option ByteArray :=
   (pages.find? fun supplied => supplied.1 == wanted).map Prod.snd
 
-private def termFromPages? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
-    (directory : List PagedTermDictionary.PageEntry) (pages : List (ByteRange × ByteArray))
-    (termId : TermId) : Option Term := do
-  let relative ← PagedTermDictionary.pageRange? ptdHeader directory termId
-  let absolute : ByteRange :=
-    { offset := (dictionaryRange header).offset + relative.offset, length := relative.length }
-  let pageBytes ← lookupPageBytes? pages absolute
-  PagedTermDictionary.decodeTermFromPage? ptdHeader directory termId pageBytes
+private def termAt? : List Term → Nat → Option Term
+  | [], _ => none
+  | term :: _, 0 => some term
+  | _ :: rest, index + 1 => termAt? rest index
 
-private def tripleFromPages? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
-    (directory : List PagedTermDictionary.PageEntry) (pages : List (ByteRange × ByteArray))
+private def pageIndexForAbsolute? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
+    (directory : List PagedTermDictionary.PageEntry) (absolute : ByteRange) : Option Nat :=
+  (directory.zipIdx.find? fun (entry, index) =>
+    absolute == { offset := (dictionaryRange header).offset + PagedTermDictionary.pageAreaOffset ptdHeader + entry.offset,
+                  length := entry.length }).map Prod.snd
+
+private def decodeSuppliedPages? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
+    (directory : List PagedTermDictionary.PageEntry) (pages : List (ByteRange × ByteArray)) :
+    Option (List (Nat × List Term)) :=
+  pages.mapM fun (absolute, pageBytes) => do
+    let page ← pageIndexForAbsolute? header ptdHeader directory absolute
+    let terms ← PagedTermDictionary.decodePage? ptdHeader directory page pageBytes
+    some (page, terms)
+
+private def termFromDecodedPages? (ptdHeader : PagedTermDictionary.Prefix)
+    (pages : List (Nat × List Term)) (termId : TermId) : Option Term := do
+  let page ← PagedTermDictionary.pageIndex? ptdHeader termId
+  let terms ← (pages.find? fun decoded => decoded.1 == page).map Prod.snd
+  termAt? terms (termId % ptdHeader.pageTerms)
+
+private def tripleFromDecodedPages? (ptdHeader : PagedTermDictionary.Prefix)
+    (pages : List (Nat × List Term))
     (row : IdTriple) : Option Triple := do
-  let subjectTerm ← termFromPages? header ptdHeader directory pages row.s
-  let predicateTerm ← termFromPages? header ptdHeader directory pages row.p
-  let object ← termFromPages? header ptdHeader directory pages row.o
+  let subjectTerm ← termFromDecodedPages? ptdHeader pages row.s
+  let predicateTerm ← termFromDecodedPages? ptdHeader pages row.p
+  let object ← termFromDecodedPages? ptdHeader pages row.o
   match subjectTerm, predicateTerm with
   | .iri subject, .iri predicate => some { s := .iri subject, p := predicate, o := object }
   | .bnode subject, .iri predicate => some { s := .bnode subject, p := predicate, o := object }
@@ -200,8 +216,10 @@ def scanRowPrefixPages (bound : PatternBound) (headerBytes rowPrefix ptdPrefix p
       | some directory, some rows =>
           if rowPrefix.size > (rowsRange header).length then none
           else
-            let triples := rows.mapM (tripleFromPages? header ptdHeader directory pages)
-            triples.map (fun values => values.filter (boundMatches bound))
+            let decodedPages := decodeSuppliedPages? header ptdHeader directory pages
+            decodedPages.bind fun decoded =>
+              let triples := rows.mapM (tripleFromDecodedPages? ptdHeader decoded)
+              triples.map (fun values => values.filter (boundMatches bound))
       | _, _ => none
   | _, _ => none
 

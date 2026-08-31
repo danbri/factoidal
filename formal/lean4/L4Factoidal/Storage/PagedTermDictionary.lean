@@ -174,15 +174,22 @@ private def decodePages? (header : Prefix) : Nat → List PageEntry → List UIn
       let later ← decodePages? header (page + 1) rest (bytes.drop entry.length)
       some (terms ++ later)
 
-/-- Decode the one page selected by `termId`. The caller supplies exactly the
-    planned page range, normally after a Merkle inclusion check. -/
-def decodeTermFromPage? (header : Prefix) (directory : List PageEntry) (termId : Nat)
-    (pageBytes : ByteArray) : Option Term := do
-  let page ← pageIndex? header termId
+/- Decode one declared page. The caller supplies exactly the planned page
+   range, normally after a Merkle inclusion check. Exposing the decoded page
+   lets an execution host validate it once and reuse its terms for many rows. -/
+def decodePage? (header : Prefix) (directory : List PageEntry) (page : Nat)
+    (pageBytes : ByteArray) : Option (List Term) := do
   let entry ← at? directory page
   if pageBytes.size != entry.length then none else do
   let (terms, rest) ← decodeTerms (pageTermCount header page) (listOfByteArray pageBytes)
-  if !rest.isEmpty then none else at? terms (termId % header.pageTerms)
+  if !rest.isEmpty then none else some terms
+
+/-- Decode the one page selected by `termId`. -/
+def decodeTermFromPage? (header : Prefix) (directory : List PageEntry) (termId : Nat)
+    (pageBytes : ByteArray) : Option Term := do
+  let page ← pageIndex? header termId
+  let terms ← decodePage? header directory page pageBytes
+  at? terms (termId % header.pageTerms)
 
 /-- Full validation/decoding for packer and conformance paths. -/
 def decode? (bytes : ByteArray) : Option (Array Term) := do
@@ -214,6 +221,10 @@ private def twoPageBytes : ByteArray := (encode? twoPageSample).getD ByteArray.e
     pageRange? p d 1 |>.bind fun r => decodeTermFromPage? p d 1 (sampleBytes.extract r.offset (r.offset + r.length)))
   == at? sample.toList 1
 #guard decode? twoPageBytes == some twoPageSample
+#guard ((decodePrefix (twoPageBytes.extract 0 prefixBytes)).bind (fun p =>
+  decodeDirectory? p (twoPageBytes.extract prefixBytes (prefixBytes + p.pageCount * 8)) |>.bind fun d =>
+    pageRange? p d 0 |>.bind fun r => decodePage? p d 0 (twoPageBytes.extract r.offset (r.offset + r.length)))
+  |>.map List.length) == some defaultPageTerms
 #guard (decodePrefix (twoPageBytes.extract 0 prefixBytes)).map (fun p => p.pageCount) == some 2
 #guard (decodePrefix (twoPageBytes.extract 0 prefixBytes)).bind (fun p =>
   decodeDirectory? p (twoPageBytes.extract prefixBytes (prefixBytes + p.pageCount * 8)) |>.bind fun d =>

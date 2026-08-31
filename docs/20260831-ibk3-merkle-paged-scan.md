@@ -37,7 +37,21 @@ small-result read avoids the former multi-megabyte IBK2 dictionary fetch while
 remaining explicit about the physical read amplification caused by fixed chunk
 integrity units.
 
-The full-artifact scan is not yet a performance claim: the present pure core
-re-decodes a referenced PTD1 page for each term lookup. Caching decoded pages
-is the next measured optimisation, before using this host as a large-result
-benchmark.
+The first implementation exposed a large-result problem: it decoded a
+referenced PTD1 page again for every subject, predicate, and object lookup.
+The pure executor now decodes each supplied page once, then resolves all row
+terms from that validated in-memory page. Re-running the same real artifact
+for all 36,056 rows completes in under one second on the development laptop
+and reports:
+
+```text
+logical-read-bytes=2061227
+fetched-bytes=2061235
+verified-chunks=32
+range-requests=132
+```
+
+That is expected for a complete scan: it needs essentially the whole 2.06 MiB
+artifact. The useful contrast is therefore bounded result retrieval versus
+complete predicate retrieval, not a claim that paging makes a full scan
+smaller.
