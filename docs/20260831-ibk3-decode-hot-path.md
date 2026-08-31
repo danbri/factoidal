@@ -461,3 +461,21 @@ matching `spoo-1` result and an empty `bgp-no-match` result against their W3C
 fixture expectations.  The latter has distinct predicates and therefore also
 asserts the SRI2/TLI1 shared-subject physical path before the regular parsed
 SPARQL evaluator confirms its empty answer.
+
+### TLI1 activation seen-set (2026-08-31)
+
+Full activation decodes each TLI1 term-to-local-ID index and must establish
+that its local IDs are a permutation of the dictionary range.  The former
+test mapped every ID into a list and called `eraseDups`, which is quadratic in
+the number of terms.  The codec now uses a fixed `Array Bool` sized by the
+already decoded term count: an out-of-range or previously seen ID is refused;
+given exactly `termCount` entries, successful distinct in-range IDs form the
+same permutation.  Encoding likewise uses the existing adjacent lexical-order
+test instead of sorting the complete dictionary just to re-check it.
+
+The module now has guards for both the valid permutation and a duplicate-ID
+rejection.  This removes the next known activation-scale quadratic identified
+after the SRI2 repair.  `lake build L4Factoidal.Storage.TermLocalIndexWire`,
+the full persistent IBK3 update/compaction smoke suite, and the activated W3C
+disk gate pass after the change.  A fresh large-generation activation timing
+is intentionally left for a separate, reproducible benchmark increment.

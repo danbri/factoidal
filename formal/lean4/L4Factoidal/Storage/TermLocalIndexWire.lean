@@ -55,8 +55,6 @@ private def lessKey : List UInt8 → List UInt8 → Bool
 /-- Canonical byte ordering used by the TLI1 directory and pages. -/
 def keyBefore (left right : List UInt8) : Bool := lessKey left right
 
-private def entryBefore (left right : Entry) : Bool := lessKey left.key right.key
-
 private def strictlyIncreasing : List Entry → Bool
   | [] | [_] => true
   | left :: right :: rest => lessKey left.key right.key && strictlyIncreasing (right :: rest)
@@ -98,8 +96,9 @@ def supported (index : Index) : Bool :=
 def encode? (index : Index) : Option ByteArray := do
   if !supported index then none else
   let entries := index.entries.toList
-  let sorted := entries.toArray.qsort entryBefore |>.toList
-  if sorted != entries || !strictlyIncreasing entries then none else
+  /- Adjacent strict ordering is already the canonical lexical-order test.
+     Avoid sorting the whole dictionary merely to confirm that invariant. -/
+  if !strictlyIncreasing entries then none else
   let entryPages := chunks entries.length entries
   let pages := pageBytes entries
   let refs := pageRefs pages entryPages
@@ -162,10 +161,21 @@ private def refsStrictlyIncreasing : List PageRef → Bool
   | [] | [_] => true
   | left :: right :: rest => lessKey left.firstKey right.firstKey && refsStrictlyIncreasing (right :: rest)
 
+/-- In a list with exactly `termCount` in-range, pairwise-distinct local IDs,
+    every local ID is present exactly once.  The seen array replaces the old
+    quadratic `eraseDups` pass in full TLI1 activation. -/
+private def localIdsPermutationGo : List Entry → Array Bool → Bool
+  | [], _ => true
+  | entry :: rest, seen =>
+      match seen[entry.localId]? with
+      | some false => localIdsPermutationGo rest (seen.set! entry.localId true)
+      | _ => false
+
+private def localIdsPermutation (entries : List Entry) (termCount : Nat) : Bool :=
+  entries.length == termCount && localIdsPermutationGo entries (Array.replicate termCount false)
+
 private def canonicalEntries (entries : List Entry) (termCount : Nat) : Bool :=
-  entries.length == termCount && strictlyIncreasing entries &&
-  entries.all (fun entry => entry.localId < termCount) &&
-  (entries.map Entry.localId).eraseDups.length == termCount
+  strictlyIncreasing entries && localIdsPermutation entries termCount
 
 /-- Strictly decode just the fixed-length TLI1 header. -/
 def decodePrefix? (bytes : ByteArray) : Option Prefix := do
@@ -254,6 +264,10 @@ private def ex : WfIri := ⟨"https://example.test/a", by decide⟩
 private def ex2 : WfIri := ⟨"https://example.test/b", by decide⟩
 private def sampleTerms : Array Term := #[.iri ex2, .bnode "b", .iri ex]
 private def sample : Index := { targetIBKSha256 := ByteArray.mk (Array.replicate 32 7), entries := entriesOf sampleTerms }
+private def duplicateLocalIds : List Entry :=
+  match sample.entries.toList with
+  | first :: second :: rest => first :: { second with localId := first.localId } :: rest
+  | entries => entries
 private def sampleBytes : ByteArray := (encode? sample).getD ByteArray.empty
 private def twoPageTerms : Array Term :=
   (List.range (pageTerms + 1)).map (fun n => Term.bnode s!"term-{n}") |>.toArray
@@ -272,6 +286,8 @@ private def samplePageLookup : Option (Option Nat) := do
   some (lookup? page (.iri ex))
 
 #guard decode? sampleBytes == some sample
+#guard localIdsPermutation sample.entries.toList sample.entries.size
+#guard !localIdsPermutation duplicateLocalIds sample.entries.size
 #guard (decodePrefix? (sampleBytes.extract 0 prefixBytes)).map Prefix.termCount == some sample.entries.size
 #guard samplePageLookup == some (some 2)
 #guard decode? twoPageBytes == some twoPage
