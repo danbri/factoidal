@@ -130,12 +130,13 @@ the indexed local subject ID. The normal parsed Lean SPARQL evaluator then
 does the join, projection, ordering and bag semantics on those exact triples.
 
 This is a correctness-first bridge, not a large-store performance claim: it
-currently reads the whole target PTD1 dictionary to translate RDF subjects to
-that artifact's local IDs, and reads the complete flat SRI1 sidecar. It avoids
-the much larger target *row* area. TLI1 is now committed and activation-
-verified, but the range reader has not yet been connected; that and a paged
-successor to SRI1 are the next steps before treating this as a serious
-cold-query access path.
+still reads the complete flat SRI1 sidecar and, when selected rows exist, the
+target PTD1 dictionary to reconstruct RDF terms. It avoids the much larger
+target *row* area. TLI1 is now committed and activation-verified and the join
+uses its Merkle-checked prefix, directory and selected page(s) to obtain local
+IDs. Every returned ID is cross-checked against PTD1 before row selection. A
+miss avoids opening PTD1 and target rows; a hit does not yet avoid PTD1. Sparse
+PTD1 page reconstruction and a paged SRI successor remain the next steps.
 
 ## Local term-ID boundary
 
@@ -177,8 +178,8 @@ write independent Merkle leaves for the sidecar. The layout label is now
 
 Before atomically updating `CURRENT`, activation checks every primary, SRI1
 and TLI1 file against its full SHA-256 and reconstructed fixed-chunk Merkle
-commitment. It then strictly decodes TLI1 and refuses a sidecar whose target
-digest does not equal the entry's IBK3 digest. The persistent smoke test also
-corrupts a TLI1 byte and establishes that activation fails closed. This is a
-real immutable-object admission boundary; execution still uses PTD1 until the
-page-at-a-time TLI1 reader is wired into the SRI1 join.
+commitment. It then strictly decodes TLI1, checks its complete canonical
+term-to-local-ID relation against the IBK3 PTD1 dictionary, and refuses a
+sidecar whose target digest does not equal the entry's IBK3 digest. The
+persistent smoke test also corrupts a TLI1 byte and establishes that
+activation fails closed. This is a real immutable-object admission boundary.

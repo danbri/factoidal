@@ -107,7 +107,9 @@ header, target-IBK3 digest, canonical sorted pages, first-key directory,
 strict page/ID checks, and CRC32C validation. Compile-time guards exercise
 both a single page and a 257-term two-page round trip. It is intentionally not
 now emitted by the IBK3 packer and compactor, referenced by SBM4, and checked
-at activation for full digest, Merkle consistency, decoder framing and target
-IBK3 digest equality. It is deliberately not yet on the hot query path: the
-remaining delivery is the Merkle range reader and its equality-preserving
-replacement of the full PTD1 bridge.
+at activation for full digest, Merkle consistency, decoder framing, target
+IBK3 digest equality, and complete PTD1 dictionary agreement. The SRI1 join
+uses the Merkle-verified TLI1 prefix/directory/selected-page reader and checks
+returned IDs against PTD1 at execution. Sparse PTD1 reconstruction for the
+selected rows remains necessary to avoid reading the whole target dictionary
+when a join has hits.

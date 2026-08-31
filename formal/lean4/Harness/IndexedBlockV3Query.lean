@@ -205,7 +205,7 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
               let entries := driveEntries ++ targetEntries
               let counters := addCounters driveCounters targetCounters
               let code ← finish query entries [drivePredicate, targetPredicate]
-                (driveTriples ++ targetTriples) counters delta "ibk3-sri1-subject-join"
+                (driveTriples ++ targetTriples) counters delta "ibk3-sri1-tli1-subject-join"
               pure (some code)
   | _, _ => pure none
 

@@ -36,7 +36,7 @@ grep -q 'rows=2' <<<"$base"
 join=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   'SELECT ?x ?type ?whole WHERE { ?x <http://www.wikidata.org/prop/direct/P31> ?type . ?x <http://www.wikidata.org/prop/direct/P361> ?whole . }')
 printf '%s\n' "$join"
-grep -q 'open-mode=ibk3-sri1-subject-join(2) delta=base' <<<"$join"
+grep -q 'open-mode=ibk3-sri1-tli1-subject-join(2) delta=base' <<<"$join"
 grep -q 'rows=290' <<<"$join"
 
 ask=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \

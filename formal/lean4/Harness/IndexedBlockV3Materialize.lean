@@ -4,6 +4,8 @@
 import Harness.PosixRangeIO
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.Storage.TermLocalIndex
+import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
 
 namespace Harness.IndexedBlockV3Materialize
@@ -47,6 +49,72 @@ def safeLeafKey (key : ArtifactKey) : Bool :=
 private def ioRange (range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange) :
     L4Factoidal.Storage.IndexedBlockWireV2.ByteRange :=
   { offset := range.offset, length := range.length }
+
+private def tliRange (offset length : Nat) : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+  { offset, length }
+
+/-- Resolve RDF subjects through one TLI1 directory and one checked page per
+    distinct term. The result still has to be checked against the target PTD1
+    dictionary before a row scan uses it: this makes direct file queries safe
+    even if they bypass a prior generation activation. -/
+private def termIdsViaIndex (path : String) (ref : Ref) (leaves : List Digest)
+    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.TermLocalIndexWire.Prefix)
+    (directory : List L4Factoidal.Storage.TermLocalIndexWire.PageRef) : List Term → Counters →
+    IO (Option (List (Term × Nat) × Counters))
+  | [], counters => pure (some ([], counters))
+  | subject :: rest, counters => do
+      let key := L4Factoidal.Storage.serializeTerm subject
+      match L4Factoidal.Storage.TermLocalIndexWire.pageFor? directory key with
+      | none => pure none
+      | some (ordinal, page) =>
+          let range := tliRange
+            (L4Factoidal.Storage.TermLocalIndexWire.prefixBytes + header.directoryBytes + page.offset) page.length
+          match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
+          | none => pure none
+          | some (pageBytes, footprint) =>
+              match L4Factoidal.Storage.TermLocalIndexWire.decodePage? header ordinal page pageBytes with
+              | none => pure none
+              | some entries =>
+                  let found := L4Factoidal.Storage.TermLocalIndex.lookup? entries subject
+                  match ← termIdsViaIndex path ref leaves cache header directory rest (addRead counters footprint) with
+                  | none => pure none
+                  | some (later, next) =>
+                      match found with
+                      | some localId => pure (some ((subject, localId) :: later, next))
+                      | none => pure (some (later, next))
+
+private def subjectIdsViaTli? (directory : System.FilePath) (entry : Entry) (subjects : List Term) :
+    IO (Option (List (Term × Nat) × Counters)) := do
+  match entry.termIndex with
+  | none => pure none
+  | some index =>
+      if !safeLeafKey index.key then pure none else
+      match index.chunked with
+      | none => pure none
+      | some ref =>
+          let path := (directory / index.key.value).toString
+          let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+          match leaves? ref.chunkCount leafBytes with
+          | none => pure none
+          | some leaves =>
+              let cache ← newVerifiedChunkCache
+              match ← readVerifiedRangeCached? path ref leaves cache
+                  (ioRange (tliRange 0 L4Factoidal.Storage.TermLocalIndexWire.prefixBytes)) with
+              | none => pure none
+              | some (prefixBytes, prefixFootprint) =>
+                  match L4Factoidal.Storage.TermLocalIndexWire.decodePrefix? prefixBytes with
+                  | none => pure none
+                  | some header =>
+                      if header.targetIBKSha256 != entry.artifact.sha256 then pure none else
+                      match ← readVerifiedRangeCached? path ref leaves cache
+                          (ioRange (tliRange L4Factoidal.Storage.TermLocalIndexWire.prefixBytes header.directoryBytes)) with
+                      | none => pure none
+                      | some (directoryBytes, directoryFootprint) =>
+                          match L4Factoidal.Storage.TermLocalIndexWire.decodeDirectory? header directoryBytes with
+                          | none => pure none
+                          | some refs =>
+                              termIdsViaIndex path ref leaves cache header refs subjects
+                                (addRead (addRead {} prefixFootprint) directoryFootprint)
 
 /-- Open a subject-posting sidecar only after all its independent integrity
     boundaries agree: SBM3 extent/SHA-256, fixed-chunk Merkle proof, SRI1
@@ -100,6 +168,10 @@ private def appendSubjectOffsets (pairs : List (Nat × Nat)) : List Nat → List
       let current := L4Factoidal.Storage.SubjectRowIndexWire.offsetsFor pairs subject |>.map fun offset => (subject, offset)
       current ++ appendSubjectOffsets pairs rest
 
+private def indexedTermsAgree (terms : Array Term) : List (Term × Nat) → Bool
+  | [] => true
+  | (term, localId) :: rest => terms[localId]? == some term && indexedTermsAgree terms rest
+
 private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix)
     (terms : Array Term) (predicate : WfIri) : List (Nat × Nat) → Counters → IO (Option (List Triple × Counters))
@@ -122,11 +194,11 @@ private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
               | _, _ => pure none
           | _ => pure none
 
-/-- Select rows for RDF subjects through an admitted SRI1 companion.  The
-    current compatibility bridge reads the complete target PTD1 dictionary to
-    resolve RDF subjects to the target block's local IDs; it does *not* read
-    the block's full row area. A later TLI1 term-to-local-ID companion replaces
-    that dictionary read without changing this row-selection contract. -/
+/-- Select rows for RDF subjects through an admitted SRI1 companion. SBM4
+    uses TLI1's prefix, directory and selected pages to obtain local subject
+    IDs; PTD1 is still opened to reconstruct RDF output terms and it verifies
+    every TLI1 local-ID mapping before any row offsets are trusted. Older
+    SBM3 stores retain the complete-PTD1 compatibility bridge. -/
 def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
     (subjects : List Term) (entry : Entry) : IO (Option ScanResult) := do
   if !safeLeafKey entry.artifact.key then return none
@@ -148,19 +220,43 @@ def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
               | some header =>
                   if header.rowCount != entry.rows then pure none else
                   let dictionaryRange := L4Factoidal.Storage.IndexedBlockWireV3.dictionaryRange header
-                  match ← readVerifiedRangeCached? path ref leaves cache (ioRange dictionaryRange) with
-                  | none => pure none
-                  | some (dictionaryBytes, dictionaryFootprint) =>
-                      match L4Factoidal.Storage.PagedTermDictionary.decode? dictionaryBytes with
+                  match entry.termIndex with
+                  | none =>
+                      match ← readVerifiedRangeCached? path ref leaves cache (ioRange dictionaryRange) with
                       | none => pure none
-                      | some terms =>
-                          let ids := subjects.filterMap (L4Factoidal.Storage.PagedTermDictionary.findTermId? terms) |>.eraseDups
-                          let selected := appendSubjectOffsets pairs ids
-                          match ← scanSubjectRows path ref leaves cache header terms predicate selected
-                              (addRead (addRead {} headerFootprint) dictionaryFootprint) with
+                      | some (dictionaryBytes, dictionaryFootprint) =>
+                          match L4Factoidal.Storage.PagedTermDictionary.decode? dictionaryBytes with
                           | none => pure none
-                          | some (triples, counters) =>
-                              pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                          | some terms =>
+                              let ids := subjects.filterMap (L4Factoidal.Storage.PagedTermDictionary.findTermId? terms) |>.eraseDups
+                              let selected := appendSubjectOffsets pairs ids
+                              match ← scanSubjectRows path ref leaves cache header terms predicate selected
+                                  (addRead (addRead {} headerFootprint) dictionaryFootprint) with
+                              | none => pure none
+                              | some (triples, counters) =>
+                                  pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                  | some _ =>
+                      match ← subjectIdsViaTli? directory entry subjects with
+                      | none => pure none
+                      | some (indexed, indexCounters) =>
+                          if indexed.isEmpty then
+                            pure (some { triples := [], counters := addCounters (addRead {} headerFootprint) indexCounters,
+                                         artifactBytes := entry.artifact.bytes })
+                          else match ← readVerifiedRangeCached? path ref leaves cache (ioRange dictionaryRange) with
+                          | none => pure none
+                          | some (dictionaryBytes, dictionaryFootprint) =>
+                              match L4Factoidal.Storage.PagedTermDictionary.decode? dictionaryBytes with
+                              | none => pure none
+                              | some terms =>
+                                  if !indexedTermsAgree terms indexed then pure none else
+                                  let ids := indexed.map Prod.snd |>.eraseDups
+                                  let selected := appendSubjectOffsets pairs ids
+                                  let initial := addRead (addCounters (addRead {} headerFootprint) indexCounters)
+                                    dictionaryFootprint
+                                  match ← scanSubjectRows path ref leaves cache header terms predicate selected initial with
+                                  | none => pure none
+                                  | some (triples, counters) =>
+                                      pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
       | _, _ => pure none
 
 def scanEntriesForSubjects (directory : System.FilePath) (predicate : WfIri) (subjects : List Term) :
