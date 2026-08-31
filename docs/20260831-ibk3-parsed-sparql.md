@@ -172,6 +172,16 @@ The remaining I/O boundary is only to read committed bytes and admit a valid
 partition; both persistent query replay and compaction now call that same
 total partitioner.
 
+## W3C fixture through IBK3 storage
+
+`tools/blockengine-ibk3-w3c-disk-query-smoke.sh` uses two checked-in W3C
+SPARQL 1.0 basic-evaluation manifest fixtures. Each path packs the source
+Turtle directly into predicate-local IBK3/PTD1 files with an SBM2 Merkle
+manifest, then executes the original `.rq` text with `l4block-id-v3-query`.
+The matching `spoo-1` fixture returns its one expected binding
+`http://example.org/ns#x`; `bgp-no-match` returns zero rows. These are narrow
+disk-backed conformance regressions, not a full W3C result-suite claim.
+
 The DLOG reader now admits only a history with strictly increasing commit
 sequence numbers and non-decreasing base epochs. Several writes against one
 base may share its epoch; a later entry may not return to an earlier epoch.
