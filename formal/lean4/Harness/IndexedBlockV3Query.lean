@@ -323,7 +323,20 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         | none => match queryNativeConstantPredicates? query with
         | none =>
             match groupPredicate? query with
-            | none => IO.eprintln "l4block-id-v3-query rejected: query requires an unbound/full-manifest physical plan"; return 1
+            | none =>
+                /- A query with an unbound predicate is still a valid
+                   persistent query.  It has no selective access path yet,
+                   so make the cost explicit in the mode rather than
+                   rejecting it or accidentally treating one predicate as
+                   the whole graph. -/
+                match ← readDefaultDelta? directory with
+                | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1
+                | some delta =>
+                    match ← materializeEntries directory manifest.entries with
+                    | some (triples, counters) =>
+                        finish query manifest.entries (predicateOrder manifest.entries) triples counters delta
+                          "ibk3-paged-merkle-full-manifest"
+                    | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
             | some (predicateVar, countAlias) =>
                 match ← readDefaultDelta? directory with
                 | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1

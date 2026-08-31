@@ -585,3 +585,21 @@ complete chunks that contain their prefix, directory, index page and row page.
 This establishes an evidence-backed future tuning question—chunk granularity
 and co-location of hot sidecar pages—not a reason to weaken integrity checks
 or claim an OLI2 regression from one workload.
+
+### Persistent full-manifest fallback and W3C base/prefix coverage (2026-08-31)
+
+The disk query command previously rejected valid queries whose predicate was
+unbound because it had only predicate-selective plans.  It now has an explicit
+`ibk3-paged-merkle-full-manifest` fallback: all immutable entries are
+Merkle-verified and materialised before the same parsed Lean evaluator runs.
+This is a completeness path, not a claim of scale performance; its mode name
+makes the physical cost visible.
+
+The activated W3C disk smoke now includes all five approved SPARQL 1.0 Basic
+base/prefix cases.  The two unbound-predicate cases open all three blocks and
+return their W3C cardinalities; the three constant-predicate cases remain
+one-block selective reads.  Together with the existing `spoo-1` and
+`bgp-no-match` cases, this checks persisted BASE/PREFIX expansion, literal
+bindings, selective BGPs, an SRI2 join, and an empty result.  It is still a
+small conformance slice rather than a substitute for running the full W3C
+manifest through the disk backend.

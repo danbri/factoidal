@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run two approved W3C SPARQL basic-evaluation fixtures through the paged
-# persistent path: W3C Turtle -> IBK3/PTD1 + SBM2/Merkle -> parsed W3C query.
+# Run approved W3C SPARQL basic-evaluation fixtures through the paged
+# persistent path: W3C Turtle -> IBK3/PTD1 + SBM6/Merkle -> parsed W3C query.
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -28,6 +28,42 @@ empty_store="$empty_root/first"
 "$lean_dir/.lake/build/bin/l4block-shard-activate" "$empty_root" first >/dev/null
 empty=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$empty_root" --query \
   "$(<"$fixture_dir/bgp-no-match.rq")")
+
+# The approved base/prefix cases deliberately include both predicate-bound
+# and unbound-predicate patterns.  The latter use explicit full-manifest mode
+# rather than being rejected merely because no selective physical path exists.
+base_root="$run_dir/base-prefix"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$fixture_dir/data-1.ttl" "$base_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$base_root" first >/dev/null
+for number in 1 2 3 4 5; do
+  value=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$base_root" --query \
+    "$(<"$fixture_dir/base-prefix-$number.rq")")
+  printf '%s\n' "$value"
+  case "$number" in
+    1)
+      grep -q 'open-mode=ibk3-paged-merkle-full-manifest(3)' <<<"$value"
+      grep -q 'rows=2 ' <<<"$value"
+      ;;
+    2)
+      grep -q 'open-mode=ibk3-paged-merkle-full-manifest(3)' <<<"$value"
+      grep -q 'rows=1 ' <<<"$value"
+      grep -q 'z:x z:p' <<<"$value"
+      ;;
+    3)
+      grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$value"
+      grep -q 'd:x ns:p' <<<"$value"
+      ;;
+    4)
+      grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$value"
+      grep -q 'x:x x:p' <<<"$value"
+      ;;
+    5)
+      grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$value"
+      grep -q 'z:x z:p' <<<"$value"
+      ;;
+  esac
+done
 
 printf '%s\n' "$matching"
 printf '%s\n' "$empty"
