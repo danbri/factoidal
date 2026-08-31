@@ -21,6 +21,15 @@ private def compactedDefaultLayout : String :=
 private def ibk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0"
 
+private def compactedIbk3Layout : String :=
+  "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
+
+private def isIbk3Layout (layout : String) : Bool :=
+  layout == ibk3Layout || layout == compactedIbk3Layout
+
+private def isCompactedLayout (layout : String) : Bool :=
+  layout == compactedDefaultLayout || layout == compactedIbk3Layout
+
 private def readManifest (directory : System.FilePath) : IO ByteArray := do
   let sbm2 := directory / "manifest.sbm2"
   try IO.FS.readBinFile sbm2
@@ -46,7 +55,7 @@ private def sourceIdentity? (directory : System.FilePath) : IO ByteArray := do
     built from. This is deliberately checked before `CURRENT` is replaced;
     retrying compaction is the safe response to a source-side write race. -/
 private def sourceStillCurrent (root candidate : System.FilePath) (manifest : Manifest) : IO Bool := do
-  if manifest.layout != compactedDefaultLayout then pure true else
+  if !isCompactedLayout manifest.layout then pure true else
   try
     let expected ← IO.FS.readBinFile (candidate / "compacted.source.sha256")
     if expected.size != 32 || expected != manifest.sourceIdentity then pure false else
@@ -75,7 +84,7 @@ private def verifyFullEntries (directory : System.FilePath) : List Entry → IO 
     which rechecks every selected byte range against the committed Merkle
     leaves while decoding the same entries. -/
 private def verifyReadableEntries (directory : System.FilePath) (manifest : Manifest) : IO (Option Nat) := do
-  if manifest.layout == ibk3Layout then
+  if isIbk3Layout manifest.layout then
     match ← Harness.IndexedBlockV3Materialize.materializeEntries directory manifest.entries with
     | none => pure none
     | some (_, counters) => pure (some counters.requestedBytes)

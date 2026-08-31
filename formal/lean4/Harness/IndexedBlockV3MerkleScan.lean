@@ -23,7 +23,9 @@ private def run (directoryText iriText limit : String) : IO UInt32 := do
       match decode? manifestBytes with
       | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: malformed SBM2 manifest"; return 1
       | some manifest =>
-          if !rangeCommitted manifest || manifest.layout != "predicate-ibk3-ptd1-merkle-v0" then
+          if !rangeCommitted manifest ||
+              (manifest.layout != "predicate-ibk3-ptd1-merkle-v0" &&
+                manifest.layout != "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1") then
             IO.eprintln "l4block-id-v3-merkle-scan rejected: not an IBK3 range-committed manifest"; return 1
           let entries := selectAll manifest predicate
           if entries.isEmpty then IO.println s!"l4block-id-v3-merkle-scan rows=0 predicate={iriText} artifacts=0"; return 0

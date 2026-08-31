@@ -11,6 +11,7 @@ against a live source directory.
 -/
 import Harness.ShardPublish
 import Harness.ShardMerkleMaterialize
+import Harness.IndexedBlockV3Materialize
 import Harness.GenerationPointer
 import Harness.CompactedEpoch
 import Harness.PosixRangeIO
@@ -39,6 +40,15 @@ private def isDefaultGraphEntry : DeltaEntry → Bool
   | .add _ none | .remove _ none | .clear none => true
   | _ => false
 
+private def ibk3Layout : String :=
+  "predicate-ibk3-ptd1-merkle-v0"
+
+private def compactedIbk3Layout : String :=
+  "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
+
+private def isIbk3Layout (layout : String) : Bool :=
+  layout == ibk3Layout || layout == compactedIbk3Layout
+
 private def defaultGraphOnly (batches : List DeltaBatch) : Bool :=
   batches.all fun batch => batch.ops.all isDefaultGraphEntry
 
@@ -66,7 +76,23 @@ private def compact (source output : String) : IO UInt32 := do
         let batches := filterBatchesSinceEpoch baseEpoch allBatches
         if !defaultGraphOnly batches then
           throw <| IO.userError "this first compactor refuses named-graph or graph-management DLOG entries"
-        match ← scanEntries sourcePath manifest.entries with
+        if isIbk3Layout manifest.layout then
+          match ← Harness.IndexedBlockV3Materialize.materializeEntries sourcePath manifest.entries with
+          | none => throw <| IO.userError "source IBK3 child artifact is missing, changed, or malformed"
+          | some (base, counters) =>
+              let delta := foldDeltaBatches batches none
+              let compacted := mergeOnRead base delta {}
+              let identity := sha256 (manifestBytes ++ deltaBytes)
+              let written ← publishTriplesV3 output identity compactedIbk3Layout compacted
+              let epoch := foldedThrough baseEpoch batches
+              let outputPath := System.FilePath.mk output
+              if ← CompactedEpoch.write outputPath epoch then
+                if !(← atomicReplaceFileSyncRaw (outputPath / "compacted.source.sha256").toString identity) then
+                  throw <| IO.userError "could not persist compaction source identity"
+                IO.println s!"l4block-shard-compact source={source} output={output} format=ibk3 base-triples={base.length} delta-batches={batches.length} compacted-triples={written} epoch={epoch} verified-logical-bytes={counters.requestedBytes}"
+                pure 0
+              else throw <| IO.userError "could not persist compacted.epoch"
+        else match ← scanEntries sourcePath manifest.entries with
         | none => throw <| IO.userError "source child artifact is missing, changed, or malformed"
         | some (base, logicalBytes) =>
             let delta := foldDeltaBatches batches none
@@ -79,7 +105,7 @@ private def compact (source output : String) : IO UInt32 := do
             if ← CompactedEpoch.write outputPath epoch then
               if !(← atomicReplaceFileSyncRaw (outputPath / "compacted.source.sha256").toString identity) then
                 throw <| IO.userError "could not persist compaction source identity"
-              IO.println s!"l4block-shard-compact source={source} output={output} base-triples={base.length} delta-batches={batches.length} compacted-triples={written} epoch={epoch} verified-logical-bytes={logicalBytes}"
+              IO.println s!"l4block-shard-compact source={source} output={output} format=ibk2 base-triples={base.length} delta-batches={batches.length} compacted-triples={written} epoch={epoch} verified-logical-bytes={logicalBytes}"
               pure 0
             else throw <| IO.userError "could not persist compacted.epoch"
   catch e => IO.eprintln s!"l4block-shard-compact failure: {e}"; pure 1

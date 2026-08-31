@@ -26,6 +26,10 @@ private def readOpsOf (triples : List Triple) : BackendReadOps :=
     estimate := fun bound => (tripleMatchesBound bound triples).length
     predicatePresent := fun predicate => !(tripleMatchesBound { p := some predicate } triples).isEmpty }
 
+private def isIbk3Layout (layout : String) : Bool :=
+  layout == "predicate-ibk3-ptd1-merkle-v0" ||
+    layout == "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
+
 /-- A physically safe bounded-prefix shape. Subject/object must be distinct
     variables: constants or repeated variables could make early rows fail the
     SPARQL pattern and would need continued scanning. -/
@@ -161,7 +165,7 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | none, _ => IO.eprintln "l4block-id-v3-query rejected: malformed SBM2 manifest"; return 1
     | _, .error error => IO.eprintln s!"l4block-id-v3-query query parse error at {error.pos}: {error.msg}"; return 1
     | some manifest, .ok query =>
-        if !rangeCommitted manifest || manifest.layout != "predicate-ibk3-ptd1-merkle-v0" then
+        if !rangeCommitted manifest || !isIbk3Layout manifest.layout then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
         match queryNativeConstantPredicates? query with
         | none =>

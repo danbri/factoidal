@@ -134,3 +134,29 @@ valid when no pointer exists; a malformed pointer or missing generation is an
 admission failure. This gives the IBK3 path the same atomic immutable
 generation-switch boundary used by compaction and publication elsewhere in
 Shardborough.
+
+## Format-preserving compaction
+
+`l4block-shard-compact` now detects the admitted source layout. For an IBK3
+source, it materialises verified paged entries, applies the existing
+epoch-filtered DLOG merge, and publishes fresh `IBK3 + PTD1` artifacts. It
+does not reparse Turtle and does not downgrade the collection to IBK2. The
+new manifest layout is
+`predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1`; this records the
+same default-graph/DLOG restrictions as the earlier IBK2 compacted layout
+while retaining its physical reader identity.
+
+`ShardActivate` treats both compacted layouts as source-bound candidates. It
+recomputes `sha256(source manifest bytes ++ clean source DLOG bytes)` before
+replacing `CURRENT`, then verifies each child file's full SHA-256 commitment
+and its Merkle-verified readable layout. A source write during compaction
+therefore prevents activation rather than silently activating an incomplete
+base.
+
+`tools/blockengine-ibk3-compact-smoke.sh` is the regression gate. It creates
+an IBK3 source, applies an insert and a delete, compacts to a fresh IBK3
+generation, and checks SELECT and physical ASK. It then changes the source
+again and verifies that activation of the stale compacted generation fails.
+It recompacts the new source, activates that generation, checks physical COUNT
+through `CURRENT`, then writes and reads a later DLOG batch at the next epoch.
+The existing IBK2 compaction smoke continues to pass.
