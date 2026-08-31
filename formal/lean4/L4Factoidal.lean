@@ -402,6 +402,8 @@ import L4Factoidal.Storage.IndexedBlock
 import L4Factoidal.Storage.IndexedBlockTests
 import L4Factoidal.Storage.SubjectRowIndex
 import L4Factoidal.Storage.SubjectRowIndexTests
+import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.Storage.SubjectRowIndexWireTests
 import L4Factoidal.Storage.BlockArtifact
 import L4Factoidal.Storage.BlockArtifactTests
 import L4Factoidal.Storage.BlockMerkle

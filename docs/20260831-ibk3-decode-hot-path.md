@@ -69,6 +69,15 @@ is the contract for a versioned successor: its encoder and range reader must
 commit and recover this mapping, reject invalid offsets, and preserve the
 existing row denotation. IBK3 remains readable unchanged.
 
+The first codec is `SubjectRowIndexWire.lean`, format `SRI1`: a
+checksummed sequence of one `(subject TermId, source-row offset)` u32 pair per
+row, canonically ordered by subject and then source offset. Its decoder
+refuses unknown framing, bad checksums, non-canonical order, duplicate
+offsets, and offsets outside the declared row count. The index is intentionally
+a separate immutable object at this stage. A host must validate the selected
+IBK row's subject ID before using a posting, because SRI1 by itself cannot
+prove a cross-object relationship.
+
 ## Verification
 
 ```text
