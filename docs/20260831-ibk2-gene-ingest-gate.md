@@ -68,3 +68,14 @@ Executable equivalence guards compare it with `parseTurtle` across cuts inside
 IRIs, triple-quoted multi-line strings, blank-node syntax, numeric dots and
 no-dot prefix directives. This is a real parser-event seam; a file-handle
 driver and bounded artifact spooler are still the next integration steps.
+
+The reference `l4block-shard-pack` now uses that seam directly. It makes two
+fixed-size file-handle passes: the first calculates the generated blank-node
+prefix and streaming SHA-256 source identity; the second performs bounded
+UTF-8 decoding and immediate Turtle statement folding. It streams the input
+digest again and rejects an input whose bytes changed between passes before
+publishing an artifact. The full `blockengine-shard-merkle-scan-smoke.sh`
+suite passes through this actual packer, including verified SBM1 range reads
+and parsed SPARQL execution. Predicate buckets are still in-memory until the
+final IBK2 encoding/publish phase, so this is no claim of bounded **total**
+ingest memory yet.
