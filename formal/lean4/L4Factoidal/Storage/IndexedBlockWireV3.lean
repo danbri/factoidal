@@ -21,6 +21,8 @@ import L4Factoidal.Storage.PagedTermDictionary
 namespace L4Factoidal.Storage.IndexedBlockWireV3
 
 open L4Factoidal.RDF
+open L4Factoidal.SPARQL
+open L4Factoidal.SPARQL.StoreBackend
 open L4Factoidal.Storage
 open L4Factoidal.Storage.BlockWireV0
 open L4Factoidal.Storage.IndexedBlock
@@ -161,6 +163,47 @@ def dictionaryPagesForRowPrefix? (header : Prefix) (ptdPrefix ptdDirectory rowPr
   if (pages.all fun page => page.offset + page.length <= header.dictionaryBytes) then
     some (pages.map fun page => { offset := (dictionaryRange header).offset + page.offset, length := page.length })
   else none
+
+private def lookupPageBytes? (pages : List (ByteRange × ByteArray)) (wanted : ByteRange) : Option ByteArray :=
+  (pages.find? fun supplied => supplied.1 == wanted).map Prod.snd
+
+private def termFromPages? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
+    (directory : List PagedTermDictionary.PageEntry) (pages : List (ByteRange × ByteArray))
+    (termId : TermId) : Option Term := do
+  let relative ← PagedTermDictionary.pageRange? ptdHeader directory termId
+  let absolute : ByteRange :=
+    { offset := (dictionaryRange header).offset + relative.offset, length := relative.length }
+  let pageBytes ← lookupPageBytes? pages absolute
+  PagedTermDictionary.decodeTermFromPage? ptdHeader directory termId pageBytes
+
+private def tripleFromPages? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
+    (directory : List PagedTermDictionary.PageEntry) (pages : List (ByteRange × ByteArray))
+    (row : IdTriple) : Option Triple := do
+  let subjectTerm ← termFromPages? header ptdHeader directory pages row.s
+  let predicateTerm ← termFromPages? header ptdHeader directory pages row.p
+  let object ← termFromPages? header ptdHeader directory pages row.o
+  match subjectTerm, predicateTerm with
+  | .iri subject, .iri predicate => some { s := .iri subject, p := predicate, o := object }
+  | .bnode subject, .iri predicate => some { s := .bnode subject, p := predicate, o := object }
+  | _, _ => none
+
+/-- Execute one predicate-bound scan from a row-aligned prefix plus precisely
+    the PTD1 pages it references.  Every supplied page is identified by its
+    absolute canonical IBK3 range; an omitted, mismatched or malformed page
+    rejects the scan rather than substituting an unrelated term.  This is the
+    pure core used by a future Merkle/range host. -/
+def scanRowPrefixPages (bound : PatternBound) (headerBytes rowPrefix ptdPrefix ptdDirectory : ByteArray)
+    (pages : List (ByteRange × ByteArray)) : List Triple :=
+  match decodePrefix headerBytes, PagedTermDictionary.decodePrefix ptdPrefix with
+  | some header, some ptdHeader =>
+      match PagedTermDictionary.decodeDirectory? ptdHeader ptdDirectory, decodeRowPrefix? rowPrefix with
+      | some directory, some rows =>
+          if rowPrefix.size > (rowsRange header).length then []
+          else
+            (rows.filterMap fun row => tripleFromPages? header ptdHeader directory pages row).filter
+              (boundMatches bound)
+      | _, _ => []
+  | _, _ => []
 
 /-- Complete admission decoder.  PTD1 validates its own canonical page layout
     and CRC; IBK3 validates its enclosing framing, row count/order, and CRC

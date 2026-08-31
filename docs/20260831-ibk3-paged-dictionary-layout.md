@@ -37,9 +37,12 @@ IBK3 header
 ```
 
 The codec now exposes and tests the corresponding `ByteRange` planning APIs.
-The current increment establishes canonical full decode and planning; a
-subsequent range executor will assemble supplied term pages and apply the
-same SPARQL scan semantics under the existing Merkle admission boundary.
+It also has a pure range-execution kernel: given an exact row-aligned prefix,
+PTD1 prefix/directory, and only the absolute PTD1 pages named by those rows,
+it reconstructs and filters the same RDF triples as a complete decode.  An
+omitted, mismatched or malformed page fails the scan rather than supplying an
+unrelated term.  The next adapter supplies those ranges through the existing
+Merkle-verified native `pread` boundary.
 
 ## Verification
 
@@ -52,7 +55,7 @@ lake build L4Factoidal
 
 both passed.  The test guards cover canonical full decode/graph denotation,
 mixed-predicate rejection, corrupted framing rejection, and the row-prefix to
-absolute PTD1 page-range plan.
+absolute PTD1 page-range plan plus the pure paged range scan.
 
 ## Assurance status
 
