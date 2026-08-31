@@ -43,6 +43,13 @@ printf '%s\n' "$ask_empty"
 grep -q 'open-mode=ibk3-paged-merkle-ask(1) delta=base' <<<"$ask_empty"
 grep -q 'boolean=false' <<<"$ask_empty"
 
+construct=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "CONSTRUCT { ?x <http://example.org/hasType> ?type . } WHERE { ?x <$predicate> ?type . } LIMIT 2")
+printf '%s\n' "$construct"
+grep -q 'open-mode=ibk3-paged-merkle(1) delta=base' <<<"$construct"
+grep -q 'triples=2' <<<"$construct"
+grep -q 'hasType' <<<"$construct"
+
 count=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   "SELECT (COUNT(*) AS ?count) WHERE { ?x <$predicate> ?type . }")
 printf '%s\n' "$count"

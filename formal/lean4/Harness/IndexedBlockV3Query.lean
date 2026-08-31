@@ -80,14 +80,32 @@ private def countAllPredicates (directory : System.FilePath) (manifest : Manifes
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
   let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
-  match runSelectQueryBackendDataset emptyEnv query dataset with
-  | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
-  | some rows =>
-      let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+  let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+  match query.form with
+  | .select _ =>
+      match runSelectQueryBackendDataset emptyEnv query dataset with
+      | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
+      | some rows =>
+          IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+          IO.println s!"l4block-id-v3-query sse={query.toSse}"
+          IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+          return 0
+  | .ask =>
+      match runAskQueryBackendDataset emptyEnv query dataset with
+      | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as ASK"; return 1
+      | some answer =>
+          IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+          IO.println s!"l4block-id-v3-query sse={query.toSse}"
+          IO.println s!"l4block-id-v3-query boolean={answer}"
+          return 0
+  | .construct _ =>
+      let graph : Graph := evalConstruct emptyEnv { default := (readOpsOfDelta triples delta).search {}, named := [] } query
       IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
       IO.println s!"l4block-id-v3-query sse={query.toSse}"
-      IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+      IO.println s!"l4block-id-v3-query triples={graph.length} preview={toString (repr (graph.take 10))}"
       return 0
+  | .describe _ =>
+      IO.eprintln "l4block-id-v3-query rejected: DESCRIBE needs an explicit description policy"; return 1
 
 private def finishCount (query : Query) (entries : List Entry)
     (alias : VarName) (count : Nat) (counters : Counters) : IO UInt32 := do

@@ -7,8 +7,8 @@ materialisation. Two thin executables use it:
 
 - `l4block-id-v3-merkle-scan` for a bounded predicate scan with explicit I/O
   evidence; and
-- `l4block-id-v3-query` for ordinary parsed `SELECT` over the conservative
-  constant-predicate fragment, plus basic parsed `ASK`.
+- `l4block-id-v3-query` for ordinary parsed `SELECT`, `ASK`, and `CONSTRUCT`
+  over the conservative constant-predicate fragment.
 
 Manifest keys are admitted as leaf names only: empty names, `/`, and `\\` are
 rejected before an artifact path is constructed. A query never supplies an
@@ -17,9 +17,9 @@ artifact path; it can only select entries already admitted from `manifest.sbm2`.
 The query executable does not introduce another query evaluator. It parses
 SPARQL, selects exactly the manifest artifacts for its constant predicates,
 materialises those through the shared verified IBK3 reader, then invokes the
-existing Lean `runSelectQueryBackendDataset` evaluator. Thus joins, filters,
-projection, modifiers and result construction retain their established
-semantics.
+existing Lean `runSelectQueryBackendDataset`, `runAskQueryBackendDataset`, or
+`evalConstruct` evaluator. Thus joins, filters, projection, modifiers, ASK
+booleans, and graph construction retain their established semantics.
 
 ## End-to-end check
 
