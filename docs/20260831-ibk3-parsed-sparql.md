@@ -8,7 +8,7 @@ materialisation. Two thin executables use it:
 - `l4block-id-v3-merkle-scan` for a bounded predicate scan with explicit I/O
   evidence; and
 - `l4block-id-v3-query` for ordinary parsed `SELECT` over the conservative
-  constant-predicate fragment.
+  constant-predicate fragment, plus basic parsed `ASK`.
 
 Manifest keys are admitted as leaf names only: empty names, `/`, and `\\` are
 rejected before an artifact path is constructed. A query never supplies an

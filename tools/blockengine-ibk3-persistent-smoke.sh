@@ -31,6 +31,18 @@ printf '%s\n' "$base"
 grep -q 'shards=1 open-mode=ibk3-paged-merkle(1) delta=base' <<<"$base"
 grep -q 'rows=2' <<<"$base"
 
+ask=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "ASK { ?x <$predicate> ?type . }")
+printf '%s\n' "$ask"
+grep -q 'open-mode=ibk3-paged-merkle-ask(1) delta=base' <<<"$ask"
+grep -q 'boolean=true' <<<"$ask"
+
+ask_empty=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  'ASK { ?x <http://example.org/no-such-predicate> ?type . }')
+printf '%s\n' "$ask_empty"
+grep -q 'open-mode=ibk3-paged-merkle-ask(1) delta=base' <<<"$ask_empty"
+grep -q 'boolean=false' <<<"$ask_empty"
+
 count=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   "SELECT (COUNT(*) AS ?count) WHERE { ?x <$predicate> ?type . }")
 printf '%s\n' "$count"

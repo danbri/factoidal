@@ -45,6 +45,15 @@ private def countPredicate? (query : Query) : Option (VarName × WfIri) := do
   let predicate ← prefixPredicate? tp
   some (alias, predicate)
 
+/-- The same physically established predicate cardinality decides this simple
+    ASK form. Post-VALUES needs ordinary binding evaluation, so it falls back
+    even though its underlying triple pattern may be predicate-local. -/
+private def askPredicate? (query : Query) : Option WfIri :=
+  if !query.dataset.isEmpty || query.postValues.isSome then none else
+  match query.form, query.pattern with
+  | .ask, .bgp [tp] => prefixPredicate? tp
+  | _, _ => none
+
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
   let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
@@ -63,6 +72,25 @@ private def finishCount (query : Query) (entries : List Entry)
   IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle-count(1) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
   IO.println s!"l4block-id-v3-query sse={query.toSse}"
   IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr rows)}"
+  return 0
+
+private def finishAsk (query : Query) (entries : List Entry) (predicates : List WfIri)
+    (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
+  let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
+  match runAskQueryBackendDataset emptyEnv query dataset with
+  | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as ASK"; return 1
+  | some answer =>
+      let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+      IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+      IO.println s!"l4block-id-v3-query sse={query.toSse}"
+      IO.println s!"l4block-id-v3-query boolean={answer}"
+      return 0
+
+private def finishAskCount (query : Query) (entries : List Entry) (count : Nat)
+    (counters : Counters) : IO UInt32 := do
+  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle-ask(1) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+  IO.println s!"l4block-id-v3-query sse={query.toSse}"
+  IO.println s!"l4block-id-v3-query boolean={if count > 0 then "true" else "false"}"
   return 0
 
 private def run (directoryText queryText : String) : IO UInt32 := do
@@ -92,6 +120,17 @@ private def run (directoryText queryText : String) : IO UInt32 := do
                       let countEntries := selectAll manifest predicate
                       match ← Harness.IndexedBlockV3Materialize.countEntries directory predicate countEntries 0 {} with
                       | some (count, counters) => finishCount query countEntries alias count counters
+                      | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                | none => match askPredicate? query with
+                | some predicate =>
+                    if !deltaResolvedIsEmpty delta then
+                      match ← materializeEntries directory entries with
+                      | some (triples, counters) => finishAsk query entries predicates triples counters delta
+                      | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                    else
+                      let askEntries := selectAll manifest predicate
+                      match ← Harness.IndexedBlockV3Materialize.countEntries directory predicate askEntries 0 {} with
+                      | some (count, counters) => finishAskCount query askEntries count counters
                       | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
                 | none => match detectLimitSingleTp query with
                 | some (tp, limit) =>
