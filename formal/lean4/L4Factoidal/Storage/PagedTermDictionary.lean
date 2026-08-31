@@ -220,6 +220,23 @@ def decodeTermFromPage? (header : Prefix) (directory : List PageEntry) (termId :
   let terms ← decodePage? header directory page pageBytes
   at? terms (termId % header.pageTerms)
 
+/-- Reference mapping from an RDF term to this dictionary's local ID. The
+    comparison is complete RDF-term structural equality, not a hash shortcut.
+    A later persistent term lookup index must return the same answer before it
+    is allowed to drive Subject Row Index postings. -/
+private def findTermIdGo (terms : Array Term) (wanted : Term) (index fuel : Nat) : Option Nat :=
+  match fuel with
+  | 0 => none
+  | remaining + 1 =>
+      match terms[index]? with
+      | none => none
+      | some term =>
+          if term == wanted then some index
+          else findTermIdGo terms wanted (index + 1) remaining
+
+def findTermId? (terms : Array Term) (wanted : Term) : Option Nat :=
+  findTermIdGo terms wanted 0 terms.size
+
 /-- Full validation/decoding for packer and conformance paths. -/
 def decode? (bytes : ByteArray) : Option (Array Term) := do
   let input := listOfByteArray bytes
@@ -244,6 +261,8 @@ private def twoPageSample : Array Term :=
 private def twoPageBytes : ByteArray := (encode? twoPageSample).getD ByteArray.empty
 
 #guard decode? sampleBytes == some sample
+#guard findTermId? sample (.iri ex2) == some 1
+#guard (findTermId? sample (.bnode "missing")).isNone
 #guard (decodePrefix (sampleBytes.extract 0 prefixBytes)).map (fun p => p.termCount) == some 2
 #guard (decodePrefix (sampleBytes.extract 0 prefixBytes)).bind (fun p =>
   decodeDirectory? p (sampleBytes.extract prefixBytes (prefixBytes + p.pageCount * 8)) |>.bind fun d =>
