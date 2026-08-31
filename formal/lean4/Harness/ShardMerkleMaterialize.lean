@@ -154,6 +154,11 @@ def scanEntryPrefixForLimit (directory : System.FilePath) (entry : Entry)
                             verifiedChunks := prefixFootprint.chunks + planningFootprint.chunks
                             rangeRequests := 2 })
                       | some segmentRange =>
+                          /- A bounded scan cannot count every decoded row,
+                             but the canonical fixed-width segment length must
+                             still agree with the manifest's exact planning
+                             cardinality before any prefix is admitted. -/
+                          if segmentRange.length / 16 != entry.rows then pure none else
                           let rowBytes := 16
                           let step := max rowBytes ((chunked.chunkBytes / rowBytes) * rowBytes)
                           let initial := min segmentRange.length step
