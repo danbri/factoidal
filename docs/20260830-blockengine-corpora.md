@@ -56,6 +56,30 @@ path selects the predicate partition but still parses and builds the entire
 in-memory graph for each process invocation. It is not yet the stream-oriented
 canonical storage path for large corpora.
 
+## Controlled synthetic complement
+
+`tools/generate_blockengine_turtle.py` produces deterministic default-graph
+Turtle specifically for the Lean SBM6 path.  It has three triples per subject:
+an IRI-valued repeated `ex:type`, an IRI-valued repeated `ex:parent`, and an
+English language-tagged label.  `--types` and `--parents` independently tune
+object selectivity while retaining a shared-subject join shape.  For example:
+
+```bash
+python3 tools/generate_blockengine_turtle.py \
+  --output tmp/synthetic-64k.ttl --subjects 65536 --types 64 --parents 1024
+```
+
+The generated file is not presented as a real-world performance proxy.  It is
+the controlled arm of the corpus ladder: repeatable across machines, useful
+for sidecar/page and cardinality experiments, and paired with the real KGX
+inputs above before drawing architectural conclusions.
+
+`tools/blockengine-sbm6-synthetic-smoke.sh` fixes a compact case (128
+subjects, 8 type values, 16 parents).  It asserts both a 16-row
+OLI2-driver/SRI2-target join and a language-tagged literal object scan.  This
+is the fast gate; larger generated instances are benchmark inputs, not files
+to commit.
+
 ## Bioschemas conversion protocol
 
 Use the checked query sources and retain the execution evidence. Do not commit
