@@ -43,11 +43,14 @@ private def isDefaultGraphEntry : DeltaEntry → Bool
 private def ibk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0"
 
+private def ibk3Sri1Layout : String :=
+  "predicate-ibk3-ptd1-sri1-merkle-v0"
+
 private def compactedIbk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
 private def isIbk3Layout (layout : String) : Bool :=
-  layout == ibk3Layout || layout == compactedIbk3Layout
+  layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout
 
 private def defaultGraphOnly (batches : List DeltaBatch) : Bool :=
   batches.all fun batch => batch.ops.all isDefaultGraphEntry
