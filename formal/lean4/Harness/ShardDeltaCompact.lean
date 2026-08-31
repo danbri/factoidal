@@ -11,6 +11,7 @@ against a live source directory.
 -/
 import Harness.ShardPublish
 import Harness.ShardMerkleMaterialize
+import Harness.GenerationPointer
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.ShardManifest
@@ -19,6 +20,7 @@ namespace Harness.ShardDeltaCompact
 
 open Harness.ShardPublish
 open Harness.ShardMerkleMaterialize
+open Harness.GenerationPointer
 open L4Factoidal.Crypto
 open L4Factoidal.RDF
 open L4Factoidal.Storage
@@ -48,7 +50,7 @@ private def readDelta (directory : System.FilePath) : IO (List DeltaBatch × Byt
 
 private def compact (source output : String) : IO UInt32 := do
   try
-    let sourcePath := System.FilePath.mk source
+    let sourcePath ← resolveStoreDirectory (System.FilePath.mk source)
     let manifestBytes ← readManifest sourcePath
     match decode? manifestBytes with
     | none => throw <| IO.userError "source manifest is malformed or unsupported"

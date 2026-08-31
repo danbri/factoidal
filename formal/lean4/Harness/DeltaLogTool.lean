@@ -13,6 +13,7 @@ import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.UpdateDelta
 import L4Factoidal.Storage.DeltaLog
 import Harness.PosixRangeIO
+import Harness.GenerationPointer
 
 namespace Harness.DeltaLogTool
 
@@ -20,6 +21,7 @@ open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.Storage
 open Harness.PosixRangeIO
+open Harness.GenerationPointer
 
 private def logPath (directory : System.FilePath) : System.FilePath := directory / "deltas.dlog"
 
@@ -66,6 +68,7 @@ private def commitUpdate (path : System.FilePath) (update : Update) : Nat → IO
           else commitUpdate path update retries
 
 private def appendUpdate (directory : System.FilePath) (updateText : String) : IO UInt32 := do
+  let directory ← resolveStoreDirectory directory
   let path := logPath directory
   match parseSparqlUpdate updateText with
   | .error error => IO.eprintln s!"l4block-delta-log update parse error at {error.pos}: {error.msg}"; pure 1
@@ -76,6 +79,7 @@ private def appendUpdate (directory : System.FilePath) (updateText : String) : I
       else commitUpdate path update 3
 
 private def inspect (directory : System.FilePath) : IO UInt32 := do
+  let directory ← resolveStoreDirectory directory
   let path := logPath directory
   try
     let bytes ← IO.FS.readBinFile path

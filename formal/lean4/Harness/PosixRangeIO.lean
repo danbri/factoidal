@@ -26,6 +26,13 @@ opaque preadRaw (path : @& String) (offset length : UInt64) : IO ByteArray
 opaque appendSyncAtSizeRaw (path : @& String) (expectedSize : UInt64)
   (bytes : @& ByteArray) : IO Bool
 
+/-- Atomically replace a small, Lean-validated control file after syncing its
+    complete new contents and the parent directory entry. Readers observe
+    either whole version, and a successful result survives normal crash
+    recovery rather than merely concurrent access. -/
+@[extern "l4_atomic_replace_file_sync"]
+opaque atomicReplaceFileSyncRaw (path : @& String) (bytes : @& ByteArray) : IO Bool
+
 def readRange? (path : String) (range : ByteRange) : IO (Option ByteArray) := do
   let bytes ← preadRaw path (UInt64.ofNat range.offset) (UInt64.ofNat range.length)
   if bytes.size == range.length then pure (some bytes) else pure none

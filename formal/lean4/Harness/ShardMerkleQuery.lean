@@ -3,6 +3,7 @@
    it reaches the existing SPARQL evaluator. -/
 import Harness.ShardMerkleMaterialize
 import Harness.ShardMerkleProfile
+import Harness.GenerationPointer
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
@@ -12,6 +13,7 @@ namespace Harness.ShardMerkleQuery
 
 open Harness.ShardMerkleMaterialize
 open Harness.ShardMerkleProfile
+open Harness.GenerationPointer
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreDataset
@@ -32,6 +34,7 @@ private def readManifest (directory : System.FilePath) : IO (System.FilePath × 
     file is opened, decoded, or trusted by `EXPLAIN`. -/
 private def explain (asJson : Bool) (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
+    let directory ← resolveStoreDirectory directory
     let (manifestPath, manifestBytes) ← readManifest directory
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
@@ -71,6 +74,7 @@ private def materializeProfiled (directory : System.FilePath) : List Entry →
     and evaluator measurements in the same S-expression node family. -/
 private def explainAnalyze (asJson : Bool) (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
+    let directory ← resolveStoreDirectory directory
     let (manifestPath, manifestBytes) ← readManifest directory
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
@@ -106,6 +110,7 @@ private def explainAnalyze (asJson : Bool) (directory : System.FilePath) (queryT
 
 private def run (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
+    let directory ← resolveStoreDirectory directory
     let (manifestPath, manifestBytes) ← readManifest directory
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
