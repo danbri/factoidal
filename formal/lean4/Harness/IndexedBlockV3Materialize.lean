@@ -172,10 +172,25 @@ def subjectPostings? (directory : System.FilePath) (entry : Entry) :
 /-- Distinct SRI2 page references potentially containing any requested local
     subject ID. `SRI2.pagesFor` intentionally returns more than one page when
     a posting list crosses a page boundary; deduplication stops repeated query
-    bindings from rereading a page. -/
+    bindings from rereading a page. Page order is canonical so the reader can
+    also validate cross-page strict ordering of the fetched postings. -/
 private def sri2CandidatePages : List L4Factoidal.Storage.SubjectRowIndexWireV2.PageRef →
     List Nat → List (Nat × L4Factoidal.Storage.SubjectRowIndexWireV2.PageRef)
-  | refs, ids => ids.flatMap (L4Factoidal.Storage.SubjectRowIndexWireV2.pagesFor refs) |>.eraseDups
+  | refs, ids =>
+      (ids.flatMap (L4Factoidal.Storage.SubjectRowIndexWireV2.pagesFor refs) |>.eraseDups).toArray
+        |>.qsort (fun left right => left.1 < right.1) |>.toList
+
+private def sri2PairsStrictlyOrdered : List (Nat × Nat) → Bool
+  | [] | [_] => true
+  | left :: right :: rest =>
+      (left.1 < right.1 || (left.1 == right.1 && left.2 < right.2)) &&
+        sri2PairsStrictlyOrdered (right :: rest)
+
+private def sri2DecodedPagesStrictlyOrdered : List (Nat × Array (Nat × Nat)) → Bool :=
+  sri2PairsStrictlyOrdered ∘ List.flatMap (fun pair => pair.2.toList)
+
+#guard sri2DecodedPagesStrictlyOrdered [(0, #[(7, 3)]), (1, #[(7, 4), (8, 1)])]
+#guard !sri2DecodedPagesStrictlyOrdered [(0, #[(7, 3)]), (1, #[(7, 3), (8, 1)])]
 
 private def readSRI2Pages (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.SubjectRowIndexWireV2.Prefix) :
@@ -200,11 +215,13 @@ private def sri2SelectedPostings (wanted : List Nat) :
       pairs.toList.filter (fun pair => wanted.contains pair.1) ++ sri2SelectedPostings wanted rest
 
 /-- Read SRI2 as a verified range object: prefix, directory and only pages
-    whose inclusive subject range can contain a requested local ID.  This is
-    deliberately a separate interface until SBM5 commits an SRI2 artifact in
-    `Entry`; callers supply that prospective sidecar explicitly. Its Merkle
+    whose inclusive subject range can contain a requested local ID. Its Merkle
     root authenticates the fetched ranges, while the header binds them to the
-    exact IBK3 artifact whose rows will be read next. -/
+    exact IBK3 artifact whose rows will be read next. Candidate pages are also
+    checked for cross-page duplicate/reordered postings. Completeness still
+    relies on the collection's full activation pass: a selective reader cannot
+    prove that a Merkle-committed but never activated sidecar omitted an
+    unfetched posting. -/
 def subjectPostingsV2For? (directory : System.FilePath) (entry : Entry)
     (index : ArtifactRef) (subjects : List Nat) : IO (Option (List (Nat × Nat) × Counters)) := do
   if !safeLeafKey index.key then return none
@@ -238,7 +255,9 @@ def subjectPostingsV2For? (directory : System.FilePath) (entry : Entry)
                           match ← readSRI2Pages path ref leaves cache header pages initial with
                           | none => pure none
                           | some (decoded, counters) =>
-                              pure (some (sri2SelectedPostings wanted decoded, counters))
+                              if sri2DecodedPagesStrictlyOrdered decoded then
+                                pure (some (sri2SelectedPostings wanted decoded, counters))
+                              else pure none
 
 /-- Restore one ID row through an already admitted complete PTD1 dictionary.
     This is deliberately small and explicit because the SRI1 sidecar names

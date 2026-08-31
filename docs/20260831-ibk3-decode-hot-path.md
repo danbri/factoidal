@@ -337,6 +337,17 @@ unchanged; the wire format and its ordering, bounds, and cross-artifact
 activation checks are unchanged. The direct codec build and complete
 persistent IBK3 smoke suite pass.
 
+An independent review then identified a remaining direct-file seam: individual
+Merkle-verified SRI2 pages can be locally well formed while repeating a
+posting across a page boundary. The range reader now sorts its candidate pages
+by ordinal and requires the aggregate candidate posting sequence to be
+strictly ordered. A normal straddled posting list remains accepted; a repeated
+`(subject, row-offset)` across pages is rejected. The reviewer also prompted
+removal of the obsolete list decoders and a `u32` admission bound on SRI2 row
+counts. A selective read cannot prove that an unfetched page was omitted;
+that completeness property intentionally remains the responsibility of full
+generation activation before SBM5 is queryable.
+
 ### Large-generation activation and join profile (2026-08-31)
 
 Profiling full activation of the 888,949-triple SBM5 gene generation exposed

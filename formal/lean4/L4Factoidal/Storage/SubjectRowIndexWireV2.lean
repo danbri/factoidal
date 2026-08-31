@@ -45,6 +45,7 @@ structure Index where
 
 private def bytesOf (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOf (xs : ByteArray) : List UInt8 := xs.data.toList
+private def fitsU32 (n : Nat) : Bool := n < UInt32.size
 private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   let b0 ← bytes[offset]?
   let b1 ← bytes[offset + 1]?
@@ -55,10 +56,6 @@ private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
 
 private def copyRange? (bytes : ByteArray) (offset length : Nat) : Option ByteArray :=
   if offset + length <= bytes.size then some (bytes.extract offset (offset + length)) else none
-
-private def takeExact (n : Nat) (xs : List UInt8) : Option (List UInt8 × List UInt8) :=
-  let taken := xs.take n
-  if taken.length == n then some (taken, xs.drop n) else none
 
 private def before (left right : Nat × Nat) : Bool :=
   left.1 < right.1 || (left.1 == right.1 && left.2 < right.2)
@@ -98,8 +95,9 @@ private def encodeRef (ref : PageRef) : List UInt8 :=
     writeU32LE (UInt32.ofNat ref.offset) ++ writeU32LE (UInt32.ofNat ref.length)
 
 def supported (index : Index) : Bool :=
-  index.targetIBKSha256.size == 32 && index.rowCount > 0 && index.pairs.size == index.rowCount &&
-    index.pairs.toList.all fun pair => pair.1 < UInt32.size && pair.2 < index.rowCount
+  index.targetIBKSha256.size == 32 && index.rowCount > 0 && fitsU32 index.rowCount &&
+    index.pairs.size == index.rowCount &&
+    index.pairs.toList.all fun pair => fitsU32 pair.1 && pair.2 < index.rowCount
 
 def encode? (index : Index) : Option ByteArray := do
   if !supported index then none else
@@ -135,20 +133,6 @@ def decodePrefix? (bytes : ByteArray) : Option Prefix := do
       directoryBytes.toNat != pageCount.toNat * directoryEntryBytes then none else
     some { targetIBKSha256 := target, rowCount := rowCount.toNat, pairCount := pairCount.toNat,
            pageCount := pageCount.toNat, directoryBytes := directoryBytes.toNat, pagesBytes := pagesBytes.toNat }
-
-private def parseRef (xs : List UInt8) : Option (PageRef × List UInt8) := do
-  let subject ← readU32LE xs 0
-  let maxSubject ← readU32LE xs 4
-  let offset ← readU32LE xs 8
-  let length ← readU32LE xs 12
-  let ref : PageRef := PageRef.mk subject.toNat maxSubject.toNat offset.toNat length.toNat
-  some (ref, xs.drop directoryEntryBytes)
-
-private def parseRefs : Nat → List UInt8 → List PageRef → Option (List PageRef × List UInt8)
-  | 0, xs, reversed => some (reversed.reverse, xs)
-  | count + 1, xs, reversed => do
-      let (ref, rest) ← parseRef xs
-      parseRefs count rest (ref :: reversed)
 
 private def decodeRefsGo : Nat → ByteArray → Nat → List PageRef → Option (List PageRef)
   | 0, _, _, reversed => some reversed.reverse
@@ -187,13 +171,6 @@ def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageRe
   let refs ← decodeRefsGo header.pageCount bytes 0 []
   if !refsWellFormed header refs 0 0 || !refsMonotone refs ||
       refs.foldl (fun total ref => total + ref.length) 0 != header.pagesBytes then none else some refs
-
-private def parsePairs : Nat → List UInt8 → List (Nat × Nat) → Option (List (Nat × Nat) × List UInt8)
-  | 0, xs, reversed => some (reversed.reverse, xs)
-  | count + 1, xs, reversed => do
-      let subject ← readU32LE xs 0
-      let offset ← readU32LE xs 4
-      parsePairs count (xs.drop pairBytes) ((subject.toNat, offset.toNat) :: reversed)
 
 private def decodePairsGo : Nat → ByteArray → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
   | 0, _, _, reversed => some reversed.reverse
