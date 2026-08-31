@@ -36,6 +36,12 @@ spans several pages: it never guesses from a duplicated first-subject boundary
 and silently omits earlier postings. Normal lookups select one page; the
 multi-page case remains bounded and deterministic.
 
+The decoded directory requires nondecreasing `firstSubjectId` and
+`lastSubjectId` endpoints. The reader uses lower/upper-bound searches over
+those two endpoint sequences, then scans only the resulting candidate interval.
+Thus a normal lookup has logarithmic directory selection plus one page, while
+a subject spanning several full pages deliberately receives every such page.
+
 ## Admission and execution rules
 
 - The target digest must equal the paired IBK3 artifact digest.

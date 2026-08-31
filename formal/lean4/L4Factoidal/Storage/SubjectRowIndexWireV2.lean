@@ -150,10 +150,22 @@ private def refsWellFormed : Prefix → List PageRef → Nat → Nat → Bool
         ref.length == pairsInPage header ordinal * pairBytes &&
         refsWellFormed header rest (ordinal + 1) (expected + ref.length)
 
+/-- A canonical SRI2 page sequence is ordered by both ends of its inclusive
+    subject range. Activation later establishes this directory against all
+    decoded pairs; retaining the inexpensive local condition here lets a range
+    reader use logarithmic directory search without assuming arbitrary
+    untrusted metadata is sorted. -/
+private def refsMonotone : List PageRef → Bool
+  | [] => true
+  | [_] => true
+  | left :: right :: rest =>
+      left.firstSubject <= right.firstSubject && left.maxSubject <= right.maxSubject &&
+        refsMonotone (right :: rest)
+
 def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageRef) := do
   if bytes.size != header.directoryBytes then none else do
   let (refs, trailing) ← parseRefs header.pageCount (listOf bytes) []
-  if !trailing.isEmpty || !refsWellFormed header refs 0 0 ||
+  if !trailing.isEmpty || !refsWellFormed header refs 0 0 || !refsMonotone refs ||
       refs.foldl (fun total ref => total + ref.length) 0 != header.pagesBytes then none else some refs
 
 private def parsePairs : Nat → List UInt8 → List (Nat × Nat) → Option (List (Nat × Nat) × List UInt8)
@@ -174,16 +186,53 @@ def decodePage? (header : Prefix) (page : Nat) (ref : PageRef) (bytes : ByteArra
           !(strictlyOrdered pairs) || pairs.any (fun pair => pair.2 >= header.rowCount) then none
       else some pairs.toArray
 
+/-- First page with `maxSubject >= subject`, over an admitted monotone
+    directory. Its fuel is the shrinking search interval, so malformed caller
+    arrays cannot make this partial. -/
+private def lowerBoundMaxGo (refs : Array PageRef) (subject low high : Nat) : Nat → Nat
+  | 0 => low
+  | fuel + 1 =>
+      if low >= high then low else
+        let middle := low + (high - low) / 2
+        match refs[middle]? with
+        | some ref =>
+            if ref.maxSubject < subject then lowerBoundMaxGo refs subject (middle + 1) high fuel
+            else lowerBoundMaxGo refs subject low middle fuel
+        | none => low
+
+/-- First page with `firstSubject > subject`, over an admitted monotone
+    directory. -/
+private def upperBoundFirstGo (refs : Array PageRef) (subject low high : Nat) : Nat → Nat
+  | 0 => low
+  | fuel + 1 =>
+      if low >= high then low else
+        let middle := low + (high - low) / 2
+        match refs[middle]? with
+        | some ref =>
+            if ref.firstSubject <= subject then upperBoundFirstGo refs subject (middle + 1) high fuel
+            else upperBoundFirstGo refs subject low middle fuel
+        | none => low
+
+private def collectCandidateRefs (refs : Array PageRef) (subject index stop : Nat) : Nat → List (Nat × PageRef) → List (Nat × PageRef)
+  | 0, reversed => reversed.reverse
+  | fuel + 1, reversed =>
+      if index >= stop then reversed.reverse else
+        match refs[index]? with
+        | some ref =>
+            let next := if ref.firstSubject <= subject && subject <= ref.maxSubject
+              then (index, ref) :: reversed else reversed
+            collectCandidateRefs refs subject (index + 1) stop fuel next
+        | none => reversed.reverse
+
 /-- All pages whose inclusive subject range can contain `subject`. A posting
-    list may straddle more than two pages, so this returns every candidate. -/
+    list may straddle more than two pages, so this returns every candidate.
+    It binary-searches the monotone directory and scans only the candidate
+    interval; ordinary subjects select one page. -/
 def pagesFor (refs : List PageRef) (subject : Nat) : List (Nat × PageRef) :=
-  let rec go : Nat → List PageRef → List (Nat × PageRef) → List (Nat × PageRef)
-    | _, [], reversed => reversed.reverse
-    | ordinal, ref :: rest, reversed =>
-        let next := if ref.firstSubject <= subject && subject <= ref.maxSubject
-          then (ordinal, ref) :: reversed else reversed
-        go (ordinal + 1) rest next
-  go 0 refs []
+  let directory := refs.toArray
+  let low := lowerBoundMaxGo directory subject 0 directory.size (directory.size + 1)
+  let high := upperBoundFirstGo directory subject 0 directory.size (directory.size + 1)
+  collectCandidateRefs directory subject low high (high - low + 1) []
 
 def offsetsInPage (pairs : Array (Nat × Nat)) (subject : Nat) : List Nat :=
   pairs.toList.filterMap fun pair => if pair.1 == subject then some pair.2 else none
@@ -227,9 +276,18 @@ private def multiPageHeader := decodePrefix? (multiPageBytes.extract 0 prefixByt
 private def multiPageRefs := multiPageHeader.bind fun header =>
   decodeDirectory? header (multiPageBytes.extract prefixBytes (prefixBytes + header.directoryBytes))
 
+private def threePageSample : Index :=
+  { targetIBKSha256 := ByteArray.mk (Array.replicate 32 11), rowCount := 513,
+    pairs := (List.range 513).map (fun subject => (subject, subject)) |>.toArray }
+private def threePageBytes := (encode? threePageSample).getD ByteArray.empty
+private def threePageRefs := (decodePrefix? (threePageBytes.extract 0 prefixBytes)).bind fun header =>
+  decodeDirectory? header (threePageBytes.extract prefixBytes (prefixBytes + header.directoryBytes))
+
 #guard decode? sampleBytes == some sample
 #guard (decodePrefix? (sampleBytes.extract 0 prefixBytes)).map Prefix.rowCount == some 3
 #guard decode? multiPageBytes == some multiPageSample
 #guard multiPageRefs.map (fun refs => (pagesFor refs 7).length) == some 2
+#guard threePageRefs.map (fun refs => (pagesFor refs 512).map Prod.fst) == some [2]
+#guard threePageRefs.map (fun refs => (pagesFor refs 700).length) == some 0
 
 end L4Factoidal.Storage.SubjectRowIndexWireV2
