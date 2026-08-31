@@ -4,6 +4,7 @@
 import Harness.PosixRangeIO
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
@@ -157,6 +158,77 @@ def subjectPostings? (directory : System.FilePath) (entry : Entry) :
                   match L4Factoidal.Storage.SubjectRowIndexWire.decode bytes with
                   | some (rows, pairs) => if rows == entry.rows then pure (some pairs) else pure none
                   | none => pure none
+
+/-- Distinct SRI2 page references potentially containing any requested local
+    subject ID. `SRI2.pagesFor` intentionally returns more than one page when
+    a posting list crosses a page boundary; deduplication stops repeated query
+    bindings from rereading a page. -/
+private def sri2CandidatePages : List L4Factoidal.Storage.SubjectRowIndexWireV2.PageRef →
+    List Nat → List (Nat × L4Factoidal.Storage.SubjectRowIndexWireV2.PageRef)
+  | refs, ids => ids.flatMap (L4Factoidal.Storage.SubjectRowIndexWireV2.pagesFor refs) |>.eraseDups
+
+private def readSRI2Pages (path : String) (ref : Ref) (leaves : List Digest)
+    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.SubjectRowIndexWireV2.Prefix) :
+    List (Nat × L4Factoidal.Storage.SubjectRowIndexWireV2.PageRef) → Counters →
+    IO (Option (List (Nat × Array (Nat × Nat)) × Counters))
+  | [], counters => pure (some ([], counters))
+  | (ordinal, page) :: rest, counters => do
+      let range := tliRange
+        (L4Factoidal.Storage.SubjectRowIndexWireV2.prefixBytes + header.directoryBytes + page.offset) page.length
+      match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
+      | none => pure none
+      | some (bytes, footprint) =>
+          match L4Factoidal.Storage.SubjectRowIndexWireV2.decodePage? header ordinal page bytes,
+              ← readSRI2Pages path ref leaves cache header rest (addRead counters footprint) with
+          | some pairs, some (later, next) => pure (some ((ordinal, pairs) :: later, next))
+          | _, _ => pure none
+
+private def sri2SelectedPostings (wanted : List Nat) :
+    List (Nat × Array (Nat × Nat)) → List (Nat × Nat)
+  | [] => []
+  | (_, pairs) :: rest =>
+      pairs.toList.filter (fun pair => wanted.contains pair.1) ++ sri2SelectedPostings wanted rest
+
+/-- Read SRI2 as a verified range object: prefix, directory and only pages
+    whose inclusive subject range can contain a requested local ID.  This is
+    deliberately a separate interface until SBM5 commits an SRI2 artifact in
+    `Entry`; callers supply that prospective sidecar explicitly. Its Merkle
+    root authenticates the fetched ranges, while the header binds them to the
+    exact IBK3 artifact whose rows will be read next. -/
+def subjectPostingsV2For? (directory : System.FilePath) (entry : Entry)
+    (index : ArtifactRef) (subjects : List Nat) : IO (Option (List (Nat × Nat) × Counters)) := do
+  if !safeLeafKey index.key then return none
+  match index.chunked with
+  | none => pure none
+  | some ref =>
+      let path := (directory / index.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes with
+      | none => pure none
+      | some leaves =>
+          let cache ← newVerifiedChunkCache
+          match ← readVerifiedRangeCached? path ref leaves cache
+              (ioRange (tliRange 0 L4Factoidal.Storage.SubjectRowIndexWireV2.prefixBytes)) with
+          | none => pure none
+          | some (prefixBytes, prefixFootprint) =>
+              match L4Factoidal.Storage.SubjectRowIndexWireV2.decodePrefix? prefixBytes with
+              | none => pure none
+              | some header =>
+                  if header.targetIBKSha256 != entry.artifact.sha256 || header.rowCount != entry.rows then pure none else
+                  match ← readVerifiedRangeCached? path ref leaves cache
+                      (ioRange (tliRange L4Factoidal.Storage.SubjectRowIndexWireV2.prefixBytes header.directoryBytes)) with
+                  | none => pure none
+                  | some (directoryBytes, directoryFootprint) =>
+                      match L4Factoidal.Storage.SubjectRowIndexWireV2.decodeDirectory? header directoryBytes with
+                      | none => pure none
+                      | some directory =>
+                          let wanted := subjects.eraseDups
+                          let pages := sri2CandidatePages directory wanted
+                          let initial := addRead (addRead {} prefixFootprint) directoryFootprint
+                          match ← readSRI2Pages path ref leaves cache header pages initial with
+                          | none => pure none
+                          | some (decoded, counters) =>
+                              pure (some (sri2SelectedPostings wanted decoded, counters))
 
 /-- Restore one ID row through an already admitted complete PTD1 dictionary.
     This is deliberately small and explicit because the SRI1 sidecar names

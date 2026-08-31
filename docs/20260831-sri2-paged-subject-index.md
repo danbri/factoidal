@@ -58,3 +58,18 @@ multi-page case remains bounded and deterministic.
 SBM4 and SRI1 remain readable throughout. The new format is deliberately not
 being attached to a manifest until the codec, activation relation and range
 reader agree as one increment.
+
+## Implemented reader boundary (2026-08-31)
+
+Steps 1 and the storage-adjacent part of step 2 are now implemented in Lean:
+`Harness.IndexedBlockV3Materialize.subjectPostingsV2For?` reads an explicitly
+supplied, Merkle-committed SRI2 artifact by fetching its prefix, directory, and
+only candidate pages. It verifies the SRI2 target digest and row count against
+the IBK3 entry before returning postings, and returns the read footprints in
+the normal query counters.
+
+The function is intentionally not called by the SBM4 query planner: SBM4
+commits SRI1, not SRI2. The next coherent change is SBM5, in which the packer,
+compactor, activation pass and join planner all agree that the committed
+subject sidecar is SRI2. This avoids an uncommitted convenience file silently
+altering query answers.
