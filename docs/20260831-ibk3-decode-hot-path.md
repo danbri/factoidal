@@ -102,6 +102,12 @@ SRI1 framing/checksum, and SRI1 row count all agree. It is intentionally not
 used for query selection yet: the next scan must also read each selected IBK3
 row and verify that its subject ID matches the SRI1 posting.
 
+Within an admitted SRI1 payload, lookup now uses a total binary search over
+canonical subject ordering, followed by a scan of only that subject's
+contiguous offsets. This removes a full posting-list CPU scan. The current
+sidecar reader still reads the complete SRI1 object; a paged SRI successor is
+needed to reduce cold I/O for very large predicate blocks.
+
 ## Verification
 
 ```text

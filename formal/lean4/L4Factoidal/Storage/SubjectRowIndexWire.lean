@@ -95,9 +95,40 @@ def decode (bytes : ByteArray) : Option (Nat × List (Nat × Nat)) := do
   if !rest.isEmpty then none else do
   if !canonicalPairs rowCount.toNat pairs then none else some (rowCount.toNat, pairs)
 
-/-- Pure lookup over an admitted canonical payload.  It returns source-row
-    offsets in their original ascending order. -/
+/-- Lower-bound search over the canonical subject ordering. The fuel is the
+    shrinking interval width, so this stays total even for malformed caller
+    arrays; an admitted SRI1 payload supplies the expected ordering. -/
+private def lowerBoundGo (pairs : Array (Nat × Nat)) (subject low high : Nat) : Nat → Nat
+  | 0 => low
+  | fuel + 1 =>
+      if low >= high then low
+      else
+        let middle := low + (high - low) / 2
+        match pairs[middle]? with
+        | some pair =>
+            if pair.1 < subject then lowerBoundGo pairs subject (middle + 1) high fuel
+            else lowerBoundGo pairs subject low middle fuel
+        | none => low
+
+private def lowerBound (pairs : Array (Nat × Nat)) (subject : Nat) : Nat :=
+  lowerBoundGo pairs subject 0 pairs.size (pairs.size + 1)
+
+private def collectOffsetsGo (pairs : Array (Nat × Nat)) (subject index : Nat)
+    (reversed : List Nat) : Nat → List Nat
+  | 0 => reversed.reverse
+  | fuel + 1 =>
+      match pairs[index]? with
+      | some pair =>
+          if pair.1 == subject then
+            collectOffsetsGo pairs subject (index + 1) (pair.2 :: reversed) fuel
+          else reversed.reverse
+      | none => reversed.reverse
+
+/-- Lookup over an admitted canonical payload. It uses binary search to find
+    the first subject posting and then reads only that subject's contiguous
+    offsets, which remain in original source-row order. -/
 def offsetsFor (pairs : List (Nat × Nat)) (subject : Nat) : List Nat :=
-  pairs.filterMap fun pair => if pair.1 == subject then some pair.2 else none
+  let array := pairs.toArray
+  collectOffsetsGo array subject (lowerBound array subject) [] (array.size + 1)
 
 end L4Factoidal.Storage.SubjectRowIndexWire
