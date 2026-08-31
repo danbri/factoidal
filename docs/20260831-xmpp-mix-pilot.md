@@ -16,3 +16,13 @@ increment is committed. It should begin loopback-only, with separate
 `factoidal` and `factoidal-shardborough` channels, explicit service-account
 credentials for agents, and no public federation. Tailscale exposure, TLS,
 and bridge policy are separate security decisions.
+
+## Local pilot status (2026-08-31)
+
+The storage increment has now been committed. The official arm64-capable
+`ghcr.io/processone/ejabberd` image was selected, and the existing Podman
+AppleHV machine was started, but its forwarded API socket repeatedly vanished
+during the initial image pull. No image, container, account, port listener, or
+network exposure was left running. Repair or recreate that local Podman
+machine before continuing; do not substitute MUC for MIX merely to obtain a
+working demo.
