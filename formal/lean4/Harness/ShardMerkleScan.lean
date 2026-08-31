@@ -13,6 +13,10 @@ open L4Factoidal.SPARQL
 open L4Factoidal.Storage.IndexedBlockWireV2
 open L4Factoidal.Storage.ShardManifest
 
+private def readManifest (directory : System.FilePath) : IO ByteArray := do
+  try IO.FS.readBinFile (directory / "manifest.sbm2")
+  catch _ => IO.FS.readBinFile (directory / "manifest.sbm1")
+
 private def predicate? (text : String) : Option WfIri :=
   if h : isIri text then some ⟨text, h⟩ else none
 
@@ -20,7 +24,7 @@ private def run (directory iri : String) : IO UInt32 := do
   match predicate? iri with
   | none => IO.eprintln s!"l4block-shard-merkle-scan invalid predicate IRI: {iri}"; return 2
   | some predicate =>
-      let manifestBytes ← IO.FS.readBinFile (System.FilePath.mk directory / "manifest.sbm1")
+      let manifestBytes ← readManifest (System.FilePath.mk directory)
       match decode? manifestBytes with
       | none => IO.eprintln "l4block-shard-merkle-scan rejected: malformed SBM1 manifest"; return 1
       | some manifest =>

@@ -16,13 +16,21 @@ open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreDataset
 open L4Factoidal.Storage.ShardManifest
 
+/-- SBM2 is the streaming-publisher manifest.  Retain SBM1 discovery so
+    existing published collections remain executable without conversion. -/
+private def readManifest (directory : System.FilePath) : IO (System.FilePath × ByteArray) := do
+  let sbm2 := directory / "manifest.sbm2"
+  try pure (sbm2, ← IO.FS.readBinFile sbm2)
+  catch _ =>
+    let sbm1 := directory / "manifest.sbm1"
+    pure (sbm1, ← IO.FS.readBinFile sbm1)
+
 /-- A planned, non-executing S-expression view. It deliberately exposes only
     the manifest-selected artifacts and their declared row estimates: no child
     file is opened, decoded, or trusted by `EXPLAIN`. -/
 private def explain (asJson : Bool) (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
-    let manifestPath := directory / "manifest.sbm1"
-    let manifestBytes ← IO.FS.readBinFile manifestPath
+    let (manifestPath, manifestBytes) ← readManifest directory
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
     | _, .error e => IO.eprintln s!"l4block-shard-merkle-query query parse error at {e.pos}: {e.msg}"; return 1
@@ -61,8 +69,7 @@ private def materializeProfiled (directory : System.FilePath) : List Entry →
     and evaluator measurements in the same S-expression node family. -/
 private def explainAnalyze (asJson : Bool) (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
-    let manifestPath := directory / "manifest.sbm1"
-    let manifestBytes ← IO.FS.readBinFile manifestPath
+    let (manifestPath, manifestBytes) ← readManifest directory
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
     | _, .error e => IO.eprintln s!"l4block-shard-merkle-query query parse error at {e.pos}: {e.msg}"; return 1
@@ -97,8 +104,7 @@ private def explainAnalyze (asJson : Bool) (directory : System.FilePath) (queryT
 
 private def run (directory : System.FilePath) (queryText : String) : IO UInt32 := do
   try
-    let manifestPath := directory / "manifest.sbm1"
-    let manifestBytes ← IO.FS.readBinFile manifestPath
+    let (manifestPath, manifestBytes) ← readManifest directory
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-shard-merkle-query rejected: malformed or unsupported SBM1 manifest"; return 1
     | _, .error e => IO.eprintln s!"l4block-shard-merkle-query query parse error at {e.pos}: {e.msg}"; return 1

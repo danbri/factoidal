@@ -49,14 +49,63 @@ private partial def prepassHandle (handle : IO.FS.Handle) (utf8 : Utf8Stream)
 private def prepassFile (input : System.FilePath) : IO SourcePrepass :=
   IO.FS.withFile input .read fun handle => prepassHandle handle Utf8Stream.init {} Sha256Stream.init
 
-private def ingestStep (state : Nat × Buckets) (triples : List L4Factoidal.RDF.Triple) : Nat × Buckets :=
-  (state.1 + triples.length, addTriples state.2 triples)
+/- The fold accumulator is deliberately a reverse list of triples completed
+   since the current decoded input chunk.  It is reset after publication, so
+   the packer never builds a graph-wide predicate map in memory. -/
+private def ingestStep (accRev : List L4Factoidal.RDF.Triple)
+    (triples : List L4Factoidal.RDF.Triple) : List L4Factoidal.RDF.Triple :=
+  triples.reverse ++ accRev
+
+/-- Publication metadata is small even for a large source: one manifest row
+    and one TSV row per immutable output block, never the source triples. -/
+private structure PackState where
+  tripleCount : Nat := 0
+  nextOrdinal : Nat := 0
+  entriesRev : List Entry := []
+  linesRev : List String := []
+
+private def publishBlocks (output : String) : PackState → List (L4Factoidal.RDF.WfIri × L4Factoidal.Storage.IndexedBlock.Block) → IO PackState
+  | state, [] => pure state
+  | state, (predicate, block) :: rest => do
+      match L4Factoidal.Storage.IndexedBlockWireV2.encode? block with
+      | none => throw <| IO.userError s!"unsupported block for {predicate.val}"
+      | some bytes =>
+          let ordinal := state.nextOrdinal
+          let name := s!"predicate-{ordinal}.ibk2"
+          IO.FS.writeBinFile (output ++ "/" ++ name) bytes
+          let digest := sha256 bytes
+          let chunked ← match fromChunks? chunkBytes (chunksOf chunkBytes bytes) with
+            | some value => pure value
+            | none => throw <| IO.userError s!"could not commit fixed chunks for {predicate.val}"
+          let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
+          let proofBytes := ByteArray.mk (leaves.flatMap (fun value => value.data.toList) |>.toArray)
+          IO.FS.writeBinFile (output ++ "/" ++ name ++ ".merkle") proofBytes
+          let entry : Entry :=
+            { predicate
+              artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
+              rows := block.rows.size
+              ordinal }
+          publishBlocks output
+            { tripleCount := state.tripleCount + block.rows.size
+              nextOrdinal := ordinal + 1
+              entriesRev := entry :: state.entriesRev
+              linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex digest}\t{name}.merkle" :: state.linesRev }
+            rest
+
+/-- Commit all complete statements seen since the prior decoded input chunk.
+    A single very large Turtle statement remains an intentional bounded-input
+    exception: its grammar requires retaining the unfinished statement. -/
+private def publishBatch (output : String) (state : PackState)
+    (triples : List L4Factoidal.RDF.Triple) : IO PackState :=
+  publishBlocks output state (blocksOfBuckets (addTriples {} triples))
 
 /-- Second bounded pass: decoded chunks are handed to the grammar-validated
-    fold immediately. Its independently streamed source digest must equal the
-    first-pass commitment before any IBK2 artifact is published. -/
-private partial def ingestHandle (handle : IO.FS.Handle) (expected : ByteArray) (utf8 : Utf8Stream)
-    (fold : TurtleChunkFoldState (Nat × Buckets)) (digest : Sha256Stream) : IO (Nat × Buckets) := do
+    fold and their completed batches are published immediately. Its
+    independently streamed source digest must equal the first-pass commitment
+    before the manifest commits any such artifacts into a readable store. -/
+private partial def ingestHandle (output : String) (handle : IO.FS.Handle) (expected : ByteArray) (utf8 : Utf8Stream)
+    (fold : TurtleChunkFoldState (List L4Factoidal.RDF.Triple)) (digest : Sha256Stream)
+    (published : PackState) : IO PackState := do
   let bytes ← handle.read inputChunkBytes
   if bytes.isEmpty then
     match utf8.finish with
@@ -66,65 +115,43 @@ private partial def ingestHandle (handle : IO.FS.Handle) (expected : ByteArray) 
           throw <| IO.userError "l4block-shard-pack input changed between pre-pass and parse pass"
         match fold.finish ingestStep with
         | .error error => throw <| IO.userError s!"l4block-shard-pack Turtle parse error at {error.pos}: {error.msg}"
-        | .ok state => pure state
+        | .ok triples => publishBatch output published triples.reverse
   else
     match utf8.feed bytes with
     | .error message => throw <| IO.userError s!"l4block-shard-pack UTF-8 error: {message}"
     | .ok (text, nextUtf8) =>
         match fold.feed ingestStep text with
         | .error error => throw <| IO.userError s!"l4block-shard-pack Turtle parse error at {error.pos}: {error.msg}"
-        | .ok nextFold => ingestHandle handle expected nextUtf8 nextFold (digest.update bytes)
+        | .ok nextFold =>
+            let published ← publishBatch output published nextFold.acc.reverse
+            ingestHandle output handle expected nextUtf8 { nextFold with acc := [] }
+              (digest.update bytes) published
 
-private def ingestFile (input : System.FilePath) (prepass : SourcePrepass) : IO (Nat × Buckets) :=
+private def ingestFile (input output : System.FilePath) (prepass : SourcePrepass) : IO PackState :=
   IO.FS.withFile input .read fun handle =>
-    let fold := TurtleChunkFoldState.init prepass.bnodePrefix ingestStep (0, {})
+    let fold := TurtleChunkFoldState.init prepass.bnodePrefix ingestStep []
       (some ("file://" ++ input.toString))
-    ingestHandle handle prepass.sourceIdentity Utf8Stream.init fold Sha256Stream.init
+    ingestHandle output.toString handle prepass.sourceIdentity Utf8Stream.init fold Sha256Stream.init {}
 
 private def pack (input output : String) : IO UInt32 := do
   try
     let prepass ← prepassFile input
-    let (tripleCount, buckets) ← ingestFile input prepass
-    let blocks := blocksOfBuckets buckets
     IO.FS.createDirAll output
-    let packed ← blocks.zipIdx.mapM fun ((predicate, block), index) => do
-      match encode? block with
-      | none => throw <| IO.userError s!"unsupported block for {predicate.val}"
-      | some bytes =>
-          let name := s!"predicate-{index}.ibk2"
-          IO.FS.writeBinFile (output ++ "/" ++ name) bytes
-          let digest := sha256 bytes
-          let chunked ← match fromChunks? chunkBytes (chunksOf chunkBytes bytes) with
-            | some value => pure value
-            | none => throw <| IO.userError s!"could not commit fixed chunks for {predicate.val}"
-          let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
-          let proofBytes := ByteArray.mk (leaves.flatMap (fun digest => digest.data.toList) |>.toArray)
-          IO.FS.writeBinFile (output ++ "/" ++ name ++ ".merkle") proofBytes
-          let entry : Entry :=
-            { predicate
-              artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
-              rows := block.rows.size
-              ordinal := index }
-          pure (entry, s!"{index}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex digest}\t{name}.merkle")
-    let entries := packed.map Prod.fst
-    let lines := packed.map Prod.snd
+    let published ← ingestFile input output prepass
+    let entries := published.entriesRev.reverse
+    let lines := published.linesRev.reverse
     let manifest : Manifest :=
-      { version := 1
+      { version := 2
         sourceIdentity := prepass.sourceIdentity
         termRegistryVersion := "local-ibk2-dict-v0"
-        layout := "predicate-ibk2-merkle-v1"
+        layout := "predicate-ibk2-merkle-v2-streaming"
         entries }
-    let legacyEntries := entries.map fun entry => { entry with artifact := { entry.artifact with chunked := none } }
-    let legacyManifest : Manifest := { manifest with version := 0, layout := "predicate-ibk2-v0", entries := legacyEntries }
     match L4Factoidal.Storage.ShardManifest.encode? manifest with
-    | none => throw <| IO.userError "could not encode structurally valid SBM1 manifest"
-    | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm1") manifestBytes
-    match L4Factoidal.Storage.ShardManifest.encode? legacyManifest with
-    | none => throw <| IO.userError "could not encode compatibility SBM0 manifest"
-    | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm0") manifestBytes
+    | none => throw <| IO.userError "could not encode structurally valid SBM2 manifest"
+    | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
     IO.FS.writeFile (output ++ "/manifest.tsv")
       ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\n" ++ String.intercalate "\n" lines ++ "\n")
-    IO.println s!"l4block-shard-pack input={input} triples={tripleCount} shards={blocks.length} output={output} manifests=manifest.sbm1,manifest.sbm0 chunk-bytes={chunkBytes}"
+    IO.println s!"l4block-shard-pack input={input} triples={published.tripleCount} blocks={entries.length} output={output} manifest=manifest.sbm2 chunk-bytes={chunkBytes}"
     return 0
   catch error =>
     IO.eprintln s!"l4block-shard-pack failure: {error}"

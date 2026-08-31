@@ -15,6 +15,10 @@ open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreDataset
 open L4Factoidal.Storage.ShardManifest
 
+private def readManifest (directory : System.FilePath) : IO ByteArray := do
+  try IO.FS.readBinFile (directory / "manifest.sbm2")
+  catch _ => IO.FS.readBinFile (directory / "manifest.sbm1")
+
 structure CachedArtifact where
   key : ArtifactKey
   materialized : Materialized
@@ -103,7 +107,7 @@ private def execute (directory : System.FilePath) (manifest : Manifest)
 
 private def run (directory : System.FilePath) : IO UInt32 := do
   try
-    let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm1")
+    let manifestBytes ← readManifest directory
     match decode? manifestBytes with
     | none => IO.eprintln "l4block-shard-merkle-session rejected: malformed or unsupported SBM1 manifest"; return 1
     | some manifest =>

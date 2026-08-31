@@ -7,6 +7,10 @@ namespace Harness.ShardMerklePread
 open Harness.PosixRangeIO
 open L4Factoidal.Storage.ShardManifest
 
+private def readManifest (directory : System.FilePath) : IO ByteArray := do
+  try IO.FS.readBinFile (directory / "manifest.sbm2")
+  catch _ => IO.FS.readBinFile (directory / "manifest.sbm1")
+
 private def predicate? (text : String) : Option L4Factoidal.RDF.WfIri :=
   if h : L4Factoidal.RDF.isIri text then some ⟨text, h⟩ else none
 
@@ -14,7 +18,7 @@ private def run (directory iri : String) (requested : Option (Nat × Nat)) : IO 
   match predicate? iri with
   | none => IO.eprintln s!"l4block-shard-merkle-pread invalid predicate IRI: {iri}"; return 2
   | some predicate =>
-      let manifestBytes ← IO.FS.readBinFile (System.FilePath.mk directory / "manifest.sbm1")
+      let manifestBytes ← readManifest (System.FilePath.mk directory)
       match decode? manifestBytes with
       | some manifest =>
           match select? manifest predicate with

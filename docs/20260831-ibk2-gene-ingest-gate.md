@@ -72,13 +72,13 @@ driver and bounded artifact spooler are still the next integration steps.
 The reference `l4block-shard-pack` now uses that seam directly. It makes two
 fixed-size file-handle passes: the first calculates the generated blank-node
 prefix and streaming SHA-256 source identity; the second performs bounded
-UTF-8 decoding and immediate Turtle statement folding. It streams the input
-digest again and rejects an input whose bytes changed between passes before
-publishing an artifact. The full `blockengine-shard-merkle-scan-smoke.sh`
-suite passes through this actual packer, including verified SBM1 range reads
-and parsed SPARQL execution. Predicate buckets are still in-memory until the
-final IBK2 encoding/publish phase, so this is no claim of bounded **total**
-ingest memory yet.
+UTF-8 decoding and immediate Turtle statement folding. The input digest is
+checked again before the final manifest is published. Since block files are
+written during that second pass, a changed input can leave unreferenced output
+files, but it cannot publish a manifest that commits them; staging-directory
+cleanup is a separate operational refinement. The full
+`blockengine-shard-merkle-scan-smoke.sh` suite passes through this actual
+packer, including verified Merkle range reads and parsed SPARQL execution.
 
 ## Multi-block publication prerequisite
 
@@ -92,5 +92,37 @@ their unique-predicate acceptance rule; Merkle query/session hosts accept both
 range-committed SBM1 and SBM2. Executable guards cover SBM2 encode/decode and
 two committed blocks returning/estimating two rows.
 
-The packer still emits SBM1 today. A spooler can now publish bounded SBM2
-blocks without needing to weaken the persistent SPARQL reader contract.
+## Landed bounded SBM2 publisher
+
+`l4block-shard-pack` now publishes SBM2 directly. Its parser fold accumulator
+contains only complete triples encountered since the current 64 KiB decoded
+input chunk. At each chunk boundary it partitions that batch by predicate,
+encodes each resulting IBK2 block, writes its leaf-hash sidecar, and retains
+only manifest/TSV metadata for it. The final `manifest.sbm2` is written only
+after the second source digest agrees with the pre-pass commitment. This makes
+the manifest the atomic logical publication boundary: artifacts written before
+it are not part of a readable collection.
+
+The deliberate trade-off is that a frequent predicate may have one immutable
+block per input batch. SBM2's repeated-predicate entries preserve all those
+rows, and the Merkle SPARQL query/session tools now discover `manifest.sbm2`
+first (falling back to older SBM1 collections) and select every matching
+block. The executable smoke suite demonstrated a parsed two-predicate join
+over four selected artifacts and a warm-session cache hit over the same SBM2
+store. A future compaction pass can merge/re-sort those bounded artifacts
+without weakening the decoder, byte commitment, or SPARQL backend contract.
+
+The only remaining non-fixed-size parser memory is an individual unfinished
+Turtle statement, which must be retained to preserve grammar semantics. That
+is a documented input limit rather than a whole-corpus graph construction.
+
+## Re-run of the gene gate
+
+The same 20-second cap was re-run after the bounded publisher landed. It
+again exited with `124`, as expected for the cap, but had written 899 regular
+output files before interruption (artifact/sidecar pairs; no `manifest.sbm2`
+was present). This is the expected safe intermediate state: the old packer
+had written zero artifacts at the same point, while the new packer has made
+forward physical progress without exposing an incomplete collection to a
+reader. It is evidence of the new publication boundary, not a claim that the
+17 MiB source completes in twenty seconds.
