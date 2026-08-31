@@ -26,8 +26,10 @@ the 759,263 P684 triples across five IBK3 artifacts. This is an intentional
 multi-entry SBM2 shape, not duplicate data: its total manifest row count is
 the source triple count.
 
-`l4block-id-v3-merkle-scan` currently demonstrates one manifest entry at a
-time, so its ten-row P684 result is a valid bounded read of the first matching
-artifact, not yet an all-five-artifact SPARQL scan. The next host increment is
-manifest-order `selectAll` traversal with a global limit and accumulated I/O
-evidence.
+`l4block-id-v3-merkle-scan` now traverses all matching manifest entries in
+order, applies one global limit, and totals verified I/O. A ten-row P684 query
+opens just the first artifact; a complete P684 scan opens all five and returns
+759,263 rows. It is a physical predicate-scan host, not yet a complete
+parsed-SPARQL service: joins, expressions, projection, ordering and updates
+remain the responsibility of the existing evaluator and its next lowering
+step.

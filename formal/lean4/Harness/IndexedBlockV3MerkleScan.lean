@@ -30,6 +30,17 @@ private def addRead (total : Counters) (read : VerifiedReadFootprint) : Counters
     chunks := total.chunks + read.chunks
     requests := total.requests + 1 }
 
+private def addCounters (left right : Counters) : Counters :=
+  { requestedBytes := left.requestedBytes + right.requestedBytes
+    fetchedBytes := left.fetchedBytes + right.fetchedBytes
+    chunks := left.chunks + right.chunks
+    requests := left.requests + right.requests }
+
+structure ScanResult where
+  triples : List Triple
+  counters : Counters
+  artifactBytes : Nat
+
 private def ioRange (range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange) :
     L4Factoidal.Storage.IndexedBlockWireV2.ByteRange :=
   { offset := range.offset, length := range.length }
@@ -52,6 +63,70 @@ private def readPages (path : String) (ref : Ref) (leaves : List Digest)
           | none => pure none
           | some (tail, counters) => pure (some ((range, bytes) :: tail, counters))
 
+private def scanEntry (directory : System.FilePath) (predicate : WfIri) (rowLimit : Nat)
+    (entry : Entry) : IO (Option ScanResult) := do
+  match entry.artifact.chunked with
+  | none => pure none
+  | some ref =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes with
+      | none => pure none
+      | some leaves =>
+          let cache ← newVerifiedChunkCache
+          let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+            { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
+          match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
+          | some (headerBytes, headerFootprint) =>
+              match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
+              | some header =>
+                  match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header with
+                  | some ptdRange =>
+                      match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdRange) with
+                      | some (ptdPrefix, ptdFootprint) =>
+                          match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryDirectoryRange? header ptdPrefix with
+                          | some directoryRange =>
+                              match ← readVerifiedRangeCached? path ref leaves cache (ioRange directoryRange) with
+                              | some (directoryBytes, directoryFootprint) =>
+                                  let wantedRows := min header.rowCount rowLimit
+                                  let rowRange := L4Factoidal.Storage.IndexedBlockWireV3.rowsRange header
+                                  let rowPrefix : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+                                    { offset := rowRange.offset, length := wantedRows * L4Factoidal.Storage.IndexedBlockWireV3.rowBytes }
+                                  match ← readVerifiedRangeCached? path ref leaves cache (ioRange rowPrefix) with
+                                  | some (rowBytes, rowFootprint) =>
+                                      let initial := addRead (addRead (addRead (addRead {} headerFootprint) ptdFootprint) directoryFootprint) rowFootprint
+                                      match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPagesForRowPrefix? header ptdPrefix directoryBytes rowBytes with
+                                      | some ranges =>
+                                          match ← readPages path ref leaves cache ranges initial with
+                                          | some (pages, counters) =>
+                                              match L4Factoidal.Storage.IndexedBlockWireV3.scanRowPrefixPages { p := some predicate }
+                                                  headerBytes rowBytes ptdPrefix directoryBytes pages with
+                                              | some triples =>
+                                                  if triples.length == wantedRows then
+                                                    pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                                                  else pure none
+                                              | none => pure none
+                                          | none => pure none
+                                      | none => pure none
+                                  | none => pure none
+                              | none => pure none
+                          | none => pure none
+                      | none => pure none
+                  | none => pure none
+              | none => pure none
+          | none => pure none
+
+private def scanEntries (directory : System.FilePath) (predicate : WfIri) (limit : Nat) :
+    List Entry → List Triple → Counters → Nat → IO (Option (List Triple × Counters × Nat))
+  | [], triples, counters, opened => pure (some (triples, counters, opened))
+  | entry :: rest, triples, counters, opened =>
+      if triples.length >= limit then pure (some (triples.take limit, counters, opened)) else do
+        match ← scanEntry directory predicate (limit - triples.length) entry with
+        | none => pure none
+        | some result =>
+            scanEntries directory predicate limit rest (triples ++ result.triples)
+              (addCounters counters result.counters) (opened + 1)
+
 private def run (directoryText iriText limit : String) : IO UInt32 := do
   match predicate? iriText, limit.toNat? with
   | some predicate, some rowLimit =>
@@ -61,63 +136,14 @@ private def run (directoryText iriText limit : String) : IO UInt32 := do
       | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: malformed SBM2 manifest"; return 1
       | some manifest =>
           if !rangeCommitted manifest || manifest.layout != "predicate-ibk3-ptd1-merkle-v0" then
-            IO.eprintln "l4block-id-v3-merkle-scan rejected: not an IBK3 range-committed manifest"
-            return 1
-          match select? manifest predicate with
-          | none => IO.println s!"l4block-id-v3-merkle-scan rows=0 predicate={iriText} artifact=absent"; return 0
-          | some entry =>
-              match entry.artifact.chunked with
-              | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: missing chunk commitment"; return 1
-              | some ref =>
-                  let path := (directory / entry.artifact.key.value).toString
-                  let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
-                  match leaves? ref.chunkCount leafBytes with
-                  | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: malformed Merkle sidecar"; return 1
-                  | some leaves =>
-                      let cache ← newVerifiedChunkCache
-                      let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
-                        { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
-                      match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
-                      | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: header range"; return 1
-                      | some (headerBytes, headerFootprint) =>
-                          match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
-                          | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: invalid IBK3 header"; return 1
-                          | some header =>
-                              let ptdPrefixRange := L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header
-                              match ptdPrefixRange with
-                              | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: invalid PTD1 extent"; return 1
-                              | some ptdRange =>
-                                  match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdRange) with
-                                  | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: PTD1 prefix range"; return 1
-                                  | some (ptdPrefix, ptdFootprint) =>
-                                      match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryDirectoryRange? header ptdPrefix with
-                                      | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: PTD1 directory plan"; return 1
-                                      | some directoryRange =>
-                                          match ← readVerifiedRangeCached? path ref leaves cache (ioRange directoryRange) with
-                                          | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: PTD1 directory range"; return 1
-                                          | some (directoryBytes, directoryFootprint) =>
-                                              let wantedRows := min header.rowCount (max 1 rowLimit)
-                                              let rowRange := L4Factoidal.Storage.IndexedBlockWireV3.rowsRange header
-                                              let rowPrefix : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
-                                                { offset := rowRange.offset, length := wantedRows * L4Factoidal.Storage.IndexedBlockWireV3.rowBytes }
-                                              match ← readVerifiedRangeCached? path ref leaves cache (ioRange rowPrefix) with
-                                              | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: row prefix range"; return 1
-                                              | some (rowBytes, rowFootprint) =>
-                                                  let initial := addRead (addRead (addRead (addRead {} headerFootprint) ptdFootprint) directoryFootprint) rowFootprint
-                                                  match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPagesForRowPrefix? header ptdPrefix directoryBytes rowBytes with
-                                                  | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: term-page plan"; return 1
-                                                  | some ranges =>
-                                                      match ← readPages path ref leaves cache ranges initial with
-                                                      | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: term page verification"; return 1
-                                                      | some (pages, counters) =>
-                                                          match L4Factoidal.Storage.IndexedBlockWireV3.scanRowPrefixPages { p := some predicate }
-                                                              headerBytes rowBytes ptdPrefix directoryBytes pages with
-                                                          | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: incomplete paged decode"; return 1
-                                                          | some triples =>
-                                                              if triples.length != wantedRows then
-                                                                IO.eprintln "l4block-id-v3-merkle-scan rejected: predicate-local row mismatch"; return 1
-                                                              IO.println s!"l4block-id-v3-merkle-scan rows={triples.length} predicate={iriText} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes} verified-chunks={counters.chunks} range-requests={counters.requests} artifact-bytes={entry.artifact.bytes}"
-                                                              return 0
+            IO.eprintln "l4block-id-v3-merkle-scan rejected: not an IBK3 range-committed manifest"; return 1
+          let entries := selectAll manifest predicate
+          if entries.isEmpty then IO.println s!"l4block-id-v3-merkle-scan rows=0 predicate={iriText} artifacts=0"; return 0
+          match ← scanEntries directory predicate rowLimit entries [] {} 0 with
+          | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: manifest entry or verified range"; return 1
+          | some (triples, counters, opened) =>
+              IO.println s!"l4block-id-v3-merkle-scan rows={triples.length} predicate={iriText} artifacts={opened}/{entries.length} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes} verified-chunks={counters.chunks} range-requests={counters.requests}"
+              return 0
   | none, _ => IO.eprintln s!"l4block-id-v3-merkle-scan invalid predicate IRI: {iriText}"; return 2
   | _, none => IO.eprintln "l4block-id-v3-merkle-scan LIMIT must be a natural number"; return 2
 
