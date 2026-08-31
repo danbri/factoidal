@@ -95,8 +95,9 @@ two committed blocks returning/estimating two rows.
 ## Landed bounded SBM2 publisher
 
 `l4block-shard-pack` now publishes SBM2 directly. Its parser fold accumulator
-contains only complete triples encountered since the current 64 KiB decoded
-input chunk. At each chunk boundary it partitions that batch by predicate,
+contains only complete triples encountered since the current bounded
+publication batch. It continues UTF-8/Turtle decoding in 64 KiB increments,
+then partitions and publishes every 64 such chunks (about 4 MiB of source),
 encodes each resulting IBK2 block, writes its leaf-hash sidecar, and retains
 only manifest/TSV metadata for it. The final `manifest.sbm2` is written only
 after the second source digest agrees with the pre-pass commitment. This makes

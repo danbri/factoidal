@@ -21,6 +21,10 @@ open L4Factoidal.Crypto
 
 private def chunkBytes : Nat := 65536
 private def inputChunkBytes : USize := 65536
+/-- Keep decoding latency small while publishing roughly four MiB batches.
+    This is a bounded first block-sizing policy; later compaction may use
+    measured encoded-byte targets rather than source-byte batches. -/
+private def publicationChunkCount : Nat := 64
 
 /-- Bounded first-pass information needed to preserve the reference packer's
     generated-blank-node and source-identity contracts. -/
@@ -105,7 +109,7 @@ private def publishBatch (output : String) (state : PackState)
     before the manifest commits any such artifacts into a readable store. -/
 private partial def ingestHandle (output : String) (handle : IO.FS.Handle) (expected : ByteArray) (utf8 : Utf8Stream)
     (fold : TurtleChunkFoldState (List L4Factoidal.RDF.Triple)) (digest : Sha256Stream)
-    (published : PackState) : IO PackState := do
+    (published : PackState) (chunksSincePublish : Nat) : IO PackState := do
   let bytes ← handle.read inputChunkBytes
   if bytes.isEmpty then
     match utf8.finish with
@@ -123,15 +127,19 @@ private partial def ingestHandle (output : String) (handle : IO.FS.Handle) (expe
         match fold.feed ingestStep text with
         | .error error => throw <| IO.userError s!"l4block-shard-pack Turtle parse error at {error.pos}: {error.msg}"
         | .ok nextFold =>
-            let published ← publishBatch output published nextFold.acc.reverse
-            ingestHandle output handle expected nextUtf8 { nextFold with acc := [] }
-              (digest.update bytes) published
+            let nextCount := chunksSincePublish + 1
+            if nextCount < publicationChunkCount then
+              ingestHandle output handle expected nextUtf8 nextFold (digest.update bytes) published nextCount
+            else
+              let published ← publishBatch output published nextFold.acc.reverse
+              ingestHandle output handle expected nextUtf8 { nextFold with acc := [] }
+                (digest.update bytes) published 0
 
 private def ingestFile (input output : System.FilePath) (prepass : SourcePrepass) : IO PackState :=
   IO.FS.withFile input .read fun handle =>
     let fold := TurtleChunkFoldState.init prepass.bnodePrefix ingestStep []
       (some ("file://" ++ input.toString))
-    ingestHandle output.toString handle prepass.sourceIdentity Utf8Stream.init fold Sha256Stream.init {}
+    ingestHandle output.toString handle prepass.sourceIdentity Utf8Stream.init fold Sha256Stream.init {} 0
 
 private def pack (input output : String) : IO UInt32 := do
   try
