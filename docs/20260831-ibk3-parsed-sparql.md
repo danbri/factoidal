@@ -160,3 +160,12 @@ again and verifies that activation of the stale compacted generation fails.
 It recompacts the new source, activates that generation, checks physical COUNT
 through `CURRENT`, then writes and reads a later DLOG batch at the next epoch.
 The existing IBK2 compaction smoke continues to pass.
+
+The pure storage proof is also extended in
+`L4Factoidal/RDF/StoreDeltaMerge.lean` as
+`mergeOnRead_after_epoch_compaction`. Given the recorded history split and
+the CEP1 filter result, it proves that an epoch-filtered merge against the
+compacted base has the same triple membership as applying the complete DLOG
+history. This is the no-double-replay statement used by compaction. The
+remaining I/O obligation is to establish those two hypotheses from committed
+on-disk batches and the marker; the smoke test exercises that host boundary.

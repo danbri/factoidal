@@ -52,7 +52,7 @@ namespace L4Factoidal.RDF
 
 open L4Factoidal.SPARQL (PatternBound boundMatches tripleMatchesBound
   mem_tripleMatchesBound)
-open L4Factoidal.Storage (DeltaEntry DeltaBatch)
+open L4Factoidal.Storage (DeltaEntry DeltaBatch filterBatchesSinceEpoch)
 
 /-! ## One graph's resolved diff -/
 
@@ -340,6 +340,27 @@ theorem mergeOnRead_after_compaction (graphKey : Option Iri) (gBase : Graph)
   rw [applyEntriesRef_append]
   exact mergeOnRead_matches_applyEntries graphKey
     (applyEntriesRef graphKey gBase older) newer b t
+
+/-- **Epoch-filtered compaction bridge.** A durable reader may discard exactly
+    those committed batches that were folded into its immutable base. The two
+    hypotheses make the storage boundary explicit: `hHistory` says which
+    prefix was folded, and `hFiltered` says the CEP1 threshold leaves exactly
+    the later batches. Under those admitted facts, replaying the filtered DLOG
+    cannot double-apply the compacted prefix and has the same membership
+    result as the complete history. -/
+theorem mergeOnRead_after_epoch_compaction (baseEpoch : Nat)
+    (graphKey : Option Iri) (gBase : Graph) (batches newer : List DeltaBatch)
+    (older : List DeltaEntry)
+    (hHistory : batches.flatMap (·.ops) = older ++ newer.flatMap (·.ops))
+    (hFiltered : filterBatchesSinceEpoch (some baseEpoch) batches = newer)
+    (b : PatternBound) (t : Triple) :
+    Graph.mem t (tripleMatchesBound b
+      (applyEntriesRef graphKey gBase (batches.flatMap (·.ops)))) =
+    Graph.mem t (mergeOnRead
+      (tripleMatchesBound b (applyEntriesRef graphKey gBase older))
+      (foldDeltaBatches (filterBatchesSinceEpoch (some baseEpoch) batches) graphKey) b) := by
+  rw [hHistory, hFiltered]
+  exact mergeOnRead_after_compaction graphKey gBase older (newer.flatMap (·.ops)) b t
 
 /-! ## Graph Store Protocol write verbs
 
