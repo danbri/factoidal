@@ -196,6 +196,33 @@ therefore takes materially longer than a small-fixture activation and is a
 publication-time admission cost, not query latency. The gene benchmark begins
 only after that immutable generation has completed activation.
 
+## Format and protocol map
+
+- **BLK0** — early MVP bytes for direct RDF-term blocks; a real byte boundary,
+  not the current physical layout.
+- **IBK2** — predicate-local immutable indexed block with a coarse dictionary
+  and selective scan layout.
+- **IBK3** — current predicate-local block: fixed-width local-ID rows followed
+  by a pageable dictionary.
+- **PTD1** — paged term dictionary: one IBK3 block's local ID to RDF-term
+  mapping, decoded only for the needed pages on the sparse join path.
+- **SRI1** — subject-row index: an IBK3-local subject ID to source-row-offset
+  mapping used by the two-predicate shared-subject join.
+- **TLI1** — term-local-ID index: canonical RDF term bytes to the *target*
+  IBK3 local ID, explicitly bound to the target IBK3 SHA-256.
+- **SBM0** — original Shardborough Manifest: immutable artifact listing.
+- **SBM1** — adds fixed-chunk Merkle commitment for verified range reads.
+- **SBM2** — permits several bounded immutable blocks per predicate.
+- **SBM3** — commits mandatory SRI1 sidecars for IBK3 entries.
+- **SBM4** — current manifest: commits both SRI1 and TLI1 sidecars, with
+  non-aliasing keys, checksums, Merkle roots and version/layout consistency.
+- **DLE1 / DLB1 / DLOG** — respectively framed delta entry, sequenced batch,
+  and append-only durable SPARQL Update log.
+- **CEP1** — compacted-epoch marker: tells replay to skip update batches
+  already folded into a newly published base.
+- **CURRENT** — atomic generation-selection pointer, updated only after a
+  candidate has passed activation checks.
+
 ### First multi-page result
 
 On the repacked gene fixture, the parsed P682-to-P684 subject join returns the
