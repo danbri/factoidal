@@ -28,3 +28,31 @@ LEAN_EXPORT lean_obj_res l4_block_pread(b_lean_obj_arg path, uint64_t offset,
   close(fd);
   return lean_io_result_mk_ok(out);
 }
+
+/* Append exactly one already-validated DLB1 frame, then synchronise the file
+ * before acknowledging success.  Lean owns framing, parsing and the decision
+ * to write; this edge is only the POSIX write-all/fsync realization.  It does
+ * not claim directory-entry durability for a newly-created file, nor does it
+ * implement compaction/rename: those are separate protocol steps. */
+LEAN_EXPORT lean_obj_res l4_delta_log_append_sync(b_lean_obj_arg path,
+                                                  b_lean_obj_arg bytes,
+                                                  lean_obj_arg world) {
+  (void)world;
+  int ok = 0;
+  int fd = open(lean_string_cstr(path), O_WRONLY | O_CREAT | O_APPEND, 0644);
+  if (fd >= 0) {
+    size_t total = lean_sarray_size(bytes);
+    size_t done = 0;
+    ok = 1;
+    while (done < total) {
+      ssize_t n = write(fd, lean_sarray_cptr(bytes) + done, total - done);
+      if (n > 0) { done += (size_t)n; continue; }
+      if (n < 0 && errno == EINTR) continue;
+      ok = 0;
+      break;
+    }
+    if (ok && fsync(fd) != 0) ok = 0;
+    if (close(fd) != 0) ok = 0;
+  }
+  return lean_io_result_mk_ok(lean_box(ok));
+}

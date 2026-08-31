@@ -12,12 +12,14 @@ the recovery decision before a writer appends after it.
 import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.UpdateDelta
 import L4Factoidal.Storage.DeltaLog
+import Harness.PosixRangeIO
 
 namespace Harness.DeltaLogTool
 
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.Storage
+open Harness.PosixRangeIO
 
 private def logPath (directory : System.FilePath) : System.FilePath := directory / "deltas.dlog"
 
@@ -59,11 +61,14 @@ private def appendUpdate (directory : System.FilePath) (updateText : String) : I
             IO.eprintln "l4block-delta-log rejected: update needs WHERE evaluation or unsupported graph-wide operation"
             pure 1
         | some batch =>
-            if batches.isEmpty && !(← path.pathExists) then
-              IO.FS.writeBinFile path (asBytes (serializeLog []))
-            IO.FS.withFile path .append fun handle => handle.write (asBytes (serializeDeltaBatch batch))
-            IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={(serializeDeltaBatch batch).length}"
-            pure 0
+            let frame := serializeDeltaBatch batch
+            let bytes := if (← path.pathExists) then frame else serializeLog [] ++ frame
+            if ← appendSyncRaw path.toString (asBytes bytes) then
+              IO.println s!"l4block-delta-log committed path={path} seq={batch.seq} epoch={batch.epoch} ops={batch.ops.length} bytes={frame.length} sync=file"
+              pure 0
+            else
+              IO.eprintln "l4block-delta-log failed: write or file fsync was not acknowledged"
+              pure 1
 
 private def inspect (directory : System.FilePath) : IO UInt32 := do
   let path := logPath directory

@@ -19,6 +19,12 @@ open L4Factoidal.Storage.BlockMerkle
 @[extern "l4_block_pread"]
 opaque preadRaw (path : @& String) (offset length : UInt64) : IO ByteArray
 
+/-- Native write-all followed by file `fsync`.  The caller supplies only
+    Lean-validated bytes; false is a refusal to acknowledge the append.  This
+    does not stand in for directory fsync or compaction rename durability. -/
+@[extern "l4_delta_log_append_sync"]
+opaque appendSyncRaw (path : @& String) (bytes : @& ByteArray) : IO Bool
+
 def readRange? (path : String) (range : ByteRange) : IO (Option ByteArray) := do
   let bytes ← preadRaw path (UInt64.ofNat range.offset) (UInt64.ofNat range.length)
   if bytes.size == range.length then pure (some bytes) else pure none

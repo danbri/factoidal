@@ -50,8 +50,10 @@ formal/lean4/.lake/build/bin/l4block-delta-log STORE-DIR --inspect
 
 It uses the Lean SPARQL Update parser and Lean serializer, writes a `DLOG`
 sidecar named `deltas.dlog`, and refuses to append if the existing file has a
-torn suffix. A local run committed two parsed requests (`seq=1`, `seq=2`) and
-then reported `committed-batches=2 committed-ops=2 clean-tail=true`.
+torn suffix. The native edge writes the already Lean-validated frame in a
+write-all loop and calls file `fsync` before it reports success. A local run
+committed two parsed requests (`seq=1`, `seq=2`) and then reported
+`committed-batches=2 committed-ops=2 clean-tail=true`.
 
 The tool deliberately refuses `INSERT DATA` blank nodes for now. SPARQL
 requires a request-fresh scope; obtaining a collision-free prefix means
@@ -85,13 +87,12 @@ does not yet have named-graph manifests or a named-graph query reader; those
 operations need their corresponding graph-aware physical path before they can
 be exposed through this executable.
 
-The native append utility currently relies on Lean's file append primitive;
-it is not yet the assurance-grade `write → fsync → report success` host
-adapter. Before treating a log as crash-durable across a power loss, add that
-small POSIX adapter, a directory-fsync/rename recovery procedure, and a
-SHA-256 or Merkle commitment for the resulting log generation. The current
-frame checksum is intentionally only a torn-write detector, not tamper
-evidence.
+The current native append is a `write → fsync → report success` adapter for
+the file contents. Before treating a newly created log or a compaction as
+fully crash-durable across a power loss, add directory fsync plus the
+temp-file/rename recovery procedure, and a SHA-256 or Merkle commitment for
+the resulting log generation. The current frame checksum is intentionally
+only a torn-write detector, not tamper evidence.
 
 ## Next implementation sequence
 
