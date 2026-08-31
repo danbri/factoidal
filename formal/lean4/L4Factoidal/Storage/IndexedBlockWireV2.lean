@@ -380,6 +380,38 @@ def open? (bytes : ByteArray) : Option OpenBlock := do
   let header ← decodePrefix (sliceBytes bytes { offset := 0, length := prefixBytes })
   some { bytes := bytes, decoded := decoded, header := header }
 
+/-- Opening is a checked admission boundary: a caller that received an
+    `OpenBlock` also has a complete, CRC-checked IBK2 decode of exactly the
+    same bytes.  Range scans must be constructed through this boundary rather
+    than from an unchecked header. -/
+theorem open?_decode_sound {bytes : ByteArray} {opened : OpenBlock}
+    (h : open? bytes = some opened) : decode bytes = some opened.decoded := by
+  simp only [open?, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨decoded, hdecode, header, _hheader, hopened⟩ := h
+  cases hopened
+  simpa using hdecode
+
+/-- The byte identity retained by an opened artifact is the caller-supplied
+    artifact, so later range offsets cannot accidentally be applied to a
+    different byte sequence. -/
+theorem open?_bytes_sound {bytes : ByteArray} {opened : OpenBlock}
+    (h : open? bytes = some opened) : opened.bytes = bytes := by
+  simp only [open?, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨decoded, _hdecode, header, _hheader, hopened⟩ := h
+  cases hopened
+  rfl
+
+/-- The header stored by `open?` is parsed from the canonical fixed prefix of
+    the very artifact that was fully decoded.  This keeps the later range
+    layout tied to the opened bytes, not merely to an equal-looking header. -/
+theorem open?_prefix_sound {bytes : ByteArray} {opened : OpenBlock}
+    (h : open? bytes = some opened) :
+    decodePrefix (sliceBytes bytes { offset := 0, length := prefixBytes }) = some opened.header := by
+  simp only [open?, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+  obtain ⟨decoded, _hdecode, header, hheader, hopened⟩ := h
+  cases hopened
+  simpa using hheader
+
 /-- The range-layout scan used after `open?` establishes whole-artifact
     integrity. An unbound predicate necessarily falls back to the decoded
     block; a bound predicate obtains exactly its dictionary, directory, and
@@ -408,5 +440,22 @@ def readOpsRange (opened : OpenBlock) : BackendReadOps :=
   { search := fun bound => scanBoundRange bound opened
   , estimate := fun bound => (scanBoundRange bound opened).length
   , predicatePresent := fun predicate => !(scanBoundRange { p := some predicate } opened).isEmpty }
+
+/-- An unbound predicate never takes the range-only fast path: its observable
+    candidates are exactly the decoded block's ordinary indexed scan. -/
+theorem scanBoundRange_unbound (bound : PatternBound) (opened : OpenBlock)
+    (h : bound.p = none) :
+    scanBoundRange bound opened = IndexedBlock.scanBound bound opened.decoded := by
+  cases bound with
+  | mk s p o =>
+      simp only at h
+      subst p
+      rfl
+
+/-- `BackendReadOps.search` is definitionally the checked IBK2 range scan.
+    This makes the existing SPARQL backend seam auditable without a separate
+    execution implementation. -/
+theorem readOpsRange_search (opened : OpenBlock) (bound : PatternBound) :
+    (readOpsRange opened).search bound = scanBoundRange bound opened := rfl
 
 end L4Factoidal.Storage.IndexedBlockWireV2
