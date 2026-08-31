@@ -173,13 +173,11 @@ def countEntry (directory : System.FilePath) (predicate : WfIri) (entry : Entry)
                                           match ← readVerifiedRangeCached? path ref leaves cache (ioRange rowRange) with
                                           | none => pure none
                                           | some (rowBytes, rowFootprint) =>
-                                              match L4Factoidal.Storage.IndexedBlockWireV3.decodeRowPrefix? rowBytes with
+                                              match L4Factoidal.Storage.IndexedBlockWireV3.validatedRowPredicate? ptdHeader.termCount rowBytes with
                                               | none => pure none
-                                              | some [] => pure none
-                                              | some (first :: rows) =>
-                                                  if !rows.all (fun row => row.p == first.p) then pure none else
-                                                  match L4Factoidal.Storage.PagedTermDictionary.pageIndex? ptdHeader first.p,
-                                                        L4Factoidal.Storage.PagedTermDictionary.pageRange? ptdHeader directory first.p with
+                                              | some predicateId =>
+                                                  match L4Factoidal.Storage.PagedTermDictionary.pageIndex? ptdHeader predicateId,
+                                                        L4Factoidal.Storage.PagedTermDictionary.pageRange? ptdHeader directory predicateId with
                                                   | some page, some relative =>
                                                       let absolute : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
                                                         { offset := (L4Factoidal.Storage.IndexedBlockWireV3.dictionaryRange header).offset + relative.offset,
@@ -190,7 +188,7 @@ def countEntry (directory : System.FilePath) (predicate : WfIri) (entry : Entry)
                                                           match L4Factoidal.Storage.PagedTermDictionary.decodePageArray? ptdHeader directory page pageBytes with
                                                           | none => pure none
                                                           | some terms =>
-                                                              match terms[first.p % ptdHeader.pageTerms]? with
+                                                              match terms[predicateId % ptdHeader.pageTerms]? with
                                                               | some (.iri actual) =>
                                                                   if actual == predicate then
                                                                     let initial := addRead (addRead (addRead (addRead {} headerFootprint) ptdFootprint) directoryFootprint) rowFootprint

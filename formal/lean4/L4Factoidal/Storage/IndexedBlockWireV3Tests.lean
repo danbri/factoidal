@@ -93,6 +93,19 @@ private def missingPageRejected : Bool :=
 #guard pagePlanWorks
 #guard rangeScan == tripleMatchesBound { p := some pName } names
 #guard missingPageRejected
+#guard match decodePrefix bytes with
+  | some header =>
+      let rows := rowsRange header
+      let rowBytes := bytes.extract rows.offset (rows.offset + rows.length)
+      match dictionaryPrefixRange header with
+      | some dictionaryPrefix =>
+          match L4Factoidal.Storage.PagedTermDictionary.decodePrefix
+              (bytes.extract dictionaryPrefix.offset (dictionaryPrefix.offset + dictionaryPrefix.length)) with
+          | some ptd => (validatedRowPredicate? ptd.termCount rowBytes).isSome
+          | none => false
+      | none => false
+  | none => false
+#guard (validatedRowPredicate? 1 ByteArray.empty).isNone
 #guard (scanRowPrefixPages {} ByteArray.empty ByteArray.empty ByteArray.empty ByteArray.empty []).isNone
 #guard (decode corrupt).isNone
 

@@ -158,6 +158,28 @@ def decodeRowPrefix? (bytes : ByteArray) : Option (List IdTriple) := do
   let (rows, rest) ← decodeRows (bytes.size / rowBytes) (listOfByteArray bytes)
   if !rest.isEmpty then none else some (rows.map PositionedIdTriple.row)
 
+private def validatedRowPredicateGo : Nat → Nat → List UInt8 → Option Nat → Option Nat
+  | 0, _, bytes, first => if bytes.isEmpty then first else none
+  | count + 1, termCount, bytes, first => do
+      let subject ← readU32LE bytes 4
+      let predicate ← readU32LE bytes 8
+      let object ← readU32LE bytes 12
+      if subject.toNat >= termCount || predicate.toNat >= termCount || object.toNat >= termCount then none else
+      match first with
+      | none => validatedRowPredicateGo count termCount (bytes.drop rowBytes) (some predicate.toNat)
+      | some expected =>
+          if predicate.toNat == expected then
+            validatedRowPredicateGo count termCount (bytes.drop rowBytes) first
+          else none
+
+/-- Validate a nonempty fixed-width row range for the aggregate/ASK physical
+    operators without building an `IdTriple` list. Every term ID must lie in
+    the declared dictionary and every row must carry the same predicate ID;
+    that ID is returned for one PTD1-page lookup. -/
+def validatedRowPredicate? (termCount : Nat) (bytes : ByteArray) : Option Nat :=
+  if bytes.isEmpty || bytes.size % rowBytes != 0 then none else
+  validatedRowPredicateGo (bytes.size / rowBytes) termCount (listOfByteArray bytes) none
+
 private def termIdsOfRows (rows : List IdTriple) : List Nat :=
   rows.flatMap fun row => [row.s, row.p, row.o]
 

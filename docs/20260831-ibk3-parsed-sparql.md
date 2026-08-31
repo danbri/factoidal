@@ -101,11 +101,13 @@ back to the composed base-plus-delta evaluator. This avoids claiming a count
 that omits inserts or tombstones.
 
 On the 759,263-row `wdt:P684` portion of the direct gene store, the parsed
-count returned `759263` in 1.11 seconds (1.07 seconds user CPU), reporting
+count returned `759263` in 1.06 seconds (1.03 seconds user CPU), reporting
 12,209,178 logical bytes and 12,320,768 fetched bytes across five artifacts.
 It avoids subject/object term pages and RDF triple construction; it still
 reads all row IDs because that is the evidence that every counted row has the
-requested predicate.
+requested predicate. The count reader validates that fixed-width range with a
+total streaming loop, retaining only the shared predicate ID rather than
+allocating one `IdTriple` per row.
 
 ## Immutable generation activation
 
