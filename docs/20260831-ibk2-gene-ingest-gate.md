@@ -44,3 +44,9 @@ chunked digest agrees with the ordinary SHA-256 implementation for both
 three one-byte chunks and a 55/1-byte split of the FIPS two-block vector. A
 streaming loader can therefore retain the existing SBM1 source-identity
 commitment without retaining all source bytes just to call `sha256`.
+
+`TurtleState.initWithBnodePrefix` is also now the explicit parser boundary
+for the pre-pass result. The existing whole-document and character-list
+initializers are compatibility wrappers around it, and regression guards pin
+the same generated prefix. This prevents an eventual stream reader from
+quietly changing blank-node identities while optimizing input handling.

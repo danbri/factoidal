@@ -182,20 +182,24 @@ def freshBnodePrefix (text : String) : String :=
 def freshBnodePrefixChars (cs : List Char) : String :=
   "anon" ++ String.ofList (List.replicate (maxUnderscoreRun cs 0 0 + 1) '_')
 
-/-- Port of `empty_turtle_state` / `empty_turtle_state_12`, plus the
-optional retrieval-IRI base a caller supplies (`parse_turtle_with_base`).
-`text` is the whole document, needed only to pick a collision-free
-generated-label prefix. -/
-def TurtleState.init (text : String) (base : Option String) (mode : Mode) : TurtleState :=
+/-- Port of `empty_turtle_state` / `empty_turtle_state_12` when a caller has
+already established a collision-free generated blank-node prefix. This is the
+state boundary a future byte-streaming reader uses after its bounded pre-pass.
+-/
+def TurtleState.initWithBnodePrefix (bnodePrefix : String) (base : Option String) (mode : Mode) : TurtleState :=
   { prefixes := [], baseIri := base.getD "", bnodeCounter := 0,
-    bnodePrefix := freshBnodePrefix text, mode := mode }
+    bnodePrefix, mode := mode }
+
+/-- Whole-document compatibility initializer. `text` is needed only to pick
+the collision-free generated-label prefix. -/
+def TurtleState.init (text : String) (base : Option String) (mode : Mode) : TurtleState :=
+  TurtleState.initWithBnodePrefix (freshBnodePrefix text) base mode
 
 /-- Parser-facing state construction from already decoded source characters.
     It has the same state as `TurtleState.init (String.ofList cs)`, while
     avoiding a second materialisation of those characters. -/
 def TurtleState.initChars (cs : List Char) (base : Option String) (mode : Mode) : TurtleState :=
-  { prefixes := [], baseIri := base.getD "", bnodeCounter := 0,
-    bnodePrefix := freshBnodePrefixChars cs, mode := mode }
+  TurtleState.initWithBnodePrefix (freshBnodePrefixChars cs) base mode
 
 /-- Mint a fresh anonymous blank-node label. Port of `fresh_bnode`. -/
 def TurtleState.freshBnode (st : TurtleState) : BNodeId × TurtleState :=
