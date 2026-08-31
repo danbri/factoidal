@@ -50,3 +50,10 @@ for the pre-pass result. The existing whole-document and character-list
 initializers are compatibility wrappers around it, and regression guards pin
 the same generated prefix. This prevents an eventual stream reader from
 quietly changing blank-node identities while optimizing input handling.
+
+`L4Factoidal.Syntax.Utf8Stream` now supplies the byte-read boundary. It
+buffers only a syntactically valid partial UTF-8 code point (at most three
+bytes), rejects malformed interior data such as `FF`, and has executable
+tests for both two- and four-byte code points split across reads. Turtle event
+parsing remains above this layer, so these checks do not conflate decoding with
+statement segmentation.
