@@ -39,11 +39,12 @@ def readRange? (path : String) (range : ByteRange) : IO (Option ByteArray) := do
 
 /-- Decode untrusted raw 32-byte leaf hashes from a packer's `.merkle`
     sidecar. Their authority comes only from a successful proof to an SBM1
-    root, never from the sidecar file itself. -/
+    root, never from the sidecar file itself. `extract` avoids copying the
+    whole sidecar into a linked list for each individual leaf. -/
 def leaves? (expected : Nat) (bytes : ByteArray) : Option (List Digest) :=
   if bytes.size != expected * 32 then none
   else some <| (List.range expected).map fun index =>
-    ByteArray.mk ((bytes.data.toList.drop (index * 32)).take 32 |>.toArray)
+    bytes.extract (index * 32) (index * 32 + 32)
 
 private def singleChunkIndex? (ref : Ref) (range : ByteRange) : Option Nat := do
   if range.length == 0 || range.offset + range.length > ref.totalBytes then none else do
@@ -118,7 +119,7 @@ def readVerifiedSingleChunkRange? (path : String) (ref : Ref) (leaves : List Dig
               if !verifyChunk ref index chunk proof then pure none
               else
                 let localOffset := range.offset - offset
-                pure (some (ByteArray.mk ((chunk.data.toList.drop localOffset).take range.length |>.toArray)))
+                pure (some (chunk.extract localOffset (localOffset + range.length)))
           | none => pure none
       | _, _, _ => pure none
 
@@ -136,7 +137,7 @@ def readVerifiedRange? (path : String) (ref : Ref) (leaves : List Digest)
           let all := concatChunks chunks
           let localOffset := range.offset - first * ref.chunkBytes
           if localOffset + range.length <= all.size then
-            pure (some (ByteArray.mk ((all.data.toList.drop localOffset).take range.length |>.toArray)))
+            pure (some (all.extract localOffset (localOffset + range.length)))
           else pure none
 
 private def readCachedChunks (path : String) (ref : Ref) (leaves : List Digest)
@@ -174,7 +175,7 @@ def readVerifiedRangeCached? (path : String) (ref : Ref) (leaves : List Digest)
           let all := concatChunks chunks
           let localOffset := range.offset - first * ref.chunkBytes
           if localOffset + range.length <= all.size then
-            let bytes := ByteArray.mk ((all.data.toList.drop localOffset).take range.length |>.toArray)
+            let bytes := all.extract localOffset (localOffset + range.length)
             pure (some (bytes, { requestedBytes := range.length, fetchedBytes := freshBytes, chunks := freshChunks }))
           else pure none
 
