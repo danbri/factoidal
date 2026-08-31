@@ -153,12 +153,37 @@ identity version, observation/derivation time, conflict policy, and an
 artifact/evidence reference.  Multiple candidate keys, contradictory claims,
 or an untrusted declaration must remain visible rather than forcing a merge.
 
-Within such an explicit profile, the key can reduce cross-block and
-cross-repository reconciliation cost: a compact local ID can be translated to
-a deterministic profile-scoped key, then to a query-local join ID.  That can
-help sort, co-locate, cache and merge derived working-set blocks without
-changing what the source RDF graph says.  A downstream asserted identity or
-Skolemization is a separate, provenance-bearing derivation.
+The important implementation opportunity is earlier than post-hoc matching:
+within one declared publisher/voice/subgraph boundary, this key can be the
+*deterministic basis for physical entity-ID assignment at ingest*.  Instead of
+allocating an arbitrary new local number for every blank node and reconciling
+later, the importer can derive a profile-scoped `EntityId` from the accepted
+IFP predicate and object value.  Separate crawls, blocks or installations
+that apply the same profile obtain the same candidate ID without a central
+allocator.  That makes its rows directly joinable, sortable, co-locatable and
+mergeable as they are published.
+
+The storage model needs two identifiers, rather than overwriting RDF blank
+node identity:
+
+```text
+SourceTermId       -- document/graph-scoped RDF term; preserves _:x exactly
+ProfileEntityId    -- deterministic physical entity handle from trusted IFP key
+```
+
+Rows can retain `SourceTermId` for exact RDF reconstruction/provenance while
+using `ProfileEntityId` as a derived join/sort key in an identity-aware block
+or working-set overlay.  The boundary can be a signed publisher dataset, a
+declared site/voice, a product-record subgraph, or another explicitly named
+identity domain.  It must not quietly span unrelated Web sources merely
+because their lexical literal happens to match.
+
+If an entity supplies several accepted inverse-functional values, the profile
+can retain all candidate keys and choose a deterministic primary key only
+under a documented consistency rule.  A collision, disagreement between keys,
+or later withdrawal of the IFP assertion records an identity conflict rather
+than changing historical source rows.  A downstream asserted identity or
+Skolemization remains a separate, provenance-bearing derivation.
 
 The next block manifest should therefore allow a compact *advisory* identity
 profile reference on a predicate-local artifact, for example:
