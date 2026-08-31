@@ -31,6 +31,14 @@ printf '%s\n' "$base"
 grep -q 'shards=1 open-mode=ibk3-paged-merkle(1) delta=base' <<<"$base"
 grep -q 'rows=2' <<<"$base"
 
+# The smaller P31 side drives a two-pattern subject join. The executor must
+# announce the SRI1 path; result construction remains the parsed evaluator.
+join=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  'SELECT ?x ?type ?whole WHERE { ?x <http://www.wikidata.org/prop/direct/P31> ?type . ?x <http://www.wikidata.org/prop/direct/P361> ?whole . }')
+printf '%s\n' "$join"
+grep -q 'open-mode=ibk3-sri1-subject-join(2) delta=base' <<<"$join"
+grep -q 'rows=290' <<<"$join"
+
 ask=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   "ASK { ?x <$predicate> ?type . }")
 printf '%s\n' "$ask"

@@ -14,6 +14,7 @@ open L4Factoidal.SPARQL
 open L4Factoidal.Storage.ChunkedArtifact
 open L4Factoidal.Storage.ShardManifest
 open L4Factoidal.Storage.BlockMerkle
+open L4Factoidal.Storage.IndexedBlock
 
 structure Counters where
   requestedBytes : Nat := 0
@@ -77,6 +78,100 @@ def subjectPostings? (directory : System.FilePath) (entry : Entry) :
                   match L4Factoidal.Storage.SubjectRowIndexWire.decode bytes with
                   | some (rows, pairs) => if rows == entry.rows then pure (some pairs) else pure none
                   | none => pure none
+
+/-- Restore one ID row through an already admitted complete PTD1 dictionary.
+    This is deliberately small and explicit because the SRI1 sidecar names
+    row offsets, not RDF values: both the local subject ID and the
+    predicate-local invariant are checked before a result reaches SPARQL. -/
+private def tripleOfIdRow? (terms : Array Term) (predicate : WfIri) (row : IdTriple) : Option Triple := do
+  let subject ← terms[row.s]?
+  let actualPredicate ← terms[row.p]?
+  let object ← terms[row.o]?
+  match subject, actualPredicate with
+  | .iri iri, .iri actual =>
+      if actual == predicate then some { s := .iri iri, p := actual, o := object } else none
+  | .bnode bnode, .iri actual =>
+      if actual == predicate then some { s := .bnode bnode, p := actual, o := object } else none
+  | _, _ => none
+
+private def appendSubjectOffsets (pairs : List (Nat × Nat)) : List Nat → List (Nat × Nat)
+  | [] => []
+  | subject :: rest =>
+      let current := L4Factoidal.Storage.SubjectRowIndexWire.offsetsFor pairs subject |>.map fun offset => (subject, offset)
+      current ++ appendSubjectOffsets pairs rest
+
+private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
+    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix)
+    (terms : Array Term) (predicate : WfIri) : List (Nat × Nat) → Counters → IO (Option (List Triple × Counters))
+  | [], counters => pure (some ([], counters))
+  | (expectedSubject, offset) :: rest, counters => do
+      if offset >= header.rowCount then pure none else
+      let range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+        { offset := (L4Factoidal.Storage.IndexedBlockWireV3.rowsRange header).offset +
+            offset * L4Factoidal.Storage.IndexedBlockWireV3.rowBytes,
+          length := L4Factoidal.Storage.IndexedBlockWireV3.rowBytes }
+      match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
+      | none => pure none
+      | some (rowBytes, footprint) =>
+          match L4Factoidal.Storage.IndexedBlockWireV3.decodeRowPrefix? rowBytes with
+          | some [row] => do
+              if row.s != expectedSubject then pure none else
+              let later ← scanSubjectRows path ref leaves cache header terms predicate rest (addRead counters footprint)
+              match tripleOfIdRow? terms predicate row, later with
+              | some triple, some (later, next) => pure (some (triple :: later, next))
+              | _, _ => pure none
+          | _ => pure none
+
+/-- Select rows for RDF subjects through an admitted SRI1 companion.  The
+    current compatibility bridge reads the complete target PTD1 dictionary to
+    resolve RDF subjects to the target block's local IDs; it does *not* read
+    the block's full row area. A later TLI1 term-to-local-ID companion replaces
+    that dictionary read without changing this row-selection contract. -/
+def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
+    (subjects : List Term) (entry : Entry) : IO (Option ScanResult) := do
+  if !safeLeafKey entry.artifact.key then return none
+  match entry.artifact.chunked with
+  | none => pure none
+  | some ref =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes, ← subjectPostings? directory entry with
+      | some leaves, some pairs =>
+          let cache ← newVerifiedChunkCache
+          let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+            { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
+          match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
+          | none => pure none
+          | some (headerBytes, headerFootprint) =>
+              match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
+              | none => pure none
+              | some header =>
+                  if header.rowCount != entry.rows then pure none else
+                  let dictionaryRange := L4Factoidal.Storage.IndexedBlockWireV3.dictionaryRange header
+                  match ← readVerifiedRangeCached? path ref leaves cache (ioRange dictionaryRange) with
+                  | none => pure none
+                  | some (dictionaryBytes, dictionaryFootprint) =>
+                      match L4Factoidal.Storage.PagedTermDictionary.decode? dictionaryBytes with
+                      | none => pure none
+                      | some terms =>
+                          let ids := subjects.filterMap (L4Factoidal.Storage.PagedTermDictionary.findTermId? terms) |>.eraseDups
+                          let selected := appendSubjectOffsets pairs ids
+                          match ← scanSubjectRows path ref leaves cache header terms predicate selected
+                              (addRead (addRead {} headerFootprint) dictionaryFootprint) with
+                          | none => pure none
+                          | some (triples, counters) =>
+                              pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+      | _, _ => pure none
+
+def scanEntriesForSubjects (directory : System.FilePath) (predicate : WfIri) (subjects : List Term) :
+    List Entry → List Triple → Counters → Nat → IO (Option (List Triple × Counters × Nat))
+  | [], triples, counters, opened => pure (some (triples, counters, opened))
+  | entry :: rest, triples, counters, opened => do
+      match ← scanEntryForSubjects directory predicate subjects entry with
+      | none => pure none
+      | some current =>
+          scanEntriesForSubjects directory predicate subjects rest (triples ++ current.triples)
+            (addCounters counters current.counters) (opened + 1)
 
 private def readPages (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref (List VerifiedChunk)) : List L4Factoidal.Storage.IndexedBlockWireV3.ByteRange → Counters →

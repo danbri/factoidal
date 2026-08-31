@@ -119,6 +119,23 @@ contiguous offsets. This removes a full posting-list CPU scan. The current
 sidecar reader still reads the complete SRI1 object; a paged SRI successor is
 needed to reduce cold I/O for very large predicate blocks.
 
+The first executable use is deliberately narrow and visible in the query
+diagnostic as `open-mode=ibk3-sri1-subject-join(2)`. It accepts exactly two
+default-graph BGP patterns with the same subject variable and two different
+constant predicates, with no trailing `VALUES` and no delta overlay. It
+materialises the lower-row-count predicate in the ordinary way, resolves its
+distinct RDF subjects in the other IBK3 dictionary, uses SRI1 to fetch only
+the corresponding fixed-width rows, and verifies each fetched row still has
+the indexed local subject ID. The normal parsed Lean SPARQL evaluator then
+does the join, projection, ordering and bag semantics on those exact triples.
+
+This is a correctness-first bridge, not a large-store performance claim: it
+currently reads the whole target PTD1 dictionary to translate RDF subjects to
+that artifact's local IDs, and reads the complete flat SRI1 sidecar. It avoids
+the much larger target *row* area. A committed TLI1 term-to-local-ID index and
+paged successor to SRI1 are the next steps before treating this as a serious
+cold-query access path.
+
 ## Local term-ID boundary
 
 IBK3 currently assigns dictionary IDs per artifact. Therefore an SRI1 posting

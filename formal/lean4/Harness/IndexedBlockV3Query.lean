@@ -83,7 +83,8 @@ private def countAllPredicates (directory : System.FilePath) (manifest : Manifes
             (addCounters counters current)
 
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
-    (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
+    (triples : List Triple) (counters : Counters) (delta : DeltaResolved)
+    (mode : String := "ibk3-paged-merkle") : IO UInt32 := do
   let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
   let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
   match query.form with
@@ -91,7 +92,7 @@ private def finish (query : Query) (entries : List Entry) (predicates : List WfI
       match runSelectQueryBackendDataset emptyEnv query dataset with
       | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
       | some rows =>
-          IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+          IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
           IO.println s!"l4block-id-v3-query sse={query.toSse}"
           IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
           return 0
@@ -99,13 +100,13 @@ private def finish (query : Query) (entries : List Entry) (predicates : List WfI
       match runAskQueryBackendDataset emptyEnv query dataset with
       | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as ASK"; return 1
       | some answer =>
-          IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+          IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
           IO.println s!"l4block-id-v3-query sse={query.toSse}"
           IO.println s!"l4block-id-v3-query boolean={answer}"
           return 0
   | .construct _ =>
       let graph : Graph := evalConstruct emptyEnv { default := (readOpsOfDelta triples delta).search {}, named := [] } query
-      IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+      IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
       IO.println s!"l4block-id-v3-query sse={query.toSse}"
       IO.println s!"l4block-id-v3-query triples={graph.length} preview={toString (repr (graph.take 10))}"
       return 0
@@ -158,6 +159,53 @@ private def finishPredicateGroup (query : Query) (entries : List Entry) (predica
   IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
   return 0
 
+/-- A deliberately narrow first SRI1 join admission.  The two BGP patterns
+    share one subject variable and have different constant predicates.  There
+    are no dataset clauses or trailing VALUES.  We materialise the smaller
+    side normally, then use its RDF subjects to select rows from the larger
+    side. The ordinary parsed evaluator still performs the join, projection,
+    ordering and bag semantics over the reduced exact graph. -/
+private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
+  if !query.dataset.isEmpty || query.postValues.isSome then none else
+  match query.pattern with
+  | .bgp [left, right] =>
+      match left.s, left.p, right.s, right.p with
+      | .var subject, .iri leftPredicate, .var otherSubject, .iri rightPredicate =>
+          if subject == otherSubject && leftPredicate != rightPredicate then
+            some (leftPredicate, rightPredicate)
+          else none
+      | _, _, _, _ => none
+  | _ => none
+
+private def entryRows (entries : List Entry) : Nat :=
+  entries.foldl (fun total entry => total + entry.rows) 0
+
+private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
+    IO (Option UInt32) := do
+  match sharedSubjectJoin? query, ← readDefaultDelta? directory with
+  | some (leftPredicate, rightPredicate), some delta =>
+      if !deltaResolvedIsEmpty delta then pure none else
+      let leftEntries := selectAll manifest leftPredicate
+      let rightEntries := selectAll manifest rightPredicate
+      if leftEntries.isEmpty || rightEntries.isEmpty then pure none else
+      let (drivePredicate, driveEntries, targetPredicate, targetEntries) :=
+        if entryRows leftEntries <= entryRows rightEntries then
+          (leftPredicate, leftEntries, rightPredicate, rightEntries)
+        else (rightPredicate, rightEntries, leftPredicate, leftEntries)
+      match ← materializeEntries directory driveEntries with
+      | none => pure none
+      | some (driveTriples, driveCounters) =>
+          let subjects := driveTriples.map (fun triple => triple.s.toTerm) |>.eraseDups
+          match ← scanEntriesForSubjects directory targetPredicate subjects targetEntries [] {} 0 with
+          | none => pure none
+          | some (targetTriples, targetCounters, _) =>
+              let entries := driveEntries ++ targetEntries
+              let counters := addCounters driveCounters targetCounters
+              let code ← finish query entries [drivePredicate, targetPredicate]
+                (driveTriples ++ targetTriples) counters delta "ibk3-sri1-subject-join"
+              pure (some code)
+  | _, _ => pure none
+
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
     let directory ← resolveStoreDirectory (System.FilePath.mk directoryText)
@@ -168,7 +216,9 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | some manifest, .ok query =>
         if !rangeCommitted manifest || !isIbk3Layout manifest.layout then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
-        match queryNativeConstantPredicates? query with
+        match ← trySubjectIndexJoin directory manifest query with
+        | some code => return code
+        | none => match queryNativeConstantPredicates? query with
         | none =>
             match groupPredicate? query with
             | none => IO.eprintln "l4block-id-v3-query rejected: query requires an unbound/full-manifest physical plan"; return 1
