@@ -50,8 +50,9 @@ unavailable and force the existing safe fallback.
 
 ## Admission and lookup rules
 
-- The manifest must commit TLI1 as a separate artifact in a future **SBM4**
-  (Shardborough Manifest wire version 4) entry.
+- The manifest commits TLI1 as a separate artifact in **SBM4**
+  (Shardborough Manifest wire version 4) entries emitted by the current IBK3
+  packer and compactor.
 - TLI1 `targetIBKSha256` must equal that entry's IBK3 artifact digest.
 - Its `termCount` must equal the target PTD1 term count.
 - Directory ranges, page counts, canonical sort order, page boundaries and
@@ -105,5 +106,8 @@ The first delivery item is now implemented in
 header, target-IBK3 digest, canonical sorted pages, first-key directory,
 strict page/ID checks, and CRC32C validation. Compile-time guards exercise
 both a single page and a 257-term two-page round trip. It is intentionally not
-yet emitted by the publisher or referenced by a manifest: those operations
-need the SBM4 binding checks above before an execution path may trust it.
+now emitted by the IBK3 packer and compactor, referenced by SBM4, and checked
+at activation for full digest, Merkle consistency, decoder framing and target
+IBK3 digest equality. It is deliberately not yet on the hot query path: the
+remaining delivery is the Merkle range reader and its equality-preserving
+replacement of the full PTD1 bridge.

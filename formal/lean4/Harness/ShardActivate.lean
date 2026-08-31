@@ -3,9 +3,12 @@
 import Harness.GenerationPointer
 import Harness.ShardMerkleMaterialize
 import Harness.IndexedBlockV3Materialize
+import Harness.PosixRangeIO
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.ShardManifest
+import L4Factoidal.Storage.TermLocalIndexWire
+import L4Factoidal.Storage.ChunkedArtifact
 
 namespace Harness.ShardActivate
 
@@ -14,6 +17,7 @@ open Harness.ShardMerkleMaterialize
 open L4Factoidal.Crypto
 open L4Factoidal.Storage
 open L4Factoidal.Storage.ShardManifest
+open Harness.PosixRangeIO
 
 private def compactedDefaultLayout : String :=
   "predicate-ibk2-merkle-v2-compacted-default-dlog-v1"
@@ -24,18 +28,26 @@ private def ibk3Layout : String :=
 private def ibk3Sri1Layout : String :=
   "predicate-ibk3-ptd1-sri1-merkle-v0"
 
+private def ibk3Sri1Tli1Layout : String :=
+  "predicate-ibk3-ptd1-sri1-tli1-merkle-v0"
+
 private def compactedIbk3Layout : String :=
   "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
 private def compactedIbk3Sri1Layout : String :=
   "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1"
 
+private def compactedIbk3Sri1Tli1Layout : String :=
+  "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1"
+
 private def isIbk3Layout (layout : String) : Bool :=
   layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||
-    layout == compactedIbk3Sri1Layout
+    layout == compactedIbk3Sri1Layout || layout == ibk3Sri1Tli1Layout ||
+    layout == compactedIbk3Sri1Tli1Layout
 
 private def isCompactedLayout (layout : String) : Bool :=
-  layout == compactedDefaultLayout || layout == compactedIbk3Layout || layout == compactedIbk3Sri1Layout
+  layout == compactedDefaultLayout || layout == compactedIbk3Layout || layout == compactedIbk3Sri1Layout ||
+    layout == compactedIbk3Sri1Tli1Layout
 
 private def readManifest (directory : System.FilePath) : IO ByteArray := do
   let sbm2 := directory / "manifest.sbm2"
@@ -82,7 +94,19 @@ private def verifyFullArtifact (directory : System.FilePath) (artifact : Artifac
   if !safeLeafKey artifact.key then pure false else
   try
     let bytes ← IO.FS.readBinFile (directory / artifact.key.value)
-    pure <| bytes.size == artifact.bytes && BlockArtifact.verify artifact.sha256 bytes
+    match artifact.chunked with
+    | none => pure false
+    | some chunks =>
+        let leafBytes ← IO.FS.readBinFile ((directory / artifact.key.value).toString ++ ".merkle")
+        let rebuilt := L4Factoidal.Storage.ChunkedArtifact.chunksOf chunks.chunkBytes bytes |>
+          List.map L4Factoidal.Storage.BlockMerkle.leaf
+        match leaves? chunks.chunkCount leafBytes with
+        | none => pure false
+        | some leaves =>
+            pure <| bytes.size == artifact.bytes && BlockArtifact.verify artifact.sha256 bytes &&
+              leaves == rebuilt && L4Factoidal.Storage.BlockMerkle.root leaves == chunks.root &&
+              L4Factoidal.Storage.ChunkedArtifact.fromChunks? chunks.chunkBytes
+                (L4Factoidal.Storage.ChunkedArtifact.chunksOf chunks.chunkBytes bytes) == some chunks
   catch _ => pure false
 
 private def verifyFullEntries (directory : System.FilePath) : List Entry → IO Bool
@@ -94,7 +118,31 @@ private def verifyFullEntries (directory : System.FilePath) : List Entry → IO 
         | none => verifyFullEntries directory rest
         | some index =>
             if !(← verifyFullArtifact directory index) then pure false
-            else verifyFullEntries directory rest
+            else match entry.termIndex with
+              | none => verifyFullEntries directory rest
+              | some term =>
+                  if !(← verifyFullArtifact directory term) then pure false
+                  else verifyFullEntries directory rest
+
+/-- TLI1 is a physical identity bridge, not advisory planner metadata: it is
+   admissible only when its framing/checksum decode and its target digest binds
+   it to the exact IBK3 artifact in the same manifest entry. -/
+private def verifyTermIndexes (directory : System.FilePath) : List Entry → IO Bool
+  | [] => pure true
+  | entry :: rest => do
+      match entry.termIndex with
+      | none => verifyTermIndexes directory rest
+      | some index =>
+          if !safeLeafKey index.key then pure false else
+          try
+            let bytes ← IO.FS.readBinFile (directory / index.key.value)
+            match L4Factoidal.Storage.TermLocalIndexWire.decode? bytes with
+            | some decoded =>
+                if decoded.targetIBKSha256 == entry.artifact.sha256 then
+                  verifyTermIndexes directory rest
+                else pure false
+            | none => pure false
+          catch _ => pure false
 
 /-- SBM3's subject index is part of the generation, not optional query
     advice.  Before publishing a generation verify its Merkle admission,
@@ -143,6 +191,8 @@ private def activate (rootText generation : String) : IO UInt32 := do
           throw <| IO.userError "candidate child artifact fails its declared SHA-256 commitment"
         if !(← verifySubjectIndexes candidate manifest.entries) then
           throw <| IO.userError "candidate subject-index sidecar is missing, changed, or malformed"
+        if !(← verifyTermIndexes candidate manifest.entries) then
+          throw <| IO.userError "candidate term-index sidecar is missing, changed, malformed, or bound to another block"
         match ← verifyReadableEntries candidate manifest with
         | none => throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
         | some verifiedBytes =>

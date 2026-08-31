@@ -17,7 +17,7 @@ pack=$("$lean_dir/.lake/build/bin/l4block-shard-pack" \
   "$repo_root/examples/wikidata/subsets/lifesci-kgx/data/binding_site.ttl" \
   "$store" ibk3)
 printf '%s\n' "$pack"
-grep -q 'format=predicate-ibk3-ptd1-sri1-merkle-v0' <<<"$pack"
+grep -q 'format=predicate-ibk3-ptd1-sri1-tli1-merkle-v0.*wire-version=4' <<<"$pack"
 grep -q 'triples=368 blocks=2' <<<"$pack"
 
 activate=$("$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$generation")
@@ -113,7 +113,7 @@ inspect=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$root" --inspect)
 printf '%s\n' "$inspect"
 grep -q 'committed-batches=2 committed-ops=2 clean-tail=true' <<<"$inspect"
 
-# An SBM3 subject index is a committed generation artifact.  Corrupting its
+# An SBM4 subject index is a committed generation artifact.  Corrupting its
 # bytes while retaining the old manifest and Merkle leaves must prevent
 # activation, rather than merely disabling a future selective scan.
 bad_generation='bad-subject-index'
@@ -123,7 +123,19 @@ bad_store="$root/$bad_generation"
   "$bad_store" ibk3 >/dev/null
 printf '\377' | dd of="$bad_store/predicate-0.ibk3.sri1" bs=1 seek=16 conv=notrunc status=none
 if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" >/dev/null 2>&1; then
-  echo 'activation accepted a corrupted SBM3 subject-index sidecar' >&2
+  echo 'activation accepted a corrupted SBM4 subject-index sidecar' >&2
+  exit 1
+fi
+# TLI1 is equally committed and bound to its own IBK3 digest.  Its checksum
+# must be checked before CURRENT can name the generation.
+bad_generation='bad-term-index'
+bad_store="$root/$bad_generation"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$repo_root/examples/wikidata/subsets/lifesci-kgx/data/binding_site.ttl" \
+  "$bad_store" ibk3 >/dev/null
+printf '\377' | dd of="$bad_store/predicate-0.ibk3.tli1" bs=1 seek=16 conv=notrunc status=none
+if "$lean_dir/.lake/build/bin/l4block-shard-activate" "$root" "$bad_generation" >/dev/null 2>&1; then
+  echo 'activation accepted a corrupted SBM4 term-index sidecar' >&2
   exit 1
 fi
 echo 'blockengine-ibk3-persistent-smoke=pass'

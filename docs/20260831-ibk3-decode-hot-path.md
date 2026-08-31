@@ -132,8 +132,9 @@ does the join, projection, ordering and bag semantics on those exact triples.
 This is a correctness-first bridge, not a large-store performance claim: it
 currently reads the whole target PTD1 dictionary to translate RDF subjects to
 that artifact's local IDs, and reads the complete flat SRI1 sidecar. It avoids
-the much larger target *row* area. A committed TLI1 term-to-local-ID index and
-paged successor to SRI1 are the next steps before treating this as a serious
+the much larger target *row* area. TLI1 is now committed and activation-
+verified, but the range reader has not yet been connected; that and a paged
+successor to SRI1 are the next steps before treating this as a serious
 cold-query access path.
 
 ## Local term-ID boundary
@@ -164,3 +165,20 @@ tools/blockengine-ibk3-persistent-smoke.sh
 ```
 
 Both completed successfully after this change.
+
+## SBM4 / TLI1 committed sidecar (2026-08-31)
+
+`Shardborough Manifest` wire version 4 (SBM4) extends each IBK3 entry with a
+second mandatory, non-aliasing companion reference: `predicate-N.ibk3.tli1`.
+The packing and compaction publishers construct the index only after the
+IBK3 digest is known, place that digest in TLI1's `targetIBKSha256` field, and
+write independent Merkle leaves for the sidecar. The layout label is now
+`predicate-ibk3-ptd1-sri1-tli1-merkle-v0` (and its compacted counterpart).
+
+Before atomically updating `CURRENT`, activation checks every primary, SRI1
+and TLI1 file against its full SHA-256 and reconstructed fixed-chunk Merkle
+commitment. It then strictly decodes TLI1 and refuses a sidecar whose target
+digest does not equal the entry's IBK3 digest. The persistent smoke test also
+corrupts a TLI1 byte and establishes that activation fails closed. This is a
+real immutable-object admission boundary; execution still uses PTD1 until the
+page-at-a-time TLI1 reader is wired into the SRI1 join.

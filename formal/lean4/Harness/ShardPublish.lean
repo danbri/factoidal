@@ -4,6 +4,8 @@ import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.Storage.TermLocalIndex
+import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Crypto.SHA2
@@ -73,10 +75,34 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
                         bytes := indexBytes.size
                         sha256 := indexDigest
                         chunked := some indexChunked })
+          let termIndex ← match format with
+            | .ibk2 => pure none
+            | .ibk3 =>
+                let index : L4Factoidal.Storage.TermLocalIndexWire.Index :=
+                  { targetIBKSha256 := digest
+                    entries := L4Factoidal.Storage.TermLocalIndex.entriesOf block.dict }
+                match L4Factoidal.Storage.TermLocalIndexWire.encode? index with
+                | none => throw <| IO.userError s!"could not encode TLI1 index for {predicate.val}"
+                | some indexBytes =>
+                    let indexName := name ++ ".tli1"
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
+                    let indexDigest := sha256 indexBytes
+                    let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
+                      | some value => pure value
+                      | none => throw <| IO.userError s!"could not commit TLI1 chunks for {predicate.val}"
+                    let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
+                      (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
+                    pure (some
+                      { key := { value := indexName }
+                        bytes := indexBytes.size
+                        sha256 := indexDigest
+                        chunked := some indexChunked })
           let entry : Entry :=
             { predicate
               artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
               subjectIndex
+              termIndex
               rows := block.rows.size
               ordinal }
           publishBlocks format output
@@ -101,7 +127,7 @@ private def publishTriplesAs (format : PublishFormat) (registryVersion : String)
   let published ← publishBlocks format output {} (blocksOfBuckets (addTriples {} triples))
   let entries := published.entriesRev.reverse
   let lines := published.linesRev.reverse
-  let version := match format with | .ibk2 => 2 | .ibk3 => 3
+  let version := match format with | .ibk2 => 2 | .ibk3 => 4
   let manifest : Manifest :=
     { version, sourceIdentity, termRegistryVersion := registryVersion, layout, entries }
   match L4Factoidal.Storage.ShardManifest.encode? manifest with
