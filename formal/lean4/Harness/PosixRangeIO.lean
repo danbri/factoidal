@@ -101,7 +101,10 @@ private def readVerifiedChunks (path : String) (ref : Ref) (leaves : List Digest
       | _, _ => pure none
 
 private def concatChunks (chunks : List ByteArray) : ByteArray :=
-  ByteArray.mk (chunks.flatMap (fun chunk => chunk.data.toList) |>.toArray)
+  /- `fastAppend` is Lean's growing-capacity append intended for repeated
+     assembly. This keeps verified cross-chunk reads packed throughout rather
+     than materializing every chunk as a linked byte list. -/
+  chunks.foldl ByteArray.fastAppend ByteArray.empty
 
 /-- Compatibility helper for one fixed SBM1 chunk. The generic verified-range
     reader below now handles cross-chunk requests; this narrower form remains

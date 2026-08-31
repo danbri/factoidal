@@ -15,7 +15,8 @@ Those slice operations now use `ByteArray.extract` directly:
   full sidecar for every leaf;
 * single-chunk verified reads return the requested interior range directly;
 * multi-chunk and cached multi-chunk readers do the same after verifying the
-  constituent chunks.
+  constituent chunks, assembling them with Lean's growing-capacity
+  `ByteArray.fastAppend` rather than a flattened list of bytes.
 
 This is a **landed Lean executable optimization**, not a new theorem: the
 native `pread` edge remains a harness/host realization outside the pure block
@@ -39,6 +40,6 @@ cd ../..
 bash tools/blockengine-shard-selective-smoke.sh
 ```
 
-Remaining work: `concatChunks` and several storage decoders still use
-`ByteArray → List UInt8`; the broader offset-based decoder refactor remains
-open and must carry its own decode/denotation proof plan.
+Remaining work: several storage decoders still use `ByteArray → List UInt8`;
+the broader offset-based decoder refactor remains open and must carry its own
+decode/denotation proof plan.
