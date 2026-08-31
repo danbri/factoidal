@@ -449,3 +449,15 @@ Peak resident memory fell from about 31.7–31.9 MiB to 17.6–17.7 MiB.  This i
 therefore an explicit memory-footprint win, not a claimed throughput win; the
 next timed optimisation target remains the checked fixed-row loop and
 cryptographic chunk admission.
+
+### W3C disk-path regression gate refreshed (2026-08-31)
+
+`tools/blockengine-ibk3-w3c-disk-query-smoke.sh` was still creating an IBK3
+generation and querying its directory directly.  SBM5 deliberately rejects
+that shape: a query must resolve a `CURRENT` pointer only after full generation
+activation.  The smoke now packs each W3C basic-evaluation fixture into
+`ROOT/first`, activates it, and queries `ROOT`.  It continues to compare a
+matching `spoo-1` result and an empty `bgp-no-match` result against their W3C
+fixture expectations.  The latter has distinct predicates and therefore also
+asserts the SRI2/TLI1 shared-subject physical path before the regular parsed
+SPARQL evaluator confirms its empty answer.
