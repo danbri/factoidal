@@ -146,7 +146,7 @@ def filterTombstoned (baseResults : Graph) (dr : DeltaResolved) : Graph :=
   else baseResults.filter (fun t => !Graph.mem t dr.removed)
 
 def mergeOnRead (baseResults : Graph) (dr : DeltaResolved) (b : PatternBound) : Graph :=
-  filterTombstoned baseResults dr ++ tripleMatchesBound b dr.added
+  Graph.union (filterTombstoned baseResults dr) (tripleMatchesBound b dr.added)
 
 /-- Cheap: proportional to the delta, never touching the base results.
 This is the additive term the overlay's estimate uses. -/
@@ -304,7 +304,7 @@ theorem mergeOnRead_matches_applyEntries (graphKey : Option Iri) (gBase : Graph)
   have hag := applyEntries_stateAgrees graphKey gBase entries gBase deltaResolvedEmpty
                 (stateAgrees_init gBase) t
   unfold mergeOnRead
-  rw [mem_tripleMatchesBound, mem_append, mem_filterTombstoned,
+  rw [mem_tripleMatchesBound, mem_graph_union, mem_filterTombstoned,
       mem_tripleMatchesBound, mem_tripleMatchesBound, hag]
   simp only [composedMem] at *
   cases (foldEntriesForGraph graphKey entries deltaResolvedEmpty).cleared <;>
@@ -396,6 +396,7 @@ addition appears -/
 
 #guard mergeOnRead [t1, t2] (fold [.remove t1 none] none) {} == [t2]
 #guard mergeOnRead [t1] (fold [.add t2 none] none) {} == [t1, t2]
+#guard mergeOnRead [t1] (fold [.add t1 none] none) {} == [t1]
 #guard mergeOnRead [t1] deltaResolvedEmpty {} == [t1]
 
 /-! ### The bound applies to the delta's additions as well as the base -/

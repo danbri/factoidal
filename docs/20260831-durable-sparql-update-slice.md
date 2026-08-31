@@ -82,6 +82,11 @@ additions. A `CLEAR` skips base reads entirely. The smoke test deletes the
 first base row and verifies that a later base row plus a newly inserted row
 still satisfy `LIMIT 2`.
 
+The overlay preserves RDF graph set semantics across the base/delta boundary:
+an `INSERT DATA` of a triple already present in the immutable base does not
+produce a duplicate query row. `mergeOnRead` now performs the Lean graph's
+set-union operation, with a proved membership law and a regression guard.
+
 The first query integration is default graph only. The delta format and update
 translator preserve named-graph targets, but this predicate-local triple store
 does not yet have named-graph manifests or a named-graph query reader; those

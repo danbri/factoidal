@@ -260,6 +260,19 @@ theorem mem_graph_add (q : Triple) (g : Graph) (t : Triple) :
     · simp [Bool.eq_false_iff.mpr he]
   · simp [mem_append, Graph.mem]
 
+/-- Set-union membership.  The executable representation is a list, but this
+    lemma keeps callers from accidentally turning a repeated INSERT into two
+    RDF graph members. -/
+theorem mem_graph_union (g1 g2 : Graph) (t : Triple) :
+    Graph.mem t (Graph.union g1 g2) = (Graph.mem t g1 || Graph.mem t g2) := by
+  induction g2 generalizing g1 with
+  | nil => simp [Graph.union, Graph.mem]
+  | cons hd tl ih =>
+      change Graph.mem t (Graph.union (Graph.add hd g1) tl) =
+        (Graph.mem t g1 || Graph.mem t (hd :: tl))
+      rw [ih, mem_graph_add]
+      simp [Graph.mem, Bool.or_assoc]
+
 theorem mem_graph_remove (q : Triple) (g : Graph) (t : Triple) :
     Graph.mem t (Graph.remove q g) = (Graph.mem t g && !Triple.eqb q t) := by
   induction g with
