@@ -25,7 +25,17 @@ structure PageRef where
   firstKey : List UInt8
   offset : Nat
   length : Nat
-  deriving DecidableEq, Repr
+  deriving DecidableEq
+
+/-- The fixed TLI1 prefix.  A native range reader can obtain this before it
+    fetches the variable-size page directory or any term page. -/
+structure Prefix where
+  targetIBKSha256 : ByteArray
+  termCount : Nat
+  pageCount : Nat
+  directoryBytes : Nat
+  pagesBytes : Nat
+  deriving DecidableEq
 
 structure Index where
   targetIBKSha256 : ByteArray
@@ -41,6 +51,9 @@ private def lessKey : List UInt8 → List UInt8 → Bool
   | [], _ :: _ => true
   | _ :: _, [] => false
   | a :: as, b :: bs => if a < b then true else if a == b then lessKey as bs else false
+
+/-- Canonical byte ordering used by the TLI1 directory and pages. -/
+def keyBefore (left right : List UInt8) : Bool := lessKey left right
 
 private def entryBefore (left right : Entry) : Bool := lessKey left.key right.key
 
@@ -146,6 +159,61 @@ private def canonicalEntries (entries : List Entry) (termCount : Nat) : Bool :=
   entries.all (fun entry => entry.localId < termCount) &&
   (entries.map Entry.localId).eraseDups.length == termCount
 
+/-- Strictly decode just the fixed-length TLI1 header. -/
+def decodePrefix? (bytes : ByteArray) : Option Prefix := do
+  if bytes.size != prefixBytes then none else do
+  let input := listOfByteArray bytes
+  let foundMagic ← readU32LE input 0
+  if foundMagic != magic then none else do
+  let (foundVersion, afterVersion) ← parseU8 (input.drop 4)
+  if foundVersion != version then none else do
+  let (target, afterTarget) ← takeExact 32 afterVersion
+  let termCount ← readU32LE afterTarget 0
+  let foundPageTerms ← readU32LE afterTarget 4
+  let pageCount ← readU32LE afterTarget 8
+  let directoryBytes ← readU32LE afterTarget 12
+  let pagesBytes ← readU32LE afterTarget 16
+  if foundPageTerms.toNat != pageTerms ||
+      pageCount.toNat != (termCount.toNat + pageTerms - 1) / pageTerms then none else
+    some { targetIBKSha256 := byteArrayOfList target, termCount := termCount.toNat,
+           pageCount := pageCount.toNat, directoryBytes := directoryBytes.toNat,
+           pagesBytes := pagesBytes.toNat }
+
+/-- Strictly decode only the variable directory.  Page payloads remain
+    unfetched; offsets are relative to the start of that payload. -/
+def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageRef) := do
+  if bytes.size != header.directoryBytes then none else do
+  let (refs, trailing) ← parseRefs header.pageCount (listOfByteArray bytes) []
+  if !trailing.isEmpty || !refsContiguous refs 0 ||
+      refs.foldl (fun total ref => total + ref.length) 0 != header.pagesBytes then none else
+    some refs
+
+/-- The one candidate page for a canonical term key.  If the key precedes the
+    first directory key, the first page is returned so the caller can prove
+    absence by its ordinary exact lookup. -/
+def pageFor? (refs : List PageRef) (wanted : List UInt8) : Option (Nat × PageRef) :=
+  let rec go : Nat → List PageRef → Option (Nat × PageRef) → Option (Nat × PageRef)
+    | _, [], best => best
+    | ordinal, ref :: rest, best =>
+        if lessKey wanted ref.firstKey then best.getD (ordinal, ref)
+        else go (ordinal + 1) rest (some (ordinal, ref))
+  go 0 refs none
+
+/-- Decode one selected page.  The entry count follows from the header and
+    page ordinal, while canonical in-page ordering and RDF term decoding are
+    checked here.  Cross-page/global permutation checks remain the job of the
+    full `decode?` admission decoder. -/
+def decodePage? (header : Prefix) (ordinal : Nat) (ref : PageRef) (bytes : ByteArray) : Option (Array Entry) := do
+  if ordinal >= header.pageCount || bytes.size != ref.length then none else do
+  let (entries, trailing) ← parseEntries (pageEntryCount header.termCount ordinal) (listOfByteArray bytes) []
+  match entries with
+  | [] => none
+  | first :: _ =>
+      if !trailing.isEmpty || first.key != ref.firstKey ||
+          (entries.toArray.qsort entryBefore).toList != entries ||
+          !entries.all (fun entry => entry.localId < header.termCount) then none else
+        some entries.toArray
+
 def decode? (bytes : ByteArray) : Option Index := do
   let input := listOfByteArray bytes
   let foundMagic ← readU32LE input 0
@@ -186,8 +254,18 @@ private def twoPageBytes : ByteArray := (encode? twoPage).getD ByteArray.empty
 private def corrupt (bytes : ByteArray) : ByteArray :=
   if bytes.size == 0 then bytes else bytes.set! (bytes.size - 1) 0
 private def wrongTarget : Index := { sample with targetIBKSha256 := ByteArray.mk (Array.replicate 32 8) }
+private def samplePageLookup : Option (Option Nat) := do
+  let header ← decodePrefix? (sampleBytes.extract 0 prefixBytes)
+  let refs ← decodeDirectory? header (sampleBytes.extract prefixBytes (prefixBytes + header.directoryBytes))
+  let (ordinal, ref) ← pageFor? refs (serializeTerm (.iri ex))
+  let page ← decodePage? header ordinal ref
+    (sampleBytes.extract (prefixBytes + header.directoryBytes + ref.offset)
+      (prefixBytes + header.directoryBytes + ref.offset + ref.length))
+  some (lookup? page (.iri ex))
 
 #guard decode? sampleBytes == some sample
+#guard (decodePrefix? (sampleBytes.extract 0 prefixBytes)).map Prefix.termCount == some sample.entries.size
+#guard samplePageLookup == some (some 2)
 #guard decode? twoPageBytes == some twoPage
 #guard (decode? (corrupt sampleBytes)).isNone
 #guard decode? ((encode? wrongTarget).getD ByteArray.empty) == some wrongTarget

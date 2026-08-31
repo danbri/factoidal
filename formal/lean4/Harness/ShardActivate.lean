@@ -8,6 +8,8 @@ import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.TermLocalIndexWire
+import L4Factoidal.Storage.TermLocalIndex
+import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.ChunkedArtifact
 
 namespace Harness.ShardActivate
@@ -136,12 +138,15 @@ private def verifyTermIndexes (directory : System.FilePath) : List Entry → IO 
           if !safeLeafKey index.key then pure false else
           try
             let bytes ← IO.FS.readBinFile (directory / index.key.value)
-            match L4Factoidal.Storage.TermLocalIndexWire.decode? bytes with
-            | some decoded =>
-                if decoded.targetIBKSha256 == entry.artifact.sha256 then
+            let primary ← IO.FS.readBinFile (directory / entry.artifact.key.value)
+            match L4Factoidal.Storage.TermLocalIndexWire.decode? bytes,
+                L4Factoidal.Storage.IndexedBlockWireV3.decode primary with
+            | some decoded, some block =>
+                if decoded.targetIBKSha256 == entry.artifact.sha256 &&
+                    decoded.entries == L4Factoidal.Storage.TermLocalIndex.entriesOf block.dict then
                   verifyTermIndexes directory rest
                 else pure false
-            | none => pure false
+            | _, _ => pure false
           catch _ => pure false
 
 /-- SBM3's subject index is part of the generation, not optional query
