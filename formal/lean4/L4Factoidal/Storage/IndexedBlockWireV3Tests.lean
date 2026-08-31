@@ -93,6 +93,7 @@ private def missingPageRejected : Bool :=
 #guard pagePlanWorks
 #guard rangeScan == tripleMatchesBound { p := some pName } names
 #guard missingPageRejected
+#guard (scanRowPrefixPages {} ByteArray.empty ByteArray.empty ByteArray.empty ByteArray.empty []).isNone
 #guard (decode corrupt).isNone
 
 end L4Factoidal.Storage.IndexedBlockWireV3Tests

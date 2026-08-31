@@ -46,9 +46,9 @@ existing Merkle-verified native `pread` boundary.
 
 Empty predicate artifacts are intentionally invalid. A compactor which removes
 the last triple for a predicate must remove that artifact and its manifest
-entry; it must not write an empty IBK3 file. PTD1 bytes are canonical output
-of the current encoder; admission hardening to reject equivalent non-default
-PTD1 page sizes is tracked as follow-up work.
+entry; it must not write an empty IBK3 file. IBK3 accepts only PTD1's declared
+canonical `defaultPageTerms` size, so equivalent alternate page partitions do
+not produce separately accepted IBK3 bytes.
 
 ## Verification
 

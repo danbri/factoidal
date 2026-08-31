@@ -63,6 +63,7 @@ def dictionaryPrefixRange (header : Prefix) : Option ByteRange :=
     declared its page count.  Returned offsets are absolute IBK3 offsets. -/
 def dictionaryDirectoryRange? (header : Prefix) (ptdPrefix : ByteArray) : Option ByteRange := do
   let ptd ← PagedTermDictionary.decodePrefix ptdPrefix
+  if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
   let relative := PagedTermDictionary.directoryRange ptd
   if relative.offset + relative.length > header.dictionaryBytes then none
   else some { offset := (dictionaryRange header).offset + relative.offset, length := relative.length }
@@ -157,6 +158,7 @@ private def termIdsOfRows (rows : List IdTriple) : List Nat :=
 def dictionaryPagesForRowPrefix? (header : Prefix) (ptdPrefix ptdDirectory rowPrefix : ByteArray) :
     Option (List ByteRange) := do
   let ptd ← PagedTermDictionary.decodePrefix ptdPrefix
+  if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
   let directory ← PagedTermDictionary.decodeDirectory? ptd ptdDirectory
   let rows ← decodeRowPrefix? rowPrefix
   let pages ← PagedTermDictionary.pageRangesForTerms? ptd directory (termIdsOfRows rows)
@@ -210,8 +212,9 @@ private def tripleFromDecodedPages? (ptdHeader : PagedTermDictionary.Prefix)
     never reported to a host as an empty query result. -/
 def scanRowPrefixPages (bound : PatternBound) (headerBytes rowPrefix ptdPrefix ptdDirectory : ByteArray)
     (pages : List (ByteRange × ByteArray)) : Option (List Triple) :=
-  match decodePrefix headerBytes, PagedTermDictionary.decodePrefix ptdPrefix with
+  if bound.p.isNone then none else match decodePrefix headerBytes, PagedTermDictionary.decodePrefix ptdPrefix with
   | some header, some ptdHeader =>
+      if ptdHeader.pageTerms != PagedTermDictionary.defaultPageTerms then none else
       match PagedTermDictionary.decodeDirectory? ptdHeader ptdDirectory, decodeRowPrefix? rowPrefix with
       | some directory, some rows =>
           if rowPrefix.size > (rowsRange header).length then none
@@ -237,11 +240,14 @@ def decode (bytes : ByteArray) : Option Block := do
   let rowEnd := rowsStart + header.rowCount * rowBytes
   let dictionaryEnd := rowEnd + header.dictionaryBytes
   if dictionaryEnd + 4 != input.length then none else do
+  let dictionaryBytes := bytes.extract rowEnd dictionaryEnd
+  let ptd ← PagedTermDictionary.decodePrefix (dictionaryBytes.extract 0 PagedTermDictionary.prefixBytes)
+  if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
   let (positioned, rowRest) ← decodeRows header.rowCount (input.drop rowsStart |>.take (rowEnd - rowsStart))
   if !rowRest.isEmpty then none else do
   let rows ← orderedRows? header.rowCount positioned
   if !predicateLocal rows then none else do
-  let dictionary ← PagedTermDictionary.decode? (bytes.extract rowEnd dictionaryEnd)
+  let dictionary ← PagedTermDictionary.decode? dictionaryBytes
   fromParts? dictionary rows
 
 end L4Factoidal.Storage.IndexedBlockWireV3
