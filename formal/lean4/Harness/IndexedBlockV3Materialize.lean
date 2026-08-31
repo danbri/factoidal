@@ -133,8 +133,8 @@ private def subjectIdsViaTli? (directory : System.FilePath) (entry : Entry) (sub
     framing/checksum, and the IBK entry's declared row count. `none` means no
     postings are exposed; a future subject-bound scan must then fail closed or
     use a separately established fallback plan. -/
-def subjectPostings? (directory : System.FilePath) (entry : Entry) :
-    IO (Option (List (Nat × Nat))) := do
+private def subjectPostingsWithCounters? (directory : System.FilePath) (entry : Entry) :
+    IO (Option (List (Nat × Nat) × Counters)) := do
   match entry.subjectIndex with
   | none => pure none
   | some index =>
@@ -152,12 +152,22 @@ def subjectPostings? (directory : System.FilePath) (entry : Entry) :
                 { offset := 0, length := index.bytes }
               match ← readVerifiedRangeCached? path ref leaves cache (ioRange fullRange) with
               | none => pure none
-              | some (bytes, _) =>
+              | some (bytes, footprint) =>
                   if bytes.size != index.bytes ||
                       !L4Factoidal.Storage.BlockArtifact.verify index.sha256 bytes then pure none else
                   match L4Factoidal.Storage.SubjectRowIndexWire.decode bytes with
-                  | some (rows, pairs) => if rows == entry.rows then pure (some pairs) else pure none
+                  | some (rows, pairs) =>
+                      if rows == entry.rows then pure (some (pairs, addRead {} footprint)) else pure none
                   | none => pure none
+
+/-- Compatibility opener for activation's full SRI1 admission. Query paths
+    use the counted variant above so an SRI1 sidecar's full verified read is
+    never omitted from benchmark counters. -/
+def subjectPostings? (directory : System.FilePath) (entry : Entry) :
+    IO (Option (List (Nat × Nat))) := do
+  match ← subjectPostingsWithCounters? directory entry with
+  | some (pairs, _) => pure (some pairs)
+  | none => pure none
 
 /-- Distinct SRI2 page references potentially containing any requested local
     subject ID. `SRI2.pagesFor` intentionally returns more than one page when
@@ -375,8 +385,8 @@ def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
   | some ref =>
       let path := (directory / entry.artifact.key.value).toString
       let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
-      match leaves? ref.chunkCount leafBytes, ← subjectPostings? directory entry with
-      | some leaves, some pairs =>
+      match leaves? ref.chunkCount leafBytes, ← subjectPostingsWithCounters? directory entry with
+      | some leaves, some (pairs, sriCounters) =>
           let cache ← newVerifiedChunkCache
           let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
             { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
@@ -399,7 +409,7 @@ def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
                               let ids := subjects.filterMap (L4Factoidal.Storage.PagedTermDictionary.findTermId? terms) |>.eraseDups
                               let selected := appendSubjectOffsets pairs ids
                               match ← scanSubjectRows path ref leaves cache header terms predicate selected
-                                  (addRead (addRead {} headerFootprint) dictionaryFootprint) with
+                                  (addRead (addRead sriCounters headerFootprint) dictionaryFootprint) with
                               | none => pure none
                               | some (triples, counters) =>
                                   pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
@@ -413,7 +423,7 @@ def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
                           else
                             let ids := indexed.map Prod.snd |>.eraseDups
                             let selected := appendSubjectOffsets pairs ids
-                            let initial := addCounters (addRead {} headerFootprint) indexCounters
+                            let initial := addRead (addCounters sriCounters indexCounters) headerFootprint
                             match ← scanSubjectIdRows path ref leaves cache header selected initial with
                             | none => pure none
                             | some (rows, rowCounters) =>

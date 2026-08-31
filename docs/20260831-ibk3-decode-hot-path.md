@@ -211,9 +211,9 @@ only after that immutable generation has completed activation.
 - **SRI2** — current pageable successor to SRI1. It keeps the same canonical
   postings but has a checksummed prefix and an inclusive subject-range
   directory, so a range reader can fetch only candidate pages without losing a
-  posting list that crosses several page boundaries. It is implemented as a
-  SBM5 commits it with the same artifact, SHA-256 and Merkle discipline as the
-  primary block and TLI1 sidecar.
+  posting list that crosses several page boundaries. SBM5 commits it with the
+  same artifact, SHA-256 and Merkle discipline as the primary block and TLI1
+  sidecar.
 - **TLI1** — term-local-ID index: canonical RDF term bytes to the *target*
   IBK3 local ID, explicitly bound to the target IBK3 SHA-256.
 - **SBM0** — original Shardborough Manifest: immutable artifact listing.
@@ -263,6 +263,14 @@ New IBK3 packs and compacted generations now publish the
 five. SRI2 supplies a Merkle-verified prefix, directory and selected subject
 pages to the parsed two-predicate join; a normal small persistent fixture
 still returns the established 290 rows and the full update/compaction smoke
-tests pass. SRI1/SBM4 remains readable for pre-existing generations. A fresh
-large-fixture measurement is still required before making any I/O-performance
-claim for SRI2.
+tests pass. SRI1/SBM4 remains readable for pre-existing generations.
+
+The fresh 888,949-triple `gene.ttl` stores provide the first like-for-like
+read measurement for the parsed P682-to-P684 join (14 result rows). After
+repairing SRI1 accounting so its full verified sidecar read is no longer
+silently excluded, the preserved SBM4 store reported 470,611 logical bytes
+and 1,337,550 newly fetched bytes. The new SBM5 SRI2 store reported 186,459
+logical bytes and 852,477 newly fetched bytes: reductions of about 60% and
+36% respectively. Both measurements intentionally exclude the small plaintext
+`.merkle` leaf-file reads; they include all Merkle-verified artifact ranges.
+They are single cold-process observations, not wall-clock performance claims.
