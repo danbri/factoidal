@@ -39,10 +39,16 @@ IBK3 header
 The codec now exposes and tests the corresponding `ByteRange` planning APIs.
 It also has a pure range-execution kernel: given an exact row-aligned prefix,
 PTD1 prefix/directory, and only the absolute PTD1 pages named by those rows,
-it reconstructs and filters the same RDF triples as a complete decode.  An
-omitted, mismatched or malformed page fails the scan rather than supplying an
-unrelated term.  The next adapter supplies those ranges through the existing
-Merkle-verified native `pread` boundary.
+it reconstructs and filters the same RDF triples as a complete decode. An
+omitted, mismatched or malformed page returns `none`, not an empty result and
+not an unrelated term. The next adapter supplies those ranges through the
+existing Merkle-verified native `pread` boundary.
+
+Empty predicate artifacts are intentionally invalid. A compactor which removes
+the last triple for a predicate must remove that artifact and its manifest
+entry; it must not write an empty IBK3 file. PTD1 bytes are canonical output
+of the current encoder; admission hardening to reject equivalent non-default
+PTD1 page sizes is tracked as follow-up work.
 
 ## Verification
 
@@ -54,8 +60,9 @@ lake build L4Factoidal
 ```
 
 both passed.  The test guards cover canonical full decode/graph denotation,
-mixed-predicate rejection, corrupted framing rejection, and the row-prefix to
-absolute PTD1 page-range plan plus the pure paged range scan.
+mixed-predicate rejection, corrupted framing rejection, missing-page
+rejection, and the row-prefix to absolute PTD1 page-range plan plus the pure
+paged range scan.
 
 ## Assurance status
 

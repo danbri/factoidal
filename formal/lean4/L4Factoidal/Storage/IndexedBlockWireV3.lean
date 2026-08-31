@@ -188,22 +188,22 @@ private def tripleFromPages? (header : Prefix) (ptdHeader : PagedTermDictionary.
   | _, _ => none
 
 /-- Execute one predicate-bound scan from a row-aligned prefix plus precisely
-    the PTD1 pages it references.  Every supplied page is identified by its
-    absolute canonical IBK3 range; an omitted, mismatched or malformed page
-    rejects the scan rather than substituting an unrelated term.  This is the
-    pure core used by a future Merkle/range host. -/
+    the PTD1 pages it references. Every supplied page is identified by its
+    absolute canonical IBK3 range. An omitted, mismatched, or malformed page,
+    malformed planning input, or overlong row prefix returns `none`: it is
+    never reported to a host as an empty query result. -/
 def scanRowPrefixPages (bound : PatternBound) (headerBytes rowPrefix ptdPrefix ptdDirectory : ByteArray)
-    (pages : List (ByteRange × ByteArray)) : List Triple :=
+    (pages : List (ByteRange × ByteArray)) : Option (List Triple) :=
   match decodePrefix headerBytes, PagedTermDictionary.decodePrefix ptdPrefix with
   | some header, some ptdHeader =>
       match PagedTermDictionary.decodeDirectory? ptdHeader ptdDirectory, decodeRowPrefix? rowPrefix with
       | some directory, some rows =>
-          if rowPrefix.size > (rowsRange header).length then []
+          if rowPrefix.size > (rowsRange header).length then none
           else
-            (rows.filterMap fun row => tripleFromPages? header ptdHeader directory pages row).filter
-              (boundMatches bound)
-      | _, _ => []
-  | _, _ => []
+            let triples := rows.mapM (tripleFromPages? header ptdHeader directory pages)
+            triples.map (fun values => values.filter (boundMatches bound))
+      | _, _ => none
+  | _, _ => none
 
 /-- Complete admission decoder.  PTD1 validates its own canonical page layout
     and CRC; IBK3 validates its enclosing framing, row count/order, and CRC
