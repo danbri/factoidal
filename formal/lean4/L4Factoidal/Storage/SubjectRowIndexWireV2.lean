@@ -273,8 +273,19 @@ private def decodeAllPages : Prefix → List PageRef → List UInt8 → Nat → 
       let decoded ← decodePage? header page ref (bytesOf current)
       decodeAllPages header refs (xs.drop ref.length) (page + 1) (decoded.toList.reverse ++ reversed)
 
+/-- With `pairs.length == rows`, a bounded seen-set establishes that the row
+    offsets are exactly a permutation of `0 .. rows - 1`.  This replaces the
+    quadratic `List.eraseDups` admission check: activation must validate every
+    SRI2 posting, including large predicate artifacts. -/
+private def offsetsPermutationGo : List (Nat × Nat) → Array Bool → Bool
+  | [], _ => true
+  | (_, rowOffset) :: rest, seen =>
+      match seen[rowOffset]? with
+      | some false => offsetsPermutationGo rest (seen.set! rowOffset true)
+      | _ => false
+
 private def offsetsPermutation (pairs : List (Nat × Nat)) (rows : Nat) : Bool :=
-  (pairs.map Prod.snd).eraseDups.length == rows && pairs.all (fun pair => pair.2 < rows)
+  offsetsPermutationGo pairs (Array.replicate rows false)
 
 def decode? (bytes : ByteArray) : Option Index := do
   if bytes.size < prefixBytes + crcBytes then none else do
@@ -310,6 +321,10 @@ private def threePageSample : Index :=
 private def threePageBytes := (encode? threePageSample).getD ByteArray.empty
 private def threePageRefs := (decodePrefix? (threePageBytes.extract 0 prefixBytes)).bind fun header =>
   decodeDirectory? header (threePageBytes.extract prefixBytes (prefixBytes + header.directoryBytes))
+private def duplicateOffsetSample : Index :=
+  { targetIBKSha256 := ByteArray.mk (Array.replicate 32 13), rowCount := 3,
+    pairs := #[(1, 0), (2, 0), (3, 2)] }
+private def duplicateOffsetBytes := (encode? duplicateOffsetSample).getD ByteArray.empty
 
 #guard decode? sampleBytes == some sample
 #guard (decodePrefix? (sampleBytes.extract 0 prefixBytes)).map Prefix.rowCount == some 3
@@ -317,5 +332,6 @@ private def threePageRefs := (decodePrefix? (threePageBytes.extract 0 prefixByte
 #guard multiPageRefs.map (fun refs => (pagesFor refs 7).length) == some 2
 #guard threePageRefs.map (fun refs => (pagesFor refs 512).map Prod.fst) == some [2]
 #guard threePageRefs.map (fun refs => (pagesFor refs 700).length) == some 0
+#guard (decode? duplicateOffsetBytes).isNone
 
 end L4Factoidal.Storage.SubjectRowIndexWireV2

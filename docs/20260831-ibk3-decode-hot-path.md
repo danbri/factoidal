@@ -336,3 +336,26 @@ selective-query route. Full SRI2 admission decoding remains available and
 unchanged; the wire format and its ordering, bounds, and cross-artifact
 activation checks are unchanged. The direct codec build and complete
 persistent IBK3 smoke suite pass.
+
+### Large-generation activation and join profile (2026-08-31)
+
+Profiling full activation of the 888,949-triple SBM5 gene generation exposed
+two publication-time quadratic patterns rather than a query-engine failure:
+
+1. SRI2's complete-admission check used `List.eraseDups` to establish that
+   row offsets formed a permutation. It remained inside the first 759,263-row
+   sidecar after several minutes. It now uses a bounded `Array Bool` seen-set:
+   duplicate or out-of-range offsets are still rejected, while the check is
+   linear in postings plus row count.
+2. fixed-chunk Merkle reconstruction converted the whole artifact to a list
+   for every chunk, and reconstructed a concatenated artifact merely to check
+   chunk lengths. It now uses direct `ByteArray.extract` ranges and a linear
+   canonical-length check. The same width/final-short-chunk contract remains.
+
+After both repairs, the large full activation completed in under roughly 65
+seconds on this MacBook Air (an observed operational bound, not yet a
+repeatable benchmark). The activated, OS-warm parsed P682-to-P684 join then
+returned its established 14 rows in 0.08 seconds with the already recorded
+186,459 logical / 852,477 fetched-byte footprint. This is the first elapsed
+time datapoint for the new route; it is explicitly not a cold-cache or
+cross-version timing comparison.

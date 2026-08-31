@@ -19,22 +19,33 @@ structure Ref where
 def expectedCount (totalBytes chunkBytes : Nat) : Nat :=
   if chunkBytes == 0 then 0 else (totalBytes + chunkBytes - 1) / chunkBytes
 
-/-- Canonical fixed-width chunking. The fuel is exactly the derived count, so
-    the final chunk is short only when the byte length is not a multiple. -/
+/-- Canonical fixed-width chunking directly over byte offsets.  Building a
+    `List UInt8` for every chunk makes full Merkle admission quadratic in the
+    artifact size. The reverse accumulator retains canonical ascending order
+    without repeatedly traversing the source bytes. -/
 def chunksOf (width : Nat) (bytes : ByteArray) : List ByteArray :=
   if width == 0 then []
-  else (List.range (expectedCount bytes.size width)).map fun index =>
-    ByteArray.mk ((bytes.data.toList.drop (index * width)).take width |>.toArray)
+  else
+    let rec go : Nat → Nat → List ByteArray → List ByteArray
+      | 0, _, reversed => reversed.reverse
+      | count + 1, offset, reversed =>
+          let next := min bytes.size (offset + width)
+          go count next (bytes.extract offset next :: reversed)
+    go (expectedCount bytes.size width) 0 []
 
 def valid (ref : Ref) : Bool :=
   ref.totalBytes > 0 && ref.chunkBytes > 0 && ref.root.size == 32 &&
     ref.chunkCount == expectedCount ref.totalBytes ref.chunkBytes
 
+private def canonicalLengths (width : Nat) : List ByteArray → Bool
+  | [] => false
+  | [last] => last.size > 0 && last.size <= width
+  | chunk :: rest => chunk.size == width && canonicalLengths width rest
+
 def fromChunks? (width : Nat) (chunks : List ByteArray) : Option Ref :=
   let totalBytes := chunks.foldl (fun n chunk => n + chunk.size) 0
   let ref : Ref := { totalBytes, chunkBytes := width, chunkCount := chunks.length, root := rootOfChunks chunks }
-  if valid ref && chunks == chunksOf width (chunks.foldl (fun all chunk =>
-      ByteArray.mk ((all.data.toList ++ chunk.data.toList).toArray)) ByteArray.empty)
+  if valid ref && canonicalLengths width chunks
   then some ref else none
 
 def offset? (ref : Ref) (index : Nat) : Option Nat :=
@@ -62,6 +73,7 @@ private def sample : Ref :=
 #guard valid sample
 #guard chunksOf 2 (ByteArray.mk #[1, 2, 3, 4, 5]) == chunks
 #guard (fromChunks? 2 chunks) == some sample
+#guard (fromChunks? 2 [c0, c2, c1]).isNone
 #guard offset? sample 0 == some 0
 #guard offset? sample 2 == some 4
 #guard expectedBytes? sample 2 == some 1
