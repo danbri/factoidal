@@ -16,6 +16,8 @@ def chunksMatchParser (source : String) (chunks : List String) : Bool :=
   | .error _, .error _ => true
   | _, _ => false
 
+def charChunks (source : String) : List String := source.toList.map String.singleton
+
 private def basic : String :=
   "@prefix ex: <http://example.org/> .\nex:s ex:p ex:o .\n"
 #guard chunksMatchParser basic ["@prefix ex: <http://exa", "mple.org/> .\nex:s ex:p ex:o .", "\n"]
@@ -27,6 +29,7 @@ private def lexical : String :=
 #guard chunksMatchParser lexical [
   "PREFIX ex: <http://example.org/>", "\nex:s ex:p \"\"", "\"dot.\n",
   "and []\"\"\" .\n[", "] ex:p ex:o .\n"]
+#guard chunksMatchParser lexical (charChunks lexical)
 
 /- A decimal dot and dots within a prefixed IRI must not become separate
 statements when their following chunks arrive. -/
