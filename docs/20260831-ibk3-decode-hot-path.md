@@ -428,3 +428,24 @@ row-range validation plus cryptographic admission, not a hidden per-row I/O
 or a single-chunk copy.  The small optimisation stays because it removes a
 real allocation from selective reads, but it is not presented as a benchmark
 win.
+
+### Chunkwise scan validation (2026-08-31)
+
+The scan-heavy `COUNT(*)`/`ASK` route previously asked the verified range
+reader for the complete fixed-row extent, then ran the existing bounds and
+uniform-predicate validator over the assembled byte array.  It now admits the
+same chunks individually, carrying at most 15 trailing bytes where a 16-byte
+row crosses a chunk boundary.  Each complete run is still passed to
+`validatedRowPredicate?`; the resulting predicate IDs must agree across all
+chunks, and the final partial suffix must be empty.  Thus it retains the
+existing term-bound, common-predicate, positioned-I/O, and Merkle-proof
+conditions while avoiding an additional whole-row-extent allocation.
+
+The 759,263-row P684 count still returns exactly `759263`, with unchanged
+12,209,178 logical / 12,320,768 fetched-byte accounting.  Its wall time
+remained in the 876.5–882.0 ms range on the local fresh-process warm-cache
+sample, which is statistically consistent with the prior ~0.88 s result.
+Peak resident memory fell from about 31.7–31.9 MiB to 17.6–17.7 MiB.  This is
+therefore an explicit memory-footprint win, not a claimed throughput win; the
+next timed optimisation target remains the checked fixed-row loop and
+cryptographic chunk admission.

@@ -94,6 +94,24 @@ private def readVerifiedChunk? (path : String) (ref : Ref) (leaves : List Digest
       | none => pure none
   | _, _, _ => pure none
 
+/-- Admit one fixed chunk through the same positioned-read and Merkle-proof
+    path as `readVerifiedRangeCached?`.  A cache hit reports zero newly
+    fetched/requested bytes; callers that form a larger logical range account
+    for that range separately.  This primitive is useful for streaming
+    validators which must not first concatenate every touched chunk. -/
+def readVerifiedChunkCached? (path : String) (ref : Ref) (leaves : List Digest)
+    (cache : IO.Ref VerifiedChunkCache) (index : Nat) :
+    IO (Option (ByteArray × VerifiedReadFootprint)) := do
+  match (← cache.get)[index]? with
+  | some (some chunk) =>
+      pure (some (chunk, { requestedBytes := 0, fetchedBytes := 0, chunks := 0 }))
+  | _ =>
+      match ← readVerifiedChunk? path ref leaves index with
+      | none => pure none
+      | some chunk =>
+          cache.modify fun chunks => chunks.set! index (some chunk)
+          pure (some (chunk, { requestedBytes := chunk.size, fetchedBytes := chunk.size, chunks := 1 }))
+
 private def readVerifiedChunks (path : String) (ref : Ref) (leaves : List Digest) :
     List Nat → IO (Option (List ByteArray))
   | [] => pure (some [])
@@ -154,20 +172,13 @@ private def readCachedChunks (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref VerifiedChunkCache) : List Nat → IO (Option (List ByteArray × Nat × Nat))
   | [] => pure (some ([], 0, 0))
   | index :: rest => do
-      match (← cache.get)[index]? with
-      | some (some chunk) =>
+      match ← readVerifiedChunkCached? path ref leaves cache index with
+      | some (chunk, footprint) =>
           match ← readCachedChunks path ref leaves cache rest with
-          | some (chunks, freshChunks, freshBytes) => pure (some (chunk :: chunks, freshChunks, freshBytes))
+          | some (chunks, freshChunks, freshBytes) =>
+              pure (some (chunk :: chunks, freshChunks + footprint.chunks, freshBytes + footprint.fetchedBytes))
           | none => pure none
-      | _ =>
-          match ← readVerifiedChunk? path ref leaves index with
-          | none => pure none
-          | some chunk =>
-              cache.modify fun chunks => chunks.set! index (some chunk)
-              match ← readCachedChunks path ref leaves cache rest with
-              | some (chunks, freshChunks, freshBytes) =>
-                  pure (some (chunk :: chunks, freshChunks + 1, freshBytes + chunk.size))
-              | none => pure none
+      | none => pure none
 
 /-- Cached variant of `readVerifiedRange?`. Cache misses still perform the
     full positioned read and proof check; the returned footprint counts only
