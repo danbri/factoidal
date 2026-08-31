@@ -289,6 +289,14 @@ def serializeLString (s : String) : List UInt8 :=
   let b := bytesOfString s
   writeU32LE (UInt32.ofNat b.length) ++ b
 
+/-- Admission-preserving length-prefixed string encoding. The list-returning
+    compatibility encoder above remains useful for pure legacy code, but a
+    durable DLOG writer must refuse a string whose byte length would truncate
+    in its u32 prefix. -/
+def serializeLString? (s : String) : Option (List UInt8) :=
+  let b := bytesOfString s
+  if b.length >= UInt32.size then none else some (writeU32LE (UInt32.ofNat b.length) ++ b)
+
 def parseU8 (bs : List UInt8) : Option (UInt8 × List UInt8) :=
   match bs with
   | []      => none
@@ -332,6 +340,23 @@ def serializeTerm (t : Term) : List UInt8 :=
          | some tag => (1 : UInt8) :: serializeLString tag))
   | .tripleTerm _ _ _ => [termTagTripleTerm]
 
+/-- Durable delta-term admission. RDF-star triple terms are deliberately
+    refused because the current DLOG reader refuses their tag too; emitting one
+    would otherwise create a committed record that no replay can decode. -/
+def serializeTerm? (t : Term) : Option (List UInt8) :=
+  match t with
+  | .iri i => (serializeLString? i.val).map (termTagIri :: ·)
+  | .bnode b => (serializeLString? b).map (termTagBnode :: ·)
+  | .literal l => do
+      let lexical ← serializeLString? l.val.lexicalForm
+      let datatype ← serializeLString? l.val.datatype.val
+      match l.val.langTag with
+      | none => some (termTagLiteral :: (lexical ++ datatype ++ [(0 : UInt8)]))
+      | some tag => do
+          let language ← serializeLString? tag
+          some (termTagLiteral :: (lexical ++ datatype ++ (1 : UInt8) :: language))
+  | .tripleTerm _ _ _ => none
+
 private def mkLiteral? (lex dt : String) (tag : Option String) : Option Term :=
   if h : isIri dt then
     let l : Literal := { lexicalForm := lex, datatype := ⟨dt, h⟩,
@@ -364,6 +389,11 @@ def serializeSubject (s : Subject) : List UInt8 :=
   | .iri i   => subjTagIri :: serializeLString i.val
   | .bnode b => subjTagBnode :: serializeLString b
 
+def serializeSubject? (s : Subject) : Option (List UInt8) :=
+  match s with
+  | .iri i => (serializeLString? i.val).map (subjTagIri :: ·)
+  | .bnode b => (serializeLString? b).map (subjTagBnode :: ·)
+
 def parseSubject (bs : List UInt8) : Option (Subject × List UInt8) := do
   let (tag, afterTag) ← parseU8 bs
   if tag == subjTagIri then
@@ -376,6 +406,12 @@ def parseSubject (bs : List UInt8) : Option (Subject × List UInt8) := do
 
 def serializeTriple (t : Triple) : List UInt8 :=
   serializeSubject t.s ++ serializeLString t.p.val ++ serializeTerm t.o
+
+def serializeTriple? (t : Triple) : Option (List UInt8) := do
+  let subject ← serializeSubject? t.s
+  let predicate ← serializeLString? t.p.val
+  let object ← serializeTerm? t.o
+  some (subject ++ predicate ++ object)
 
 def parseTriple (bs : List UInt8) : Option (Triple × List UInt8) := do
   let (s, afterS) ← parseSubject bs
@@ -397,6 +433,11 @@ def serializeGraphOpt (g : Option Iri) : List UInt8 :=
   | none   => [(0 : UInt8)]
   | some i => (1 : UInt8) :: serializeLString i
 
+def serializeGraphOpt? (g : Option Iri) : Option (List UInt8) :=
+  match g with
+  | none => some [(0 : UInt8)]
+  | some i => (serializeLString? i).map ((1 : UInt8) :: ·)
+
 def parseGraphOpt (bs : List UInt8) : Option (Option Iri × List UInt8) := do
   let (tag, after) ← parseU8 bs
   if tag == 0 then some (none, after)
@@ -414,6 +455,23 @@ def serializeDeltaEntryPayload (e : DeltaEntry) : List UInt8 :=
   | .clear g    => deTagClear :: serializeGraphOpt g
   | .drop g     => deTagDrop :: serializeLString g
   | .create g   => deTagCreate :: serializeLString g
+
+/-- Admission-preserving payload encoding used by durable DLB1/DLOG writers.
+    Every nested length prefix is checked, and unsupported triple terms are
+    rejected before framing rather than becoming a replay-time parse failure. -/
+def serializeDeltaEntryPayload? (e : DeltaEntry) : Option (List UInt8) :=
+  match e with
+  | .add t g => do
+      let triple ← serializeTriple? t
+      let graph ← serializeGraphOpt? g
+      some (deTagAdd :: (triple ++ graph))
+  | .remove t g => do
+      let triple ← serializeTriple? t
+      let graph ← serializeGraphOpt? g
+      some (deTagRemove :: (triple ++ graph))
+  | .clear g => (serializeGraphOpt? g).map (deTagClear :: ·)
+  | .drop g => (serializeLString? g).map (deTagDrop :: ·)
+  | .create g => (serializeLString? g).map (deTagCreate :: ·)
 
 def parseDeltaEntryPayload (bs : List UInt8) : Option (DeltaEntry × List UInt8) := do
   let (tag, afterTag) ← parseU8 bs
@@ -467,6 +525,9 @@ expected result of a process dying during its final append. -/
 def serializeFramedDeltaEntry (e : DeltaEntry) : List UInt8 :=
   frameEntry (serializeDeltaEntryPayload e)
 
+def serializeFramedDeltaEntry? (e : DeltaEntry) : Option (List UInt8) :=
+  frameEntry <$> serializeDeltaEntryPayload? e
+
 def parseFramedDeltaEntry (bs : List UInt8) : Option (DeltaEntry × List UInt8) := do
   let (payload, rest) ← parseEntry bs
   let (entry, payloadRest) ← parseDeltaEntryPayload payload
@@ -474,8 +535,10 @@ def parseFramedDeltaEntry (bs : List UInt8) : Option (DeltaEntry × List UInt8) 
 
 def serializeDeltaBatchBody? (b : DeltaBatch) : Option (List UInt8) :=
   if !natFitsU64 b.seq || !natFitsU64 b.epoch || b.ops.length >= UInt32.size then none
-  else some (writeU64LE b.seq.toUInt64 ++ writeU64LE b.epoch.toUInt64 ++
-    writeU32LE (UInt32.ofNat b.ops.length) ++ b.ops.flatMap serializeFramedDeltaEntry)
+  else do
+    let entries ← b.ops.mapM serializeFramedDeltaEntry?
+    some (writeU64LE b.seq.toUInt64 ++ writeU64LE b.epoch.toUInt64 ++
+      writeU32LE (UInt32.ofNat b.ops.length) ++ entries.flatten)
 
 def parseNFramedDeltaEntries : Nat → List UInt8 → Option (List DeltaEntry × List UInt8)
   | 0, bs => some ([], bs)

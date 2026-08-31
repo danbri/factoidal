@@ -86,6 +86,10 @@ private def batch : DeltaBatch := {
 #guard serializeLog? [batch] == some (serializeLog [batch])
 #guard (serializeDeltaBatch? { batch with seq := UInt64.size }).isNone
 #guard (serializeLog? [{ batch with epoch := UInt64.size }]).isNone
+-- A currently unsupported RDF-star term is rejected on the durable writer
+-- path rather than emitted as a frame that replay would later refuse.
+#guard (serializeDeltaEntryPayload?
+  (.add ⟨.iri exIri, exP, .tripleTerm (.iri exIri) exP (.iri exIri)⟩ none)).isNone
 #guard parseLog (serializeLog [batch] ++ (serializeDeltaBatch { batch with seq := 8 }).take 11)
   == some ([batch], (serializeDeltaBatch { batch with seq := 8 }).take 11)
 

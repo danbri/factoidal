@@ -56,6 +56,12 @@ callers; `Harness/DeltaLogTool.lean`, the path that appends a real durable log,
 uses only the option-returning functions and reports wire-limit refusal rather
 than silently dropping a batch. Regression guards cover u64 overflow refusal.
 
+The admission chain now continues through `serializeLString?`, subject, term,
+triple, graph-name and delta-payload encoders. This ensures a nested u32 string
+length cannot silently truncate, and that the currently unsupported RDF-star
+triple-term encoding is refused before it can create a DLOG record whose reader
+would reject during replay.
+
 The executable delta and compaction smokes were also rerun: two updates are
 read through the Merkle-verified SPARQL path, compaction publishes and
 activates a new base, and a post-compaction update is written at epoch 2 and
