@@ -523,11 +523,12 @@ IRI/literal object.  These boundaries prevent accidental semantic claims while
 giving the future cost-based planner a verified physical primitive to choose.
 
 The persistent gate additionally checks an absent IRI object stays on the
-OLI2 route and yields zero rows, plus a separate two-row Turtle fixture in
-which `"Alice"` selects `ex:alice` through OLI2/TLI1.  Language-tagged and
-typed literal variants belong in the forthcoming corpus ladder; this confirms
-the base RDF literal representation reaches the physical path rather than
-falling back only because the real binding-site extract has IRI objects.
+OLI2 route and yields zero rows, a separate two-row Turtle fixture in which
+`"Alice"` selects `ex:alice`, and an explicit fixture for `"Alice"@en` plus
+`"42"^^xsd:integer`.  Both richer literal forms resolve through TLI1/OLI2 to
+the expected subject.  The planned corpus ladder still needs their real-world
+frequency and skew distributions; these small fixtures establish only the
+canonical RDF-term identity boundary.
 
 ### Corpus evidence and SBM6 large-pack attempt (2026-08-31)
 

@@ -196,4 +196,21 @@ printf '%s\n' "$literal_object"
 grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$literal_object"
 grep -q 'rows=1' <<<"$literal_object"
 grep -q 'http://example.org/alice' <<<"$literal_object"
+
+typed_root="$run_dir/typed-literal-collection"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$lean_dir/Harness/TestData/object-index-literals.ttl" "$typed_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$typed_root" first >/dev/null
+language_object=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$typed_root" --query \
+  'SELECT ?person WHERE { ?person <http://example.org/label> "Alice"@en . }')
+typed_object=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$typed_root" --query \
+  'SELECT ?person WHERE { ?person <http://example.org/score> "42"^^<http://www.w3.org/2001/XMLSchema#integer> . }')
+printf '%s\n' "$language_object"
+printf '%s\n' "$typed_object"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$language_object"
+grep -q 'rows=1' <<<"$language_object"
+grep -q 'http://example.org/alice' <<<"$language_object"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$typed_object"
+grep -q 'rows=1' <<<"$typed_object"
+grep -q 'http://example.org/bob' <<<"$typed_object"
 echo 'blockengine-ibk3-persistent-smoke=pass'
