@@ -380,3 +380,11 @@ process and 70.19, 70.13, and 70.29 ms / about 10.4 MiB for the following
 processes. `tools/bench_rusage_run.py` now normalizes `ru_maxrss`: macOS
 reports bytes whereas Linux reports KiB, and benchmark JSON records both
 normalized units plus the platform-native source unit.
+
+The same runner also tracks a deliberately different workload: `COUNT(*)` on
+the 759,263-row P684 predicate, exercising the fixed-row scan without the
+sparse subject join. Its first fresh-process local measurement was 895.0 ms /
+31.2 MiB and the following fresh process took 885.6 ms. It reports 12,209,178
+logical and 12,320,768 fetched bytes. Keeping both workloads prevents an
+improvement to the rare-predicate join from being mistaken for improvement to
+the high-cardinality scan path.

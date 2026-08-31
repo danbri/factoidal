@@ -9,7 +9,8 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_dir="$repo_root/formal/lean4"
 store_root=${1:?usage: tools/blockengine-ibk3-query-benchmark.sh ACTIVATED-COLLECTION-ROOT [warm-runs]}
 warm_runs=${2:-3}
-query='PREFIX wdt: <http://www.wikidata.org/prop/direct/> SELECT ?s ?o1 ?o2 WHERE { ?s wdt:P684 ?o1 . ?s wdt:P682 ?o2 }'
+join_query='PREFIX wdt: <http://www.wikidata.org/prop/direct/> SELECT ?s ?o1 ?o2 WHERE { ?s wdt:P684 ?o1 . ?s wdt:P682 ?o2 }'
+count_query='PREFIX wdt: <http://www.wikidata.org/prop/direct/> SELECT (COUNT(*) AS ?c) WHERE { ?s wdt:P684 ?o }'
 runner="$repo_root/tools/bench_rusage_run.py"
 binary="$lean_dir/.lake/build/bin/l4block-id-v3-query"
 run_dir=$(mktemp -d "$repo_root/tmp/blockengine-ibk3-query-benchmark.XXXXXX")
@@ -29,19 +30,32 @@ if ! [[ "$warm_runs" =~ ^[0-9]+$ ]] || (( warm_runs < 1 )); then
 fi
 
 run_one() {
-  local phase=$1
-  local ordinal=$2
-  local stdout="$run_dir/${phase}-${ordinal}.stdout"
-  local stderr="$run_dir/${phase}-${ordinal}.stderr"
+  local workload=$1
+  local phase=$2
+  local ordinal=$3
+  local query=$4
+  local expected_mode=$5
+  local expected_result=$6
+  local stdout="$run_dir/${workload}-${phase}-${ordinal}.stdout"
+  local stderr="$run_dir/${workload}-${phase}-${ordinal}.stderr"
   local metrics
   metrics=$(python3 "$runner" "$stdout" "$stderr" "$binary" "$store_root" --query "$query")
-  grep -q 'open-mode=ibk3-sri2-tli1-subject-join(2)' "$stdout"
-  grep -q 'rows=14' "$stdout"
-  printf '{"benchmark":"ibk3-sri2-gene-p682-p684","phase":"%s","ordinal":%s,"process_model":"fresh-process","cache_note":"OS page cache is not explicitly evicted","metrics":%s}\n' \
-    "$phase" "$ordinal" "$metrics"
+  grep -q "$expected_mode" "$stdout"
+  grep -q "$expected_result" "$stdout"
+  printf '{"benchmark":"%s","phase":"%s","ordinal":%s,"process_model":"fresh-process","cache_note":"OS page cache is not explicitly evicted","metrics":%s}\n' \
+    "$workload" "$phase" "$ordinal" "$metrics"
 }
 
-run_one cold 1
-for ((ordinal = 1; ordinal <= warm_runs; ordinal += 1)); do
-  run_one warm "$ordinal"
-done
+run_workload() {
+  local workload=$1
+  local query=$2
+  local expected_mode=$3
+  local expected_result=$4
+  run_one "$workload" cold 1 "$query" "$expected_mode" "$expected_result"
+  for ((ordinal = 1; ordinal <= warm_runs; ordinal += 1)); do
+    run_one "$workload" warm "$ordinal" "$query" "$expected_mode" "$expected_result"
+  done
+}
+
+run_workload ibk3-sri2-gene-p682-p684 "$join_query" 'open-mode=ibk3-sri2-tli1-subject-join(2)' 'rows=14'
+run_workload ibk3-gene-p684-count "$count_query" 'open-mode=ibk3-paged-merkle-count(1)' '"c", L4Factoidal.RDF.Term.literal ("759263"'
