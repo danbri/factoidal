@@ -418,3 +418,13 @@ machine, not general throughput claims.  Logical/fetched byte counts are
 unchanged.  The next optimisation decision must come from separating
 per-chunk proof work from per-row validation, rather than assuming the
 sidecar join result generalises to full scans.
+
+The range reader also now avoids concatenating a one-chunk range before
+extracting its interior.  The follow-up did **not** move the full P684 count:
+that operator intentionally reads its complete 12-MiB fixed-row range once,
+so it necessarily crosses many chunks and still follows the general assembly
+path.  This is useful negative evidence: its remaining cost is the explicit
+row-range validation plus cryptographic admission, not a hidden per-row I/O
+or a single-chunk copy.  The small optimisation stays because it removes a
+real allocation from selective reads, but it is not presented as a benchmark
+win.

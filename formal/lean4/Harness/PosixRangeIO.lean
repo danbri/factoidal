@@ -139,7 +139,12 @@ def readVerifiedRange? (path : String) (ref : Ref) (leaves : List Digest)
       match ← readVerifiedChunks path ref leaves indices with
       | none => pure none
       | some chunks =>
-          let all := concatChunks chunks
+          /- Most row reads touch one chunk.  Do not copy a full fixed chunk
+             merely to take the requested few bytes from it; concatenate only
+             when an exact range actually crosses a chunk boundary. -/
+          let all := match chunks with
+            | [chunk] => chunk
+            | _ => concatChunks chunks
           let localOffset := range.offset - first * ref.chunkBytes
           if localOffset + range.length <= all.size then
             pure (some (all.extract localOffset (localOffset + range.length)))
@@ -177,7 +182,12 @@ def readVerifiedRangeCached? (path : String) (ref : Ref) (leaves : List Digest)
       match ← readCachedChunks path ref leaves cache indices with
       | none => pure none
       | some (chunks, freshChunks, freshBytes) =>
-          let all := concatChunks chunks
+          /- A cached fixed-row read ordinarily has exactly one chunk.  This
+             branch avoids allocating and copying that whole chunk on every
+             row while retaining the existing general cross-chunk behaviour. -/
+          let all := match chunks with
+            | [chunk] => chunk
+            | _ => concatChunks chunks
           let localOffset := range.offset - first * ref.chunkBytes
           if localOffset + range.length <= all.size then
             let bytes := all.extract localOffset (localOffset + range.length)
