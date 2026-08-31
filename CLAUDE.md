@@ -137,7 +137,10 @@ The two that corrupt files silently:
 Lake project. Every `lake build`, `lake exe`, or `lake env` command must run
 with `formal/lean4/` as its explicit working directory. Repository Git
 commands run at the repository root. Do not combine them in a command which
-depends on a preceding `cd` remaining in effect.
+depends on a preceding `cd` remaining in effect. Never invoke `lake` from the
+repository root: check the current tool call's working directory before every
+Lean command. This was repeatedly missed on 2026-08-31 and produced invalid
+root-level Lake failures.
 4. **Parsers belong in F\*.** RDF format parsers (N-Triples, Turtle,
    N-Quads, TriG, RDF/XML, CSV/TSV results) are F\*-implemented and
    extracted. New parsers MUST be written in F\* first.
