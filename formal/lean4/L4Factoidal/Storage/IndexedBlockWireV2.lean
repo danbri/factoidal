@@ -70,6 +70,93 @@ def planningRange (header : Prefix) : ByteRange :=
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
 
+/-- A bounded cursor over packed IBK2 bytes.  The selective reader uses this
+    rather than converting an entire dictionary, directory, or selected
+    segment into a `List UInt8`.  Variable-width RDF strings are still copied
+    individually for `String.fromUTF8?`, which is the required semantic
+    boundary; block-sized copies are not. -/
+private structure Cursor where
+  bytes : ByteArray
+  pos : Nat
+  limit : Nat
+
+private def Cursor.init (bytes : ByteArray) : Cursor :=
+  { bytes, pos := 0, limit := bytes.size }
+
+private def Cursor.remaining (cursor : Cursor) : Nat := cursor.limit - cursor.pos
+
+private def Cursor.u8 (cursor : Cursor) : Option (UInt8 × Cursor) := do
+  if cursor.pos >= cursor.limit then none
+  else
+    let value ← cursor.bytes[cursor.pos]?
+    some (value, { cursor with pos := cursor.pos + 1 })
+
+private def Cursor.u32le (cursor : Cursor) : Option (UInt32 × Cursor) := do
+  if cursor.remaining < 4 then none
+  else
+    let b0 ← cursor.bytes[cursor.pos]?
+    let b1 ← cursor.bytes[cursor.pos + 1]?
+    let b2 ← cursor.bytes[cursor.pos + 2]?
+    let b3 ← cursor.bytes[cursor.pos + 3]?
+    let value := b0.toUInt32 ||| (b1.toUInt32 <<< 8) |||
+      (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24)
+    some (value, { cursor with pos := cursor.pos + 4 })
+
+private def Cursor.bytesOfLength (cursor : Cursor) (length : Nat) : Option (ByteArray × Cursor) :=
+  if length > cursor.remaining then none
+  else
+    some (cursor.bytes.extract cursor.pos (cursor.pos + length),
+      { cursor with pos := cursor.pos + length })
+
+private def parseLStringCursor (cursor : Cursor) : Option (String × Cursor) := do
+  let (length, afterLength) ← cursor.u32le
+  let (body, rest) ← afterLength.bytesOfLength length.toNat
+  let text ← String.fromUTF8? body
+  some (text, rest)
+
+private def mkLiteralCursor? (lex dt : String) (tag : Option String) : Option Term :=
+  if h : isIri dt then
+    let literal : Literal := { lexicalForm := lex, datatype := ⟨dt, h⟩,
+                               langTag := tag, direction := none }
+    if hw : literalWf literal then some (.literal ⟨literal, hw⟩) else none
+  else none
+
+private def parseTermCursor (cursor : Cursor) : Option (Term × Cursor) := do
+  let (tag, afterTag) ← cursor.u8
+  if tag == termTagIri then
+    let (iri, rest) ← parseLStringCursor afterTag
+    if h : isIri iri then some (.iri ⟨iri, h⟩, rest) else none
+  else if tag == termTagBnode then
+    let (bnode, rest) ← parseLStringCursor afterTag
+    some (.bnode bnode, rest)
+  else if tag == termTagLiteral then
+    let (lexical, afterLexical) ← parseLStringCursor afterTag
+    let (datatype, afterDatatype) ← parseLStringCursor afterLexical
+    let (flag, afterFlag) ← afterDatatype.u8
+    if flag == 0 then
+      (mkLiteralCursor? lexical datatype none).map fun term => (term, afterFlag)
+    else if flag == 1 then do
+      let (language, rest) ← parseLStringCursor afterFlag
+      (mkLiteralCursor? lexical datatype (some language)).map fun term => (term, rest)
+    else none
+  else none
+
+private def decodeTermsCursor : Nat → Cursor → Option (List Term × Cursor)
+  | 0, cursor => some ([], cursor)
+  | count + 1, cursor => do
+      let (term, afterTerm) ← parseTermCursor cursor
+      let (terms, rest) ← decodeTermsCursor count afterTerm
+      some (term :: terms, rest)
+
+private def decodeDirectoryCursor : Nat → Cursor → Option (List DirectoryEntry × Cursor)
+  | 0, cursor => some ([], cursor)
+  | count + 1, cursor => do
+      let (predicate, afterPredicate) ← cursor.u32le
+      let (offset, afterOffset) ← afterPredicate.u32le
+      let (length, afterLength) ← afterOffset.u32le
+      let (entries, rest) ← decodeDirectoryCursor count afterLength
+      some ({ predicate := predicate.toNat, offset := offset.toNat, length := length.toNat } :: entries, rest)
+
 private def encodePositioned (entry : PositionedIdTriple) : List UInt8 :=
   writeU32LE (UInt32.ofNat entry.position) ++
   writeU32LE (UInt32.ofNat entry.row.s) ++ writeU32LE (UInt32.ofNat entry.row.p) ++
@@ -133,17 +220,16 @@ private def decodeDirectory : Nat → List UInt8 → Option (List DirectoryEntry
     a range reader obtains CRC/integrity evidence from its opened artifact
     manifest and verifies every subsequently supplied range before use. -/
 def decodePrefix (bytes : ByteArray) : Option Prefix := do
-  let allBytes := listOfByteArray bytes
-  let foundMagic ← readU32LE allBytes 0
+  let (foundMagic, afterMagic) ← Cursor.init bytes |>.u32le
   if foundMagic != magic then none
   else do
-    let (foundVersion, payloadPrefix) ← parseU8 (allBytes.drop 4)
+    let (foundVersion, payloadPrefix) ← afterMagic.u8
     if foundVersion != version then none
     else do
-      let dictCount ← readU32LE payloadPrefix 0
-      let rowCount ← readU32LE payloadPrefix 4
-      let segmentCount ← readU32LE payloadPrefix 8
-      let dictBytes ← readU32LE payloadPrefix 12
+      let (dictCount, afterDictCount) ← payloadPrefix.u32le
+      let (rowCount, afterRowCount) ← afterDictCount.u32le
+      let (segmentCount, afterSegmentCount) ← afterRowCount.u32le
+      let (dictBytes, _) ← afterSegmentCount.u32le
       some (Prefix.mk dictCount.toNat rowCount.toNat segmentCount.toNat dictBytes.toNat)
 
 private def distinctPredicates : List DirectoryEntry → Bool
@@ -170,12 +256,29 @@ private def decodeDictionaryAndDirectory? (header : Prefix) (dictionaryBytes dir
     Option (Array Term × List DirectoryEntry) := do
   if dictionaryBytes.size != header.dictBytes || directoryBytes.size != header.segmentCount * 12 then none
   else do
-    let (terms, dictRest) ← decodeTerms header.dictCount (listOfByteArray dictionaryBytes)
-    if !dictRest.isEmpty then none
+    let (terms, dictRest) ← decodeTermsCursor header.dictCount (Cursor.init dictionaryBytes)
+    if dictRest.remaining != 0 then none
     else do
-      let (directory, directoryRest) ← decodeDirectory header.segmentCount (listOfByteArray directoryBytes)
-      if !directoryRest.isEmpty || !distinctPredicates directory || !directoryContiguous directory 0 then none
+      let (directory, directoryRest) ← decodeDirectoryCursor header.segmentCount (Cursor.init directoryBytes)
+      if directoryRest.remaining != 0 || !distinctPredicates directory || !directoryContiguous directory 0 then none
       else some (terms.toArray, directory)
+
+private def decodeSegmentRowsCursor (predicate : TermId) : Nat → Cursor → Option (List PositionedIdTriple)
+  | 0, _ => some []
+  | count + 1, cursor => do
+      let (position, afterPosition) ← cursor.u32le
+      let (s, afterS) ← afterPosition.u32le
+      let (p, afterP) ← afterS.u32le
+      let (o, afterO) ← afterP.u32le
+      if p.toNat != predicate then none
+      else do
+        let rows ← decodeSegmentRowsCursor predicate count afterO
+        some ({ position := position.toNat, row := { s := s.toNat, p := p.toNat, o := o.toNat } } :: rows)
+
+private def decodeWholeSegmentCursor (segmentBytes : ByteArray) (entry : DirectoryEntry) : Option (List PositionedIdTriple) :=
+  if entry.length != segmentBytes.size || entry.length % 16 != 0 then none
+  else do
+    decodeSegmentRowsCursor entry.predicate (entry.length / 16) (Cursor.init segmentBytes)
 
 private def decodeSegmentRows (predicate : TermId) : Nat → List UInt8 → Option (List PositionedIdTriple)
   | 0, _ => some []
@@ -284,7 +387,7 @@ def scanPredicateRanges (bound : PatternBound) (headerBytes dictionaryBytes dire
                     directory.find? (fun entry => segmentAreaOffset header + entry.offset == range.offset) with
                 | some predicateId, some entry =>
                     let localEntry := { predicate := predicateId, offset := 0, length := entry.length }
-                    match decodeSegment (listOfByteArray segmentBytes) localEntry with
+                    match decodeWholeSegmentCursor segmentBytes localEntry with
                     | some rows =>
                         (rows.filterMap (fun positioned => decodeTriple? dict positioned.row)).filter (boundMatches bound)
                     | none => []
@@ -313,7 +416,7 @@ def scanPredicateSegmentPrefix (bound : PatternBound) (headerBytes dictionaryByt
                 | none => []
                 | some predicateId =>
                     let entry := { predicate := predicateId, offset := 0, length := segmentPrefix.size }
-                    match decodeSegment (listOfByteArray segmentPrefix) entry with
+                    match decodeWholeSegmentCursor segmentPrefix entry with
                     | some rows =>
                         (rows.filterMap (fun positioned => decodeTriple? dict positioned.row)).filter
                           (boundMatches bound)
