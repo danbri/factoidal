@@ -119,15 +119,23 @@ def decodePrefix (bytes : ByteArray) : Option Prefix := do
   let dictionaryBytes ← readU32LE rest 4
   some { rowCount := rowCount.toNat, dictionaryBytes := dictionaryBytes.toNat }
 
-private def decodeRows : Nat → List UInt8 → Option (List PositionedIdTriple × List UInt8)
-  | 0, bytes => some ([], bytes)
-  | count + 1, bytes => do
+private def decodeRowsGo : Nat → List UInt8 → List PositionedIdTriple →
+    Option (List PositionedIdTriple × List UInt8)
+  | 0, bytes, reversed => some (reversed.reverse, bytes)
+  | count + 1, bytes, reversed => do
       let position ← readU32LE bytes 0
       let s ← readU32LE bytes 4
       let p ← readU32LE bytes 8
       let o ← readU32LE bytes 12
-      let (rows, rest) ← decodeRows count (bytes.drop rowBytes)
-      some ({ position := position.toNat, row := { s := s.toNat, p := p.toNat, o := o.toNat } } :: rows, rest)
+      decodeRowsGo count (bytes.drop rowBytes)
+        ({ position := position.toNat, row := { s := s.toNat, p := p.toNat, o := o.toNat } } :: reversed)
+
+/-- Fixed-width row decoding consumes the byte stream with a reverse
+    accumulator. The final reversal restores wire order once, without a
+    data-sized post-recursion call stack. -/
+private def decodeRows (count : Nat) (bytes : List UInt8) :
+    Option (List PositionedIdTriple × List UInt8) :=
+  decodeRowsGo count bytes []
 
 private def orderedRows? (rowCount : Nat) (rows : List PositionedIdTriple) : Option (Array IdTriple) :=
   let ordered := rows.toArray.qsort (fun left right => left.position < right.position) |>.toList
@@ -171,11 +179,6 @@ def dictionaryPagesForRowPrefix? (header : Prefix) (ptdPrefix ptdDirectory rowPr
 private def lookupPageBytes? (pages : List (ByteRange × ByteArray)) (wanted : ByteRange) : Option ByteArray :=
   (pages.find? fun supplied => supplied.1 == wanted).map Prod.snd
 
-private def termAt? : List Term → Nat → Option Term
-  | [], _ => none
-  | term :: _, 0 => some term
-  | _ :: rest, index + 1 => termAt? rest index
-
 private def pageIndexForAbsolute? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
     (directory : List PagedTermDictionary.PageEntry) (absolute : ByteRange) : Option Nat :=
   (directory.zipIdx.find? fun (entry, index) =>
@@ -184,20 +187,20 @@ private def pageIndexForAbsolute? (header : Prefix) (ptdHeader : PagedTermDictio
 
 private def decodeSuppliedPages? (header : Prefix) (ptdHeader : PagedTermDictionary.Prefix)
     (directory : List PagedTermDictionary.PageEntry) (pages : List (ByteRange × ByteArray)) :
-    Option (List (Nat × List Term)) :=
+    Option (List (Nat × Array Term)) :=
   pages.mapM fun (absolute, pageBytes) => do
     let page ← pageIndexForAbsolute? header ptdHeader directory absolute
-    let terms ← PagedTermDictionary.decodePage? ptdHeader directory page pageBytes
+    let terms ← PagedTermDictionary.decodePageArray? ptdHeader directory page pageBytes
     some (page, terms)
 
 private def termFromDecodedPages? (ptdHeader : PagedTermDictionary.Prefix)
-    (pages : List (Nat × List Term)) (termId : TermId) : Option Term := do
+    (pages : List (Nat × Array Term)) (termId : TermId) : Option Term := do
   let page ← PagedTermDictionary.pageIndex? ptdHeader termId
   let terms ← (pages.find? fun decoded => decoded.1 == page).map Prod.snd
-  termAt? terms (termId % ptdHeader.pageTerms)
+  terms[termId % ptdHeader.pageTerms]?
 
 private def tripleFromDecodedPages? (ptdHeader : PagedTermDictionary.Prefix)
-    (pages : List (Nat × List Term))
+    (pages : List (Nat × Array Term))
     (row : IdTriple) : Option Triple := do
   let subjectTerm ← termFromDecodedPages? ptdHeader pages row.s
   let predicateTerm ← termFromDecodedPages? ptdHeader pages row.p

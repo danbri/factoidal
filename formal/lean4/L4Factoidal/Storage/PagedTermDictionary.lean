@@ -106,13 +106,18 @@ def directoryRange (header : Prefix) : ByteRange :=
 
 def pageAreaOffset (header : Prefix) : Nat := prefixBytes + header.pageCount * 8
 
-private def decodeDirectory : Nat → List UInt8 → Option (List PageEntry × List UInt8)
-  | 0, bytes => some ([], bytes)
-  | count + 1, bytes => do
+private def decodeDirectoryGo : Nat → List UInt8 → List PageEntry →
+    Option (List PageEntry × List UInt8)
+  | 0, bytes, reversed => some (reversed.reverse, bytes)
+  | count + 1, bytes, reversed => do
       let offset ← readU32LE bytes 0
       let length ← readU32LE bytes 4
-      let (entries, rest) ← decodeDirectory count (bytes.drop 8)
-      some ({ offset := offset.toNat, length := length.toNat } :: entries, rest)
+      decodeDirectoryGo count (bytes.drop 8)
+        ({ offset := offset.toNat, length := length.toNat } :: reversed)
+
+private def decodeDirectory (count : Nat) (bytes : List UInt8) :
+    Option (List PageEntry × List UInt8) :=
+  decodeDirectoryGo count bytes []
 
 private def directoryContiguous : List PageEntry → Nat → Bool
   | [], _ => true
@@ -139,8 +144,20 @@ def pageRange? (header : Prefix) (directory : List PageEntry) (termId : Nat) : O
   let entry ← at? directory page
   some { offset := pageAreaOffset header + entry.offset, length := entry.length }
 
-private def appendUnique (seen : List Nat) (value : Nat) : List Nat :=
-  if seen.contains value then seen else seen ++ [value]
+private def distinctPageIdsGo (header : Prefix) : List Nat → Array Bool → List Nat → Option (List Nat)
+  | [], _, reversed => some reversed.reverse
+  | termId :: rest, seen, reversed => do
+      let page ← pageIndex? header termId
+      match seen[page]? with
+      | none => none
+      | some true => distinctPageIdsGo header rest seen reversed
+      | some false => distinctPageIdsGo header rest (seen.set! page true) (page :: reversed)
+
+/-- Page identity is bounded by the dictionary header, so use an indexed
+    seen-set rather than repeatedly scanning the growing output list. The
+    reverse accumulator restores first-term occurrence order exactly. -/
+private def distinctPageIds? (header : Prefix) (termIds : List Nat) : Option (List Nat) :=
+  distinctPageIdsGo header termIds (Array.replicate header.pageCount false) []
 
 /-- Plan the distinct term pages required by a collection of row IDs. Ordering
     follows first occurrence in `termIds`, which makes the host's read trace
@@ -148,31 +165,36 @@ private def appendUnique (seen : List Nat) (value : Nat) : List Nat :=
     twice. -/
 def pageRangesForTerms? (header : Prefix) (directory : List PageEntry)
     (termIds : List Nat) : Option (List ByteRange) := do
-  let pageIds ← termIds.foldl (fun pages termId =>
-    pages.bind fun current => pageIndex? header termId |>.map (appendUnique current)) (some [])
+  let pageIds ← distinctPageIds? header termIds
   pageIds.mapM fun page => do
     let entry ← at? directory page
     some { offset := pageAreaOffset header + entry.offset, length := entry.length }
 
-private def decodeTerms : Nat → List UInt8 → Option (List Term × List UInt8)
-  | 0, bytes => some ([], bytes)
-  | count + 1, bytes => do
+private def decodeTermsGo : Nat → List UInt8 → List Term → Option (List Term × List UInt8)
+  | 0, bytes, reversed => some (reversed.reverse, bytes)
+  | count + 1, bytes, reversed => do
       let (term, afterTerm) ← parseTerm bytes
-      let (terms, rest) ← decodeTerms count afterTerm
-      some (term :: terms, rest)
+      decodeTermsGo count afterTerm (term :: reversed)
+
+private def decodeTerms (count : Nat) (bytes : List UInt8) : Option (List Term × List UInt8) :=
+  decodeTermsGo count bytes []
 
 /-- Full decoding uses the declared page boundaries too, not merely one
     concatenated term stream. That makes malformed page lengths fail at the
     canonical admission boundary before a range reader can rely on them. -/
-private def decodePages? (header : Prefix) : Nat → List PageEntry → List UInt8 → Option (List Term)
-  | _, [], [] => some []
-  | _, [], _ => none
-  | page, entry :: rest, bytes => do
+private def decodePagesGo (header : Prefix) : Nat → List PageEntry → List UInt8 → List Term → Option (List Term)
+  | _, [], [], reversed => some reversed.reverse
+  | _, [], _, _ => none
+  | page, entry :: rest, bytes, reversed => do
       let current := bytes.take entry.length
       let (terms, trailing) ← decodeTerms (pageTermCount header page) current
       if !trailing.isEmpty then none else do
-      let later ← decodePages? header (page + 1) rest (bytes.drop entry.length)
-      some (terms ++ later)
+      let next := terms.foldl (fun acc term => term :: acc) reversed
+      decodePagesGo header (page + 1) rest (bytes.drop entry.length) next
+
+private def decodePages? (header : Prefix) (page : Nat) (directory : List PageEntry)
+    (bytes : List UInt8) : Option (List Term) :=
+  decodePagesGo header page directory bytes []
 
 /- Decode one declared page. The caller supplies exactly the planned page
    range, normally after a Merkle inclusion check. Exposing the decoded page
@@ -183,6 +205,13 @@ def decodePage? (header : Prefix) (directory : List PageEntry) (page : Nat)
   if pageBytes.size != entry.length then none else do
   let (terms, rest) ← decodeTerms (pageTermCount header page) (listOfByteArray pageBytes)
   if !rest.isEmpty then none else some terms
+
+/-- Range execution resolves each page's local IDs many times. Decode once to
+    an array so those local lookups are constant-time. The list decoder remains
+    the canonical public semantic representation. -/
+def decodePageArray? (header : Prefix) (directory : List PageEntry) (page : Nat)
+    (pageBytes : ByteArray) : Option (Array Term) :=
+  (decodePage? header directory page pageBytes).map List.toArray
 
 /-- Decode the one page selected by `termId`. -/
 def decodeTermFromPage? (header : Prefix) (directory : List PageEntry) (termId : Nat)
