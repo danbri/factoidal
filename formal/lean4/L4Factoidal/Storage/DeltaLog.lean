@@ -23,6 +23,7 @@ need.
 -/
 import L4Factoidal.Storage.Bytes
 import L4Factoidal.RDF.Core
+import Init.Omega
 
 namespace L4Factoidal.Storage
 
@@ -121,6 +122,71 @@ def parseEntry (bs : List UInt8) : Option (List UInt8 × List UInt8) :=
 
 /-- The bytes one framed record occupies. -/
 def entryFrameSize (payloadLen : Nat) : Nat := 4 + 4 + 4 + payloadLen + 4
+
+private theorem readEntryVersion (payload rest : List UInt8) :
+    readU32LE (frameEntry payload ++ rest) 4 = some deltaEntryVersion := by
+  unfold frameEntry
+  exact readU32LE_append_writeU32LE (writeU32LE deltaEntryMagic) _ _
+
+private theorem readEntryLength (payload rest : List UInt8) :
+    readU32LE (frameEntry payload ++ rest) 8 = some (UInt32.ofNat payload.length) := by
+  unfold frameEntry
+  exact readU32LE_append_writeU32LE
+    (writeU32LE deltaEntryMagic ++ writeU32LE deltaEntryVersion) _ _
+
+private theorem dropEntryHeader (payload rest : List UInt8) :
+    (frameEntry payload ++ rest).drop 12 =
+      payload ++ writeU32LE (simpleChecksum payload) ++ rest := by
+  simp [frameEntry, writeU32LE, List.append_assoc]
+
+private theorem dropEntryFrame (payload rest : List UInt8) :
+    (frameEntry payload ++ rest).drop (12 + payload.length + 4) = rest := by
+  have hFrame : frameEntry payload ++ rest =
+      (writeU32LE deltaEntryMagic ++ writeU32LE deltaEntryVersion ++
+        writeU32LE (UInt32.ofNat payload.length)) ++
+        (payload ++ writeU32LE (simpleChecksum payload) ++ rest) := by
+    simp [frameEntry, List.append_assoc]
+  rw [hFrame]
+  have hHeaderLength :
+      (writeU32LE deltaEntryMagic ++ writeU32LE deltaEntryVersion ++
+        writeU32LE (UInt32.ofNat payload.length)).length = 12 := by simp
+  rw [show 12 + payload.length + 4 =
+      (writeU32LE deltaEntryMagic ++ writeU32LE deltaEntryVersion ++
+        writeU32LE (UInt32.ofNat payload.length)).length + (payload.length + 4) by
+      rw [hHeaderLength]
+      simp [Nat.add_assoc]]
+  rw [drop_append_length_add]
+  rw [List.append_assoc payload (writeU32LE (simpleChecksum payload)) rest]
+  rw [drop_append_length_add payload (writeU32LE (simpleChecksum payload) ++ rest) 4]
+  simpa using drop_append_length_add (writeU32LE (simpleChecksum payload)) rest 0
+
+/-- A well-sized DLE1 payload parses back to itself and leaves a following
+    record untouched. The size premise is material: a u32 length field cannot
+    faithfully represent an arbitrarily large Lean list. -/
+theorem parseEntry_frameEntry_append (payload rest : List UInt8)
+    (hSize : payload.length < UInt32.size) :
+    parseEntry (frameEntry payload ++ rest) = some (payload, rest) := by
+  unfold parseEntry
+  rw [show readU32LE (frameEntry payload ++ rest) 0 = some deltaEntryMagic by
+    unfold frameEntry
+    exact readU32LE_writeU32LE_append _ _]
+  rw [readEntryVersion, readEntryLength]
+  simp
+  rw [dropEntryHeader, Nat.mod_eq_of_lt hSize]
+  constructor
+  · apply Nat.min_eq_left
+    have hFrameLength : (frameEntry payload).length = 16 + payload.length := by
+      simp [frameEntry]
+      omega
+    rw [hFrameLength]
+    apply Nat.le_sub_of_add_le
+    calc
+      payload.length + 12 ≤ payload.length + 16 :=
+        Nat.add_le_add_left (by decide) _
+      _ = 16 + payload.length := Nat.add_comm _ _
+      _ ≤ (16 + payload.length) + rest.length := Nat.le_add_right _ _
+  · rw [readU32LE_append_writeU32LE payload (simpleChecksum payload) rest]
+    simp [dropEntryFrame]
 
 /-- Replay a log: read records until one fails, returning the payloads
     recovered and whether the log ended CLEANLY.

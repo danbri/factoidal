@@ -74,6 +74,24 @@ def readU32LE (bs : List UInt8) (pos : Nat) : Option UInt32 :=
 def writeU32LE (n : UInt32) : List UInt8 :=
   [n.toUInt8, (n >>> 8).toUInt8, (n >>> 16).toUInt8, (n >>> 24).toUInt8]
 
+@[simp] theorem writeU32LE_length (n : UInt32) : (writeU32LE n).length = 4 := by
+  simp [writeU32LE]
+
+/-- A natural number below the u32 format limit is not truncated by the
+    little-endian field representation. -/
+theorem u32_toNat_ofNat_of_lt {n : Nat} (h : n < UInt32.size) :
+    (UInt32.ofNat n).toNat = n := UInt32.toNat_ofNat_of_lt h
+
+/-- Dropping a known prefix plus `n` bytes from an appended byte stream is the
+    same as dropping `n` bytes from the suffix. This is the list counterpart
+    to a framed decoder advancing its cursor by a fixed header. -/
+theorem drop_append_length_add (pre tail : List UInt8) (n : Nat) :
+    (pre ++ tail).drop (pre.length + n) = tail.drop n := by
+  induction pre with
+  | nil => simp
+  | cons byte pre ih =>
+      simpa [Nat.succ_add] using ih
+
 /-- The fixed-width little-endian primitive is an inverse even when followed
     by arbitrary later input. This is the base lemma for every framed storage
     object: a parser must consume its own four-byte field and leave the tail
