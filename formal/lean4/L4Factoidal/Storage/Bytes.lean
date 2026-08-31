@@ -19,6 +19,8 @@ storage format whose decode does not invert its encode loses data
 silently.
 -/
 
+import Std.Tactic.BVDecide
+
 namespace L4Factoidal.Storage
 
 /-- VByte: 7 bits per byte, the high bit marking the LAST byte.
@@ -71,6 +73,21 @@ def readU32LE (bs : List UInt8) (pos : Nat) : Option UInt32 :=
 /-- Little-endian 32-bit write. -/
 def writeU32LE (n : UInt32) : List UInt8 :=
   [n.toUInt8, (n >>> 8).toUInt8, (n >>> 16).toUInt8, (n >>> 24).toUInt8]
+
+/-- The fixed-width little-endian primitive is an inverse even when followed
+    by arbitrary later input. This is the base lemma for every framed storage
+    object: a parser must consume its own four-byte field and leave the tail
+    untouched. -/
+theorem readU32LE_writeU32LE_append (n : UInt32) (rest : List UInt8) :
+    readU32LE (writeU32LE n ++ rest) 0 = some n := by
+  simp [readU32LE, writeU32LE]
+  bv_decide
+
+/-- A fixed-width field remains readable after arbitrary preceding framing. -/
+theorem readU32LE_append_writeU32LE (pre : List UInt8) (n : UInt32) (rest : List UInt8) :
+    readU32LE (pre ++ writeU32LE n ++ rest) pre.length = some n := by
+  simp [readU32LE, writeU32LE]
+  bv_decide
 
 /-- CRC8 with the HDT polynomial, one step.
 
