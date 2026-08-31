@@ -123,6 +123,61 @@ scope, source trust, time/version, and explanation.  Physical partitioning
 should retain the relevant declaration and supporting neighbourhood together
 where practical, but never detach it and then claim unconditional identity.
 
+### Inverse-functional identity-key candidates
+
+An especially common and useful reconciliation case, proposed by **Dan
+Brickley** in the 2026-08-31 Factoidal working session, is a blank-node entity
+with a value of a property accepted as an `owl:InverseFunctionalProperty`
+under a named trust/profile boundary.  For example, if the trusted profile
+accepts `un-blablah:countryCode` as inverse-functional, occurrences of:
+
+```text
+_:x un-blablah:countryCode "FR"
+_:y un-blablah:countryCode "FR"
+```
+
+are evidence that `_:x` and `_:y` denote the same entity *under that profile*.
+The physical engine can exploit this as an **identity-key candidate**:
+
+```text
+profile / trust / version
+    + predicate canonical identity
+    + RDF-term-identity of object value
+    -> derived reconciliation key
+```
+
+This is deliberately not the raw blank-node label, a universally valid
+Skolem IRI, or an unconditional global `sameAs` assertion.  Its scope must
+record at least the accepted IFP declaration, source/trust policy, RDF-term
+identity version, observation/derivation time, conflict policy, and an
+artifact/evidence reference.  Multiple candidate keys, contradictory claims,
+or an untrusted declaration must remain visible rather than forcing a merge.
+
+Within such an explicit profile, the key can reduce cross-block and
+cross-repository reconciliation cost: a compact local ID can be translated to
+a deterministic profile-scoped key, then to a query-local join ID.  That can
+help sort, co-locate, cache and merge derived working-set blocks without
+changing what the source RDF graph says.  A downstream asserted identity or
+Skolemization is a separate, provenance-bearing derivation.
+
+The next block manifest should therefore allow a compact *advisory* identity
+profile reference on a predicate-local artifact, for example:
+
+```text
+predicate: un-blablah:countryCode
+identity-key-profile: ifp/profile-17@2026-08
+object-term-identity: rdf12-term-id-v1
+```
+
+It need not make raw IBK row bytes semantically depend on OWL.  An IBK2 block
+format can contain several predicate segments, but the current Shardborough
+publisher emits predicate-local artifacts.  That makes the manifest-level
+profile reference natural: it is an optional planning/reconciliation
+certificate for a known predicate, independently checked before use.  A
+future multi-predicate block can carry the same information per segment or in
+its containing manifest; a single anonymous "IFP bit" on arbitrary block
+bytes would be too ambiguous about predicate, scope and authority.
+
 Duplication is permitted at the physical/evidence level when it improves
 locality: a context quad or entity neighbourhood can be present in several
 derived blocks.  Canonical assertion identity and artifact provenance ensure
