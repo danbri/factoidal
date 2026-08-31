@@ -52,3 +52,20 @@ denotation-preservation test exists.
 
 This gives a concrete, measured direction for lowering cold small-limit I/O
 without introducing a separate Rust engine or backend-specific RDF model.
+
+## Measured projection on the gene corpus
+
+The new `l4block-paged-dictionary-probe` fully opens an existing IBK2 artifact
+only to make a fair offline comparison, then reports what PTD1 would need for
+the first N ID rows. It is now part of
+`tools/blockengine-gene-shard-benchmark.sh`; it does not change that
+benchmark's published artifacts.
+
+For the 18,890-row P1057 artifact (1,196,216 IBK2 bytes), the first five rows
+refer to 15 IDs which fall in a single 256-term PTD1 page. Its full dictionary
+would be 894,584 PTD1 bytes, but its directory plus required page is only
+12,121 bytes (641 bytes of planning plus 11,480 bytes of term page). The
+second 6,168-row P1057 artifact similarly projects to 11,855 bytes. A future
+IBK3 query will additionally need the row-prefix read and fixed Merkle chunks,
+so these figures are deliberately **dictionary-only projections**, not an
+end-to-end latency or I/O claim.

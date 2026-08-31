@@ -176,6 +176,7 @@ extern_lib libl4blockhost pkg := do
 @[default_target] lean_exe «l4block-id-v2-file-query» where root := `Harness.IndexedBlockV2FileQuery
 @[default_target] lean_exe «l4block-id-v2-range-plan» where root := `Harness.IndexedBlockV2RangePlan
 @[default_target] lean_exe «l4block-id-v2-pread» where root := `Harness.IndexedBlockV2Pread
+@[default_target] lean_exe «l4block-paged-dictionary-probe» where root := `Harness.PagedDictionaryProbe
 @[default_target] lean_exe «l4block-shard-merkle-pread» where root := `Harness.ShardMerklePread
 @[default_target] lean_exe «l4block-shard-merkle-scan» where root := `Harness.ShardMerkleScan
 @[default_target] lean_exe «l4block-shard-merkle-query» where root := `Harness.ShardMerkleQuery

@@ -25,7 +25,22 @@ row_count=$(awk 'NR > 1 { n += $4 } END { print n + 0 }' "$store_dir/manifest.ts
 query='SELECT ?gene ?chrom WHERE { ?gene <http://www.wikidata.org/prop/direct/P1057> ?chrom } LIMIT 5'
 query_output=$("$lean_dir/.lake/build/bin/l4block-shard-merkle-query" "$store_dir" --query "$query")
 printf '%s\n' "$query_output"
-grep -q 'open-mode=predicate-selective-merkle(1)' <<<"$query_output"
+grep -q 'open-mode=predicate-selective-merkle-limit-prefix(1)' <<<"$query_output"
 grep -q 'rows=5' <<<"$query_output"
+
+# Measure the next-format opportunity against the exact P1057 blocks emitted
+# by this run. This does not alter the published IBK2 collection.
+p1057_artifacts=$(awk -F '\t' 'NR > 1 && $2 == "http://www.wikidata.org/prop/direct/P1057" { print $3 }' "$store_dir/manifest.tsv")
+if [[ -z "$p1057_artifacts" ]]; then
+  echo "missing P1057 artifacts in generated store" >&2
+  exit 1
+fi
+while IFS= read -r artifact; do
+  probe_output=$("$lean_dir/.lake/build/bin/l4block-paged-dictionary-probe" "$store_dir/$artifact" 5)
+  printf '%s\n' "$probe_output"
+  grep -q 'rows-sampled=5' <<<"$probe_output"
+  grep -q 'pages=' <<<"$probe_output"
+done <<<"$p1057_artifacts"
+
 printf 'blockengine-gene-shard-benchmark=pass triples=%s blocks=%s pack-seconds=%s\n' \
   "$row_count" "$block_count" "$pack_seconds"
