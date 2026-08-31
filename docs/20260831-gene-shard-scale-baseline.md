@@ -17,8 +17,9 @@ l4block-shard-pack gene.ttl STORE
 ```
 
 The committed SBM2 store contains 888,949 triples in 13 immutable IBK2
-artifacts (24,921,609 IBK2 bytes before Merkle sidecars).  This is the
-largest current direct run of the streaming shard publisher.
+artifacts (24,921,609 IBK2 bytes before Merkle sidecars).  The reproducible
+native gate recorded 72 seconds (about 12.4k triples/s) for this pack.  This
+is the largest current direct run of the streaming shard publisher.
 
 ## What it establishes
 
@@ -63,8 +64,19 @@ that.
 
 ## Next scale increment
 
-Design and test an IBK3-style block layout with a separate dictionary region
-or stable external term-ID dictionary plus row segment.  Preserve the IBK2
-denotation and manifest/Merkle admission boundary, then benchmark the same
-`P684 LIMIT 10` query.  This is a more useful next step than downloading a
-multi-gigabyte YAGO dump before the dictionary-read amplification is fixed.
+The repository already has the relevant landed component:
+`L4Factoidal.Storage.PagedTermDictionary` (`PTD1`).  It retains exactly the
+same per-block array-index meaning as `IndexedBlock.Block.dict`, but stores a
+small directory and 256-term pages.  The diagnostic executable measured the
+first ten rows of the first P684 artifact as:
+
+```text
+current IBK2 logical read: 1,548,846 bytes
+PTD1 directory + needed pages: 12,559 bytes
+```
+
+The next increment is therefore to integrate PTD1 into an IBK3-style block
+layout with the existing row-segment layout, preserving the IBK2 denotation
+and manifest/Merkle admission boundary.  Then benchmark the same `P684 LIMIT
+10` query.  This is more useful than downloading a multi-gigabyte YAGO dump
+before dictionary-read amplification is fixed.
