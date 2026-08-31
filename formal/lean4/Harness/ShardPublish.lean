@@ -3,6 +3,7 @@
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV3
+import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Crypto.SHA2
@@ -52,9 +53,30 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
           let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
           let proofBytes := ByteArray.mk (leaves.flatMap (fun value => value.data.toList) |>.toArray)
           IO.FS.writeBinFile (output ++ "/" ++ name ++ ".merkle") proofBytes
+          let subjectIndex ← match format with
+            | .ibk2 => pure none
+            | .ibk3 =>
+                match L4Factoidal.Storage.SubjectRowIndexWire.encode? block.rows with
+                | none => throw <| IO.userError s!"could not encode SRI1 index for {predicate.val}"
+                | some indexBytes =>
+                    let indexName := name ++ ".sri1"
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
+                    let indexDigest := sha256 indexBytes
+                    let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
+                      | some value => pure value
+                      | none => throw <| IO.userError s!"could not commit SRI1 chunks for {predicate.val}"
+                    let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
+                      (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
+                    pure (some
+                      { key := { value := indexName }
+                        bytes := indexBytes.size
+                        sha256 := indexDigest
+                        chunked := some indexChunked })
           let entry : Entry :=
             { predicate
               artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
+              subjectIndex
               rows := block.rows.size
               ordinal }
           publishBlocks format output
@@ -79,8 +101,9 @@ private def publishTriplesAs (format : PublishFormat) (registryVersion : String)
   let published ← publishBlocks format output {} (blocksOfBuckets (addTriples {} triples))
   let entries := published.entriesRev.reverse
   let lines := published.linesRev.reverse
+  let version := match format with | .ibk2 => 2 | .ibk3 => 3
   let manifest : Manifest :=
-    { version := 2, sourceIdentity, termRegistryVersion := registryVersion, layout, entries }
+    { version, sourceIdentity, termRegistryVersion := registryVersion, layout, entries }
   match L4Factoidal.Storage.ShardManifest.encode? manifest with
   | none => throw <| IO.userError "could not encode structurally valid SBM2 manifest"
   | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
