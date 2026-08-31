@@ -20,5 +20,14 @@ Merkle/paged scanner returned ten rows from each artifact, confirming that the
 direct publisher's output—not only the IBK2-to-IBK3 migration tool—is usable
 by the range host.
 
-The next ingestion benchmark remains the substantially larger `gene.ttl`
-corpus, using this direct path rather than the migration shortcut.
+The direct `gene.ttl` exercise has now published all 888,949 triples. Since
+the packer flushes bounded input batches, this yielded 13 artifacts and split
+the 759,263 P684 triples across five IBK3 artifacts. This is an intentional
+multi-entry SBM2 shape, not duplicate data: its total manifest row count is
+the source triple count.
+
+`l4block-id-v3-merkle-scan` currently demonstrates one manifest entry at a
+time, so its ten-row P684 result is a valid bounded read of the first matching
+artifact, not yet an all-five-artifact SPARQL scan. The next host increment is
+manifest-order `selectAll` traversal with a global limit and accumulated I/O
+evidence.
