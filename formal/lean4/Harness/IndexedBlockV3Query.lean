@@ -28,6 +28,7 @@ private def readOpsOf (triples : List Triple) : BackendReadOps :=
 
 private def isIbk3Layout (layout : String) : Bool :=
   layout == "predicate-ibk3-ptd1-merkle-v0" ||
+    layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1"
 
 /-- A physically safe bounded-prefix shape. Subject/object must be distinct

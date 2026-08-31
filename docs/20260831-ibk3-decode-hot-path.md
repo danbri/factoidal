@@ -78,6 +78,15 @@ a separate immutable object at this stage. A host must validate the selected
 IBK row's subject ID before using a posting, because SRI1 by itself cannot
 prove a cross-object relationship.
 
+SBM3 now commits that SRI1 object as a second `ArtifactRef` in each entry.
+The streaming `l4block-shard-pack INPUT OUTPUT ibk3` publisher writes
+`predicate-N.ibk3.sri1` and its Merkle leaves before writing its version-three
+manifest. On 2026-08-31, a fresh store packed from the checked-in W3C
+`sparql10/basic/data-6.ttl` fixture contained the IBK3 file, its Merkle leaves,
+the SRI1 file, its Merkle leaves, and `manifest.sbm2`; parsed SPARQL over the
+new store returned the two expected `:p1` rows. Existing IBK3/SBM2 stores
+remain readable.
+
 ## Verification
 
 ```text

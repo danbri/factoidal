@@ -4,6 +4,7 @@
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV3
+import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Syntax.Turtle
@@ -37,7 +38,7 @@ private def artifactName : PackFormat → Nat → String
 
 private def layoutName : PackFormat → String
   | .ibk2 => "predicate-ibk2-merkle-v2-streaming"
-  | .ibk3 => "predicate-ibk3-ptd1-merkle-v0"
+  | .ibk3 => "predicate-ibk3-ptd1-sri1-merkle-v0"
 
 private def registryVersion : PackFormat → String
   | .ibk2 => "local-ibk2-dict-v0"
@@ -46,6 +47,15 @@ private def registryVersion : PackFormat → String
 private def encodeBlock? : PackFormat → L4Factoidal.Storage.IndexedBlock.Block → Option ByteArray
   | .ibk2, block => L4Factoidal.Storage.IndexedBlockWireV2.encode? block
   | .ibk3, block => L4Factoidal.Storage.IndexedBlockWireV3.encode? block
+
+private def writeMerkle (path : String) (bytes : ByteArray) : IO Unit := do
+  let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
+  let proofBytes := ByteArray.mk (leaves.flatMap (fun value => value.data.toList) |>.toArray)
+  IO.FS.writeBinFile (path ++ ".merkle") proofBytes
+
+private def artifactRef? (name : String) (bytes : ByteArray) : Option ArtifactRef := do
+  let chunked ← fromChunks? chunkBytes (chunksOf chunkBytes bytes)
+  some { key := { value := name }, bytes := bytes.size, sha256 := sha256 bytes, chunked := some chunked }
 
 /-- Bounded first-pass information needed to preserve the reference packer's
     generated-blank-node and source-identity contracts. -/
@@ -98,23 +108,34 @@ private def publishBlocks (format : PackFormat) (output : String) : PackState �
           let ordinal := state.nextOrdinal
           let name := artifactName format ordinal
           IO.FS.writeBinFile (output ++ "/" ++ name) bytes
-          let digest := sha256 bytes
-          let chunked ← match fromChunks? chunkBytes (chunksOf chunkBytes bytes) with
+          let artifact ← match artifactRef? name bytes with
             | some value => pure value
             | none => throw <| IO.userError s!"could not commit fixed chunks for {predicate.val}"
-          let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
-          let proofBytes := ByteArray.mk (leaves.flatMap (fun value => value.data.toList) |>.toArray)
-          IO.FS.writeBinFile (output ++ "/" ++ name ++ ".merkle") proofBytes
+          writeMerkle (output ++ "/" ++ name) bytes
+          let subjectIndex ← match format with
+            | .ibk2 => pure none
+            | .ibk3 =>
+                match L4Factoidal.Storage.SubjectRowIndexWire.encode? block.rows with
+                | none => throw <| IO.userError s!"could not encode SRI1 index for {predicate.val}"
+                | some indexBytes =>
+                    let indexName := name ++ ".sri1"
+                    IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
+                    writeMerkle (output ++ "/" ++ indexName) indexBytes
+                    match artifactRef? indexName indexBytes with
+                    | some value => pure (some value)
+                    | none => throw <| IO.userError s!"could not commit SRI1 chunks for {predicate.val}"
           let entry : Entry :=
             { predicate
-              artifact := { key := { value := name }, bytes := bytes.size, sha256 := digest, chunked := some chunked }
+              artifact
+              subjectIndex
               rows := block.rows.size
               ordinal }
+          let indexName := subjectIndex.map (fun index => index.key.value) |>.getD ""
           publishBlocks format output
             { tripleCount := state.tripleCount + block.rows.size
               nextOrdinal := ordinal + 1
               entriesRev := entry :: state.entriesRev
-              linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex digest}\t{name}.merkle" :: state.linesRev }
+              linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{indexName}" :: state.linesRev }
             rest
 
 /-- Commit all complete statements seen since the prior decoded input chunk.
@@ -177,15 +198,16 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
     let entries := published.entriesRev.reverse
     let lines := published.linesRev.reverse
     let manifest : Manifest :=
-      { version := 2, sourceIdentity := prepass.sourceIdentity,
+      { version := (match format with | .ibk2 => 2 | .ibk3 => 3), sourceIdentity := prepass.sourceIdentity,
         termRegistryVersion := registryVersion format,
         layout := layoutName format, entries }
     match L4Factoidal.Storage.ShardManifest.encode? manifest with
     | none => throw <| IO.userError "could not encode structurally valid SBM2 manifest"
     | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
     IO.FS.writeFile (output ++ "/manifest.tsv")
-      ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\n" ++ String.intercalate "\n" lines ++ "\n")
-    IO.println s!"l4block-shard-pack format={layoutName format} input={input} triples={published.tripleCount} blocks={entries.length} output={output} manifest=manifest.sbm2 chunk-bytes={chunkBytes}"
+      ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tsubject-index\n" ++ String.intercalate "\n" lines ++ "\n")
+    let manifestVersion := match format with | .ibk2 => 2 | .ibk3 => 3
+    IO.println s!"l4block-shard-pack format={layoutName format} input={input} triples={published.tripleCount} blocks={entries.length} output={output} manifest=manifest.sbm2 wire-version={manifestVersion} chunk-bytes={chunkBytes}"
     return 0
   catch error =>
     IO.eprintln s!"l4block-shard-pack failure: {error}"
