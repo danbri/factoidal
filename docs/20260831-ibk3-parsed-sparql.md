@@ -51,6 +51,11 @@ epoch 1. A subsequent parsed query for the inserted P31 object reported
 rejects update forms which require WHERE evaluation or fresh blank-node
 allocation; those remain the next explicitly scoped update extensions.
 
+The reciprocal `DELETE DATA` then committed a second clean batch. Re-running
+the same query reported `delta=base-plus-delta` and zero rows; DLOG inspection
+reported two committed batches with no torn suffix. This confirms both delta
+addition and tombstone replay against the IBK3 immutable base.
+
 ## Safe parsed LIMIT pushdown
 
 The parsed-query host recognizes a deliberately narrow prefix-safe case: one
