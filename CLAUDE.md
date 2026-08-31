@@ -133,6 +133,11 @@ The two that corrupt files silently:
    issue, or a (b)-realisation carrying semantic/planning/byte-layout
    logic that belongs in F\*, is a violation. (Audit: `docs/designissues/
    fstar-ocaml-boundary-audit.md`.)
+**Lean Lake working directory.** `formal/lean4/` is the self-contained
+Lake project. Every `lake build`, `lake exe`, or `lake env` command must run
+with `formal/lean4/` as its explicit working directory. Repository Git
+commands run at the repository root. Do not combine them in a command which
+depends on a preceding `cd` remaining in effect.
 4. **Parsers belong in F\*.** RDF format parsers (N-Triples, Turtle,
    N-Quads, TriG, RDF/XML, CSV/TSV results) are F\*-implemented and
    extracted. New parsers MUST be written in F\* first.

@@ -61,6 +61,13 @@ Measured 2026-08-22, late: the library has zero `sorry`, zero user `axiom`, zero
 
 ## Build, test, demo
 
+- **Working-directory invariant (paid for repeatedly):** `lake` discovers its
+  project from the current directory; for this repository every `lake build`,
+  `lake exe`, or `lake env` invocation must use `formal/lean4/` as its explicit
+  working directory. Git/status/commit/push commands belong at the repository
+  root. Do not combine a `lake` command and repository-root Git command in one
+  shell invocation and assume a prior `cd` still applies; use separate tool
+  calls or set the working directory explicitly for each.
 - `cd formal/lean4 && lake build` — this IS the test run and the
   proof check: `#guard` expressions evaluate during elaboration, so a
   wrong answer is a build error; every theorem is kernel-rechecked.
