@@ -50,3 +50,17 @@ epoch 1. A subsequent parsed query for the inserted P31 object reported
 `delta=base-plus-delta` and returned the inserted subject. The writer still
 rejects update forms which require WHERE evaluation or fresh blank-node
 allocation; those remain the next explicitly scoped update extensions.
+
+## Safe parsed LIMIT pushdown
+
+The parsed-query host recognizes a deliberately narrow prefix-safe case: one
+triple pattern, a constant predicate, distinct unbound subject/object
+variables, `LIMIT`, and no live delta. Constants, repeated variables, and
+non-empty deltas fall back to full selected-artifact materialisation, because
+an earlier physical row may not satisfy those patterns.
+
+On the five-artifact, 759,263-row P684 collection, ordinary parsed SPARQL
+`SELECT ?s ?o { ?s wdt:P684 ?o } LIMIT 10` returned ten rows with 12,732
+logical bytes and 131,072 fetched bytes. The same path still passes candidate
+triples through the established evaluator; the prefix reader is a physical
+admission optimisation, not a second SELECT semantics.

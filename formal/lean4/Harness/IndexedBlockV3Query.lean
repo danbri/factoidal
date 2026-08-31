@@ -24,6 +24,27 @@ private def readOpsOf (triples : List Triple) : BackendReadOps :=
     estimate := fun bound => (tripleMatchesBound bound triples).length
     predicatePresent := fun predicate => !(tripleMatchesBound { p := some predicate } triples).isEmpty }
 
+/-- A physically safe bounded-prefix shape. Subject/object must be distinct
+    variables: constants or repeated variables could make early rows fail the
+    SPARQL pattern and would need continued scanning. -/
+private def prefixPredicate? (tp : TriplePattern) : Option WfIri :=
+  match tp.s, tp.p, tp.o with
+  | .var subject, .iri predicate, .var object =>
+      if subject == object then none else some predicate
+  | _, _, _ => none
+
+private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
+    (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
+  let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
+  match runSelectQueryBackendDataset emptyEnv query dataset with
+  | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
+  | some rows =>
+      let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
+      IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+      IO.println s!"l4block-id-v3-query sse={query.toSse}"
+      IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+      return 0
+
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
     let directory := System.FilePath.mk directoryText
@@ -38,21 +59,30 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         | none => IO.eprintln "l4block-id-v3-query rejected: query requires an unbound/full-manifest physical plan"; return 1
         | some predicates =>
             let entries := entriesForPredicates manifest predicates
-            match ← materializeEntries directory entries with
-            | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
-            | some (triples, counters) =>
-                match ← readDefaultDelta? directory with
-                | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1
-                | some delta =>
-                    let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
-                    match runSelectQueryBackendDataset emptyEnv query dataset with
-                    | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
-                    | some rows =>
-                        let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
-                        IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
-                        IO.println s!"l4block-id-v3-query sse={query.toSse}"
-                        IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
-                        return 0
+            match ← readDefaultDelta? directory with
+            | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1
+            | some delta =>
+                match detectLimitSingleTp query with
+                | some (tp, limit) =>
+                    match prefixPredicate? tp with
+                    | some predicate =>
+                        if !deltaResolvedIsEmpty delta then
+                          match ← materializeEntries directory entries with
+                          | some (triples, counters) => finish query entries predicates triples counters delta
+                          | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                        else
+                          let prefixEntries := selectAll manifest predicate
+                          match ← scanEntries directory predicate limit prefixEntries [] {} 0 with
+                          | some (triples, counters, _) => finish query prefixEntries predicates triples counters delta
+                          | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                    | none =>
+                        match ← materializeEntries directory entries with
+                        | some (triples, counters) => finish query entries predicates triples counters delta
+                        | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                | none =>
+                    match ← materializeEntries directory entries with
+                    | some (triples, counters) => finish query entries predicates triples counters delta
+                    | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
   catch error => IO.eprintln s!"l4block-id-v3-query failure: {error}"; return 1
 
 def main (args : List String) : IO UInt32 := do
