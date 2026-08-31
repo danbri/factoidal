@@ -199,8 +199,8 @@ only after that immutable generation has completed activation.
 ### First multi-page result
 
 On the repacked gene fixture, the parsed P682-to-P684 subject join returns the
-same 14 result rows through `ibk3-sri1-tli1-subject-join(2)`. Its reported
-logical reads are 317,826 bytes, compared with 16,429,434 bytes for the older
+same 14 result rows through `ibk3-sri1-tli1-subject-join(2)`. After batching
+decoded TLI pages, its reported logical reads are 182,146 bytes, compared with 16,429,434 bytes for the older
 full-materialisation IBK3 store: about a 98% reduction in logical block bytes.
 The first cold run still fetched 1,049,085 whole fixed-size chunks. Wall-clock
 time must not yet be advertised as improved: repeated TLI lookup/page planning

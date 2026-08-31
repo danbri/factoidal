@@ -57,31 +57,42 @@ private def tliRange (offset length : Nat) : L4Factoidal.Storage.IndexedBlockWir
     distinct term. The result still has to be checked against the target PTD1
     dictionary before a row scan uses it: this makes direct file queries safe
     even if they bypass a prior generation activation. -/
+private def decodedTliPage? : List (Nat × Array L4Factoidal.Storage.TermLocalIndex.Entry) → Nat →
+    Option (Array L4Factoidal.Storage.TermLocalIndex.Entry)
+  | [], _ => none
+  | (ordinal, entries) :: rest, wanted =>
+      if ordinal == wanted then some entries else decodedTliPage? rest wanted
+
 private def termIdsViaIndex (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.TermLocalIndexWire.Prefix)
-    (directory : List L4Factoidal.Storage.TermLocalIndexWire.PageRef) : List Term → Counters →
+    (directory : List L4Factoidal.Storage.TermLocalIndexWire.PageRef) : List Term →
+    List (Nat × Array L4Factoidal.Storage.TermLocalIndex.Entry) → Counters →
     IO (Option (List (Term × Nat) × Counters))
-  | [], counters => pure (some ([], counters))
-  | subject :: rest, counters => do
+  | [], _, counters => pure (some ([], counters))
+  | subject :: rest, decoded, counters => do
       let key := L4Factoidal.Storage.serializeTerm subject
       match L4Factoidal.Storage.TermLocalIndexWire.pageFor? directory key with
       | none => pure none
       | some (ordinal, page) =>
-          let range := tliRange
-            (L4Factoidal.Storage.TermLocalIndexWire.prefixBytes + header.directoryBytes + page.offset) page.length
-          match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
-          | none => pure none
-          | some (pageBytes, footprint) =>
-              match L4Factoidal.Storage.TermLocalIndexWire.decodePage? header ordinal page pageBytes with
+          let continueWith := fun entries decodedPages nextCounters => do
+            let found := L4Factoidal.Storage.TermLocalIndex.lookup? entries subject
+            match ← termIdsViaIndex path ref leaves cache header directory rest decodedPages nextCounters with
+            | none => pure none
+            | some (later, next) =>
+                match found with
+                | some localId => pure (some ((subject, localId) :: later, next))
+                | none => pure (some (later, next))
+          match decodedTliPage? decoded ordinal with
+          | some entries => continueWith entries decoded counters
+          | none =>
+              let range := tliRange
+                (L4Factoidal.Storage.TermLocalIndexWire.prefixBytes + header.directoryBytes + page.offset) page.length
+              match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
               | none => pure none
-              | some entries =>
-                  let found := L4Factoidal.Storage.TermLocalIndex.lookup? entries subject
-                  match ← termIdsViaIndex path ref leaves cache header directory rest (addRead counters footprint) with
+              | some (pageBytes, footprint) =>
+                  match L4Factoidal.Storage.TermLocalIndexWire.decodePage? header ordinal page pageBytes with
                   | none => pure none
-                  | some (later, next) =>
-                      match found with
-                      | some localId => pure (some ((subject, localId) :: later, next))
-                      | none => pure (some (later, next))
+                  | some entries => continueWith entries ((ordinal, entries) :: decoded) (addRead counters footprint)
 
 private def subjectIdsViaTli? (directory : System.FilePath) (entry : Entry) (subjects : List Term) :
     IO (Option (List (Term × Nat) × Counters)) := do
@@ -113,7 +124,7 @@ private def subjectIdsViaTli? (directory : System.FilePath) (entry : Entry) (sub
                           match L4Factoidal.Storage.TermLocalIndexWire.decodeDirectory? header directoryBytes with
                           | none => pure none
                           | some refs =>
-                              termIdsViaIndex path ref leaves cache header refs subjects
+                              termIdsViaIndex path ref leaves cache header refs subjects []
                                 (addRead (addRead {} prefixFootprint) directoryFootprint)
 
 /-- Open a subject-posting sidecar only after all its independent integrity
