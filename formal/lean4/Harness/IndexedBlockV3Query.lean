@@ -3,6 +3,7 @@
    evaluates the parsed algebra. -/
 import Harness.IndexedBlockV3Materialize
 import Harness.ShardMerkleMaterialize
+import Harness.GenerationPointer
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
 import L4Factoidal.SPARQL.StoreFastPath
@@ -12,6 +13,7 @@ namespace Harness.IndexedBlockV3Query
 
 open Harness.IndexedBlockV3Materialize
 open Harness.ShardMerkleMaterialize
+open Harness.GenerationPointer
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreBackend
@@ -47,7 +49,7 @@ private def finish (query : Query) (entries : List Entry) (predicates : List WfI
 
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
-    let directory := System.FilePath.mk directoryText
+    let directory ← resolveStoreDirectory (System.FilePath.mk directoryText)
     let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm2")
     match decode? manifestBytes, parseSparql queryText with
     | none, _ => IO.eprintln "l4block-id-v3-query rejected: malformed SBM2 manifest"; return 1

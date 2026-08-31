@@ -2,11 +2,13 @@
    materializer is deliberately separate so parsed-SPARQL execution reuses the
    identical physical reader. -/
 import Harness.IndexedBlockV3Materialize
+import Harness.GenerationPointer
 import L4Factoidal.Storage.ShardManifest
 
 namespace Harness.IndexedBlockV3MerkleScan
 
 open Harness.IndexedBlockV3Materialize
+open Harness.GenerationPointer
 open L4Factoidal.RDF
 open L4Factoidal.Storage.ShardManifest
 
@@ -16,7 +18,7 @@ private def predicate? (text : String) : Option WfIri :=
 private def run (directoryText iriText limit : String) : IO UInt32 := do
   match predicate? iriText, limit.toNat? with
   | some predicate, some rowLimit =>
-      let directory := System.FilePath.mk directoryText
+      let directory ← resolveStoreDirectory (System.FilePath.mk directoryText)
       let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm2")
       match decode? manifestBytes with
       | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: malformed SBM2 manifest"; return 1

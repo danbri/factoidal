@@ -69,3 +69,12 @@ On the five-artifact, 759,263-row P684 collection, ordinary parsed SPARQL
 logical bytes and 131,072 fetched bytes. The same path still passes candidate
 triples through the established evaluator; the prefix reader is a physical
 admission optimisation, not a second SELECT semantics.
+
+## Immutable generation activation
+
+Both IBK3 native front ends now resolve the existing optional `CURRENT`
+generation pointer before opening `manifest.sbm2`. A direct collection remains
+valid when no pointer exists; a malformed pointer or missing generation is an
+admission failure. This gives the IBK3 path the same atomic immutable
+generation-switch boundary used by compaction and publication elsewhere in
+Shardborough.
