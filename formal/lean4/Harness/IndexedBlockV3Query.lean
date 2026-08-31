@@ -54,6 +54,29 @@ private def askPredicate? (query : Query) : Option WfIri :=
   | .ask, .bgp [tp] => prefixPredicate? tp
   | _, _ => none
 
+private def groupPredicate? (query : Query) : Option (VarName × VarName) := do
+  if !query.dataset.isEmpty then none else
+  let (predicateVar, countAlias, scope) ← detectStreamingCountGroupByPredicate query
+  if scope.isSome then none else some (predicateVar, countAlias)
+
+private def predicateOrder (entries : List Entry) : List WfIri :=
+  entries.foldl (fun seen entry =>
+    if seen.contains entry.predicate then seen else seen ++ [entry.predicate]) []
+
+private def countForPredicate (counts : List (WfIri × Nat)) (predicate : WfIri) : Nat :=
+  (counts.find? fun pair => pair.1 == predicate).map Prod.snd |>.getD 0
+
+private def countAllPredicates (directory : System.FilePath) (manifest : Manifest) :
+    List WfIri → List (WfIri × Nat) → Counters → IO (Option (List (WfIri × Nat) × Counters))
+  | [], reversed, counters => pure (some (reversed.reverse, counters))
+  | predicate :: rest, reversed, counters => do
+      match ← Harness.IndexedBlockV3Materialize.countEntries directory predicate
+          (selectAll manifest predicate) 0 {} with
+      | none => pure none
+      | some (count, current) =>
+          countAllPredicates directory manifest rest ((predicate, count) :: reversed)
+            (addCounters counters current)
+
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
   let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
@@ -93,6 +116,25 @@ private def finishAskCount (query : Query) (entries : List Entry) (count : Nat)
   IO.println s!"l4block-id-v3-query boolean={if count > 0 then "true" else "false"}"
   return 0
 
+private def finishPredicateGroup (query : Query) (entries : List Entry) (predicates : List WfIri)
+    (predicateVar countAlias : VarName) (counts : List (WfIri × Nat)) (counters : Counters) : IO UInt32 := do
+  let backend : GraphBackend := .hdt
+    { search := fun _ => []
+      estimate := fun bound =>
+        match bound.p with
+        | none => counts.foldl (fun total pair => total + pair.2) 0
+        | some predicate => countForPredicate counts predicate
+      predicatePresent := fun predicate => countForPredicate counts predicate > 0 }
+  let grouped := predicateGroupBySolutions predicateVar countAlias backend predicates
+  let ordered := match query.modifier.orderBy with
+    | none => grouped
+    | some order => sortSolutions (compareOnConditions emptyEnv order) grouped
+  let rows := sliceSolutions query.modifier.offset query.modifier.limit ordered
+  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle-predicate-group-count({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+  IO.println s!"l4block-id-v3-query sse={query.toSse}"
+  IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+  return 0
+
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
     let directory ← resolveStoreDirectory (System.FilePath.mk directoryText)
@@ -104,7 +146,23 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         if !rangeCommitted manifest || manifest.layout != "predicate-ibk3-ptd1-merkle-v0" then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
         match queryNativeConstantPredicates? query with
-        | none => IO.eprintln "l4block-id-v3-query rejected: query requires an unbound/full-manifest physical plan"; return 1
+        | none =>
+            match groupPredicate? query with
+            | none => IO.eprintln "l4block-id-v3-query rejected: query requires an unbound/full-manifest physical plan"; return 1
+            | some (predicateVar, countAlias) =>
+                match ← readDefaultDelta? directory with
+                | none => IO.eprintln "l4block-id-v3-query rejected: malformed DLOG sidecar"; return 1
+                | some delta =>
+                    if !deltaResolvedIsEmpty delta then
+                      match ← materializeEntries directory manifest.entries with
+                      | some (triples, counters) => finish query manifest.entries [] triples counters delta
+                      | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
+                    else
+                      let predicates := predicateOrder manifest.entries
+                      match ← countAllPredicates directory manifest predicates [] {} with
+                      | some (counts, counters) =>
+                          finishPredicateGroup query manifest.entries predicates predicateVar countAlias counts counters
+                      | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
         | some predicates =>
             let entries := entriesForPredicates manifest predicates
             match ← readDefaultDelta? directory with

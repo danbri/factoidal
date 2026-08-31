@@ -109,6 +109,23 @@ requested predicate. The count reader validates that fixed-width range with a
 total streaming loop, retaining only the shared predicate ID rather than
 allocating one `IdTriple` per row.
 
+## Exact physical `GROUP BY ?predicate` count
+
+The host also uses Lean's existing
+`detectStreamingCountGroupByPredicate`/`predicateGroupBySolutions` path for
+`SELECT ?p (COUNT(*) AS ?count) WHERE { ?s ?p ?o } GROUP BY ?p`, with the
+same detector refusals for DISTINCT, HAVING, VALUES, and unsafe variable
+shapes. It is limited to the default graph with no dataset clause and no live
+delta. Each distinct manifest predicate is run through the verified physical
+count reader; the resulting exact counts are supplied to the established Lean
+grouping/result-order/modifier code.
+
+The `binding_site.ttl` persistence smoke checks its two groups (P31 = 78,
+P361 = 290). The 888,949-triple gene store returned six predicate groups from
+13 artifacts without materialising RDF triples. A live DLOG falls back to the
+ordinary composed evaluator, since additions and tombstones can change group
+membership and counts.
+
 ## Immutable generation activation
 
 Both IBK3 native front ends now resolve the existing optional `CURRENT`

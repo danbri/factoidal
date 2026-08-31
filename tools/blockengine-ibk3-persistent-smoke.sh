@@ -56,6 +56,14 @@ printf '%s\n' "$count_zero"
 grep -q 'open-mode=ibk3-paged-merkle-count(1) delta=base' <<<"$count_zero"
 grep -q 'rows=0' <<<"$count_zero"
 
+group_count=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  'SELECT ?p (COUNT(*) AS ?count) WHERE { ?x ?p ?type . } GROUP BY ?p ORDER BY ?p')
+printf '%s\n' "$group_count"
+grep -q 'open-mode=ibk3-paged-merkle-predicate-group-count(2) delta=base' <<<"$group_count"
+grep -q 'rows=2' <<<"$group_count"
+grep -q '"78"' <<<"$group_count"
+grep -q '"290"' <<<"$group_count"
+
 insert=$("$lean_dir/.lake/build/bin/l4block-delta-log" "$root" --update \
   "INSERT DATA { <http://example.org/ibk3-smoke> <$predicate> <http://example.org/SmokeType> . }")
 printf '%s\n' "$insert"
