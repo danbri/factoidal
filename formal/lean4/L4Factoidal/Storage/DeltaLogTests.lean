@@ -82,6 +82,9 @@ private def batch : DeltaBatch := {
 -- and round-trips with an arbitrary following batch untouched.
 #guard parseDeltaBatch (serializeDeltaBatch batch ++ [0xAA]) == some (batch, [0xAA])
 #guard parseLog (serializeLog [batch]) == some ([batch], [])
+-- Recovery's reverse accumulator preserves physical log order across batches.
+#guard parseLog (serializeLog [batch, { batch with seq := 8, epoch := 4 }])
+  == some ([batch, { batch with seq := 8, epoch := 4 }], [])
 #guard serializeDeltaBatch? batch == some (serializeDeltaBatch batch)
 #guard serializeLog? [batch] == some (serializeLog [batch])
 #guard (serializeDeltaBatch? { batch with seq := UInt64.size }).isNone

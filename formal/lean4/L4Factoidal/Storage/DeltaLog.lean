@@ -219,14 +219,18 @@ theorem parseEntry_frameEntry_append (payload rest : List UInt8)
     caller distinguish a tidy shutdown from a crash without changing
     what it recovered. -/
 def replay (bs : List UInt8) : List (List UInt8) × Bool :=
+  /- The accumulator is reversed so each successfully decoded frame costs
+     O(1); reversing once at the end preserves on-disk order without the
+     former O(number-of-frames²) `acc ++ [payload]` behavior. -/
   let rec go : Nat → List UInt8 → List (List UInt8) → List (List UInt8) × Bool
     | 0, remaining, acc => (acc, remaining.isEmpty)
     | fuel + 1, remaining, acc =>
       if remaining.isEmpty then (acc, true)
       else match parseEntry remaining with
         | none => (acc, false)          -- torn tail: stop here
-        | some (payload, rest) => go fuel rest (acc ++ [payload])
-  go bs.length bs []
+        | some (payload, rest) => go fuel rest (payload :: acc)
+  let (reversed, clean) := go bs.length bs []
+  (reversed.reverse, clean)
 
 /-- The compacted-epoch marker. A store whose base file was rebuilt
     at epoch `n` must IGNORE log records from an earlier epoch, or a
@@ -669,14 +673,18 @@ def parseDeltaBatch (bs : List UInt8) : Option (DeltaBatch × List UInt8) := do
   some (batch, (afterHeader.drop bodyLen.toNat).drop 4)
 
 def replayDeltaBatches (bs : List UInt8) : List DeltaBatch × List UInt8 :=
+  /- As with raw DLE1 replay, retain the order only once at the end. A DLOG
+     can contain many committed UPDATE batches, so repeated tail append here
+     made recovery needlessly quadratic. -/
   let rec go : Nat → List UInt8 → List DeltaBatch → List DeltaBatch × List UInt8
     | 0, remaining, acc => (acc, remaining)
     | fuel + 1, remaining, acc =>
       if remaining.isEmpty then (acc, [])
       else match parseDeltaBatch remaining with
         | none => (acc, remaining)
-        | some (batch, rest) => go fuel rest (acc ++ [batch])
-  go bs.length bs []
+        | some (batch, rest) => go fuel rest (batch :: acc)
+  let (reversed, tail) := go bs.length bs []
+  (reversed.reverse, tail)
 
 /-- Total DLOG writer admission: all committed batches must be representable.
     Unlike `List.flatMap serializeDeltaBatch`, this cannot turn one rejected

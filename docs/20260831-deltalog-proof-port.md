@@ -67,6 +67,11 @@ read through the Merkle-verified SPARQL path, compaction publishes and
 activates a new base, and a post-compaction update is written at epoch 2 and
 visible through base-plus-delta evaluation.
 
+Replay of both raw DLE1 frames and DLB1 batches now uses a reverse accumulator
+and one final `reverse`, rather than repeated `acc ++ [item]`. This keeps
+recovery linear in the number of committed frames/batches while preserving
+physical log order; a two-batch regression guards the order at the DLOG API.
+
 The CEP1 companion marker now also has a landed Lean theorem:
 
 ```lean
