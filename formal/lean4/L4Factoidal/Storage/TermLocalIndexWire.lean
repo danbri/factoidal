@@ -183,8 +183,13 @@ private def twoPageTerms : Array Term :=
   (List.range (pageTerms + 1)).map (fun n => Term.bnode s!"term-{n}") |>.toArray
 private def twoPage : Index := { targetIBKSha256 := ByteArray.mk (Array.replicate 32 9), entries := entriesOf twoPageTerms }
 private def twoPageBytes : ByteArray := (encode? twoPage).getD ByteArray.empty
+private def corrupt (bytes : ByteArray) : ByteArray :=
+  if bytes.size == 0 then bytes else bytes.set! (bytes.size - 1) 0
+private def wrongTarget : Index := { sample with targetIBKSha256 := ByteArray.mk (Array.replicate 32 8) }
 
 #guard decode? sampleBytes == some sample
 #guard decode? twoPageBytes == some twoPage
+#guard (decode? (corrupt sampleBytes)).isNone
+#guard decode? ((encode? wrongTarget).getD ByteArray.empty) == some wrongTarget
 
 end L4Factoidal.Storage.TermLocalIndexWire
