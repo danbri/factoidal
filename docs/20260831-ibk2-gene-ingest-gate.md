@@ -135,8 +135,10 @@ is not a completed throughput measurement.
 
 ## First completed medium-corpus result
 
-The full 17 MiB `gene.ttl` corpus now completed in about 66 seconds on the
-reference native packer: 888,949 triples were committed as 13 SBM2 blocks.
+The full 17 MiB `gene.ttl` corpus completed in 72 seconds on the reference
+native packer: 888,949 triples were committed as 13 SBM2 blocks. This was
+measured by `tools/blockengine-gene-shard-benchmark.sh` after correcting its
+timer initialization.
 An ordinary parsed query
 
 ```sparql
