@@ -99,3 +99,11 @@ the present per-row subject-ID check; it does not replace it.
 
 This preserves IBK3/SBM3 readers. Existing stores retain the conservative
 PTD1 bridge or normal complete materialisation until republished.
+
+The first delivery item is now implemented in
+`formal/lean4/L4Factoidal/Storage/TermLocalIndexWire.lean`. It has the TLI1
+header, target-IBK3 digest, canonical sorted pages, first-key directory,
+strict page/ID checks, and CRC32C validation. Compile-time guards exercise
+both a single page and a 257-term two-page round trip. It is intentionally not
+yet emitted by the publisher or referenced by a manifest: those operations
+need the SBM4 binding checks above before an execution path may trust it.
