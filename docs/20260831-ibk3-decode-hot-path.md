@@ -245,6 +245,24 @@ only after that immutable generation has completed activation.
   only after activation has admitted the manifest, hashes, Merkle commitments,
   and cross-artifact sidecar relations.
 
+### Architectural position
+
+This is best understood as an assurance-oriented immutable/delta RDF store:
+an HDT-like dictionary-and-ID encoding inside independently readable,
+predicate-local artifacts; a vertically partitioned/SSTable-like access
+layout; and an LSM-like append, compact, activate lifecycle. It is therefore
+conceptually adjacent to HDT-plus-delta systems such as qEndpoint and to
+immutable-layer systems such as TerminusDB, while its selective block layout
+also resembles vertical partitioning rather than an all-permutations RDF-3X
+index family.
+
+These comparisons are architectural vocabulary, not compatibility claims.
+In particular, current IDs are local to an IBK3 artifact: TLI1 maps a
+canonical RDF term into that particular artifact's ID space, SRI2 maps a
+subject ID into its rows, and activation verifies those cross-artifact claims
+before the generation becomes queryable. That local-ID/verified-sidecar design
+is an intentional difference from a single global HDT dictionary.
+
 ### First multi-page result
 
 On the repacked gene fixture, the parsed P682-to-P684 subject join returns the
