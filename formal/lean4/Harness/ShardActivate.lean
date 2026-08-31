@@ -2,6 +2,7 @@
    child of a Shardborough collection root. -/
 import Harness.GenerationPointer
 import Harness.ShardMerkleMaterialize
+import Harness.IndexedBlockV3Materialize
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.ShardManifest
@@ -16,6 +17,9 @@ open L4Factoidal.Storage.ShardManifest
 
 private def compactedDefaultLayout : String :=
   "predicate-ibk2-merkle-v2-compacted-default-dlog-v1"
+
+private def ibk3Layout : String :=
+  "predicate-ibk3-ptd1-merkle-v0"
 
 private def readManifest (directory : System.FilePath) : IO ByteArray := do
   let sbm2 := directory / "manifest.sbm2"
@@ -66,6 +70,20 @@ private def verifyFullEntries (directory : System.FilePath) : List Entry → IO 
         else verifyFullEntries directory rest
       catch _ => pure false
 
+/-- Validate the selected physical layout after full-file SHA-256 admission.
+    IBK2 uses its existing all-entry materializer; IBK3 uses the paged reader,
+    which rechecks every selected byte range against the committed Merkle
+    leaves while decoding the same entries. -/
+private def verifyReadableEntries (directory : System.FilePath) (manifest : Manifest) : IO (Option Nat) := do
+  if manifest.layout == ibk3Layout then
+    match ← Harness.IndexedBlockV3Materialize.materializeEntries directory manifest.entries with
+    | none => pure none
+    | some (_, counters) => pure (some counters.requestedBytes)
+  else
+    match ← scanEntries directory manifest.entries with
+    | none => pure none
+    | some (_, verifiedBytes) => pure (some verifiedBytes)
+
 private def activate (rootText generation : String) : IO UInt32 := do
   try
     if !safeGenerationName generation then
@@ -82,9 +100,9 @@ private def activate (rootText generation : String) : IO UInt32 := do
           throw <| IO.userError "candidate source changed since compaction; compact again before activation"
         if !(← verifyFullEntries candidate manifest.entries) then
           throw <| IO.userError "candidate child artifact fails its declared SHA-256 commitment"
-        match ← scanEntries candidate manifest.entries with
+        match ← verifyReadableEntries candidate manifest with
         | none => throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
-        | some (_, verifiedBytes) =>
+        | some verifiedBytes =>
             if ← activateGeneration root generation then
               IO.println s!"l4block-shard-activate root={root} generation={generation} verified-logical-bytes={verifiedBytes} pointer=CURRENT"
               pure 0

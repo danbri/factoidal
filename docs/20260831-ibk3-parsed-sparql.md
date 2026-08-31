@@ -62,10 +62,11 @@ addition and tombstone replay against the IBK3 immutable base.
 
 `tools/blockengine-ibk3-persistent-smoke.sh` makes this a repeatable native
 test. It publishes the checked-in life-sciences `binding_site.ttl` fixture
-directly to a fresh IBK3 directory, verifies a parsed base query, applies an
-`INSERT DATA`, observes its result, applies the reciprocal `DELETE DATA`, and
-verifies that the result disappears. It also verifies that the durable log has
-two clean committed batches. The script creates and removes only its own
+directly to a fresh IBK3 generation, validates and atomically activates it as
+`CURRENT`, verifies a parsed base query through that collection root, applies
+an `INSERT DATA`, observes its result, applies the reciprocal `DELETE DATA`,
+and verifies that the result disappears. It also verifies that the durable log
+has two clean committed batches. The script creates and removes only its own
 `/private/tmp/factoidal-ibk3-persistent.*` test directory.
 
 ## Safe parsed LIMIT pushdown
