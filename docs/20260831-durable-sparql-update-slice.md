@@ -120,3 +120,19 @@ only a torn-write detector, not tamper evidence.
 This retains the intended architecture: fast immutable sorted blocks for most
 reads, a small ordered update log for writes, and deterministic compaction
 rather than making every update rewrite the base indexes.
+
+## Fresh-generation compaction
+
+`l4block-shard-compact SOURCE-SHARD-DIR OUTPUT-FRESH-DIR` now performs the
+first conservative compaction form. It verifies every source IBK2 range through
+the source manifest, requires a clean default-graph-only DLOG, folds it with
+the Lean merge definition, and publishes new IBK2/Merkle artifacts plus a new
+SBM2 manifest. The new source identity is SHA-256 over the input manifest and
+the exact log bytes consumed.
+
+It never rewrites or redirects the source collection. That is deliberate: a
+separate activation protocol still needs a directory fsync, an atomic
+generation-pointer/rename step, epoch handling for writers that raced the
+compaction, and eventual retirement of the old generation. The repeatable
+`tools/blockengine-shard-compact-smoke.sh` test proves the new base sees an
+inserted triple and no longer sees a deleted base triple without any DLOG.

@@ -151,14 +151,14 @@ private def pack (input output : String) : IO UInt32 := do
       throw <| IO.userError s!"refusing to replace committed legacy collection at {output}; choose a fresh output directory"
     IO.FS.createDirAll outputPath
     let published ← ingestFile input output prepass
+    /- The streaming ingest already wrote its bounded blocks.  Its manifest
+       must be published only after the second-pass source digest agrees. -/
     let entries := published.entriesRev.reverse
     let lines := published.linesRev.reverse
     let manifest : Manifest :=
-      { version := 2
-        sourceIdentity := prepass.sourceIdentity
-        termRegistryVersion := "local-ibk2-dict-v0"
-        layout := "predicate-ibk2-merkle-v2-streaming"
-        entries }
+      { version := 2, sourceIdentity := prepass.sourceIdentity,
+        termRegistryVersion := "local-ibk2-dict-v0",
+        layout := "predicate-ibk2-merkle-v2-streaming", entries }
     match L4Factoidal.Storage.ShardManifest.encode? manifest with
     | none => throw <| IO.userError "could not encode structurally valid SBM2 manifest"
     | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
