@@ -43,6 +43,17 @@ the prior decoder. The scanner still materialises RDF triples for this full
 predicate scan; avoiding that result construction is a separate physical
 operator task.
 
+## Rejected one-shot join index
+
+On the same direct gene store, the two-pattern query joining the 759,263-row
+`wdt:P684` predicate to the four-row `wdt:P682` predicate returned 14 rows in
+2.39 seconds through the normal host. A trial which built the existing Lean
+in-memory indexed backend after every physical materialisation was correct,
+but took 3.60 seconds. The cost of building a fresh index dominated the
+avoided bound scans. That implementation was removed rather than retained as
+a nominal fast path. The useful next design is a reusable on-disk or
+session-cached subject/object access structure, not a per-query index build.
+
 ## Verification
 
 ```text
