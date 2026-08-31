@@ -57,3 +57,14 @@ bytes), rejects malformed interior data such as `FF`, and has executable
 tests for both two- and four-byte code points split across reads. Turtle event
 parsing remains above this layer, so these checks do not conflate decoding with
 statement segmentation.
+
+`TurtleStatementScan` and `TurtleChunkFold` now supply the grammar-aware
+decoded-text boundary. The scanner carries IRI, comment, short-string and
+long-string lexical state across chunks and offers only dotted candidates (and
+ordinary line-separated `PREFIX`/`BASE`/`VERSION` candidates) to the existing
+`readStatement` parser. `TurtleChunkFold` drains and folds each accepted
+statement immediately, preserving Turtle prefix/base/mode/blank-node state.
+Executable equivalence guards compare it with `parseTurtle` across cuts inside
+IRIs, triple-quoted multi-line strings, blank-node syntax, numeric dots and
+no-dot prefix directives. This is a real parser-event seam; a file-handle
+driver and bounded artifact spooler are still the next integration steps.

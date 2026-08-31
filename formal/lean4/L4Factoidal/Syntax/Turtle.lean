@@ -150,13 +150,27 @@ structure TurtleState where
   /-- RDF 1.1 vs RDF 1.2 grammar (port of `ts_mode`). -/
   mode : Mode
 
-/-- The longest run of consecutive `_` characters anywhere in the
-document. -/
-def maxUnderscoreRun : List Char → Nat → Nat → Nat
-  | [],      cur, best => max cur best
-  | c :: cs, cur, best =>
-      if c == '_' then maxUnderscoreRun cs (cur + 1) (max (cur + 1) best)
-      else maxUnderscoreRun cs 0 best
+/-- Bounded state for the document-wide generated blank-node prefix scan.
+    It composes across decoded input chunks: `current` carries an underscore
+    run split at a chunk boundary. -/
+structure UnderscoreRun where
+  current : Nat := 0
+  longest : Nat := 0
+
+def UnderscoreRun.feedChar (state : UnderscoreRun) (c : Char) : UnderscoreRun :=
+  if c == '_' then
+    let current := state.current + 1
+    { current, longest := max current state.longest }
+  else { state with current := 0 }
+
+def UnderscoreRun.feedChars (state : UnderscoreRun) : List Char → UnderscoreRun
+  | [] => state
+  | c :: cs => feedChars (state.feedChar c) cs
+
+/-- Compatibility form retained for existing callers. -/
+def maxUnderscoreRun (cs : List Char) (cur best : Nat) : Nat :=
+  let state := UnderscoreRun.feedChars { current := cur, longest := best } cs
+  state.longest
 
 /-- The prefix every GENERATED blank-node label carries for this
 document: `anon` followed by one more consecutive `_` than appears
@@ -172,15 +186,18 @@ The F* source instead mints `_anon<N>` and also passes user labels
 through, so a document writing `_:_anon0` collides with a generated
 label there. That hazard is removed here at the cost of slightly
 longer labels. -/
+def freshBnodePrefixOfLongest (longest : Nat) : String :=
+  "anon" ++ String.ofList (List.replicate (longest + 1) '_')
+
 def freshBnodePrefix (text : String) : String :=
-  "anon" ++ String.ofList (List.replicate (maxUnderscoreRun text.toList 0 0 + 1) '_')
+  freshBnodePrefixOfLongest (maxUnderscoreRun text.toList 0 0)
 
 /-- Character-list form used by the parser, which already owns a decoded
     document. Keeping this separate avoids a second whole-document
     `String.toList` allocation merely to choose a collision-free generated
     blank-node prefix. -/
 def freshBnodePrefixChars (cs : List Char) : String :=
-  "anon" ++ String.ofList (List.replicate (maxUnderscoreRun cs 0 0 + 1) '_')
+  freshBnodePrefixOfLongest (maxUnderscoreRun cs 0 0)
 
 /-- Port of `empty_turtle_state` / `empty_turtle_state_12` when a caller has
 already established a collision-free generated blank-node prefix. This is the
