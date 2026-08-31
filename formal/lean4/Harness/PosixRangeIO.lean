@@ -74,14 +74,16 @@ def verifiedReadFootprint? (ref : Ref) (range : ByteRange) : Option VerifiedRead
          fetchedBytes := lengths.foldl (fun total length => total + length) 0
          chunks := lengths.length }
 
-/-- A chunk retained here was admitted through `verifyChunk` in this process.
-    It is a native-host cache only; its contents are never accepted directly
-    from an artifact sidecar or another process. -/
-structure VerifiedChunk where
-  index : Nat
-  bytes : ByteArray
+/-- A cache is indexed by the already validated fixed-chunk ordinal.  The
+    earlier association-list representation was deliberately simple, but a
+    full scan of a large artifact performs one lookup per row and made cache
+    hits grow linearly with the number of admitted chunks.  This bounded
+    sparse array keeps the same trust boundary -- only `readVerifiedChunk?`
+    inserts bytes -- while making an admitted-chunk lookup constant time. -/
+abbrev VerifiedChunkCache := Array (Option ByteArray)
 
-def newVerifiedChunkCache : IO (IO.Ref (List VerifiedChunk)) := IO.mkRef []
+def newVerifiedChunkCache (ref : Ref) : IO (IO.Ref VerifiedChunkCache) :=
+  IO.mkRef (Array.replicate ref.chunkCount none)
 
 private def readVerifiedChunk? (path : String) (ref : Ref) (leaves : List Digest)
     (index : Nat) : IO (Option ByteArray) := do
@@ -144,19 +146,19 @@ def readVerifiedRange? (path : String) (ref : Ref) (leaves : List Digest)
           else pure none
 
 private def readCachedChunks (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) : List Nat → IO (Option (List ByteArray × Nat × Nat))
+    (cache : IO.Ref VerifiedChunkCache) : List Nat → IO (Option (List ByteArray × Nat × Nat))
   | [] => pure (some ([], 0, 0))
   | index :: rest => do
-      match (← cache.get).find? (fun cached => cached.index == index) with
-      | some cached =>
+      match (← cache.get)[index]? with
+      | some (some chunk) =>
           match ← readCachedChunks path ref leaves cache rest with
-          | some (chunks, freshChunks, freshBytes) => pure (some (cached.bytes :: chunks, freshChunks, freshBytes))
+          | some (chunks, freshChunks, freshBytes) => pure (some (chunk :: chunks, freshChunks, freshBytes))
           | none => pure none
-      | none =>
+      | _ =>
           match ← readVerifiedChunk? path ref leaves index with
           | none => pure none
           | some chunk =>
-              cache.modify fun chunks => { index, bytes := chunk } :: chunks
+              cache.modify fun chunks => chunks.set! index (some chunk)
               match ← readCachedChunks path ref leaves cache rest with
               | some (chunks, freshChunks, freshBytes) =>
                   pure (some (chunk :: chunks, freshChunks + 1, freshBytes + chunk.size))
@@ -166,7 +168,7 @@ private def readCachedChunks (path : String) (ref : Ref) (leaves : List Digest)
     full positioned read and proof check; the returned footprint counts only
     those newly obtained chunks, not chunks already admitted by this cache. -/
 def readVerifiedRangeCached? (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) (range : ByteRange) :
+    (cache : IO.Ref VerifiedChunkCache) (range : ByteRange) :
     IO (Option (ByteArray × VerifiedReadFootprint)) := do
   if leaves.length != ref.chunkCount then return none
   match chunkIndices? ref range with

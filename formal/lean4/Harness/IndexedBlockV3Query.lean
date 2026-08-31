@@ -300,12 +300,28 @@ private def run (directoryText queryText : String) : IO UInt32 := do
                     | none => IO.eprintln "l4block-id-v3-query rejected: malformed or unavailable committed artifact"; return 1
   catch error => IO.eprintln s!"l4block-id-v3-query failure: {error}"; return 1
 
+/-- Benchmark-only repeated fresh evaluation inside one native process. Each
+    iteration still opens the immutable generation and validates its requested
+    ranges; this mode exists so a profiler can observe an otherwise sub-second
+    physical query without changing query semantics. -/
+private def repeatRun (remaining : Nat) (directoryText queryText : String) : IO UInt32 :=
+  match remaining with
+  | 0 => pure 0
+  | count + 1 => do
+      let code ← run directoryText queryText
+      if code == 0 then repeatRun count directoryText queryText else pure code
+
 def main (args : List String) : IO UInt32 := do
   match args with
   | directory :: "--query" :: queryParts =>
       if queryParts.isEmpty then IO.eprintln "l4block-id-v3-query requires a query"; return 2
       else run directory (String.intercalate " " queryParts)
-  | _ => IO.eprintln "usage: l4block-id-v3-query SHARD-DIR --query SELECT..."; return 2
+  | directory :: "--repeat" :: countText :: "--query" :: queryParts =>
+      if queryParts.isEmpty then IO.eprintln "l4block-id-v3-query requires a query"; return 2
+      else match countText.toNat? with
+      | some count => repeatRun count directory (String.intercalate " " queryParts)
+      | none => IO.eprintln "l4block-id-v3-query --repeat requires a natural number"; return 2
+  | _ => IO.eprintln "usage: l4block-id-v3-query SHARD-DIR [--repeat N] --query SELECT..."; return 2
 
 end Harness.IndexedBlockV3Query
 

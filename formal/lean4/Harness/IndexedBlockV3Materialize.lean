@@ -65,7 +65,7 @@ private def decodedTliPage? : List (Nat × Array L4Factoidal.Storage.TermLocalIn
       if ordinal == wanted then some entries else decodedTliPage? rest wanted
 
 private def termIdsViaIndex (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.TermLocalIndexWire.Prefix)
+    (cache : IO.Ref VerifiedChunkCache) (header : L4Factoidal.Storage.TermLocalIndexWire.Prefix)
     (directory : List L4Factoidal.Storage.TermLocalIndexWire.PageRef) : List Term →
     List (Nat × Array L4Factoidal.Storage.TermLocalIndex.Entry) → Counters →
     IO (Option (List (Term × Nat) × Counters))
@@ -109,7 +109,7 @@ private def subjectIdsViaTli? (directory : System.FilePath) (entry : Entry) (sub
           match leaves? ref.chunkCount leafBytes with
           | none => pure none
           | some leaves =>
-              let cache ← newVerifiedChunkCache
+              let cache ← newVerifiedChunkCache ref
               match ← readVerifiedRangeCached? path ref leaves cache
                   (ioRange (tliRange 0 L4Factoidal.Storage.TermLocalIndexWire.prefixBytes)) with
               | none => pure none
@@ -147,7 +147,7 @@ private def subjectPostingsWithCounters? (directory : System.FilePath) (entry : 
           match leaves? ref.chunkCount leafBytes with
           | none => pure none
           | some leaves =>
-              let cache ← newVerifiedChunkCache
+              let cache ← newVerifiedChunkCache ref
               let fullRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
                 { offset := 0, length := index.bytes }
               match ← readVerifiedRangeCached? path ref leaves cache (ioRange fullRange) with
@@ -193,7 +193,7 @@ private def sri2DecodedPagesStrictlyOrdered : List (Nat × Array (Nat × Nat)) �
 #guard !sri2DecodedPagesStrictlyOrdered [(0, #[(7, 3)]), (1, #[(7, 3), (8, 1)])]
 
 private def readSRI2Pages (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.SubjectRowIndexWireV2.Prefix) :
+    (cache : IO.Ref VerifiedChunkCache) (header : L4Factoidal.Storage.SubjectRowIndexWireV2.Prefix) :
     List (Nat × L4Factoidal.Storage.SubjectRowIndexWireV2.PageRef) → Counters →
     IO (Option (List (Nat × Array (Nat × Nat)) × Counters))
   | [], counters => pure (some ([], counters))
@@ -233,7 +233,7 @@ def subjectPostingsV2For? (directory : System.FilePath) (entry : Entry)
       match leaves? ref.chunkCount leafBytes with
       | none => pure none
       | some leaves =>
-          let cache ← newVerifiedChunkCache
+          let cache ← newVerifiedChunkCache ref
           match ← readVerifiedRangeCached? path ref leaves cache
               (ioRange (tliRange 0 L4Factoidal.Storage.SubjectRowIndexWireV2.prefixBytes)) with
           | none => pure none
@@ -285,7 +285,7 @@ private def indexedTermsAgree (terms : Array Term) : List (Term × Nat) → Bool
   | (term, localId) :: rest => terms[localId]? == some term && indexedTermsAgree terms rest
 
 private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix)
+    (cache : IO.Ref VerifiedChunkCache) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix)
     (terms : Array Term) (predicate : WfIri) : List (Nat × Nat) → Counters → IO (Option (List Triple × Counters))
   | [], counters => pure (some ([], counters))
   | (expectedSubject, offset) :: rest, counters => do
@@ -309,7 +309,7 @@ private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
 /-- Fetch exactly the SRI1-selected fixed-width rows before deciding which
     PTD1 term pages are required to render them as RDF. -/
 private def scanSubjectIdRows (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix) :
+    (cache : IO.Ref VerifiedChunkCache) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix) :
     List (Nat × Nat) → Counters → IO (Option (List L4Factoidal.Storage.IndexedBlock.IdTriple × Counters))
   | [], counters => pure (some ([], counters))
   | (expectedSubject, offset) :: rest, counters => do
@@ -343,7 +343,7 @@ private def distinctPtdPages (header : L4Factoidal.Storage.PagedTermDictionary.P
           else distinctPtdPages header rest (page :: seen)
 
 private def readSparsePtdPages (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) (ibkHeader : L4Factoidal.Storage.IndexedBlockWireV3.Prefix)
+    (cache : IO.Ref VerifiedChunkCache) (ibkHeader : L4Factoidal.Storage.IndexedBlockWireV3.Prefix)
     (ptdHeader : L4Factoidal.Storage.PagedTermDictionary.Prefix)
     (directory : List L4Factoidal.Storage.PagedTermDictionary.PageEntry) : List Nat → Counters →
     IO (Option (List (Nat × Array Term) × Counters))
@@ -406,7 +406,7 @@ def scanEntryForSubjects (directory : System.FilePath) (predicate : WfIri)
       let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
       match leaves? ref.chunkCount leafBytes, ← subjectPostingsWithCounters? directory entry with
       | some leaves, some (pairs, sriCounters) =>
-          let cache ← newVerifiedChunkCache
+          let cache ← newVerifiedChunkCache ref
           let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
             { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
           match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
@@ -507,7 +507,7 @@ def scanEntryForSubjectsV2 (directory : System.FilePath) (predicate : WfIri)
             match ← subjectPostingsV2For? directory entry subjectIndex ids with
             | none => pure none
             | some (selected, sriCounters) =>
-                let cache ← newVerifiedChunkCache
+                let cache ← newVerifiedChunkCache ref
                 let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
                   { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
                 match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
@@ -563,7 +563,7 @@ def scanEntriesForSubjectsV2 (directory : System.FilePath) (predicate : WfIri) (
             (addCounters counters current.counters) (opened + 1)
 
 private def readPages (path : String) (ref : Ref) (leaves : List Digest)
-    (cache : IO.Ref (List VerifiedChunk)) : List L4Factoidal.Storage.IndexedBlockWireV3.ByteRange → Counters →
+    (cache : IO.Ref VerifiedChunkCache) : List L4Factoidal.Storage.IndexedBlockWireV3.ByteRange → Counters →
     IO (Option (List (L4Factoidal.Storage.IndexedBlockWireV3.ByteRange × ByteArray) × Counters))
   | [], total => pure (some ([], total))
   | range :: rest, total => do
@@ -585,7 +585,7 @@ def scanEntry (directory : System.FilePath) (predicate : WfIri) (rowLimit : Nat)
       match leaves? ref.chunkCount leafBytes with
       | none => pure none
       | some leaves =>
-          let cache ← newVerifiedChunkCache
+          let cache ← newVerifiedChunkCache ref
           let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
             { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
           match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
@@ -656,7 +656,7 @@ def countEntry (directory : System.FilePath) (predicate : WfIri) (entry : Entry)
       match leaves? ref.chunkCount leafBytes with
       | none => pure none
       | some leaves =>
-          let cache ← newVerifiedChunkCache
+          let cache ← newVerifiedChunkCache ref
           let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
             { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
           match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with

@@ -49,7 +49,7 @@ def scanEntryProfile (directory : System.FilePath) (entry : Entry) :
       | none => pure none
       | some leaves =>
           let prefixRange := { offset := 0, length := prefixBytes }
-          let cache ← newVerifiedChunkCache
+          let cache ← newVerifiedChunkCache chunked
           match ← readVerifiedRangeCached? path chunked leaves cache prefixRange with
           | some (prefixRead, prefixFootprint) =>
               match decodePrefix prefixRead with
@@ -140,7 +140,7 @@ def scanEntryPrefixForLimit (directory : System.FilePath) (entry : Entry)
       match leaves? chunked.chunkCount leafBytes with
       | none => pure none
       | some leaves =>
-          let cache ← newVerifiedChunkCache
+          let cache ← newVerifiedChunkCache chunked
           let prefixRange := { offset := 0, length := prefixBytes }
           match ← readVerifiedRangeCached? path chunked leaves cache prefixRange with
           | none => pure none

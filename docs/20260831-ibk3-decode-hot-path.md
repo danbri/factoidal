@@ -388,3 +388,33 @@ sparse subject join. Its first fresh-process local measurement was 895.0 ms /
 logical and 12,320,768 fetched bytes. Keeping both workloads prevents an
 improvement to the rare-predicate join from being mistaken for improvement to
 the high-cardinality scan path.
+
+### Native hot-path profile and bounded chunk cache (2026-08-31)
+
+The reproducibility runner gained `l4block-id-v3-query --repeat N`: it repeats
+fresh query evaluation inside one native process solely to give platform
+profilers a useful duration.  It does not turn the command into a stateful
+query server or weaken per-query validation.  A macOS `sample` profile of 100
+P684 count evaluations located the hot path below SPARQL parsing and planning:
+fixed-row validation calls the Merkle-verified positioned reader for many
+64-KiB chunks, where pure Lean SHA-256/Merkle verification is substantial.
+
+The host-only verified-chunk cache had also used a `List.find?` association
+list.  Every cache hit during a full scan therefore became linearly slower as
+more chunks had been admitted.  It is now a fixed `Array (Option ByteArray)`
+whose length is the already declared manifest chunk count.  Reads remain
+fail-closed: only a successful positioned read plus `verifyChunk` inserts a
+value.  This changes neither an artifact byte nor its proof obligation.
+
+On the already activated local gene generation, the three-run follow-up was:
+
+| workload | earlier sample | follow-up sample | interpretation |
+| --- | --- | --- | --- |
+| P682→P684 selective join | 70.1–83.6 ms, about 10.4 MiB | 71.1–74.9 ms, 10.5–10.6 MiB | consistent; this small join was not cache-lookup bound |
+| P684 `COUNT(*)` (759,263 rows) | 885.6–895.0 ms, about 31.2 MiB | 879.2–887.6 ms, 31.7–31.9 MiB | consistent; SHA/Merkle and row validation are the next measured target |
+
+These are explicitly warm-OS-cache, fresh-process observations on this
+machine, not general throughput claims.  Logical/fetched byte counts are
+unchanged.  The next optimisation decision must come from separating
+per-chunk proof work from per-row validation, rather than assuming the
+sidecar join result generalises to full scans.
