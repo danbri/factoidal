@@ -45,6 +45,11 @@ namespace L4Factoidal.Crypto.Tests
 
 open L4Factoidal.Crypto
 
+/-- Chunked public-artifact digest used to pin the incremental API to the
+    ordinary SHA-256 implementation at non-block and block-crossing cuts. -/
+def sha256Chunks (chunks : List ByteArray) : ByteArray :=
+  (chunks.foldl Sha256Stream.update Sha256Stream.init).finish
+
 /-! ### Empty message -/
 
 #guard sha256Hex "" ==
@@ -62,6 +67,7 @@ open L4Factoidal.Crypto
   "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7"
 #guard sha512Hex "abc" ==
   "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"
+#guard sha256Chunks ["a".toUTF8, "b".toUTF8, "c".toUTF8] == sha256 "abc".toUTF8
 
 /-! ### FIPS 180-4 two-block SHA-256 example (56 bytes) -/
 
@@ -71,6 +77,10 @@ open L4Factoidal.Crypto
   "3391fdddfc8dc7393707a65b1b4709397cf8b1d162af05abfe8f450de5f36bc6b0455a8520bc4e6f5fe95b1fe3c8452b"
 #guard sha512Hex "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" ==
   "204a8fc6dda82f0a0ced7beb8e08a41657c16ef468b228a8279be331a703c33596fd15c13b1b07f9aa1d3bea57789ca031ad85c7a71dd70354ec631238ca3445"
+#guard sha256Chunks [
+  "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".toUTF8.extract 0 55,
+  "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".toUTF8.extract 55 56
+  ] == sha256 "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".toUTF8
 
 /-! ### FIPS 180-4 two-block SHA-384/512 example (112 bytes) -/
 

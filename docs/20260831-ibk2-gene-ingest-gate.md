@@ -35,3 +35,12 @@ The next implementation must make a true input/event boundary:
 Splitting merely on newlines is explicitly not an acceptable substitute: valid
 Turtle permits multi-line strings, comments, directives, blank-node property
 lists and collections.
+
+## Landed prerequisite
+
+`L4Factoidal.Crypto.Sha256Stream` now absorbs public source bytes
+incrementally, retaining only a final under-64-byte compression tail. Its
+chunked digest agrees with the ordinary SHA-256 implementation for both
+three one-byte chunks and a 55/1-byte split of the FIPS two-block vector. A
+streaming loader can therefore retain the existing SBM1 source-identity
+commitment without retaining all source bytes just to call `sha256`.
