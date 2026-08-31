@@ -81,7 +81,8 @@ extern_lib libl4blockhost pkg := do
 -- (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
 @[default_target] lean_lib Harness where globs :=
   #[`Harness.Common, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests,
-    `Harness.PosixRangeIO, `Harness.CompactedEpoch, `Harness.GenerationPointer, `Harness.ShardMerkleMaterialize, `Harness.ShardMerkleProfile, `Harness.ShardPublish]
+    `Harness.PosixRangeIO, `Harness.CompactedEpoch, `Harness.GenerationPointer, `Harness.ShardMerkleMaterialize, `Harness.ShardMerkleProfile, `Harness.ShardPublish,
+    `Harness.IndexedBlockV3Materialize]
 
 -- The WebAssembly export surface: the JSON string-in / string-out ABI
 -- (Wasm/Abi.lean) and the `@[export]` C symbols (Wasm/Exports.lean).
@@ -178,6 +179,7 @@ extern_lib libl4blockhost pkg := do
 @[default_target] lean_exe «l4block-id-v2-pread» where root := `Harness.IndexedBlockV2Pread
 @[default_target] lean_exe «l4block-id-v3-convert» where root := `Harness.IndexedBlockV3Convert
 @[default_target] lean_exe «l4block-id-v3-merkle-scan» where root := `Harness.IndexedBlockV3MerkleScan
+@[default_target] lean_exe «l4block-id-v3-query» where root := `Harness.IndexedBlockV3Query
 @[default_target] lean_exe «l4block-paged-dictionary-probe» where root := `Harness.PagedDictionaryProbe
 @[default_target] lean_exe «l4block-shard-merkle-pread» where root := `Harness.ShardMerklePread
 @[default_target] lean_exe «l4block-shard-merkle-scan» where root := `Harness.ShardMerkleScan
