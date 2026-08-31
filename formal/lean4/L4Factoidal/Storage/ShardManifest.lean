@@ -17,6 +17,7 @@ def magic : UInt32 := 0x304D4253
 def wireVersion0 : UInt8 := 0
 def wireVersion1 : UInt8 := 1
 def wireVersion2 : UInt8 := 2
+def wireVersion3 : UInt8 := 3
 
 private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -60,6 +61,9 @@ structure ArtifactRef where
 structure Entry where
   predicate : WfIri
   artifact : ArtifactRef
+  /-- Present and mandatory for SBM3. This independently committed SRI1
+      object maps this artifact's local subject IDs to source-row offsets. -/
+  subjectIndex : Option ArtifactRef := none
   rows : Nat
   ordinal : Nat
   deriving DecidableEq
@@ -89,18 +93,23 @@ private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
     | 0, none => true
     | 1, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 2, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
+    | 3, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | _, _ => false
 
 def valid (manifest : Manifest) : Bool :=
-  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2) &&
+  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3) &&
     (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
     contiguousOrdinals manifest.entries 0 &&
-    manifest.entries.all fun entry => entry.rows > 0 && artifactValidFor manifest.version entry.artifact
+    manifest.entries.all fun entry => entry.rows > 0 && artifactValidFor manifest.version entry.artifact &&
+      match manifest.version, entry.subjectIndex with
+      | 3, some index => artifactValidFor 3 index && index.key != entry.artifact.key
+      | 0, none | 1, none | 2, none => true
+      | _, _ => false
 
 /-- SBM1 and later retain the fixed-chunk Merkle commitment required by the
 range-backed local-file and remote readers. -/
 def rangeCommitted (manifest : Manifest) : Bool :=
-  manifest.version == 1 || manifest.version == 2
+  manifest.version == 1 || manifest.version == 2 || manifest.version == 3
 
 /-- Predicate selection is total and deterministic; a missing key means no
     candidate artifact, never a fallback that could hide an index error. -/
@@ -262,6 +271,14 @@ private def encodableEntry (version : Nat) (entry : Entry) : Bool :=
     | 0, none => true
     | 1, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
     | 2, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
+    | 3, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
+    | _, _ => false
+  && match version, entry.subjectIndex with
+    | 3, some index => fitsU32 index.key.value.toUTF8.size && fitsU32 index.bytes && index.sha256.size == 32 &&
+        match index.chunked with
+        | some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
+        | none => false
+    | 0, none | 1, none | 2, none => true
     | _, _ => false
 
 private def encodable (manifest : Manifest) : Bool :=
@@ -279,6 +296,16 @@ private def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
       writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
   | 2, some chunked => common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
       writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
+  | 3, some chunked =>
+      let primary := common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
+        writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
+      match entry.subjectIndex with
+      | some index => match index.chunked with
+        | some indexChunks => primary ++ encodeString index.key.value ++ writeU32LE (UInt32.ofNat index.bytes) ++
+            index.sha256.toList ++ writeU32LE (UInt32.ofNat indexChunks.chunkBytes) ++
+            writeU32LE (UInt32.ofNat indexChunks.chunkCount) ++ indexChunks.root.toList
+        | none => []
+      | none => []
   | _, _ => []
 
 /-- Canonical SBM0/SBM1/SBM2 bytes. SBM1 and SBM2 retain every SBM0 field and
@@ -314,19 +341,44 @@ private def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × 
       let (root, _) ← takeExact 32 (afterCommon.drop 8)
       some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
                    chunkCount := chunkCount.toNat, root := byteArrayOfList root })
+    | 3 => do
+      let chunkBytes ← readU32LE afterCommon 0
+      let chunkCount ← readU32LE afterCommon 4
+      let (root, _) ← takeExact 32 (afterCommon.drop 8)
+      some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
+                   chunkCount := chunkCount.toNat, root := byteArrayOfList root })
     | _ => none
   let rest := match version with
     | 0 => afterCommon
     | 1 => afterCommon.drop 40
     | 2 => afterCommon.drop 40
+    | 3 => afterCommon.drop 40
     | _ => afterCommon
   if h : isIri predicateText then
+    let subjectIndex ← match version with
+      | 3 => do
+          let (indexKey, afterKey) ← decodeString rest
+          let indexBytes ← readU32LE afterKey 0
+          let (indexDigest, afterDigest) ← takeExact 32 (afterKey.drop 4)
+          let indexChunkBytes ← readU32LE afterDigest 0
+          let indexChunkCount ← readU32LE afterDigest 4
+          let (indexRoot, afterRoot) ← takeExact 32 (afterDigest.drop 8)
+          let indexChunked : ChunkedArtifact.Ref :=
+            { totalBytes := indexBytes.toNat, chunkBytes := indexChunkBytes.toNat,
+              chunkCount := indexChunkCount.toNat, root := byteArrayOfList indexRoot }
+          let indexRef : ArtifactRef :=
+            { key := { value := indexKey }, bytes := indexBytes.toNat,
+              sha256 := byteArrayOfList indexDigest,
+              chunked := some indexChunked }
+          some (some indexRef, afterRoot)
+      | _ => some (none, rest)
     some
       ({ predicate := ⟨predicateText, h⟩
          artifact := { key := { value := keyText }, bytes := artifactBytes.toNat,
                        sha256 := byteArrayOfList digest, chunked }
+         subjectIndex := subjectIndex.1
          rows := rows.toNat
-         ordinal := ordinal.toNat }, rest)
+         ordinal := ordinal.toNat }, subjectIndex.2)
   else none
 
 private def decodeEntries (version : Nat) : Nat → List UInt8 → Option (List Entry × List UInt8)
@@ -343,7 +395,7 @@ def decode? (bytes : ByteArray) : Option Manifest := do
   let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none else do
   let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 then none else do
+  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 then none else do
   let sourceLength ← readU32LE afterVersion 0
   let (sourceIdentity, afterSource) ← takeExact sourceLength.toNat (afterVersion.drop 4)
   let (termRegistryVersion, afterRegistry) ← decodeString afterSource
@@ -392,6 +444,20 @@ private def sampleManifestV2 : Manifest :=
         entries := [entry, { entry with artifact := { entry.artifact with key := { value := "blocks/p-1.ibk2" } }, ordinal := 1 }] }
   | [] => sampleManifestV1
 
+private def sampleManifestV3 : Manifest :=
+  match sampleManifestV1.entries with
+  | entry :: _ =>
+      let index : ArtifactRef :=
+        { key := { value := "blocks/p.sri1" }, bytes := sampleBlockBytes.size,
+          sha256 := sampleDigest, chunked := some sampleChunked }
+      { { sampleManifestV1 with version := 3, layout := "predicate-ibk3-sri1-merkle-v0" } with
+        entries := [{ entry with subjectIndex := some index }] }
+  | [] => sampleManifestV1
+
+private def sampleManifestV3MissingIndex : Manifest :=
+  { sampleManifestV3 with entries := sampleManifestV3.entries.map fun entry =>
+    { entry with subjectIndex := none } }
+
 private def sampleReaderV2 (key : ArtifactKey) : Option ByteArray :=
   if key.value == "blocks/p.ibk2" || key.value == "blocks/p-1.ibk2" then some sampleBlockBytes else none
 
@@ -406,6 +472,9 @@ private def sampleManifestWrongRows : Manifest :=
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
 #guard decode? (encode? sampleManifestV1 |>.getD ByteArray.empty) == some sampleManifestV1
 #guard decode? (encode? sampleManifestV2 |>.getD ByteArray.empty) == some sampleManifestV2
+#guard decode? (encode? sampleManifestV3 |>.getD ByteArray.empty) == some sampleManifestV3
+#guard !(valid sampleManifestV3MissingIndex)
+#guard (encode? sampleManifestV3MissingIndex).isNone
 #guard (decode? (ByteArray.mk #[83, 66, 77, 48, 1])).isNone
 #guard (scanPredicate? sampleReader sampleManifest samplePredicate).map List.length == some 1
 #guard (scanPredicate? sampleReaderV2 sampleManifestV2 samplePredicate).map List.length == some 2
