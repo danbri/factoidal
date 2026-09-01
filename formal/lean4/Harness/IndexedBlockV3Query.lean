@@ -514,6 +514,16 @@ private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manif
           | _, _ => pure none
   | _, _ => pure none
 
+/-- `LIMIT 0` is the one bounded SELECT case whose result is independent of
+    physical BGP order, delta contents, grouping, ordering and expression
+    evaluation: `sliceSolutions` necessarily returns `[]`.  Handle it after
+    query/manifest/activation admission but before opening any artifact. -/
+private def finishSelectLimitZero (query : Query) : IO UInt32 := do
+  IO.println "l4block-id-v3-query shards=0 open-mode=ibk3-limit-zero(0) delta=not-read logical-read-bytes=0 fetched-bytes=0"
+  IO.println s!"l4block-id-v3-query sse={query.toSse}"
+  IO.println "l4block-id-v3-query rows=0 preview=[]"
+  return 0
+
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
     let root := System.FilePath.mk directoryText
@@ -527,7 +537,9 @@ private def run (directoryText queryText : String) : IO UInt32 := do
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
         if manifest.version >= 5 && !(← (root / currentName).pathExists) then
           IO.eprintln "l4block-id-v3-query rejected: SBM5 and later require an activated collection root (CURRENT)"; return 1
-        match ← tryObjectIndexScan directory manifest query with
+        match query.form, query.modifier.limit with
+        | .select _, some 0 => finishSelectLimitZero query
+        | _, _ => match ← tryObjectIndexScan directory manifest query with
         | some code => return code
         | none => match ← tryObjectIndexJoin directory manifest query with
         | some code => return code

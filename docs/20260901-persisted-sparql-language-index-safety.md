@@ -340,6 +340,12 @@ completely against its two target fragments before stopping—reading merely
 `n` driver rows is unsound because they may not join.  `ORDER BY`, `DISTINCT`,
 `OFFSET`, grouping, and HAVING remain outside this first bounded admission.
 
+`IndexedBlockV3Query` now performs that exact `LIMIT 0` case after manifest
+and activation admission but before opening a primary artifact, sidecar, or
+DLOG.  It reports `ibk3-limit-zero(0)` with zero logical/fetched bytes; the
+persisted smoke covers this behavior.  It is intentionally not evidence for
+nonzero early termination.
+
 The first wire-layer prerequisite is now landed in
 `IndexedBlockWireV3`: `rowRange?` validates an arbitrary `(start,count)`
 within the declared fixed-width IBK3 row extent, while

@@ -51,6 +51,14 @@ printf '%s\n' "$base"
 grep -q 'shards=1 open-mode=ibk3-paged-merkle(1) delta=base' <<<"$base"
 grep -q 'rows=2' <<<"$base"
 
+# LIMIT 0 has an exact empty result independently of physical plan order, so
+# it must not open the artifact or replay a DLOG merely to discard every row.
+limit_zero=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT ?x WHERE { ?x <$predicate> ?type . } LIMIT 0")
+printf '%s\n' "$limit_zero"
+grep -q 'open-mode=ibk3-limit-zero(0) delta=not-read logical-read-bytes=0 fetched-bytes=0' <<<"$limit_zero"
+grep -q 'rows=0' <<<"$limit_zero"
+
 # A constant object uses the separately role-labelled OLI2 sidecar, maps the
 # RDF object through TLI1, and verifies every returned fixed row has that
 # object local ID before normal parsed SPARQL produces bindings.
@@ -160,7 +168,7 @@ grep -q '"78"' <<<"$count"
 count_zero=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   "SELECT (COUNT(*) AS ?count) WHERE { ?x <$predicate> ?type . } LIMIT 0")
 printf '%s\n' "$count_zero"
-grep -q 'open-mode=ibk3-paged-merkle-count(1) delta=base' <<<"$count_zero"
+grep -q 'open-mode=ibk3-limit-zero(0) delta=not-read logical-read-bytes=0 fetched-bytes=0' <<<"$count_zero"
 grep -q 'rows=0' <<<"$count_zero"
 
 group_count=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
