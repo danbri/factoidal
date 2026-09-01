@@ -242,13 +242,12 @@ def pagesFor (refs : List PageRef) (subject : Nat) : List (Nat × PageRef) :=
 def offsetsInPage (pairs : Array (Nat × Nat)) (subject : Nat) : List Nat :=
   pairs.toList.filterMap fun pair => if pair.1 == subject then some pair.2 else none
 
-private def decodeAllPages : Prefix → List PageRef → List UInt8 → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
-  | _, [], [], _, reversed => some reversed.reverse
-  | _, [], _, _, _ => none
-  | header, ref :: refs, xs, page, reversed => do
-      let current := xs.take ref.length
-      let decoded ← decodePage? header page ref (bytesOf current)
-      decodeAllPages header refs (xs.drop ref.length) (page + 1) (decoded.toList.reverse ++ reversed)
+private def decodeAllPages : Prefix → List PageRef → ByteArray → Nat → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
+  | _, [], bytes, offset, _, reversed => if offset == bytes.size then some reversed.reverse else none
+  | header, ref :: refs, bytes, offset, page, reversed => do
+      let current ← copyRange? bytes offset ref.length
+      let decoded ← decodePage? header page ref current
+      decodeAllPages header refs bytes (offset + ref.length) (page + 1) (decoded.toList.reverse ++ reversed)
 
 /-- With `pairs.length == rows`, a bounded seen-set establishes that the row
     offsets are exactly a permutation of `0 .. rows - 1`.  This replaces the
@@ -273,9 +272,9 @@ def decode? (bytes : ByteArray) : Option Index := do
   if stored != crc32c payload then none else do
   let directoryBytes := bytes.extract prefixBytes (prefixBytes + header.directoryBytes)
   let refs ← decodeDirectory? header directoryBytes
-  let pages := (bytes.extract (prefixBytes + header.directoryBytes)
-    (prefixBytes + header.directoryBytes + header.pagesBytes)).toList
-  let pairs ← decodeAllPages header refs pages 0 []
+  let pages := bytes.extract (prefixBytes + header.directoryBytes)
+    (prefixBytes + header.directoryBytes + header.pagesBytes)
+  let pairs ← decodeAllPages header refs pages 0 0 []
   if pairs.length != header.rowCount || !(strictlyOrdered pairs) ||
       !offsetsPermutation pairs header.rowCount then none else
     some { targetIBKSha256 := header.targetIBKSha256, rowCount := header.rowCount, pairs := pairs.toArray }
