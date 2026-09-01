@@ -11,6 +11,9 @@ over HTTP. The engine is specified in F\* and extracted to native
 OCaml, JavaScript, WebAssembly, and C, so the same logic runs on the
 command line, in Node, and in your browser with nothing on a server.
 
+**[Read the Shardborough storage specification &rarr;]({{ '/shardborough-storage-spec/' | url }})**
+for the current Lean 4 block, index, integrity, and update format family.
+
 ## Try it in your browser
 
 **[Explore the documentation Hub &rarr;]({{ '/web/hub/' | url }})** —

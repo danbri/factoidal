@@ -180,3 +180,23 @@ inferred triples before exposing SPARQL bag multiplicity. Absence or mismatch
 of the map means complete fallback, never a false-negative shortcut. The
 implementation and proof work is tracked in
 [issue #636](https://github.com/danbri/factoidal/issues/636).
+
+## Browsable specification
+
+`docs/shardborough-storage-spec.md` remains the source document. Alpha draft
+0.2 begins with the system's purpose, publication/query/update lifecycle,
+deployment profiles, adoption scope, and current implementation limits. The
+semantic index proposals are explicitly optional extensions. Eleventy renders
+the Markdown with `docs/_includes/spec.njk` as a responsive technical
+specification page at `/factoidal/shardborough-storage-spec/`. The page has
+stable heading links, a generated table of contents, source and issue links,
+print styling, and an explicit statement that it is a Factoidal draft rather
+than a W3C publication.
+
+The specification also records an optional endpoint-type summary for early
+block rejection. Bloom-filter keys can distinguish subject/object roles and
+quantized prevalence claims such as `at_least_1`, `at_least_half`, and `all`.
+Negative results provide safe bounds when construction and context are
+verified; positive results remain probabilistic. Materialized supertypes are
+permitted only under a named graph, schema/rules, entailment, and trust
+context.

@@ -236,7 +236,7 @@ subproperty map.
 This keeps IBK row bytes vocabulary-neutral while making trusted schema
 relationships useful for block pruning, sorting, merging and reusable warm
 views. The consolidated contract is now in
-`docs/shardborough-storage-spec.md` §5.
+`docs/shardborough-storage-spec.md` §8.
 
 ## Follow-on implementation work
 
