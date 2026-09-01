@@ -319,6 +319,21 @@ private def sharedSubjectTriple? (query : Query) : Option SharedSubjectTriplePla
       | _, _, _, _, _, _, _, _, _ => none
   | _ => none
 
+/-- The direct three-way binding sequence deliberately chooses the smallest
+    physical driver, so it proves a BGP *bag* rather than the source BGP's
+    incidental list order.  Keep the first executable admission to a basic
+    modifier-free SELECT: ORDER BY tie order, DISTINCT's retained occurrence,
+    grouping, and OFFSET/LIMIT can all observe list order.  Those forms stay
+    on the established evaluator until their own refinement contracts are
+    stated and proved. -/
+private def directSubjectTripleSelect? (query : Query) : Bool :=
+  match query.form with
+  | .select _ =>
+      query.groupBy.isNone && query.having.isEmpty && query.modifier.orderBy.isNone &&
+        !query.modifier.distinct && !query.modifier.reduced &&
+        query.modifier.offset.isNone && query.modifier.limit.isNone
+  | _ => false
+
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
@@ -486,8 +501,12 @@ private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manif
               let counters := addCounters dc (addCounters lc rc)
               let code ← match query.form with
                 | .select _ =>
-                    finishSubjectTripleSelect query (de ++ le ++ re) [drive, left, right]
-                      plan.subject driveVar leftVar rightVar drivers ls rs counters
+                    if directSubjectTripleSelect? query then
+                      finishSubjectTripleSelect query (de ++ le ++ re) [drive, left, right]
+                        plan.subject driveVar leftVar rightVar drivers ls rs counters
+                    else
+                      finish query (de ++ le ++ re) [drive, left, right]
+                        (drivers ++ ls ++ rs) counters delta "ibk3-sri2-tli1-subject-triple-join"
                 | _ =>
                     finish query (de ++ le ++ re) [drive, left, right]
                       (drivers ++ ls ++ rs) counters delta "ibk3-sri2-tli1-subject-triple-join"

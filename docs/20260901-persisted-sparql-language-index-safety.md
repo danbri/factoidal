@@ -277,32 +277,32 @@ projection, filters, aggregation, ordering, DISTINCT, and slice semantics.
 
 ### Direct three-way SELECT bindings
 
-The next increment supplies that direct result path for a still narrower,
-auditable case: a `SELECT` over exactly the admitted three-triple BGP, where
-the shared subject and all three object variables are distinct.  After the
-same smallest-driver and SRI2 selection work, it groups each of the two
-target fragments by structural RDF `Subject` and emits the Cartesian product
-of their values with every driver row.  This is the BGP's ordinary bag
-semantics, rather than a set-oriented shortcut.  The result sequence still
-goes through the established `selectPost` implementation, retaining its
-projection, expressions, grouping, HAVING, DISTINCT, ordering, `OFFSET`, and
-`LIMIT` behavior.
+The next increment supplies a direct result path for a still narrower,
+auditable case: a **modifier-free** `SELECT` over exactly the admitted
+three-triple BGP, where the shared subject and all three object variables are
+distinct.  After the same smallest-driver and SRI2 selection work, it groups
+each of the two target fragments by structural RDF `Subject` and emits the
+Cartesian product of their values with every driver row.  This is the BGP's
+ordinary bag semantics, rather than a set-oriented shortcut.  The result
+sequence goes through the established `selectPost` only for ordinary
+projection/expressions.
 
 The persisted smoke fixture now has a subject with two `name` and two
 `member` values.  Its three-pattern query returns six mappings (the original
 two plus the four-value Cartesian product) through
-`ibk3-sri2-tli1-subject-triple-direct-select(3)`.  This is important because
-the likely accidental optimisation here is to produce only one target value
-per subject, silently violating SPARQL multiplicity.  The persistent and W3C
-disk gates pass after the change.
+`ibk3-sri2-tli1-subject-triple-direct-select(3)`.  A redundant `FILTER(?x =
+?x)` forces the general persisted evaluator and returns the same six mappings.
+The gate additionally establishes that `ORDER BY` falls back to the ordinary
+three-way evaluator rather than exposing the physical driver's incidental
+row order.
 
-On the existing activated 889k-triple gene collection, the same
-P1057/P684/P688 `LIMIT 5` query reports the unchanged 27,165,589 logical
-bytes and 29,927,832 fetched bytes, but completes in an approximately
-8.1-second local process observation rather than the prior 8.71-second
-baseline.  This is an expected modest CPU reduction: it removes generic BGP
-join construction, not the still-dominant reading/materialisation of the
-three broad predicate fragments.  A future refinement theorem should state
-the direct binding sequence's equivalence to BGP evaluation under this exact
-admission predicate; until then this path is regression-tested executable
-behavior, not a new proved replacement.
+That restriction is deliberate.  The physical path chooses the smallest
+predicate artifact as driver, whereas the reference evaluator follows BGP
+source order.  The two are bag-equivalent but need not have the same list
+order.  `ORDER BY` tie order, `DISTINCT`'s retained occurrence, grouping,
+`OFFSET`, and `LIMIT` can observe list order in the present executable
+model, so all such forms stay on the established evaluator.  The earlier
+889k-gene `LIMIT 5` result consequently remains the 8.71-second generic
+three-way baseline, not a direct-path benchmark.  A future pure Lean
+refinement module should first prove bag equivalence under the exact
+admission predicate, then add explicitly justified modifier refinements.

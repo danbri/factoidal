@@ -73,11 +73,28 @@ three_root="$run_dir/three-way-collection"
   "$lean_dir/Harness/TestData/three-way-subject.ttl" "$three_root/first" ibk3 >/dev/null
 "$lean_dir/.lake/build/bin/l4block-shard-activate" "$three_root" first >/dev/null
 three_way=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$three_root" --query \
-  'SELECT ?x ?name ?team WHERE { ?x <http://example.org/type> ?type . ?x <http://example.org/name> ?name . ?x <http://example.org/member> ?team . } ORDER BY ?x')
+  'SELECT ?x ?name ?team WHERE { ?x <http://example.org/type> ?type . ?x <http://example.org/name> ?name . ?x <http://example.org/member> ?team . }')
 printf '%s\n' "$three_way"
 grep -q 'open-mode=ibk3-sri2-tli1-subject-triple-direct-select(3) delta=base' <<<"$three_way"
 grep -q 'rows=6' <<<"$three_way"
 grep -q 'http://example.org/dana' <<<"$three_way"
+# A semantically redundant FILTER forces the general persisted evaluator.
+# It must retain the same six mappings, including Dana's four-value product;
+# this is a compact differential guard for the specialised direct path.
+three_way_generic=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$three_root" --query \
+  'SELECT ?x ?name ?team WHERE { ?x <http://example.org/type> ?type . ?x <http://example.org/name> ?name . ?x <http://example.org/member> ?team . FILTER(?x = ?x) }')
+printf '%s\n' "$three_way_generic"
+grep -q 'open-mode=ibk3-paged-merkle(3) delta=base' <<<"$three_way_generic"
+grep -q 'rows=6' <<<"$three_way_generic"
+grep -q 'http://example.org/team4' <<<"$three_way_generic"
+# The direct path must refuse sequence-observing modifiers until a separate
+# refinement proves them.  This ordered query remains correct on the ordinary
+# BGP evaluator rather than inheriting the physical driver's incidental order.
+three_way_ordered=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$three_root" --query \
+  'SELECT ?x ?name ?team WHERE { ?x <http://example.org/type> ?type . ?x <http://example.org/name> ?name . ?x <http://example.org/member> ?team . } ORDER BY ?x')
+printf '%s\n' "$three_way_ordered"
+grep -q 'open-mode=ibk3-sri2-tli1-subject-triple-join(3) delta=base' <<<"$three_way_ordered"
+grep -q 'rows=6' <<<"$three_way_ordered"
 
 # A very narrow physical finishing optimisation may deduplicate before the
 # standard post-WHERE pipeline only when the selected subject is also the sole
