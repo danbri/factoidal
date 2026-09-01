@@ -130,6 +130,28 @@ private def finish (query : Query) (entries : List Entry) (predicates : List WfI
   | .describe _ =>
       IO.eprintln "l4block-id-v3-query rejected: DESCRIBE needs an explicit description policy"; return 1
 
+/-- The narrow OLI2→SRI2 physical join has already established the two BGP
+    constraints: every target row has a driver subject, and the driver object
+    is constant. For SELECT only, form those bindings directly, retaining the
+    driver's multiplicity, then use the standard SELECT post-WHERE pipeline
+    for projection, aggregates, ordering, DISTINCT and slicing. -/
+private def objectSubjectSolutions (subjectVar objectVar : VarName)
+    (drivers targets : List Triple) : SolutionSeq :=
+  let multiplicities := drivers.foldl (fun counts triple =>
+    counts.insert triple.s (counts.getD triple.s 0 + 1)) (∅ : Std.HashMap Subject Nat)
+  targets.flatMap fun target =>
+    List.replicate (multiplicities.getD target.s 0)
+      [(objectVar, target.o), (subjectVar, target.s.toTerm)]
+
+private def finishObjectSubjectSelect (query : Query) (entries : List Entry)
+    (predicates : List WfIri) (subjectVar objectVar : VarName)
+    (drivers targets : List Triple) (counters : Counters) : IO UInt32 := do
+  let rows := selectPost emptyEnv query (objectSubjectSolutions subjectVar objectVar drivers targets)
+  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+  IO.println s!"l4block-id-v3-query sse={query.toSse}"
+  IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+  return 0
+
 private def finishCount (query : Query) (entries : List Entry)
     (alias : VarName) (count : Nat) (counters : Counters) : IO UInt32 := do
   let rows := sliceSolutions query.modifier.offset query.modifier.limit (countStarSolution alias count)
@@ -197,6 +219,19 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
+/-- Preserve first-seen RDF subjects while avoiding `List.eraseDups`'s
+    quadratic repeated membership scan on a broad OLI2 driver. Subjects are
+    IRI/blank-node keys, whose structural equality is the same identity used
+    by the physical SRI2 sidecar. -/
+private def distinctSubjectTerms (triples : List Triple) : List Term :=
+  go triples (∅ : Std.HashSet Subject) []
+where
+  go : List Triple → Std.HashSet Subject → List Term → List Term
+    | [], _, reversed => reversed.reverse
+    | triple :: rest, seen, reversed =>
+        if seen.contains triple.s then go rest seen reversed
+        else go rest (seen.insert triple.s) (triple.s.toTerm :: reversed)
+
 /-- TLI1 is currently ordered by the exact persisted term serialization,
     whereas SPARQL term matching is coarser for language-tag case and
     `rdf:XMLLiteral` canonical XML.  Such literals must therefore use the
@@ -258,40 +293,46 @@ private def tryObjectIndexJoin (directory : System.FilePath) (manifest : Manifes
       let plan :=
         match objectBoundTriple? left, prefixPredicate? right with
         | some (drivePredicate, object), some targetPredicate =>
-            match left.s, right.s with
-            | .var driveSubject, .var targetSubject =>
+            match left.s, right.s, right.o with
+            | .var driveSubject, .var targetSubject, .var targetObject =>
                 if driveSubject == targetSubject && drivePredicate != targetPredicate then
-                  some (drivePredicate, object, targetPredicate)
+                  some (drivePredicate, object, targetPredicate, driveSubject, targetObject)
                 else none
-            | _, _ => none
+            | _, _, _ => none
         | _, _ =>
             match objectBoundTriple? right, prefixPredicate? left with
             | some (drivePredicate, object), some targetPredicate =>
-                match right.s, left.s with
-                | .var driveSubject, .var targetSubject =>
+                match right.s, left.s, left.o with
+                | .var driveSubject, .var targetSubject, .var targetObject =>
                     if driveSubject == targetSubject && drivePredicate != targetPredicate then
-                      some (drivePredicate, object, targetPredicate)
+                      some (drivePredicate, object, targetPredicate, driveSubject, targetObject)
                     else none
-                | _, _ => none
+                | _, _, _ => none
             | _, _ => none
       match plan with
       | none => pure none
-      | some (drivePredicate, object, targetPredicate) =>
+      | some (drivePredicate, object, targetPredicate, subjectVar, targetObjectVar) =>
           let driveEntries := selectAll manifest drivePredicate
           let targetEntries := selectAll manifest targetPredicate
           if driveEntries.isEmpty || targetEntries.isEmpty then pure none else
           match ← scanEntriesForObjectsV2 directory drivePredicate [object] driveEntries [] {} 0 with
           | none => pure none
           | some (driveTriples, driveCounters, _) =>
-              let subjects := driveTriples.map (fun triple => triple.s.toTerm) |>.eraseDups
+              let subjects := distinctSubjectTerms driveTriples
               match ← scanEntriesForSubjectsV2 directory targetPredicate subjects targetEntries [] {} 0 with
               | none => pure none
               | some (targetTriples, targetCounters, _) =>
                   let entries := driveEntries ++ targetEntries
                   let counters := addCounters driveCounters targetCounters
-                  some <$> finish query entries [drivePredicate, targetPredicate]
-                    (driveTriples ++ targetTriples) counters delta
-                    "ibk3-sri2-tli1-oli2-object-subject-join"
+                  match query.form with
+                  | .select _ =>
+                      some <$> finishObjectSubjectSelect query entries
+                        [drivePredicate, targetPredicate] subjectVar targetObjectVar
+                        driveTriples targetTriples counters
+                  | _ =>
+                      some <$> finish query entries [drivePredicate, targetPredicate]
+                        (driveTriples ++ targetTriples) counters delta
+                        "ibk3-sri2-tli1-oli2-object-subject-join"
   | _, _ => pure none
 
 private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
@@ -309,7 +350,7 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
       match ← materializeEntries directory driveEntries with
       | none => pure none
       | some (driveTriples, driveCounters) =>
-          let subjects := driveTriples.map (fun triple => triple.s.toTerm) |>.eraseDups
+          let subjects := distinctSubjectTerms driveTriples
           let targetScan ←
             if manifest.version >= 5 then
               scanEntriesForSubjectsV2 directory targetPredicate subjects targetEntries [] {} 0

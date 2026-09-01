@@ -114,3 +114,24 @@ materially reduce the broad protein-family join's first follow-up sample
 the two-pattern join spends its remaining time in generic Lean join/result
 evaluation.  This directs the next optimisation toward a direct physical join
 result path or a more efficient binding representation, not unsafe I/O claims.
+
+### Direct OLI2-to-SRI2 SELECT bindings
+
+That direct path is now implemented for the deliberately narrow existing
+admission: two default-graph BGP triples sharing a subject variable; one has
+a constant IRI predicate plus a safe constant IRI/literal object; the other
+has a different constant predicate and a distinct object variable; no delta
+or post-`VALUES`.  After OLI2 selects the driver and SRI2 selects its target
+subjects, the reader constructs binding rows directly, preserving driver
+multiplicity through a subject-count hash map, then passes them to the normal
+Lean `selectPost` pipeline.  Thus projection, expressions, aggregation,
+ordering, DISTINCT and slicing retain their established implementation.
+
+The former `List.eraseDups` over a broad driver was quadratic.  Replacing it
+with a first-seen `Std.HashSet Subject` accumulator reduced the checked
+protein-family benchmark (65,475 triples, 20,844 result rows) to 3.79 s and
+about 70.9 MiB peak RSS in a fresh local process.  The ordinary and reversed
+BGP textual order both return 20,844 rows through
+`ibk3-sri2-tli1-oli2-object-subject-direct-select`; persistent and W3C disk
+smokes pass.  This is a concrete physical-plan specialisation, not a claim
+that arbitrary joins bypass the general evaluator.

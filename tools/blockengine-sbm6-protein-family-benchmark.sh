@@ -31,7 +31,7 @@ for ((ordinal = 1; ordinal <= runs; ordinal += 1)); do
   stdout="$run_dir/run-$ordinal.stdout"
   stderr="$run_dir/run-$ordinal.stderr"
   metrics=$(python3 "$runner" "$stdout" "$stderr" "$binary" "$store_root" --query "$query")
-  grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-join(2) delta=base' "$stdout"
+  grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select(2) delta=base' "$stdout"
   grep -q 'rows=20844' "$stdout"
   printf '{"benchmark":"sbm6-protein-family-p31-q417841-to-p527","ordinal":%s,"process_model":"fresh-process","cache_note":"OS page cache is not explicitly evicted","metrics":%s}\n' \
     "$ordinal" "$metrics"

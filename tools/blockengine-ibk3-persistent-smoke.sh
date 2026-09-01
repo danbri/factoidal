@@ -61,7 +61,7 @@ grep -q 'rows=0' <<<"$object_absent"
 object_join=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   "SELECT ?x ?whole WHERE { ?x <$predicate> <http://www.wikidata.org/entity/Q616005> . ?x <http://www.wikidata.org/prop/direct/P361> ?whole . }")
 printf '%s\n' "$object_join"
-grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-join(2) delta=base' <<<"$object_join"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select(2) delta=base' <<<"$object_join"
 grep -q 'rows=290' <<<"$object_join"
 
 # The smaller P31 side drives a two-pattern subject join. The executor must
