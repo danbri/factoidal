@@ -143,6 +143,29 @@ private def objectSubjectSolutions (subjectVar objectVar : VarName)
     List.replicate (multiplicities.getD target.s 0)
       [(objectVar, target.o), (subjectVar, target.s.toTerm)]
 
+/-- Index object values by RDF subject after the SRI2-selected fragments have
+    established the three constant-predicate BGP constraints.  The lists keep
+    every physical row, so the direct SELECT path retains SPARQL bag
+    multiplicity when a subject has repeated values. -/
+private def objectsBySubject (triples : List Triple) : Std.HashMap Subject (List Term) :=
+  triples.foldl (fun indexed triple =>
+    indexed.insert triple.s (triple.o :: indexed.getD triple.s [])) ∅
+
+/-- Form exact BGP bindings directly for the admitted three-predicate
+    shared-subject shape.  One driver row combines with every matching row in
+    each other fragment, hence preserves the ordinary evaluator's Cartesian
+    product and duplicate behavior.  `selectPost` below remains responsible
+    for the complete SELECT modifier pipeline. -/
+private def subjectTripleSolutions (subjectVar driverVar leftVar rightVar : VarName)
+    (drivers lefts rights : List Triple) : SolutionSeq :=
+  let leftBySubject := objectsBySubject lefts
+  let rightBySubject := objectsBySubject rights
+  drivers.flatMap fun driver =>
+    (leftBySubject.getD driver.s []).flatMap fun leftObject =>
+      (rightBySubject.getD driver.s []).map fun rightObject =>
+        [(rightVar, rightObject), (leftVar, leftObject),
+          (driverVar, driver.o), (subjectVar, driver.s.toTerm)]
+
 /-- Preserve first-seen RDF subjects while avoiding `List.eraseDups`'s
     quadratic repeated membership scan on a broad OLI2 driver. Subjects are
     IRI/blank-node keys, whose structural equality is the same identity used
@@ -191,6 +214,21 @@ private def finishObjectSubjectSelect (query : Query) (entries : List Entry)
         "ibk3-sri2-tli1-oli2-object-subject-direct-select")
   let rows := selectPost emptyEnv executionQuery inputRows
   IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+  IO.println s!"l4block-id-v3-query sse={query.toSse}"
+  IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
+  return 0
+
+/-- The three-way direct path has already performed the BGP join using exact
+    RDF subject identity.  Do not re-run generic algebra over the fragments:
+    pass its equivalent solution sequence into the established SELECT post
+    phase, which keeps projection, expressions, grouping, DISTINCT, ordering,
+    OFFSET and LIMIT centralised. -/
+private def finishSubjectTripleSelect (query : Query) (entries : List Entry)
+    (predicates : List WfIri) (subjectVar driverVar leftVar rightVar : VarName)
+    (drivers lefts rights : List Triple) (counters : Counters) : IO UInt32 := do
+  let rows := selectPost emptyEnv query
+    (subjectTripleSolutions subjectVar driverVar leftVar rightVar drivers lefts rights)
+  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-sri2-tli1-subject-triple-direct-select({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
   IO.println s!"l4block-id-v3-query sse={query.toSse}"
   IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
   return 0
@@ -262,13 +300,22 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
 /-- Conservative three-way shared-subject BGP admission.  This is kept
 separate from the two-way detector so an execution path can be introduced
 without broadening existing plans. -/
-private def sharedSubjectTriple? (query : Query) : Option (WfIri × WfIri × WfIri) := do
+private structure SharedSubjectTriplePlan where
+  subject : VarName
+  first : WfIri × VarName
+  second : WfIri × VarName
+  third : WfIri × VarName
+
+private def sharedSubjectTriple? (query : Query) : Option SharedSubjectTriplePlan := do
   if !query.dataset.isEmpty || query.postValues.isSome then none else
   match query.pattern with
   | .bgp [a, b, c] =>
       match a.s, a.p, a.o, b.s, b.p, b.o, c.s, c.p, c.o with
-      | .var s, .iri pa, .var _, .var sb, .iri pb, .var _, .var sc, .iri pc, .var _ =>
-          if s == sb && s == sc && pa != pb && pa != pc && pb != pc then some (pa, pb, pc) else none
+      | .var s, .iri pa, .var oa, .var sb, .iri pb, .var ob, .var sc, .iri pc, .var oc =>
+          if s == sb && s == sc && pa != pb && pa != pc && pb != pc &&
+              s != oa && s != ob && s != oc && oa != ob && oa != oc && ob != oc then
+            some { subject := s, first := (pa, oa), second := (pb, ob), third := (pc, oc) }
+          else none
       | _, _, _, _, _, _, _, _, _ => none
   | _ => none
 
@@ -413,14 +460,22 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
 private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
   match sharedSubjectTriple? query, ← readDefaultDelta? directory with
-  | some (a, b, c), some delta =>
+  | some plan, some delta =>
       if manifest.version < 5 || !deltaResolvedIsEmpty delta then pure none else
-      let ea := selectAll manifest a; let eb := selectAll manifest b; let ec := selectAll manifest c
+      let ea := selectAll manifest plan.first.1
+      let eb := selectAll manifest plan.second.1
+      let ec := selectAll manifest plan.third.1
       if ea.isEmpty || eb.isEmpty || ec.isEmpty then pure none else
-      let (drive, de, left, le, right, re) :=
-        if entryRows ea <= entryRows eb && entryRows ea <= entryRows ec then (a, ea, b, eb, c, ec)
-        else if entryRows eb <= entryRows ec then (b, eb, a, ea, c, ec)
-        else (c, ec, a, ea, b, eb)
+      let (drive, driveVar, de, left, leftVar, le, right, rightVar, re) :=
+        if entryRows ea <= entryRows eb && entryRows ea <= entryRows ec then
+          (plan.first.1, plan.first.2, ea, plan.second.1, plan.second.2, eb,
+            plan.third.1, plan.third.2, ec)
+        else if entryRows eb <= entryRows ec then
+          (plan.second.1, plan.second.2, eb, plan.first.1, plan.first.2, ea,
+            plan.third.1, plan.third.2, ec)
+        else
+          (plan.third.1, plan.third.2, ec, plan.first.1, plan.first.2, ea,
+            plan.second.1, plan.second.2, eb)
       match ← materializeEntries directory de with
       | none => pure none
       | some (drivers, dc) =>
@@ -429,8 +484,13 @@ private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manif
                 ← scanEntriesForSubjectsV2 directory right subjects re [] {} 0 with
           | some (ls, lc, _), some (rs, rc, _) =>
               let counters := addCounters dc (addCounters lc rc)
-              let code ← finish query (de ++ le ++ re) [drive, left, right]
-                (drivers ++ ls ++ rs) counters delta "ibk3-sri2-tli1-subject-triple-join"
+              let code ← match query.form with
+                | .select _ =>
+                    finishSubjectTripleSelect query (de ++ le ++ re) [drive, left, right]
+                      plan.subject driveVar leftVar rightVar drivers ls rs counters
+                | _ =>
+                    finish query (de ++ le ++ re) [drive, left, right]
+                      (drivers ++ ls ++ rs) counters delta "ibk3-sri2-tli1-subject-triple-join"
               pure (some code)
           | _, _ => pure none
   | _, _ => pure none

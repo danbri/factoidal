@@ -65,7 +65,9 @@ grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select(2) delta=bas
 grep -q 'rows=290' <<<"$object_join"
 
 # Three present predicate artifacts sharing one subject are narrowed from the
-# smallest driver through SRI2 before normal SPARQL evaluation.
+# smallest driver through SRI2.  The fixture includes a two-name × two-team
+# subject, so this also checks that direct binding construction keeps BGP
+# Cartesian-product/bag behavior (six result mappings total).
 three_root="$run_dir/three-way-collection"
 "$lean_dir/.lake/build/bin/l4block-shard-pack" \
   "$lean_dir/Harness/TestData/three-way-subject.ttl" "$three_root/first" ibk3 >/dev/null
@@ -73,8 +75,9 @@ three_root="$run_dir/three-way-collection"
 three_way=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$three_root" --query \
   'SELECT ?x ?name ?team WHERE { ?x <http://example.org/type> ?type . ?x <http://example.org/name> ?name . ?x <http://example.org/member> ?team . } ORDER BY ?x')
 printf '%s\n' "$three_way"
-grep -q 'open-mode=ibk3-sri2-tli1-subject-triple-join(3) delta=base' <<<"$three_way"
-grep -q 'rows=2' <<<"$three_way"
+grep -q 'open-mode=ibk3-sri2-tli1-subject-triple-direct-select(3) delta=base' <<<"$three_way"
+grep -q 'rows=6' <<<"$three_way"
+grep -q 'http://example.org/dana' <<<"$three_way"
 
 # A very narrow physical finishing optimisation may deduplicate before the
 # standard post-WHERE pipeline only when the selected subject is also the sole
