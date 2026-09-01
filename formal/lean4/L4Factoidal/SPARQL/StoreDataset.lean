@@ -314,7 +314,7 @@ def evalSelectBackendBgp (env : EvalEnv) (q : Query) (gb : GraphBackend) :
       else
         let ordered := match q.modifier.orderBy with
           | none => omega
-          | some o => sortSolutions (compareOnConditions env o) omega
+          | some o => sortSolutionsFast (compareOnConditions env o) omega
         let projected := match sel with
           | .vars items => projectSolutions (selectItemVars items) ordered
           | .all => ordered
@@ -353,7 +353,7 @@ def evalSelectBackendOnGraph (env : EvalEnv) (q : Query) (gb : GraphBackend)
           let omega := predicateGroupBySolutions predVar countAlias target preds
           let ordered := match q.modifier.orderBy with
             | none => omega
-            | some o => sortSolutions (compareOnConditions env o) omega
+            | some o => sortSolutionsFast (compareOnConditions env o) omega
           some (sliceSolutions q.modifier.offset q.modifier.limit ordered)
       | none =>
           match detectLimitSingleTp q with
@@ -377,7 +377,7 @@ def evalSelectBackendDataset (env : EvalEnv) (q : Query) (dsb : DatasetBackend) 
       let omega := countGroupByGraphSolutions graphVar countAlias dsb.named
       let ordered := match q.modifier.orderBy with
         | none => omega
-        | some o => sortSolutions (compareOnConditions env o) omega
+        | some o => sortSolutionsFast (compareOnConditions env o) omega
       some (sliceSolutions q.modifier.offset q.modifier.limit ordered)
   | none => evalSelectBackendOnGraph env q dsb.default dsb
 

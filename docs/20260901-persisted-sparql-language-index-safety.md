@@ -135,3 +135,41 @@ BGP textual order both return 20,844 rows through
 `ibk3-sri2-tli1-oli2-object-subject-direct-select`; persistent and W3C disk
 smokes pass.  This is a concrete physical-plan specialisation, not a claim
 that arbitrary joins bypass the general evaluator.
+
+### Runtime ORDER BY without weakening DISTINCT proofs
+
+The direct physical path still deliberately hands result rows to the ordinary
+SPARQL post-processing pipeline.  That exposed an all-purpose runtime
+bottleneck: `sortSolutions` is a small stable insertion sort, so an
+`ORDER BY` over tens of thousands of rows is quadratic even when a following
+`LIMIT` emits only a few rows.  Its simple definition is retained because
+`QueryTheorems.lean` proves its permutation property and uses it in existing
+proof exercises.
+
+`Query.lean` now uses `List.mergeSort` through `sortSolutionsFast` at runtime
+while retaining `sortSolutions` unchanged for those proofs.  The comparator
+uses the same non-strict ordering convention; SPARQL does not prescribe the
+relative order of equal sort keys.  `distinctSolutions` was explicitly left
+unchanged: it remains the theorem-backed solution-mapping equivalence
+implementation rather than an unproved hash shortcut.
+
+On the activated 65,475-triple protein-family store, the previously
+pathological query
+
+```sparql
+SELECT DISTINCT ?x {
+  ?x wdt:P31 wd:Q417841 .
+  ?x wdt:P527 ?part .
+}
+ORDER BY ?x LIMIT 3
+```
+
+now returns the ordered three-row result through the direct OLI2/SRI2 path in
+an 8.2-second local process sample; the prior insertion-sort version did not
+finish within a 30-second observation window.  The increment was checked with
+`lake build L4Factoidal.SPARQL.QueryTheorems l4block-id-v3-query`,
+`tools/blockengine-ibk3-persistent-smoke.sh`, and
+`tools/blockengine-ibk3-w3c-disk-query-smoke.sh`.  This validates behavior but
+does not yet prove `sortSolutionsFast`'s permutation/order properties; that
+is the explicit remaining assurance gap before treating it as a fully proved
+replacement for the retained specification sort.

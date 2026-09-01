@@ -330,6 +330,13 @@ def sortSolutions (cmp : Binding → Binding → Int) : SolutionSeq → Solution
   | []       => []
   | mu :: rest => insertOrdered cmp mu (sortSolutions cmp rest)
 
+/-- Runtime ORDER BY uses Lean's merge sort rather than the small insertion
+    sort retained above for its existing proof exercises. The comparator keeps
+    the same non-strict ordering convention: an equal pair may remain in its
+    input order, while SPARQL does not prescribe an order for ties. -/
+def sortSolutionsFast (cmp : Binding → Binding → Int) (omega : SolutionSeq) : SolutionSeq :=
+  omega.mergeSort (fun left right => cmp left right ≤ 0)
+
 /-- Compare two rows on one ORDER BY condition; DESC swaps the
 operands (port of `compare_on_condition`). -/
 def compareOnCondition (env : EvalEnv) (c : OrderCondition)
@@ -692,7 +699,7 @@ def selectPost (env : EvalEnv) (q : Query) (omega0 : SolutionSeq) : SolutionSeq 
         -- 6. ORDER BY.
         let ordered := match q.modifier.orderBy with
           | none   => omega'
-          | some o => sortSolutions (compareOnConditions env o) omega'
+          | some o => sortSolutionsFast (compareOnConditions env o) omega'
         -- 8. DISTINCT / REDUCED.
         let deduped :=
           if q.modifier.distinct then distinctSolutions ordered
@@ -709,7 +716,7 @@ def selectPost (env : EvalEnv) (q : Query) (omega0 : SolutionSeq) : SolutionSeq 
         -- variable the projection drops — §15.1).
         let ordered := match q.modifier.orderBy with
           | none   => omega'
-          | some o => sortSolutions (compareOnConditions env o) omega'
+          | some o => sortSolutionsFast (compareOnConditions env o) omega'
         -- 7. Projection. `SELECT *` drops the rewrite-invented
         -- `_bnode_*` variables here, before DISTINCT (F* site).
         let projected := match sel with
@@ -1491,7 +1498,7 @@ def evalConstruct (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
         | some vals => join omega0 vals
       let ordered := match q.modifier.orderBy with
         | none   => omega
-        | some o => sortSolutions (compareOnConditions env o) omega
+        | some o => sortSolutionsFast (compareOnConditions env o) omega
       let limited := sliceSolutions q.modifier.offset q.modifier.limit ordered
       (instantiateSolutions template limited 0).foldl (fun g t => g.add t) Graph.empty
   | _ => []

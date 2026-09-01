@@ -312,12 +312,13 @@ theorem eq_literal_different_datatype_typeerror (l1 l2 : WfLiteral)
     beq_eq_false_iff_ne.mpr h
   simp [valueCompare, hne]
 
-/-- Two literals of the SAME datatype with DIFFERENT language tags are
-unequal — a definite `false`, not a type error, because RDF term
-identity already tells them apart. -/
+/-- Two literals of the SAME datatype whose language tags are in DIFFERENT
+SPARQL language-tag equivalence classes are unequal — a definite `false`, not
+a type error.  This deliberately uses `langTagOptionEq` rather than structural
+`Option String` inequality: language tags compare case-insensitively. -/
 theorem eq_literal_same_datatype_diff_lang (l1 l2 : WfLiteral)
     (hd : l1.val.datatype = l2.val.datatype)
-    (ht : l1.val.langTag ≠ l2.val.langTag) :
+    (ht : langTagOptionEq l1.val.langTag l2.val.langTag = false) :
     valueCompare (.term (.literal l1)) (.term (.literal l2)) .eq = some false ∧
     valueCompare (.term (.literal l1)) (.term (.literal l2)) .ne = some true := by
   constructor <;> simp [valueCompare, hd, ht]
