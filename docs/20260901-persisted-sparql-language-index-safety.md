@@ -373,3 +373,23 @@ cursor executor will compose this primitive only together with the new
 bounded-result contract.  The persisted smoke opens an activated SBM6 P31
 artifact at row 1 for two rows and verifies that row 79 is rejected beyond
 its declared 78-row extent (row 78 is the valid end cursor).
+
+### Fast `DISTINCT` regression coverage
+
+The normal query evaluator uses the tail-recursive, bucketed
+`distinctSolutionsFast` implementation at runtime.  It traverses the input
+from the end, uses a canonical binding key to restrict candidate comparisons,
+and still performs full §18.3 binding equivalence before dropping a row.  The
+reference `distinctSolutions` specifies that the last representative of each
+equivalence class survives in original sequence order.
+
+`QueryTests` now keeps a mixed-layout regression case in the ordinary Lean
+build gate: repeated bindings in a different association-list order, repeated
+single-variable mappings, and a separate two-variable/literal mapping must
+produce exactly the same survivor sequence under the fast and reference
+implementations.  This is useful executable protection for modifiers after a
+persisted route has produced its rows; it is deliberately **not** the final
+assurance claim.  The remaining Lean refinement is to prove that equivalent
+bindings always have the same `distinctKey`, establish the `HashMap` bucket
+invariant, and then prove exact list equality of the tail-recursive worker
+with `distinctSolutions`.

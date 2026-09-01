@@ -344,6 +344,23 @@ def qDistinct (distinct reduced : Bool) : Query :=
 #guard (distinctSolutions [[("x", .iri iAlice)],
                            [("x", .iri iAlice), ("y", .iri iBob)]]).length == 2
 
+/- The HashMap-backed runtime path retains the reference DISTINCT survivor
+order (last representative in each §18.3-equivalence class) for deliberately
+mixed binding layouts.  These executable cases are not a substitute for the
+pending general refinement theorem, but keep the optimized path in the normal
+`lake build` gate while that proof is developed. -/
+def distinctFastCases : SolutionSeq :=
+  [[("x", .iri iAlice), ("y", .iri iBob)],
+   [("y", .iri iBob), ("x", .iri iAlice)],
+   [("x", .iri iCarol)],
+   [("x", .iri iAlice), ("y", .iri iBob)],
+   [("x", .iri iCarol)],
+   [("x", .iri iDave), ("z", sLit "one")],
+   [("z", sLit "one"), ("x", .iri iDave)]]
+
+#guard distinctSolutionsFast distinctFastCases == distinctSolutions distinctFastCases
+#guard (distinctSolutionsFast distinctFastCases).length == 3
+
 /-! ## §15.1 ORDER BY -/
 
 def qOrder (c : OrderCondition) : Query :=
