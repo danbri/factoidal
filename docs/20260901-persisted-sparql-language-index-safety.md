@@ -93,3 +93,9 @@ pass.  Re-running the protein-family 20,844-row object-driven join produced
 the same result in about 13.1 seconds in one warm-cache local sample.  This
 removes the immediate quadratic rescan, though it is still far from the final
 on-disk join architecture and is not presented as a general benchmark.
+
+`tools/blockengine-sbm6-protein-family-benchmark.sh` makes this workload
+repeatable against an activated store.  Its first fresh-process local sample
+after the indexed-backend correction recorded 12.93 s wall time and 70.6 MiB
+peak resident memory for the 20,844-row result.  The script emits JSON and
+does not claim to clear the operating-system file cache.
