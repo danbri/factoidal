@@ -352,5 +352,5 @@ same authenticated range through the file/Merkle reader into RDF triples.
 Current query plans still use their existing prefix/selective routes; a
 cursor executor will compose this primitive only together with the new
 bounded-result contract.  The persisted smoke opens an activated SBM6 P31
-artifact at row 1 for two rows and verifies that row 78 is rejected beyond
-its declared 78-row extent.
+artifact at row 1 for two rows and verifies that row 79 is rejected beyond
+its declared 78-row extent (row 78 is the valid end cursor).

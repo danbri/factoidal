@@ -39,7 +39,8 @@ test "$(<"$root/CURRENT")" = "$generation"
 row_range=$("$lean_dir/.lake/build/bin/l4block-id-v3-merkle-scan" "$root" "$predicate" --range 1 2)
 printf '%s\n' "$row_range"
 grep -q 'rows=2 .*row-start=1 row-count=2' <<<"$row_range"
-if "$lean_dir/.lake/build/bin/l4block-id-v3-merkle-scan" "$root" "$predicate" --range 78 1 >/dev/null 2>&1; then
+grep -q 'next=0:3' <<<"$row_range"
+if "$lean_dir/.lake/build/bin/l4block-id-v3-merkle-scan" "$root" "$predicate" --range 79 1 >/dev/null 2>&1; then
   echo 'IBK3 cursor range accepted a row past the declared artifact extent' >&2
   exit 1
 fi

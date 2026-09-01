@@ -817,6 +817,53 @@ def scanEntries (directory : System.FilePath) (predicate : WfIri) (limit : Nat) 
             scanEntries directory predicate limit rest (triples ++ result.triples)
               (addCounters counters result.counters) (opened + 1)
 
+/-- A stable position between predicate-local immutable artifacts.  It names
+    neither a byte offset nor an unverified file: `entryOrdinal` is resolved
+    against a manifest-selected entry list and `rowOffset` is checked against
+    that entry's declared IBK3 row count by `scanEntryRange`. -/
+structure PredicateCursor where
+  entryOrdinal : Nat
+  rowOffset : Nat
+  deriving Repr, DecidableEq, Inhabited
+
+/-- Read up to `maxRows` physical rows from a manifest-selected predicate
+    sequence and return a resumable cursor.  This is a storage primitive, not
+    SPARQL `LIMIT`: it preserves physical row order and authenticates every
+    returned row range, while a later planner supplies the explicitly stated
+    unordered-result semantics needed to stop a join early. -/
+def scanEntriesPage (directory : System.FilePath) (predicate : WfIri) (entries : List Entry)
+    (cursor : PredicateCursor) (maxRows : Nat) :
+    IO (Option (List Triple × Option PredicateCursor × Counters)) := do
+  if cursor.entryOrdinal > entries.length then pure none
+  else go (entries.drop cursor.entryOrdinal) cursor.entryOrdinal cursor.rowOffset maxRows [] {}
+where
+  go : List Entry → Nat → Nat → Nat → List Triple → Counters →
+      IO (Option (List Triple × Option PredicateCursor × Counters))
+    | [], _ordinal, offset, _, reversed, counters =>
+        if offset == 0 then pure (some (reversed.reverse, none, counters))
+        else pure none
+    | entry :: rest, ordinal, offset, budget, reversed, counters =>
+        if budget == 0 then
+          pure (some (reversed.reverse, some { entryOrdinal := ordinal, rowOffset := offset }, counters))
+        else if offset > entry.rows then pure none
+        else if offset == entry.rows then
+          go rest (ordinal + 1) 0 budget reversed counters
+        else do
+          let count := min budget (entry.rows - offset)
+          match ← scanEntryRange directory predicate offset count entry with
+          | none => pure none
+          | some current =>
+              let nextReversed := current.triples.reverseAux reversed
+              let nextCounters := addCounters counters current.counters
+              if count == budget then
+                let next :=
+                  if offset + count == entry.rows then
+                    if rest.isEmpty then none else some { entryOrdinal := ordinal + 1, rowOffset := 0 }
+                  else some { entryOrdinal := ordinal, rowOffset := offset + count }
+                pure (some (nextReversed.reverse, next, nextCounters))
+              else
+                go rest (ordinal + 1) 0 (budget - count) nextReversed nextCounters
+
 /-- Stream the fixed-width row extent through admitted chunks.  The at-most
     15-byte `pending` suffix carries a row split at a 64-KiB boundary; each
     complete run still goes through the established bounds and common-

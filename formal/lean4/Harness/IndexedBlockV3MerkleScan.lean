@@ -53,14 +53,15 @@ private def run (directoryText iriText limit : String) : IO UInt32 := do
 private def runRange (directoryText iriText startText countText : String) : IO UInt32 := do
   match predicate? iriText, startText.toNat?, countText.toNat?, ← readManifest? directoryText with
   | some predicate, some start, some count, some (directory, manifest) =>
-      match selectAll manifest predicate with
-      | [entry] =>
-          match ← scanEntryRange directory predicate start count entry with
-          | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: manifest entry or verified row range"; return 1
-          | some result =>
-              IO.println s!"l4block-id-v3-merkle-scan rows={result.triples.length} predicate={iriText} row-start={start} row-count={count} logical-read-bytes={result.counters.requestedBytes} fetched-bytes={result.counters.fetchedBytes} verified-chunks={result.counters.chunks} range-requests={result.counters.requests}"
-              return 0
-      | _ => IO.eprintln "l4block-id-v3-merkle-scan --range requires exactly one predicate artifact"; return 2
+      let cursor : PredicateCursor := { entryOrdinal := 0, rowOffset := start }
+      match ← scanEntriesPage directory predicate (selectAll manifest predicate) cursor count with
+      | none => IO.eprintln "l4block-id-v3-merkle-scan rejected: manifest entry or verified row range"; return 1
+      | some (triples, next, counters) =>
+          let nextText := match next with
+            | none => "end"
+            | some value => s!"{value.entryOrdinal}:{value.rowOffset}"
+          IO.println s!"l4block-id-v3-merkle-scan rows={triples.length} predicate={iriText} row-start={start} row-count={count} next={nextText} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes} verified-chunks={counters.chunks} range-requests={counters.requests}"
+          return 0
   | none, _, _, _ => IO.eprintln s!"l4block-id-v3-merkle-scan invalid predicate IRI: {iriText}"; return 2
   | _, none, _, _ | _, _, none, _ =>
       IO.eprintln "l4block-id-v3-merkle-scan --range START and COUNT must be natural numbers"; return 2
