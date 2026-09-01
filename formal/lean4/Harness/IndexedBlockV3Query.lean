@@ -187,12 +187,27 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
+/-- TLI1 is currently ordered by the exact persisted term serialization,
+    whereas SPARQL term matching is coarser for language-tag case and
+    `rdf:XMLLiteral` canonical XML.  Such literals must therefore use the
+    ordinary materialising route until the index represents every equivalent
+    local ID; admitting them here could incorrectly turn a match into no
+    rows. -/
+private def exactObjectIndexKeySafe (term : Term) : Bool :=
+  match term with
+  | .iri _ => true
+  | .literal literal =>
+      literal.val.langTag.isNone && literal.val.datatype != rdfXMLLiteral
+  | .bnode _ | .tripleTerm _ _ _ => false
+
 /-- The OLI2-safe object-bound triple shape. Blank labels and RDF 1.2 triple
-    terms deliberately wait for a separate scoped-identity admission. -/
+    terms deliberately wait for a separate scoped-identity admission; so do
+    literals whose SPARQL equality is not byte-exact in the current TLI1. -/
 private def objectBoundTriple? (tp : TriplePattern) : Option (WfIri × Term) :=
   match tp.p, tp.o with
   | .iri predicate, .iri object => some (predicate, .iri object)
-  | .iri predicate, .literal object => some (predicate, .literal object)
+  | .iri predicate, .literal object =>
+      if exactObjectIndexKeySafe (.literal object) then some (predicate, .literal object) else none
   | _, _ => none
 
 /-- The first object-bound physical admission stays deliberately small:

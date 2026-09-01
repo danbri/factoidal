@@ -6,6 +6,7 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_dir="$repo_root/formal/lean4"
 fixture_dir="$repo_root/third_party/testing/w3c/sparql/sparql10/basic"
+expr_fixture_dir="$repo_root/third_party/testing/w3c/sparql/sparql10/expr-builtin"
 run_dir=$(mktemp -d "$repo_root/tmp/blockengine-ibk3-w3c-disk-query.XXXXXX")
 trap 'rm -rf "$run_dir"' EXIT
 
@@ -14,6 +15,9 @@ for fixture in data-6.ttl spoo-1.rq spoo-1.srx data-7.ttl bgp-no-match.rq bgp-no
 done
 for fixture in data-2.ttl list-1.rq list-1.srx list-2.rq list-2.srx list-3.rq list-3.srx list-4.rq list-4.srx; do
   test -f "$fixture_dir/$fixture"
+done
+for fixture in data-builtin-2.ttl q-lang-3.rq result-lang-3.srx; do
+  test -f "$expr_fixture_dir/$fixture"
 done
 
 matching_root="$run_dir/spoo-1"
@@ -67,6 +71,21 @@ for number in 1 2 3 4 5; do
       ;;
   esac
 done
+
+# SPARQL matches language tags case-insensitively.  TLI1's first encoding is
+# byte-keyed, so a language-tagged object deliberately falls back to the
+# ordinary constant-predicate materialization instead of falsely reporting it
+# absent from OLI2.  W3C q-lang-3 asks for @EN against a stored @en value.
+lang_root="$run_dir/language-tag-case"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$expr_fixture_dir/data-builtin-2.ttl" "$lang_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$lang_root" first >/dev/null
+lang_case=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$lang_root" --query \
+  "$(<"$expr_fixture_dir/q-lang-3.rq")")
+printf '%s\n' "$lang_case"
+grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$lang_case"
+grep -q 'rows=1 ' <<<"$lang_case"
+grep -q 'http://example/x3' <<<"$lang_case"
 
 # RDF collection cases introduce Turtle blank nodes and multi-predicate list
 # traversal. They deliberately take the safe full-manifest path and confirm

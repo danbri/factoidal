@@ -207,7 +207,10 @@ typed_object=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$typed_root" --q
   'SELECT ?person WHERE { ?person <http://example.org/score> "42"^^<http://www.w3.org/2001/XMLSchema#integer> . }')
 printf '%s\n' "$language_object"
 printf '%s\n' "$typed_object"
-grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$language_object"
+# TLI1 is byte-keyed while SPARQL language tags match case-insensitively, so
+# language-tagged literals retain correctness through the predicate route until
+# a multi-ID canonical-equivalence index supersedes this first sidecar.
+grep -q 'open-mode=ibk3-paged-merkle(1) delta=base' <<<"$language_object"
 grep -q 'rows=1' <<<"$language_object"
 grep -q 'http://example.org/alice' <<<"$language_object"
 grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-scan(1) delta=base' <<<"$typed_object"
