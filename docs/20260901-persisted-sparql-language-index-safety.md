@@ -339,3 +339,14 @@ and row-range APIs (`dictionaryPagesForRowRange?`, `scanRowRangePages`, and a
 completely against its two target fragments before stopping—reading merely
 `n` driver rows is unsound because they may not join.  `ORDER BY`, `DISTINCT`,
 `OFFSET`, grouping, and HAVING remain outside this first bounded admission.
+
+The first wire-layer prerequisite is now landed in
+`IndexedBlockWireV3`: `rowRange?` validates an arbitrary `(start,count)`
+within the declared fixed-width IBK3 row extent, while
+`dictionaryPagesForRowRange?` and `scanRowRangePages` retain the existing
+PTD1 page planning, absolute-range identity, term decoding, and predicate
+checks for that checked slice.  The focused wire tests restore only Bob's
+second row from a two-row block and reject a range extending beyond its
+declared count.  Current scans still use their existing prefix/selective
+routes; a cursor materialiser will adopt these APIs only together with the
+new bounded-result contract.

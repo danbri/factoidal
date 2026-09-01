@@ -62,6 +62,27 @@ private def rangeScan : List Triple :=
                   (scanRowPrefixPages { p := some pName }
                     (bytes.extract 0 prefixBytes) rowPrefix ptdPrefix directory pages).getD []
 
+private def secondRowRangeScan : List Triple :=
+  match decodePrefix bytes with
+  | none => []
+  | some header =>
+      match dictionaryPrefixRange header, rowRange? header 1 1 with
+      | some ptdPrefixRange, some rowRange =>
+          let ptdPrefix := bytes.extract ptdPrefixRange.offset (ptdPrefixRange.offset + ptdPrefixRange.length)
+          match dictionaryDirectoryRange? header ptdPrefix with
+          | none => []
+          | some directoryRange =>
+              let directory := bytes.extract directoryRange.offset (directoryRange.offset + directoryRange.length)
+              let rowBytes := bytes.extract rowRange.offset (rowRange.offset + rowRange.length)
+              match dictionaryPagesForRowRange? header 1 ptdPrefix directory rowBytes with
+              | none => []
+              | some ranges =>
+                  let pages := ranges.map fun range =>
+                    (range, bytes.extract range.offset (range.offset + range.length))
+                  (scanRowRangePages { p := some pName }
+                    (bytes.extract 0 prefixBytes) 1 rowBytes ptdPrefix directory pages).getD []
+      | _, _ => []
+
 private def missingPageRejected : Bool :=
   match decodePrefix bytes with
   | none => false
@@ -92,6 +113,11 @@ private def missingPageRejected : Bool :=
   | none => false
 #guard pagePlanWorks
 #guard rangeScan == tripleMatchesBound { p := some pName } names
+#guard secondRowRangeScan == names.drop 1
+#guard match decodePrefix bytes with
+  | some header => rowRange? header 1 1 == some { offset := prefixBytes + rowBytes, length := rowBytes } &&
+      (rowRange? header header.rowCount 1).isNone
+  | none => false
 #guard missingPageRejected
 #guard match decodePrefix bytes with
   | some header =>

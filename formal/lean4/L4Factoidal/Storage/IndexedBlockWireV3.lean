@@ -52,6 +52,16 @@ structure ByteRange where
 def rowsRange (header : Prefix) : ByteRange :=
   { offset := prefixBytes, length := header.rowCount * rowBytes }
 
+/-- A checked contiguous subset of fixed-width rows.  Unlike `rowsRange`,
+    this is suitable for a resumable physical cursor: the caller receives no
+    range at all when its requested start/count would extend beyond the
+    declared immutable row extent. -/
+def rowRange? (header : Prefix) (start count : Nat) : Option ByteRange :=
+  if start > header.rowCount || count > header.rowCount - start then none
+  else some
+    { offset := (rowsRange header).offset + start * rowBytes
+      length := count * rowBytes }
+
 def dictionaryRange (header : Prefix) : ByteRange :=
   { offset := prefixBytes + header.rowCount * rowBytes, length := header.dictionaryBytes }
 
@@ -205,6 +215,22 @@ def dictionaryPagesForRowPrefix? (header : Prefix) (ptdPrefix ptdDirectory rowPr
     some (pages.map fun page => { offset := (dictionaryRange header).offset + page.offset, length := page.length })
   else none
 
+/-- The range counterpart of `dictionaryPagesForRowPrefix?`.  Page planning
+    depends only on the decoded local IDs, but accepting the row start here
+    keeps the planner's contract tied to the declared IBK3 row extent rather
+    than trusting a host-provided byte slice. -/
+def dictionaryPagesForRowRange? (header : Prefix) (rowStart : Nat)
+    (ptdPrefix ptdDirectory rowBytes : ByteArray) : Option (List ByteRange) := do
+  let rows ← decodeRowPrefix? rowBytes
+  let _ ← rowRange? header rowStart rows.length
+  let ptd ← PagedTermDictionary.decodePrefix ptdPrefix
+  if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
+  let directory ← PagedTermDictionary.decodeDirectory? ptd ptdDirectory
+  let pages ← PagedTermDictionary.pageRangesForTerms? ptd directory (termIdsOfRows rows)
+  if (pages.all fun page => page.offset + page.length <= header.dictionaryBytes) then
+    some (pages.map fun page => { offset := (dictionaryRange header).offset + page.offset, length := page.length })
+  else none
+
 private def lookupPageBytes? (pages : List (ByteRange × ByteArray)) (wanted : ByteRange) : Option ByteArray :=
   (pages.find? fun supplied => supplied.1 == wanted).map Prod.snd
 
@@ -257,6 +283,28 @@ def scanRowPrefixPages (bound : PatternBound) (headerBytes rowPrefix ptdPrefix p
             decodedPages.bind fun decoded =>
               let triples := rows.mapM (tripleFromDecodedPages? ptdHeader decoded)
               triples.map (fun values => values.filter (boundMatches bound))
+      | _, _ => none
+  | _, _ => none
+
+/-- Execute a predicate-bound scan over one checked contiguous row range.
+    This has the same dictionary-page and term checks as the prefix executor;
+    `rowStart` is an additional range-admission check, so a host cannot label
+    an arbitrary row byte sequence as an in-bounds cursor page. -/
+def scanRowRangePages (bound : PatternBound) (headerBytes : ByteArray) (rowStart : Nat)
+    (rowBytes ptdPrefix ptdDirectory : ByteArray)
+    (pages : List (ByteRange × ByteArray)) : Option (List Triple) :=
+  if bound.p.isNone then none else match decodePrefix headerBytes, PagedTermDictionary.decodePrefix ptdPrefix with
+  | some header, some ptdHeader =>
+      if ptdHeader.pageTerms != PagedTermDictionary.defaultPageTerms then none else
+      match PagedTermDictionary.decodeDirectory? ptdHeader ptdDirectory, decodeRowPrefix? rowBytes with
+      | some directory, some rows =>
+          match rowRange? header rowStart rows.length with
+          | none => none
+          | some _ =>
+              let decodedPages := decodeSuppliedPages? header ptdHeader directory pages
+              decodedPages.bind fun decoded =>
+                let triples := rows.mapM (tripleFromDecodedPages? ptdHeader decoded)
+                triples.map (fun values => values.filter (boundMatches bound))
       | _, _ => none
   | _, _ => none
 
