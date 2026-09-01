@@ -242,3 +242,15 @@ wire bytes, checksum rules, page-directory checks, and selective range-reader
 contracts are unchanged.  Both changes passed the persisted SBM6 and W3C
 disk-query gates.  IBK3 fixed-width row decoding was already offset-based;
 its remaining list use is limited to small header/CRC framing.
+
+## Merkle range-granularity observation
+
+On the activated 889k-triple gene store, a five-row constant-predicate query
+selected one IBK3 predicate artifact and reported 12,214 logical bytes versus
+131,072 fetched bytes.  Publishing currently commits all primary and sidecar
+artifacts in 65,536-byte Merkle chunks, so the reader correctly authenticated
+two complete chunks.  This is not a read-buffer regression.  A later layout
+experiment may compare a smaller chunk policy for small/selective artifacts
+against the additional Merkle metadata and verification work; the policy must
+remain an artifact-level declared/committed property, shared by file, PG,
+TiKV, and WASM hosts.
