@@ -88,6 +88,45 @@ backend still carries that glue until #118 completes.
 
 **[Live W3C test results](https://danbri.github.io/factoidal/test-results/)**
 
+## Orientation links
+
+This repository has a long F\* history and an actively evolving Lean 4
+implementation. Start from these links before changing the storage engine or
+making a broad assurance claim.
+
+- [Project rules and boundaries](CLAUDE.md) — source-of-truth, extraction,
+  assurance, and build rules.
+- [Lean 4 port notes](formal/lean4/PORT_NOTES.md) — what has been ported,
+  what remains lineage, and how the Lean project builds.
+- [Lean block-engine skill](skills/blockengine/SKILL.md) — current design
+  rules, format boundaries, test gates, and host-adapter constraints.
+- [Block-engine baseline](docs/20260829-blockengine-baseline.md) and
+  [symbolic-plan design](docs/20260830-blockengine-symbolic-plans.md) — the
+  intended path from SPARQL semantics through physical plans and PushIR to a
+  Lean-generated native/WASM block kernel.
+- [Current persisted-SPARQL worknote](docs/20260901-persisted-sparql-language-index-safety.md)
+  — landed IBK3/SBM6 paths, semantic admission limits, proof gaps, and
+  measured baselines.
+- [Corpus ladder](docs/20260901-corpus-ladder-catalogue.md) — reproducible
+  data and workload coverage; do not infer a general layout decision from one
+  Wikidata extract.
+- [Disk-format instructions](skills/disk-storage-format/SKILL.md) — IBK,
+  sidecar, manifest, delta-log, compaction, and activation invariants.
+
+The active Lean executable path is under
+[`formal/lean4/L4Factoidal`](formal/lean4/L4Factoidal): SPARQL semantics and
+query modifiers are in `SPARQL/`; block codecs and manifests are in
+`Storage/`; and executable file-backed probes are in `formal/lean4/Harness/`.
+The main goal is one Lean-defined physical object and execution core. Native,
+WASM, PostgreSQL, and TiKV are deployment realizations of that core, not
+separate RDF engines. F\* remains valuable executable lineage and a
+differential oracle while the Lean implementation grows.
+
+Run Lean commands only from `formal/lean4/`. The broad gate is `lake build`;
+the persisted block query gate is
+[`tools/blockengine-ibk3-persistent-smoke.sh`](tools/blockengine-ibk3-persistent-smoke.sh).
+Record substantial storage work in a dated `docs/YYYYMMDD-*.md` worknote.
+
 ## Quick Start
 
 ```bash
