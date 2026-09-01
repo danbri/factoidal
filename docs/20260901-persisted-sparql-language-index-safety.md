@@ -266,3 +266,11 @@ fragments to the ordinary parsed SPARQL evaluator.  Missing artifacts safely
 fall back to generic evaluation.  On the activated gene store, a P1057/P684/
 P688 query selected `ibk3-sri2-tli1-subject-triple-join(3)` and returned five
 rows.  The persisted and W3C disk-query suites pass after the addition.
+
+On the same activated gene store, a fresh-process P1057/P684/P688 three-way
+query with `LIMIT 5` took 8.71 seconds, reporting 27,165,589 logical bytes
+and 29,927,832 fetched Merkle-chunk bytes.  This is a baseline, not a general
+claim: the plan has eliminated unrelated predicates, but still materialises
+the three exact fragments and lets the normal evaluator construct the join
+result.  A later direct binding/result path must preserve that evaluator's
+projection, filters, aggregation, ordering, DISTINCT, and slice semantics.
