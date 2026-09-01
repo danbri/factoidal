@@ -25,6 +25,8 @@ import L4Factoidal.SPARQL.AlgebraSpec
 import L4Factoidal.SPARQL.AlgebraRefinement
 import L4Factoidal.SPARQL.JoinRefinement
 import L4Factoidal.SPARQL.IndexedEvalRefinement
+import L4Factoidal.SPARQL.SharedSubjectTriple
+import L4Factoidal.SPARQL.SharedSubjectTripleRefinement
 import L4Factoidal.SPARQL.StoreBackend
 import L4Factoidal.SPARQL.StorePlan
 import L4Factoidal.SPARQL.StoreFastPath

@@ -329,14 +329,21 @@ multi-value Cartesian product.  It is stronger than the originally sketched
 claim and does not require the three predicates to be distinct; that is a
 physical planner admission, not a semantic precondition.
 
-The remaining obligations are intentionally separate: prove that the
-Merkle-verified SRI2 fragments plus executable HashMap grouping agree with
-these pure predicate fragments, and prove bag preservation when the optimizer
-chooses the second or third predicate as physical driver.  Such a reordered
-driver need not be list-equal to source-order evaluation, so order-sensitive
-modifiers remain on the ordinary path.  This prevents a future proof from
-accidentally certifying only a particular on-disk iteration order.  The axiom
-audit for both new headline theorems reports only Lean's accepted `propext`,
+The executable HashMap grouping obligation is now closed.  The production
+finisher lives in `SharedSubjectTriple.lean`, rather than as private harness
+code.  `objectsBySubject_getD` proves that each HashMap bucket is exactly the
+source object sequence in reverse order, with no lost or duplicated
+occurrence.  `subjectTripleSolutions_bag_refines_sharedSubjectTripleSolutions`
+then proves that reversing the two buckets changes enumeration order only:
+the production Cartesian finisher and the simple List reference have the same
+solution multiplicities for every mapping.
+
+Two physical obligations remain separate: prove that the Merkle-verified
+SRI2 fragments are complete predicate fragments, and prove bag preservation
+when the optimizer chooses the second or third predicate as physical driver.
+Such a reordered driver need not be list-equal to source-order evaluation, so
+order-sensitive modifiers remain on the ordinary path.  The axiom audit for
+all four headline theorems reports only Lean's accepted `propext`,
 `Classical.choice`, and `Quot.sound` foundations.
 
 ### Bounded three-way execution is a separate semantic contract

@@ -5,6 +5,7 @@ import Harness.IndexedBlockV3Materialize
 import Harness.ShardMerkleMaterialize
 import Harness.GenerationPointer
 import L4Factoidal.SPARQL.Parser
+import L4Factoidal.SPARQL.SharedSubjectTriple
 import L4Factoidal.SPARQL.StoreDataset
 import L4Factoidal.SPARQL.StoreFastPath
 import L4Factoidal.Storage.ShardManifest
@@ -16,6 +17,7 @@ open Harness.ShardMerkleMaterialize
 open Harness.GenerationPointer
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
+open L4Factoidal.SPARQL.SharedSubjectTriple
 open L4Factoidal.SPARQL.StoreBackend
 open L4Factoidal.SPARQL.StoreDataset
 open L4Factoidal.SPARQL.StoreFastPath
@@ -142,29 +144,6 @@ private def objectSubjectSolutions (subjectVar objectVar : VarName)
   targets.flatMap fun target =>
     List.replicate (multiplicities.getD target.s 0)
       [(objectVar, target.o), (subjectVar, target.s.toTerm)]
-
-/-- Index object values by RDF subject after the SRI2-selected fragments have
-    established the three constant-predicate BGP constraints.  The lists keep
-    every physical row, so the direct SELECT path retains SPARQL bag
-    multiplicity when a subject has repeated values. -/
-private def objectsBySubject (triples : List Triple) : Std.HashMap Subject (List Term) :=
-  triples.foldl (fun indexed triple =>
-    indexed.insert triple.s (triple.o :: indexed.getD triple.s [])) ∅
-
-/-- Form exact BGP bindings directly for the admitted three-predicate
-    shared-subject shape.  One driver row combines with every matching row in
-    each other fragment, hence preserves the ordinary evaluator's Cartesian
-    product and duplicate behavior.  `selectPost` below remains responsible
-    for the complete SELECT modifier pipeline. -/
-private def subjectTripleSolutions (subjectVar driverVar leftVar rightVar : VarName)
-    (drivers lefts rights : List Triple) : SolutionSeq :=
-  let leftBySubject := objectsBySubject lefts
-  let rightBySubject := objectsBySubject rights
-  drivers.flatMap fun driver =>
-    (leftBySubject.getD driver.s []).flatMap fun leftObject =>
-      (rightBySubject.getD driver.s []).map fun rightObject =>
-        [(rightVar, rightObject), (leftVar, leftObject),
-          (driverVar, driver.o), (subjectVar, driver.s.toTerm)]
 
 /-- Preserve first-seen RDF subjects while avoiding `List.eraseDups`'s
     quadratic repeated membership scan on a broad OLI2 driver. Subjects are

@@ -3,16 +3,12 @@ L4Factoidal.SPARQL.SharedSubjectTripleRefinement -- semantic reference for
 the narrow persisted three-predicate shared-subject plan.
 
 The persisted query harness may choose any of the three predicate fragments as
-its physical driver and use SRI2/OLI2/HashMap structures to obtain the other
-two fragments.  That is deliberately outside this module.  This module owns
-only the pure List meaning: one driver row combines with every object value of
-the other two predicate fragments for the same RDF subject.
-
-The reference is separate from the Harness so a later theorem states an RDF
-and SPARQL claim, rather than an implementation accident of local files or
-`Std.HashMap`.
+its physical driver and use SRI2/OLI2 structures to obtain the other two.
+The executable List reference and HashMap finisher live in the small sibling
+module `SharedSubjectTriple`; this module proves what those typed algorithms
+mean without importing file-I/O harness code.
 -/
-import L4Factoidal.SPARQL.Algebra
+import L4Factoidal.SPARQL.SharedSubjectTriple
 import L4Factoidal.SPARQL.AlgebraSpec
 
 namespace L4Factoidal.SPARQL.SharedSubjectTripleRefinement
@@ -20,42 +16,7 @@ namespace L4Factoidal.SPARQL.SharedSubjectTripleRefinement
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.AlgebraSpec
-
-/-- The rows belonging to one constant predicate, in their input order. -/
-def predicateFragment (predicate : WfIri) (graph : Graph) : Graph :=
-  graph.filter (fun triple => triple.p == predicate)
-
-/-- The object sequence for one RDF subject, retaining graph order and every
-physical occurrence.  Retaining occurrences is required by SPARQL bag
-semantics: duplicate RDF rows and multiple property values are not sets. -/
-def objectsForSubject (subject : Subject) : Graph → List Term
-  | [] => []
-  | triple :: rest =>
-      if triple.s == subject then triple.o :: objectsForSubject subject rest
-      else objectsForSubject subject rest
-
-/-- A concrete solution mapping for a three-predicate BGP.  The association
-list order is the ordinary left-to-right BGP binding order: the third object
-was bound last, then the second, then the first, then the shared subject.
-This makes the reference suitable for comparison with `evalBgp`; a fast plan
-which chooses a different physical driver must establish mapping equivalence.
--/
-def sharedSubjectBinding (subjectVar firstVar secondVar thirdVar : VarName)
-    (subject : Subject) (firstObject secondObject thirdObject : Term) : Binding :=
-  [(thirdVar, thirdObject), (secondVar, secondObject), (firstVar, firstObject),
-    (subjectVar, subject.toTerm)]
-
-/-- Pure reference result for a syntactically ordered three-pattern BGP.
-`drivers` supplies the first predicate fragment.  For each driver row, the
-two target fragments contribute their complete same-subject object sequences,
-so the nested loops retain the required Cartesian-product multiplicity. -/
-def sharedSubjectTripleSolutions (subjectVar firstVar secondVar thirdVar : VarName)
-    (drivers firstTargets secondTargets : Graph) : SolutionSeq :=
-  drivers.flatMap fun driver =>
-    (objectsForSubject driver.s firstTargets).flatMap fun firstObject =>
-      (objectsForSubject driver.s secondTargets).map fun secondObject =>
-        sharedSubjectBinding subjectVar firstVar secondVar thirdVar driver.s
-          driver.o firstObject secondObject
+open L4Factoidal.SPARQL.SharedSubjectTriple
 
 /-- Bag equivalence of solution sequences, using the already-established
 mapping equality rather than association-list layout equality. -/
@@ -319,6 +280,90 @@ theorem sharedSubjectTriple_bag_refines_evalBgp
     thirdVar p1 p2 p3 graph hSubjectFirst hSubjectSecond hSubjectThird
     hFirstSecond hFirstThird hSecondThird]
 
+/-- The production fold keeps one object bucket per subject.  Buckets are
+    built by left-fold/cons, so their only intentional difference from the
+    declarative subject scan is reversal of that subject's object sequence. -/
+private theorem objectsBySubject_foldl_getD (wanted : Subject) :
+    ∀ (triples : Graph) (indexed : Std.HashMap Subject (List Term)),
+      (triples.foldl objectsBySubjectStep indexed).getD wanted [] =
+        (objectsForSubject wanted triples).reverse ++ indexed.getD wanted []
+  | [], indexed => by
+      simp [objectsForSubject]
+  | triple :: rest, indexed => by
+      by_cases hs : triple.s == wanted
+      · have hs' : triple.s = wanted := beq_iff_eq.mp hs
+        subst wanted
+        rw [List.foldl]
+        rw [objectsBySubject_foldl_getD triple.s rest
+          (objectsBySubjectStep indexed triple)]
+        simp [objectsBySubjectStep, objectsForSubject]
+      · have hs' : triple.s ≠ wanted := fun h => hs (beq_iff_eq.mpr h)
+        rw [List.foldl]
+        rw [objectsBySubject_foldl_getD wanted rest
+          (objectsBySubjectStep indexed triple)]
+        simp [objectsBySubjectStep, objectsForSubject, hs, Std.HashMap.getD_insert]
+
+/-- Exact production HashMap contract.  This is the bridge used by the
+    persisted direct plan: lookup never loses or duplicates a physical object
+    row, and exposes the source sequence in reverse insertion order. -/
+theorem objectsBySubject_getD (wanted : Subject) (triples : Graph) :
+    (objectsBySubject triples).getD wanted [] =
+      (objectsForSubject wanted triples).reverse := by
+  unfold objectsBySubject
+  simpa using objectsBySubject_foldl_getD wanted triples
+    (∅ : Std.HashMap Subject (List Term))
+
+private theorem flatMap_perm_of_forall {α β : Type} (f g : α → List β) :
+    ∀ (items : List α), (∀ item ∈ items, (f item).Perm (g item)) →
+      (items.flatMap f).Perm (items.flatMap g)
+  | [], _ => by simp
+  | item :: rest, h => by
+      simp only [List.flatMap_cons]
+      exact (h item (List.mem_cons_self ..)).append
+        (flatMap_perm_of_forall f g rest
+          (fun later hLater => h later (List.mem_cons_of_mem _ hLater)))
+
+private theorem map_reverse_perm {α β : Type} (items : List α) (f : α → β) :
+    (items.reverse.map f).Perm (items.map f) :=
+  (List.reverse_perm items).map f
+
+private theorem bagEquivalent_of_perm {left right : SolutionSeq} (h : left.Perm right) :
+    BagEquivalent left right := by
+  intro mapping
+  unfold AlgebraSpec.mult
+  exact (h.filter _).length_eq
+
+/-- Reversing the two HashMap object buckets changes only enumeration order.
+    Each driver retains every Cartesian-product row, so the production finisher
+    and the declarative list reference have exactly the same solution bag. -/
+theorem subjectTripleSolutions_bag_refines_sharedSubjectTripleSolutions
+    (subjectVar firstVar secondVar thirdVar : VarName)
+    (drivers firstTargets secondTargets : Graph) :
+    BagEquivalent
+      (subjectTripleSolutions subjectVar firstVar secondVar thirdVar
+        drivers firstTargets secondTargets)
+      (sharedSubjectTripleSolutions subjectVar firstVar secondVar thirdVar
+        drivers firstTargets secondTargets) := by
+  apply bagEquivalent_of_perm
+  show
+    (subjectTripleSolutions subjectVar firstVar secondVar thirdVar
+      drivers firstTargets secondTargets).Perm
+    (sharedSubjectTripleSolutions subjectVar firstVar secondVar thirdVar
+      drivers firstTargets secondTargets)
+  simp only [subjectTripleSolutions, sharedSubjectTripleSolutions, sharedSubjectBinding]
+  apply flatMap_perm_of_forall
+  intro driver _
+  rw [objectsBySubject_getD driver.s firstTargets]
+  rw [objectsBySubject_getD driver.s secondTargets]
+  apply List.Perm.trans
+  · apply flatMap_perm_of_forall
+    intro firstObject _
+    exact map_reverse_perm (objectsForSubject driver.s secondTargets)
+      (fun secondObject =>
+        [(thirdVar, secondObject), (secondVar, firstObject), (firstVar, driver.o),
+          (subjectVar, driver.s.toTerm)])
+  · exact List.Perm.flatMap_right _ (List.reverse_perm _)
+
 /-!
 The remaining physical bridge is intentionally separate: prove that the
 Merkle-verified SRI2 fragments and the executable HashMap grouping denote the
@@ -331,6 +376,8 @@ namespace Audit
 
 #print axioms sharedSubjectTripleSolutions_eq_evalBgp
 #print axioms sharedSubjectTriple_bag_refines_evalBgp
+#print axioms objectsBySubject_getD
+#print axioms subjectTripleSolutions_bag_refines_sharedSubjectTripleSolutions
 
 end Audit
 
