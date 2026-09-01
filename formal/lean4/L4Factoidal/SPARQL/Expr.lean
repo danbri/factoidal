@@ -1030,7 +1030,10 @@ def valueCompare (v1 v2 : EvalResult) (op : CompOp) : Option Bool :=
       some (applyCompOp (strCompare i1.val i2.val) op)
   | .term (.literal l1), .term (.literal l2) =>
       if l1.val.datatype == l2.val.datatype then
-        if l1.val.langTag == l2.val.langTag then
+        /- RDF language tags are case-insensitive in the term/value equality
+           used by SPARQL `=`.  Keep `sameTerm`'s distinct strict-term rule
+           separate; this operator mapping follows `Literal.eqb`. -/
+        if langTagOptionEq l1.val.langTag l2.val.langTag then
           some (applyCompOp (strCompare l1.val.lexicalForm l2.val.lexicalForm) op)
         else
           match op with

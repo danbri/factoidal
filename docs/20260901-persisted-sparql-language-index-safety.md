@@ -43,3 +43,18 @@ which share the key.  That requires a multi-ID TLI posting representation or
 an ingestion-level canonicalization rule with explicit proof and compatibility
 policy.  It must not silently replace the present exact one-key/one-ID TLI1
 assumption.
+
+## Expression equality correction
+
+The same W3C material also exercised a separate semantic seam: the SPARQL
+`=` implementation compared literal language-tag fields structurally.  On
+the W3C `lang-case-sensitivity` graph that made `@en = @EN` false, returning
+two equal pairs instead of the approved four (and two unequal pairs instead
+of none).  `Expr.valueCompare` now uses the existing RDF
+`langTagOptionEq` relation for equal-datatype literals.  `sameTerm` remains
+the separate strict-spelling operation.
+
+`L4Factoidal/SPARQL/ExprTests.lean` has compile-time guards for `=` and `!=`;
+the disk smoke packs the W3C graph and checks the four-row and zero-row
+results through the persisted query path.  This is a Lean SPARQL semantic fix,
+not merely a storage workaround.

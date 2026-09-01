@@ -16,7 +16,7 @@ done
 for fixture in data-2.ttl list-1.rq list-1.srx list-2.rq list-2.srx list-3.rq list-3.srx list-4.rq list-4.srx; do
   test -f "$fixture_dir/$fixture"
 done
-for fixture in data-builtin-2.ttl q-lang-3.rq result-lang-3.srx; do
+for fixture in data-builtin-2.ttl q-lang-3.rq result-lang-3.srx lang-case-sensitivity.ttl lang-case-sensitivity-eq.rq lang-case-sensitivity-ne.rq lang-case-insensitive-eq.srx lang-case-insensitive-ne.srx; do
   test -f "$expr_fixture_dir/$fixture"
 done
 
@@ -86,6 +86,24 @@ printf '%s\n' "$lang_case"
 grep -q 'open-mode=ibk3-paged-merkle(1)' <<<"$lang_case"
 grep -q 'rows=1 ' <<<"$lang_case"
 grep -q 'http://example/x3' <<<"$lang_case"
+
+# The same W3C fixture distinguishes expression-level `=` from exact term
+# spelling: @en and @EN form four equal pairs and no unequal pairs. This
+# checks the parsed evaluator after persisted materialisation, not OLI2.
+lang_compare_root="$run_dir/language-tag-compare"
+"$lean_dir/.lake/build/bin/l4block-shard-pack" \
+  "$expr_fixture_dir/lang-case-sensitivity.ttl" "$lang_compare_root/first" ibk3 >/dev/null
+"$lean_dir/.lake/build/bin/l4block-shard-activate" "$lang_compare_root" first >/dev/null
+lang_eq=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$lang_compare_root" --query \
+  "$(<"$expr_fixture_dir/lang-case-sensitivity-eq.rq")")
+lang_ne=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$lang_compare_root" --query \
+  "$(<"$expr_fixture_dir/lang-case-sensitivity-ne.rq")")
+printf '%s\n' "$lang_eq"
+printf '%s\n' "$lang_ne"
+grep -q 'open-mode=ibk3-paged-merkle(2)' <<<"$lang_eq"
+grep -q 'rows=4 ' <<<"$lang_eq"
+grep -q 'open-mode=ibk3-paged-merkle(2)' <<<"$lang_ne"
+grep -q 'rows=0 ' <<<"$lang_ne"
 
 # RDF collection cases introduce Turtle blank nodes and multi-predicate list
 # traversal. They deliberately take the safe full-manifest path and confirm

@@ -78,6 +78,11 @@ def muNums : Binding :=
 -- lookup promotes the literal, so `=` compares numbers.
 #guard (Expr.compare .eq (.var "a") (.var "b")).eval muNums == .bool true
 #guard (Expr.compare .eq (.var "a") (.var "d")).eval muNums == .bool true
+
+-- RDF/SPARQL language tags compare case-insensitively for `=`; this is not
+-- the strict spelling-sensitive `sameTerm` relation.
+#guard (Expr.compare .eq (.lit (litLang "xyz" "en")) (.lit (litLang "xyz" "EN"))).eval [] == .bool true
+#guard (Expr.compare .ne (.lit (litLang "xyz" "en")) (.lit (litLang "xyz" "EN"))).eval [] == .bool false
 -- ...but they are different TERMS, so sameTerm on the terms is false.
 #guard (Expr.sameTerm (.lit (litInt "1")) (.lit (litInt "01"))).eval [] == .bool false
 -- A literal written directly in the expression is NOT promoted (the F*
