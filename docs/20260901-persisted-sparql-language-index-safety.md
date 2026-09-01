@@ -58,3 +58,19 @@ the separate strict-spelling operation.
 the disk smoke packs the W3C graph and checks the four-row and zero-row
 results through the persisted query path.  This is a Lean SPARQL semantic fix,
 not merely a storage workaround.
+
+## Rejected temporary index shortcut
+
+On a freshly packed 65,475-triple `protein_family.ttl` SBM6 generation, the
+object-driven `wdt:P31/wdt:P527` join returns 20,844 rows.  The current
+materialise-then-read-ops evaluator took about 28 seconds in one local process
+sample.  Replacing the base-only temporary read backend with the existing
+Lean `OWL.RL.Index` reduced that sample to about 13 seconds, but it made the
+persisted W3C `q-lang-3` case return zero rows again: the generic index also
+uses an exact candidate key before the `Term.eqb` recheck.
+
+That shortcut was rejected and removed.  The observation is still useful:
+the next performance step is not an arbitrary cache, but an
+equivalence-aware backend index whose candidate selection is complete for the
+same language-tag and XMLLiteral relation as the SPARQL evaluator.  The
+observed times are exploratory warm-cache local samples, not benchmark claims.
