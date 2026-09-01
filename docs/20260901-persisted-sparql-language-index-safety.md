@@ -320,12 +320,24 @@ admission predicate, then add explicitly justified modifier refinements.
 proof boundary without coupling it to the harness.  It defines pure
 predicate-fragment and same-subject-object sequences, a canonical BGP-order
 binding construction, and `BagEquivalent` in terms of `AlgebraSpec.mult`.
-The initial non-`sorry` lemmas establish its basic list/binding facts and the
-file records the full intended three-pattern bag-refinement statement.  The
-remaining two obligations are intentionally separate: prove the pure BGP bag
-theorem, then prove that Merkle-verified SRI2 plus the executable HashMap
-construction agrees with those pure fragments.  This prevents a future proof
-from accidentally certifying only a particular on-disk iteration order.
+The pure semantic bridge is now proved without `sorry`: when the syntactically
+first predicate supplies the driver rows and the four variables are pairwise
+distinct, `sharedSubjectTripleSolutions_eq_evalBgp` establishes exact list
+equality with the ordinary left-to-right evaluator.  Its bag-equivalence
+corollary is therefore immediate.  The proof retains every duplicate and each
+multi-value Cartesian product.  It is stronger than the originally sketched
+claim and does not require the three predicates to be distinct; that is a
+physical planner admission, not a semantic precondition.
+
+The remaining obligations are intentionally separate: prove that the
+Merkle-verified SRI2 fragments plus executable HashMap grouping agree with
+these pure predicate fragments, and prove bag preservation when the optimizer
+chooses the second or third predicate as physical driver.  Such a reordered
+driver need not be list-equal to source-order evaluation, so order-sensitive
+modifiers remain on the ordinary path.  This prevents a future proof from
+accidentally certifying only a particular on-disk iteration order.  The axiom
+audit for both new headline theorems reports only Lean's accepted `propext`,
+`Classical.choice`, and `Quot.sound` foundations.
 
 ### Bounded three-way execution is a separate semantic contract
 
