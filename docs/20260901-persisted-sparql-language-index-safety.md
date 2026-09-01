@@ -207,30 +207,26 @@ The generic `distinctSolutions` specification remains unchanged and retains
 its existing theorems.  Runtime SELECT evaluation now uses
 `distinctSolutionsFast`: process rows from right to left (preserving the
 specification's last-occurrence result order), bucket each solution mapping by
-its sorted variable-to-`Term.joinKey` representation, and test every bucket
-candidate with the established `Binding.equiv` before suppressing a row.
+one fixed-universe optional-`Term.joinKey` representation, and test every
+bucket candidate with the established `Binding.equiv` before suppressing a
+row.
 
 `Term.joinKey_eq_of_eqb` is the key safety direction: SPARQL-equal terms,
 including case variants of language tags and canonical XML literals, enter the
 same candidate bucket.  A hash/key collision only costs an extra equivalence
 test; it cannot remove a non-equivalent mapping.  The associated standalone
-refinement theorem remains to be added, but the generic path passes both
-persisted and W3C disk-query suites.  A two-column 20,844-row protein-family
+refinement theorem is now complete (see the later exact-refinement entry), and
+the generic path passes both persisted and W3C disk-query suites.  Before the
+fixed-universe refactor, a two-column 20,844-row protein-family
 `SELECT DISTINCT ?x ?part ... ORDER BY ?x LIMIT 3`, which cannot use the
 single-subject fast path, completed in a 4.00-second local sample.
 
-The first proof-oriented refactor makes the canonical
-`Binding.distinctKey` and tail-recursive `distinctSolutionsFastGo` public
-Lean definitions; executable behavior is unchanged and
-`distinctSolutions` remains the reference.  The planned theorem is exact
-list equality.  Its key lemma is
-`mu.equiv nu = true → mu.distinctKey = nu.distinctKey`, using the existing
-binding lookup/equivalence lemmas and `Term.joinKey_eq_of_eqb`.  A HashMap
-invariant then identifies each bucket with the equivalently keyed part of the
-already-kept suffix; the runtime still performs full `equiv` tests within
-that bucket, so a key collision cannot discard a non-equivalent row.  This
-will justify the fast path before `DISTINCT` feeds ordering, slicing, or
-result serialization, rather than weakening downstream semantics.
+The proof-oriented refactor keeps the tail-recursive
+`distinctSolutionsFastGo` public and introduces `Binding.distinctKeyFor` over
+a fixed variable universe.  `distinctSolutions` remains the independent
+reference.  The completed theorem establishes exact list equality before
+`DISTINCT` feeds ordering, slicing, or result serialization; downstream
+semantics were not weakened to accommodate the optimization.
 
 ## Compaction continuity check
 
@@ -389,21 +385,41 @@ single-variable mappings, and a separate two-variable/literal mapping must
 produce exactly the same survivor sequence under the fast and reference
 implementations.  This is useful executable protection for modifiers after a
 persisted route has produced its rows; it is deliberately **not** the final
-assurance claim.  The remaining Lean refinement is to prove that equivalent
-bindings always have the same `distinctKey`, establish the `HashMap` bucket
-invariant, and then prove exact list equality of the tail-recursive worker
-with `distinctSolutions`.
+assurance claim.
 
-The first proof ingredients are now in `QueryTheorems`: an equivalent binding
-transfers every successful variable lookup to an `eqb`-equal lookup in the
-other mapping, and therefore transfers its canonical `Term.joinKey` exactly.
-This makes explicit the important safety direction for a bucketed algorithm:
-equivalent mappings cannot be separated into different candidate buckets.
-The next (still unproved) step is to lift those pointwise facts through the
-deduplicating/sorting construction of `Binding.distinctKey`.
+The original runtime key independently collected, deduplicated, and sorted
+the variables of every row.  That made the proof depend on a substantial
+normalization theorem and repeated the same discovery/sort work per result.
+The runtime now computes `distinctVariables` once for the whole solution
+sequence.  `Binding.distinctKeyFor` aligns every row to that fixed universe as
+a list of optional canonical term values: `none` means unbound, while a
+present term is represented by `Term.joinKey`.  It then hashes this compact
+aligned list.  The key is only a candidate partition; every match is still
+confirmed by full `Binding.equiv`.
 
-The theorem layer also now states the complementary absence result: equivalent
-mappings bind exactly the same variable domain.  That removes a common hidden
-assumption from the future normalization proof—an absent binding cannot turn
-into a present key component merely because a physical producer used a
-different association-list layout.
+`QueryTheorems` now proves `Binding.equiv_distinctKeyFor`: equivalent mappings
+have identical keys for *any* fixed variable universe.  Its supporting lemmas
+prove successful-lookup transfer, canonical term-key equality, absence
+transfer, and equality of the variable domains.  This closes the critical
+bucket-safety direction—an equivalent row cannot be hidden in another
+bucket—even for association lists with a shadowed duplicate variable and for
+case-equivalent language tags.  Both cases are executable build guards.
+
+The focused query/theorem builds and the complete persisted IBK3 smoke pass
+with the new runtime representation.  No speed claim is recorded yet: the
+expected gain is removal of per-row sorting, but it needs a repeatable
+large-result benchmark.
+
+The exact refinement is now complete.  `DistinctBucketWf` states that every
+hash bucket is precisely the retained rows selected by that key, and its
+empty/push theorems track the real worker updates.  `bucketAnyEq` proves that
+probing one candidate bucket gives the same duplicate decision as scanning all
+retained rows.  A separate shadow-removal lemma handles the subtle reverse
+traversal case: if a mapping already has an equivalent later representative,
+removing it cannot affect an earlier mapping because solution-map equality is
+transitive.  These feed the accumulator theorem
+`distinctSolutionsFastGo_eq` and the public result
+`distinctSolutionsFast_eq`, which establishes exact list equality—not only
+set or bag equality—with the simple reference implementation.  The axiom
+audit reports only Lean's accepted `propext`, `Classical.choice`, and
+`Quot.sound`; there is no `sorry`, user axiom, `partial`, or native decision.

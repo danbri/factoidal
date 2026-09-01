@@ -280,35 +280,44 @@ def distinctSolutions : SolutionSeq → SolutionSeq
       if rest.any (fun x => mu.equiv x) then distinctSolutions rest
       else mu :: distinctSolutions rest
 
-/-- Canonical candidate key used by runtime DISTINCT.  This is public because
-    `joinKey` is constant on the RDF/SPARQL term-equivalence class, sorting
-    removes binding-list order, and duplicate variable names are collapsed.
-    Its coherence with `Binding.equiv` is a first-class refinement obligation;
-    callers must still check `equiv` within a bucket before removing a row. -/
-def Binding.distinctKey (mu : Binding) : List (VarName × Term) :=
-  let vars := mu.foldl (fun seen pair =>
-    if seen.contains pair.1 then seen else pair.1 :: seen) []
-  let pairs := vars.filterMap (fun v => (mu.lookup v).map (fun t => (v, t.joinKey)))
-  pairs.mergeSort (fun left right => left.1 ≤ right.1)
+/-- All variable names seen in a solution sequence, once each.  The discovery
+    order is immaterial but fixed for the whole DISTINCT invocation.  Computing
+    it once avoids sorting and rebuilding a variable universe for every row. -/
+def distinctVariables (omega : SolutionSeq) : List VarName :=
+  omega.foldl (fun seen mu =>
+    mu.foldl (fun seen pair =>
+      if seen.contains pair.1 then seen else pair.1 :: seen) seen) []
+
+/-- Canonical candidate key used by runtime DISTINCT for one fixed variable
+    universe.  `none` records an unbound variable; present terms use `joinKey`,
+    which is constant on RDF/SPARQL term-equivalence classes.  Association-list
+    order and duplicate variable entries therefore do not affect the key.
+
+    Callers must still check full `Binding.equiv` inside a bucket: the key is a
+    sound candidate partition, not the definition of solution-map equality. -/
+def Binding.distinctKeyFor (mu : Binding) (vars : List VarName) : List (Option Term) :=
+  vars.map fun v => (mu.lookup v).map Term.joinKey
 
 /-- Tail-recursive worker for `distinctSolutionsFast`.  It is deliberately
     named rather than local so `DistinctFastRefinement` can state the bucket
-    invariant over exactly the compiled runtime loop.  The full `equiv` test
-    means a hash collision or coarser canonical key cannot remove a
-    non-duplicate. -/
-def distinctSolutionsFastGo : SolutionSeq →
-    Std.HashMap (List (VarName × Term)) SolutionSeq → SolutionSeq → SolutionSeq
+    invariant over exactly the compiled runtime loop.  `vars` is fixed for the
+    invocation.  The full `equiv` test means a hash collision or coarser key
+    cannot remove a non-duplicate. -/
+def distinctSolutionsFastGo (vars : List VarName) : SolutionSeq →
+    Std.HashMap (List (Option Term)) SolutionSeq → SolutionSeq → SolutionSeq
   | [], _, kept => kept
   | mu :: rest, buckets, kept =>
-      let key := mu.distinctKey
+      let key := mu.distinctKeyFor vars
       let bucket := buckets.getD key []
       if bucket.any (fun prior => mu.equiv prior) then
-        distinctSolutionsFastGo rest buckets kept
+        distinctSolutionsFastGo vars rest buckets kept
       else
-        distinctSolutionsFastGo rest (buckets.insert key (mu :: bucket)) (mu :: kept)
+        distinctSolutionsFastGo vars rest (buckets.insert key (mu :: bucket)) (mu :: kept)
 
 def distinctSolutionsFast (omega : SolutionSeq) : SolutionSeq :=
-  distinctSolutionsFastGo omega.reverse (∅ : Std.HashMap (List (VarName × Term)) SolutionSeq) []
+  let vars := distinctVariables omega
+  distinctSolutionsFastGo vars omega.reverse
+    (∅ : Std.HashMap (List (Option Term)) SolutionSeq) []
 
 /-- `Reduced(Ω)` — §18.4 permits an implementation to remove some, all,
 or none of the duplicates. Keeping all of them is conformant, and is

@@ -142,6 +142,97 @@ theorem Binding.equiv_lookup_none_iff {mu1 mu2 : Binding}
   · exact Binding.equiv_lookup_none h
   · exact Binding.equiv_lookup_none (Binding.equiv_symm h)
 
+/-- Equivalent mappings have the same canonical optional value for every
+    variable.  Both absence and the RDF-term equality cases are explicit: this
+    is exactly the safety property needed by a fixed-universe hash key. -/
+theorem Binding.equiv_lookup_joinKeyOption {mu1 mu2 : Binding}
+    (h : mu1.equiv mu2 = true) (v : VarName) :
+    (mu1.lookup v).map Term.joinKey = (mu2.lookup v).map Term.joinKey := by
+  cases h1 : mu1.lookup v with
+  | none =>
+      have h2 := Binding.equiv_lookup_none h h1
+      simp [h2]
+  | some t1 =>
+      obtain ⟨t2, h2, hkey⟩ := Binding.equiv_lookup_joinKey h h1
+      simp [h2, hkey]
+
+/-- The optimized DISTINCT candidate key is coherent with §18.3 solution-map
+    equality for any fixed variable universe.  The universe need not be
+    complete for safety because every candidate bucket still performs the
+    full `Binding.equiv` check; completeness only improves partitioning. -/
+theorem Binding.equiv_distinctKeyFor {mu1 mu2 : Binding}
+    (h : mu1.equiv mu2 = true) (vars : List VarName) :
+    mu1.distinctKeyFor vars = mu2.distinctKeyFor vars := by
+  induction vars with
+  | nil => rfl
+  | cons v rest ih =>
+      simp only [Binding.distinctKeyFor, List.map_cons]
+      rw [Binding.equiv_lookup_joinKeyOption h v]
+      simpa [Binding.distinctKeyFor] using ih
+
+/-- The runtime hash table contains exactly the retained rows selected by each
+    candidate key, in retained-list order. -/
+def DistinctBucketWf (vars : List VarName)
+    (buckets : Std.HashMap (List (Option Term)) SolutionSeq)
+    (kept : SolutionSeq) : Prop :=
+  ∀ key, buckets.getD key [] =
+    kept.filter (fun mu => mu.distinctKeyFor vars == key)
+
+theorem DistinctBucketWf.empty (vars : List VarName) :
+    DistinctBucketWf vars
+      (∅ : Std.HashMap (List (Option Term)) SolutionSeq) [] := by
+  intro key
+  simp [Std.HashMap.getD_empty]
+
+theorem DistinctBucketWf.push {vars : List VarName}
+    {buckets : Std.HashMap (List (Option Term)) SolutionSeq}
+    {kept : SolutionSeq} (h : DistinctBucketWf vars buckets kept)
+    (mu : Binding) :
+    DistinctBucketWf vars
+      (buckets.insert (mu.distinctKeyFor vars)
+        (mu :: buckets.getD (mu.distinctKeyFor vars) []))
+      (mu :: kept) := by
+  intro key
+  rw [Std.HashMap.getD_insert]
+  by_cases hk : mu.distinctKeyFor vars = key
+  · subst key
+    simpa using h (mu.distinctKeyFor vars)
+  · have hb : (mu.distinctKeyFor vars == key) = false := by
+      simpa using hk
+    simp [hb, h key]
+
+private theorem any_filter_distinctKeyFor_eq (vars : List VarName)
+    (mu : Binding) : ∀ kept : SolutionSeq,
+    (kept.filter (fun prior =>
+      prior.distinctKeyFor vars == mu.distinctKeyFor vars)).any
+        (fun prior => mu.equiv prior) =
+      kept.any (fun prior => mu.equiv prior) := by
+  intro kept
+  induction kept with
+  | nil => rfl
+  | cons prior rest ih =>
+      by_cases heq : mu.equiv prior = true
+      · have hkey := Binding.equiv_distinctKeyFor heq vars
+        have hk : (prior.distinctKeyFor vars == mu.distinctKeyFor vars) = true := by
+          simp [hkey]
+        simp [heq, hk]
+      · by_cases hk : (prior.distinctKeyFor vars == mu.distinctKeyFor vars) = true
+        · simp [heq, hk, ih]
+        · simp [heq, hk, ih]
+
+/-- Under the bucket invariant, probing the candidate bucket is exactly the
+    same duplicate test as scanning every retained row.  Key collisions remain
+    harmless; key coherence ensures no equivalent row is filtered out. -/
+theorem DistinctBucketWf.bucketAnyEq {vars : List VarName}
+    {buckets : Std.HashMap (List (Option Term)) SolutionSeq}
+    {kept : SolutionSeq} (h : DistinctBucketWf vars buckets kept)
+    (mu : Binding) :
+    (buckets.getD (mu.distinctKeyFor vars) []).any
+        (fun prior => mu.equiv prior) =
+      kept.any (fun prior => mu.equiv prior) := by
+  rw [h]
+  exact any_filter_distinctKeyFor_eq vars mu kept
+
 /-! ## §18.4 DISTINCT -/
 
 /-- DISTINCT only ever DELETES rows, in place: its result is a sublist
@@ -193,6 +284,43 @@ def NoLaterDup : SolutionSeq → Prop
   | []        => True
   | mu :: rest => rest.any (fun x => mu.equiv x) = false ∧ NoLaterDup rest
 
+/-- If `mu` has an equivalent representative in `suffix`, inserting `mu`
+    cannot make it the sole later duplicate of another mapping.  Transitivity
+    transfers any such comparison to the representative already in suffix. -/
+private theorem any_equiv_cons_shadowed (head mu : Binding) {suffix : SolutionSeq}
+    (hdup : suffix.any (fun x => mu.equiv x) = true) :
+    (mu :: suffix).any (fun x => head.equiv x) =
+      suffix.any (fun x => head.equiv x) := by
+  by_cases hhead : head.equiv mu = true
+  · obtain ⟨witness, hwitness, hmuw⟩ := List.any_eq_true.mp hdup
+    have hheadw := Binding.equiv_trans hhead hmuw
+    have hsuffix : suffix.any (fun x => head.equiv x) = true :=
+      List.any_eq_true.mpr ⟨witness, hwitness, hheadw⟩
+    simp [hhead, hsuffix]
+  · simp [hhead]
+
+/-- Removing a mapping which has an equivalent later representative does not
+    change DISTINCT, even under an arbitrary earlier prefix. -/
+theorem distinctSolutions_erase_shadowed (mu : Binding) (suffix : SolutionSeq)
+    (hdup : suffix.any (fun x => mu.equiv x) = true) :
+    ∀ earlier : SolutionSeq,
+      distinctSolutions (earlier ++ mu :: suffix) =
+        distinctSolutions (earlier ++ suffix) := by
+  intro earlier
+  induction earlier with
+  | nil => simp [distinctSolutions, hdup]
+  | cons head rest ih =>
+      have hany :
+          (rest ++ mu :: suffix).any (fun x => head.equiv x) =
+            (rest ++ suffix).any (fun x => head.equiv x) := by
+        simp only [List.any_append]
+        rw [any_equiv_cons_shadowed head mu hdup]
+      simp only [List.cons_append, distinctSolutions]
+      rw [hany]
+      by_cases hrest : (rest ++ suffix).any (fun x => head.equiv x) = true
+      · simp [hrest, ih]
+      · simp [hrest, ih]
+
 private theorem any_false_of_subset {p : Binding → Bool} {l1 l2 : SolutionSeq}
     (hsub : ∀ x ∈ l1, x ∈ l2) (h : l2.any p = false) : l1.any p = false := by
   cases hh : l1.any p with
@@ -227,6 +355,48 @@ theorem distinctSolutions_of_noLaterDup :
     unfold distinctSolutions
     rw [if_neg (by simp [h.1])]
     rw [ih h.2]
+
+/-- The tail-recursive HashMap worker implements the reference DISTINCT for an
+    arbitrary unprocessed suffix and a well-formed retained accumulator. -/
+theorem distinctSolutionsFastGo_eq (vars : List VarName) :
+    ∀ (xs : SolutionSeq)
+      (buckets : Std.HashMap (List (Option Term)) SolutionSeq)
+      (kept : SolutionSeq),
+      DistinctBucketWf vars buckets kept →
+      NoLaterDup kept →
+      distinctSolutionsFastGo vars xs buckets kept =
+        distinctSolutions (xs.reverse ++ kept) := by
+  intro xs
+  induction xs with
+  | nil =>
+      intro buckets kept _ hkept
+      simpa [distinctSolutionsFastGo] using
+        (distinctSolutions_of_noLaterDup hkept).symm
+  | cons mu rest ih =>
+      intro buckets kept hbuckets hkept
+      unfold distinctSolutionsFastGo
+      dsimp only
+      rw [DistinctBucketWf.bucketAnyEq hbuckets mu]
+      by_cases hdup : kept.any (fun prior => mu.equiv prior) = true
+      · rw [if_pos hdup]
+        rw [ih buckets kept hbuckets hkept]
+        simpa [List.reverse_cons, List.append_assoc] using
+          (distinctSolutions_erase_shadowed mu kept hdup rest.reverse).symm
+      · rw [if_neg hdup]
+        have hbuckets' := DistinctBucketWf.push hbuckets mu
+        have hkept' : NoLaterDup (mu :: kept) := ⟨by simpa using hdup, hkept⟩
+        rw [ih _ _ hbuckets' hkept']
+        simp [List.reverse_cons, List.append_assoc]
+
+/-- Exact refinement of the production DISTINCT implementation: same retained
+    representatives and same list order as the simple §18.4 reference. -/
+theorem distinctSolutionsFast_eq (omega : SolutionSeq) :
+    distinctSolutionsFast omega = distinctSolutions omega := by
+  unfold distinctSolutionsFast
+  rw [distinctSolutionsFastGo_eq (distinctVariables omega) omega.reverse
+    (∅ : Std.HashMap (List (Option Term)) SolutionSeq) []
+    (DistinctBucketWf.empty (distinctVariables omega)) (by simp [NoLaterDup])]
+  simp
 
 /-- DISTINCT is IDEMPOTENT (§18.4: `Distinct(Distinct(Ω)) =
 Distinct(Ω)` — deduplicating a deduplicated sequence changes
@@ -440,5 +610,9 @@ open L4Factoidal.SPARQL
 #print axioms evalIn_eq_eval_of_no_named
 #print axioms lateral_empty_rhs_per_row
 #print axioms Binding.equiv_trans
+#print axioms Binding.equiv_distinctKeyFor
+#print axioms DistinctBucketWf.bucketAnyEq
+#print axioms distinctSolutionsFastGo_eq
+#print axioms distinctSolutionsFast_eq
 
 end Audit

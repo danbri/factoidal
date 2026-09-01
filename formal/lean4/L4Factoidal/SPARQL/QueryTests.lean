@@ -361,6 +361,29 @@ def distinctFastCases : SolutionSeq :=
 #guard distinctSolutionsFast distinctFastCases == distinctSolutions distinctFastCases
 #guard (distinctSolutionsFast distinctFastCases).length == 3
 
+-- A malformed association-list layout with a shadowed duplicate variable is
+-- still interpreted through first-match `lookup`; the fixed-universe key has
+-- the same interpretation rather than depending on list length or order.
+def duplicateVarRow : Binding :=
+  [("x", .iri iAlice), ("x", .iri iBob)]
+def canonicalVarRow : Binding :=
+  [("x", .iri iAlice)]
+
+#guard duplicateVarRow.equiv canonicalVarRow
+#guard duplicateVarRow.distinctKeyFor ["missing", "x"] ==
+  canonicalVarRow.distinctKeyFor ["missing", "x"]
+
+-- Language-tag case is deliberately non-structural RDF term equality.  The
+-- canonical key lowercases it, keeping equivalent rows in one candidate
+-- bucket while the bucket still runs full `Binding.equiv`.
+def langLowerRow : Binding :=
+  [("label", .literal (Literal.langString "chat" "en-GB"))]
+def langUpperRow : Binding :=
+  [("label", .literal (Literal.langString "chat" "EN-gb"))]
+
+#guard langLowerRow.equiv langUpperRow
+#guard langLowerRow.distinctKeyFor ["label"] == langUpperRow.distinctKeyFor ["label"]
+
 /-! ## §15.1 ORDER BY -/
 
 def qOrder (c : OrderCondition) : Query :=
