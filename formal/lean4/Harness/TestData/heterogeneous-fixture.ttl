@@ -1,0 +1,69 @@
+# Deterministic heterogeneous Shardborough fixture (2026-09-01).
+# Hand-written, checked in, no generator randomness. Exactly 44 triples.
+# Coverage, per docs/20260901-blockengine-tuesday-okrs.md item 3:
+#   - predicate skew: ex:name 12, ex:knows 6, ex:age 5, ex:homepage 3,
+#     rare:seenAt 1, ex:note 17 (dominant, mixed literal shapes)
+#   - shared terms: every ex:knows object is also a subject; ex:hub is
+#     both subject and object; ex:w3c IRI shared by two predicates
+#   - language tags: same lexical form under different tags, and
+#     different forms under one tag
+#   - typed literals: integer, decimal, double, boolean, dateTime, date,
+#     plus the term-identity sentinel pair "1" and "01" as xsd:integer
+#     (distinct RDF terms, equal values - must stay distinct in storage)
+#   - blank nodes in subject and object position
+# Absent-lookup targets (never present, queried by the smoke):
+#   ex:absent (IRI), "nothing here"@tlh (literal), ex:missingPredicate.
+@prefix ex: <http://example.org/> .
+@prefix rare: <http://example.org/rare/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:alice ex:name "Alice" .
+ex:alice ex:name "Alice"@en .
+ex:alice ex:name "Alicia"@es .
+ex:bob ex:name "Bob"@en .
+ex:bob ex:name "Bob"@en-GB .
+ex:carol ex:name "Carol" .
+ex:dan ex:name "Dan" .
+ex:eve ex:name "Eve" .
+ex:hub ex:name "Hub" .
+ex:w3c ex:name "W3C" .
+_:g1 ex:name "Anonymous One" .
+ex:frank ex:name "Frank" .
+
+ex:alice ex:knows ex:bob .
+ex:bob ex:knows ex:carol .
+ex:carol ex:knows ex:hub .
+ex:dan ex:knows ex:hub .
+ex:eve ex:knows ex:hub .
+ex:hub ex:knows ex:alice .
+
+ex:alice ex:age "1"^^xsd:integer .
+ex:bob ex:age "01"^^xsd:integer .
+ex:carol ex:age "33"^^xsd:integer .
+ex:dan ex:age "44.5"^^xsd:decimal .
+ex:eve ex:age "5.5E1"^^xsd:double .
+
+ex:alice ex:homepage ex:w3c .
+ex:bob ex:homepage ex:bobsite .
+ex:hub ex:homepage ex:hubsite .
+
+ex:frank rare:seenAt "2026-09-01T06:00:00Z"^^xsd:dateTime .
+
+ex:alice ex:note "plain note" .
+ex:alice ex:note "note en"@en .
+ex:alice ex:note "note fr"@fr .
+ex:bob ex:note "true"^^xsd:boolean .
+ex:bob ex:note "2026-09-01"^^xsd:date .
+ex:carol ex:note "0"^^xsd:integer .
+ex:carol ex:note "42" .
+ex:dan ex:note "42"^^xsd:integer .
+ex:dan ex:note _:g1 .
+ex:eve ex:note ex:hub .
+ex:eve ex:note "deux"@fr .
+ex:frank ex:note "same"@en .
+ex:frank ex:note "same"@de .
+ex:hub ex:note "hub note" .
+ex:hub ex:note "3.14"^^xsd:decimal .
+ex:w3c ex:note "consortium" .
+_:g1 ex:note "from blank" .
