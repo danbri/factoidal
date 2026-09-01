@@ -280,33 +280,35 @@ def distinctSolutions : SolutionSeq → SolutionSeq
       if rest.any (fun x => mu.equiv x) then distinctSolutions rest
       else mu :: distinctSolutions rest
 
-/-- A canonical bucket key for solution mappings.  `joinKey` is constant on
-    the RDF/SPARQL term-equivalence class; sorting makes binding order
-    irrelevant, and duplicate variable names are collapsed because a solution
-    mapping is a partial function.  This is a candidate-selection key only:
-    callers still use `Binding.equiv` before discarding a row. -/
-private def Binding.distinctKey (mu : Binding) : List (VarName × Term) :=
+/-- Canonical candidate key used by runtime DISTINCT.  This is public because
+    `joinKey` is constant on the RDF/SPARQL term-equivalence class, sorting
+    removes binding-list order, and duplicate variable names are collapsed.
+    Its coherence with `Binding.equiv` is a first-class refinement obligation;
+    callers must still check `equiv` within a bucket before removing a row. -/
+def Binding.distinctKey (mu : Binding) : List (VarName × Term) :=
   let vars := mu.foldl (fun seen pair =>
     if seen.contains pair.1 then seen else pair.1 :: seen) []
   let pairs := vars.filterMap (fun v => (mu.lookup v).map (fun t => (v, t.joinKey)))
   pairs.mergeSort (fun left right => left.1 ≤ right.1)
 
-/-- Runtime `DISTINCT`, preserving the specification implementation's
-    last-occurrence choice.  Canonical keys make the usual bucket short; a
-    full `Binding.equiv` test within the bucket means a hash collision or a
-    deliberately coarser canonical term key cannot remove a non-duplicate. -/
+/-- Tail-recursive worker for `distinctSolutionsFast`.  It is deliberately
+    named rather than local so `DistinctFastRefinement` can state the bucket
+    invariant over exactly the compiled runtime loop.  The full `equiv` test
+    means a hash collision or coarser canonical key cannot remove a
+    non-duplicate. -/
+def distinctSolutionsFastGo : SolutionSeq →
+    Std.HashMap (List (VarName × Term)) SolutionSeq → SolutionSeq → SolutionSeq
+  | [], _, kept => kept
+  | mu :: rest, buckets, kept =>
+      let key := mu.distinctKey
+      let bucket := buckets.getD key []
+      if bucket.any (fun prior => mu.equiv prior) then
+        distinctSolutionsFastGo rest buckets kept
+      else
+        distinctSolutionsFastGo rest (buckets.insert key (mu :: bucket)) (mu :: kept)
+
 def distinctSolutionsFast (omega : SolutionSeq) : SolutionSeq :=
-  go omega.reverse (∅ : Std.HashMap (List (VarName × Term)) SolutionSeq) []
-where
-  go : SolutionSeq → Std.HashMap (List (VarName × Term)) SolutionSeq → SolutionSeq → SolutionSeq
-    | [], _, kept => kept
-    | mu :: rest, buckets, kept =>
-        let key := mu.distinctKey
-        let bucket := buckets.getD key []
-        if bucket.any (fun prior => mu.equiv prior) then
-          go rest buckets kept
-        else
-          go rest (buckets.insert key (mu :: bucket)) (mu :: kept)
+  distinctSolutionsFastGo omega.reverse (∅ : Std.HashMap (List (VarName × Term)) SolutionSeq) []
 
 /-- `Reduced(Ω)` — §18.4 permits an implementation to remove some, all,
 or none of the duplicates. Keeping all of them is conformant, and is

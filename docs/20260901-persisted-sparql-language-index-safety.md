@@ -219,6 +219,19 @@ persisted and W3C disk-query suites.  A two-column 20,844-row protein-family
 `SELECT DISTINCT ?x ?part ... ORDER BY ?x LIMIT 3`, which cannot use the
 single-subject fast path, completed in a 4.00-second local sample.
 
+The first proof-oriented refactor makes the canonical
+`Binding.distinctKey` and tail-recursive `distinctSolutionsFastGo` public
+Lean definitions; executable behavior is unchanged and
+`distinctSolutions` remains the reference.  The planned theorem is exact
+list equality.  Its key lemma is
+`mu.equiv nu = true → mu.distinctKey = nu.distinctKey`, using the existing
+binding lookup/equivalence lemmas and `Term.joinKey_eq_of_eqb`.  A HashMap
+invariant then identifies each bucket with the equivalently keyed part of the
+already-kept suffix; the runtime still performs full `equiv` tests within
+that bucket, so a key collision cannot discard a non-equivalent row.  This
+will justify the fast path before `DISTINCT` feeds ordering, slicing, or
+result serialization, rather than weakening downstream semantics.
+
 ## Compaction continuity check
 
 The current compactor is not an IBK2-only fallback: its IBK3 branch calls
