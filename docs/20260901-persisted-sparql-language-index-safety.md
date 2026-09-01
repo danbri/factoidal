@@ -218,3 +218,15 @@ refinement theorem remains to be added, but the generic path passes both
 persisted and W3C disk-query suites.  A two-column 20,844-row protein-family
 `SELECT DISTINCT ?x ?part ... ORDER BY ?x LIMIT 3`, which cannot use the
 single-subject fast path, completed in a 4.00-second local sample.
+
+## Compaction continuity check
+
+The current compactor is not an IBK2-only fallback: its IBK3 branch calls
+`publishTriplesV3` with the compacted SBM6 `SRI2/TLI1/OLI2` layout, and
+activation admits that layout.  On 2026-09-01 both
+`tools/blockengine-shard-compact-smoke.sh` and
+`tools/blockengine-ibk3-compact-smoke.sh` passed.  The IBK3 gate repacks a
+generation after DLOG batches, activates it through `CURRENT`, queries the
+new base, writes an epoch-2 DLOG update, and reads that update as
+base-plus-delta.  Thus selective layout continuity and epoch-aware replay are
+currently exercised across the immutable-generation transition.
