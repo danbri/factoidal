@@ -143,11 +143,54 @@ private def objectSubjectSolutions (subjectVar objectVar : VarName)
     List.replicate (multiplicities.getD target.s 0)
       [(objectVar, target.o), (subjectVar, target.s.toTerm)]
 
+/-- Preserve first-seen RDF subjects while avoiding `List.eraseDups`'s
+    quadratic repeated membership scan on a broad OLI2 driver. Subjects are
+    IRI/blank-node keys, whose structural equality is the same identity used
+    by the physical SRI2 sidecar. -/
+private def distinctSubjectTerms (triples : List Triple) : List Term :=
+  go triples (∅ : Std.HashSet Subject) []
+where
+  go : List Triple → Std.HashSet Subject → List Term → List Term
+    | [], _, reversed => reversed.reverse
+    | triple :: rest, seen, reversed =>
+        if seen.contains triple.s then go rest seen reversed
+        else go rest (seen.insert triple.s) (triple.s.toTerm :: reversed)
+
+/-- This is a deliberately narrower physical finishing path than generic
+    `DISTINCT`: a one-variable `SELECT DISTINCT ?subject ORDER BY ?subject`
+    (ascending or descending) has already projected every relevant value.
+    The input target rows are known to have driver subjects, so a structural
+    subject set produces exactly its distinct solution mappings.  Ordering is
+    retained in `selectPost`; disabling its generic quadratic DISTINCT is safe
+    only after this pre-deduplication and only for this exact shape. -/
+private def distinctSubjectOrderQuery? (query : Query) (subjectVar : VarName) : Option Query := do
+  if query.groupBy.isSome || !query.having.isEmpty || !query.modifier.distinct then none else
+  match query.form, query.modifier.orderBy with
+  | .select (.vars [.var selected]), some [order] =>
+      let orderedVar := match order with
+        | .asc (.var v) => some v
+        | .desc (.var v) => some v
+        | _ => none
+      if selected != subjectVar || orderedVar != some subjectVar then none else
+      some (.mk query.form query.dataset query.pattern query.groupBy query.having
+        { query.modifier with distinct := false } query.postValues query.base)
+  | _, _ => none
+
+private def objectSubjectDistinctSolutions (subjectVar : VarName)
+    (targets : List Triple) : SolutionSeq :=
+  (distinctSubjectTerms targets).map fun subject => [(subjectVar, subject)]
+
 private def finishObjectSubjectSelect (query : Query) (entries : List Entry)
     (predicates : List WfIri) (subjectVar objectVar : VarName)
     (drivers targets : List Triple) (counters : Counters) : IO UInt32 := do
-  let rows := selectPost emptyEnv query (objectSubjectSolutions subjectVar objectVar drivers targets)
-  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
+  let (executionQuery, inputRows, mode) :=
+    match distinctSubjectOrderQuery? query subjectVar with
+    | some q => (q, objectSubjectDistinctSolutions subjectVar targets,
+        "ibk3-sri2-tli1-oli2-object-subject-direct-select-distinct-subject")
+    | none => (query, objectSubjectSolutions subjectVar objectVar drivers targets,
+        "ibk3-sri2-tli1-oli2-object-subject-direct-select")
+  let rows := selectPost emptyEnv executionQuery inputRows
+  IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
   IO.println s!"l4block-id-v3-query sse={query.toSse}"
   IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
   return 0
@@ -218,19 +261,6 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
 
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
-
-/-- Preserve first-seen RDF subjects while avoiding `List.eraseDups`'s
-    quadratic repeated membership scan on a broad OLI2 driver. Subjects are
-    IRI/blank-node keys, whose structural equality is the same identity used
-    by the physical SRI2 sidecar. -/
-private def distinctSubjectTerms (triples : List Triple) : List Term :=
-  go triples (∅ : Std.HashSet Subject) []
-where
-  go : List Triple → Std.HashSet Subject → List Term → List Term
-    | [], _, reversed => reversed.reverse
-    | triple :: rest, seen, reversed =>
-        if seen.contains triple.s then go rest seen reversed
-        else go rest (seen.insert triple.s) (triple.s.toTerm :: reversed)
 
 /-- TLI1 is currently ordered by the exact persisted term serialization,
     whereas SPARQL term matching is coarser for language-tag case and

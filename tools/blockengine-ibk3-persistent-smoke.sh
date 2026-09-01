@@ -64,6 +64,22 @@ printf '%s\n' "$object_join"
 grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select(2) delta=base' <<<"$object_join"
 grep -q 'rows=290' <<<"$object_join"
 
+# A very narrow physical finishing optimisation may deduplicate before the
+# standard post-WHERE pipeline only when the selected subject is also the sole
+# ORDER BY key.  Exercise both direction forms: they must retain the ordered
+# three-row result while advertising the narrower path.
+object_join_distinct_asc=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT DISTINCT ?x WHERE { ?x <$predicate> <http://www.wikidata.org/entity/Q616005> . ?x <http://www.wikidata.org/prop/direct/P361> ?whole . } ORDER BY ?x LIMIT 3")
+printf '%s\n' "$object_join_distinct_asc"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select-distinct-subject(2) delta=base' <<<"$object_join_distinct_asc"
+grep -q 'rows=3' <<<"$object_join_distinct_asc"
+
+object_join_distinct_desc=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
+  "SELECT DISTINCT ?x WHERE { ?x <$predicate> <http://www.wikidata.org/entity/Q616005> . ?x <http://www.wikidata.org/prop/direct/P361> ?whole . } ORDER BY DESC(?x) LIMIT 3")
+printf '%s\n' "$object_join_distinct_desc"
+grep -q 'open-mode=ibk3-sri2-tli1-oli2-object-subject-direct-select-distinct-subject(2) delta=base' <<<"$object_join_distinct_desc"
+grep -q 'rows=3' <<<"$object_join_distinct_desc"
+
 # The smaller P31 side drives a two-pattern subject join. The executor must
 # announce the SRI2 path; result construction remains the parsed evaluator.
 join=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \

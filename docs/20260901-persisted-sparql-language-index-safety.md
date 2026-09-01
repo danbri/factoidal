@@ -173,3 +173,30 @@ finish within a 30-second observation window.  The increment was checked with
 does not yet prove `sortSolutionsFast`'s permutation/order properties; that
 is the explicit remaining assurance gap before treating it as a fully proved
 replacement for the retained specification sort.
+
+### Direct DISTINCT subject projection
+
+The same protein-family query still spent most of its time in the generic
+`distinctSolutions` scan: although it emitted only three rows after `LIMIT`,
+it first compared the 20,844 projected rows quadratically.  The physical
+OLI2-to-SRI2 route now recognizes exactly one extra finishing shape:
+
+```sparql
+SELECT DISTINCT ?subject { ... } ORDER BY ?subject
+```
+
+or its descending form, with `?subject` the join subject and the sole selected
+variable.  Its target rows already establish the set of admissible RDF
+subjects.  It constructs one binding per structural `Subject`, disables only
+the redundant generic DISTINCT flag on a reconstructed query, and still calls
+the normal `selectPost` for ordering and slicing.  Any grouping, HAVING,
+expression projection, another ordering expression, unprojected selected
+variable, delta, or other physical-plan shape falls back unchanged.
+
+The same activated protein-family query now completes in a 4.05-second local
+process sample (from 8.2 seconds after the general ORDER BY improvement) and
+returns the same ordered three IRIs.  The persistent smoke has explicit ASC
+and DESC checks for this mode.  This is an executable, tightly stated
+physical equivalence whose assumptions are regression-tested; a standalone
+Lean refinement theorem for the finite subject-set transformation remains a
+future assurance item.
