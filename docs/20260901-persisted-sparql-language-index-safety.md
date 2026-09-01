@@ -254,3 +254,15 @@ experiment may compare a smaller chunk policy for small/selective artifacts
 against the additional Merkle metadata and verification work; the policy must
 remain an artifact-level declared/committed property, shared by file, PG,
 TiKV, and WASM hosts.
+
+## Three-way shared-subject physical plan
+
+`IndexedBlockV3Query` now recognizes a deliberately narrow three-triple BGP:
+one shared subject variable, three distinct constant IRI predicates, variable
+objects, default graph, and no delta overlay.  It chooses the smallest
+predicate artifact as driver, derives its subjects, SRI2-scans both remaining
+predicate artifacts for exactly those subjects, then passes the three exact
+fragments to the ordinary parsed SPARQL evaluator.  Missing artifacts safely
+fall back to generic evaluation.  On the activated gene store, a P1057/P684/
+P688 query selected `ibk3-sri2-tli1-subject-triple-join(3)` and returned five
+rows.  The persisted and W3C disk-query suites pass after the addition.
