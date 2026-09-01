@@ -393,3 +393,11 @@ assurance claim.  The remaining Lean refinement is to prove that equivalent
 bindings always have the same `distinctKey`, establish the `HashMap` bucket
 invariant, and then prove exact list equality of the tail-recursive worker
 with `distinctSolutions`.
+
+The first proof ingredients are now in `QueryTheorems`: an equivalent binding
+transfers every successful variable lookup to an `eqb`-equal lookup in the
+other mapping, and therefore transfers its canonical `Term.joinKey` exactly.
+This makes explicit the important safety direction for a bucketed algorithm:
+equivalent mappings cannot be separated into different candidate buckets.
+The next (still unproved) step is to lift those pointwise facts through the
+deduplicating/sorting construction of `Binding.distinctKey`.

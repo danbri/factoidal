@@ -101,6 +101,28 @@ theorem Binding.equiv_trans {mu1 mu2 mu3 : Binding}
   simp only [Binding.equiv, Bool.and_eq_true] at h12 h23 ⊢
   exact ⟨Binding.subsumes_trans h12.1 h23.1, Binding.subsumes_trans h23.2 h12.2⟩
 
+/-- §18.3-equivalent rows bind the same variable names.  This is phrased as
+    a successful lookup transfer so it does not depend on the incidental
+    association-list order of either mapping.  It is the first bridge used by
+    the bucketed runtime DISTINCT refinement. -/
+theorem Binding.equiv_lookup {mu1 mu2 : Binding}
+    (h : mu1.equiv mu2 = true) {v : VarName} {t1 : Term}
+    (hv : mu1.lookup v = some t1) :
+    ∃ t2, mu2.lookup v = some t2 ∧ t1.eqb t2 = true := by
+  simp only [Binding.equiv, Bool.and_eq_true] at h
+  exact Binding.subsumes_lookup h.1 hv
+
+/-- The canonical RDF-term keys of corresponding §18.3 bindings agree.
+    `Term.joinKey` accounts for the two deliberately non-structural RDF term
+    equality cases (language-tag case and canonical XML literals), so a hash
+    bucket cannot separate equivalent lookup values. -/
+theorem Binding.equiv_lookup_joinKey {mu1 mu2 : Binding}
+    (h : mu1.equiv mu2 = true) {v : VarName} {t1 : Term}
+    (hv : mu1.lookup v = some t1) :
+    ∃ t2, mu2.lookup v = some t2 ∧ t1.joinKey = t2.joinKey := by
+  obtain ⟨t2, ht2, heq⟩ := Binding.equiv_lookup h hv
+  exact ⟨t2, ht2, Term.joinKey_eq_of_eqb heq⟩
+
 /-! ## §18.4 DISTINCT -/
 
 /-- DISTINCT only ever DELETES rows, in place: its result is a sublist
