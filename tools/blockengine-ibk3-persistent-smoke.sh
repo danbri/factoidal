@@ -34,6 +34,16 @@ printf '%s\n' "$activate"
 grep -q 'generation=first.*pointer=CURRENT' <<<"$activate"
 test "$(<"$root/CURRENT")" = "$generation"
 
+# The cursor foundation must authenticate/decode a non-prefix physical row
+# window on the active SBM6 artifact.  An out-of-range window fails closed.
+row_range=$("$lean_dir/.lake/build/bin/l4block-id-v3-merkle-scan" "$root" "$predicate" --range 1 2)
+printf '%s\n' "$row_range"
+grep -q 'rows=2 .*row-start=1 row-count=2' <<<"$row_range"
+if "$lean_dir/.lake/build/bin/l4block-id-v3-merkle-scan" "$root" "$predicate" --range 78 1 >/dev/null 2>&1; then
+  echo 'IBK3 cursor range accepted a row past the declared artifact extent' >&2
+  exit 1
+fi
+
 base=$("$lean_dir/.lake/build/bin/l4block-id-v3-query" "$root" --query \
   "SELECT ?x ?type WHERE { ?x <$predicate> ?type . } LIMIT 2")
 printf '%s\n' "$base"

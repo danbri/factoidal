@@ -742,6 +742,70 @@ def scanEntry (directory : System.FilePath) (predicate : WfIri) (rowLimit : Nat)
               | none => pure none
           | none => pure none
 
+/-- Materialise one checked contiguous IBK3 row range.  This is the
+    resumable counterpart to `scanEntry`: it authenticates the same header,
+    PTD1 planning metadata, row bytes and dictionary pages, while admitting
+    only a declared `(rowStart,rowCount)` window.  The caller still receives
+    RDF triples, never unchecked ID rows. -/
+def scanEntryRange (directory : System.FilePath) (predicate : WfIri)
+    (rowStart rowCount : Nat) (entry : Entry) : IO (Option ScanResult) := do
+  if !safeLeafKey entry.artifact.key then return none
+  match entry.artifact.chunked with
+  | none => pure none
+  | some ref =>
+      let path := (directory / entry.artifact.key.value).toString
+      let leafBytes ← IO.FS.readBinFile (path ++ ".merkle")
+      match leaves? ref.chunkCount leafBytes with
+      | none => pure none
+      | some leaves =>
+          let cache ← newVerifiedChunkCache ref
+          let headerRange : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+            { offset := 0, length := L4Factoidal.Storage.IndexedBlockWireV3.prefixBytes }
+          match ← readVerifiedRangeCached? path ref leaves cache (ioRange headerRange) with
+          | none => pure none
+          | some (headerBytes, headerFootprint) =>
+              match L4Factoidal.Storage.IndexedBlockWireV3.decodePrefix headerBytes with
+              | none => pure none
+              | some header =>
+                  if header.rowCount != entry.rows then pure none else
+                  match L4Factoidal.Storage.IndexedBlockWireV3.rowRange? header rowStart rowCount with
+                  | none => pure none
+                  | some rowRange =>
+                      let initial := addRead {} headerFootprint
+                      if rowCount == 0 then
+                        pure (some { triples := [], counters := initial, artifactBytes := entry.artifact.bytes })
+                      else
+                        match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPrefixRange header with
+                        | none => pure none
+                        | some ptdRange =>
+                            match ← readVerifiedRangeCached? path ref leaves cache (ioRange ptdRange) with
+                            | none => pure none
+                            | some (ptdPrefix, ptdFootprint) =>
+                                match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryDirectoryRange? header ptdPrefix with
+                                | none => pure none
+                                | some directoryRange =>
+                                    match ← readVerifiedRangeCached? path ref leaves cache (ioRange directoryRange),
+                                        ← readVerifiedRangeCached? path ref leaves cache (ioRange rowRange) with
+                                    | some (directoryBytes, directoryFootprint), some (rowBytes, rowFootprint) =>
+                                        match L4Factoidal.Storage.IndexedBlockWireV3.dictionaryPagesForRowRange?
+                                            header rowStart ptdPrefix directoryBytes rowBytes with
+                                        | none => pure none
+                                        | some ranges =>
+                                            let beforePages := addRead (addRead (addRead initial ptdFootprint)
+                                              directoryFootprint) rowFootprint
+                                            match ← readPages path ref leaves cache ranges beforePages with
+                                            | none => pure none
+                                            | some (pages, counters) =>
+                                                match L4Factoidal.Storage.IndexedBlockWireV3.scanRowRangePages
+                                                    { p := some predicate } headerBytes rowStart rowBytes
+                                                    ptdPrefix directoryBytes pages with
+                                                | some triples =>
+                                                    if triples.length == rowCount then
+                                                      pure (some { triples, counters, artifactBytes := entry.artifact.bytes })
+                                                    else pure none
+                                                | none => pure none
+                                    | _, _ => pure none
+
 def scanEntries (directory : System.FilePath) (predicate : WfIri) (limit : Nat) :
     List Entry → List Triple → Counters → Nat → IO (Option (List Triple × Counters × Nat))
   | [], triples, counters, opened => pure (some (triples, counters, opened))

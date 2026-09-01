@@ -347,6 +347,10 @@ within the declared fixed-width IBK3 row extent, while
 PTD1 page planning, absolute-range identity, term decoding, and predicate
 checks for that checked slice.  The focused wire tests restore only Bob's
 second row from a two-row block and reject a range extending beyond its
-declared count.  Current scans still use their existing prefix/selective
-routes; a cursor materialiser will adopt these APIs only together with the
-new bounded-result contract.
+declared count.  `IndexedBlockV3Materialize.scanEntryRange` now carries that
+same authenticated range through the file/Merkle reader into RDF triples.
+Current query plans still use their existing prefix/selective routes; a
+cursor executor will compose this primitive only together with the new
+bounded-result contract.  The persisted smoke opens an activated SBM6 P31
+artifact at row 1 for two rows and verifies that row 78 is rejected beyond
+its declared 78-row extent.
