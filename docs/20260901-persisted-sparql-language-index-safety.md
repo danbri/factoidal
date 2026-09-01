@@ -306,3 +306,14 @@ model, so all such forms stay on the established evaluator.  The earlier
 three-way baseline, not a direct-path benchmark.  A future pure Lean
 refinement module should first prove bag equivalence under the exact
 admission predicate, then add explicitly justified modifier refinements.
+
+`L4Factoidal/SPARQL/SharedSubjectTripleRefinement.lean` now provides that
+proof boundary without coupling it to the harness.  It defines pure
+predicate-fragment and same-subject-object sequences, a canonical BGP-order
+binding construction, and `BagEquivalent` in terms of `AlgebraSpec.mult`.
+The initial non-`sorry` lemmas establish its basic list/binding facts and the
+file records the full intended three-pattern bag-refinement statement.  The
+remaining two obligations are intentionally separate: prove the pure BGP bag
+theorem, then prove that Merkle-verified SRI2 plus the executable HashMap
+construction agrees with those pure fragments.  This prevents a future proof
+from accidentally certifying only a particular on-disk iteration order.
