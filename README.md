@@ -100,6 +100,9 @@ making a broad assurance claim.
   what remains lineage, and how the Lean project builds.
 - [Lean block-engine skill](skills/blockengine/SKILL.md) — current design
   rules, format boundaries, test gates, and host-adapter constraints.
+- [Shardborough storage specification](docs/shardborough-storage-spec.md) —
+  umbrella registry for the IBK/PTD/index/SBM/Merkle/update family, its alpha
+  compatibility boundary, semantic-context extension, and proof obligations.
 - [Block-engine baseline](docs/20260829-blockengine-baseline.md) and
   [symbolic-plan design](docs/20260830-blockengine-symbolic-plans.md) — the
   intended path from SPARQL semantics through physical plans and PushIR to a

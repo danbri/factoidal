@@ -145,6 +145,21 @@ Score reporting in this project always writes "N pass, N fail (out of
 N)". A test the runner could not decide is reported in its own
 column, never folded into pass or fail.
 
+### Qualifying claims with “W3C”
+
+“W3C” identifies a standards source or test provenance. It does not mean that
+W3C has reviewed, certified, or endorsed Factoidal.
+
+| Phrase | Required meaning |
+|---|---|
+| **W3C-defined semantics** | A definition is intended to model a cited W3C Recommendation or Working Draft clause. |
+| **official W3C test case / corpus** | Input and expected output come from a vendored W3C test suite. If its manifest records the status, write **manifest-marked Approved** rather than the ambiguous “approved W3C test”. |
+| **selected official SPARQL test cases through the persisted path** | Factoidal packed selected official fixtures into its own on-disk format and ran their original query text. This is a cross-layer regression subset, not a suite result. |
+| **W3C suite result** | A manifest-driven run using the suite's comparison rules, reported with explicit pass, fail, skip/not-applicable, and unsupported counts. It is still not W3C certification. |
+
+Do not write **W3C disk gate**. The disk formats are Factoidal/Shardborough
+formats; W3C material supplies standards-derived inputs and expected results.
+
 ---
 
 ## Terms this project uses that are NOT specification terms
@@ -155,5 +170,8 @@ Listed so they are recognisable as local vocabulary.
 |---|---|---|
 | **regime** (in `--dl`) | Which reasoning stages the OWL probe runs | entailment regime |
 | **probe** | A Lean executable that runs one suite | test runner |
+| **reference Lean evaluator** | The simple executable SPARQL semantics, including left-to-right BGP evaluation; it is the correctness reference for optimized paths. | SPARQL algebra evaluation |
+| **optimized Lean physical-plan algorithm** | A faster Lean implementation using admitted physical structures such as predicate blocks, SRI2/OLI2 postings, and hash buckets, with refinement obligations against the reference Lean evaluator. | physical query plan |
+| **pure** | Deterministic in-memory code without file I/O, Merkle admission, clocks, or harness effects. It does not distinguish Lean from another implementation language. | none |
 | **scaffold blank node** | A blank node the OWL RL closure creates to support blank-node conclusion matching (`__rl_` prefix) | none |
 | **witness blank node** | A blank node the materialisation pass or the refuter creates for an existential obligation (`_:bw_`, `_:tw_` prefixes) | witness |

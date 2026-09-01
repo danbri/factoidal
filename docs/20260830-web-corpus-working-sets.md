@@ -209,6 +209,35 @@ derived blocks.  Canonical assertion identity and artifact provenance ensure
 this does not become duplicated logical content or double-counted query
 results.
 
+### Schema-driven predicate-block selection
+
+Dan Brickley's 2026-09-01 follow-up extends the same scoped-certificate idea
+from identity to predicate access. If a query requests a superproperty such as
+`dc:description`, an admitted schema may establish that exact predicate blocks
+for application properties also contribute via `rdfs:subPropertyOf`. The
+physical engine should not have to materialize every unrelated predicate block
+to discover that relationship.
+
+The acceleration artifact must be derived from and identify the exact source
+generation, schema/rules artifact, entailment profile, named-graph scope, and
+trust policy. It can map a requested superproperty to its eligible subordinate
+predicate partitions, or name a pre-merged materialized block for that view.
+It is advisory unless those identities match the query context; otherwise the
+engine falls back to complete semantic evaluation.
+
+RDF graph set semantics matter here. If the same subject/object pair reaches a
+superproperty through two subordinate predicates, it denotes one inferred
+superproperty triple. A runtime union or materialized view must deduplicate at
+that boundary before SPARQL solution multiplicity is exposed. More complex
+property semantics—`owl:inverseOf`, transitivity, property chains and
+`owl:sameAs`—need separate typed plans rather than being collapsed into the
+subproperty map.
+
+This keeps IBK row bytes vocabulary-neutral while making trusted schema
+relationships useful for block pruning, sorting, merging and reusable warm
+views. The consolidated contract is now in
+`docs/shardborough-storage-spec.md` §5.
+
 ## Follow-on implementation work
 
 1. Define the canonical predicate-shard manifest, including row-order and

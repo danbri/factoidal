@@ -13,14 +13,15 @@ SQL, or database extension code.
 
 ## Read first
 
-1. [`docs/20260829-blockengine-baseline.md`](../../docs/20260829-blockengine-baseline.md)
-2. [`docs/2026-08-blockengine.md`](../../docs/2026-08-blockengine.md)
-3. [`docs/2026-08-blockengine_part2.md`](../../docs/2026-08-blockengine_part2.md)
-4. [`docs/2026-08-blockengine_part3.md`](../../docs/2026-08-blockengine_part3.md)
-5. [`skills/factoidal-lean-basics/SKILL.md`](../factoidal-lean-basics/SKILL.md)
-6. [`skills/lean4-wasm-export/SKILL.md`](../lean4-wasm-export/SKILL.md)
-7. [`skills/disk-storage-format/SKILL.md`](../disk-storage-format/SKILL.md)
-8. [`skills/test-suites/SKILL.md`](../test-suites/SKILL.md)
+1. [`docs/shardborough-storage-spec.md`](../../docs/shardborough-storage-spec.md)
+2. [`docs/20260829-blockengine-baseline.md`](../../docs/20260829-blockengine-baseline.md)
+3. [`docs/2026-08-blockengine.md`](../../docs/2026-08-blockengine.md)
+4. [`docs/2026-08-blockengine_part2.md`](../../docs/2026-08-blockengine_part2.md)
+5. [`docs/2026-08-blockengine_part3.md`](../../docs/2026-08-blockengine_part3.md)
+6. [`skills/factoidal-lean-basics/SKILL.md`](../factoidal-lean-basics/SKILL.md)
+7. [`skills/lean4-wasm-export/SKILL.md`](../lean4-wasm-export/SKILL.md)
+8. [`skills/disk-storage-format/SKILL.md`](../disk-storage-format/SKILL.md)
+9. [`skills/test-suites/SKILL.md`](../test-suites/SKILL.md)
 
 Read [`docs/roaring_in_lean4.md`](../../docs/roaring_in_lean4.md) when work
 involves candidate-row sets, postings, presence data, or bitmap compression.
@@ -86,6 +87,21 @@ RDF 1.2 identity relation before allocating stable IDs.
 
 Use one cross-position `TermId` relation and a tagged `GraphId`. Do not reserve
 a normal term ID for the default graph.
+
+Keep the base block denotation neutral across semantic systems. Do not encode a
+closed list of privileged regimes into IBK rows or TermIds. Derived closure,
+validation, reconciliation, and rule artifacts need content-addressed semantic
+context: exact sources, named-graph scope, profile/language IRI, schema/rules
+hash, trust-policy identity, and derivation evidence. Missing or mismatched
+context forces a complete fallback.
+
+Schema-aware access such as `rdfs:subPropertyOf` expansion belongs in a
+separately committed, context-bound predicate-entailment map or materialized
+derived block. It is not an unconditional bit on a predicate block. A
+superproperty scan over several subordinate predicates must deduplicate the
+inferred superproperty triples before exposing SPARQL bag multiplicity. Rules
+such as inverse properties, transitivity, chains, or `owl:sameAs` require their
+own typed plans; do not pretend they are mere predicate unions.
 
 ## Architecture rule
 
