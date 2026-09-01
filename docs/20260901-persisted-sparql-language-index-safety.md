@@ -230,3 +230,15 @@ generation after DLOG batches, activates it through `CURRENT`, queries the
 new base, writes an epoch-2 DLOG update, and reads that update as
 base-plus-delta.  Thus selective layout continuity and epoch-aware replay are
 currently exercised across the immutable-generation transition.
+
+## Decoder traversal repairs
+
+Two shared full-artifact decoders no longer repeatedly convert their remaining
+input to a list and `drop` page-sized prefixes.  SRI2/OLI2
+`decodeAllPages` (commit `1d6cf5654`) and PTD1 `decodePagesGo` (commit
+`863e2008a`) now carry a `ByteArray` plus an explicit offset, extracting and
+validating each declared page once.  Their page-level term/pair decoders,
+wire bytes, checksum rules, page-directory checks, and selective range-reader
+contracts are unchanged.  Both changes passed the persisted SBM6 and W3C
+disk-query gates.  IBK3 fixed-width row decoding was already offset-based;
+its remaining list use is limited to small header/CRC framing.
