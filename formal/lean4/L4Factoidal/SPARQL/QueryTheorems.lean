@@ -123,6 +123,25 @@ theorem Binding.equiv_lookup_joinKey {mu1 mu2 : Binding}
   obtain ⟨t2, ht2, heq⟩ := Binding.equiv_lookup h hv
   exact ⟨t2, ht2, Term.joinKey_eq_of_eqb heq⟩
 
+/-- §18.3 equivalence also transfers absence of a binding. -/
+theorem Binding.equiv_lookup_none {mu1 mu2 : Binding}
+    (h : mu1.equiv mu2 = true) {v : VarName}
+    (hv : mu1.lookup v = none) : mu2.lookup v = none := by
+  cases h2 : mu2.lookup v with
+  | none => rfl
+  | some t2 =>
+      obtain ⟨t1, ht1, _⟩ := Binding.equiv_lookup (Binding.equiv_symm h) h2
+      simp [hv] at ht1
+
+/-- Equivalent mappings have the same binding domain, independently of their
+    association-list layout. -/
+theorem Binding.equiv_lookup_none_iff {mu1 mu2 : Binding}
+    (h : mu1.equiv mu2 = true) {v : VarName} :
+    mu1.lookup v = none ↔ mu2.lookup v = none := by
+  constructor
+  · exact Binding.equiv_lookup_none h
+  · exact Binding.equiv_lookup_none (Binding.equiv_symm h)
+
 /-! ## §18.4 DISTINCT -/
 
 /-- DISTINCT only ever DELETES rows, in place: its result is a sublist

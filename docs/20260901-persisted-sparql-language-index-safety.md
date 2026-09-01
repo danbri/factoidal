@@ -401,3 +401,9 @@ This makes explicit the important safety direction for a bucketed algorithm:
 equivalent mappings cannot be separated into different candidate buckets.
 The next (still unproved) step is to lift those pointwise facts through the
 deduplicating/sorting construction of `Binding.distinctKey`.
+
+The theorem layer also now states the complementary absence result: equivalent
+mappings bind exactly the same variable domain.  That removes a common hidden
+assumption from the future normalization proof—an absent binding cannot turn
+into a present key component merely because a physical producer used a
+different association-list layout.
