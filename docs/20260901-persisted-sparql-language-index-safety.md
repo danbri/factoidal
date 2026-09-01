@@ -99,3 +99,18 @@ repeatable against an activated store.  Its first fresh-process local sample
 after the indexed-backend correction recorded 12.93 s wall time and 70.6 MiB
 peak resident memory for the 20,844-row result.  The script emits JSON and
 does not claim to clear the operating-system file cache.
+
+### Contiguous selected-row reads
+
+The SRI2/OLI2 row reader now coalesces adjacent fixed-width row offsets into
+one Merkle-verified range and rechecks every decoded row against its sidecar
+key.  This removes the avoidable one-I/O-call-per-row shape without weakening
+the sidecar admission relation; the implementation is total, with explicit
+posting-length fuel.
+
+The persistent and W3C disk gates pass after this change.  It did not
+materially reduce the broad protein-family join's first follow-up sample
+(13.29 s): its single 44,631-row OLI2 scan completes in about 0.5 s, while
+the two-pattern join spends its remaining time in generic Lean join/result
+evaluation.  This directs the next optimisation toward a direct physical join
+result path or a more efficient binding representation, not unsafe I/O claims.

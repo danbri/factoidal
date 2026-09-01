@@ -306,29 +306,59 @@ private def scanSubjectRows (path : String) (ref : Ref) (leaves : List Digest)
               | _, _ => pure none
           | _ => pure none
 
-/-- Fetch exactly the SRI1-selected fixed-width rows before deciding which
-    PTD1 term pages are required to render them as RDF. -/
+/-- Split a posting list at its first non-contiguous file-row offset. SRI2 and
+    OLI2 postings are ordered by key then offset, so a selective equality scan
+    commonly turns thousands of one-row requests into a handful of contiguous
+    verified reads. -/
+private def contiguousPostingRun : List (Nat × Nat) → List (Nat × Nat) × List (Nat × Nat)
+  | [] => ([], [])
+  | first :: rest => go first.2 [first] rest
+where
+  go (previous : Nat) (reversed : List (Nat × Nat)) : List (Nat × Nat) →
+      List (Nat × Nat) × List (Nat × Nat)
+    | [] => (reversed.reverse, [])
+    | current :: later =>
+        if current.2 == previous + 1 then go current.2 (current :: reversed) later
+        else (reversed.reverse, current :: later)
+
+private def rowsHaveExpectedKeys
+    (keyOf : L4Factoidal.Storage.IndexedBlock.IdTriple → Nat) :
+    List (Nat × Nat) → List L4Factoidal.Storage.IndexedBlock.IdTriple → Bool
+  | [], [] => true
+  | (expected, _) :: expectedRest, row :: rowRest =>
+      keyOf row == expected && rowsHaveExpectedKeys keyOf expectedRest rowRest
+  | _, _ => false
+
+/-- Fetch SRI2/OLI2-selected fixed-width rows in contiguous runs before
+    deciding which PTD1 term pages are required to render them as RDF. Each
+    row is still checked against the sidecar's asserted key; batching changes
+    only I/O granularity, not the admission relation. -/
 private def scanIndexedIdRows (keyOf : L4Factoidal.Storage.IndexedBlock.IdTriple → Nat)
     (path : String) (ref : Ref) (leaves : List Digest)
     (cache : IO.Ref VerifiedChunkCache) (header : L4Factoidal.Storage.IndexedBlockWireV3.Prefix) :
-    List (Nat × Nat) → Counters → IO (Option (List L4Factoidal.Storage.IndexedBlock.IdTriple × Counters))
-  | [], counters => pure (some ([], counters))
-  | (expectedSubject, offset) :: rest, counters => do
-      if offset >= header.rowCount then pure none else
-      let range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
-        { offset := (L4Factoidal.Storage.IndexedBlockWireV3.rowsRange header).offset +
-            offset * L4Factoidal.Storage.IndexedBlockWireV3.rowBytes,
-          length := L4Factoidal.Storage.IndexedBlockWireV3.rowBytes }
-      match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
-      | none => pure none
-      | some (rowBytes, footprint) =>
-          match L4Factoidal.Storage.IndexedBlockWireV3.decodeRowPrefix? rowBytes with
-          | some [row] =>
-              if keyOf row != expectedSubject then pure none else
-              match ← scanIndexedIdRows keyOf path ref leaves cache header rest (addRead counters footprint) with
-              | some (later, next) => pure (some (row :: later, next))
-              | none => pure none
-          | _ => pure none
+    List (Nat × Nat) → Counters → IO (Option (List L4Factoidal.Storage.IndexedBlock.IdTriple × Counters)) :=
+  fun selected counters => go selected.length selected counters []
+where
+  go : Nat → List (Nat × Nat) → Counters → List L4Factoidal.Storage.IndexedBlock.IdTriple →
+      IO (Option (List L4Factoidal.Storage.IndexedBlock.IdTriple × Counters))
+    | 0, [], current, reversed => pure (some (reversed.reverse, current))
+    | 0, _ :: _, _, _ => pure none
+    | _ + 1, [], current, reversed => pure (some (reversed.reverse, current))
+    | fuel + 1, selected@((_, firstOffset) :: _), current, reversed => do
+        let (run, rest) := contiguousPostingRun selected
+        if firstOffset >= header.rowCount || run.any (fun pair => pair.2 >= header.rowCount) then pure none else
+        let range : L4Factoidal.Storage.IndexedBlockWireV3.ByteRange :=
+          { offset := (L4Factoidal.Storage.IndexedBlockWireV3.rowsRange header).offset +
+              firstOffset * L4Factoidal.Storage.IndexedBlockWireV3.rowBytes,
+            length := run.length * L4Factoidal.Storage.IndexedBlockWireV3.rowBytes }
+        match ← readVerifiedRangeCached? path ref leaves cache (ioRange range) with
+        | none => pure none
+        | some (rowBytes, footprint) =>
+            match L4Factoidal.Storage.IndexedBlockWireV3.decodeRowPrefix? rowBytes with
+            | some rows =>
+                if !rowsHaveExpectedKeys keyOf run rows then pure none else
+                go fuel rest (addRead current footprint) (rows.reverseAux reversed)
+            | none => pure none
 
 private def scanSubjectIdRows := scanIndexedIdRows fun row => row.s
 
