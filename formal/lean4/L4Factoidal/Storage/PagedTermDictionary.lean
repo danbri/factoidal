@@ -185,19 +185,19 @@ private def decodeTerms (count : Nat) (bytes : List UInt8) : Option (List Term �
 /-- Full decoding uses the declared page boundaries too, not merely one
     concatenated term stream. That makes malformed page lengths fail at the
     canonical admission boundary before a range reader can rely on them. -/
-private def decodePagesGo (header : Prefix) : Nat → List PageEntry → List UInt8 → List Term → Option (List Term)
-  | _, [], [], reversed => some reversed.reverse
-  | _, [], _, _ => none
-  | page, entry :: rest, bytes, reversed => do
-      let current := bytes.take entry.length
-      let (terms, trailing) ← decodeTerms (pageTermCount header page) current
+private def decodePagesGo (header : Prefix) : Nat → List PageEntry → ByteArray → Nat → List Term → Option (List Term)
+  | _, [], bytes, offset, reversed => if offset == bytes.size then some reversed.reverse else none
+  | page, entry :: rest, bytes, offset, reversed => do
+      let current := bytes.extract offset (offset + entry.length)
+      if current.size != entry.length then none else do
+      let (terms, trailing) ← decodeTerms (pageTermCount header page) (listOfByteArray current)
       if !trailing.isEmpty then none else do
       let next := terms.foldl (fun acc term => term :: acc) reversed
-      decodePagesGo header (page + 1) rest (bytes.drop entry.length) next
+      decodePagesGo header (page + 1) rest bytes (offset + entry.length) next
 
 private def decodePages? (header : Prefix) (page : Nat) (directory : List PageEntry)
-    (bytes : List UInt8) : Option (List Term) :=
-  decodePagesGo header page directory bytes []
+    (bytes : ByteArray) : Option (List Term) :=
+  decodePagesGo header page directory bytes 0 []
 
 /- Decode one declared page. The caller supplies exactly the planned page
    range, normally after a Merkle inclusion check. Exposing the decoded page
@@ -250,8 +250,8 @@ def decode? (bytes : ByteArray) : Option (Array Term) := do
   if storedCrc != crc32c payload then none else
   let directoryBytes := bytes.extract prefixBytes (prefixBytes + header.pageCount * 8)
   let directory ← decodeDirectory? header directoryBytes
-  let pageBytes := input.drop (pageAreaOffset header) |>.take (input.length - pageAreaOffset header - 4)
-  if !directoryCovers directory pageBytes.length then none else
+  let pageBytes := bytes.extract (pageAreaOffset header) (bytes.size - 4)
+  if !directoryCovers directory pageBytes.size then none else
   let terms ← decodePages? header 0 directory pageBytes
   if terms.length != header.termCount then none else some terms.toArray
 
