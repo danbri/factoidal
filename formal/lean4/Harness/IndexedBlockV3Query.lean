@@ -26,6 +26,15 @@ private def readOpsOf (triples : List Triple) : BackendReadOps :=
     estimate := fun bound => (tripleMatchesBound bound triples).length
     predicatePresent := fun predicate => !(tripleMatchesBound { p := some predicate } triples).isEmpty }
 
+/-- Build the already-proved in-memory indexed backend over the exact triples
+    materialised from immutable storage. `igSearch` now widens object buckets
+    whenever a structural key is not complete for SPARQL term equality. Delta
+    overlays retain the established read-ops route until their own indexed
+    materialisation contract is explicit. -/
+private def backendFor (triples : List Triple) (delta : DeltaResolved) : GraphBackend :=
+  if deltaResolvedIsEmpty delta then indexedGraphBackend triples
+  else .hdt (readOpsOfDelta triples delta)
+
 private def isIbk3Layout (layout : String) : Bool :=
     layout == "predicate-ibk3-ptd1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
@@ -92,7 +101,7 @@ private def countAllPredicates (directory : System.FilePath) (manifest : Manifes
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved)
     (mode : String := "ibk3-paged-merkle") : IO UInt32 := do
-  let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
+  let dataset : DatasetBackend := { default := backendFor triples delta, named := [] }
   let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
   match query.form with
   | .select _ =>
@@ -112,7 +121,8 @@ private def finish (query : Query) (entries : List Entry) (predicates : List WfI
           IO.println s!"l4block-id-v3-query boolean={answer}"
           return 0
   | .construct _ =>
-      let graph : Graph := evalConstruct emptyEnv { default := (readOpsOfDelta triples delta).search {}, named := [] } query
+      let graph : Graph := evalConstruct emptyEnv
+        { default := backendSearch (backendFor triples delta) patternBoundAll, named := [] } query
       IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
       IO.println s!"l4block-id-v3-query sse={query.toSse}"
       IO.println s!"l4block-id-v3-query triples={graph.length} preview={toString (repr (graph.take 10))}"
@@ -130,7 +140,7 @@ private def finishCount (query : Query) (entries : List Entry)
 
 private def finishAsk (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved) : IO UInt32 := do
-  let dataset : DatasetBackend := { default := .hdt (readOpsOfDelta triples delta), named := [] }
+  let dataset : DatasetBackend := { default := backendFor triples delta, named := [] }
   match runAskQueryBackendDataset emptyEnv query dataset with
   | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as ASK"; return 1
   | some answer =>

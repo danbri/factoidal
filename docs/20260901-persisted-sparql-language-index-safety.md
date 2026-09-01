@@ -74,3 +74,22 @@ the next performance step is not an arbitrary cache, but an
 equivalence-aware backend index whose candidate selection is complete for the
 same language-tag and XMLLiteral relation as the SPARQL evaluator.  The
 observed times are exploratory warm-cache local samples, not benchmark claims.
+
+## Equivalence-aware indexed backend (landed)
+
+The required correction is now in the common Lean indexed backend rather than
+as a query-command exception.  `RDF/StoreCapabilities.lean` exposes
+`exactObjectIndexKeySafe`: exact object and predicate-object hash buckets are
+used for IRIs, blank nodes and byte-exact literals, while language-tagged,
+`rdf:XMLLiteral`, and RDF-star triple-term objects widen to a predicate bucket
+or full graph before the ordinary `Term.eqb` filter.  A build-time guard keeps
+both `"xyz"@en` and `"xyz"@EN` in the candidate set.
+
+The base-only persisted reader can consequently build this Lean index over its
+already materialised exact rows.  Delta overlays remain on the existing
+read-ops backend until their indexed materialisation contract is separately
+defined.  Both persisted smoke suites, including the W3C language cases,
+pass.  Re-running the protein-family 20,844-row object-driven join produced
+the same result in about 13.1 seconds in one warm-cache local sample.  This
+removes the immediate quadratic rescan, though it is still far from the final
+on-disk join architecture and is not presented as a general benchmark.

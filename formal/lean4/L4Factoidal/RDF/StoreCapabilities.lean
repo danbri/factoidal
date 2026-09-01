@@ -260,17 +260,33 @@ def unionCaps (members : List StoreCaps) : StoreCaps :=
 Wraps the indexed in-memory graph. Zero new logic: every field is a
 call the tag dispatcher already made. -/
 
+/-- An OWL in-memory index hashes object terms structurally, while the SPARQL
+    matcher uses `Term.eqb`: language tags compare case-insensitively and
+    `rdf:XMLLiteral` values compare after canonical XML.  An object in either
+    class cannot safely select one exact hash bucket, because an equivalent
+    stored spelling may live in another bucket.  This asks only whether the
+    exact object access path is a *complete* candidate set; the normal matcher
+    always remains the semantic authority. -/
+def exactObjectIndexKeySafe : Term → Bool
+  | .iri _ | .bnode _ => true
+  | .literal literal =>
+      literal.val.langTag.isNone && literal.val.datatype != rdfXMLLiteral
+  | .tripleTerm _ _ _ => false
+
 /-- Matching triples for a bound, read off the index. The index's own
-access paths are used when the bound picks one out; otherwise the graph
-is scanned. -/
+    access paths are used only when their structural keys are complete for
+    SPARQL term equality; otherwise a broader predicate/subject candidate set
+    is selected before `tripleMatchesBound` applies `Term.eqb`. -/
 def igSearch (i : OWL.RL.Index) (b : PatternBound) : List Triple :=
   let candidates :=
     match b.s, b.p, b.o with
     | some s, some p, _ => i.withSubjPred s p
-    | _,      some p, some o => i.withPredObj p o
+    | _,      some p, some o =>
+        if exactObjectIndexKeySafe o then i.withPredObj p o else i.withPred p
     | some s, _,      _ => i.withSubj s
     | _,      some p, _ => i.withPred p
-    | _,      _,      some o => i.withObj o
+    | _,      _,      some o =>
+        if exactObjectIndexKeySafe o then i.withObj o else i.toGraph
     | _,      _,      _ => i.toGraph
   tripleMatchesBound b candidates
 
@@ -347,10 +363,15 @@ private def iriP (s : String) : WfIri := iriW s
 private def a : Triple := ⟨iriS "http://e.org/a", iriP "http://e.org/p", iriT "http://e.org/1"⟩
 private def b2 : Triple := ⟨iriS "http://e.org/b", iriP "http://e.org/p", iriT "http://e.org/2"⟩
 private def c : Triple := ⟨iriS "http://e.org/c", iriP "http://e.org/q", iriT "http://e.org/3"⟩
+private def langEn : Term := .literal (Literal.langString "xyz" "en")
+private def langEN : Term := .literal (Literal.langString "xyz" "EN")
+private def lang1 : Triple := ⟨iriS "http://e.org/lang1", iriP "http://e.org/lang", langEn⟩
+private def lang2 : Triple := ⟨iriS "http://e.org/lang2", iriP "http://e.org/lang", langEN⟩
 
 private def capsA : StoreCaps := capsOfIndexed (OWL.RL.Index.ofGraph [a, b2])
 private def capsB : StoreCaps := capsOfIndexed (OWL.RL.Index.ofGraph [c])
 private def capsEmpty : StoreCaps := capsOfIndexed (OWL.RL.Index.ofGraph [])
+private def capsLang : StoreCaps := capsOfIndexed (OWL.RL.Index.ofGraph [lang1, lang2])
 
 /-! ### The in-memory builder answers bounds -/
 
@@ -361,6 +382,10 @@ private def capsEmpty : StoreCaps := capsOfIndexed (OWL.RL.Index.ofGraph [])
 #guard capsA.solve { s := some (iriS "http://e.org/a"), o := some (iriT "http://e.org/2") } == []
 #guard capsA.predicatePresent (iriP "http://e.org/p")
 #guard !capsA.predicatePresent (iriP "http://e.org/q")
+-- A structural hash bucket is not complete for language-tag equality; the
+-- predicate bucket plus `Term.eqb` returns both W3C-equivalent spellings.
+#guard !exactObjectIndexKeySafe langEn
+#guard (capsLang.solve { p := some (iriP "http://e.org/lang"), o := some langEn }).length == 2
 
 /-! ### The union is the concatenation, in member order -/
 
