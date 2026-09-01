@@ -259,6 +259,19 @@ private def sharedSubjectJoin? (query : Query) : Option (WfIri × WfIri) := do
       | _, _, _, _ => none
   | _ => none
 
+/-- Conservative three-way shared-subject BGP admission.  This is kept
+separate from the two-way detector so an execution path can be introduced
+without broadening existing plans. -/
+private def sharedSubjectTriple? (query : Query) : Option (WfIri × WfIri × WfIri) := do
+  if !query.dataset.isEmpty || query.postValues.isSome then none else
+  match query.pattern with
+  | .bgp [a, b, c] =>
+      match a.s, a.p, a.o, b.s, b.p, b.o, c.s, c.p, c.o with
+      | .var s, .iri pa, .var _, .var sb, .iri pb, .var _, .var sc, .iri pc, .var _ =>
+          if s == sb && s == sc && pa != pb && pa != pc && pb != pc then some (pa, pb, pc) else none
+      | _, _, _, _, _, _, _, _, _ => none
+  | _ => none
+
 private def entryRows (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
@@ -397,6 +410,31 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
               pure (some code)
   | _, _ => pure none
 
+private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
+    IO (Option UInt32) := do
+  match sharedSubjectTriple? query, ← readDefaultDelta? directory with
+  | some (a, b, c), some delta =>
+      if manifest.version < 5 || !deltaResolvedIsEmpty delta then pure none else
+      let ea := selectAll manifest a; let eb := selectAll manifest b; let ec := selectAll manifest c
+      if ea.isEmpty || eb.isEmpty || ec.isEmpty then pure none else
+      let (drive, de, left, le, right, re) :=
+        if entryRows ea <= entryRows eb && entryRows ea <= entryRows ec then (a, ea, b, eb, c, ec)
+        else if entryRows eb <= entryRows ec then (b, eb, a, ea, c, ec)
+        else (c, ec, a, ea, b, eb)
+      match ← materializeEntries directory de with
+      | none => pure none
+      | some (drivers, dc) =>
+          let subjects := distinctSubjectTerms drivers
+          match ← scanEntriesForSubjectsV2 directory left subjects le [] {} 0,
+                ← scanEntriesForSubjectsV2 directory right subjects re [] {} 0 with
+          | some (ls, lc, _), some (rs, rc, _) =>
+              let counters := addCounters dc (addCounters lc rc)
+              let code ← finish query (de ++ le ++ re) [drive, left, right]
+                (drivers ++ ls ++ rs) counters delta "ibk3-sri2-tli1-subject-triple-join"
+              pure (some code)
+          | _, _ => pure none
+  | _, _ => pure none
+
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
     let root := System.FilePath.mk directoryText
@@ -415,6 +453,8 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         | none => match ← tryObjectIndexJoin directory manifest query with
         | some code => return code
         | none => match ← trySubjectIndexJoin directory manifest query with
+        | some code => return code
+        | none => match ← trySubjectTripleJoin directory manifest query with
         | some code => return code
         | none => match queryNativeConstantPredicates? query with
         | none =>
