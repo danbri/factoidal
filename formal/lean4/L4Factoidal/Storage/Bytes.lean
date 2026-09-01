@@ -19,7 +19,7 @@ storage format whose decode does not invert its encode loses data
 silently.
 -/
 
-import Std.Tactic.BVDecide
+import Init.Data.UInt.Lemmas
 
 namespace L4Factoidal.Storage
 
@@ -74,6 +74,78 @@ def readU32LE (bs : List UInt8) (pos : Nat) : Option UInt32 :=
 def writeU32LE (n : UInt32) : List UInt8 :=
   [n.toUInt8, (n >>> 8).toUInt8, (n >>> 16).toUInt8, (n >>> 24).toUInt8]
 
+/- Keep these proofs on Lean's core fixed-width bit-vector lemmas. Importing
+   `Std.Tactic.BVDecide` here would put a proof-tactic initializer in every
+   executable storage consumer, including the narrow WASM block kernel. -/
+private theorem bitVec32_toNat_32 : (32 : BitVec 32).toNat = 32 := by decide
+
+private theorem bitVecOr_reverse4 {a b c d : BitVec 32} :
+    a ||| b ||| c ||| d = d ||| c ||| b ||| a := by
+  ac_rfl
+
+private theorem u32Byte0 (n : UInt32) :
+    n.toUInt8.toBitVec = n.toBitVec.extractLsb' 0 8 := by
+  rw [UInt32.toBitVec_toUInt8, BitVec.setWidth_eq_extractLsb' (by decide)]
+
+private theorem u32Byte8 (n : UInt32) :
+    ((n >>> 8).toUInt8).toBitVec = n.toBitVec.extractLsb' 8 8 := by
+  rw [UInt32.toBitVec_toUInt8, UInt32.toBitVec_shiftRight]
+  simp only [BitVec.ushiftRight_eq', BitVec.toNat_umod,
+    UInt32.toNat_toBitVec, UInt32.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  rw [bitVec32_toNat_32]
+  simp only [Nat.reduceMod]
+  rw [BitVec.setWidth_ushiftRight_eq_extractLsb]
+
+private theorem u32Byte16 (n : UInt32) :
+    ((n >>> 16).toUInt8).toBitVec = n.toBitVec.extractLsb' 16 8 := by
+  rw [UInt32.toBitVec_toUInt8, UInt32.toBitVec_shiftRight]
+  simp only [BitVec.ushiftRight_eq', BitVec.toNat_umod,
+    UInt32.toNat_toBitVec, UInt32.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  rw [bitVec32_toNat_32]
+  simp only [Nat.reduceMod]
+  rw [BitVec.setWidth_ushiftRight_eq_extractLsb]
+
+private theorem u32Byte24 (n : UInt32) :
+    ((n >>> 24).toUInt8).toBitVec = n.toBitVec.extractLsb' 24 8 := by
+  rw [UInt32.toBitVec_toUInt8, UInt32.toBitVec_shiftRight]
+  simp only [BitVec.ushiftRight_eq', BitVec.toNat_umod,
+    UInt32.toNat_toBitVec, UInt32.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  rw [bitVec32_toNat_32]
+  simp only [Nat.reduceMod]
+  rw [BitVec.setWidth_ushiftRight_eq_extractLsb]
+
+private theorem assembleU32LE_eq (n : UInt32) :
+    n.toUInt8.toUInt32 ||| (((n >>> 8).toUInt8).toUInt32 <<< 8) |||
+      (((n >>> 16).toUInt8).toUInt32 <<< 16) |||
+      (((n >>> 24).toUInt8).toUInt32 <<< 24) = n := by
+  apply UInt32.toBitVec_inj.1
+  rw [UInt32.toBitVec_or, UInt32.toBitVec_or, UInt32.toBitVec_or,
+    UInt32.toBitVec_shiftLeft, UInt32.toBitVec_shiftLeft,
+    UInt32.toBitVec_shiftLeft, UInt8.toBitVec_toUInt32,
+    UInt8.toBitVec_toUInt32, UInt8.toBitVec_toUInt32,
+    UInt8.toBitVec_toUInt32, u32Byte0, u32Byte8, u32Byte16, u32Byte24]
+  simp only [BitVec.shiftLeft_eq', BitVec.toNat_umod,
+    UInt32.toNat_toBitVec, UInt32.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  simp only [bitVec32_toNat_32, Nat.reduceMod]
+  rw [bitVecOr_reverse4]
+  calc
+    _ = ((n.toBitVec.extractLsb' 24 8 ++
+          n.toBitVec.extractLsb' 16 8 ++
+          n.toBitVec.extractLsb' 8 8 ++
+          n.toBitVec.extractLsb' 0 8).setWidth 32) := by
+      simpa only [Nat.reduceAdd] using
+        (BitVec.setWidth_append_append_append_eq_shiftLeft_setWidth_or
+          (b := n.toBitVec.extractLsb' 24 8)
+          (b' := n.toBitVec.extractLsb' 16 8)
+          (b'' := n.toBitVec.extractLsb' 8 8)
+          (b''' := n.toBitVec.extractLsb' 0 8)
+          (w'''' := 32)).symm
+    _ = n.toBitVec := by
+      rw [BitVec.extractLsb'_append_extractLsb'_eq_extractLsb' (by decide),
+        BitVec.extractLsb'_append_extractLsb'_eq_extractLsb' (by decide),
+        BitVec.extractLsb'_append_extractLsb'_eq_extractLsb' (by decide)]
+      simp
+
 @[simp] theorem writeU32LE_length (n : UInt32) : (writeU32LE n).length = 4 := by
   simp [writeU32LE]
 
@@ -98,14 +170,12 @@ theorem drop_append_length_add (pre tail : List UInt8) (n : Nat) :
     untouched. -/
 theorem readU32LE_writeU32LE_append (n : UInt32) (rest : List UInt8) :
     readU32LE (writeU32LE n ++ rest) 0 = some n := by
-  simp [readU32LE, writeU32LE]
-  bv_decide
+  simpa [readU32LE, writeU32LE] using congrArg some (assembleU32LE_eq n)
 
 /-- A fixed-width field remains readable after arbitrary preceding framing. -/
 theorem readU32LE_append_writeU32LE (pre : List UInt8) (n : UInt32) (rest : List UInt8) :
     readU32LE (pre ++ writeU32LE n ++ rest) pre.length = some n := by
-  simp [readU32LE, writeU32LE]
-  bv_decide
+  simpa [readU32LE, writeU32LE] using congrArg some (assembleU32LE_eq n)
 
 /-- CRC8 with the HDT polynomial, one step.
 

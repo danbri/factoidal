@@ -19,10 +19,12 @@ LEAN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$LEAN_DIR"
 command -v lake >/dev/null || { echo "lake not on PATH (export PATH=\$HOME/.elan/bin:\$PATH)"; exit 1; }
 
-echo "=== build l4wasm-cli"
-lake build l4wasm-cli >/dev/null
+echo "=== build l4wasm-cli + IBK3 fixture publisher"
+lake build l4wasm-cli l4block-shard-pack >/dev/null
 CLI="$LEAN_DIR/.lake/build/bin/l4wasm-cli"
+PACK="$LEAN_DIR/.lake/build/bin/l4block-shard-pack"
 [ -x "$CLI" ] || { echo "FAIL: $CLI not built"; exit 1; }
+[ -x "$PACK" ] || { echo "FAIL: $PACK not built"; exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -139,6 +141,30 @@ args "$TMP/update.json" "$DATA" \
   'INSERT DATA { <http://e/x> <http://e/p> <http://e/y> }'
 check "updateDataset" updateDataset "$TMP/update.json" \
   'r["ok"] is True and "<http://e/x>" in r["nquads"] and "<http://e/a>" in r["nquads"]'
+
+# --- Stateless block-worker family ----------------------------------
+# Generate the fixture with the same Lean publisher used by native stores;
+# the test therefore crosses the dispatch boundary with a real current-format
+# artifact rather than a hand-authored byte string.
+printf '%s\n' '<http://e/a> <http://e/p> <http://e/b> .' >"$TMP/block.ttl"
+"$PACK" "$TMP/block.ttl" "$TMP/block-store" ibk3 >/dev/null
+python3 - "$TMP/block-store/predicate-0.ibk3" "$TMP/block-ibk3.json" <<'EOF'
+import json, pathlib, sys
+block = pathlib.Path(sys.argv[1]).read_bytes().hex()
+pathlib.Path(sys.argv[2]).write_text(json.dumps([block, "http://e/p", "source:native-smoke"]))
+EOF
+check "scanIBK3Predicate current artifact" scanIBK3Predicate "$TMP/block-ibk3.json" \
+  'r["ok"] is True and r["format"] == "IBK3"
+   and r["blankNodeScope"] == "source:native-smoke" and r["rows"] == 1
+   and "<http://e/a> <http://e/p> <http://e/b> ." in r["ntriples"]'
+
+args "$TMP/block-ibk3-bad.json" "00" "http://e/p" "source:native-smoke"
+check "scanIBK3Predicate corrupt artifact -> error" scanIBK3Predicate "$TMP/block-ibk3-bad.json" \
+  'r["ok"] is False and "invalid or corrupt canonical IBK3" in r["error"]'
+
+args "$TMP/block-ibk3-noscope.json" "00" "http://e/p" ""
+check "scanIBK3Predicate requires blank-node scope" scanIBK3Predicate "$TMP/block-ibk3-noscope.json" \
+  'r["ok"] is False and "blankNodeScope must be non-empty" in r["error"]'
 
 # --- Canon family -----------------------------------------------------
 args "$TMP/canon.json" '_:b0 <http://e/p> "v" .
@@ -452,6 +478,7 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
   'r["ok"] is True and isinstance(r["abiVersion"], str)
    and set(["parseToDatasetJson","queryDataset","updateDataset",
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
+            "scanIBK2Predicate","scanIBK3Predicate",
             "owlClosure","owlIsConsistent","owlEntails",
             "rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clSerialize",

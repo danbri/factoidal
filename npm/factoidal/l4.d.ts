@@ -30,6 +30,12 @@ export interface L4IBK2PredicateScan {
   ntriples: string;
 }
 
+/** Result of a source-scoped current IBK3 predicate scan. */
+export interface L4IBK3PredicateScan extends L4IBK2PredicateScan {
+  format: 'IBK3';
+  blankNodeScope: string;
+}
+
 export interface L4Engine {
   version(): string;
   bgpQuery(triples: L4Triple[], bgp: L4Triple[]): Promise<L4ResultsDoc> | L4ResultsDoc;
@@ -41,3 +47,4 @@ export function loadL4(): Promise<L4Engine>;
 export function version(): Promise<string>;
 export function bgpQuery(triples: L4Triple[], bgp: L4Triple[]): Promise<L4ResultsDoc>;
 export function scanIBK2Predicate(ibk2Hex: string, predicateIri: string): Promise<L4IBK2PredicateScan>;
+export function scanIBK3Predicate(ibk3Hex: string, predicateIri: string, blankNodeScope: string): Promise<L4IBK3PredicateScan>;

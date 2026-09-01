@@ -312,12 +312,15 @@ Two engines now ship in one package. `factoidal` and `factoidal/wasm`
 are the F\*-extracted engine, unchanged. The subpaths below are the
 Lean 4 engine (`L4Factoidal`, compiled to wasm).
 
-`factoidal/l4` also exposes a deliberately narrow physical helper:
-`scanIBK2Predicate(ibk2Hex, predicateIri)`. It validates one canonical IBK2
-RDF block and selectively scans its named predicate, returning N-Triples and a
-row count. The hexadecimal argument is a portable diagnostic ABI, not the
-intended high-throughput buffer interface; it exists so a host can exercise
-the same Lean-defined physical scan used by the emerging Shardborough store.
+`factoidal/l4` also exposes two deliberately narrow physical helpers:
+`scanIBK2Predicate(ibk2Hex, predicateIri)` for the predecessor format and
+`scanIBK3Predicate(ibk3Hex, predicateIri, blankNodeScope)` for the current
+predicate-local format. They validate one canonical RDF block and scan its
+named predicate, returning N-Triples and a row count. The IBK3 source scope
+must be shared across blocks partitioned from one RDF import unit and differ
+across unrelated units; this preserves document-scoped blank-node identity
+when fragments are composed. The hexadecimal argument is a portable
+diagnostic ABI, not the intended high-throughput buffer interface.
 
 ```js
 const l4 = require('factoidal/l4-core');       // Lean engine, same API shape

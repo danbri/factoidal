@@ -133,6 +133,13 @@
   pre:has(> code.language-observable-js) {
     border-left: 3px solid #2d6a4f;
   }
+  /* Form-first notebooks may keep their implementation available through
+     the Edit control without putting a long source listing ahead of the
+     interactive surface. This is an explicit per-page choice. */
+  {% if hubHideCellSource %}
+  pre:has(> code.language-observable-js) { display: none; }
+  .observable-cell::before { display: none; }
+  {% endif %}
   .observable-cell {
     margin: 0 0 1.4em;
     padding: 0.8em 1em;
@@ -437,8 +444,8 @@
 {% endif %}
 {{ content | safe }}
 <footer>
-Factoidal — verified RDF/SPARQL from F*. Interactive cells on this
-page run entirely in your browser via the F*-extracted engine and a
+Factoidal — verified RDF/SPARQL{% if not hubEngineLabel %} from F*{% endif %}. Interactive cells on this
+page run entirely in your browser via {{ hubEngineLabel | default('the F*-extracted engine') }} and a
 vendored Observable runtime — no server, no CDN{% if hubMode == 'live' %}
 for any code; in live mode a cell may additionally load external map
 tiles or query remote SPARQL endpoints (data, never scripts){% endif %}.

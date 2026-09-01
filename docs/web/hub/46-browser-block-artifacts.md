@@ -14,8 +14,9 @@ shared RDF-term dictionary plus ID rows, framed by CRC32C. The native Lean
 query path can additionally require a trusted SHA-256 digest before decoding.
 This page gives the browser the same *artifact* boundary: choose bytes, inspect
 the untrusted header, calculate their identity, and optionally cache the exact
-bytes locally. It does **not** claim browser-side `IBK1` query execution yet;
-that needs a narrow Lean-WASM decode/query export.
+bytes locally. It remains an `IBK1` inspector. The newer
+[three-block query notebook](../51-query-shardborough-blocks-in-browser/) runs
+current `IBK3` artifacts through a narrow Lean-WASM scan operation.
 
 ```observable-js
 blockFormat = ({
@@ -23,7 +24,7 @@ blockFormat = ({
   version: 1,
   headerBytes: 5,
   integrityNow: "CRC32C framing plus SHA-256 checked against a trusted digest",
-  browserBoundary: "inspect, hash and optionally cache bytes; no block query ABI yet",
+  browserBoundary: "this page inspects IBK1; the Lean-WASM ABI now scans complete IBK2 and IBK3 artifacts",
 })
 ```
 
@@ -109,8 +110,10 @@ bytes are expected to have; they do not change this canonical block file.
 
 For the full native path and its verified-digest command, see
 [the segmented-IBK design note](../../../20260830-segmented-ibk-design/). The
-smallest browser deployment target is deliberately the same shape: bytes +
-trusted identity + narrow Lean block-core operation → result bytes.
+smallest browser deployment target has the same shape: bytes + trusted
+identity + narrow Lean block-core operation → result bytes. The current IBK3
+notebook demonstrates complete-artifact scans; authenticated partial-range
+execution remains a later interface.
 
 `blockFormat` is pinned in
 [`tests/hub/post46_test.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/hub/post46_test.mjs); the picker is deliberately

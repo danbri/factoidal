@@ -83,6 +83,33 @@ def readU64LE (bs : List UInt8) (pos : Nat) : Option UInt64 := do
   let hi ← readU32LE bs (pos + 4)
   pure (lo.toUInt64 ||| (hi.toUInt64 <<< 32))
 
+private theorem bitVec64_toNat_64 : (64 : BitVec 64).toNat = 64 := by decide
+
+private theorem u64Low32 (n : UInt64) :
+    n.toUInt32.toBitVec = n.toBitVec.extractLsb' 0 32 := by
+  rw [UInt64.toBitVec_toUInt32, BitVec.setWidth_eq_extractLsb' (by decide)]
+
+private theorem u64High32 (n : UInt64) :
+    ((n >>> 32).toUInt32).toBitVec = n.toBitVec.extractLsb' 32 32 := by
+  rw [UInt64.toBitVec_toUInt32, UInt64.toBitVec_shiftRight]
+  simp only [BitVec.ushiftRight_eq', BitVec.toNat_umod,
+    UInt64.toNat_toBitVec, UInt64.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  rw [bitVec64_toNat_64]
+  simp only [Nat.reduceMod]
+  rw [BitVec.setWidth_ushiftRight_eq_extractLsb]
+
+private theorem joinU64LowHigh32 (n : UInt64) :
+    n.toUInt32.toUInt64 ||| ((n >>> 32).toUInt32.toUInt64 <<< 32) = n := by
+  apply UInt64.toBitVec_inj.1
+  rw [UInt64.toBitVec_or, UInt64.toBitVec_shiftLeft,
+    UInt32.toBitVec_toUInt64, UInt32.toBitVec_toUInt64, u64Low32, u64High32]
+  simp only [BitVec.shiftLeft_eq', BitVec.toNat_umod,
+    UInt64.toNat_toBitVec, UInt64.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+  simp only [bitVec64_toNat_64, Nat.reduceMod]
+  rw [BitVec.or_comm, ← BitVec.setWidth_append_eq_shiftLeft_setWidth_or,
+    BitVec.extractLsb'_append_extractLsb']
+  simp
+
 /-- The u64 framing primitive is an inverse in front of arbitrary subsequent
     bytes. It is expressed as two proved u32 fields and a checked bit-vector
     reconstruction, matching the F* DLOG/CEP1 representation. -/
@@ -99,8 +126,7 @@ theorem readU64LE_writeU64LE_append (n : UInt64) (rest : List UInt8) :
       (readU32LE_append_writeU32LE (writeU32LE n.toUInt32)
         (n >>> 32).toUInt32 rest)
   rw [hi]
-  simp
-  bv_decide
+  simpa using joinU64LowHigh32 n
 
 def natFitsU64 (n : Nat) : Bool := n.toUInt64.toNat == n
 

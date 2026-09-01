@@ -3,7 +3,7 @@ title: Shardborough Storage and Execution Artifact Specification
 description: Versioned storage, index, integrity, update, and semantic-context formats for the Factoidal block engine.
 layout: spec.njk
 permalink: /shardborough-storage-spec/
-specStatus: Alpha Draft 0.2
+specStatus: Alpha Draft 0.3
 specDate: "2026-09-01"
 ---
 
@@ -72,9 +72,10 @@ The design is intended for:
 - deployments that require corruption detection, reproducible generations,
   or evidence linking an execution to exact input bytes.
 
-Predicate partitioning, sorted rows, sidecar indexes, and manifest summaries
-are performance mechanisms. They reduce bytes read and decoded; they do not
-change RDF or SPARQL meaning.
+Predicate partitioning, sorted sidecar postings, term indexes, and manifest
+summaries are performance mechanisms. They reduce bytes read and decoded;
+they do not change RDF or SPARQL meaning. IBK3 primary rows currently retain
+source order within each predicate-local artifact.
 
 ### 1.3 Adoption and interoperability
 
@@ -101,7 +102,7 @@ sidecars, and an SBM6 manifest. A complete publisher follows this order:
 ```text
 RDF input
    -> parse and assign block-local term IDs
-   -> sort and partition rows
+   -> partition source-order rows by predicate
    -> encode IBK blocks and index sidecars
    -> compute lengths, SHA-256 identities, and Merkle commitments
    -> write an immutable generation
@@ -143,6 +144,155 @@ eligible history to a new immutable generation, validates it, records its
 epoch, and activates it through `CURRENT`. This prevents a crash between base
 publication and log maintenance from applying an update twice.
 
+### 2.4 Block query workers
+
+A Shardborough block query worker is a small executable over authenticated
+block bytes. It is intended for use beside local files, PostgreSQL, TiKV,
+object storage, browser storage, or a remote range service. The host provides
+bytes and resource limits. The worker validates and decodes those bytes and
+performs a typed physical operation. RDF semantics do not move into the
+storage adapter.
+
+Here, *worker* names an execution role. It does not require a JavaScript Web
+Worker, an operating-system process, or a remote service. The browser example
+runs the operation in the page's existing Lean WASM runtime; another host may
+place the same operation in a thread or separate process.
+
+The responsibilities are deliberately split:
+
+```text
+coordinator
+  parse SPARQL; choose blocks, indexes and operations; combine fragments
+       |
+       v
+block worker
+  validate supplied bytes; execute a bounded scan or join fragment
+       |
+       v
+result fragment
+  typed rows or result bytes, counters, and evidence identities
+```
+
+The worker is not a second SPARQL implementation and is not necessarily a
+SPARQL Protocol endpoint. A deployment may put parsing and planning in the
+coordinator and send only a small physical program to workers. A self-contained
+edge application may run the coordinator and workers in one native or WASM
+process.
+
+#### 2.4.1 Current diagnostic API
+
+The Lean dispatch ABI currently exposes complete-artifact predicate scans:
+
+```text
+scanIBK2Predicate(ibk2Hex, predicateIri)
+scanIBK3Predicate(ibk3Hex, predicateIri, blankNodeScope)
+```
+
+The IBK3 operation accepts three strings and returns a JSON envelope:
+
+```json
+{
+  "ok": true,
+  "format": "IBK3",
+  "blankNodeScope": "source:example-2026-09-01",
+  "rows": 3,
+  "ntriples": "<s1> <p> <o1> .\n..."
+}
+```
+
+Invalid hexadecimal text, an invalid predicate IRI, a failed IBK checksum,
+bad row positions or term references, a malformed PTD1 dictionary, and a
+non-predicate-local block are rejected. The operation uses the same Lean
+decoder and scan definition in native and WASM builds. The current diagnostic
+ABI also rejects a blank-node scope longer than 256 UTF-8 bytes.
+
+`blankNodeScope` is mandatory because N-Triples blank-node labels are local to
+an RDF document or dataset import unit. Blocks partitioned from the same unit
+use the same scope, so a blank node described under several predicates keeps
+one identity. Blocks from unrelated units use different scopes, so equal local
+labels do not merge when result fragments are composed. The worker encodes the
+scope to a grammar-safe prefix and applies it at every blank-node position.
+The scope is an import identity, not an IBK artifact identity: using a
+different scope for every predicate block would incorrectly split one source
+blank node. Reusing a scope for unrelated imports would incorrectly merge
+nodes. A production generation manifest must therefore commit the scope used
+for each source partition rather than accepting an arbitrary value at query
+time. The scope may span several named graphs when one imported RDF dataset
+shares blank nodes across them; it is not mechanically the graph IRI. A
+content digest is sufficient only when the publication profile also says that
+repeated imports of those bytes share one blank-node allocation. Otherwise the
+scope must include the import occurrence or equivalent provenance identity.
+
+The current operation emits N-Triples and carries no graph-name field. It
+therefore composes a default graph only. `blankNodeScope` preserves local node
+identity; it is not a substitute for a `GraphId`. A dataset-aware worker and
+future block layout must carry graph identity explicitly before this operation
+can preserve named graphs.
+
+The older two-argument IBK2 operation predates this rule and its N-Triples
+output must be treated as a single-document fragment. Multi-block composition
+uses the scoped IBK3 operation.
+
+This API is useful for testing the execution boundary and for small browser
+demos. Hexadecimal transport, complete-block decoding, and N-Triples output
+copy the data and have no artifact or output-size limit. They are not the
+production remote-worker protocol. The caller must also authenticate the
+expected block identity: a self-consistent IBK3 file alone does not establish
+that it belongs to the active generation.
+
+The native `l4block-id-v3-query` host has a broader, implemented path. It
+parses SPARQL, opens the active SBM generation, checks committed artifacts,
+uses SRI2/TLI1/OLI2 where the admitted query shape permits, merges durable
+deltas, and evaluates the selected materialization through the Lean SPARQL
+engine. It also has complete fallbacks for supported query forms. This native
+host demonstrates the intended coordinator role; it is not yet packaged as a
+network service.
+
+#### 2.4.2 Bounded worker protocol target
+
+The production boundary will use byte buffers or authenticated ranges and a
+versioned typed request. Its logical shape is:
+
+```text
+request
+  API version
+  operation or validated PushIR program
+  artifact identities and supplied byte ranges
+  blank-node import scope committed by the generation
+  snapshot / compaction epoch
+  row, byte, memory and output limits
+
+response
+  success or typed failure
+  row/result buffer
+  bytes requested, bytes consumed and rows produced
+  kernel, program and input identities
+```
+
+PushIR is the planned multi-operation language for this boundary. It is
+separate from IBK block bytes and from SPARQL algebra. It will be typed,
+versioned, deterministic and bounded, with operations such as range scan,
+column load, exact ID comparison, revision filtering, sorted intersection,
+projection, count and emit. It will not provide arbitrary recursion, network
+access, dynamic code loading, or unrestricted memory access.
+
+The protocol is backend-neutral. PostgreSQL may supply `bytea` values, TiKV
+may supply values or fixed chunks, and a browser may supply `ArrayBuffer`
+ranges from HTTP or OPFS. Each can run the same Lean-derived native or WASM
+kernel. Backend adapters therefore need storage, identity, range and resource
+control operations rather than their own RDF query engine.
+
+Before an internet-facing worker profile is specified, it requires:
+
+- a canonical binary request and response format with independent golden
+  vectors;
+- mandatory size, time, memory and output limits;
+- SBM generation and artifact-identity binding before decode;
+- authenticated range proofs where partial artifacts are supplied;
+- precise PushIR validation and denotation-preservation statements;
+- replay-safe snapshot and compaction-epoch handling;
+- conformance tests across native and WASM kernels.
+
 ## 3. Deployment profiles
 
 | Profile | Artifact host | Execution | Alpha status |
@@ -150,12 +300,12 @@ publication and log maintenance from applying an update twice.
 | Local | directory of files with positioned range reads | native Lean executable and thin C I/O boundary | primary implemented path |
 | PostgreSQL | `bytea` values and metadata rows | coordinator or nearby worker using the same codecs | byte round-trip demonstrated; no Lean client adapter yet |
 | TiKV | values or fixed-size chunks addressed by manifest keys | colocated or nearby worker | planned |
-| Browser or edge | HTTP ranges, OPFS, or supplied buffers | Lean-derived WASM block kernel | partial browser/WASM groundwork; stable block worker planned |
+| Browser or edge | HTTP ranges, OPFS, or supplied buffers | Lean-derived WASM block kernel | complete-artifact IBK2/IBK3 scan ABI implemented; buffer/range protocol planned |
 | Distributed | content-addressed blocks in one or more hosts | coordinator sends bounded physical work to native or WASM workers | architectural target |
 
 The stable backend boundary is a manifest plus byte-range reads, not a second
-backend-specific RDF model. A future PushIR program can describe bounded work
-near storage, but PushIR is not part of the block byte format.
+backend-specific RDF model. PushIR can describe bounded work near storage,
+but PushIR is not part of the block byte format.
 
 ## 4. Design requirements
 
@@ -579,6 +729,12 @@ standard. Beta requires at least:
   [formal/lean4/L4Factoidal/Storage/](https://github.com/danbri/factoidal/tree/claude/main/formal/lean4/L4Factoidal/Storage)
 - Host I/O, publication, activation, compaction and query probes:
   [formal/lean4/Harness/](https://github.com/danbri/factoidal/tree/claude/main/formal/lean4/Harness)
+- Native/WASM block-worker operations and their dispatch ABI:
+  [formal/lean4/Wasm/Ops/Block.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/Wasm/Ops/Block.lean)
+  and
+  [formal/lean4/Wasm/Dispatch.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/Wasm/Dispatch.lean)
+- Block-worker implementation milestone:
+  https://github.com/danbri/factoidal/issues/637
 - SPARQL reference semantics and refinements:
   [formal/lean4/L4Factoidal/SPARQL/](https://github.com/danbri/factoidal/tree/claude/main/formal/lean4/L4Factoidal/SPARQL)
 - RDFS and RDFS-Plus semantics:

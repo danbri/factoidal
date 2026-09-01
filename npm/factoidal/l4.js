@@ -94,4 +94,11 @@ module.exports = {
    */
   scanIBK2Predicate: async (ibk2Hex, predicateIri) =>
     (await loadL4()).call('scanIBK2Predicate', [ibk2Hex, predicateIri]),
+  /**
+   * Validate and scan one current IBK3 artifact. `blankNodeScope` identifies
+   * the RDF source/dataset import unit: reuse it across that unit's predicate
+   * blocks, and never reuse it for an unrelated input document.
+   */
+  scanIBK3Predicate: async (ibk3Hex, predicateIri, blankNodeScope) =>
+    (await loadL4()).call('scanIBK3Predicate', [ibk3Hex, predicateIri, blankNodeScope]),
 };

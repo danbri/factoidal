@@ -9,6 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { NPM_FACTOIDAL_INDEX } from './_helpers.mjs';
 
 const require = createRequire(import.meta.url);
@@ -66,11 +67,22 @@ test('factoidal/l4: two-pattern join agrees with the F* engine', async () => {
   assert.deepEqual(leanRows, fstarRows);
 });
 
+test('factoidal/l4: current IBK3 worker is available through the typed package subpath', async () => {
+  const bytes = readFileSync(new URL('../../docs/web/hub/assets/blocks/shardborough-three-way/type.ibk3', import.meta.url));
+  const result = await l4.scanIBK3Predicate(
+    bytes.toString('hex'),
+    'http://example.org/type',
+    'source:npm-l4-test',
+  );
+  assert.equal(result.format, 'IBK3');
+  assert.equal(result.blankNodeScope, 'source:npm-l4-test');
+  assert.equal(result.rows, 4);
+});
+
 test('factoidal/l4: missing-assets error names the remedies', async () => {
   // Force every resolver source to miss by asking from a copy whose
   // repo-relative path cannot exist. Simplest faithful probe: check the
   // error text constant in the module source.
-  const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../../npm/factoidal/l4.js', import.meta.url), 'utf8');
   assert.match(src, /@factoidal\/lean/);
   assert.match(src, /FACTOIDAL_L4_ASSETS/);

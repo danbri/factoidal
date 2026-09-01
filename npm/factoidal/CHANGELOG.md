@@ -12,6 +12,12 @@
 - The regenerated Lean artifact is synchronized across the package's
   `l4-assets/` and the Hub build, and is exercised against the music IBK2
   fixture by `tools/wasm-ibk2-smoke.mjs` in the repository.
+- The current-format companion
+  `scanIBK3Predicate(ibk3Hex, predicateIri, blankNodeScope)` validates and
+  scans complete predicate-local IBK3 artifacts. Its mandatory source/dataset
+  scope preserves one blank node across blocks from the same RDF import while
+  keeping same-spelled labels in unrelated inputs apart. Hub post 51 composes
+  three real IBK3 scans into an editable Lean-WASM SPARQL query.
 
 ## 0.2.0 — both engines in one package, with a backend selector
 

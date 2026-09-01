@@ -63,6 +63,7 @@ def opNames : List String :=
   , "serializeTurtle"
   , "canonicalizeToNQuads"
   , "scanIBK2Predicate"
+  , "scanIBK3Predicate"
   , "owlClosure"
   , "owlIsConsistent"
   , "owlEntails"
@@ -125,6 +126,7 @@ def call (op : String) (argsJson : String) : String :=
     | "serializeTurtle"      => arity1 op serializeTurtle args
     | "canonicalizeToNQuads" => arity1 op canonicalizeToNQuads args
     | "scanIBK2Predicate"    => arity2 op scanIBK2Predicate args
+    | "scanIBK3Predicate"    => arity3 op scanIBK3Predicate args
     | "owlClosure"           => arity2 op owlClosure args
     | "owlIsConsistent"      => arity2 op owlIsConsistent args
     | "owlEntails"           => arity3 op owlEntails args
