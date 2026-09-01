@@ -317,3 +317,25 @@ remaining two obligations are intentionally separate: prove the pure BGP bag
 theorem, then prove that Merkle-verified SRI2 plus the executable HashMap
 construction agrees with those pure fragments.  This prevents a future proof
 from accidentally certifying only a particular on-disk iteration order.
+
+### Bounded three-way execution is a separate semantic contract
+
+The natural next performance idea is to stop a three-way scan once `LIMIT n`
+answers have been found.  That is **not** a safe drop-in optimisation for the
+current list-valued Lean evaluator.  The physical plan chooses its smallest
+predicate driver, SRI2 uses key/page order, and the direct HashMap path does
+not preserve source-row order.  In contrast, `selectPost` currently gives
+`OFFSET` and `LIMIT` their literal `List.drop`/`List.take` meaning.  A useful
+nonzero limit could therefore change the observed result sequence.
+
+The one immediately exact special case is `LIMIT 0`, which necessarily
+returns no rows.  The useful general design is deliberately later: admit only
+a default-graph, no-`VALUES`, modifier-free `SELECT *` over the distinct-var
+three-predicate shape plus `LIMIT n`; define its result as any bag-subset of
+at most `n` solutions, preserving RDF/SPARQL multiplicity; and prove that
+contract rather than list equality.  It requires a resumable predicate cursor
+and row-range APIs (`dictionaryPagesForRowRange?`, `scanRowRangePages`, and a
+`scanEntriesPage`-style harness interface).  A driver page must be joined
+completely against its two target fragments before stopping—reading merely
+`n` driver rows is unsound because they may not join.  `ORDER BY`, `DISTINCT`,
+`OFFSET`, grouping, and HAVING remain outside this first bounded admission.
