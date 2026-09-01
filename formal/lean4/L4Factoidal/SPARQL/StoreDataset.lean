@@ -319,7 +319,7 @@ def evalSelectBackendBgp (env : EvalEnv) (q : Query) (gb : GraphBackend) :
           | .vars items => projectSolutions (selectItemVars items) ordered
           | .all => ordered
         let deduped :=
-          if q.modifier.distinct then distinctSolutions projected
+          if q.modifier.distinct then distinctSolutionsFast projected
           else if q.modifier.reduced then reducedSolutions projected
           else projected
         some (sliceSolutions q.modifier.offset q.modifier.limit deduped)

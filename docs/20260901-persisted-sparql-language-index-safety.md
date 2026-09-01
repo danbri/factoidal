@@ -200,3 +200,21 @@ and DESC checks for this mode.  This is an executable, tightly stated
 physical equivalence whose assumptions are regression-tested; a standalone
 Lean refinement theorem for the finite subject-set transformation remains a
 future assurance item.
+
+### General runtime DISTINCT buckets
+
+The generic `distinctSolutions` specification remains unchanged and retains
+its existing theorems.  Runtime SELECT evaluation now uses
+`distinctSolutionsFast`: process rows from right to left (preserving the
+specification's last-occurrence result order), bucket each solution mapping by
+its sorted variable-to-`Term.joinKey` representation, and test every bucket
+candidate with the established `Binding.equiv` before suppressing a row.
+
+`Term.joinKey_eq_of_eqb` is the key safety direction: SPARQL-equal terms,
+including case variants of language tags and canonical XML literals, enter the
+same candidate bucket.  A hash/key collision only costs an extra equivalence
+test; it cannot remove a non-equivalent mapping.  The associated standalone
+refinement theorem remains to be added, but the generic path passes both
+persisted and W3C disk-query suites.  A two-column 20,844-row protein-family
+`SELECT DISTINCT ?x ?part ... ORDER BY ?x LIMIT 3`, which cannot use the
+single-subject fast path, completed in a 4.00-second local sample.
