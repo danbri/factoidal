@@ -70,4 +70,5 @@ worknote, kept as the record of a decision or a measurement),
 | 2026-09-01 | [Persisted-path W3C executability census](20260901-persisted-executability-census.md) | 6ed315b52 | current |
 | 2026-09-01 | [Persisted SPARQL language-tag index safety](20260901-persisted-sparql-language-index-safety.md) | 5028e0545 | record: five topics in one file |
 | 2026-09-02 | [Fresh-eyes repository review](20260902-fresh-eyes-review.md) | d3033fd14 | current: review; section 7 is the open hygiene list |
-| 2026-09-02 | [Persisted query ladder](20260902-persisted-query-ladder.md) | (this commit) | current: measurement record for the 2026-09-02 owner goal |
+| 2026-09-02 | [Persisted query ladder](20260902-persisted-query-ladder.md) | 3b3a14bb6 | current: measurement record for the 2026-09-02 owner goal; milestone table and rung 2.5 |
+| 2026-09-02 | [Quad-aware block layout](designissues/2026-09-02-quad-aware-block-layout.md) | (this commit) | current: proposal for spec gate 4; owner decisions pending |
