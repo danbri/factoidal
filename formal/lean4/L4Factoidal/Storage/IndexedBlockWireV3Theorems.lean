@@ -27,12 +27,15 @@ the whole row area. `PagedTermDictionary.decode?_encode?` supplies the
 dictionary round trip, and `ptd_pageTerms_of_encode?` supplies the page-size
 check IBK3 re-runs on the PTD1 prefix.
 
-Three conditions are hypotheses rather than consequences of `encode?`.
-`hnodup` and `hwf` are the two `IndexedBlock.fromParts?` admission conditions
-that `encode?` does not check, and `hfit` is the term-codec condition that no
-`encode?` guard sees. The docstring of `decode_encode?` states each. No further
-hypothesis was needed: every other check `decode` performs is discharged from
-`encode?`'s own `supported` gate and its two size guards.
+There is no hypothesis beyond `encode? block = some bytes`. Every check
+`decode` performs is discharged from `encode?`'s own `supported` gate and its
+two size guards. `supported` now carries the two conditions that were once
+stated as hypotheses: `PagedTermDictionary.supported` tests
+`L4Factoidal.Storage.termFitsU32b`, the u32 length-prefix condition of the
+total term encoder, and the final conjunct runs
+`IndexedBlock.fromParts? block.dict block.rows` — the decoder's own
+reconstruction step — so the encoder refuses precisely the blocks the decoder
+would refuse.
 
 No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
@@ -268,41 +271,28 @@ theorem predicateLocal_rows (block : Block) :
 
 /-! ## Dictionary identity reconstruction -/
 
-/-- A dictionary list without repeats builds an ID map, provided the running
-    map holds none of its terms yet. -/
-theorem buildIdMap_isSome : ∀ (terms : List Term) (next : TermId)
-    (ids : Std.HashMap Term TermId), terms.Nodup → (∀ t ∈ terms, ids[t]? = none) →
-    (buildIdMap terms next ids).isSome := by
-  intro terms
-  induction terms with
-  | nil => intro next ids _ _; simp [buildIdMap]
-  | cons term rest ih =>
-      intro next ids hnodup hfresh
-      have hterm : ids[term]? = none := hfresh term (by simp)
-      have hnotmem : term ∉ rest := (List.nodup_cons.mp hnodup).1
-      have hrest : rest.Nodup := (List.nodup_cons.mp hnodup).2
-      rw [buildIdMap, if_neg (by simp [hterm])]
-      refine ih (next + 1) (ids.insert term next) hrest ?_
-      intro t ht
-      rw [Std.HashMap.getElem?_insert, if_neg (by
-        intro heq
-        exact hnotmem ((beq_iff_eq.mp heq) ▸ ht))]
-      exact hfresh t (List.mem_cons_of_mem _ ht)
-
-/-- `fromParts?` returns the dictionary and rows it was given whenever the
-    dictionary has no repeats and every row decodes to a triple position. -/
+/-- Whenever `fromParts?` returns a block at all, that block carries exactly
+    the dictionary and rows it was given. The `isSome` premise is the last
+    conjunct of `supported`, so the encoder runs the decoder's reconstruction
+    admission itself and this needs no separate `Nodup` or well-formedness
+    condition. -/
 theorem fromParts?_ok (dict : Array Term) (rows : Array IdTriple)
-    (hnodup : dict.toList.Nodup)
-    (hwf : rows.toList.all (rowWellFormed dict) = true) :
+    (hsome : (fromParts? dict rows).isSome = true) :
     ∃ decoded, fromParts? dict rows = some decoded ∧
       decoded.dict = dict ∧ decoded.rows = rows := by
-  have hids := buildIdMap_isSome dict.toList 0 ∅ hnodup
-    (fun t _ => Std.HashMap.getElem?_empty)
-  obtain ⟨ids, hids⟩ := Option.isSome_iff_exists.mp hids
-  refine ⟨{ dict := dict, idByTerm := ids, rows := rows,
-            byPredicate := rows.foldl addPartition ∅ }, ?_, rfl, rfl⟩
-  rw [fromParts?]
-  simp only [hids, bind, Option.bind, hwf, if_true]
+  obtain ⟨decoded, hdec⟩ := Option.isSome_iff_exists.mp hsome
+  refine ⟨decoded, hdec, ?_⟩
+  rw [fromParts?] at hdec
+  cases hids : buildIdMap dict.toList 0 ∅ with
+  | none => rw [hids] at hdec; exact absurd hdec (by simp)
+  | some ids =>
+      rw [hids] at hdec
+      simp only [bind, Option.bind] at hdec
+      split at hdec
+      · injection hdec with hdec
+        subst hdec
+        exact ⟨rfl, rfl⟩
+      · exact absurd hdec (by simp)
 
 /-! ## The paged dictionary prefix -/
 
@@ -322,10 +312,12 @@ theorem ptd_pageTerms_of_encode? (terms : Array Term) (dictionary : ByteArray)
     · rename_i hguard
       injection h with h
       subst h
-      simp only [PagedTermDictionary.supported, PagedTermDictionary.fitsU32,
-        Bool.not_eq_true', Bool.and_eq_false_iff] at hsupp hguard
-      obtain ⟨-, hszfit⟩ := by simpa using hsupp
-      obtain ⟨⟨hpcfit, -⟩, -⟩ := by simpa using hguard
+      have hsupported : PagedTermDictionary.supported terms = true := by simpa using hsupp
+      rw [PagedTermDictionary.supported, Bool.and_eq_true] at hsupported
+      have hszfit : terms.size < 4294967296 := by
+        simpa [PagedTermDictionary.fitsU32] using hsupported.2
+      simp [PagedTermDictionary.fitsU32] at hguard
+      obtain ⟨⟨hpcfit, -⟩, -⟩ := hguard
       have hu32 : (4294967296 : Nat) = UInt32.size := rfl
       refine ⟨{ termCount := terms.size,
                 pageTerms := PagedTermDictionary.defaultPageTerms,
@@ -401,26 +393,20 @@ theorem decodePrefix_ok (rowCount dictionaryBytes : Nat)
 
 /-- Whatever `encode?` accepts, `decode` restores with the same dictionary
     array and the same ID row array, so the two blocks denote the same graph.
+    The only hypothesis is that `encode?` accepted the block.
 
-`hfit` is not redundant with the `encode?` guards. PTD1 inside IBK3 calls the
-TOTAL term encoder `serializeTerm`, which writes a truncated u32 length prefix
-for a string of `2 ^ 32` bytes or more; no guard sees that, and
-`L4Factoidal.Storage.termFitsU32` is what excludes it.
-
-`hnodup` and `hwf` are the two `IndexedBlock.fromParts?` admission conditions
-that `encode?` does not check. `fromParts?` refuses a dictionary with repeated
-terms, because its ID map would not be injective; and it refuses rows whose IDs
-do not resolve to an RDF subject, predicate IRI and object. A `Block` built by
-`IndexedBlock.fromGraph` satisfies both, but the `Block` structure itself
-carries no such invariant, so they are stated.
-
-`BlockWireV0.termSupported`, the four `fitsU32` row and count guards, and
-`onePredicate` are all inside `encode?`'s own `supported` gate, so they are
-read out of `h` rather than assumed. -/
+Every check `decode` performs is a consequence of `encode?`'s own `supported`
+gate and its two size guards. `BlockWireV0.termSupported`, the four `fitsU32`
+row and count guards and `onePredicate` come from
+`IndexedBlockWireV1.supported` and IBK3's own predicate-locality conjunct.
+`L4Factoidal.Storage.termFitsU32` — the u32 length-prefix condition of the
+TOTAL term encoder `serializeTerm` that PTD1 calls — comes from
+`PagedTermDictionary.supported`, through `termFitsU32b_iff`. The two
+`IndexedBlock.fromParts?` admission conditions, a dictionary without repeated
+terms and rows whose IDs resolve to RDF triple positions, come from the
+`(fromParts? block.dict block.rows).isSome` conjunct of `supported`, which is
+the decoder's reconstruction step run on the encoder's own inputs. -/
 theorem decode_encode? (block : Block)
-    (hfit : ∀ t ∈ block.dict.toList, termFitsU32 t)
-    (hnodup : block.dict.toList.Nodup)
-    (hwf : block.rows.toList.all (IndexedBlock.rowWellFormed block.dict) = true)
     (bytes : ByteArray) (h : encode? block = some bytes) :
     ∃ decoded, decode bytes = some decoded ∧
       decoded.dict = block.dict ∧ decoded.rows = block.rows := by
@@ -440,19 +426,32 @@ theorem decode_encode? (block : Block)
         subst h
         -- the admission conditions `encode?` already checked
         have hu32 : (4294967296 : Nat) = UInt32.size := rfl
+        have hfits1 : ∀ n : Nat, IndexedBlockWireV1.fitsU32 n = true → n < UInt32.size := by
+          intro n hn
+          simp only [IndexedBlockWireV1.fitsU32, decide_eq_true_eq] at hn
+          exact hu32 ▸ hn
         have hsup : supported block = true := by simpa using hsupp
-        simp only [supported, IndexedBlockWireV1.supported, IndexedBlockWireV1.fitsU32,
-          PagedTermDictionary.supported, PagedTermDictionary.fitsU32,
-          Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hsup
-        have hterms : ∀ t ∈ block.dict.toList, BlockWireV0.termSupported t = true :=
-          hsup.1.1.1.1.1
-        have hnfit : block.rows.size < UInt32.size := hu32 ▸ hsup.1.1.1.2
-        have honep : onePredicate block = true := hsup.1.2
+        rw [supported, Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true] at hsup
+        obtain ⟨⟨⟨hv1, honep⟩, hptd⟩, hpartsSome⟩ := hsup
+        -- IBK1 admission: 32-bit row count and 32-bit term IDs
+        simp only [IndexedBlockWireV1.supported, Bool.and_eq_true,
+          List.all_eq_true] at hv1
+        have hnfit : block.rows.size < UInt32.size := hfits1 _ hv1.1.2
         have hrowbounds : ∀ row ∈ block.rows.toList, row.s < UInt32.size ∧
             row.p < UInt32.size ∧ row.o < UInt32.size := by
           intro row hrow
-          obtain ⟨⟨hs, hp⟩, ho⟩ := hsup.1.1.2 row hrow
-          exact ⟨hu32 ▸ hs, hu32 ▸ hp, hu32 ▸ ho⟩
+          obtain ⟨⟨hs, hp⟩, ho⟩ := hv1.2 row hrow
+          exact ⟨hfits1 _ hs, hfits1 _ hp, hfits1 _ ho⟩
+        -- PTD1 admission: the decodable term subset and the u32 length-prefix test
+        rw [PagedTermDictionary.supported, Bool.and_eq_true, List.all_eq_true] at hptd
+        have hterms : ∀ t ∈ block.dict.toList, BlockWireV0.termSupported t = true := by
+          intro t ht
+          have hand : (BlockWireV0.termSupported t && termFitsU32b t) = true := hptd.1 t ht
+          exact ((Bool.and_eq_true _ _).mp hand).1
+        have hfit : ∀ t ∈ block.dict.toList, termFitsU32 t := by
+          intro t ht
+          have hand : (BlockWireV0.termSupported t && termFitsU32b t) = true := hptd.1 t ht
+          exact (termFitsU32b_iff t).mp ((Bool.and_eq_true _ _).mp hand).2
         simp only [Bool.or_eq_true, decide_eq_true_eq, not_or, Nat.not_le] at hguard
         have hdfit : dictionary.size < UInt32.size := hguard.1
         -- the byte object the encoder built
@@ -562,8 +561,9 @@ theorem decode_encode? (block : Block)
         obtain ⟨ptdHeader, hptdPrefix, hptdPage⟩ :=
           ptd_pageTerms_of_encode? block.dict dictionary hdict
         have hptddec : PagedTermDictionary.decode? dictionary = some block.dict :=
-          PagedTermDictionary.decode?_encode? block.dict hterms hfit dictionary hdict
-        obtain ⟨decoded, hparts, hddict, hdrows⟩ := fromParts?_ok block.dict block.rows hnodup hwf
+          PagedTermDictionary.decode?_encode? block.dict dictionary hdict
+        obtain ⟨decoded, hparts, hddict, hdrows⟩ :=
+          fromParts?_ok block.dict block.rows hpartsSome
         refine ⟨decoded, ?_, hddict, hdrows⟩
         -- assemble
         rw [decode, listOfByteArray_byteArrayOfList]
@@ -588,12 +588,9 @@ theorem decode_encode? (block : Block)
     `IndexedBlock.Block.denotes` reads only the dictionary array and the row
     array, which `decode_encode?` restores unchanged. -/
 theorem denotes_decode_encode? (block : Block)
-    (hfit : ∀ t ∈ block.dict.toList, termFitsU32 t)
-    (hnodup : block.dict.toList.Nodup)
-    (hwf : block.rows.toList.all (IndexedBlock.rowWellFormed block.dict) = true)
     (bytes : ByteArray) (h : encode? block = some bytes) :
     ∃ decoded, decode bytes = some decoded ∧ decoded.denotes = block.denotes := by
-  obtain ⟨decoded, hdec, hddict, hdrows⟩ := decode_encode? block hfit hnodup hwf bytes h
+  obtain ⟨decoded, hdec, hddict, hdrows⟩ := decode_encode? block bytes h
   exact ⟨decoded, hdec, by rw [Block.denotes, Block.denotes, hddict, hdrows]⟩
 
 #print axioms decodePrefix_ok

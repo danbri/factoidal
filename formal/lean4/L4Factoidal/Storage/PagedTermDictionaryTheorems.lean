@@ -11,8 +11,7 @@ proves the two agree:
 
     encode? terms = some bytes → decode? bytes = some terms
 
-on the subset `encode?` admits, together with the term-level admission
-conditions of `L4Factoidal.Storage.TermCodecTheorems`.
+on the subset `encode?` admits, with no further hypothesis.
 
 The proof is layered. The byte-array bridge turns each `ByteArray`
 operation the decoder performs into the list operation the encoder built.
@@ -25,10 +24,12 @@ the directory contiguity and coverage checks provable by induction.
 page, and `decodePagesGo_ok` lifts that from one page to the page list
 under its directory.
 
-`hfit` in the main theorem is not redundant with the `encode?` guards.
 `encode?` calls the TOTAL encoder `serializeTerm`, which writes a truncated
-u32 length prefix for a string of 2^32 bytes or more; no guard in `encode?`
-sees that. The term codec's `termFitsU32` is what excludes it.
+u32 length prefix for a string of 2^32 bytes or more. `supported` therefore
+gates on `L4Factoidal.Storage.termFitsU32b` as well as on `termSupported`, and
+`termFitsU32b_iff` turns that guard into the `termFitsU32` the term codec's
+round trip asks for. That is why the main theorem carries no term-level
+hypothesis.
 
 No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
@@ -708,21 +709,18 @@ theorem decode?_encoded (L : List Term) (sz : Nat)
 
 
 /-- The PTD1 codec round trip: whatever `encode?` accepts, `decode?` returns
-unchanged, as the same `Array Term` in the same order.
+unchanged, as the same `Array Term` in the same order. The only hypothesis is
+that `encode?` accepted the input.
 
-`hsup` and `hfit` are the admission conditions of the term codec beneath this
-one (`L4Factoidal.Storage.parseTerm_serializeTerm`): `termSupported` excludes
-RDF 1.2 triple terms and literals carrying a base direction, and `termFitsU32`
-says every length-prefixed string in the term is shorter than the u32 length
-field. `encode?` itself gates on `termSupported` through `supported`, but it
-calls the TOTAL encoder `serializeTerm`, which would write a truncated length
-prefix for an oversized string; `hfit` is what excludes that. The remaining
-size conditions the decoder needs — the term count, the page count and every
-directory offset and length below `UInt32.size` — are the guards `encode?`
-already checks, so they are read out of `h` rather than assumed. -/
+Every condition the decoder needs is a consequence of `encode?`'s own guards.
+`supported` gates on `termSupported`, which excludes RDF 1.2 triple terms and
+literals carrying a base direction, and on `termFitsU32b`, the decision
+procedure for the term codec's u32 length-prefix condition; `termFitsU32b_iff`
+turns the second into the `termFitsU32` that
+`L4Factoidal.Storage.parseTerm_serializeTerm` asks for. The remaining size
+conditions — the term count, the page count and every directory offset and
+length below `UInt32.size` — are the second guard of `encode?`. -/
 theorem decode?_encode? (terms : Array Term)
-    (hsup : ∀ t ∈ terms.toList, BlockWireV0.termSupported t = true)
-    (hfit : ∀ t ∈ terms.toList, termFitsU32 t)
     (bytes : ByteArray) (h : encode? terms = some bytes) :
     decode? bytes = some terms := by
   simp only [encode?] at h
@@ -734,8 +732,19 @@ theorem decode?_encode? (terms : Array Term)
     · rename_i hguard
       injection h with h
       subst h
-      simp [supported, fitsU32] at hsupp hguard
-      obtain ⟨-, hszfit⟩ := hsupp
+      have hsupported : supported terms = true := by simpa using hsupp
+      rw [supported, Bool.and_eq_true, List.all_eq_true] at hsupported
+      obtain ⟨hall, hszfit'⟩ := hsupported
+      have hsup : ∀ t ∈ terms.toList, BlockWireV0.termSupported t = true := by
+        intro t ht
+        have hand : (termSupported t && termFitsU32b t) = true := hall t ht
+        exact (Bool.and_eq_true _ _).mp hand |>.1
+      have hfit : ∀ t ∈ terms.toList, termFitsU32 t := by
+        intro t ht
+        have hand : (termSupported t && termFitsU32b t) = true := hall t ht
+        exact (termFitsU32b_iff t).mp ((Bool.and_eq_true _ _).mp hand).2
+      have hszfit : terms.size < 4294967296 := by simpa [fitsU32] using hszfit'
+      simp [fitsU32] at hguard
       obtain ⟨⟨hpcfit, -⟩, hdirall⟩ := hguard
       have hu32 : (4294967296 : Nat) = UInt32.size := rfl
       rw [decode?_encoded terms.toList terms.size Array.length_toList hsup hfit

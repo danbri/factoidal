@@ -98,10 +98,20 @@ def onePredicate (block : Block) : Bool :=
 
 /-- IBK3 is deliberately predicate-local.  `IndexedBlockWireV1.supported`
     supplies the current term and 32-bit ID admission checks; PTD1 supplies
-    its own term-codec admission check. -/
+    its own term-codec admission check.
+
+    The final conjunct is the decoder's own reconstruction admission.  `decode`
+    finishes with `IndexedBlock.fromParts? dictionary rows` on exactly the
+    dictionary and rows this block carries, and `fromParts?` refuses a
+    dictionary with repeated terms (its ID map would not be injective) and rows
+    whose IDs do not resolve to an RDF subject, predicate IRI and object.
+    Running the same test here makes the encoder refuse precisely the blocks the
+    decoder would refuse, so `IndexedBlockWireV3Theorems.decode_encode?` needs
+    no hypothesis beyond `encode? block = some bytes`. -/
 def supported (block : Block) : Bool :=
   IndexedBlockWireV1.supported block && onePredicate block &&
-    PagedTermDictionary.supported block.dict
+    PagedTermDictionary.supported block.dict &&
+    (IndexedBlock.fromParts? block.dict block.rows).isSome
 
 def encodeList (block : Block) : List UInt8 :=
   let rows := positionedRows block |>.flatMap encodeRow

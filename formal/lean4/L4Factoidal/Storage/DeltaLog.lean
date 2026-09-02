@@ -471,6 +471,30 @@ def serializeTerm? (t : Term) : Option (List UInt8) :=
           some (termTagLiteral :: (lexical ++ datatype ++ (1 : UInt8) :: language))
   | .tripleTerm _ _ _ => none
 
+/-! ### The u32 length-prefix admission test
+
+`serializeTerm` is total: for a string of `2 ^ 32` bytes or more it writes a
+TRUNCATED u32 length prefix, and the record no longer reads back. The two
+decision procedures below are the admission test for that total encoder, so a
+block encoder can refuse such a term before it reaches the wire.
+`L4Factoidal.Storage.TermCodecTheorems` carries the `Prop` form `termFitsU32`
+and the equivalence `termFitsU32b_iff`. -/
+
+/-- The UTF-8 byte length of the string is below the u32 field limit. -/
+def stringFitsU32b (s : String) : Bool := (bytesOfString s).length < UInt32.size
+
+/-- Every length-prefixed string in the term fits its u32 length prefix. A
+    triple term has no encoding at all, so it never fits. -/
+def termFitsU32b : Term → Bool
+  | .iri i => stringFitsU32b i.val
+  | .bnode b => stringFitsU32b b
+  | .literal l =>
+      stringFitsU32b l.val.lexicalForm && stringFitsU32b l.val.datatype.val &&
+        (match l.val.langTag with
+         | none => true
+         | some tag => stringFitsU32b tag)
+  | .tripleTerm _ _ _ => false
+
 private def mkLiteral? (lex dt : String) (tag : Option String) : Option Term :=
   if h : isIri dt then
     let l : Literal := { lexicalForm := lex, datatype := ⟨dt, h⟩,

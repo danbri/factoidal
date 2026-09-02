@@ -33,6 +33,11 @@ Together the two conditions make the total encoder `serializeTerm` agree
 with `serializeTerm?`, which gives the round trip in the form the block
 codecs use.
 
+`termFitsU32b_iff` relates `termFitsU32` to the decision procedure
+`L4Factoidal.Storage.termFitsU32b` of `DeltaLog`. The block encoders gate
+on that `Bool`, so both admission conditions are consequences of an
+encoder's own guard and neither is a hypothesis of a codec round trip.
+
 No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Storage.DeltaLog
@@ -283,6 +288,35 @@ def termFitsU32 : Term → Prop
         ∀ tag, l.val.langTag = some tag → stringFitsU32 tag
   | .tripleTerm _ _ _ => False
 
+/-- The decision procedure `stringFitsU32b` of `L4Factoidal.Storage.DeltaLog`
+decides `stringFitsU32`. -/
+theorem stringFitsU32b_iff (s : String) : stringFitsU32b s = true ↔ stringFitsU32 s := by
+  simp [stringFitsU32b, stringFitsU32]
+
+/-- The decision procedure `termFitsU32b` of `L4Factoidal.Storage.DeltaLog`
+decides `termFitsU32`. This is what lets a block encoder gate on the u32
+length-prefix condition with a `Bool` guard and a proof read the `Prop` out
+of that guard. -/
+theorem termFitsU32b_iff (t : Term) : termFitsU32b t = true ↔ termFitsU32 t := by
+  cases t with
+  | iri i => exact stringFitsU32b_iff i.val
+  | bnode b => exact stringFitsU32b_iff b
+  | literal l =>
+      rw [termFitsU32b, termFitsU32, Bool.and_eq_true, Bool.and_eq_true,
+        stringFitsU32b_iff, stringFitsU32b_iff]
+      constructor
+      · rintro ⟨⟨hlex, hdt⟩, htag⟩
+        refine ⟨hlex, hdt, ?_⟩
+        intro tag htageq
+        simp only [htageq] at htag
+        exact (stringFitsU32b_iff tag).mp htag
+      · rintro ⟨hlex, hdt, htag⟩
+        refine ⟨⟨hlex, hdt⟩, ?_⟩
+        cases hlt : l.val.langTag with
+        | none => rfl
+        | some tag => exact (stringFitsU32b_iff tag).mpr (htag tag hlt)
+  | tripleTerm s p o => simp [termFitsU32b, termFitsU32]
+
 /-- The admission-preserving string encoder emits the total encoder's
 bytes whenever the byte length fits. -/
 theorem serializeLString?_eq_some (s : String) (h : stringFitsU32 s) :
@@ -326,6 +360,7 @@ theorem parseTerm_serializeTerm (t : Term) (rest : List UInt8)
 #print axioms parseU8_cons
 #print axioms parseSubject_serializeSubject?
 #print axioms parseTerm_serializeTerm?
+#print axioms termFitsU32b_iff
 #print axioms serializeTerm?_eq_some_of_fits
 #print axioms parseTerm_serializeTerm
 

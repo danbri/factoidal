@@ -757,16 +757,20 @@ of the current family. Each depends only on the three standard Lean axioms.
 | Codec | Theorem | Module | Admission hypotheses |
 | --- | --- | --- | --- |
 | Term codec (`serializeTerm` / `parseTerm`) | `parseTerm_serializeTerm` | [`Storage/TermCodecTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermCodecTheorems.lean) | `termSupported` (no base direction, no triple term); `termFitsU32` (every length-prefixed string below the u32 limit) |
-| PTD1 | `decode?_encode?` | [`Storage/PagedTermDictionaryTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryTheorems.lean) | the two above, for every dictionary term |
-| IBK3 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV3Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3Theorems.lean) | `termFitsU32` for every dictionary term; dictionary entries distinct; every row well formed (`fromParts?` admission) |
+| PTD1 | `decode?_encode?` | [`Storage/PagedTermDictionaryTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryTheorems.lean) | none beyond `encode? terms = some bytes`: `supported` checks both term conditions |
+| IBK3 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV3Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3Theorems.lean) | none beyond `encode? block = some bytes`: `supported` runs the decoder's own `fromParts?` admission |
 
 Findings recorded by these proofs:
 
-- `termFitsU32` is a real admission condition that `encode?` does not check:
+- `termFitsU32` was a real admission condition that `encode?` did not check:
   the dictionary encoder calls the total term encoder, which writes a
   truncated u32 length prefix for a string of 2^32 bytes or more. The guard
-  belongs in the encoder so the theorem hypothesis is enforced at the
-  boundary.
+  is now in `PagedTermDictionary.supported` (`termFitsU32b`), so the
+  encoder refuses such a term before it reaches the wire.
+- `IndexedBlock.fromParts?` refuses a dictionary with repeated terms and rows
+  whose IDs do not resolve to a subject, a predicate IRI and an object.
+  `IndexedBlockWireV3.supported` now runs that same test, so the encoder
+  refuses exactly the blocks the decoder would refuse.
 - `IndexedBlockWireV3.orderedRows?` takes a direct path when row positions are
   already `0, 1, 2, ...`, which is what the encoder emits, and sorts only
   otherwise. The answer is the same for every input; the direct path is what

@@ -77,8 +77,15 @@ def directoryFor (pages : List (List UInt8)) : List PageEntry :=
 def encodeDirectory (entry : PageEntry) : List UInt8 :=
   writeU32LE (UInt32.ofNat entry.offset) ++ writeU32LE (UInt32.ofNat entry.length)
 
+/-- PTD1 admission. `termSupported` is the direct-term subset the inherited
+    term codec decodes; `termFitsU32b` is the u32 length-prefix test for the
+    TOTAL encoder `serializeTerm` that `encodePages` calls, which would
+    otherwise write a truncated length prefix for a string of `2 ^ 32` bytes
+    or more. Gating on both makes the decoder's admitted set exactly the
+    encoder's, so `PagedTermDictionaryTheorems.decode?_encode?` needs no
+    term-level hypothesis. -/
 def supported (terms : Array Term) : Bool :=
-  terms.toList.all termSupported && fitsU32 terms.size
+  terms.toList.all (fun term => termSupported term && termFitsU32b term) && fitsU32 terms.size
 
 /-- Canonical full bytes.  The CRC covers every post-version byte through the
     final page; a range reader instead relies on the enclosing block's Merkle
