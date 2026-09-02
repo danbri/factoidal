@@ -37,6 +37,7 @@ import L4Factoidal.RDFS.RDFSPlus
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.Refute
 import L4Factoidal.OWL.NegationGoals
+import L4Factoidal.Syntax.NQuadsFast
 
 namespace L4Wasm.Ops
 
@@ -61,7 +62,7 @@ private def ntriplesEnvelope (key : String) (g : Graph)
 
 /-- `owlClosure(nquads, mode)`. -/
 def owlClosure (nq mode : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
     let g := ds.default
@@ -76,7 +77,7 @@ def owlClosure (nq mode : String) : String :=
 
 /-- `rhoDfClosure(nquads)`. -/
 def rhoDfClosure (nq : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
     let g := ds.default
@@ -88,14 +89,14 @@ def rhoDfClosure (nq : String) : String :=
 
 /-- `rhoDfFragmentCheck(nquads)`. -/
 def rhoDfFragmentCheck (nq : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
       okWith [("fragment", .bool (L4Factoidal.RDFS.isRhoDfFrag ds.default))]
 
 /-- `rdfsPlusClosure(nquads)`. -/
 def rdfsPlusClosure (nq : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
     let g := ds.default
@@ -140,7 +141,7 @@ def owlRefuteFuelOfOpts (optsJson : String) : Nat :=
 description of the verdict source (there is no clash-trace string in
 the refuter); present on the false/null verdicts, omitted on true. -/
 def owlIsConsistent (nq optsJson : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
     let closure := L4Factoidal.OWL.RL.closureFix ds.default
@@ -167,10 +168,10 @@ the premise; `via:"refutation"` when the negated conclusion
 countermodel (`entailed:false`); an indeterminate goal with no
 countermodel is `null`. -/
 def owlEntails (premiseNq conclusionNq optsJson : String) : String :=
-  match parseNQuads premiseNq with
+  match parseNQuadsFast premiseNq with
   | .error e => errJson (fmtParseError e)
   | .ok dsP =>
-    match parseNQuads conclusionNq with
+    match parseNQuadsFast conclusionNq with
     | .error e => errJson (fmtParseError e)
     | .ok dsC =>
       let gc := dsC.default

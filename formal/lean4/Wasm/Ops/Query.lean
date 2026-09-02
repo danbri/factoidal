@@ -29,6 +29,7 @@ import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.Update
 import L4Factoidal.Geo.Functions
 import L4Factoidal.SPARQL.StoreDataset
+import L4Factoidal.Syntax.NQuadsFast
 
 namespace L4Wasm.Ops
 
@@ -98,7 +99,7 @@ including `<<( … )>>` triple terms, so the query op must read back
 what the op family writes. RDF 1.2 N-Quads is a superset of the 1.1
 grammar; `Mode.rdf11` stays the default everywhere else. -/
 def queryDataset (nq sparql : String) : String :=
-  match parseNQuads nq .rdf12 with
+  match parseNQuadsFast nq .rdf12 with
   | .error e => errJson (fmtParseError e)
   | .ok ds   => queryParsedDataset ds sparql
 
@@ -119,7 +120,7 @@ def applyUpdateText (ds : Dataset) (updateText : String) :
 same reason as `queryDataset` above: the stateless pair must accept
 its own canonical N-Quads output. -/
 def updateDataset (nq updateText : String) : String :=
-  match parseNQuads nq .rdf12 with
+  match parseNQuadsFast nq .rdf12 with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
   match applyUpdateText ds updateText with

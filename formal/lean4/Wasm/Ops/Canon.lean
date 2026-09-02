@@ -18,6 +18,7 @@ Targeted imports only — never the L4Factoidal umbrella (see
 import Wasm.Ops.Support
 import L4Factoidal.Syntax.NQuads
 import L4Factoidal.RDF.Canonical
+import L4Factoidal.Syntax.NQuadsFast
 
 namespace L4Wasm.Ops
 
@@ -27,7 +28,7 @@ open L4Factoidal.JSON
 
 /-- `canonicalizeToNQuads(nquads)`. -/
 def canonicalizeToNQuads (nq : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
     let r := L4Factoidal.RDF.Canonical.canonicalize ds

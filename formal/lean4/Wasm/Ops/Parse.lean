@@ -27,6 +27,7 @@ import L4Factoidal.Syntax.NQuads
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.RdfXml
 import L4Factoidal.Syntax.TurtleSerialize
+import L4Factoidal.Syntax.NQuadsFast
 
 namespace L4Wasm.Ops
 
@@ -63,7 +64,7 @@ def parseTextToDataset (text formatTag baseIRI : String) :
   | "" | "turtle" | "ttl" => wrapGraph (parseTurtle text base mode)
   | "ntriples" | "nt" | "n-triples" => wrapGraph (parseNTriples text mode)
   | "nquads" | "nq" | "n-quads" =>
-      (parseNQuads text mode).mapError fmtParseError
+      (parseNQuadsFast text mode).mapError fmtParseError
   | "trig" => (parseTriG text base mode).mapError fmtParseError
   | "rdfxml" | "rdf/xml" | "rdf" | "xml" =>
       wrapGraph (RdfXml.parseRdfXml text base)
@@ -82,7 +83,7 @@ def parseToDatasetJson (text formatTag baseIRI : String) : String :=
 /-- `serializeNQuads(nquads)` — reparse and re-serialise in canonical
 N-Quads form. -/
 def serializeNQuads (nq : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds   => okWith [("nquads", .string (Dataset.toCanonicalNQuads ds))]
 
@@ -91,7 +92,7 @@ graphs are flattened into the default graph for this path (the
 fidelity-preserving path is serializeNQuads / canonicalizeToNQuads),
 mirroring `entry_jsoo.ml`'s `serialize_turtle`. -/
 def serializeTurtle (nq : String) : String :=
-  match parseNQuads nq with
+  match parseNQuadsFast nq with
   | .error e => errJson (fmtParseError e)
   | .ok ds =>
       let g := ds.default ++ ds.named.flatMap (·.graph)
