@@ -84,6 +84,8 @@ import L4Factoidal.Syntax.NQuadsStreaming
 import L4Factoidal.Syntax.NQuadsConcat
 import L4Factoidal.Syntax.NQuadsHomomorphism
 import L4Factoidal.Syntax.NQuadsFold
+import L4Factoidal.Syntax.NQuadsFast
+import L4Factoidal.Syntax.NQuadsFastTheorems
 import L4Factoidal.Syntax.LexShift
 import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Syntax.Turtle
@@ -329,6 +331,7 @@ import L4Factoidal.Math.SigmoidTests
 import L4Factoidal.XForms.BindTests
 import L4Factoidal.GRDDL.Discovery
 import L4Factoidal.Storage.DeltaLog
+import L4Factoidal.Storage.TermCodecTheorems
 import L4Factoidal.Storage.DeltaLogTests
 import L4Factoidal.Storage.BlockMvp
 import L4Factoidal.Storage.BlockMvpTests
@@ -415,6 +418,7 @@ import L4Factoidal.Storage.IndexedBlockWireV1Tests
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.IndexedBlockWireV2Tests
 import L4Factoidal.Storage.PagedTermDictionary
+import L4Factoidal.Storage.PagedTermDictionaryTheorems
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.IndexedBlockWireV3Tests
 import L4Factoidal.Storage.PredicateBlocks
