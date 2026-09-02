@@ -110,9 +110,11 @@ same queries.
 
 | Step | Result |
 | --- | --- |
-| Pack (`ibk3`) | 309 blocks over 232 predicates, 6,134 s (512 triples/s; 70× slower per triple than rung 2.5) |
-| Activate | 356,214,197 logical bytes verified, 4,554 s (78 KB/s) |
+| Pack (`ibk3`), first run | 309 blocks over 232 predicates, 6,134 s (512 triples/s; 70× slower per triple than rung 2.5) |
+| Activate, first run | 356,214,197 logical bytes verified, 4,554 s (78 KB/s) |
 | Generation on disk | 716 MB |
+| Pack, after the scanner fix (2026-09-03, commit 0a3d30671) | same 309 blocks, 254 s (12,400 triples/s) |
+| Activate, after the scanner fix and decode-once activation (389b47f1a) | 356,111,955 logical bytes verified, 165 s idle (2.2 MB/s) |
 
 | Query (`third_party/data/ukparliament/sparql/main/`) | Time | Rows | Path |
 | --- | --- | --- | --- |
@@ -126,11 +128,13 @@ What this rung teaches:
 
 - **Answers stay correct at 3 million triples**; the selective paths stay
   at tens of milliseconds even when a query names eight predicates.
-- **Pack and activation are the bottleneck, and something in them is
-  superlinear** in the number of predicates or blocks: rung 2.5 packed
-  36,000 triples/s over 26 predicates, this rung 512 triples/s over 232.
-  Activation at 78 KB/s is far below the HACL* hashing rate, so the cost is
-  in index recomputation. Both need a profile before any design change.
+- **Pack and activation were the bottleneck, and the cause was not the
+  predicate or block count** (the first reading of this rung said it was;
+  the slice ladder below disproved it). It was the statement scanner
+  reversing the accumulated candidate at every line end, which the 134 MB
+  polygon statement group turned into hours. After the fix pack is 254 s
+  and activation 165 s for the same generation (the section "Where the
+  6,134 s went" below has the method).
 - **The constant-predicate collector refuses BIND and property paths**, so
   two queries read all 309 blocks (356 MB) and evaluate on the reference
   path. BIND with a backend-local expression and a sequence or alternative
@@ -210,8 +214,10 @@ test reads it. The old form is kept as `directiveHeadSpec`, and
 currentRev` for every run of the scanner from `init` (axioms: propext,
 Classical.choice, Quot.sound only).
 
-After, same region: pack 81 s, activate 109 s (both with another pack
-running on the machine; re-measure idle). The remaining 81 s is the
+After, same region: pack 81 s, activate 109 s with the three-pass
+activation and 62 s with the decode-once activation of commit 389b47f1a
+(both measured with another pack running on the machine). The whole dump:
+pack 254 s (was 6,134 s), activation 165 s idle (was 4,554 s). The remaining 81 s is the
 reference parse (31 s for this file: 19 s user, 9 s system reading 134 MB
 as a character list) plus the term codec, PTD1 pages, TLI1 keys and
 Merkle leaves over 105 MB of literal bytes; the activate is four full
