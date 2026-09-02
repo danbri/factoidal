@@ -65,32 +65,44 @@ lifeSciShardborough = ({
 ```observable-js
 shardboroughRunner = {
   const manifest = lifeSciShardborough;
-  const crossGraphQuery = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  const crossGraphQuery = `# Sequence variants located on any human chromosome: one graph
+# supplies the chromosomes, the other the variants, joined on ?chrom.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd: <http://www.wikidata.org/entity/>
 SELECT ?variant ?chrom WHERE {
+  # ?chrom is an instance of (P31) human chromosome (Q37748)
   GRAPH <urn:kgx:chromosome> { ?chrom wdt:P31 wd:Q37748 }
+  # ?variant has chromosome (P1057) ?chrom
   GRAPH <urn:kgx:sequence_variant> { ?variant wdt:P1057 ?chrom }
 } LIMIT 20`;
-  const diseaseQuery = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  const diseaseQuery = `# Variants on one chromosome and the genes they are variants of;
+# two properties of one graph, so two blocks are fetched.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd: <http://www.wikidata.org/entity/>
 SELECT ?variant ?gene WHERE {
   GRAPH <urn:kgx:sequence_variant> {
+    # ?variant has chromosome (P1057) human chromosome 1 (Q138955)
     ?variant wdt:P1057 wd:Q138955 .
+    # ?variant is a biological variant of (P3433) ?gene
     ?variant wdt:P3433 ?gene .
   }
 } LIMIT 20`;
-  // Four hops across both graphs: variants on human chromosome 3 (wd:Q668633)
-  // -> the genes they are variants of -> diseases genetically associated with
-  // those genes -> drugs used to treat those diseases.
-  const chromosomeThreeQuery = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  const chromosomeThreeQuery = `# Four hops across two graphs: variants on human chromosome 3, the
+# genes they are variants of, diseases linked to those genes, and
+# drugs used to treat those diseases.
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd: <http://www.wikidata.org/entity/>
 SELECT ?variant ?gene ?disease ?drug WHERE {
   GRAPH <urn:kgx:sequence_variant> {
+    # ?variant has chromosome (P1057) human chromosome 3 (Q668633)
     ?variant wdt:P1057 wd:Q668633 .
+    # ?variant is a biological variant of (P3433) ?gene
     ?variant wdt:P3433 ?gene .
   }
   GRAPH <urn:kgx:disease> {
+    # ?disease has genetic association (P2293) with ?gene
     ?disease wdt:P2293 ?gene .
+    # ?disease has drug or therapy used for treatment (P2176) ?drug
     ?disease wdt:P2176 ?drug .
   }
 } LIMIT 20`;
@@ -99,7 +111,7 @@ SELECT ?variant ?gene ?disease ?drug WHERE {
   const root = html`<section class="shardborough-query">
     <style>
       .shardborough-query { display:grid; gap:.8rem; }
-      .shardborough-query textarea { width:100%; min-height:11rem; resize:vertical; padding:.75rem; border:1px solid #a8cbd7; border-radius:.6rem; font:.86rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .shardborough-query textarea { width:100%; min-height:18rem; resize:vertical; padding:.75rem; border:1px solid #a8cbd7; border-radius:.6rem; font:.86rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
       .shardborough-query .actions { display:flex; flex-wrap:wrap; gap:.5rem; }
       .shardborough-query button { min-height:2.6rem; padding:.5rem .8rem; border:1px solid #196a85; border-radius:.55rem; color:#fff; background:#196a85; font:inherit; font-weight:700; cursor:pointer; }
       .shardborough-query button.secondary { color:#15394b; background:#f7fbfc; border-color:#b8d2dc; }

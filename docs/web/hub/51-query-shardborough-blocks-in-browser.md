@@ -40,13 +40,16 @@ shardboroughBlockQuery = {
       { file: "member.ibk3", predicate: "http://example.org/member", rows: 4, bytes: 342, sha256: "78540ea53aab57c78d4b0f025d6fbbe307e40d16fbd822331ec1cc0d6c2e542d" },
     ],
   };
-  const initialQuery = `SELECT ?person ?type ?name ?team WHERE {
-  ?person <http://example.org/type> ?type .
-  ?person <http://example.org/name> ?name .
-  ?person <http://example.org/member> ?team .
+  const initialQuery = `# Each person with their type, name and team: a three-way join on
+# ?person across the three predicate blocks (one block per property).
+SELECT ?person ?type ?name ?team WHERE {
+  ?person <http://example.org/type> ?type .     # from type.ibk3
+  ?person <http://example.org/name> ?name .     # from name.ibk3
+  ?person <http://example.org/member> ?team .   # from member.ibk3
 }
 ORDER BY ?person ?name ?team`;
-  const allTriplesQuery = `SELECT * WHERE {
+  const allTriplesQuery = `# Every triple the three blocks hold, as decoded: 13 rows.
+SELECT * WHERE {
   ?person ?p ?v .
 }
 ORDER BY ?person ?p ?v`;
