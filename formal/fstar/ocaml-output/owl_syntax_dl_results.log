@@ -1,7 +1,7 @@
 Closure regime: RL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/syntax-dl.rdf
-  parsed 7958 triples in 0.36s
+  parsed 7958 triples in 0.61s
 Totals: 323 test cases
   PositiveEntailmentTest:    90
   NegativeEntailmentTest:    16
@@ -340,7 +340,7 @@ Running 323 species-annotated test case(s) through OWL2_SyntaxDL.species_is_dl (
   PASS: somevaluesfrom2bnode [species] verdict=DL expected=DL
   PASS: string-integer-clash [species] verdict=DL expected=DL
 
-OWL2-DL SpeciesTests: 319 pass, 2 fail (out of 321), 2 skipped (functional-syntax-only) in 0.80s
+OWL2-DL SpeciesTests: 319 pass, 2 fail (out of 321), 2 skipped (functional-syntax-only) in 1.36s
 
 Harness Diagnostics (escape branches, #316 + #326):
 HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:0 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:0 tests_unsupported_cap_escape:0 tests_unsupported_refuter_indeterminate:0

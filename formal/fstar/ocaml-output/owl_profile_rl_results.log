@@ -127,7 +127,7 @@
 Closure regime: RL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: /home/runner/work/factoidal/factoidal/third_party/testing/owl/profile-RL.rdf
-  parsed 1896 triples in 0.04s
+  parsed 1896 triples in 0.08s
 Totals: 91 test cases
   PositiveEntailmentTest:    30
   NegativeEntailmentTest:    6
@@ -167,7 +167,7 @@ Running 30 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  owl2-rl-rules-fp-differentFrom
   PASS  owl2-rl-rules-ifp-differentFrom
 
-Profile-RL PositiveEntailmentTests: 30 pass, 0 fail (out of 30 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.30s
+Profile-RL PositiveEntailmentTests: 30 pass, 0 fail (out of 30 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.51s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -178,7 +178,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-I5.8-007
   PASS  WebOnt-equivalentClass-008
 
-Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.04s
+Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.07s
 
 Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-001
@@ -258,7 +258,7 @@ Running 76 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-valid-oneof
   PASS  owl2-rl-valid-rightside-allvaluesfrom
 
-Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.01s
+Profile-RL ConsistencyTests: 76 pass, 0 fail (out of 76), 0 skipped (functional-syntax-only) in 1.65s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -276,7 +276,7 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  functionality-clash
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 14 pass, 0 fail (out of 14), 0 skipped (functional-syntax-only), 0 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 0.15s
+Profile-RL InconsistencyTests: 14 pass, 0 fail (out of 14), 0 skipped (functional-syntax-only), 0 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 0.25s
 
 Harness Diagnostics (escape branches, #316 + #326):
 HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:0 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:0 tests_unsupported_cap_escape:0 tests_unsupported_refuter_indeterminate:0

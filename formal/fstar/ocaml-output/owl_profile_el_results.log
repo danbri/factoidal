@@ -123,7 +123,7 @@
 Closure regime: RL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/profile-EL.rdf
-  parsed 1809 triples in 0.04s
+  parsed 1809 triples in 0.08s
 Totals: 87 test cases
   PositiveEntailmentTest:    29
   NegativeEntailmentTest:    6
@@ -162,7 +162,7 @@ Running 29 PositiveEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  chain2trans1
   PASS  somevaluesfrom2bnode
 
-Profile-RL PositiveEntailmentTests: 29 pass, 0 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.33s
+Profile-RL PositiveEntailmentTests: 29 pass, 0 fail (out of 29 RDF/XML tests), 0 skipped (functional-syntax-only) in 0.55s
   (bnode pattern matches any term at the position; full isomorphism deferred — see docs/designissues/2026-04-24-owl-runner-phase1.md)
 
 Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fuel=100)...
@@ -173,7 +173,7 @@ Running 6 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fue
   PASS  WebOnt-equivalentClass-008
   PASS  WebOnt-miscellaneous-302
 
-Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.05s
+Profile-RL NegativeEntailmentTests: 6 pass, 0 fail (out of 6) in 0.09s
 
 Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  FS2RDF-different-individuals-2-annotation-ar
@@ -250,7 +250,7 @@ Running 72 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  owl2-rl-invalid-rightside-somevaluesfrom
   PASS  somevaluesfrom2bnode
 
-Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72), 0 skipped (functional-syntax-only); 1 unsupported (cap-escape, #326) in 20.93s
+Profile-RL ConsistencyTests: 71 pass, 1 fail (out of 72), 0 skipped (functional-syntax-only); 1 unsupported (cap-escape, #326) in 21.50s
 
 Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  DisjointClasses-002
@@ -269,7 +269,7 @@ Running 14 InconsistencyTest(s) through is_inconsistent (closure fuel=100)...
       reason: catalog test:semantics = RDF-BASED only (DIRECT not asserted; catalog also ships an owl:NegativePropertyAssertion explicitly denying test:semantics DIRECT for this TestCase) — Direct Semantics, which is what this runner's RL closure and DL tableau implement, does not apply; RDF-Based (OWL Full) domain-size/comprehension reasoning over owl:Thing's extension is out of scope (see docs/claude-rules/w3c-completeness-ledger.md, #299)
   PASS  string-integer-clash
 
-Profile-RL InconsistencyTests: 13 pass, 0 fail (out of 13), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 0.15s
+Profile-RL InconsistencyTests: 13 pass, 0 fail (out of 13), 0 skipped (functional-syntax-only), 1 skipped (semantics-scope: RDF-Based only, not applicable under Direct Semantics) in 0.22s
 
 Harness Diagnostics (escape branches, #316 + #326):
 HARNESS-DIAG-OWL degraded_closure_marked:1 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:0 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:1 tests_unsupported_cap_escape:1 tests_unsupported_refuter_indeterminate:0

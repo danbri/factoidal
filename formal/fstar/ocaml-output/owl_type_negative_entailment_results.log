@@ -47,7 +47,7 @@
 Closure regime: DL
 Closure semantics: DIRECT (default)
 OWL 2 test catalog: third_party/testing/owl/type-negative-entailment.rdf
-  parsed 594 triples in 0.02s
+  parsed 594 triples in 0.04s
 Totals: 23 test cases
   PositiveEntailmentTest:    0
   NegativeEntailmentTest:    23
@@ -85,7 +85,7 @@ Running 23 NegativeEntailmentTest(s) through owl_rl_closure_with_reflexivity (fu
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 5.43s
+Profile-RL NegativeEntailmentTests: 23 pass, 0 fail (out of 23) in 9.62s
 
 Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  New-Feature-Keys-004
@@ -112,7 +112,7 @@ Running 23 ConsistencyTest(s) through is_inconsistent (closure fuel=100)...
   PASS  WebOnt-miscellaneous-302
   PASS  WebOnt-someValuesFrom-002
 
-Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 49.34s
+Profile-RL ConsistencyTests: 23 pass, 0 fail (out of 23), 0 skipped (functional-syntax-only) in 91.71s
 
 Harness Diagnostics (escape branches, #316 + #326):
 HARNESS-DIAG-OWL degraded_closure_marked:0 degraded_closure_silent:0 marker_scan_escapes:0 refuter_escapes:0 pe_refuter_escapes:0 refuter_indeterminate:0 tests_on_degraded_closure:0 tests_unsupported_cap_escape:0 tests_unsupported_refuter_indeterminate:0
