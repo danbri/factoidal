@@ -749,6 +749,35 @@ standard. Beta requires at least:
     fully validated generation from files that have only passed range-level
     integrity checks.
 
+### 10.1 Gate 2 progress (2026-09-02)
+
+Kernel-checked round-trip theorems now exist for the complete-artifact codecs
+of the current family. Each depends only on the three standard Lean axioms.
+
+| Codec | Theorem | Module | Admission hypotheses |
+| --- | --- | --- | --- |
+| Term codec (`serializeTerm` / `parseTerm`) | `parseTerm_serializeTerm` | [`Storage/TermCodecTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermCodecTheorems.lean) | `termSupported` (no base direction, no triple term); `termFitsU32` (every length-prefixed string below the u32 limit) |
+| PTD1 | `decode?_encode?` | [`Storage/PagedTermDictionaryTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryTheorems.lean) | the two above, for every dictionary term |
+| IBK3 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV3Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3Theorems.lean) | `termFitsU32` for every dictionary term; dictionary entries distinct; every row well formed (`fromParts?` admission) |
+
+Findings recorded by these proofs:
+
+- `termFitsU32` is a real admission condition that `encode?` does not check:
+  the dictionary encoder calls the total term encoder, which writes a
+  truncated u32 length prefix for a string of 2^32 bytes or more. The guard
+  belongs in the encoder so the theorem hypothesis is enforced at the
+  boundary.
+- `IndexedBlockWireV3.orderedRows?` takes a direct path when row positions are
+  already `0, 1, 2, ...`, which is what the encoder emits, and sorts only
+  otherwise. The answer is the same for every input; the direct path is what
+  the proof reasons about, because Lean core has no theorems about
+  `Array.qsort`.
+- The IBK3 theorem is stated on the two array fields and on the block
+  denotation, not on block equality: `IndexedBlock.Block` also carries two
+  hash maps.
+
+Still open under gate 2: SRI2/OLI2, TLI1, SBM6 and Merkle range admission.
+
 ## 11. Implementation map and supporting design records
 
 - Current codecs and pure validators:

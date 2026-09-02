@@ -420,6 +420,7 @@ import L4Factoidal.Storage.IndexedBlockWireV2Tests
 import L4Factoidal.Storage.PagedTermDictionary
 import L4Factoidal.Storage.PagedTermDictionaryTheorems
 import L4Factoidal.Storage.IndexedBlockWireV3
+import L4Factoidal.Storage.IndexedBlockWireV3Theorems
 import L4Factoidal.Storage.IndexedBlockWireV3Tests
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.ShardManifest

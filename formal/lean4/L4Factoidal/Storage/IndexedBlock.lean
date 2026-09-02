@@ -51,7 +51,7 @@ private structure BuildState where
   rows : Array IdTriple := #[]
   byPredicate : Std.HashMap TermId (List IdTriple) := ∅
 
-private def addPartition (partitions : Std.HashMap TermId (List IdTriple))
+def addPartition (partitions : Std.HashMap TermId (List IdTriple))
     (row : IdTriple) : Std.HashMap TermId (List IdTriple) :=
   partitions.insert row.p (row :: partitions.getD row.p [])
 
@@ -80,14 +80,14 @@ def fromGraph (graph : Graph) : Block :=
   { dict := state.dict, idByTerm := state.idByTerm, rows := state.rows,
     byPredicate := state.byPredicate }
 
-private def buildIdMap : List Term → TermId → Std.HashMap Term TermId →
+def buildIdMap : List Term → TermId → Std.HashMap Term TermId →
     Option (Std.HashMap Term TermId)
   | [], _, ids => some ids
   | term :: rest, next, ids =>
       if ids[term]?.isSome then none
       else buildIdMap rest (next + 1) (ids.insert term next)
 
-private def rowWellFormed (dict : Array Term) (row : IdTriple) : Bool :=
+def rowWellFormed (dict : Array Term) (row : IdTriple) : Bool :=
   match dict[row.s]?, dict[row.p]?, dict[row.o]? with
   | some s, some (.iri _), some _ => s.toSubject?.isSome
   | _, _, _ => false

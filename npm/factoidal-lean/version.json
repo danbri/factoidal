@@ -1,12 +1,12 @@
 {
   "version": "0.1.0",
-  "gitSha": "b8061beadc202a607ed8d7966b96e1e2b4bc1696",
-  "builtAt": "2026-09-02T10:49:10+00:00",
+  "gitSha": "b5b84abb0a03e3907c1256ca81b83e7fc24f221f",
+  "builtAt": "2026-09-02T12:11:52+00:00",
   "leanToolchain": "leanprover/lean4:v4.33.1",
   "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.8-git",
   "abiVersion": "1",
-  "wasmSha256": "596fe01ad9c8de9c9f3068eb67d254f4223648e4621f1c0ec5380ff3caebc242",
-  "wasmBytes": 4857908,
+  "wasmSha256": "af1cb26471cecfa9368fb72ac8851e67394c06f4534de9668dbbe3275bfdc56a",
+  "wasmBytes": 4858108,
   "claims": {
     "source": "formal/lean4 (L4Factoidal): no sorry, no user axioms, no native_decide; W3C behaviour pinned by build-time #guard",
     "suitesAtBuildSha": "see docs/test-results and formal/lean4/PORT_NOTES.md at gitSha"

@@ -80,18 +80,18 @@ def dictionaryDirectoryRange? (header : Prefix) (ptdPrefix : ByteArray) : Option
   if relative.offset + relative.length > header.dictionaryBytes then none
   else some { offset := (dictionaryRange header).offset + relative.offset, length := relative.length }
 
-private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
-private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
+def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
+def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
 
-private def encodeRow (entry : PositionedIdTriple) : List UInt8 :=
+def encodeRow (entry : PositionedIdTriple) : List UInt8 :=
   writeU32LE (UInt32.ofNat entry.position) ++
   writeU32LE (UInt32.ofNat entry.row.s) ++ writeU32LE (UInt32.ofNat entry.row.p) ++
   writeU32LE (UInt32.ofNat entry.row.o)
 
-private def positionedRows (block : Block) : List PositionedIdTriple :=
+def positionedRows (block : Block) : List PositionedIdTriple :=
   block.rows.toList.zipIdx.map fun (row, position) => { position, row }
 
-private def onePredicate (block : Block) : Bool :=
+def onePredicate (block : Block) : Bool :=
   match block.rows.toList with
   | [] => false
   | row :: rows => rows.all fun later => later.p == row.p
@@ -129,7 +129,7 @@ def decodePrefix (bytes : ByteArray) : Option Prefix := do
   let dictionaryBytes ← readU32LE rest 4
   some { rowCount := rowCount.toNat, dictionaryBytes := dictionaryBytes.toNat }
 
-private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
+def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   let b0 ← bytes[offset]?
   let b1 ← bytes[offset + 1]?
   let b2 ← bytes[offset + 2]?
@@ -137,7 +137,7 @@ private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   some (b0.toUInt32 ||| (b1.toUInt32 <<< 8) |||
     (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24))
 
-private def decodeRowsGo : Nat → ByteArray → Nat → List PositionedIdTriple →
+def decodeRowsGo : Nat → ByteArray → Nat → List PositionedIdTriple →
     Option (List PositionedIdTriple)
   | 0, _, _, reversed => some reversed.reverse
   | count + 1, bytes, offset, reversed => do
@@ -151,17 +151,30 @@ private def decodeRowsGo : Nat → ByteArray → Nat → List PositionedIdTriple
 /-- Fixed-width row decoding consumes the byte stream with a reverse
     accumulator. The final reversal restores wire order once, without a
     data-sized post-recursion call stack. -/
-private def decodeRows (count : Nat) (bytes : ByteArray) : Option (List PositionedIdTriple) :=
+def decodeRows (count : Nat) (bytes : ByteArray) : Option (List PositionedIdTriple) :=
   if bytes.size != count * rowBytes then none else decodeRowsGo count bytes 0 []
 
-private def orderedRows? (rowCount : Nat) (rows : List PositionedIdTriple) : Option (Array IdTriple) :=
-  let ordered := rows.toArray.qsort (fun left right => left.position < right.position) |>.toList
-  if ordered.length != rowCount then none
-  else if ordered.zipIdx.all (fun (entry, position) => entry.position == position) then
-    some (ordered.map PositionedIdTriple.row |>.toArray)
-  else none
+def canonicalOrder (rows : List PositionedIdTriple) : Bool :=
+  rows.zipIdx.all fun (entry, position) => entry.position == position
 
-private def predicateLocal (rows : Array IdTriple) : Bool :=
+/-- Rows are admitted when their positions are exactly `0, 1, ..., rowCount - 1`
+    after sorting.  A canonical artifact (the encoder's output) already has its
+    rows in that order, so it is checked directly; sorting is reserved for a
+    non-canonical row order and gives the same answer, since sorting a list
+    whose positions are already `0, 1, ...` returns that list.  The direct
+    path is what the round-trip proof reasons about, as Lean core has no
+    theorems about `Array.qsort`. -/
+def orderedRows? (rowCount : Nat) (rows : List PositionedIdTriple) : Option (Array IdTriple) :=
+  if rows.length != rowCount then none
+  else if canonicalOrder rows then
+    some (rows.map PositionedIdTriple.row |>.toArray)
+  else
+    let ordered := rows.toArray.qsort (fun left right => left.position < right.position) |>.toList
+    if canonicalOrder ordered then
+      some (ordered.map PositionedIdTriple.row |>.toArray)
+    else none
+
+def predicateLocal (rows : Array IdTriple) : Bool :=
   match rows.toList with
   | [] => false
   | row :: rest => rest.all fun later => later.p == row.p
