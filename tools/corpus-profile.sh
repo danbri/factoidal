@@ -18,9 +18,17 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cli="$repo_root/formal/lean4/.lake/build/bin/l4factoidal"
 file=$1
 
+case $file in
+  *.nt) fmt=ntriples ;;
+  *.nq) fmt=nquads ;;
+  *.trig) fmt=trig ;;
+  *.rdf|*.rdfxml) fmt=rdfxml ;;
+  *) fmt=turtle ;;
+esac
+
 bytes=$(wc -c <"$file" | tr -d ' ')
 digest=$(shasum -a 256 "$file" | awk '{print $1}')
-nquads=$("$cli" parse "$file" --out nquads)
+nquads=$("$cli" parse "$file" --format "$fmt" --out nquads)
 count=$(printf '%s\n' "$nquads" | grep -c '\.$' || true)
 
 echo "file: $file"
@@ -38,3 +46,7 @@ echo "literal datatypes:"
 printf '%s\n' "$nquads" | grep -o '\^\^<[^>]*>' | sort | uniq -c | sort -rn | sed 's/^/  /'
 echo "literal language tags:"
 printf '%s\n' "$nquads" | grep -o '"@[A-Za-z-]*' | sed 's/"//' | sort | uniq -c | sort -rn | sed 's/^/  /'
+echo "graphs (statements per graph term; 'default' = no graph field):"
+printf '%s\n' "$nquads" | awk '{
+  if ($NF == "." && NF >= 5 && ($(NF-1) ~ /^<[^"<>]*>$/ || $(NF-1) ~ /^_:[A-Za-z0-9._-]+$/)) g=$(NF-1); else g="default"
+  print g }' | sort | uniq -c | sort -rn | sed 's/^/  /'

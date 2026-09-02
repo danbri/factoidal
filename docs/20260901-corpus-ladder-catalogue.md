@@ -30,9 +30,22 @@ repository. Requested in `tmp_podman_codexfablesync.txt` (Codex,
 - W3C SPARQL 1.1 / RDF 1.1/1.2 suites, vendored under
   `third_party/testing/` — term-shape coverage (lists, typed and
   language-tagged literals) now exercised through the persisted path
-  (`da5886c42`, `23941fe7e`, `de85aec57`).
+  (`da5886c42`, `23941fe7e`, `de85aec57`). The persisted-path
+  executability census over these suites is
+  `tools/w3c-persisted-census.sh`
+  ([results](20260901-persisted-executability-census.md)).
 - Deterministic SBM6 generator (`258cbac9c`) — controlled shape/skew
   fixtures, seed-stable.
+- Deterministic heterogeneous lifecycle fixture (landed `4d66b1073`):
+  44 statements, six datatypes, five language tags, blank nodes both
+  positions, the "1"/"01" term-identity sentinel, and the full
+  update → compaction → activation → re-query cycle asserted
+  ([worknote](20260901-heterogeneous-fixture.md)). This closes the
+  rung-1 heterogeneity gap named below for rung 2; rung 3 is now
+  about SCALE with heterogeneity, not first heterogeneity.
+- The distribution profiler from "Next actions" exists:
+  `tools/corpus-profile.sh` (bytes, SHA-256, engine-parsed counts,
+  predicate/object/datatype/language histograms).
 
 ## Rung 2 — medium, real, moderately heterogeneous (in repo, done)
 

@@ -1,0 +1,45 @@
+# Deterministic named-graphs fixture (2026-09-01). TriG, hand-written,
+# exactly 20 statements: 8 in the default graph, 12 across three named
+# graphs. Prepared for the quad-aware layout milestone (owner,
+# 2026-09-01: "named graphs remain at the heart of our vision"); until
+# that layout exists this rung exercises the in-memory dataset engine
+# and the corpus profiler's per-graph histogram.
+# Shapes: the same subject asserted in two graphs with different
+# objects; a schema statement isolated in its own graph (the trust
+# boundary from shardborough-storage-spec.md section 9); language tags
+# and typed literals inside named graphs; a graph name reused as a
+# subject in the default graph.
+@prefix ex: <http://example.org/> .
+@prefix g: <http://example.org/graph/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:alice ex:name "Alice" .
+ex:bob ex:name "Bob" .
+ex:carol ex:name "Carol" .
+ex:alice ex:knows ex:bob .
+g:people ex:publishedBy ex:alice .
+g:claims ex:publishedBy ex:bob .
+g:schema ex:publishedBy ex:carol .
+ex:alice ex:age "30"^^xsd:integer .
+
+g:people {
+  ex:alice ex:role "editor"@en .
+  ex:alice ex:role "editrice"@fr .
+  ex:bob ex:role "reader"@en .
+  ex:bob ex:since "2026-01-01"^^xsd:date .
+  ex:carol ex:role "admin" .
+}
+
+g:claims {
+  ex:alice ex:age "31"^^xsd:integer .
+  ex:bob ex:age "0"^^xsd:integer .
+  ex:carol ex:verified "true"^^xsd:boolean .
+  ex:dan ex:name "Dan" .
+}
+
+g:schema {
+  ex:role rdfs:subPropertyOf ex:position .
+  ex:since rdfs:domain ex:Member .
+  ex:position rdfs:label "position"@en .
+}
