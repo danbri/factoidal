@@ -1634,3 +1634,59 @@ pushes.
    a step name. If you are reading a log from that window that claims a
    full re-extraction, it did not happen. Full write-up:
    [`docs/designissues/2026-08-26-extraction-drift-root-cause.md`](../../docs/designissues/2026-08-26-extraction-drift-root-cause.md).
+
+## Hazard #35 — a routing change on a path no suite exercises: FILTER NOT EXISTS answered zero rows for a day (2026-09-02)
+
+### Symptom
+
+`tools/w3c-persisted-census.sh` reported 0 eligible tests instead of 535.
+Its manifest-extraction query, run through the `l4factoidal` CLI, uses
+`FILTER NOT EXISTS { ?a qt:graphData ?g }` and returned no rows. The same
+query through the browser module (`datasetQuery`) also returned no rows.
+Every gate was green: `lake build` (909 jobs), `Wasm/native-smoke.sh`
+(61 pass), the hub suite (408 pass), CI's Lean corpus check.
+
+### Root cause
+
+Commit b8061bead (the same morning) routed SELECT/ASK in
+`Wasm/Ops/Query.lean` through the physical-plan runners
+(`runSelectQueryBackendDataset`) for the speed-up on hub post 50. The
+reference evaluator sets `env.dataset` itself before evaluating (§18.6:
+EXISTS evaluates against the query's dataset); the backend runners read it
+from the environment the caller supplies, and the caller supplied
+`{ base, ext }`. `substituteExistentials` then left the EXISTS pattern in
+place and `ebvOrFalse` dropped every row. The persisted harness `finish`
+had the same latent gap with `emptyEnv`.
+
+No suite covered the path: the Lean W3C runner (`l4w3c`) evaluates on the
+reference path, `native-smoke.sh` had no EXISTS query, and no hub cell uses
+EXISTS. The change was gated by suites that could not see the failure
+(anti-pattern #28).
+
+### Detection
+
+Cheapest signal, in order: the census script's eligible count (it is
+already a FILTER NOT EXISTS query over the W3C manifests); the two
+`queryDataset FILTER (NOT) EXISTS` checks in `Wasm/native-smoke.sh`; the
+`#guard`s at the end of `L4Factoidal/SPARQL/StoreDataset.lean`;
+`tests/hub/l4_exists_regression_test.mjs` against the committed module.
+
+### The rules
+
+1. **Any change that moves a query shape from the reference evaluator to
+   a backend runner must be gated by a query that only the reference
+   semantics decide.** EXISTS / NOT EXISTS, MINUS with shared variables,
+   OPTIONAL with a filter, and sub-SELECT are the shapes; put one of each
+   in the smoke for the path you changed, not in a suite that does not
+   run through it.
+2. **A backend runner needs `env.dataset`.** `runSelectQueryBackendDataset`
+   and `runAskQueryBackendDataset` do not set it; every caller must (the
+   WASM op passes the parsed dataset; the persisted harness passes the
+   base-plus-delta graph it answers from).
+3. **Run `tools/w3c-persisted-census.sh` after any change under
+   `Wasm/Ops/Query.lean`, `SPARQL/StoreDataset.lean` or the harness query
+   CLI.** It takes about 20 s when broken and a few minutes when working;
+   an eligible count below 535 is a failure, whatever the rest says.
+4. **The census doc pins a tip.** `docs/20260901-persisted-executability-census.md`
+   records the commit it measured; re-measure before quoting it against a
+   newer tip.

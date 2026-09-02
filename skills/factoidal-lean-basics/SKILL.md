@@ -322,3 +322,31 @@ executable edge only.
   the Lean side until a Lean executable reads the same W3C manifests
   `bin/w3c-runner` does (the continuation ladder at
   https://github.com/danbri/factoidal/issues/466).
+
+## External Lean skills (2026-09-02)
+
+Surveyed on the owner's suggestion. Vendored, unmodified, with provenance and
+licence in `third_party/skills/leanprover-skills/`:
+
+- `lean-proof` (leanprover/skills, Apache-2.0): the one-step-at-a-time
+  proof method — one tactic then `done`, error priority (syntax, type,
+  unsolved goals, linter), hardest case first, cleanup after the proof
+  works, `suffices ∀ s, … by` + `convert` for "motive is not type
+  correct". Symlinked into `.claude/skills/lean-proof`.
+- `lean-mwe` (same source): minimal reproducible examples for upstream Lean
+  or Lake bug reports. Symlinked into `.claude/skills/lean-mwe`.
+
+Not vendored, cited for readers who want them:
+[cameronfreer/lean4-skills](https://github.com/cameronfreer/lean4-skills)
+(MIT; a Claude Code / Codex plugin with prove, autoprove, review, golf and
+checkpoint commands, scripts and an LSP-first loop over lean-lsp-mcp; its
+search-before-prove and tactic cascade assume Mathlib, which this tree does
+not use — its two rules worth keeping are already policy here: theorem
+statements are contracts and are not changed to make a proof pass, and the
+only accepted axioms are `propext`, `Classical.choice`, `Quot.sound`);
+[r-irbe/proof-skills](https://github.com/r-irbe/proof-skills) (53 Mathlib
+and domain-mathematics skills);
+[CBirkbeck/mathlib-quality](https://github.com/CBirkbeck/mathlib-quality)
+(Mathlib style). The lean-lsp-mcp server itself is already wired here
+(`.mcp.json`; tools `lean_goal`, `lean_diagnostic_messages`,
+`lean_local_search`, `lean_multi_attempt`, `lean_verify`).

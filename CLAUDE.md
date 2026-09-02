@@ -566,6 +566,16 @@ rule #17").
     `.ml` only after a COMPLETE `extract`, stage it by explicit path,
     and never let a commit carry files its subject does not name. Full
     text: hazard #34 in `skills/workflow-gotchas-debugging`.
+34. A routing change that moves query shapes from the reference evaluator
+    to a backend runner must be gated by a query only the reference
+    semantics decide (EXISTS/NOT EXISTS, MINUS, OPTIONAL+FILTER,
+    sub-SELECT) on the path that changed. (2026-09-02: the WASM/CLI query
+    op was routed through the physical-plan runners without
+    `env.dataset`; FILTER NOT EXISTS answered zero rows for a day while
+    `lake build`, native-smoke, the hub suite and CI were all green, none
+    of which ran an EXISTS query through that path. Found by
+    `tools/w3c-persisted-census.sh`. Full text: hazard #35 in
+    `skills/workflow-gotchas-debugging`.)
 
 ## Skills (operational details, on-demand)
 
@@ -613,6 +623,13 @@ session.
   generation directory contains, the corpus ladder and census tools, and
   the rules for changing a format (encoder admission equals decoder
   admission; byte change means new wire version).
+- [`lean-proof`](third_party/skills/leanprover-skills/lean-proof/SKILL.md)
+  and [`lean-mwe`](third_party/skills/leanprover-skills/lean-mwe/SKILL.md)
+  — vendored unmodified from leanprover/skills (Apache-2.0, provenance in
+  `third_party/skills/leanprover-skills/PROVENANCE.md`): the upstream
+  one-tactic-at-a-time proof method and the minimal-example recipe for
+  upstream bug reports. Local policy on top: nothing with `sorry` is
+  committed.
 - [`lean4-performance`](skills/lean4-performance/SKILL.md) — improve
   performance-sensitive Lean 4 code while preserving total semantics,
   observable order, and the executable proof boundaries: parsers, block
