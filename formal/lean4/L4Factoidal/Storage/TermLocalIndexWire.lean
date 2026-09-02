@@ -42,11 +42,11 @@ structure Index where
   entries : Array Entry
   deriving DecidableEq
 
-private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
-private def listOfByteArray (xs : ByteArray) : List UInt8 := xs.data.toList
-private def fitsU32 (n : Nat) : Bool := n < UInt32.size
+def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
+def listOfByteArray (xs : ByteArray) : List UInt8 := xs.data.toList
+def fitsU32 (n : Nat) : Bool := n < UInt32.size
 
-private def lessKey : List UInt8 → List UInt8 → Bool
+def lessKey : List UInt8 → List UInt8 → Bool
   | [], [] => false
   | [], _ :: _ => true
   | _ :: _, [] => false
@@ -55,26 +55,26 @@ private def lessKey : List UInt8 → List UInt8 → Bool
 /-- Canonical byte ordering used by the TLI1 directory and pages. -/
 def keyBefore (left right : List UInt8) : Bool := lessKey left right
 
-private def strictlyIncreasing : List Entry → Bool
+def strictlyIncreasing : List Entry → Bool
   | [] | [_] => true
   | left :: right :: rest => lessKey left.key right.key && strictlyIncreasing (right :: rest)
 
-private def takeExact (n : Nat) (xs : List UInt8) : Option (List UInt8 × List UInt8) :=
+def takeExact (n : Nat) (xs : List UInt8) : Option (List UInt8 × List UInt8) :=
   let taken := xs.take n
   if taken.length == n then some (taken, xs.drop n) else none
 
-private def encodeEntry (entry : Entry) : List UInt8 :=
+def encodeEntry (entry : Entry) : List UInt8 :=
   writeU32LE (UInt32.ofNat entry.key.length) ++ entry.key ++ writeU32LE (UInt32.ofNat entry.localId)
 
-private def chunks : Nat → List α → List (List α)
+def chunks : Nat → List α → List (List α)
   | 0, _ => []
   | _ + 1, [] => []
   | fuel + 1, xs => xs.take pageTerms :: chunks fuel (xs.drop pageTerms)
 
-private def pageBytes (entries : List Entry) : List (List UInt8) :=
+def pageBytes (entries : List Entry) : List (List UInt8) :=
   (chunks entries.length entries).map (fun page => page.flatMap encodeEntry)
 
-private def pageRefs (pages : List (List UInt8)) (entries : List (List Entry)) : List PageRef :=
+def pageRefs (pages : List (List UInt8)) (entries : List (List Entry)) : List PageRef :=
   let (_, reversed) := pages.zip entries |>.foldl (fun (state : Nat × List PageRef) pair =>
     let (offset, refs) := state
     let (bytes, page) := pair
@@ -83,15 +83,38 @@ private def pageRefs (pages : List (List UInt8)) (entries : List (List Entry)) :
     | [] => (offset, refs)) (0, [])
   reversed.reverse
 
-private def encodePageRef (ref : PageRef) : List UInt8 :=
+def encodePageRef (ref : PageRef) : List UInt8 :=
   writeU32LE (UInt32.ofNat ref.firstKey.length) ++ ref.firstKey ++
     writeU32LE (UInt32.ofNat ref.offset) ++ writeU32LE (UInt32.ofNat ref.length)
 
+/-- In a list with exactly `termCount` in-range, pairwise-distinct local IDs,
+    every local ID is present exactly once.  The seen array replaces the old
+    quadratic `eraseDups` pass in full TLI1 activation. -/
+def localIdsPermutationGo : List Entry → Array Bool → Bool
+  | [], _ => true
+  | entry :: rest, seen =>
+      match seen[entry.localId]? with
+      | some false => localIdsPermutationGo rest (seen.set! entry.localId true)
+      | _ => false
+
+def localIdsPermutation (entries : List Entry) (termCount : Nat) : Bool :=
+  entries.length == termCount && localIdsPermutationGo entries (Array.replicate termCount false)
+
+/-- The TLI1 encoder admission gate.  Beside the size and key conditions it
+    runs three checks `decode?` also runs on what it reads back:
+    `localIdsPermutation`, which the decoder's `canonicalEntries` re-runs and
+    which distinct-key ordering does not imply; and `termSupported` together
+    with `termFitsU32b`, the two admission conditions of the term codec round
+    trip `L4Factoidal.Storage.parseTerm_serializeTerm`, which `parseEntry`
+    needs to rebuild the RDF term from the stored key.  Without these
+    conjuncts the encoder would emit bytes its own decoder rejects. -/
 def supported (index : Index) : Bool :=
   index.targetIBKSha256.size == 32 && index.entries.size < UInt32.size &&
-    index.entries.toList.all fun entry =>
+    index.entries.toList.all (fun entry =>
       entry.localId < index.entries.size && entry.key == serializeTerm entry.term &&
-        entry.key.length < UInt32.size
+        entry.key.length < UInt32.size && termSupported entry.term &&
+        termFitsU32b entry.term) &&
+    localIdsPermutation index.entries.toList index.entries.size
 
 def encode? (index : Index) : Option ByteArray := do
   if !supported index then none else
@@ -110,7 +133,7 @@ def encode? (index : Index) : Option ByteArray := do
   if !fitsU32 refs.length || !fitsU32 directory.length || !fitsU32 pages.flatten.length then none else
   some <| byteArrayOfList (writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload))
 
-private def parseEntry (xs : List UInt8) : Option (Entry × List UInt8) := do
+def parseEntry (xs : List UInt8) : Option (Entry × List UInt8) := do
   let keyLength ← readU32LE xs 0
   let (key, afterKey) ← takeExact keyLength.toNat (xs.drop 4)
   let localId ← readU32LE afterKey 0
@@ -118,28 +141,28 @@ private def parseEntry (xs : List UInt8) : Option (Entry × List UInt8) := do
   if !trailing.isEmpty || serializeTerm term != key then none else
     some ({ key, term, localId := localId.toNat }, afterKey.drop 4)
 
-private def parseEntries : Nat → List UInt8 → List Entry → Option (List Entry × List UInt8)
+def parseEntries : Nat → List UInt8 → List Entry → Option (List Entry × List UInt8)
   | 0, xs, reversed => some (reversed.reverse, xs)
   | count + 1, xs, reversed => do
       let (entry, rest) ← parseEntry xs
       parseEntries count rest (entry :: reversed)
 
-private def parseRef (xs : List UInt8) : Option (PageRef × List UInt8) := do
+def parseRef (xs : List UInt8) : Option (PageRef × List UInt8) := do
   let firstLength ← readU32LE xs 0
   let (firstKey, afterKey) ← takeExact firstLength.toNat (xs.drop 4)
   let offset ← readU32LE afterKey 0
   let length ← readU32LE afterKey 4
   some ({ firstKey, offset := offset.toNat, length := length.toNat }, afterKey.drop 8)
 
-private def parseRefs : Nat → List UInt8 → List PageRef → Option (List PageRef × List UInt8)
+def parseRefs : Nat → List UInt8 → List PageRef → Option (List PageRef × List UInt8)
   | 0, xs, reversed => some (reversed.reverse, xs)
   | count + 1, xs, reversed => do
       let (ref, rest) ← parseRef xs
       parseRefs count rest (ref :: reversed)
 
-private def pageEntryCount (termCount page : Nat) : Nat := min pageTerms (termCount - page * pageTerms)
+def pageEntryCount (termCount page : Nat) : Nat := min pageTerms (termCount - page * pageTerms)
 
-private def decodePages : Nat → List PageRef → List UInt8 → Nat → List Entry → Option (List Entry)
+def decodePages : Nat → List PageRef → List UInt8 → Nat → List Entry → Option (List Entry)
   | _, [], [], _, reversed => some reversed.reverse
   | _, [], _, _, _ => none
   | termCount, ref :: refs, xs, page, reversed => do
@@ -153,28 +176,15 @@ private def decodePages : Nat → List PageRef → List UInt8 → Nat → List E
           decodePages termCount refs (xs.drop ref.length) (page + 1) (entries.reverse ++ reversed)
       | [] => none
 
-private def refsContiguous : List PageRef → Nat → Bool
+def refsContiguous : List PageRef → Nat → Bool
   | [], _ => true
   | ref :: rest, expected => ref.length > 0 && ref.offset == expected && refsContiguous rest (expected + ref.length)
 
-private def refsStrictlyIncreasing : List PageRef → Bool
+def refsStrictlyIncreasing : List PageRef → Bool
   | [] | [_] => true
   | left :: right :: rest => lessKey left.firstKey right.firstKey && refsStrictlyIncreasing (right :: rest)
 
-/-- In a list with exactly `termCount` in-range, pairwise-distinct local IDs,
-    every local ID is present exactly once.  The seen array replaces the old
-    quadratic `eraseDups` pass in full TLI1 activation. -/
-private def localIdsPermutationGo : List Entry → Array Bool → Bool
-  | [], _ => true
-  | entry :: rest, seen =>
-      match seen[entry.localId]? with
-      | some false => localIdsPermutationGo rest (seen.set! entry.localId true)
-      | _ => false
-
-private def localIdsPermutation (entries : List Entry) (termCount : Nat) : Bool :=
-  entries.length == termCount && localIdsPermutationGo entries (Array.replicate termCount false)
-
-private def canonicalEntries (entries : List Entry) (termCount : Nat) : Bool :=
+def canonicalEntries (entries : List Entry) (termCount : Nat) : Bool :=
   strictlyIncreasing entries && localIdsPermutation entries termCount
 
 /-- Strictly decode just the fixed-length TLI1 header. -/

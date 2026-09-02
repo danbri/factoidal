@@ -759,6 +759,8 @@ of the current family. Each depends only on the three standard Lean axioms.
 | Term codec (`serializeTerm` / `parseTerm`) | `parseTerm_serializeTerm` | [`Storage/TermCodecTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermCodecTheorems.lean) | `termSupported` (no base direction, no triple term); `termFitsU32` (every length-prefixed string below the u32 limit) |
 | PTD1 | `decode?_encode?` | [`Storage/PagedTermDictionaryTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryTheorems.lean) | none beyond `encode? terms = some bytes`: `supported` checks both term conditions |
 | IBK3 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV3Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3Theorems.lean) | none beyond `encode? block = some bytes`: `supported` runs the decoder's own `fromParts?` admission |
+| SRI2 (also the OLI2 object role) | `decode?_encode?` | [`Storage/SubjectRowIndexWireV2Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/SubjectRowIndexWireV2Theorems.lean) | none beyond `encode? index = some bytes`: `supported` now runs `offsetsPermutation`, which the decoder re-runs |
+| TLI1 | `decode?_encode?` | [`Storage/TermLocalIndexWireTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermLocalIndexWireTheorems.lean) | none beyond `encode? index = some bytes`: `supported` now runs `localIdsPermutation`, `termSupported` and `termFitsU32b` |
 
 Findings recorded by these proofs:
 
@@ -780,7 +782,13 @@ Findings recorded by these proofs:
   denotation, not on block equality: `IndexedBlock.Block` also carries two
   hash maps.
 
-Still open under gate 2: SRI2/OLI2, TLI1, SBM6 and Merkle range admission.
+- SRI2's subject/offset ordering does not imply distinct row offsets, and
+  TLI1's key ordering does not imply distinct local IDs; both decoders check
+  the permutation property, and both encoders now check it too. TLI1's
+  encoder also required the two term-codec admission conditions, since the
+  decoder rebuilds the RDF term from the stored key.
+
+Still open under gate 2: SBM6 and Merkle range admission.
 
 ## 11. Implementation map and supporting design records
 

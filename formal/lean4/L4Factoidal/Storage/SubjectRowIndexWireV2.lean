@@ -43,10 +43,10 @@ structure Index where
   pairs : Array (Nat × Nat)
   deriving DecidableEq
 
-private def bytesOf (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
-private def listOf (xs : ByteArray) : List UInt8 := xs.data.toList
-private def fitsU32 (n : Nat) : Bool := n < UInt32.size
-private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
+def bytesOf (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
+def listOf (xs : ByteArray) : List UInt8 := xs.data.toList
+def fitsU32 (n : Nat) : Bool := n < UInt32.size
+def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   let b0 ← bytes[offset]?
   let b1 ← bytes[offset + 1]?
   let b2 ← bytes[offset + 2]?
@@ -54,31 +54,31 @@ private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   some (b0.toUInt32 ||| (b1.toUInt32 <<< 8) |||
     (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24))
 
-private def copyRange? (bytes : ByteArray) (offset length : Nat) : Option ByteArray :=
+def copyRange? (bytes : ByteArray) (offset length : Nat) : Option ByteArray :=
   if offset + length <= bytes.size then some (bytes.extract offset (offset + length)) else none
 
-private def before (left right : Nat × Nat) : Bool :=
+def before (left right : Nat × Nat) : Bool :=
   left.1 < right.1 || (left.1 == right.1 && left.2 < right.2)
 
-private def strictlyBefore (left right : Nat × Nat) : Bool := before left right
+def strictlyBefore (left right : Nat × Nat) : Bool := before left right
 
-private def strictlyOrdered : List (Nat × Nat) → Bool
+def strictlyOrdered : List (Nat × Nat) → Bool
   | [] => true
   | [_] => true
   | left :: right :: rest => strictlyBefore left right && strictlyOrdered (right :: rest)
 
-private def chunks : Nat → List α → List (List α)
+def chunks : Nat → List α → List (List α)
   | 0, _ => []
   | _ + 1, [] => []
   | fuel + 1, xs => xs.take pagePairs :: chunks fuel (xs.drop pagePairs)
 
-private def encodePair (pair : Nat × Nat) : List UInt8 :=
+def encodePair (pair : Nat × Nat) : List UInt8 :=
   writeU32LE (UInt32.ofNat pair.1) ++ writeU32LE (UInt32.ofNat pair.2)
 
-private def pageBytes (pairs : List (Nat × Nat)) : List (List UInt8) :=
+def pageBytes (pairs : List (Nat × Nat)) : List (List UInt8) :=
   (chunks pairs.length pairs).map fun page => page.flatMap encodePair
 
-private def pageRefs (pages : List (List UInt8)) (pairPages : List (List (Nat × Nat))) : List PageRef :=
+def pageRefs (pages : List (List UInt8)) (pairPages : List (List (Nat × Nat))) : List PageRef :=
   let (_, reversed) := pages.zip pairPages |>.foldl (fun (state : Nat × List PageRef) pair =>
     let (offset, refs) := state
     let (bytes, pairs) := pair
@@ -90,14 +90,34 @@ private def pageRefs (pages : List (List UInt8)) (pairPages : List (List (Nat ×
     | [] => (offset, refs)) (0, [])
   reversed.reverse
 
-private def encodeRef (ref : PageRef) : List UInt8 :=
+def encodeRef (ref : PageRef) : List UInt8 :=
   writeU32LE (UInt32.ofNat ref.firstSubject) ++ writeU32LE (UInt32.ofNat ref.maxSubject) ++
     writeU32LE (UInt32.ofNat ref.offset) ++ writeU32LE (UInt32.ofNat ref.length)
 
+/-- With `pairs.length == rows`, a bounded seen-set establishes that the row
+    offsets are exactly a permutation of `0 .. rows - 1`.  This replaces the
+    quadratic `List.eraseDups` admission check: activation must validate every
+    SRI2 posting, including large predicate artifacts. -/
+def offsetsPermutationGo : List (Nat × Nat) → Array Bool → Bool
+  | [], _ => true
+  | (_, rowOffset) :: rest, seen =>
+      match seen[rowOffset]? with
+      | some false => offsetsPermutationGo rest (seen.set! rowOffset true)
+      | _ => false
+
+def offsetsPermutation (pairs : List (Nat × Nat)) (rows : Nat) : Bool :=
+  offsetsPermutationGo pairs (Array.replicate rows false)
+
+/-- The SRI2 encoder admission gate.  Beside the size and range conditions it
+    runs `offsetsPermutation`, which `decode?` also runs on the pairs it reads
+    back: distinct in-range row offsets are not implied by the subject/offset
+    ordering `encode?` checks separately, so without this conjunct the encoder
+    would emit bytes its own decoder rejects. -/
 def supported (index : Index) : Bool :=
   index.targetIBKSha256.size == 32 && index.rowCount > 0 && fitsU32 index.rowCount &&
     index.pairs.size == index.rowCount &&
-    index.pairs.toList.all fun pair => fitsU32 pair.1 && pair.2 < index.rowCount
+    index.pairs.toList.all (fun pair => fitsU32 pair.1 && pair.2 < index.rowCount) &&
+    offsetsPermutation index.pairs.toList index.rowCount
 
 def encode? (index : Index) : Option ByteArray := do
   if !supported index then none else
@@ -134,7 +154,7 @@ def decodePrefix? (bytes : ByteArray) : Option Prefix := do
     some { targetIBKSha256 := target, rowCount := rowCount.toNat, pairCount := pairCount.toNat,
            pageCount := pageCount.toNat, directoryBytes := directoryBytes.toNat, pagesBytes := pagesBytes.toNat }
 
-private def decodeRefsGo : Nat → ByteArray → Nat → List PageRef → Option (List PageRef)
+def decodeRefsGo : Nat → ByteArray → Nat → List PageRef → Option (List PageRef)
   | 0, _, _, reversed => some reversed.reverse
   | count + 1, bytes, offset, reversed => do
       let firstSubject ← readU32At? bytes offset
@@ -144,10 +164,10 @@ private def decodeRefsGo : Nat → ByteArray → Nat → List PageRef → Option
       decodeRefsGo count bytes (offset + directoryEntryBytes)
         (PageRef.mk firstSubject.toNat maxSubject.toNat pageOffset.toNat length.toNat :: reversed)
 
-private def pairsInPage (header : Prefix) (page : Nat) : Nat :=
+def pairsInPage (header : Prefix) (page : Nat) : Nat :=
   min pagePairs (header.pairCount - page * pagePairs)
 
-private def refsWellFormed : Prefix → List PageRef → Nat → Nat → Bool
+def refsWellFormed : Prefix → List PageRef → Nat → Nat → Bool
   | _, [], _, _ => true
   | header, ref :: rest, ordinal, expected =>
       ref.firstSubject <= ref.maxSubject && ref.offset == expected &&
@@ -159,7 +179,7 @@ private def refsWellFormed : Prefix → List PageRef → Nat → Nat → Bool
     decoded pairs; retaining the inexpensive local condition here lets a range
     reader use logarithmic directory search without assuming arbitrary
     untrusted metadata is sorted. -/
-private def refsMonotone : List PageRef → Bool
+def refsMonotone : List PageRef → Bool
   | [] => true
   | [_] => true
   | left :: right :: rest =>
@@ -172,7 +192,7 @@ def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageRe
   if !refsWellFormed header refs 0 0 || !refsMonotone refs ||
       refs.foldl (fun total ref => total + ref.length) 0 != header.pagesBytes then none else some refs
 
-private def decodePairsGo : Nat → ByteArray → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
+def decodePairsGo : Nat → ByteArray → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
   | 0, _, _, reversed => some reversed.reverse
   | count + 1, bytes, offset, reversed => do
       let subject ← readU32At? bytes offset
@@ -242,26 +262,12 @@ def pagesFor (refs : List PageRef) (subject : Nat) : List (Nat × PageRef) :=
 def offsetsInPage (pairs : Array (Nat × Nat)) (subject : Nat) : List Nat :=
   pairs.toList.filterMap fun pair => if pair.1 == subject then some pair.2 else none
 
-private def decodeAllPages : Prefix → List PageRef → ByteArray → Nat → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
+def decodeAllPages : Prefix → List PageRef → ByteArray → Nat → Nat → List (Nat × Nat) → Option (List (Nat × Nat))
   | _, [], bytes, offset, _, reversed => if offset == bytes.size then some reversed.reverse else none
   | header, ref :: refs, bytes, offset, page, reversed => do
       let current ← copyRange? bytes offset ref.length
       let decoded ← decodePage? header page ref current
       decodeAllPages header refs bytes (offset + ref.length) (page + 1) (decoded.toList.reverse ++ reversed)
-
-/-- With `pairs.length == rows`, a bounded seen-set establishes that the row
-    offsets are exactly a permutation of `0 .. rows - 1`.  This replaces the
-    quadratic `List.eraseDups` admission check: activation must validate every
-    SRI2 posting, including large predicate artifacts. -/
-private def offsetsPermutationGo : List (Nat × Nat) → Array Bool → Bool
-  | [], _ => true
-  | (_, rowOffset) :: rest, seen =>
-      match seen[rowOffset]? with
-      | some false => offsetsPermutationGo rest (seen.set! rowOffset true)
-      | _ => false
-
-private def offsetsPermutation (pairs : List (Nat × Nat)) (rows : Nat) : Bool :=
-  offsetsPermutationGo pairs (Array.replicate rows false)
 
 def decode? (bytes : ByteArray) : Option Index := do
   if bytes.size < prefixBytes + crcBytes then none else do
@@ -308,6 +314,10 @@ private def duplicateOffsetBytes := (encode? duplicateOffsetSample).getD ByteArr
 #guard multiPageRefs.map (fun refs => (pagesFor refs 7).length) == some 2
 #guard threePageRefs.map (fun refs => (pagesFor refs 512).map Prod.fst) == some [2]
 #guard threePageRefs.map (fun refs => (pagesFor refs 700).length) == some 0
-#guard (decode? duplicateOffsetBytes).isNone
+-- Since `supported` runs `offsetsPermutation`, the encoder refuses the
+-- duplicate-offset sample itself; the decoder-side refusal is covered by the
+-- round-trip proof's admission argument (`SubjectRowIndexWireV2Theorems`).
+#guard (encode? duplicateOffsetSample).isNone
+#guard duplicateOffsetBytes.isEmpty
 
 end L4Factoidal.Storage.SubjectRowIndexWireV2
