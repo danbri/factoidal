@@ -607,6 +607,11 @@ session.
   review the Lean-generated RDF block engine: landed Cottas/SPARQL reuse,
   term and graph IDs, block denotation, physical plans, PushIR, bitmap
   indexes, PostgreSQL/TiKV adapters, and refinement gates.
+- [`lean4-performance`](skills/lean4-performance/SKILL.md) — improve
+  performance-sensitive Lean 4 code while preserving total semantics,
+  observable order, and the executable proof boundaries: parsers, block
+  ingestion, data structures, recursion, hot paths. Measure first; not for
+  unmeasured micro-optimisation.
 - [`lean4-wasm-export`](skills/lean4-wasm-export/SKILL.md) — compile the
   Lean 4 port to ONE wasm module for browser + Node + Deno (#466): the
   toolchain route and the three rejected, rebuilding Lean's runtime and

@@ -6,9 +6,10 @@ rows and a predicate partition gives a bounded SPARQL triple pattern a smaller
 candidate sequence. The dictionary deliberately retains the first source term
 for an engine-equality class, so decoded result bindings remain RDF terms.
 
-The representation is in-memory only. Its byte format belongs to the later
-canonical-codec gate; this module establishes the executable data layout and
-its backend-facing scan shape first.
+This module is the in-memory representation and its backend-facing scan
+shape. Its byte formats are `IndexedBlockWireV1` (IBK1), `IndexedBlockWireV2`
+(IBK2) and `IndexedBlockWireV3` (IBK3, the current one); the IBK3 round trip
+is proved in `IndexedBlockWireV3Theorems`.
 -/
 import Std.Data.HashMap
 import L4Factoidal.Storage.BlockMvp

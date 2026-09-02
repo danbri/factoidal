@@ -5,9 +5,10 @@ subject posting index.
 IBK3 keeps source-order ID rows.  A large predicate artifact consequently
 needs a subject-to-row access structure before a small driving relation can
 join into it without materialising every triple.  This module defines that
-structure independently of a wire format.  A later immutable IBK successor
-must encode this exact mapping and establish its decode/encode contract before
-the query host uses it.
+structure independently of a wire format.  `SubjectRowIndexWire` (SRI1) and
+`SubjectRowIndexWireV2` (SRI2, the current sidecar) encode this mapping; their
+decode/encode contract is checked by `#guard`s and is still without a
+round-trip theorem (spec section 10, gate 2).
 
 Offsets in a posting list are source-row offsets.  `lookup` restores ascending
 source order, so the index does not change the observable physical row order.

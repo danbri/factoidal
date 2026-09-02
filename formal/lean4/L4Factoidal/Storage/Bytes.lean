@@ -1,12 +1,15 @@
 /-
-L4Factoidal.Storage.Bytes — the byte-level primitives of the HDT
-on-disk format, ported from `formal/fstar/HDT.Container.fst` and
-`HDT.Dictionary.fst`.
+L4Factoidal.Storage.Bytes — the byte-level primitives shared by every
+on-disk format in this tree: VByte, little-endian u32 fields with their
+read/write lemmas, CRC8 and CRC32C, and the checksum-guarded `Section`.
 
-Spec: HDT (Header-Dictionary-Triples,
-https://www.rdfhdt.org/hdt-binary-format/), whose sections are
-checksum-guarded: a CRC8 over each preamble and a CRC32C over each
-data range.
+They were ported for HDT (Header-Dictionary-Triples,
+https://www.rdfhdt.org/hdt-binary-format/, from
+`formal/fstar/HDT.Container.fst` and `HDT.Dictionary.fst`), whose
+sections carry a CRC8 over each preamble and a CRC32C over each data
+range. The Shardborough codecs (`BlockWireV0`, `IndexedBlockWire*`,
+`PagedTermDictionary`, `SubjectRowIndexWire*`, `TermLocalIndexWire`,
+`DeltaLog`) use the same u32 fields and CRC32C.
 
 Why this module is in the LEAN tree at all: iron rule 11 puts byte
 assembly in the formal source — `serialize : data -> List UInt8` —

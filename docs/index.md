@@ -13,6 +13,8 @@ command line, in Node, and in your browser with nothing on a server.
 
 **[Read the Shardborough storage specification &rarr;]({{ '/shardborough-storage-spec/' | url }})**
 for the current Lean 4 block, index, integrity, and update format family.
+The dated design notes behind it are listed, with their status, in the
+[worknote index]({{ '/worknotes-index/' | url }}).
 
 ## Try it in your browser
 
