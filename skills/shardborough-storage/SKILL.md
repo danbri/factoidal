@@ -24,7 +24,7 @@ All binaries live in `formal/lean4/.lake/build/bin/` after
 ```bash
 # 1. Pack: Turtle -> one immutable generation directory
 $B/l4block-shard-pack INPUT.ttl COLLECTION/gen-1 ibk3
-# prints: format=predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0 triples=6455 blocks=6
+# prints: format=predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0 triples=6455 blocks=5
 #         manifest=manifest.sbm2 wire-version=6 chunk-bytes=65536
 
 # 2. Activate: verify every artifact and cross-artifact relation, then
