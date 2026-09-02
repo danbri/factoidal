@@ -91,6 +91,7 @@ import L4Factoidal.Syntax.LexShift
 import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Syntax.TurtleFuelTheorems
+import L4Factoidal.Syntax.TurtleStatementScanTheorems
 import L4Factoidal.Syntax.TurtleSerialize
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.TurtleTests

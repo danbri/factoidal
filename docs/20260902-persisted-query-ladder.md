@@ -171,6 +171,61 @@ Findings from the first, failed attempt (2026-09-02, late):
 - `l4block-shard-pack` on an empty input produced an empty generation that
   activated (recorded in the `shardborough-storage` skill).
 
+### Where the 6,134 s went (2026-09-02, late): the statement scanner
+
+Method. A size ladder of UK Parliament slices with no literal over 10 KB
+(the first such literal is at line 1,702,684 of 5,360,986), each packed
+and activated on an idle machine with the Turtle-fixed binary:
+
+| Lines | Triples | Blocks | Pack | Activate | Pack per triple |
+| --- | --- | --- | --- | --- | --- |
+| 20,019 | 10,305 | 18 | 0.40 s | 0.46 s | 38 µs |
+| 40,019 | 20,305 | 18 | 0.74 s | 0.87 s | 37 µs |
+| 80,019 | 40,305 | 22 | 1.39 s | 1.59 s | 34 µs |
+| 160,019 | 92,265 | 30 | 2.85 s | 3.22 s | 31 µs |
+| 320,019 | 370,355 | 47 | 12.75 s | 15.87 s | 34 µs |
+
+Linear in triples, and the block count (18 to 47) does not show. The gene
+store on the same idle machine: 888,949 triples, 13 blocks, pack 11.5 s,
+activate 13.4 s (13 µs per triple). So neither predicate count nor block
+count explains the full dump's 1,950 µs per triple.
+
+The remaining candidate was the region of large literals: 345 lines over
+100 KB, 105 MB of the 341 MB file, all inside lines 1,702,684 to
+1,706,891. Cut as one 134 MB Turtle file (4,211 lines, 3,560 triples), it
+packed in 334 s with the committed binary — 100 s more than the whole
+linear ladder above put together.
+
+Cause. `Syntax/TurtleStatementScan.lean` decides at every line end in
+normal mode whether the current candidate is a no-dot directive
+(`PREFIX`, `BASE`, `VERSION`), and did so by reversing the whole
+accumulated candidate (`dropWs currentRev.reverse`) to read its first
+word. That is O(lines × characters) per statement group: the polygon group
+has 4,211 lines and 134 MB, about 280 G list steps.
+
+Fix. `StatementScan` now carries `head`, the first seven characters after
+leading whitespace, maintained per character by `pushHead`; the directive
+test reads it. The old form is kept as `directiveHeadSpec`, and
+`Syntax/TurtleStatementScanTheorems.lean` proves `head = directiveHeadSpec
+currentRev` for every run of the scanner from `init` (axioms: propext,
+Classical.choice, Quot.sound only).
+
+After, same region: pack 81 s, activate 109 s (both with another pack
+running on the machine; re-measure idle). The remaining 81 s is the
+reference parse (31 s for this file: 19 s user, 9 s system reading 134 MB
+as a character list) plus the term codec, PTD1 pages, TLI1 keys and
+Merkle leaves over 105 MB of literal bytes; the activate is four full
+decodes per block (`ShardActivate.verify*` each decode the primary again)
+over the same bytes. Those are the next two items for this rung, with the
+large-literal policy question above.
+
+Gates for the scanner change: all 378 artifacts of the 320,019-line slice
+byte-identical between the old and new scanner; W3C RDF 1.1 Turtle 313 and
+TriG 356, RDF 1.2 Turtle 67 + 29 and TriG 35 + 25, all 0 fail;
+native-smoke 63 pass (out of 63); lake build 922 jobs. The scanner is used
+only by `Harness/PredicateShardPack.lean`, so the WASM mirrors are
+unchanged.
+
 ## Status
 
 - Planner fixes for q3 and q6: landed (commit 82d2f530e; the "after" column

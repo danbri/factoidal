@@ -33,12 +33,21 @@ structure StatementScan where
   currentRev : List Char := []
   /-- Completed candidate strings in reverse source order. -/
   completedRev : List String := []
+  /-- The first `directiveHeadLength` characters of the current candidate
+      after its leading whitespace, in source order. Maintained per character
+      so that the no-dot directive test reads seven characters instead of
+      reversing the whole current candidate at every line end (2026-09-02:
+      that reversal made the scanner quadratic in statement length, about
+      280 G list steps on a 134 MB statement group of the UK Parliament
+      dump). `TurtleStatementScanTheorems.head_eq_spec` states the
+      invariant: `head = directiveHeadSpec currentRev`. -/
+  head : List Char := []
 
 def StatementScan.init : StatementScan := {}
 
-private def isWs (c : Char) : Bool := c == ' ' || c == '\t' || c == '\n' || c == '\r'
+def isWs (c : Char) : Bool := c == ' ' || c == '\t' || c == '\n' || c == '\r'
 
-private def dropWs : List Char → List Char
+def dropWs : List Char → List Char
   | c :: cs => if isWs c then dropWs cs else c :: cs
   | [] => []
 
@@ -47,21 +56,36 @@ private def startsCi : List Char → List Char → Bool
   | a :: as, b :: bs => a.toLower == b.toLower && startsCi as bs
   | _, _ => false
 
+/-- Longest directive keyword (`VERSION`): the head prefix the test needs. -/
+def directiveHeadLength : Nat := 7
+
+/-- The specification of `StatementScan.head`: the current candidate's text
+    after leading whitespace, truncated to `directiveHeadLength`. -/
+def directiveHeadSpec (currentRev : List Char) : List Char :=
+  (dropWs currentRev.reverse).take directiveHeadLength
+
+/-- Extend the head with one more source character: leading whitespace is
+    dropped, then the next `directiveHeadLength` characters are kept. -/
+def pushHead (head : List Char) (c : Char) : List Char :=
+  if head.isEmpty then (if isWs c then [] else [c])
+  else if head.length < directiveHeadLength then head ++ [c]
+  else head
+
 /-- The three SPARQL-style Turtle directives omit the terminating dot. Their
     ordinary layout is one directive per line, which gives the scanner a safe
     candidate boundary without treating arbitrary newlines as statement ends.
     The Turtle grammar still validates their full syntax and IRI. -/
-private def beginsNoDotDirective (currentRev : List Char) : Bool :=
-  let chars := dropWs currentRev.reverse
-  startsCi "PREFIX".toList chars || startsCi "BASE".toList chars || startsCi "VERSION".toList chars
+private def beginsNoDotDirective (head : List Char) : Bool :=
+  startsCi "PREFIX".toList head || startsCi "BASE".toList head || startsCi "VERSION".toList head
 
 private def append (scan : StatementScan) (c : Char) : StatementScan :=
-  { scan with currentRev := c :: scan.currentRev }
+  { scan with currentRev := c :: scan.currentRev, head := pushHead scan.head c }
 
 private def beginNext (scan : StatementScan) (c : Char) : StatementScan :=
   { scan with
     pendingDot := false
     currentRev := [c]
+    head := pushHead [] c
     completedRev := String.ofList scan.currentRev.reverse :: scan.completedRev }
 
 private def stepMode (mode : ScanMode) (c : Char) : ScanMode :=
@@ -100,7 +124,7 @@ def StatementScan.feedChar (scan : StatementScan) (c : Char) : StatementScan :=
     let next := beginNext scan c
     { next with mode := stepMode .normal c }
   else if scan.mode == .normal && !scan.pendingDot && (c == '\n' || c == '\r') &&
-      beginsNoDotDirective scan.currentRev then
+      beginsNoDotDirective scan.head then
     beginNext scan c
   else
     let mode := stepMode scan.mode c

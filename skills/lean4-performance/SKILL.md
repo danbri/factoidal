@@ -44,6 +44,19 @@ The packer may avoid a duplicate graph, but the current one-block-per-predicate
 format still retains each predicate's rows until its immutable block is built.
 Do not claim streaming-scale memory until bounded block publication exists.
 
+`Syntax/TurtleStatementScan.lean` is the chunk-stable candidate scanner the
+packer runs per character. Any per-character or per-line decision in it must
+read O(1) state, never the accumulated candidate. Paid for 2026-09-02: the
+no-dot directive test reversed the whole current candidate at every line end
+(`dropWs currentRev.reverse`), O(lines × characters) per statement group,
+which turned a 134 MB polygon group (4,211 lines) into 334 s of packing and
+the UK Parliament dump into 6,134 s. The fix keeps a seven-character `head`
+maintained by `pushHead` and proves it equal to the old form
+(`TurtleStatementScanTheorems.head_eq_spec`). How it was found: a size
+ladder of slices without large literals was linear (34 µs per triple), so
+the cost was isolated to the large-literal region and that region packed
+alone; do that before reading code for a superlinear ingest.
+
 ## Verification and measurement
 
 After a semantic hot-path change, run the closest Lean guards and targeted
