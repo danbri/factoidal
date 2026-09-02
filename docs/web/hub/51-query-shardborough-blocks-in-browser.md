@@ -25,7 +25,9 @@ or a remote service.
 The example has people, names and team memberships in separate
 predicate-local blocks. Dana has two names and two memberships, so the query
 has four Dana solutions rather than silently treating those values as one
-record.
+record. To inspect the storage contents instead of joining them, choose
+**Show all 13 triples**. It runs the equally ordinary query
+`SELECT * WHERE { ?person ?p ?v . }` over the three decoded blocks.
 
 ```observable-js
 shardboroughBlockQuery = {
@@ -44,6 +46,10 @@ shardboroughBlockQuery = {
   ?person <http://example.org/member> ?team .
 }
 ORDER BY ?person ?name ?team`;
+  const allTriplesQuery = `SELECT * WHERE {
+  ?person ?p ?v .
+}
+ORDER BY ?person ?p ?v`;
   const root = html`<section class="block-query-demo">
     <style>
       .block-query-demo { display:grid; gap:.9rem; padding:clamp(.85rem, 2.5vw, 1.35rem); border:1px solid #c4dce5; border-radius:1rem; background:linear-gradient(145deg,#f7fbfc 0%,#eef7f8 100%); box-shadow:0 .8rem 2.2rem rgba(21,57,75,.08); }
@@ -84,13 +90,14 @@ ORDER BY ?person ?name ?team`;
       <ul class="facts" aria-label="Dataset summary"><li>3 IBK3 blocks</li><li>13 triples</li><li>1,188 bytes</li></ul>
     </header>
     <label>SPARQL query<textarea spellcheck="false" aria-describedby="block-query-status"></textarea></label>
-    <div class="actions"><button type="button" class="run">Load and query the blocks</button><button type="button" class="secondary reset">Restore example query</button></div>
+    <div class="actions"><button type="button" class="run">Load and query the blocks</button><button type="button" class="secondary all">Show all 13 triples</button><button type="button" class="secondary reset">Restore join query</button></div>
     <p id="block-query-status" class="status" aria-live="polite">Ready. The three binary artifacts total 1,188 bytes.</p>
     <details><summary>Execution report</summary><pre>No run yet.</pre></details>
     <div class="result" aria-live="polite"></div>
   </section>`;
   const query = root.querySelector("textarea");
   const run = root.querySelector(".run");
+  const all = root.querySelector(".all");
   const reset = root.querySelector(".reset");
   const status = root.querySelector(".status");
   const report = root.querySelector("details pre");
@@ -98,6 +105,37 @@ ORDER BY ?person ?name ?team`;
   query.value = initialQuery;
   const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
   const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), byte => byte.toString(16).padStart(2, "0")).join("");
+  let preparedPromise = null;
+  const prepareDataset = () => {
+    if (preparedPromise) return preparedPromise;
+    preparedPromise = (async () => {
+      const scans = [];
+      const started = performance.now();
+      for (const block of example.blocks) {
+        const response = await fetch(new URL(`../assets/blocks/shardborough-three-way/${block.file}`, location.href));
+        if (!response.ok) throw new Error(`${block.file}: HTTP ${response.status}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        const foundHash = await digest(bytes);
+        if (bytes.length !== block.bytes) throw new Error(`${block.file}: expected ${block.bytes} bytes, received ${bytes.length}`);
+        if (foundHash !== block.sha256) throw new Error(`${block.file}: SHA-256 identity does not match the notebook manifest`);
+        const scanStarted = performance.now();
+        const scan = await fn.l4Call(example.workerOperation, [hex(bytes), block.predicate, example.blankNodeScope]);
+        scans.push({ file:block.file, bytes:bytes.length, rows:scan.rows, elapsedMs:Math.round((performance.now()-scanStarted)*10)/10, ntriples:scan.ntriples });
+      }
+      const graphText = scans.map(scan => scan.ntriples).join("\n");
+      const opened = await fn.l4Call("datasetOpen", [graphText, "nquads", ""]);
+      return {
+        scans,
+        handle: opened.handle,
+        triples: opened.count,
+        elapsedMs: Math.round((performance.now()-started)*10)/10,
+      };
+    })().catch(error => {
+      preparedPromise = null;
+      throw error;
+    });
+    return preparedPromise;
+  };
   const showResult = answer => {
     result.replaceChildren();
     if (answer.kind === "select") {
@@ -117,38 +155,34 @@ ORDER BY ?person ?name ?team`;
     }
   };
   reset.addEventListener("click", () => { query.value = initialQuery; query.focus(); });
+  all.addEventListener("click", () => { query.value = allTriplesQuery; run.click(); });
   run.addEventListener("click", async () => {
     run.disabled = true;
     result.replaceChildren();
-    status.textContent = "Loading and checking the three IBK3 artifacts…";
+    const reused = preparedPromise !== null;
+    status.textContent = reused
+      ? "Reusing the parsed dataset held in this page's Lean/WASM memory…"
+      : "Loading, checking and decoding the three IBK3 artifacts once…";
     try {
-      const scans = [];
       const started = performance.now();
-      for (const block of example.blocks) {
-        const response = await fetch(new URL(`../assets/blocks/shardborough-three-way/${block.file}`, location.href));
-        if (!response.ok) throw new Error(`${block.file}: HTTP ${response.status}`);
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        const foundHash = await digest(bytes);
-        if (bytes.length !== block.bytes) throw new Error(`${block.file}: expected ${block.bytes} bytes, received ${bytes.length}`);
-        if (foundHash !== block.sha256) throw new Error(`${block.file}: SHA-256 identity does not match the notebook manifest`);
-        const scanStarted = performance.now();
-        const scan = await fn.l4Call(example.workerOperation, [hex(bytes), block.predicate, example.blankNodeScope]);
-        scans.push({ file:block.file, bytes:bytes.length, rows:scan.rows, elapsedMs:Math.round((performance.now()-scanStarted)*10)/10, ntriples:scan.ntriples });
-      }
-      const graphText = scans.map(scan => scan.ntriples).join("\n");
+      const prepared = await prepareDataset();
       status.textContent = "The blocks are valid. Evaluating the editable SPARQL query…";
       const queryStarted = performance.now();
-      const answer = await fn.l4Call("queryDataset", [graphText, query.value]);
+      const answer = await fn.l4Call("datasetQuery", [prepared.handle, query.value]);
       const queryMs = Math.round((performance.now()-queryStarted)*10)/10;
       const totalMs = Math.round((performance.now()-started)*10)/10;
       const answerSize = answer.kind === "select" ? answer.srj.results.bindings.length : answer.kind === "ask" ? 1 : answer.nquads.split("\n").filter(Boolean).length;
-      status.textContent = `${scans.reduce((n, scan) => n + scan.rows, 0)} triples decoded; ${answerSize} ${answer.kind === "select" ? "solution rows" : "result"}. This browser run took ${totalMs} ms.`;
+      status.textContent = `${prepared.triples} triples; ${answerSize} ${answer.kind === "select" ? "solution rows" : "result"}. ${reused ? "Reused the prepared in-memory dataset" : "Prepared the in-memory dataset"}; this run took ${totalMs} ms.`;
+      run.textContent = "Run query again";
       report.textContent = JSON.stringify({
         kernel: "Lean-derived l4factoidal.wasm",
         workerOperation: example.workerOperation,
         blankNodeScope: example.blankNodeScope,
-        artifacts: scans.map(({ntriples, ...scan}) => scan),
-        composition: "N-Triples fragments passed to the Lean queryDataset operation",
+        artifacts: prepared.scans.map(({ntriples, ...scan}) => scan),
+        composition: "N-Triples fragments opened once as an in-memory Lean dataset handle",
+        browserPersistence: "none; reload discards the dataset handle",
+        reusedPreparedDataset: reused,
+        preparationElapsedMs: reused ? 0 : prepared.elapsedMs,
         queryKind: answer.kind,
         queryElapsedMs: queryMs,
         totalElapsedMs: totalMs,
@@ -168,6 +202,53 @@ ORDER BY ?person ?name ?team`;
 }
 ```
 
+## The three blocks
+
+The arrows below show each block's RDF meaning. On disk, the repeated terms
+are block-local integer IDs resolved through that block's own dictionary.
+
+```text
+three-way-subject.ttl                                         13 triples
+  │
+  ├─ type.ibk3     310 bytes / 4 rows / predicate ex:type
+  │    alice → Person    bob → Person    carol → Robot    dana → Person
+  │
+  ├─ name.ibk3     536 bytes / 5 rows / predicate ex:name
+  │    alice → "Alice"  bob → "Bob"     carol → "Carol"
+  │    dana  → "Dana"   dana → "Dana D."
+  │
+  └─ member.ibk3   342 bytes / 4 rows / predicate ex:member
+       alice → team1     carol → team2    dana → team3    dana → team4
+
+       fetch + SHA-256 check + Lean/WASM scan
+                              │
+                              ▼
+                    13 RDF triples in one default graph
+                              │
+                              ▼
+                         editable SPARQL
+```
+
+Each of those files has the same canonical `IBK3` arrangement. Every fixed
+row is 16 bytes: four little-endian 32-bit integers. `position` preserves the
+source row order; `s`, `p` and `o` refer into the embedded `PTD1` term
+dictionary.
+
+```text
+one IBK3 artifact
+┌──────────────────────────────────────────────────────────────────┐
+│ "IBK3" │ v3 │ row count │ PTD1 byte count                       │ 13-byte header
+├──────────────────────────────────────────────────────────────────┤
+│ position │ subject ID │ predicate ID │ object ID                 │ 16 bytes × rows
+├──────────────────────────────────────────────────────────────────┤
+│ embedded PTD1 dictionary                                        │
+│   "PTD1" │ v1 │ term count │ 256 terms/page │ page count       │
+│   page directory │ encoded RDF-term pages │ PTD1 CRC32C         │
+├──────────────────────────────────────────────────────────────────┤
+│ IBK3 CRC32C                                                     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
 There are two explicit stages. `scanIBK3Predicate` is the small block-worker
 operation: it checks and decodes one complete predicate-local artifact and
 returns RDF statements. Its third argument is one source scope shared by all
@@ -179,6 +260,21 @@ operations come from the same Lean-derived WASM module.
 The returned fragments are N-Triples and form one default graph. This first
 operation does not carry named-graph identity; the blank-node scope preserves
 local node identity but is not a graph name.
+
+The first run fetches and verifies the files, asks Lean/WASM to decode them,
+and opens one parsed dataset inside the WebAssembly module. Later queries on
+this page reuse that in-memory dataset handle. A reload discards it. The
+browser may separately retain the JavaScript, WASM and block files in its
+ordinary HTTP cache, but this notebook does not yet put an RDF database in
+Origin Private File System, IndexedDB or the File System API.
+
+The query entry point accepts `PREFIX` and `BASE`, and executes `SELECT`,
+`ASK` and `CONSTRUCT`. Its implemented algebra includes joins, filters,
+optional patterns, unions, property paths, subqueries, grouping, aggregates,
+ordering and slicing. The Lean GeoSPARQL extension table is installed for the
+implemented `geof:sf*` topology predicates. `DESCRIBE` and remote `SERVICE`
+execution are not available through this notebook, and no claim of complete
+SPARQL 1.1 conformance is made for the browser/block combination yet.
 
 The current browser call passes blocks as hexadecimal strings and materializes
 N-Triples between the two stages. This is a diagnostic API for complete small

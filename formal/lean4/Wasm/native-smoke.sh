@@ -166,6 +166,23 @@ args "$TMP/block-ibk3-noscope.json" "00" "http://e/p" ""
 check "scanIBK3Predicate requires blank-node scope" scanIBK3Predicate "$TMP/block-ibk3-noscope.json" \
   'r["ok"] is False and "blankNodeScope must be non-empty" in r["error"]'
 
+# Bounded block-set preview: blocks stay inside Lean, no N-Triples round trip.
+python3 - "$TMP/block-store/predicate-0.ibk3" "$TMP/block-set.json" "$TMP/block-set-nolimit.json" <<'EOF'
+import json, pathlib, sys
+block = pathlib.Path(sys.argv[1]).read_bytes().hex()
+blocks = json.dumps([["http://e/p", block]])
+pathlib.Path(sys.argv[2]).write_text(json.dumps([blocks, "source:native-smoke",
+  "SELECT ?s ?o WHERE { ?s <http://e/p> ?o } LIMIT 5"]))
+pathlib.Path(sys.argv[3]).write_text(json.dumps([blocks, "source:native-smoke",
+  "SELECT ?s ?o WHERE { ?s <http://e/p> ?o }"]))
+EOF
+check "queryIBK3BlockSetPreview bounded select" queryIBK3BlockSetPreview "$TMP/block-set.json" \
+  'r["ok"] is True and r["kind"] == "select"
+   and len(r["srj"]["results"]["bindings"]) == 1
+   and r["srj"]["results"]["bindings"][0]["s"]["value"] == "http://e/a"'
+check "queryIBK3BlockSetPreview requires LIMIT" queryIBK3BlockSetPreview "$TMP/block-set-nolimit.json" \
+  'r["ok"] is False and "require LIMIT" in r["error"]'
+
 # --- Canon family -----------------------------------------------------
 args "$TMP/canon.json" '_:b0 <http://e/p> "v" .
 '
@@ -478,7 +495,7 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
   'r["ok"] is True and isinstance(r["abiVersion"], str)
    and set(["parseToDatasetJson","queryDataset","updateDataset",
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
-            "scanIBK2Predicate","scanIBK3Predicate",
+            "scanIBK2Predicate","scanIBK3Predicate","queryIBK3BlockSetPreview",
             "owlClosure","owlIsConsistent","owlEntails",
             "rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clSerialize",

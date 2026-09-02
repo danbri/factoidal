@@ -186,6 +186,7 @@ The Lean dispatch ABI currently exposes complete-artifact predicate scans:
 ```text
 scanIBK2Predicate(ibk2Hex, predicateIri)
 scanIBK3Predicate(ibk3Hex, predicateIri, blankNodeScope)
+queryIBK3BlockSetPreview(blocksJson, blankNodeScope, sparql)
 ```
 
 The IBK3 operation accepts three strings and returns a JSON envelope:
@@ -232,6 +233,22 @@ can preserve named graphs.
 The older two-argument IBK2 operation predates this rule and its N-Triples
 output must be treated as a single-document fragment. Multi-block composition
 uses the scoped IBK3 operation.
+
+`queryIBK3BlockSetPreview(blocksJson, blankNodeScope, sparql)` composes a
+small explicit set of complete IBK3 blocks — `blocksJson` is an array of
+`[predicateIri, ibk3Hex]` pairs — and evaluates one SPARQL query over them
+inside Lean, so no N-Triples text crosses the host boundary between decoding
+and evaluation. It is a browser-preview operation, named so it is not
+mistaken for the bounded protocol of section 2.4.2. Its limits bound INPUT
+and OUTPUT, not intermediate work: at most eight blocks, eight MiB of
+artifact bytes and 100,000 rows, checked against the hexadecimal length and
+the 13-byte IBK3 header before any artifact is decoded; only a basic graph
+pattern of at most four triple patterns, no `FROM`, `GROUP BY`, `HAVING` or
+`VALUES`; and `SELECT`/`CONSTRUCT` require `LIMIT <= 1000`. A join of two
+unbound patterns over thousands of rows a side is still evaluated in full by
+the reference evaluator before `LIMIT` applies, and one blank-node scope
+applies to the whole set. Every block must decode completely, and its
+declared predicate must identify every row, or the operation is refused.
 
 This API is useful for testing the execution boundary and for small browser
 demos. Hexadecimal transport, complete-block decoding, and N-Triples output

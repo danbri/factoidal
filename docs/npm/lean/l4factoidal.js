@@ -37,7 +37,7 @@
 // bytes change.
 
 // Stamped by formal/lean4/Wasm/build-wasm.sh step 9 -- do not hand-edit.
-const WASM_VERSION = "935a3ac5d7f4";
+const WASM_VERSION = "07efa77ae59b";
 
 import createModule from './l4factoidal.mjs';
 
@@ -72,8 +72,6 @@ export function loadL4() {
     const Module = await createModule(moduleArg);
 
     const cVersion = Module.cwrap('l4_version_c', 'number', []);
-    const cBgpQuery = Module.cwrap('l4_bgp_query_c', 'number', ['string', 'string']);
-    const cCall = Module.cwrap('l4_call_c', 'number', ['string', 'string']);
     const cFree = Module.cwrap('l4_free_result', null, ['number']);
     const cInit = Module.cwrap('l4_init', 'number', []);
 
@@ -88,6 +86,27 @@ export function loadL4() {
     };
 
     const asJson = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
+
+    // Emscripten's cwrap `string` converter uses the WebAssembly stack.
+    // Multi-megabyte RDF/block requests can therefore overflow STACK_SIZE
+    // before Lean sees them. Allocate input UTF-8 on the wasm heap instead;
+    // the C shim copies each input into a Lean String synchronously, so these
+    // buffers can be released as soon as the exported call returns.
+    const callWithHeapStrings = (fn, texts) => {
+      const pointers = [];
+      try {
+        for (const text of texts) {
+          const size = Module.lengthBytesUTF8(text) + 1;
+          const ptr = Module._malloc(size);
+          if (!ptr) throw new Error('l4factoidal: could not allocate a WASM input buffer');
+          Module.stringToUTF8(text, ptr, size);
+          pointers.push(ptr);
+        }
+        return fn(...pointers);
+      } finally {
+        for (let i = pointers.length - 1; i >= 0; i--) Module._free(pointers[i]);
+      }
+    };
 
     return {
       /** The Lean-side ABI version string. */
@@ -105,7 +124,9 @@ export function loadL4() {
        * @throws      if the Lean side reports a decoding error
        */
       bgpQuery(data, bgp) {
-        const parsed = JSON.parse(take(cBgpQuery(asJson(data), asJson(bgp))));
+        const resultPtr = callWithHeapStrings(Module._l4_bgp_query_c,
+          [asJson(data), asJson(bgp)]);
+        const parsed = JSON.parse(take(resultPtr));
         if (parsed.error) throw new Error(`l4factoidal: ${parsed.error}`);
         return parsed;
       },
@@ -122,7 +143,9 @@ export function loadL4() {
        * @throws      if the Lean side reports {"ok":false,"error":...}
        */
       call(op, args) {
-        const parsed = JSON.parse(take(cCall(op, JSON.stringify(args))));
+        const resultPtr = callWithHeapStrings(Module._l4_call_c,
+          [op, JSON.stringify(args)]);
+        const parsed = JSON.parse(take(resultPtr));
         if (parsed.ok === false) throw new Error(`l4factoidal: ${parsed.error}`);
         return parsed;
       },

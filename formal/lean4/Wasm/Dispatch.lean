@@ -64,6 +64,7 @@ def opNames : List String :=
   , "canonicalizeToNQuads"
   , "scanIBK2Predicate"
   , "scanIBK3Predicate"
+  , "queryIBK3BlockSetPreview"
   , "owlClosure"
   , "owlIsConsistent"
   , "owlEntails"
@@ -127,6 +128,7 @@ def call (op : String) (argsJson : String) : String :=
     | "canonicalizeToNQuads" => arity1 op canonicalizeToNQuads args
     | "scanIBK2Predicate"    => arity2 op scanIBK2Predicate args
     | "scanIBK3Predicate"    => arity3 op scanIBK3Predicate args
+    | "queryIBK3BlockSetPreview"    => arity3 op queryIBK3BlockSetPreview args
     | "owlClosure"           => arity2 op owlClosure args
     | "owlIsConsistent"      => arity2 op owlIsConsistent args
     | "owlEntails"           => arity3 op owlEntails args

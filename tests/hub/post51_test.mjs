@@ -23,6 +23,7 @@ const query = `SELECT ?person ?type ?name ?team WHERE {
   ?person <http://example.org/member> ?team .
 }
 ORDER BY ?person ?name ?team`;
+const allTriplesQuery = 'SELECT * WHERE { ?person ?p ?v . }';
 
 const cells = extractObservableCells(POST_FILE);
 const blankNodeScope = 'source:three-way-subject:8d07b81bf71e0b4c548b5faae50c4231b41bd99ecedc00a5e46817413e815346';
@@ -44,6 +45,14 @@ test('post51: keeps the notebook readable as one interactive cell', () => {
   assert.match(source, /factoidal-sparql-boolean/);
   assert.match(source, /factoidal-sparql-error/);
   assert.match(source, /resource limits and the bounded PushIR request format/);
+  assert.match(source, /Show all 13 triples/);
+  assert.match(source, /one IBK3 artifact/);
+  assert.match(source, /position.*subject ID.*predicate ID.*object ID/);
+  assert.match(source, /datasetOpen/);
+  assert.match(source, /datasetQuery/);
+  assert.match(source, /Origin Private File System, IndexedDB or the File System API/);
+  assert.match(source, /SELECT`,\s+`ASK` and `CONSTRUCT/);
+  assert.match(source, /DESCRIBE` and remote `SERVICE`/);
 });
 
 test('post51: bundled blocks have their declared exact identities', () => {
@@ -58,6 +67,7 @@ test('post51: committed Lean WASM reflects the IBK3 block worker', async () => {
   const l4 = await engine();
   const reflected = l4.call('ops', []);
   assert.ok(reflected.ops.includes('scanIBK3Predicate'));
+  assert.ok(reflected.ops.includes('queryIBK3BlockSetPreview'));
 });
 
 test('post51: real IBK3 bytes pass through the WASM worker into SPARQL', async () => {
@@ -75,6 +85,34 @@ test('post51: real IBK3 bytes pass through the WASM worker into SPARQL', async (
   assert.equal(result.srj.results.bindings.length, 6);
   const dana = result.srj.results.bindings.filter(row => row.person.value === 'http://example.org/dana');
   assert.equal(dana.length, 4, 'two names × two teams must preserve SPARQL multiplicity');
+  const allTriples = l4.call('queryDataset', [scans.join('\n'), allTriplesQuery]);
+  assert.equal(allTriples.kind, 'select');
+  assert.equal(allTriples.srj.results.bindings.length, 13,
+    'the exploratory SELECT * query must expose every decoded block row');
+
+  const opened = l4.call('datasetOpen', [scans.join('\n'), 'nquads', '']);
+  assert.equal(opened.count, 13);
+  const throughHandle = l4.call('datasetQuery', [opened.handle, query]);
+  assert.equal(throughHandle.srj.results.bindings.length, 6,
+    'the notebook reusable-handle path must preserve the stateless query result');
+
+  const construct = l4.call('datasetQuery', [opened.handle,
+    'CONSTRUCT { ?person <http://example.org/label> ?name } WHERE { ?person <http://example.org/name> ?name }']);
+  assert.equal(construct.kind, 'construct');
+  assert.equal(construct.nquads.split('\n').filter(Boolean).length, 5);
+
+  const blockSetJson = JSON.stringify(blocks.map(block => [
+    block.predicate,
+    readFileSync(new URL(block.file, ASSET_DIR)).toString('hex'),
+  ]));
+  const bounded = l4.call('queryIBK3BlockSetPreview', [blockSetJson, blankNodeScope, `${query}\nLIMIT 20`]);
+  assert.equal(bounded.kind, 'select');
+  assert.equal(bounded.srj.results.bindings.length, 6,
+    'the bounded block-set operation must avoid changing the joined result');
+  assert.throws(
+    () => l4.call('queryIBK3BlockSetPreview', [blockSetJson, blankNodeScope, query]),
+    /SELECT and CONSTRUCT require LIMIT/,
+  );
 });
 
 test('post51: corrupt bytes fail closed at the worker boundary', async () => {
@@ -83,6 +121,23 @@ test('post51: corrupt bytes fail closed at the worker boundary', async () => {
     () => l4.call('scanIBK3Predicate', ['00', 'http://example.org/type', blankNodeScope]),
     /invalid or corrupt canonical IBK3 artifact/,
   );
+});
+
+test('post51: the browser query entry installs the Lean GeoSPARQL functions', async () => {
+  const l4 = await engine();
+  const geoAsk = `PREFIX geo: <http://www.opengis.net/ont/geosparql#>
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+ASK {
+  FILTER(geof:sfWithin(
+    "POINT(2 2)"^^geo:wktLiteral,
+    "POLYGON((0 0,4 0,4 4,0 4,0 0))"^^geo:wktLiteral))
+}`;
+  const answer = l4.call('queryDataset', [
+    '<http://example.org/a> <http://example.org/p> <http://example.org/b> .',
+    geoAsk,
+  ]);
+  assert.equal(answer.kind, 'ask');
+  assert.equal(answer.boolean, true);
 });
 
 test('post51: the worker refuses an absent blank-node composition scope', async () => {

@@ -27,6 +27,7 @@ import L4Factoidal.SPARQL.Results
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.Update
+import L4Factoidal.Geo.Functions
 
 namespace L4Wasm.Ops
 
@@ -42,7 +43,11 @@ def queryParsedDataset (ds : Dataset) (sparql : String) : String :=
   match parseSparql sparql with
   | .error e => errJson s!"SPARQL parse error: {fmtParseError e}"
   | .ok q =>
-    let env : EvalEnv := { base := q.base }
+    -- The query-facing WASM entry installs the same explicit GeoSPARQL
+    -- extension table as the native evaluator.  The core evaluator remains
+    -- pure: unknown function IRIs still fail through `none`, while the
+    -- registered `geof:` predicates are ordinary values in this environment.
+    let env : EvalEnv := { base := q.base, ext := L4Factoidal.Geo.extFns }
     match q.form with
     | .ask =>
         let b := evalAsk env ds q

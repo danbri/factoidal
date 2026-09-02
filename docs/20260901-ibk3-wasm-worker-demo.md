@@ -74,6 +74,11 @@ page opts into the Hub's form-first presentation: its implementation remains
 available through **Edit**, but the initial reading view leads with the form
 instead of several screens of JavaScript.
 
+Owner testing found that replacing the join with
+`SELECT * WHERE { ?person ?p ?v . }` exposes all 13 decoded rows. The page now
+makes that exploration a named button and documents both the actual contents
+of its three predicate blocks and the canonical IBK3/PTD1 byte arrangement.
+
 ## Native path versus browser path
 
 The native `l4block-id-v3-query` host remains the fuller Shardborough execution
