@@ -195,6 +195,13 @@ executable edge only.
 3. **Subtype instances**: `{s : String // p s}` derives
    `DecidableEq` for free but needs manual `Hashable`/`Repr`/
    `ToString` instances (one-liners on `.val`).
+5. **`split` and `generalize` unfold Nat literals.** On a subterm such as
+   `d0 * 268435456 + ...` both tactics compare candidates by definitional
+   unfolding of `Nat.mul` on a unary literal and never return (2026-09-02,
+   `decodeEscape_length`; over seven minutes of CPU with no output). Move
+   the arithmetic behind a function that takes the number as a parameter
+   and prove the lemma with that parameter a variable. Full recipe and the
+   other proof patterns: `skills/lean4-proof-patterns`.
 4. **`abbrev` keeps dot-notation**: `abbrev Graph := List Triple`
    still resolves `g.mem` to `Graph.mem` — safe to define namespace
    functions on abbrevs.
@@ -343,6 +350,17 @@ licence in `third_party/skills/leanprover-skills/`:
   correct". Symlinked into `.claude/skills/lean-proof`.
 - `lean-mwe` (same source): minimal reproducible examples for upstream Lean
   or Lake bug reports. Symlinked into `.claude/skills/lean-mwe`.
+- `lean-review` (gotrevor/lean-agent-skills, Apache-2.0, vendored in
+  `third_party/skills/lean-agent-skills/`): the diff-scoped check registry
+  (`maxHeartbeats`, `native_decide`, `axiom`, `sorry`, `unsafe`/`partial`/
+  `opaque`, silenced linters) with `#print axioms` as the authoritative
+  check. Symlinked into `.claude/skills/lean-review`.
+
+Synthesized locally from the survey and from the 2026-09-02 Turtle fuel
+proofs: [`lean4-proof-patterns`](../lean4-proof-patterns/SKILL.md) — the
+no-Mathlib tactic set, fuel-independence theorem shape, nested-match
+splitting, the large-Nat-literal unfolding trap, `rename_i` order, `omega`
+after `List.length_cons`, and timed single-theorem compiles to bisect a hang.
 
 Not vendored, cited for readers who want them:
 [cameronfreer/lean4-skills](https://github.com/cameronfreer/lean4-skills)

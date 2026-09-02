@@ -630,6 +630,18 @@ session.
   one-tactic-at-a-time proof method and the minimal-example recipe for
   upstream bug reports. Local policy on top: nothing with `sorry` is
   committed.
+- [`lean-review`](third_party/skills/lean-agent-skills/lean-review/SKILL.md)
+  — vendored unmodified from gotrevor/lean-agent-skills (Apache-2.0): the
+  diff-scoped trust and hygiene check registry for Lean changes
+  (`maxHeartbeats`, `native_decide`, `axiom`, `sorry`, `unsafe`/`partial`,
+  silenced linters), `#print axioms` as the authoritative check.
+- [`lean4-proof-patterns`](skills/lean4-proof-patterns/SKILL.md) — prove
+  properties of fuel-bounded, match-heavy definitions without Mathlib:
+  the theorem shape for fuel independence, nested-match splitting, the
+  large-Nat-literal trap that hangs `split`/`generalize`, `rename_i`
+  order, `omega` after `List.length_cons`, timed per-theorem compiles to
+  bisect a hang. Read when a Lean proof stalls or before dispatching a
+  proof subagent.
 - [`lean4-performance`](skills/lean4-performance/SKILL.md) — improve
   performance-sensitive Lean 4 code while preserving total semantics,
   observable order, and the executable proof boundaries: parsers, block

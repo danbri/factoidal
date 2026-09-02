@@ -1,7 +1,7 @@
 # Quad-aware block layout: the design decision behind spec gate 4
 
-Status: proposal, 2026-09-02. Decision needed from the owner (🧭 items at the
-end). Nothing here is implemented.
+Status: decided by the owner 2026-09-02 evening (table below the options).
+Nothing here is implemented.
 
 ## Why now
 
@@ -120,7 +120,19 @@ C, starting with A as `SBM7` + a TriG/N-Quads packer input. Reasons:
 6. The UK Parliament rung: pack, activate, the workload, plus the
    `bench_ukpar_*` queries that already exist for the F\* store.
 
-## 🧭 Decisions for the owner
+## Owner decisions, 2026-09-02 evening (recorded from the four-question form)
+
+| Decision | Owner's choice | Note |
+| --- | --- | --- |
+| 1. Layout order | **B first** (graph column in the rows, `IBK4`), against the recommendation of A | The A-first argument (no byte change, theorems carry over) was put to the owner and overruled. One layout for all cases. |
+| 2. Default graph | `graph = none` | As recommended. |
+| 3. Blank-node scope | Content digest per source file, with the section 2.4.1 caveat as a manifest profile flag | As recommended. |
+| 4. Next work after the Turtle parser fix | Scale first: profile `l4block-shard-pack` and `l4block-shard-activate` on the UK Parliament store | Named-graph work (B) starts after pack and activate are linear. |
+
+The work plan for A above is kept as the record of the alternative; the
+plan to execute is B. Status of this document: decided, not implemented.
+
+## 🧭 Decisions for the owner (as put, 2026-09-02 afternoon)
 
 1. A first (recommended), or B first?
 2. Default graph: `graph = none` in the entry (recommended), or a reserved
