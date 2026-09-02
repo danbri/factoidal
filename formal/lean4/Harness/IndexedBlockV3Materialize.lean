@@ -2,6 +2,7 @@
    Host I/O is here; the byte layout and range executor remain pure Lean in
    L4Factoidal.Storage.IndexedBlockWireV3. -/
 import Harness.PosixRangeIO
+import Harness.NativeHasher
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.SubjectRowIndexWireV2
@@ -154,7 +155,7 @@ private def subjectPostingsWithCounters? (directory : System.FilePath) (entry : 
               | none => pure none
               | some (bytes, footprint) =>
                   if bytes.size != index.bytes ||
-                      !L4Factoidal.Storage.BlockArtifact.verify index.sha256 bytes then pure none else
+                      !L4Factoidal.Storage.BlockArtifact.verifyWith nativeHasher index.sha256 bytes then pure none else
                   match L4Factoidal.Storage.SubjectRowIndexWire.decode bytes with
                   | some (rows, pairs) =>
                       if rows == entry.rows then pure (some (pairs, addRead {} footprint)) else pure none

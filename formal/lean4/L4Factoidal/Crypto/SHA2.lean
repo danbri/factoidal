@@ -11,8 +11,14 @@ PUBLIC data, never secrets or MACs, so there is no side channel to
 protect and no constant-time requirement. This module is NOT approved
 for, and MUST NOT be used for, any signature, key-derivation,
 password, or MAC computation — those go through HACL* via `@[extern]`
-FFI only (the Lean tree's single permitted extern family; see
-crypto-policy §"Lean 4 tree amendment" item 2). MD5 and SHA-1 remain
+FFI only (the Lean tree's crypto extern family; see crypto-policy
+§"Lean 4 tree amendment" item 2). SHA-256 also HAS a HACL* binding
+now (`Crypto/SHA2Native.lean`, `sha256Hacl`), added 2026-09-02 for
+speed on large public artifacts. It does NOT replace this module:
+this one is the specification, it is what the `#guard`s below and
+every theorem evaluate, and a consumer that wants the fast one takes
+a hasher parameter rather than having one substituted underneath it.
+The two are compared at run time by `lake exe l4vc-probe`. MD5 and SHA-1 remain
 unported (out of scope for this landing; see `PORT_NOTES.md`).
 
 Implements FIPS PUB 180-4 (Secure Hash Standard, 2015-08):

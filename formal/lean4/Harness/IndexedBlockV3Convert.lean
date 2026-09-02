@@ -7,6 +7,7 @@ import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Crypto.SHA2
+import Harness.NativeHasher
 
 namespace Harness.IndexedBlockV3Convert
 
@@ -22,8 +23,12 @@ private def chunkBytes : Nat := 65536
 private def predicate? (text : String) : Option WfIri :=
   if h : isIri text then some ⟨text, h⟩ else none
 
+/-- Leaf sidecar bytes, hashed with `Harness.nativeHasher` (HACL* C). The
+    committed leaves are identical to the pure Lean specification hasher's;
+    only the wall clock differs. -/
 private def leavesBytes (bytes : ByteArray) : ByteArray :=
-  ByteArray.mk ((chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf |>.flatMap
+  ByteArray.mk ((chunksOf chunkBytes bytes).map
+      (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher) |>.flatMap
     (fun leaf => leaf.data.toList) |>.toArray)
 
 private def convert (input output predicateText : String) : IO UInt32 := do
@@ -50,17 +55,17 @@ private def convert (input output predicateText : String) : IO UInt32 := do
                 let name := "predicate-0.ibk3"
                 IO.FS.writeBinFile (outputPath / name) bytes
                 IO.FS.writeBinFile (outputPath / (name ++ ".merkle")) (leavesBytes bytes)
-                match fromChunks? chunkBytes (chunksOf chunkBytes bytes) with
+                match fromChunksWith? nativeHasher chunkBytes (chunksOf chunkBytes bytes) with
                 | none => IO.eprintln "l4block-id-v3-convert failed: could not commit chunks"; return 1
                 | some chunked =>
                     let entry : Entry :=
                       { predicate
-                        artifact := { key := { value := name }, bytes := bytes.size, sha256 := sha256 bytes, chunked := some chunked }
+                        artifact := { key := { value := name }, bytes := bytes.size, sha256 := nativeSha256 bytes, chunked := some chunked }
                         rows := block.rows.size
                         ordinal := 0 }
                     let manifest : Manifest :=
                       { version := 2
-                        sourceIdentity := sha256 inputBytes
+                        sourceIdentity := nativeSha256 inputBytes
                         termRegistryVersion := "local-ibk3-ptd1-v0"
                         layout := "predicate-ibk3-ptd1-merkle-v0"
                         entries := [entry] }

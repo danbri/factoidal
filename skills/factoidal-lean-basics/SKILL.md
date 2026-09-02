@@ -133,11 +133,19 @@ exists in two places. The second, since 2026-08-31, is the harness-side
 POSIX range-I/O library `Harness/PosixRangeIO.lean` (`extern_lib
 libl4blockhost`: `l4_block_pread`, `l4_delta_log_append_sync_at_size`,
 `l4_atomic_replace_file_sync` — pure I/O, no semantics). The first is
-`Crypto/Ed25519.lean`, HACL\* Ed25519 via
-Lake's `extern_lib` (`lakefile.lean`, `ffi/hacl_ed25519.c`), the single
-permitted extern family under the crypto-policy skill's Lean 4
-amendment, with its trust statement in the module header and its
-run-time measurement (RFC 8032 vectors) in `lake exe l4vc-probe`. The ten
+the CRYPTO extern family, HACL\* via Lake's
+`extern_lib` (`lakefile.lean`, `ffi/hacl_ed25519.c`), permitted under
+the crypto-policy skill's Lean 4 amendment. It has TWO members:
+`Crypto/Ed25519.lean` (`secretToPublic`, `sign`, `verify`) and, since
+2026-09-02, `Crypto/SHA2Native.lean` (`sha256Hacl`). Each carries its
+trust statement in the module header and its run-time measurement in
+`lake exe l4vc-probe` — RFC 8032 vectors for Ed25519, and a
+`sha256 differential` section for `sha256Hacl` against the pure Lean
+`Crypto.sha256`, which remains the specification and remains what every
+`#guard` and every theorem evaluates. Hosts choose between them through
+an explicit hasher PARAMETER (`Storage/BlockMerkle.lean`'s `Hasher`),
+never through `@[implemented_by]`: a `#guard` runs in the interpreter,
+which cannot call an extern. The ten
 `assume val`s in `SPARQL11.Algebra.fst` (none in the ported fragment)
 each dissolve by parameterisation when their feature is ported:
 

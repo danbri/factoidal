@@ -4,6 +4,7 @@ import Harness.GenerationPointer
 import Harness.ShardMerkleMaterialize
 import Harness.IndexedBlockV3Materialize
 import Harness.PosixRangeIO
+import Harness.NativeHasher
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.ShardManifest
@@ -89,7 +90,7 @@ private def sourceIdentity? (directory : System.FilePath) : IO ByteArray := do
     | _ => throw <| IO.userError "source DLOG is malformed or has an uncommitted suffix"
   catch e =>
     if (← dlog.pathExists) then throw e else pure ByteArray.empty
-  pure <| sha256 (manifest ++ delta)
+  pure <| nativeSha256 (manifest ++ delta)
 
 /-- A compacted candidate is only valid for the exact source snapshot it was
     built from. This is deliberately checked before `CURRENT` is replaced;
@@ -108,7 +109,13 @@ private def sourceStillCurrent (root candidate : System.FilePath) (manifest : Ma
     independently recorded commitments over the same observed bytes. The
     later range scan checks the Merkle roots; this pass checks full SHA-256.
     Thus a hand-crafted manifest whose digest and root describe different
-    artifacts is rejected at activation rather than deferred to a query path. -/
+    artifacts is rejected at activation rather than deferred to a query path.
+
+    The hashing itself uses `Harness.nativeHasher` (HACL* C) instead of the
+    pure Lean specification hash. Activation rebuilds every leaf and every
+    root of the whole generation, so this is the dominant cost; the two
+    hashers compute the same function (measured by `lake exe l4vc-probe`),
+    so no committed byte and no acceptance decision changes. -/
 private def verifyFullArtifact (directory : System.FilePath) (artifact : ArtifactRef) : IO Bool := do
   if !safeLeafKey artifact.key then pure false else
   try
@@ -118,13 +125,15 @@ private def verifyFullArtifact (directory : System.FilePath) (artifact : Artifac
     | some chunks =>
         let leafBytes ← IO.FS.readBinFile ((directory / artifact.key.value).toString ++ ".merkle")
         let rebuilt := L4Factoidal.Storage.ChunkedArtifact.chunksOf chunks.chunkBytes bytes |>
-          List.map L4Factoidal.Storage.BlockMerkle.leaf
+          List.map (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
         match leaves? chunks.chunkCount leafBytes with
         | none => pure false
         | some leaves =>
-            pure <| bytes.size == artifact.bytes && BlockArtifact.verify artifact.sha256 bytes &&
-              leaves == rebuilt && L4Factoidal.Storage.BlockMerkle.root leaves == chunks.root &&
-              L4Factoidal.Storage.ChunkedArtifact.fromChunks? chunks.chunkBytes
+            pure <| bytes.size == artifact.bytes &&
+              BlockArtifact.verifyWith nativeHasher artifact.sha256 bytes &&
+              leaves == rebuilt &&
+              L4Factoidal.Storage.BlockMerkle.rootWith nativeHasher leaves == chunks.root &&
+              L4Factoidal.Storage.ChunkedArtifact.fromChunksWith? nativeHasher chunks.chunkBytes
                 (L4Factoidal.Storage.ChunkedArtifact.chunksOf chunks.chunkBytes bytes) == some chunks
   catch _ => pure false
 

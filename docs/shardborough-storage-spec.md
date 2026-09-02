@@ -441,6 +441,14 @@ activation additionally checks that the leaf sequence was derived from the
 same complete bytes whose SHA-256 is in the manifest. A future change to this
 sidecar requires explicit framing rather than silently changing this layout.
 
+The hash function of every leaf, node and artifact digest is SHA-256 as
+defined by the pure Lean `Crypto.sha256`, which every guard and theorem
+uses. A host may compute the same function through the HACL* binding
+`Crypto.sha256Hacl` (`Storage/BlockMerkle.lean`'s `Hasher` parameter; the
+native harness does, since 2026-09-02); `lake exe l4vc-probe` checks the two
+agree on the FIPS 180-4 vectors, the block and padding boundaries and a
+1 MiB buffer, and CI requires it. Bytes on disk do not depend on the choice.
+
 Merkle admission of selected ranges establishes that returned bytes belong to
 the committed artifact. It does not establish that an index contains every
 required posting. A reader may claim complete query results only for a

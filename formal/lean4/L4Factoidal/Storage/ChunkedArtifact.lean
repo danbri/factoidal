@@ -42,11 +42,18 @@ private def canonicalLengths (width : Nat) : List ByteArray → Bool
   | [last] => last.size > 0 && last.size <= width
   | chunk :: rest => chunk.size == width && canonicalLengths width rest
 
-def fromChunks? (width : Nat) (chunks : List ByteArray) : Option Ref :=
+/-- Commit a chunk sequence under a supplied hash. `pureHasher` is the
+    specification; a packing host passes `Harness.nativeHasher` so the
+    root over a multi-megabyte artifact is built by HACL*'s C. -/
+def fromChunksWith? (h : Hasher) (width : Nat) (chunks : List ByteArray) : Option Ref :=
   let totalBytes := chunks.foldl (fun n chunk => n + chunk.size) 0
-  let ref : Ref := { totalBytes, chunkBytes := width, chunkCount := chunks.length, root := rootOfChunks chunks }
+  let ref : Ref := { totalBytes, chunkBytes := width, chunkCount := chunks.length,
+                     root := rootOfChunksWith h chunks }
   if valid ref && canonicalLengths width chunks
   then some ref else none
+
+def fromChunks? (width : Nat) (chunks : List ByteArray) : Option Ref :=
+  fromChunksWith? pureHasher width chunks
 
 def offset? (ref : Ref) (index : Nat) : Option Nat :=
   if valid ref && index < ref.chunkCount then some (index * ref.chunkBytes) else none
@@ -57,10 +64,14 @@ def expectedBytes? (ref : Ref) (index : Nat) : Option Nat := do
 
 /-- Admission for one independently fetched fixed chunk. The caller is still
     responsible for using `offset?` as the actual positioned-read offset. -/
-def verifyChunk (ref : Ref) (index : Nat) (bytes : ByteArray) (proof : List Step) : Bool :=
+def verifyChunkWith (h : Hasher) (ref : Ref) (index : Nat) (bytes : ByteArray)
+    (proof : List Step) : Bool :=
   match expectedBytes? ref index with
   | none => false
-  | some expected => bytes.size == expected && BlockMerkle.verify ref.root bytes proof
+  | some expected => bytes.size == expected && BlockMerkle.verifyWith h ref.root bytes proof
+
+def verifyChunk (ref : Ref) (index : Nat) (bytes : ByteArray) (proof : List Step) : Bool :=
+  verifyChunkWith pureHasher ref index bytes proof
 
 private def c0 : ByteArray := ByteArray.mk #[1, 2]
 private def c1 : ByteArray := ByteArray.mk #[3, 4]

@@ -10,6 +10,7 @@ import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Crypto.SHA2
+import Harness.NativeHasher
 
 namespace Harness.ShardPublish
 
@@ -49,11 +50,11 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
           let ordinal := state.nextOrdinal
           let name := artifactName format ordinal
           IO.FS.writeBinFile (output ++ "/" ++ name) bytes
-          let digest := sha256 bytes
-          let chunked ← match fromChunks? chunkBytes (chunksOf chunkBytes bytes) with
+          let digest := nativeSha256 bytes
+          let chunked ← match fromChunksWith? nativeHasher chunkBytes (chunksOf chunkBytes bytes) with
             | some value => pure value
             | none => throw <| IO.userError s!"could not commit fixed chunks for {predicate.val}"
-          let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
+          let leaves := (chunksOf chunkBytes bytes).map (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
           let proofBytes := ByteArray.mk (leaves.flatMap (fun value => value.data.toList) |>.toArray)
           IO.FS.writeBinFile (output ++ "/" ++ name ++ ".merkle") proofBytes
           let subjectIndex ← match format with
@@ -68,11 +69,11 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
                 | some indexBytes =>
                     let indexName := name ++ ".sri2"
                     IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
-                    let indexDigest := sha256 indexBytes
-                    let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
+                    let indexDigest := nativeSha256 indexBytes
+                    let indexChunked ← match fromChunksWith? nativeHasher chunkBytes (chunksOf chunkBytes indexBytes) with
                       | some value => pure value
                       | none => throw <| IO.userError s!"could not commit SRI2 chunks for {predicate.val}"
-                    let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
+                    let indexLeaves := (chunksOf chunkBytes indexBytes).map (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
                     IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
                       (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
                     pure (some
@@ -91,11 +92,11 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
                 | some indexBytes =>
                     let indexName := name ++ ".tli1"
                     IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
-                    let indexDigest := sha256 indexBytes
-                    let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
+                    let indexDigest := nativeSha256 indexBytes
+                    let indexChunked ← match fromChunksWith? nativeHasher chunkBytes (chunksOf chunkBytes indexBytes) with
                       | some value => pure value
                       | none => throw <| IO.userError s!"could not commit TLI1 chunks for {predicate.val}"
-                    let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
+                    let indexLeaves := (chunksOf chunkBytes indexBytes).map (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
                     IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
                       (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
                     pure (some
@@ -119,11 +120,11 @@ private def publishBlocks (format : PublishFormat) (output : String) : PublishSt
                 | some indexBytes =>
                     let indexName := name ++ ".oli2"
                     IO.FS.writeBinFile (output ++ "/" ++ indexName) indexBytes
-                    let indexDigest := sha256 indexBytes
-                    let indexChunked ← match fromChunks? chunkBytes (chunksOf chunkBytes indexBytes) with
+                    let indexDigest := nativeSha256 indexBytes
+                    let indexChunked ← match fromChunksWith? nativeHasher chunkBytes (chunksOf chunkBytes indexBytes) with
                       | some value => pure value
                       | none => throw <| IO.userError s!"could not commit OLI2 chunks for {predicate.val}"
-                    let indexLeaves := (chunksOf chunkBytes indexBytes).map L4Factoidal.Storage.BlockMerkle.leaf
+                    let indexLeaves := (chunksOf chunkBytes indexBytes).map (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
                     IO.FS.writeBinFile (output ++ "/" ++ indexName ++ ".merkle")
                       (ByteArray.mk (indexLeaves.flatMap (fun value => value.data.toList) |>.toArray))
                     pure (some

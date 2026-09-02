@@ -41,3 +41,16 @@ jobs:
       - name: Build library, proofs, and build-time guards
         working-directory: formal/lean4
         run: lake build L4Factoidal
+
+      # The two HACL* @[extern] families cannot be checked by a #guard: an
+      # extern does not evaluate in the Lean interpreter that #guard runs in.
+      # l4vc-probe is where they ARE checked — the RFC 8032 Ed25519 vectors,
+      # and the `sha256 differential` section comparing Crypto.sha256Hacl with
+      # the pure Lean Crypto.sha256 on the FIPS 180-4 vectors, the SHA-256
+      # block/padding boundaries and a 1 MiB buffer. That equality is what
+      # makes the storage host's substitution of the HACL* hasher into
+      # Storage/BlockMerkle.lean sound, so it is a required gate. The probe
+      # exits non-zero on any failure.
+      - name: HACL* extern probe (Ed25519 vectors + sha256 differential)
+        working-directory: formal/lean4
+        run: lake exe l4vc-probe

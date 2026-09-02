@@ -3247,9 +3247,16 @@ The F\* `VC.DataIntegrity.fst` has four `assume val`s:
 `#guard`s, `Crypto/SHA2.lean`) and `ed25519_secret_to_public` /
 `ed25519_sign` / `ed25519_verify`. The latter three are
 `Crypto/Ed25519.lean`'s `@[extern "l4_hacl_ed25519_*"] opaque`
-declarations — the Lean tree's single permitted `extern` family under
-the crypto-policy skill's Lean 4 amendment (signatures via HACL\* FFI
-only; never a hand-written implementation). Trust statement, in full,
+declarations — the FIRST member of the Lean tree's permitted crypto
+`extern` family under the crypto-policy skill's Lean 4 amendment
+(signatures via HACL\* FFI only; never a hand-written
+implementation). The SECOND member, added 2026-09-02, is
+`Crypto/SHA2Native.lean`'s `@[extern "l4_hacl_sha256"] opaque
+sha256Hacl`, permitted by item 1 of the same amendment ("binding
+HACL\*'s `Hacl_Hash_SHA2.c` via Lean FFI as well, for speed, is
+encouraged"); `hash_sha256_hex` stays dissolved because the PURE Lean
+`sha256` remains the specification and remains what every `#guard`
+and every theorem evaluates. Trust statement, in full,
 in that module's header; in short: Lean knows their types and nothing
 about their values; no theorem depends on them (`#print axioms` on
 every theorem of the library is unchanged: propext, Classical.choice,
@@ -13818,3 +13825,71 @@ regressions. F\* committed binary, same day:
 Method hazard write-up: hazard #33 in
 `skills/workflow-gotchas-debugging/SKILL.md` (iron rule 14, same
 landing).
+
+## Stage: HACL\* SHA-256 as a host-passed hasher (2026-09-02)
+
+Merkle admission of a persisted Shardborough store hashes every
+65,536-byte chunk of every artifact plus every interior tree node. With
+the pure Lean `Crypto.sha256` (roughly 5 MB/s) that dominated both the
+full read and the activation of the 25 MB gene store.
+
+What landed:
+
+| File | Change |
+|---|---|
+| `L4Factoidal/Crypto/SHA2Native.lean` (new) | `@[extern "l4_hacl_sha256"] opaque sha256Hacl (m : @& ByteArray) : ByteArray`, with the trust statement, the crypto-policy citation, and the contract (a message over 2^32-1 bytes is refused with the EMPTY `ByteArray`, since HACL\*'s length parameter is a `uint32_t`) |
+| `ffi/hacl_ed25519.c` | `l4_hacl_sha256`: one length check, then `Hacl_Hash_SHA2_hash_256`. No arithmetic. The translation unit was already compiled and linked on both targets (`extern_lib libl4hacl`, `Wasm/build-wasm.sh`) because Ed25519 needs SHA-512 |
+| `L4Factoidal/Storage/BlockMerkle.lean` | `structure Hasher where digest : ByteArray → ByteArray`; `pureHasher := ⟨sha256⟩`; every operation restated as `leafWith`/`nodeWith`/`nextLevelWith`/`rootWith`/`rootOfChunksWith`/`proofWith?`/`applyStepWith`/`verifyWith`, taking the hasher first. The old names are exactly those at `pureHasher`, so every existing caller, `#guard` and theorem is unchanged in meaning |
+| `L4Factoidal/Storage/BlockArtifact.lean`, `ChunkedArtifact.lean` | `digestWith` / `verifyWith`, `fromChunksWith?` / `verifyChunkWith`, with the unsuffixed names as the `pureHasher` instances |
+| `Harness/NativeHasher.lean` (new) | `nativeSha256`, `nativeHasher`. Under `Harness/` so the verified library never depends on an extern for its own semantics, and so `Wasm/build-wasm.sh` (which skips every `Harness_*` translation unit) keeps the browser worker's closure unchanged — it checks CRC, not Merkle |
+| `Harness/PosixRangeIO.lean`, `ShardActivate.lean`, `IndexedBlockV3Convert.lean`, `IndexedBlockV3Materialize.lean`, `PredicateShardPack.lean`, `ShardPublish.lean` | pass `nativeHasher` / call `nativeSha256` |
+| `Harness/VcProbe.lean` | new section 5, `sha256 differential` |
+| `.github/workflows/verify-lean4.yml` | `lake exe l4vc-probe` added as a required step |
+
+Why a PARAMETER and not `@[implemented_by] sha256`: build-time
+`#guard`s run in the Lean INTERPRETER, which cannot call an extern (a
+`#guard` on one fails with "could not find native implementation").
+An `@[implemented_by]` on `sha256` would therefore have deleted the
+FIPS 180-4 vectors of `Crypto/SHA2Tests.lean` from the build. The pure
+function stays the specification, stays what every theorem is about,
+and stays what the WASM target evaluates.
+
+The substitution is sound only because the two hashers agree on every
+input, and one of them is opaque, so that cannot be proved here. It is
+MEASURED: `lake exe l4vc-probe`'s `sha256 differential` section
+compares them on the FIPS 180-4 vectors, the empty message, 1/55/56/63/
+64/65-byte inputs (the SHA-256 block and padding boundaries), the
+1,000,000×'a' FIPS message and a 1 MiB deterministic pseudo-random
+buffer — 13 pass, 0 fail (out of 13) — and the probe exits non-zero on
+any mismatch.
+
+Measured on the 25 MB gene collection (single runs, wall clock, nothing
+else running; BEFORE was taken by pointing `nativeSha256` back at the
+pure `Crypto.sha256` and rebuilding, so the two runs differ only in the
+hasher):
+
+| Operation | Before | After |
+|---|---|---|
+| `l4block-id-v3-query` `SELECT (COUNT(*) …)` over the whole manifest | 7.49 s | 3.94 s |
+| `l4block-shard-activate` on a fresh copy of the generation | 52.95 s | 13.81 s |
+| `l4block-shard-pack` of `chromosome.ttl` (9,227 triples) | 1.01 s | 0.72 s |
+
+The BYTES do not change: the `chromosome.ttl` pack output directory is
+identical before and after (`diff -r`), and `predicate-0.ibk3` still
+hashes to `01484578d6b9696d0298a20898b8a2bf209f7477cc938002c35aa1c55611068a`.
+Activation of the existing gene generation still succeeds against the
+roots a pure-hasher packer wrote, which is the same fact from the
+reader's side.
+
+Gates after the landing: `lake build` (919 jobs) clean;
+`lake exe l4vc-probe` 71 pass, 0 fail (out of 71);
+`bash Wasm/native-smoke.sh` 63 pass, 0 fail (out of 63);
+`bash tools/w3c-persisted-census.sh` 535 executed, 0 refused (out of
+535).
+
+Not done: `Sha256Stream` (the incremental hash `PredicateShardPack`
+uses for the source-file identity of a packed generation) has no
+streaming HACL\* counterpart bound, so that one hash stays pure Lean.
+`L4Factoidal/Storage/ShardManifest.lean`'s `verifyEntry`/
+`openVerified?` (the IBK2 `Reader` boundary) were left on `pureHasher`
+— they are not on the IBK3 paths measured above.

@@ -79,7 +79,21 @@ returns 9,117 rows in 2.4 s through the subject-join path (4 shards,
   fixed the same day with pins in `native-smoke.sh`, `StoreDataset.lean` and
   `tests/hub/l4_exists_regression_test.mjs`. Census after the fix: 535
   executed, 0 refused (out of 535 eligible), the recorded 2026-09-01 numbers.
-- HACL* SHA-256 hasher for the host verification path: queued.
+- HACL* SHA-256 hasher for the host verification path: landed. The pure
+  Lean `sha256` stays the specification; the host passes a HACL*-backed
+  `Hasher` into the Merkle and artifact functions, and `lake exe l4vc-probe`
+  checks the two agree on the FIPS vectors, the block boundaries and a 1 MiB
+  buffer (13 pass, 0 fail), as a required CI step. Measured on the gene
+  store, single runs, hasher the only difference:
+
+  | Operation | Pure Lean hasher | HACL* hasher |
+  | --- | --- | --- |
+  | `COUNT(*)` over the whole store (full-manifest read) | 7.49 s | 3.94 s |
+  | `l4block-shard-activate` of the 25 MB generation | 52.95 s | 13.81 s |
+  | `l4block-shard-pack chromosome.ttl` | 1.01 s | 0.72 s |
+
+  Block bytes are unchanged (the chromosome block keeps sha256 01484578…).
+  What remains in a full read is decoding and index building, not hashing.
 - LeftJoin physical arm with refinement proof: queued.
 - Rung 3 (UK Parliament TriG, 347 MB, named graphs): blocked on the
   quad-aware layout (spec section 10, gate 4); the packer reads Turtle only.

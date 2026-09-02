@@ -14,6 +14,7 @@ import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Syntax.Utf8Stream
 import L4Factoidal.Syntax.TurtleChunkFold
 import L4Factoidal.Crypto.SHA2
+import Harness.NativeHasher
 
 namespace Harness.PredicateShardPack
 
@@ -51,14 +52,20 @@ private def encodeBlock? : PackFormat → L4Factoidal.Storage.IndexedBlock.Block
   | .ibk2, block => L4Factoidal.Storage.IndexedBlockWireV2.encode? block
   | .ibk3, block => L4Factoidal.Storage.IndexedBlockWireV3.encode? block
 
+/-- The published leaves and artifact digests are hashed with
+    `Harness.nativeHasher` (HACL* C). The committed bytes are identical to
+    the pure Lean specification hasher's output; the source-file identity a
+    few lines below still uses the pure incremental `Sha256Stream`, which
+    has no streaming HACL* counterpart bound here. -/
 private def writeMerkle (path : String) (bytes : ByteArray) : IO Unit := do
-  let leaves := (chunksOf chunkBytes bytes).map L4Factoidal.Storage.BlockMerkle.leaf
+  let leaves := (chunksOf chunkBytes bytes).map
+    (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
   let proofBytes := ByteArray.mk (leaves.flatMap (fun value => value.data.toList) |>.toArray)
   IO.FS.writeBinFile (path ++ ".merkle") proofBytes
 
 private def artifactRef? (name : String) (bytes : ByteArray) : Option ArtifactRef := do
-  let chunked ← fromChunks? chunkBytes (chunksOf chunkBytes bytes)
-  some { key := { value := name }, bytes := bytes.size, sha256 := sha256 bytes, chunked := some chunked }
+  let chunked ← fromChunksWith? nativeHasher chunkBytes (chunksOf chunkBytes bytes)
+  some { key := { value := name }, bytes := bytes.size, sha256 := nativeSha256 bytes, chunked := some chunked }
 
 /-- Bounded first-pass information needed to preserve the reference packer's
     generated-blank-node and source-identity contracts. -/

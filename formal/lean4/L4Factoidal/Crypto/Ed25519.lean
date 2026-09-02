@@ -1,15 +1,25 @@
 /-
 L4Factoidal.Crypto.Ed25519 — the Ed25519 signature primitive, bound to
-HACL* through Lean's C FFI. THE LEAN TREE'S ONLY `@[extern]` FAMILY.
+HACL* through Lean's C FFI. THE FIRST MEMBER OF THE LEAN TREE'S
+`@[extern]` CRYPTO FAMILY, WHICH HAS TWO: these three Ed25519
+declarations and `sha256Hacl` (`Crypto/SHA2Native.lean`), all realised
+by `ffi/hacl_ed25519.c` over the same vendored HACL* C.
+(`Harness/PosixRangeIO.lean` also declares externs — `pread` and the
+atomic-write host adapters — but those are POSIX I/O, not crypto, and
+are a separate family outside the verified library.)
 
 Port of the three crypto `assume val`s of `formal/fstar/VC.DataIntegrity.fst`
 (`ed25519_secret_to_public`, `ed25519_sign`, `ed25519_verify`), which the
 F* tree realises over the same vendored HACL* C
 (`experimental_ocaml_glue/hacl_stubs.c`). The fourth `assume val` there,
-`hash_sha256_hex`, is NOT bound: SHA-256 is pure Lean (`Crypto/SHA2.lean`,
-FIPS 180-4 vectors as `#guard`s) under the crypto-policy skill's two-tier
-rule — hashes over public data may be pure Lean; anything touching a
-secret must be HACL*.
+`hash_sha256_hex`, is not bound HERE: SHA-256's specification is pure
+Lean (`Crypto/SHA2.lean`, FIPS 180-4 vectors as `#guard`s) under the
+crypto-policy skill's two-tier rule — hashes over public data may be
+pure Lean; anything touching a secret must be HACL*. `Crypto/
+SHA2Native.lean` adds a HACL*-backed SHA-256 ALONGSIDE it, for hosts
+that must hash tens of megabytes of public block bytes; the pure
+function stays the specification and stays what every `#guard` and
+every theorem evaluates.
 
 ## Trust statement
 

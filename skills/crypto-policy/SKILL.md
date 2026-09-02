@@ -133,14 +133,33 @@ Two-tier rule for `formal/lean4/` (analysis:
    the canonicalisation algorithm total and axiom-free end to end.
    Binding HACL*'s `Hacl_Hash_SHA2.c` via Lean FFI as well (for
    speed, and for bit-parity with the F* tree) is encouraged, never
-   required.
+   required. DONE for SHA-256 on 2026-09-02:
+   `formal/lean4/L4Factoidal/Crypto/SHA2Native.lean` declares
+   `@[extern "l4_hacl_sha256"] opaque sha256Hacl`, realised in
+   `ffi/hacl_ed25519.c`. It is ADDITIONAL to the pure Lean `sha256`,
+   which stays the specification and stays what every build-time
+   `#guard` and every theorem evaluates — a `#guard` runs in the Lean
+   interpreter, which cannot call an extern, so an
+   `@[implemented_by]` on `sha256` would delete the FIPS 180-4
+   build-time vectors. Consumers that want the fast one take a hasher
+   PARAMETER (`Storage/BlockMerkle.lean`'s `Hasher`, instantiated by
+   `pureHasher` in the library and `Harness.nativeHasher` at the
+   executable edge). The two are compared on the FIPS vectors, the
+   SHA-256 block/padding boundaries and a 1 MiB buffer by the
+   `sha256 differential` section of `lake exe l4vc-probe`, which is a
+   required step of `.github/workflows/verify-lean4.yml`.
 2. **Signatures and key agreement (Ed25519 for VC Data Integrity and
    did:key; anything touching a secret): HACL* via Lean FFI ONLY**
    (`@[extern]` over an `opaque` declaration, compiled through lake's
    `extern_lib`). Never a hand-written Lean implementation. This is
-   the Lean tree's single permitted `extern` family and must be
-   labelled as such in `formal/lean4/PORT_NOTES.md`'s assumption
-   report, exactly as rule #11 realisations are labelled in F*.
+   the FIRST member of the Lean tree's permitted crypto `extern`
+   family; the second is `sha256Hacl` under item 1, added 2026-09-02
+   for speed on public block bytes. Both must be labelled in
+   `formal/lean4/PORT_NOTES.md`'s assumption report, exactly as rule
+   #11 realisations are labelled in F*. Every member of the family is
+   HACL* through `ffi/hacl_ed25519.c`; a NEW primitive here needs the
+   same three things — a module-header trust statement, a shim with no
+   arithmetic, and a run-time vector check in `l4vc-probe`.
 3. **HACL* everywhere**: every Lean deployment target links the same
    HACL* — native via the C sources, browser AND non-web JS runtimes
    (Node, Deno) via HACL*'s official wasm build already vendored

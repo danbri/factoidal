@@ -19,7 +19,8 @@ package l4factoidal
 /-! ## Native executable-edge externs
 
 `L4Factoidal/Crypto/Ed25519.lean` declares three `opaque`s with
-`@[extern "l4_hacl_ed25519_*"]`. They are realised by
+`@[extern "l4_hacl_ed25519_*"]`, and `L4Factoidal/Crypto/SHA2Native.lean`
+one more with `@[extern "l4_hacl_sha256"]`. They are realised by
 `ffi/hacl_ed25519.c`, a length-checking shim over the vendored,
 F*/Low*-verified HACL* extracted C under `third_party/hacl/`
 (Apache-2.0; provenance in `third_party/hacl/PROVENANCE.md`). The three
@@ -81,6 +82,7 @@ extern_lib libl4blockhost pkg := do
 -- (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
 @[default_target] lean_lib Harness where globs :=
   #[`Harness.Common, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests,
+    `Harness.NativeHasher,
     `Harness.PosixRangeIO, `Harness.CompactedEpoch, `Harness.GenerationPointer, `Harness.ShardMerkleMaterialize, `Harness.ShardMerkleProfile, `Harness.ShardPublish,
     `Harness.IndexedBlockV3Materialize]
 

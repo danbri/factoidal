@@ -5,7 +5,7 @@ fixtures the F* tree's runners read, plus the W3C specification test
 vectors, and print score lines in the `bin/*-runner` grammar.
 
 This is a HARNESS, not part of the verified library: it does file I/O,
-calls the HACL* extern, and prints. Four sections, each one score line:
+calls the HACL* externs, and prints. Five sections, each one score line:
 
   1. `ed25519-rfc8032` — RFC 8032 §7.1 TEST 1, 2, 3, 1024 through the
      three `@[extern]` bindings. `#guard` cannot evaluate an extern, so
@@ -30,6 +30,14 @@ calls the HACL* extern, and prints. Four sections, each one score line:
      unresolvable verification method. The F* tree has no offline
      run of these vectors (its `vc_di_eddsa` score, 31 pass, is the
      live-endpoint mocha suite through the Node VC-API shim).
+  5. `sha256 differential` — the OTHER HACL* extern,
+     `Crypto/SHA2Native.lean`'s `sha256Hacl`, compared with the pure
+     Lean `Crypto.sha256` on the FIPS 180-4 vectors, the empty input,
+     the SHA-256 block and padding boundaries (1, 55, 56, 63, 64, 65
+     bytes) and a 1 MiB deterministic pseudo-random buffer. The storage
+     host passes the HACL* hasher into `Storage/BlockMerkle.lean` for
+     Merkle admission, so this equality is what makes that substitution
+     sound; the probe exits non-zero when it breaks.
 
 Usage: `lake exe l4vc-probe` from `formal/lean4`, or the built binary
 from anywhere — the repository root is found by walking up from the
@@ -37,6 +45,7 @@ working directory to the directory holding `CLAUDE.md`, as the F*
 runners do.
 -/
 import L4Factoidal.Crypto.Ed25519
+import L4Factoidal.Crypto.SHA2Native
 import L4Factoidal.VC.DataIntegrity
 import L4Factoidal.VC.Tests
 import L4Factoidal.Syntax.NQuads
@@ -420,6 +429,68 @@ def runSpecVectors (root : System.FilePath) : IO Tally := do
     (!verifyFromCanonical Ed25519.verify .sha256 pk (swapLines specCanonicalDoc 0 1) canonCfg specProofValue)
   t.get
 
+/-! ## 5. HACL* SHA-256 against the pure Lean specification
+
+`Crypto/SHA2Native.lean` binds `Hacl_Hash_SHA2_hash_256` so a storage
+host can admit tens of megabytes of public block bytes at C speed
+(`Storage/BlockMerkle.lean`'s `Hasher` parameter, `Harness.nativeHasher`).
+The pure Lean `Crypto.sha256` remains the specification and remains what
+every `#guard` and every theorem evaluates, so the two MUST agree on
+every input. An extern does not evaluate at compile time, so that
+agreement cannot be a `#guard`; this section is the measurement, and the
+probe exits non-zero when it fails. -/
+
+/-- `n` copies of one byte. -/
+private def repeatByte (n : Nat) (b : UInt8) : ByteArray :=
+  ByteArray.mk (Array.replicate n b)
+
+/-- Deterministic pseudo-random bytes from a 32-bit xorshift, so the large
+case is reproducible across runs and machines and carries none of the
+structure a repeated-byte buffer has. -/
+private def prngBytes (n : Nat) : ByteArray := Id.run do
+  let mut x : UInt32 := 0x9e3779b9
+  let mut out : Array UInt8 := #[]
+  for _ in [0:n] do
+    x := x ^^^ (x <<< 13)
+    x := x ^^^ (x >>> 17)
+    x := x ^^^ (x <<< 5)
+    out := out.push (UInt8.ofNat (x.toNat % 256))
+  return ByteArray.mk out
+
+/-- The FIPS 180-4 two-block SHA-256 example message (56 bytes). -/
+private def fips56 : String :=
+  "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+
+/-- The FIPS 180-4 two-block SHA-384/512 example message (112 bytes); a
+SHA-256 input of that length is still a useful multi-block case. -/
+private def fips112 : String :=
+  "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn" ++
+  "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
+
+def runSha256Native : IO Tally := do
+  IO.println "\n=== 5. SHA-256 via HACL* extern — differential against pure Lean ==="
+  let t ← IO.mkRef ({} : Tally)
+  let cases : List (String × ByteArray) :=
+    [ ("empty message", ByteArray.empty)
+    , ("FIPS 180-4 \"abc\"", "abc".toUTF8)
+    , ("FIPS 180-4 56-byte two-block example", fips56.toUTF8)
+    , ("FIPS 180-4 112-byte example", fips112.toUTF8)
+    , ("non-ASCII UTF-8 (\"Ünïcödé\")", "Ünïcödé".toUTF8)
+    , ("1 byte", repeatByte 1 0x61)
+    , ("55 bytes (last length with padding in one block)", repeatByte 55 0x61)
+    , ("56 bytes (padding forces a second block)", repeatByte 56 0x61)
+    , ("63 bytes", repeatByte 63 0x61)
+    , ("64 bytes (exactly one block)", repeatByte 64 0x61)
+    , ("65 bytes", repeatByte 65 0x61)
+    , ("FIPS 180-4 1,000,000 × 'a'", repeatByte 1000000 0x61)
+    , ("1 MiB deterministic pseudo-random buffer", prngBytes 1048576) ]
+  for (name, bytes) in cases do
+    let expected := sha256 bytes
+    let got := sha256Hacl bytes
+    check t s!"sha256Hacl == sha256 — {name} ({bytes.size} bytes)" (got == expected)
+      s!"pure {bytesToHex expected} vs HACL* {bytesToHex got}"
+  t.get
+
 /-! ## Main -/
 
 def main (_ : List String) : IO UInt32 := do
@@ -431,14 +502,16 @@ def main (_ : List String) : IO UInt32 := do
   let t2 ← runDidKey root
   let t3 ← runRoundtrip
   let t4 ← runSpecVectors root
+  let t5 ← runSha256Native
   IO.println "\n========================================"
   IO.println (scoreLine "ed25519-rfc8032" t1)
   IO.println (scoreLine "did:key" t2)
   IO.println (scoreLine "vc-dataintegrity-eddsa-rdfc-2022" t3)
   IO.println (scoreLine "vc-di-eddsa-spec-vectors" t4)
-  let total := { pass := t1.pass + t2.pass + t3.pass + t4.pass,
-                 fail := t1.fail + t2.fail + t3.fail + t4.fail,
-                 failures := t1.failures ++ t2.failures ++ t3.failures ++ t4.failures : Tally }
+  IO.println (scoreLine "sha256 differential" t5)
+  let total := { pass := t1.pass + t2.pass + t3.pass + t4.pass + t5.pass,
+                 fail := t1.fail + t2.fail + t3.fail + t4.fail + t5.fail,
+                 failures := t1.failures ++ t2.failures ++ t3.failures ++ t4.failures ++ t5.failures : Tally }
   IO.println (scoreLine "TOTAL" total)
   IO.println "========================================"
   pure (if total.fail == 0 then 0 else 1)

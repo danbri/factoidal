@@ -5,12 +5,21 @@
    of the verified block semantics and not available to the WASM target. -/
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.ChunkedArtifact
+import Harness.NativeHasher
 
 namespace Harness.PosixRangeIO
 
 open L4Factoidal.Storage.IndexedBlockWireV2
 open L4Factoidal.Storage.ChunkedArtifact
 open L4Factoidal.Storage.BlockMerkle
+
+/- Every chunk admission below hashes with `Harness.nativeHasher` (HACL*
+    `Hacl_Hash_SHA2_hash_256`) rather than the pure Lean specification
+    hash. The admitted bytes are identical either way — the two hashers
+    agree on every input, measured by `lake exe l4vc-probe` — and a full
+    scan of a 25 MB store was spending about half its wall clock inside the
+    pure `sha256`. The specification instance stays `pureHasher`; nothing
+    proved about `ChunkedArtifact` or `BlockMerkle` mentions the extern. -/
 
 /-- Read at an absolute file offset without changing any shared file cursor.
     The C implementation returns an empty array on open/read/short-read
@@ -87,10 +96,10 @@ def newVerifiedChunkCache (ref : Ref) : IO (IO.Ref VerifiedChunkCache) :=
 
 private def readVerifiedChunk? (path : String) (ref : Ref) (leaves : List Digest)
     (index : Nat) : IO (Option ByteArray) := do
-  match offset? ref index, expectedBytes? ref index, proof? leaves index with
+  match offset? ref index, expectedBytes? ref index, proofWith? nativeHasher leaves index with
   | some offset, some length, some proof =>
       match ← readRange? path { offset, length } with
-      | some chunk => if verifyChunk ref index chunk proof then pure (some chunk) else pure none
+      | some chunk => if verifyChunkWith nativeHasher ref index chunk proof then pure (some chunk) else pure none
       | none => pure none
   | _, _, _ => pure none
 
@@ -135,11 +144,11 @@ def readVerifiedSingleChunkRange? (path : String) (ref : Ref) (leaves : List Dig
   match singleChunkIndex? ref range with
   | none => pure none
   | some index =>
-      match offset? ref index, expectedBytes? ref index, proof? leaves index with
+      match offset? ref index, expectedBytes? ref index, proofWith? nativeHasher leaves index with
       | some offset, some length, some proof =>
           match ← readRange? path { offset, length } with
           | some chunk =>
-              if !verifyChunk ref index chunk proof then pure none
+              if !verifyChunkWith nativeHasher ref index chunk proof then pure none
               else
                 let localOffset := range.offset - offset
                 pure (some (chunk.extract localOffset (localOffset + range.length)))

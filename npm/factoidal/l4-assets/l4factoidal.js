@@ -37,7 +37,7 @@
 // bytes change.
 
 // Stamped by formal/lean4/Wasm/build-wasm.sh step 9 -- do not hand-edit.
-const WASM_VERSION = "2fd8cdc7603a";
+const WASM_VERSION = "4177624022c6";
 
 import createModule from './l4factoidal.mjs';
 
