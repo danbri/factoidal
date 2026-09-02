@@ -103,11 +103,19 @@ private def countAllPredicates (directory : System.FilePath) (manifest : Manifes
 private def finish (query : Query) (entries : List Entry) (predicates : List WfIri)
     (triples : List Triple) (counters : Counters) (delta : DeltaResolved)
     (mode : String := "ibk3-paged-merkle") : IO UInt32 := do
-  let dataset : DatasetBackend := { default := backendFor triples delta, named := [] }
+  let backend := backendFor triples delta
+  let dataset : DatasetBackend := { default := backend, named := [] }
+  -- §18.6: EXISTS / NOT EXISTS evaluate against the query's dataset, which
+  -- the backend runners read from `env.dataset`; the reference evaluator
+  -- sets it itself.  The dataset is the same base-plus-delta graph the
+  -- backend answers from (the CONSTRUCT arm below already reads it this
+  -- way), so an EXISTS sub-pattern sees exactly the materialised fragment.
+  let env : EvalEnv := { emptyEnv with
+    dataset := some { default := backendSearch backend patternBoundAll, named := [] } }
   let deltaMode := if deltaResolvedIsEmpty delta then "base" else "base-plus-delta"
   match query.form with
   | .select _ =>
-      match runSelectQueryBackendDataset emptyEnv query dataset with
+      match runSelectQueryBackendDataset env query dataset with
       | none => IO.eprintln "l4block-id-v3-query failed: query was not evaluated as SELECT"; return 1
       | some rows =>
           IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta={deltaMode} logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"

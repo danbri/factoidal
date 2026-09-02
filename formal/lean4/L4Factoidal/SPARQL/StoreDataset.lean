@@ -614,6 +614,25 @@ one row carrying the exact count. -/
 #guard (runSelectQueryBackendDataset {} (mkQuery .ask (.bgp [tpAll])) dsb1).isSome
         == false
 
+/-! §18.6 EXISTS / NOT EXISTS evaluate against `env.dataset`, which a
+caller of the backend runners must supply (the reference evaluator sets
+it itself).  The default graph holds `a p b` only, so NOT EXISTS of the
+reversed pattern keeps the row and EXISTS drops it.  Regression pin for
+2026-09-02: an environment without a dataset answered zero rows for the
+NOT EXISTS form. -/
+private def tpReversed : TriplePattern :=
+  { s := .var "o", p := .var "p", o := .var "s" }
+private def envWithDataset : EvalEnv :=
+  { dataset := some (materialiseDatasetBackend dsb1) }
+#guard (match runSelectQueryBackendDataset envWithDataset
+          (mkQuery (.select .all) (.filter (.notExistsPat (.bgp [tpReversed])) (.bgp [tpAll])))
+          dsb1 with
+        | some rows => rows.length | none => 99) == 1
+#guard (match runSelectQueryBackendDataset envWithDataset
+          (mkQuery (.select .all) (.filter (.existsPat (.bgp [tpReversed])) (.bgp [tpAll])))
+          dsb1 with
+        | some rows => rows.length | none => 99) == 0
+
 /-! The COTTAS dataset constructor makes one backend per named graph
 plus the default. -/
 #guard (cottasOnDiskDatasetBackend

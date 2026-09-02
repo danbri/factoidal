@@ -128,6 +128,22 @@ args "$TMP/q-ask.json" "$DATA" 'ASK { <http://e/a> <http://e/p> <http://e/b> }'
 check "queryDataset ask" queryDataset "$TMP/q-ask.json" \
   'r["ok"] is True and r["kind"] == "ask" and r["boolean"] is True'
 
+# §18.6 EXISTS / NOT EXISTS through the backend path: the data holds a p b
+# only, so NOT EXISTS of the reversed pattern keeps the row and EXISTS drops
+# it. Regression pin (2026-09-02): the backend environment carried no
+# dataset and FILTER NOT EXISTS answered zero rows.
+args "$TMP/q-not-exists.json" "$DATA" \
+  'SELECT ?s WHERE { ?s <http://e/p> ?o FILTER NOT EXISTS { ?o <http://e/p> ?s } }'
+check "queryDataset FILTER NOT EXISTS keeps the row" queryDataset "$TMP/q-not-exists.json" \
+  'r["ok"] is True and r["kind"] == "select"
+   and len(r["srj"]["results"]["bindings"]) == 1
+   and r["srj"]["results"]["bindings"][0]["s"]["value"] == "http://e/a"'
+
+args "$TMP/q-exists.json" "$DATA" \
+  'SELECT ?s WHERE { ?s <http://e/p> ?o FILTER EXISTS { ?o <http://e/p> ?s } }'
+check "queryDataset FILTER EXISTS drops the row" queryDataset "$TMP/q-exists.json" \
+  'r["ok"] is True and r["kind"] == "select" and len(r["srj"]["results"]["bindings"]) == 0'
+
 args "$TMP/q-construct.json" "$DATA" \
   'CONSTRUCT { ?s <http://e/q> ?o } WHERE { ?s <http://e/p> ?o }'
 check "queryDataset construct" queryDataset "$TMP/q-construct.json" \

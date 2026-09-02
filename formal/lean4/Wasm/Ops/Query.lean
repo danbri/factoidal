@@ -57,7 +57,15 @@ def queryParsedDatasetWith (ds : Dataset) (dsb : DatasetBackend) (sparql : Strin
     -- extension table as the native evaluator.  The core evaluator remains
     -- pure: unknown function IRIs still fail through `none`, while the
     -- registered `geof:` predicates are ordinary values in this environment.
-    let env : EvalEnv := { base := q.base, ext := L4Factoidal.Geo.extFns }
+    -- §18.6: EXISTS / NOT EXISTS inside a FILTER evaluate against the
+    -- query's dataset.  The reference evaluator sets `env.dataset` itself
+    -- (`evalSelect`); the backend runners do not, so the environment must
+    -- carry it here.  Without it `substituteExistentials` leaves the
+    -- EXISTS pattern in place and the filter drops every row (regression
+    -- found 2026-09-02 by tools/w3c-persisted-census.sh: FILTER NOT EXISTS
+    -- answered zero rows).  With no FROM clause (the only case the backend
+    -- path takes) the query's dataset is `ds` itself.
+    let env : EvalEnv := { base := q.base, ext := L4Factoidal.Geo.extFns, dataset := some ds }
     let backendEligible := q.dataset.isEmpty
     match q.form with
     | .ask =>
