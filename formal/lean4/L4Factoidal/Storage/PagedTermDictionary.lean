@@ -43,11 +43,11 @@ structure ByteRange where
   length : Nat
   deriving Repr, DecidableEq, Inhabited
 
-private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
-private def listOfByteArray (bytes : ByteArray) : List UInt8 := bytes.data.toList
-private def fitsU32 (n : Nat) : Bool := n < 4294967296
+def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
+def listOfByteArray (bytes : ByteArray) : List UInt8 := bytes.data.toList
+def fitsU32 (n : Nat) : Bool := n < 4294967296
 
-private def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
+def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   let b0 ← bytes[offset]?
   let b1 ← bytes[offset + 1]?
   let b2 ← bytes[offset + 2]?
@@ -60,21 +60,21 @@ private def at? : List α → Nat → Option α
   | term :: _, 0 => some term
   | _ :: rest, index + 1 => at? rest index
 
-private def pagesOf (pageTerms : Nat) : Nat → List Term → List (List Term)
+def pagesOf (pageTerms : Nat) : Nat → List Term → List (List Term)
   | 0, _ => []
   | _ + 1, [] => []
   | fuel + 1, terms => terms.take pageTerms :: pagesOf pageTerms fuel (terms.drop pageTerms)
 
-private def encodePages (terms : List Term) : List (List UInt8) :=
+def encodePages (terms : List Term) : List (List UInt8) :=
   (pagesOf defaultPageTerms terms.length terms).map (fun page => page.flatMap serializeTerm)
 
-private def directoryFor (pages : List (List UInt8)) : List PageEntry :=
+def directoryFor (pages : List (List UInt8)) : List PageEntry :=
   let (_, reversed) := pages.foldl (fun (state : Nat × List PageEntry) page =>
     let (offset, entries) := state
     (offset + page.length, { offset := offset, length := page.length } :: entries)) (0, [])
   reversed.reverse
 
-private def encodeDirectory (entry : PageEntry) : List UInt8 :=
+def encodeDirectory (entry : PageEntry) : List UInt8 :=
   writeU32LE (UInt32.ofNat entry.offset) ++ writeU32LE (UInt32.ofNat entry.length)
 
 def supported (terms : Array Term) : Bool :=
@@ -114,7 +114,7 @@ def directoryRange (header : Prefix) : ByteRange :=
 
 def pageAreaOffset (header : Prefix) : Nat := prefixBytes + header.pageCount * 8
 
-private def decodeDirectoryGo : Nat → ByteArray → Nat → List PageEntry → Option (List PageEntry)
+def decodeDirectoryGo : Nat → ByteArray → Nat → List PageEntry → Option (List PageEntry)
   | 0, _, _, reversed => some reversed.reverse
   | count + 1, bytes, offset, reversed => do
       let pageOffset ← readU32At? bytes offset
@@ -122,12 +122,12 @@ private def decodeDirectoryGo : Nat → ByteArray → Nat → List PageEntry →
       decodeDirectoryGo count bytes (offset + 8)
         ({ offset := pageOffset.toNat, length := length.toNat } :: reversed)
 
-private def directoryContiguous : List PageEntry → Nat → Bool
+def directoryContiguous : List PageEntry → Nat → Bool
   | [], _ => true
   | entry :: rest, expected =>
       entry.length > 0 && entry.offset == expected && directoryContiguous rest (expected + entry.length)
 
-private def directoryCovers (directory : List PageEntry) (total : Nat) : Bool :=
+def directoryCovers (directory : List PageEntry) (total : Nat) : Bool :=
   directory.foldl (fun expected entry => if entry.length > 0 && entry.offset == expected
     then expected + entry.length else total + 1) 0 == total
 
@@ -173,19 +173,19 @@ def pageRangesForTerms? (header : Prefix) (directory : List PageEntry)
     let entry ← at? directory page
     some { offset := pageAreaOffset header + entry.offset, length := entry.length }
 
-private def decodeTermsGo : Nat → List UInt8 → List Term → Option (List Term × List UInt8)
+def decodeTermsGo : Nat → List UInt8 → List Term → Option (List Term × List UInt8)
   | 0, bytes, reversed => some (reversed.reverse, bytes)
   | count + 1, bytes, reversed => do
       let (term, afterTerm) ← parseTerm bytes
       decodeTermsGo count afterTerm (term :: reversed)
 
-private def decodeTerms (count : Nat) (bytes : List UInt8) : Option (List Term × List UInt8) :=
+def decodeTerms (count : Nat) (bytes : List UInt8) : Option (List Term × List UInt8) :=
   decodeTermsGo count bytes []
 
 /-- Full decoding uses the declared page boundaries too, not merely one
     concatenated term stream. That makes malformed page lengths fail at the
     canonical admission boundary before a range reader can rely on them. -/
-private def decodePagesGo (header : Prefix) : Nat → List PageEntry → ByteArray → Nat → List Term → Option (List Term)
+def decodePagesGo (header : Prefix) : Nat → List PageEntry → ByteArray → Nat → List Term → Option (List Term)
   | _, [], bytes, offset, reversed => if offset == bytes.size then some reversed.reverse else none
   | page, entry :: rest, bytes, offset, reversed => do
       let current := bytes.extract offset (offset + entry.length)
@@ -195,7 +195,7 @@ private def decodePagesGo (header : Prefix) : Nat → List PageEntry → ByteArr
       let next := terms.foldl (fun acc term => term :: acc) reversed
       decodePagesGo header (page + 1) rest bytes (offset + entry.length) next
 
-private def decodePages? (header : Prefix) (page : Nat) (directory : List PageEntry)
+def decodePages? (header : Prefix) (page : Nat) (directory : List PageEntry)
     (bytes : ByteArray) : Option (List Term) :=
   decodePagesGo header page directory bytes 0 []
 
