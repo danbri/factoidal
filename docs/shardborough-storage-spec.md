@@ -735,7 +735,9 @@ standard. Beta requires at least:
    SRI2/OLI2, TLI1, SBM6, and Merkle range admission;
 3. a proved bridge from verified selected rows to the reference Lean SPARQL
    evaluator;
-4. a settled RDF 1.2 term codec and tagged GraphId/quad layout;
+4. a settled RDF 1.2 term codec and tagged GraphId/quad layout, and a
+   generation manifest that commits the blank-node scope of each source
+   partition instead of accepting a scope at query time (section 2.4.1);
 5. explicit semantic-context and provenance references for derived artifacts;
 6. identical-byte interoperability in at least two host paths;
 7. migration and feature-negotiation rules, including unknown-version refusal;
