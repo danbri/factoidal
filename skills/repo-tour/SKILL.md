@@ -1,13 +1,18 @@
 ---
 name: repo-tour
-description: Get oriented in the Factoidal repository layout. Use when starting work on a fresh clone, when asked "where does X live?", or when a doc references a path that's unfamiliar. Maps the dual nature of the project (verified F* spec is the product; everything else is plumbing or build artifacts).
+description: Get oriented in the Factoidal repository layout. Use when starting work on a fresh clone, when asked "where does X live?", or when a doc references a path that's unfamiliar. Maps the two formal trees (formal/fstar, the shipping engine; formal/lean4, the intended full-scope target) and the plumbing around them.
 ---
 
 # Factoidal — repository tour
 
-The product is the F\* spec. Everything else is plumbing for getting
-the F\* code into runnable form (extraction, compilation, tests) or
-project documentation. The directory layout makes that visible.
+The product is the system: an RDF/SPARQL engine whose interfaces are
+grounded in the W3C specifications through F\* and Lean 4 (CLAUDE.md,
+founding view). Two formal trees carry it: `formal/fstar/`, the shipping
+engine, and `formal/lean4/`, the Lean 4 port that is the intended
+full-scope target since 2026-08-29 and already the home of the persisted
+Shardborough store and the WASM module. Everything else is plumbing for
+getting the formal code into runnable form (extraction, compilation,
+tests) or project documentation. The directory layout makes that visible.
 
 ```
 factoidal/
@@ -27,6 +32,12 @@ factoidal/
 │   │   ├── experimental_ocaml_glue/    Layer-2 unwind targets (rule #11 violators)
 │   │   ├── krml-output/          F* → .krml output (gitignored, C-build pilot)
 │   │   └── c-output/             krml → .c output (gitignored, future)
+│   ├── lean4/                    LEAN 4 PORT (self-contained Lake project; run lake only here)
+│   │   ├── L4Factoidal/          the library: RDF, Syntax, SPARQL, RDFS, OWL, SHACL, ...,
+│   │   │   └── Storage/          Shardborough codecs + *Theorems.lean round-trip proofs
+│   │   ├── Harness/              CLIs: l4w3c, l4factoidal, l4block-* (pack/activate/query/...)
+│   │   ├── Wasm/                 the ONE wasm module: Ops/, Dispatch.lean, build-wasm.sh, native-smoke.sh
+│   │   └── .lake/build/bin/      built binaries (gitignored)
 │   ├── roaring/                  Roaring bitmap F* port
 │   │   ├── src/
 │   │   │   ├── Spec.fst              abstract roaring set

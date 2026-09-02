@@ -607,6 +607,12 @@ session.
   review the Lean-generated RDF block engine: landed Cottas/SPARQL reuse,
   term and graph IDs, block denotation, physical plans, PushIR, bitmap
   indexes, PostgreSQL/TiKV adapters, and refinement gates.
+- [`shardborough-storage`](skills/shardborough-storage/SKILL.md) — operate
+  the Lean persisted store: pack → activate → query the collection root →
+  update through the delta log → compact, the `l4block-*` CLI table, what a
+  generation directory contains, the corpus ladder and census tools, and
+  the rules for changing a format (encoder admission equals decoder
+  admission; byte change means new wire version).
 - [`lean4-performance`](skills/lean4-performance/SKILL.md) — improve
   performance-sensitive Lean 4 code while preserving total semantics,
   observable order, and the executable proof boundaries: parsers, block

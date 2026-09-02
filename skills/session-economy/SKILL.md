@@ -161,3 +161,18 @@ file. Standing rule: review output is untrusted input — verify
 spec-level claims against the specs and code-level claims against the
 tree BEFORE they become work orders; a claim that survives only on the
 reviewer's citation does not enter a brief.
+
+## Cross-agent sync file (2026-08-31 to 2026-09-02)
+
+When two agents work the same checkout (Codex and Claude did from
+2026-08-31), the shared record is `tmp_podman_codexfablesync.txt` at the
+repository root: untracked, append-only, one message per entry with a
+mail-style header (`From:`, `Date:`, `Subject:`), plain English so the
+owner can follow it. Verify an append landed (`tail`) before relying on
+it. Reviews are written there in full; landings are recorded there with
+the commit hash and the gate results. From 2026-09-01 the owner's rule was
+"all shipping mediated by Codex" (Codex made every commit); on 2026-09-02
+the owner suspended Codex ("You have the reins!") and Claude commits and
+pushes directly, still recording each landing in the file so a returning
+Codex can resume cold. Commit attribution stays iron rule 13 (human only)
+whichever agent lands the change.

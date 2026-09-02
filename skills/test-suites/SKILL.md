@@ -168,8 +168,12 @@ keeps the old path as a fallback):
   context documents ship as local fixture files; read
   `docs/designissues/2026-07-04-jsonld-program-lessons.md` before
   touching this program.
-- `shex/`, `csvw/`, `vc/`, `did/`, `rml/` — vendored for offline use,
-  **not yet wired** to any runner.
+- `shex/`, `csvw/`, `vc/`, `did/`, `rml/` — vendored for offline use.
+  `csvw/`, `vc/` and `did/` have runners in both trees (F\* `csvw_runner`
+  / `vc_runner`; Lean `Harness/CsvwJsonRun`, `CsvwRdfRun`, `l4vc-probe`);
+  `shex/` has a Lean module and its runner status is in the
+  `using-factoidal` capability matrix; `rml/` has no runner. (The earlier
+  "not yet wired to any runner" line was stale by 2026-09-02.)
 - `third_party/data/ukparliament/` — perf-bench corpus (see
   `perf-benchmarking`).
 
@@ -265,6 +269,7 @@ of itself** (we already commit binaries, so a
 |---|---|
 | `w3c-tests.yml` | Heavy pipeline on main lines + nightly cron: debounced, dual-platform shadow builds to `bin/ci-<platform>/`, full suites, commits dashboard artifacts |
 | `beyond-w3c.yml` | Per-PR native/JS parity over demo queries |
+| `verify-lean4.yml` | Lean 4 full-corpus gate: `lake build` of the whole tree (every `#guard`, every theorem) on each push to the main line; see `docs/20260831-lean-ci-gate.md` |
 | `ukparliament-bench.yml` | Perf-regression gate (see `perf-benchmarking`) |
 | `check-derived-files.yml`, `check-fstar-purity.yml`, `check-ocaml-output-cleanliness.yml`, `check-extraction.yml` | Boundary/extraction discipline gates (see `ocaml-boundary`) |
 | `dashboard-refresh.yml`, `deploy-pages.yml` | Publishing (see `site-and-dashboard`) |

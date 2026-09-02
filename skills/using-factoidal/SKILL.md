@@ -135,6 +135,25 @@ stays the ABI smoke driver `Wasm/native-smoke.sh` pins — build it
 from source per §4 above. `l4factoidal`'s own smoke suite is
 `Wasm/cli-smoke.sh`.
 
+### 6. `l4block-*` — the Lean persisted store (Shardborough)
+
+Requires the Lean toolchain (`cd formal/lean4 && lake build`). Five
+commands cover the lifecycle; every one was run on 2026-09-02 on a
+6,455-triple Turtle file:
+
+```bash
+B=formal/lean4/.lake/build/bin
+$B/l4block-shard-pack INPUT.ttl COLL/gen-1 ibk3      # immutable generation
+$B/l4block-shard-activate COLL gen-1                 # verify, then CURRENT=gen-1
+$B/l4block-id-v3-query COLL --query 'SELECT ...'     # query the collection ROOT
+$B/l4block-delta-log COLL --update 'INSERT DATA {...}'   # durable delta, visible at once
+$B/l4block-shard-compact COLL/gen-1 COLL/gen-2 && $B/l4block-shard-activate COLL gen-2
+```
+
+Querying a generation directory instead of the root is refused ("SBM5 and
+later require an activated collection root"). Full manual, directory
+contents, the other CLIs and the format rules: `skills/shardborough-storage`.
+
 ## Result conventions (both flavours)
 
 - **JSON envelope.** The engine ABIs (F\* npm entry and the Lean

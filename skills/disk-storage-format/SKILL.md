@@ -5,6 +5,14 @@ description: How Factoidal stores RDF data on disk — the COTTAS/Parquet base f
 
 # Disk storage format
 
+**Scope note (2026-09-02).** This skill describes the F\* tree's COTTAS
+store. The Lean 4 tree's persisted store, the Shardborough family (IBK3,
+PTD1, SRI2/OLI2, TLI1, SBM6, DLOG, CURRENT), is documented in
+[`skills/shardborough-storage`](../shardborough-storage/SKILL.md) and
+specified in `docs/shardborough-storage-spec.md`; the Lean tree is the
+intended full-scope target (CLAUDE.md, 2026-08-29), so read that first for
+new storage work.
+
 Factoidal's on-disk RDF store is a **read-optimized Parquet base file**
 (COTTAS format) plus a growing set of **companion files**: eager
 sidecars that make bound-term queries fast without decoding the whole

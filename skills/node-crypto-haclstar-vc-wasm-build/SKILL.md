@@ -136,7 +136,8 @@ the source, rebuild the bundle fresh (hazard #28):
    rebuild (the `JS_NEEDS_REBUILD` guard skips unchanged targets — see
    hazard #28). Confirm js_of_ocaml actually re-ran the npm-entry target.
 4. Gate: `vc-crypto.test.js` green + `node --test tests/hub/*.mjs` still
-   181/0 (a broken bundle breaks every hub cell).
+   green — 181 pass, 0 fail at the time of writing; 408 pass, 0 fail
+   (out of 409) on 2026-09-02 (a broken bundle breaks every hub cell).
 
 ## The other wasm route (don't confuse them)
 
