@@ -70,6 +70,32 @@ returns 9,117 rows in 2.4 s through the subject-join path (4 shards,
   the fragment. A native LeftJoin arm with its refinement proof is the next
   engine-side step (`L4Factoidal/SPARQL/StoreDataset.lean`).
 
+## Rung 2.5: the whole life-science extract, 1,290,077 triples
+
+All twelve Turtle files of `examples/wikidata/subsets/lifesci-kgx/data/`
+concatenated (31,603,120 bytes), through the same path, measured 22:25 with
+nothing else running.
+
+| Step | Result |
+| --- | --- |
+| Pack (`ibk3`) | 52 blocks over 26 predicates, 35.8 s (36,000 triples/s) |
+| Activate | 50,744,391 logical bytes verified, 45.5 s |
+| Generation on disk | 103 MB |
+
+| # | Query shape | Time | Path |
+| --- | --- | --- | --- |
+| q1 | `COUNT(*)` over everything | 10.3 s | full read of 52 blocks (50.7 MB) |
+| q3 | subject point lookup, unbound predicate | 0.20 s | TLI1/SRI2 probe of all 52 blocks |
+| q4 | two-pattern join P684/P682 | 0.05 s | subject join, 6 shards |
+| q5 | `GROUP BY ?p` with counts | 0.66 s | per-predicate counts, 52 blocks |
+| q6 | OPTIONAL + FILTER | 0.36 s | 2 predicates, 6 shards, hash LeftJoin |
+| s1 | `?s P684 ?o LIMIT 10` | 0.02 s | bounded prefix scan |
+
+The selective paths scale with the number of blocks probed (q3: 13 to 52
+blocks, 0.12 s to 0.20 s), not with the triple count. The two costs that
+scale with bytes are activation (one full verification and index
+recomputation per generation, 45 s for 51 MB) and the whole-store count.
+
 ## Status
 
 - Planner fixes for q3 and q6: landed (commit 82d2f530e; the "after" column

@@ -72,6 +72,7 @@ model, Factoidal API, and test contract.
   <li><a href="./49-ai-for-local-kg/">AI beside a local knowledge graph</a> — an optional browser-AI proposal over the life-sciences graph profile: check availability, ask a question, inspect read-only SPARQL, then choose whether to run it in Shardborough (sparql)</li>
   <li><a href="./50-shardborough-life-sciences/">Shardborough: compose a local graph neighbourhood</a> — query 43,103 Wikidata life-sciences triples from twelve committed IBK3 blocks: each query fetches only the predicate blocks it names, verifies their SHA-256, decodes them with the Lean WebAssembly block worker, and runs cross-graph SPARQL in the browser (wikidata)</li>
   <li><a href="./51-query-shardborough-blocks-in-browser/">Three blocks, one SPARQL query</a> — fetch three current IBK3 artifacts, verify their published identities, inspect their actual byte layout, then run either an editable join or a query over all 13 decoded triples through the Lean WebAssembly runtime (sparql)</li>
+  <li><a href="./52-persisted-store-on-your-laptop/">The persisted store on your laptop: what a query costs</a> — recorded 2026-09-02: 888,949 and 1,290,077 Wikidata life-sciences triples packed into IBK3 generations and queried through the Lean native harness in under a second per query, with the theorems and checks each number rests on</li>
 </ul>
 
 See also: the <a href="../perf/">performance hub</a> — measured
