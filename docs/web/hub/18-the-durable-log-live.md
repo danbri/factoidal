@@ -45,6 +45,7 @@ try {
   const before = await fn.parse(ttl, { format: "turtle" });
 
   const addCarol = `
+    # Add a name for Carol.
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     INSERT DATA { <http://example.org/carol> foaf:name "Carol" . }
   `;
@@ -52,7 +53,9 @@ try {
 
   const rows = await fn.query(
     after,
-    "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
+    `# Every foaf:name in the updated graph, in alphabetical order, to show
+# that Carol is now present.
+PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name`
   );
 
   return {
@@ -94,7 +97,9 @@ try {
   const handle = await Factoidal.deltaLogOpen("factoidal-hub-post18-lifecycle");
   const result = await Factoidal.deltaLogAppend(
     handle,
-    'INSERT DATA { <http://example.org/dana> <http://xmlns.com/foaf/0.1/name> "Dana" . }'
+    `# Add one triple giving ex:dana the foaf:name "Dana", as a durable
+# delta-log entry rather than an in-memory update.
+INSERT DATA { <http://example.org/dana> <http://xmlns.com/foaf/0.1/name> "Dana" . }`
   );
   return {
     available: true,
@@ -182,9 +187,12 @@ try {
   const handle = await Factoidal.deltaLogOpen(dbName);
 
   await Factoidal.deltaLogAppend(handle,
-    'INSERT DATA { <http://example.org/eve> <http://xmlns.com/foaf/0.1/name> "Eve" . }');
+    `# First delta entry: ex:eve has foaf:name "Eve". This entry stays intact.
+INSERT DATA { <http://example.org/eve> <http://xmlns.com/foaf/0.1/name> "Eve" . }`);
   await Factoidal.deltaLogAppend(handle,
-    'INSERT DATA { <http://example.org/frank> <http://xmlns.com/foaf/0.1/name> "Frank" . }');
+    `# Second delta entry: ex:frank has foaf:name "Frank". This is the entry
+# the torn-write test corrupts below.
+INSERT DATA { <http://example.org/frank> <http://xmlns.com/foaf/0.1/name> "Frank" . }`);
 
   const beforeCorrupt = await Factoidal.deltaLogMerge(handle, "");
   const corrupted = await Factoidal._deltaLogCorruptLastForTest(handle);

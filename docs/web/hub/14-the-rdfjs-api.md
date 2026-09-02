@@ -129,7 +129,8 @@ const nquads = quads.map(quadToNQuads).join("");
 const dataset = await fn.parse(nquads, { format: "nquads" });
 const rows = await fn.query(
   dataset,
-  "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name"
+  `# Every foaf:name in the graph, in alphabetical order.
+PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name`
 );
 return pretty(rows);
 ```
@@ -158,7 +159,8 @@ const c = namedNode("http://example.org/bob");
 
 const nquads = "<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .\n";
 const dataset = await fn.parse(nquads, { format: "nquads" });
-const rows = await fn.query(dataset, "SELECT ?o WHERE { ?s ?p ?o }");
+const rows = await fn.query(dataset, `# The object of every triple, to get one term back from the engine.
+SELECT ?o WHERE { ?s ?p ?o }`);
 const queriedTerm = rows[0].get("o");
 
 return pretty({

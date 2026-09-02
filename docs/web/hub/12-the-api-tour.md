@@ -57,7 +57,8 @@ const turtle = `
 const dataset = await fn.parse(turtle);
 const rows = await fn.query(
   dataset,
-  "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name"
+  `# Every foaf:name in the graph, in alphabetical order.
+PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?p foaf:name ?name } ORDER BY ?name`
 );
 return rows.map((row) => row.get("name").value);
 ```

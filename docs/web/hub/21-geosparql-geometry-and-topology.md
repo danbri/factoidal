@@ -112,12 +112,14 @@ cross-product of cities and areas:
 
 ```observable-js
 const dataset = await fn.parse(GEO_TTL);
-const rows = await fn.query(dataset, `
+const rows = await fn.query(dataset, `# Which city sits inside which area box: cross product of cities and
+# areas, kept only where the city's point is sfWithin the area's polygon.
   PREFIX ex:   <http://example.org/>
   PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
   SELECT ?cityName ?areaName WHERE {
     ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
     ?area a ex:Area ; ex:name ?areaName ; ex:hasGeom ?ageom .
+    # keep the pair only if the city point lies within the area polygon
     FILTER(geof:sfWithin(?cgeom, ?ageom))
   } ORDER BY ?cityName`);
 return pretty(rows);
@@ -145,9 +147,11 @@ borough polygon and every landmark point to a `geo:wktLiteral`,
 `fn.parse`s the result, and runs **one** SPARQL query:
 
 ```sparql
+# Which landmark points are sfWithin which borough polygon.
 SELECT ?boroughName ?landmarkName WHERE {
   ?borough   a ex:Borough  ; ex:name ?boroughName  ; ex:hasGeom ?bgeom .
   ?landmark  a ex:Landmark ; ex:name ?landmarkName ; ex:hasGeom ?lgeom .
+  # keep the pair only if the landmark point lies within the borough polygon
   FILTER(geof:sfWithin(?lgeom, ?bgeom))
 }
 ```
@@ -308,12 +312,14 @@ try {
   // (boroughName, landmarkName) pair the engine decided sfWithin. A
   // borough with zero rows here just never appears as a key below --
   // groupBy defaults its count to 0, not a re-derivation of anything.
-  const withinRows = await fn.query(dataset, `
+  const withinRows = await fn.query(dataset, `# Which landmark points are sfWithin which borough polygon, over the
+# real 33-borough dataset -- the query that drives the choropleth fill.
     PREFIX ex:   <http://example.org/>
     PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
     SELECT ?boroughName ?landmarkName WHERE {
       ?borough  a ex:Borough  ; ex:name ?boroughName  ; ex:hasGeom ?bgeom .
       ?landmark a ex:Landmark ; ex:name ?landmarkName ; ex:hasGeom ?lgeom .
+      # keep the pair only if the landmark point lies within the borough polygon
       FILTER(geof:sfWithin(?lgeom, ?bgeom))
     } ORDER BY ?boroughName ?landmarkName`);
   const landmarksByBorough = new Map();
@@ -328,12 +334,14 @@ try {
   // linestring/multipolygon sfIntersects, decomposed component-wise
   // exactly like point/multipolygon sfWithin above. Folded into the
   // popup as a bonus fact, not into the fill color.
-  const thamesRows = await fn.query(dataset, `
+  const thamesRows = await fn.query(dataset, `# Which boroughs the Thames LineString sfIntersects -- feeds the
+# per-borough popup's second, independent fact.
     PREFIX ex:   <http://example.org/>
     PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
     SELECT ?boroughName WHERE {
       ex:Thames ex:hasGeom ?rgeom .
       ?borough a ex:Borough ; ex:name ?boroughName ; ex:hasGeom ?bgeom .
+      # keep the borough only if it shares a point with the Thames line
       FILTER(geof:sfIntersects(?rgeom, ?bgeom))
     }`);
   const thamesBoroughs = new Set(thamesRows.map((r) => r.get("boroughName").value));
@@ -482,12 +490,14 @@ box":
 
 ```observable-js
 const dataset = await fn.parse(GEO_TTL);
-const rows = await fn.query(dataset, `
+const rows = await fn.query(dataset, `# Which cities lie outside the Greater London box: kept only where the
+# city's point shares no point at all with the area polygon.
   PREFIX ex:   <http://example.org/>
   PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
   SELECT ?cityName WHERE {
     ex:GreaterLondonArea ex:hasGeom ?ageom .
     ?city a ex:City ; ex:name ?cityName ; ex:hasGeom ?cgeom .
+    # keep the city only if it shares no point with the area polygon
     FILTER(geof:sfDisjoint(?cgeom, ?ageom))
   } ORDER BY ?cityName`);
 return pretty(rows);
@@ -519,7 +529,8 @@ at exactly zero:
 
 ```observable-js
 const dataset = await fn.parse(GEO_TTL);
-const rows = await fn.query(dataset, `
+const rows = await fn.query(dataset, `# Cities ordered by distance from London, computed as an exact squared
+# distance with one disclosed floored square root.
   PREFIX ex:   <http://example.org/>
   PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
   SELECT ?cityName (geof:distance(?g, ?londonGeom) AS ?d) WHERE {
@@ -554,7 +565,7 @@ const ENVELOPE_TTL = `
     ex:hasGeom "POLYGON((-0.5 51.3, 0.3 51.3, 0.3 51.7, -0.5 51.7, -0.5 51.3))"^^geo:wktLiteral .
 `;
 const dataset = await fn.parse(ENVELOPE_TTL);
-const rows = await fn.query(dataset, `
+const rows = await fn.query(dataset, `# Axis-aligned bounding box of each named geometry, as a POLYGON.
   PREFIX ex:   <http://example.org/>
   PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
   SELECT ?name (geof:envelope(?g) AS ?env) WHERE {
@@ -591,7 +602,7 @@ const BOX_TTL = `
 `;
 const dataset = await fn.parse(BOX_TTL);
 async function rel(pred, node) {
-  return fn.query(dataset, `
+  return fn.query(dataset, `# Does the named point stand in the given Simple Features relation to the box.
     PREFIX ex:   <http://example.org/>
     PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
     ASK { ex:box ex:hasGeom ?b . ${node} ex:hasGeom ?p . FILTER(geof:${pred}(?p, ?b)) }`);

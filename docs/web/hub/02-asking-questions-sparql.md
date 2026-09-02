@@ -73,9 +73,13 @@ dataset = fn.parse(ttl)
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Every value Douglas Adams (Q42) points at, with an rdfs:label
+  # where one exists.
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   SELECT ?label WHERE {
     <http://www.wikidata.org/entity/Q42> ?p ?o .
+    # ?o may or may not have a label; OPTIONAL keeps the row either way,
+    # leaving ?label unbound when there is none.
     OPTIONAL { ?o rdfs:label ?label }
   }
 `);
@@ -93,6 +97,7 @@ A yes/no question — does this fact exist:
 
 ```observable-js
 return await fn.query(dataset, `
+  # Is Douglas Adams' occupation (P106) writer (Q36180)?
   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   ASK { <http://www.wikidata.org/entity/Q42> wdt:P106 <http://www.wikidata.org/entity/Q36180> }
 `);
@@ -107,6 +112,8 @@ occupation." Alternation (`|`), sequence (`/`), and transitive closure
 
 ```observable-js
 const types = await fn.query(dataset, `
+  # Everything Douglas Adams is either instance-of (P31) or has as
+  # occupation (P106); the | alternation tries both properties.
   PREFIX wd:  <http://www.wikidata.org/entity/>
   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   SELECT ?type WHERE { wd:Q42 (wdt:P31|wdt:P106) ?type }
@@ -142,10 +149,14 @@ musicDataset = fn.parse(musicTurtle)
 
 ```observable-js
 const performers = await fn.query(musicDataset, `
+  # Each album's title paired with the title of every musician in the
+  # band that made it, without naming the band itself.
   PREFIX ex: <http://example.org/music/>
   PREFIX dc: <http://purl.org/dc/terms/>
   PREFIX mo: <http://purl.org/ontology/mo/>
   SELECT ?album ?musician WHERE {
+    # ex:by/ex:member is a two-hop path: album to its band, band to
+    # each member; ?a's band is never bound to a variable of its own.
     ?a a mo:Album ; dc:title ?album ; ex:by/ex:member ?m .
     ?m dc:title ?musician .
   }
@@ -160,6 +171,8 @@ SELECT returns bindings; CONSTRUCT returns a new graph:
 
 ```observable-js
 const derived = await fn.query(dataset, `
+  # Build a new triple linking each person straight to their
+  # occupation's label, skipping the intermediate occupation node.
   PREFIX wdt:  <http://www.wikidata.org/prop/direct/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   CONSTRUCT { ?person <http://example.org/hasOccupationLabel> ?label }

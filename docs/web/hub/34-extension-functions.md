@@ -50,12 +50,15 @@ variable comes out unbound; in `FILTER` position the row drops.
 
 ```observable-js
 const bindRows = await fn.query(dataset, `
+  # An unregistered extension function called in BIND: the error leaves
+  # ?x unbound rather than failing the query.
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s ?x WHERE {
     ?s <http://example.org/age> ?a .
     BIND(fn:noSuchFunction(?a) AS ?x)
   }`);
 const filterRows = await fn.query(dataset, `
+  # The same unregistered function in FILTER: the error drops the row.
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s WHERE {
     ?s <http://example.org/age> ?a .
@@ -82,6 +85,7 @@ await fn.registerExtensionFunction(
   ([age]) => Number(age.value) >= 18
 );
 const rows = await fn.query(dataset, `
+  # fn:isAdult computes age >= 18; only rows where it holds survive the FILTER.
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s WHERE {
     ?s <http://example.org/age> ?a .
@@ -111,6 +115,8 @@ await fn.registerExtensionFunction(
   }
 );
 const rows = await fn.query(dataset, `
+  # fn:category classifies age as "adult" or "child"; the async function
+  # must resolve before ?c gets its bound value.
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s ?c WHERE {
     ?s <http://example.org/age> ?a .
@@ -142,6 +148,7 @@ await fn.registerExtensionFunction(
   ([a, b]) => instance.exports.add(Number(a.value), Number(b.value))
 );
 const rows = await fn.query(dataset, `
+  # fn:wasmAdd adds 100 to each ?a, computed inside a WebAssembly instance.
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s (fn:wasmAdd(?a, 100) AS ?plus100) WHERE {
     ?s <http://example.org/age> ?a .
@@ -180,6 +187,7 @@ await fn.registerExtensionFunction(
   }
 );
 const rows = await fn.query(dataset, `
+  # fn:sigmoid computes the F*-verified sigmoid of ?a / 10 for each subject.
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s (fn:sigmoid(?a / 10) AS ?score) WHERE {
     ?s <http://example.org/age> ?a .

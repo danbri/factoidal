@@ -30,7 +30,8 @@ notebookDataset = fn.parse(notebookTurtle)
 ```
 
 ```observable-js
-const rows = await fn.query(notebookDataset, 'SELECT ?name WHERE { ?s <http://example.org/name> ?name }');
+const rows = await fn.query(notebookDataset, `# The ex:name of every subject in the dataset declared by the cell above.
+SELECT ?name WHERE { ?s <http://example.org/name> ?name }`);
 return pretty(rows);
 ```
 

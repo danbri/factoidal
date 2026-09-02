@@ -134,6 +134,8 @@ spaces, `Z10096` reads the result backwards:
 ```observable-js
 wikifn;
 const rows = await fn.query(dataset, `
+  # For each waterway's phrase: Z10052 removes spaces, then Z10096
+  # checks whether the result reads the same backwards.
   PREFIX :   <https://example.org/waterway#>
   PREFIX fn: <https://wikifunctions.org/fn#>
   SELECT ?name ?phrase ?palindrome WHERE {
@@ -161,6 +163,8 @@ all — four of the six:
 ```observable-js
 wikifn;
 const rows = await fn.query(dataset, `
+  # Same space-stripping-then-palindrome-check, as a FILTER: only
+  # waterways whose phrase survives it are returned.
   PREFIX :   <https://example.org/waterway#>
   PREFIX fn: <https://wikifunctions.org/fn#>
   SELECT ?name ?country ?phrase WHERE {
@@ -183,6 +187,9 @@ setup cell's `interpreted` list above says so in so many words:
 ```observable-js
 wikifn;
 const rows = await fn.query(dataset, `
+  # Three Wikifunctions in one query: Z11040 counts the letters of the
+  # space-stripped phrase, Z10627 ROT13-encodes the waterway's name,
+  # and Z10096 checks the palindrome as before.
   PREFIX :   <https://example.org/waterway#>
   PREFIX fn: <https://wikifunctions.org/fn#>
   SELECT ?name ?letters ?rot13 ?palindrome WHERE {

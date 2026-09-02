@@ -75,9 +75,11 @@ they know — a `COUNT` grouped by name:
 
 ```observable-js
 results = fn.query(graph, `
+  # Number of people each person knows, grouped by name.
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
   SELECT ?name (COUNT(?friend) AS ?friends) WHERE {
     ?p foaf:name ?name .
+    # OPTIONAL: a person with no foaf:knows edges still gets a row, with friends = 0.
     OPTIONAL { ?p foaf:knows ?friend }
   } GROUP BY ?name ORDER BY DESC(?friends) ?name
 `)

@@ -33,10 +33,14 @@ input that must be parsed by this current browser engine.
 
 ```observable-js
 lifeSciQuery = `
+# Sequence variants located on any human chromosome: one graph
+# supplies the chromosomes, the other the variants, joined on ?chrom.
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd:  <http://www.wikidata.org/entity/>
 SELECT ?variant ?chrom WHERE {
+  # ?chrom is an instance of (P31) human chromosome (Q37748)
   GRAPH <urn:kgx:chromosome>       { ?chrom wdt:P31 wd:Q37748 }
+  # ?variant has chromosome (P1057) ?chrom
   GRAPH <urn:kgx:sequence_variant> { ?variant wdt:P1057 ?chrom }
 }
 LIMIT 20`

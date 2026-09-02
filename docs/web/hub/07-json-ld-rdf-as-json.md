@@ -144,6 +144,7 @@ const nquads = result.nquads;
 
 const reparsed = await fn.parse(nquads, { format: "nquads" });
 const rows = await fn.query(reparsed, `
+  # Name and job title for every person, from the N-Quads produced above.
   PREFIX schema: <http://schema.org/>
   SELECT ?name ?title WHERE {
     ?person schema:name ?name ; schema:jobTitle ?title .

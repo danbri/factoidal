@@ -91,6 +91,7 @@ binds `?s` to each subject that has a matching one:
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Subjects with any literal containing "panel", regardless of predicate.
   PREFIX text: <http://jena.apache.org/text#>
   SELECT ?s WHERE { ?s text:query "panel" }
 `);
@@ -111,6 +112,7 @@ both words) but drops `battery` — its label "Battery storage panel" has
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Subjects with a literal containing both "solar" and "panel" (AND, not phrase match).
   PREFIX text: <http://jena.apache.org/text#>
   SELECT ?s WHERE { ?s text:query "solar panel" }
 `);
@@ -131,6 +133,8 @@ literals reached by `rdfs:label` count. That drops `controlpanel` — its
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Subjects whose rdfs:label (only) contains "panel"; the property in
+  # the argument list restricts which literals are searched.
   PREFIX text: <http://jena.apache.org/text#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   SELECT ?s WHERE { ?s text:query (rdfs:label "panel") }
@@ -150,6 +154,8 @@ so the thing to assert is the count, not the identities:
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Same rdfs:label search as above, capped at 2 matches (dataset
+  # order, since text:query makes no relevance-ranking claim).
   PREFIX text: <http://jena.apache.org/text#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   SELECT ?s WHERE { ?s text:query (rdfs:label "panel" 2) }
@@ -169,6 +175,7 @@ rows, not an error:
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # A term no literal contains: zero matches, not an error.
   PREFIX text: <http://jena.apache.org/text#>
   SELECT ?s WHERE { ?s text:query "zzzznonexistentterm" }
 `);
@@ -187,6 +194,8 @@ while keeping the three active matches:
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Subjects matching the full-text search AND with ex:status "active";
+  # the magic predicate joins with an ordinary triple pattern on ?s.
   PREFIX text: <http://jena.apache.org/text#>
   PREFIX ex: <http://example.org/>
   SELECT ?s WHERE {

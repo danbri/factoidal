@@ -122,7 +122,8 @@ hypotheses the decided theorem below carries.
 
 ```observable-js
 rhoDfAnswer = {
-  const q = `ASK { <${EX}bob> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <${EX}Person> }`;
+  const q = `# True if bob is asserted, or entailed, to be a Person.
+ASK { <${EX}bob> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <${EX}Person> }`;
   const before = await fn.l4Call("queryDataset", [statedGraph, q]);
   const closed = await fn.l4Call("rhoDfClosure", [statedGraph]);
   const after = await fn.l4Call("queryDataset", [closed.ntriples, q]);
@@ -201,7 +202,8 @@ do not.
 selfLoop = {
   const RDFS = "http://www.w3.org/2000/01/rdf-schema#";
   const premise = `<${EX}X> <${RDFS}subClassOf> <${EX}Y> .\n`;
-  const q = `ASK { <${EX}X> <${RDFS}subClassOf> <${EX}X> }`;
+  const q = `# True if X is asserted, or entailed, to be a subclass of itself.
+ASK { <${EX}X> <${RDFS}subClassOf> <${EX}X> }`;
   const rho = await fn.l4Call("rhoDfClosure", [premise]);
   const rdfs = await fn.l4Call("owlClosure", [premise, "RDFS"]);
   return {
@@ -259,7 +261,8 @@ owlRlAnswer = {
 <${EX}john> <${EX}hasWife> <${EX}mary> .
 `;
   const conclusion = `<${EX}mary> <${EX}hasHusband> <${EX}john> .\n`;
-  const q = `ASK { <${EX}mary> <${EX}hasHusband> <${EX}john> }`;
+  const q = `# True if mary is asserted, or entailed, to have husband john.
+ASK { <${EX}mary> <${EX}hasHusband> <${EX}john> }`;
   const closed = await fn.l4Call("owlClosure", [premise, "OWL-RL"]);
   const before = await fn.l4Call("queryDataset", [premise, q]);
   const after = await fn.l4Call("queryDataset", [closed.nquads, q]);

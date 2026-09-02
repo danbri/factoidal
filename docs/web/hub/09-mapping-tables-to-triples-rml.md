@@ -216,7 +216,8 @@ const mappingNQuads = (await fn.parse(MAPPING_TTL)).toNQuads();
 const result = await Factoidal.rmlMap(mappingNQuads, FRIENDS_CSV, "csv");
 
 const dataset = await fn.parse(result.nquads, { format: "nquads" });
-const rows = await fn.query(dataset, `
+const rows = await fn.query(dataset, `# List every person's name and age produced by the mapping,
+  # ordered by subject IRI.
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
   SELECT ?person ?name ?age WHERE { ?person foaf:name ?name ; foaf:age ?age }
   ORDER BY ?person

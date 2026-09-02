@@ -87,10 +87,14 @@ Both rows answer from endpoint A only:
 ```observable-js
 endpoints; // ordering: run after registration
 const rows = await fn.query(dataset, `
+  # Every local person, with a label looked up on endpoint A.
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   SELECT ?s ?label WHERE {
     ?s rdf:type :Person .
+    # LATERAL evaluates the inner pattern once per row of the outer
+    # pattern, substituting that row's ?s first; SERVICE sends the
+    # inner pattern to the named remote endpoint.
     LATERAL { SERVICE <https://svc-a.example/sparql> { ?s :label ?label } }
   }
   ORDER BY ?s
@@ -113,12 +117,18 @@ conflicting labels prove each row consulted only its own endpoint:
 ```observable-js
 endpoints;
 const rows = await fn.query(dataset, `
+  # Each person's label, looked up on the endpoint listed for that
+  # person, not a fixed endpoint for every row.
   PREFIX : <https://example.org/>
   SELECT ?s ?label WHERE {
+    # VALUES fixes which endpoint IRI goes with which person.
     VALUES (?s ?e) {
       (:alice <https://svc-a.example/sparql>)
       (:bob   <https://svc-b.example/sparql>)
     }
+    # LATERAL evaluates the inner pattern once per row of the outer
+    # pattern, substituting that row's ?s and ?e first; SERVICE then
+    # sends the inner pattern to whichever endpoint ?e is bound to.
     LATERAL { SERVICE ?e { ?s :label ?label } }
   }
   ORDER BY ?s
@@ -141,10 +151,14 @@ survives, unextended (its `?label` stays unbound):
 ```observable-js
 endpoints;
 const q = (silent) => `
+  # Every local person, with a label looked up on an endpoint that does
+  # not exist; SILENT (when set) keeps the row instead of dropping it.
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   SELECT ?s ?label WHERE {
     ?s rdf:type :Person .
+    # LATERAL evaluates the inner pattern once per row of the outer
+    # pattern; SERVICE sends it to the named remote endpoint below.
     LATERAL { SERVICE ${silent ? "SILENT " : ""}<https://nowhere.example/sparql> { ?s :label ?label } }
   }`;
 const silentRows = await fn.query(dataset, q(true));

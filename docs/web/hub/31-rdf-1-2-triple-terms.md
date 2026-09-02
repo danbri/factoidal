@@ -84,6 +84,7 @@ in `?statement` — the table renders each as `<<( s p o )>>`.
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Who claimed which statement; ?statement binds a whole triple term.
   PREFIX : <http://example.org/>
   SELECT ?who ?statement WHERE { ?who :claimed ?statement }
 `, {version: "1.2"});
@@ -98,6 +99,8 @@ not just carry them around.
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Subject, predicate, and object of each claimed statement, matched with
+  # the <<( ?s ?p ?o )>> triple-term pattern.
   PREFIX : <http://example.org/>
   SELECT ?who ?s ?p ?o WHERE { ?who :claimed <<( ?s ?p ?o )>> }
 `, {version: "1.2"});
@@ -110,6 +113,7 @@ SPARQL 1.2 also adds the `isTRIPLE()` test and the `TRIPLE()`,
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Whether each claimed value is a triple term, tested with isTRIPLE().
   PREFIX : <http://example.org/>
   SELECT ?who (isTRIPLE(?t) AS ?isQuoted) WHERE { ?who :claimed ?t }
 `, {version: "1.2"});
@@ -124,6 +128,7 @@ triples, so a plain pattern reads it back:
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Confidence value attached via the ~:obs {| |} reifier and annotation.
   PREFIX : <http://example.org/>
   SELECT ?conf WHERE { ?obs :confidence ?conf }
 `, {version: "1.2"});

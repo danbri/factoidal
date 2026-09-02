@@ -48,7 +48,9 @@ asks the one question every store should be able to answer about itself:
 how many triples are in here?
 
 ```observable-js
-const rows = await fn.queryHdt(buf, "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }");
+const rows = await fn.queryHdt(buf, `# How many triples the HDT file holds: count every solution of the
+# open triple pattern ?s ?p ?o.
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`);
 return Number(rows[0].get("n").value);
 ```
 
@@ -68,7 +70,8 @@ plain `owl:Class` + `rdfs:label` query. Flip the cell's `Output` toggle
 to `Table` to read the id-to-label decode the dictionary made possible:
 
 ```observable-js
-const query = `PREFIX owl: <http://www.w3.org/2002/07/owl#>
+const query = `# Every class the ontology defines, with its label.
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?class ?label WHERE {
   ?class a owl:Class ; rdfs:label ?label .
@@ -96,7 +99,8 @@ Plot — a schema-heavy ontology leans on `rdf:type`, `rdfs:comment`,
 that shows up:
 
 ```observable-js
-const query = `SELECT ?p (COUNT(*) AS ?n) WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY DESC(?n)`;
+const query = `# Triple count per predicate, most frequent first.
+SELECT ?p (COUNT(*) AS ?n) WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY DESC(?n)`;
 const bindings = await fn.queryHdt(buf, query);
 const data = bindings.slice(0, 8).map((row) => ({
   predicate: row.get("p").value.replace(/^.*[#/]/, ""),

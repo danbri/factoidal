@@ -35,7 +35,8 @@ every cell in this post, so it's named once and referenced everywhere
 below:
 
 ```observable-js
-q = `SELECT ?type WHERE { <http://example.org/alice> a ?type }`
+q = `# What type or types does ex:alice have.
+SELECT ?type WHERE { <http://example.org/alice> a ?type }`
 ```
 
 Ask it twice — with and without RDFS entailment:

@@ -124,6 +124,7 @@ subclass steps entail it.
 ```observable-js
 const dataset = await fn.parse(closed.ntriples, {format: "ntriples"});
 const rows = await fn.query(dataset, `
+  # Does the closure make Ada an Agent, via two chained subclass steps?
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   PREFIX : <http://example.org/org#>
   ASK { :ada rdf:type :Agent }
@@ -147,6 +148,7 @@ const withSym = ttl + `\n  :worksWith rdf:type <http://www.w3.org/2002/07/owl#Sy
 const plus = await fn.rdfsPlusClosure(withSym);
 const dataset2 = await fn.parse(plus.ntriples, {format: "ntriples"});
 const rows = await fn.query(dataset2, `
+  # Who works with whom, now that the symmetric property makes it mutual?
   PREFIX : <http://example.org/org#>
   SELECT * WHERE { ?x :worksWith ?y } ORDER BY ?x
 `);

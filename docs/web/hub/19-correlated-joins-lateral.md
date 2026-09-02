@@ -83,10 +83,13 @@ would:
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # Every person paired with every label they have. LATERAL evaluates
+  # its inner pattern once per row of the outer pattern.
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   SELECT ?s ?label WHERE {
     ?s rdf:type :Person .
+    # for each ?s bound above, look up its :label values
     LATERAL { ?s :label ?label }
   }
   ORDER BY ?s ?label
@@ -112,11 +115,15 @@ row's `?s` is substituted in *before* that sub-query runs, the
 
 ```observable-js
 const rows = await fn.query(dataset, `
+  # One label per person, the alphabetically first. LATERAL evaluates
+  # its inner sub-SELECT once per row of the outer pattern, so LIMIT 1
+  # ranks only that one person's labels, not the whole result.
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   SELECT ?s ?label WHERE {
     ?s rdf:type :Person .
     LATERAL {
+      # SELECT * re-projects ?s so the outer row's value correlates in
       SELECT * WHERE { ?s :label ?label } ORDER BY ?label LIMIT 1
     }
   }
@@ -144,6 +151,8 @@ total rather than one per person:
 
 ```observable-js
 const lateralRows = await fn.query(dataset, `
+  # One label per person: LATERAL evaluates its inner sub-SELECT once
+  # per outer row, so LIMIT 1 applies per person.
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   SELECT ?s ?label WHERE {
@@ -154,6 +163,8 @@ const lateralRows = await fn.query(dataset, `
 `);
 
 const plainJoinRows = await fn.query(dataset, `
+  # The same join written as an ordinary pattern: LIMIT 1 applies once,
+  # to the whole joined result, not per person.
   PREFIX : <https://example.org/>
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   SELECT ?s ?label WHERE {

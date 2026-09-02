@@ -64,7 +64,7 @@ someValuesMaterialised = await fn.tableauMaterialise(someValuesOntology)
 ```
 
 ```observable-js
-parentOfDoctorMembers = (await fn.query(someValuesMaterialised.dataset, `
+parentOfDoctorMembers = (await fn.query(someValuesMaterialised.dataset, `# Individuals typed as the anonymous restriction equivalent to :ParentOfDoctor.
   PREFIX : <http://example.org/>
   PREFIX owl: <http://www.w3.org/2002/07/owl#>
   SELECT ?who WHERE {
@@ -106,7 +106,7 @@ hasValueMaterialised = await fn.tableauMaterialise(hasValueOntology)
 ```
 
 ```observable-js
-britishCitizens = (await fn.query(hasValueMaterialised.dataset, `
+britishCitizens = (await fn.query(hasValueMaterialised.dataset, `# Individuals typed as the anonymous restriction equivalent to :BritishCitizen.
   PREFIX : <http://example.org/>
   PREFIX owl: <http://www.w3.org/2002/07/owl#>
   SELECT ?who WHERE {

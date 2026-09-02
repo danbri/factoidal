@@ -78,6 +78,7 @@ registryDataset = {
 ```observable-js
 if (registry.unavailable) return { unavailable: registry.unavailable };
 const rows = await registry.query(registryDataset, `
+  # Every person and their age, sorted by subject.
   PREFIX : <http://example.org/>
   SELECT ?s ?age WHERE { ?s :age ?age } ORDER BY ?s`);
 return pretty(rows);
@@ -88,6 +89,7 @@ return pretty(rows);
 ```observable-js
 if (registry.unavailable) return { unavailable: registry.unavailable };
 return await registry.query(registryDataset, `
+  # Is anyone in the dataset 18 or older?
   PREFIX : <http://example.org/>
   ASK { ?s :age ?age . FILTER(?age >= 18) }`);
 ```
@@ -113,6 +115,7 @@ await registry.registerExtensionFunction(
   ([age]) => Number(age.value) >= 18
 );
 const rows = await registry.query(registryDataset, `
+  # Everyone the custom fn:isAdult extension function accepts.
   PREFIX : <http://example.org/>
   PREFIX fn: <http://example.org/fn#>
   SELECT ?s WHERE { ?s :age ?age . FILTER(fn:isAdult(?age)) }`);
@@ -128,6 +131,8 @@ should be identical.
 ```observable-js
 if (registry.unavailable) return { unavailable: registry.unavailable };
 const q = `
+  # Every person and their age, sorted by subject -- run through both
+  # engine copies so their answers can be compared.
   PREFIX : <http://example.org/>
   SELECT ?s ?age WHERE { ?s :age ?age } ORDER BY ?s`;
 const siteDataset = await fn.parse(DATA_TTL);

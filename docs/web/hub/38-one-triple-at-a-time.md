@@ -54,7 +54,8 @@ Here the query is a string.
 
 ```observable-js
 anythingThere = {
-  const r = await fn.l4Call("queryDataset", [oneTriple.nquads, "ASK { ?s ?p ?o }"]);
+  const r = await fn.l4Call("queryDataset", [oneTriple.nquads, `# True if the graph holds at least one triple.
+ASK { ?s ?p ?o }`]);
   return r.boolean;
 }
 ```
@@ -74,7 +75,8 @@ rows = (r) => r.srj.results.bindings.map(
 ```observable-js
 theName = {
   const r = await fn.l4Call("queryDataset", [oneTriple.nquads,
-    `SELECT ?name WHERE { ?s <${EX}name> ?name }`]);
+    `# What name does Alice's subject have?
+    SELECT ?name WHERE { ?s <${EX}name> ?name }`]);
   return rows(r);
 }
 ```
@@ -94,7 +96,8 @@ firstJoin = {
     ].join("\n"), "ntriples", "",
   ]);
   const r = await fn.l4Call("queryDataset", [parsed.nquads,
-    `SELECT ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`]);
+    `# Join name and age for the same subject.
+    SELECT ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`]);
   return { nquads: parsed.nquads, rows: rows(r) };
 }
 ```
@@ -114,7 +117,8 @@ turtleSame = {
     :alice :name "Alice" ; :age 30 .
   `, "turtle", ""]);
   const r = await fn.l4Call("queryDataset", [parsed.nquads,
-    `SELECT ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`]);
+    `# Same join as before, now over Turtle-parsed data.
+    SELECT ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`]);
   return {
     sameNQuads: parsed.nquads === firstJoin.nquads,
     sameRows: JSON.stringify(rows(r)) === JSON.stringify(firstJoin.rows),
@@ -132,6 +136,7 @@ to 4 is computed by the cell.
 ```observable-js
 afterInsert = {
   const r = await fn.l4Call("updateDataset", [firstJoin.nquads, `
+    # Add Bob as a new subject, with a name and an age.
     PREFIX : <${EX}>
     INSERT DATA { :bob :name "Bob" . :bob :age 24 . }
   `]);
@@ -144,7 +149,8 @@ The join query from before now sees the new subject: two rows.
 ```observable-js
 bothPeople = {
   const r = await fn.l4Call("queryDataset", [afterInsert.nquads,
-    `SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`]);
+    `# Join name and age again, now that Bob is in the dataset too.
+    SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`]);
   return rows(r);
 }
 ```
@@ -159,6 +165,7 @@ prefix-compacted Turtle.
 ```observable-js
 constructed = {
   const r = await fn.l4Call("queryDataset", [afterInsert.nquads, `
+    # Restate each :name triple as a foaf:name triple.
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     CONSTRUCT { ?s foaf:name ?n } WHERE { ?s <${EX}name> ?n }
   `]);
@@ -183,7 +190,8 @@ inferred = {
     <${EX}Dog> rdfs:subClassOf <${EX}Animal> .
     <${EX}rex> a <${EX}Dog> .
   `, "turtle", ""]);
-  const q = `ASK { <${EX}rex> a <${EX}Animal> }`;
+  const q = `# Is rex an Animal? Not stated directly -- entailed via rdfs:subClassOf.
+  ASK { <${EX}rex> a <${EX}Animal> }`;
   const before = await fn.l4Call("queryDataset", [stated.nquads, q]);
   const closure = await fn.l4Call("owlClosure", [stated.nquads, "RDFS"]);
   const after = await fn.l4Call("queryDataset", [closure.nquads, q]);
@@ -208,7 +216,8 @@ owlSame = {
   `, "turtle", ""]);
   const closure = await fn.l4Call("owlClosure", [stated.nquads, "OWL-RL"]);
   const r = await fn.l4Call("queryDataset", [closure.nquads,
-    `SELECT ?n WHERE { <${EX}superman> <${EX}name> ?n }`]);
+    `# Read the name off superman, propagated there via owl:sameAs.
+    SELECT ?n WHERE { <${EX}superman> <${EX}name> ?n }`]);
   return rows(r);
 }
 ```
@@ -261,7 +270,8 @@ the Lean engine produced above, and the same join query.
 fstarRows = {
   const dataset = await fn.parse(afterInsert.nquads, { format: "nquads" });
   const res = await fn.query(dataset,
-    `SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`);
+    `# The same join, computed by the F* engine over the Lean engine's bytes.
+    SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`);
   return res.map((m) => Object.fromEntries([...m].map(([k, t]) => [k, t.value])));
 }
 ```
@@ -297,7 +307,8 @@ of the stateless `parseToDatasetJson`/`queryDataset` ops. It reproduces
 typedJoin = {
   const ds = await fn.l4Parse(afterInsert.nquads, { format: "nquads" });
   const rows = await fn.l4Query(ds,
-    `SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`);
+    `# Same join again, through the typed l4Parse/l4Query wrappers.
+    SELECT ?s ?n ?a WHERE { ?s <${EX}name> ?n . ?s <${EX}age> ?a }`);
   return rows.map((m) => Object.fromEntries([...m].map(([k, t]) => [k, t.value])));
 }
 ```

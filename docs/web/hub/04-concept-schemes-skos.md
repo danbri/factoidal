@@ -118,10 +118,11 @@ dataset = fn.parse(SKOS_VALID_TTL)
 Pull out each concept's English label:
 
 ```observable-js
-const rows = await fn.query(dataset, `
+const rows = await fn.query(dataset, `# The English preferred label (skos:prefLabel) of each skos:Concept.
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
   SELECT ?concept ?label WHERE {
     ?concept a skos:Concept ; skos:prefLabel ?label .
+    # keep only the plain "en" tagged label, not "en-GB"
     FILTER(LANG(?label) = "en")
   }
   ORDER BY ?concept
@@ -145,7 +146,7 @@ broader than Dog, at any distance" is exactly the property-path
 introduced:
 
 ```observable-js
-const ancestors = await fn.query(dataset, `
+const ancestors = await fn.query(dataset, `# Every concept above ex:Dog in the broader hierarchy, at any distance.
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
   PREFIX ex:   <http://example.org/skos-integrity/animals#>
   SELECT ?ancestor WHERE { ex:Dog skos:broader+ ?ancestor }
@@ -283,8 +284,11 @@ broken one:
 ```observable-js
 const PREFIX = "PREFIX skos: <http://www.w3.org/2004/02/skos/core#>\n";
 const QUERIES = {
-  S9: PREFIX + "ASK { ?x a skos:ConceptScheme , skos:Concept . }",
-  S13: PREFIX + `SELECT DISTINCT ?resource ?value ?p1 ?p2 WHERE {
+  S9: PREFIX + `# True if any resource is asserted as both a skos:ConceptScheme and a skos:Concept.
+ASK { ?x a skos:ConceptScheme , skos:Concept . }`,
+  S13: PREFIX + `# Resources holding the same label value under two of the three pairwise-disjoint label properties.
+SELECT DISTINCT ?resource ?value ?p1 ?p2 WHERE {
+    # ?p1/?p2 range over each disjoint pair: prefLabel/altLabel, prefLabel/hiddenLabel, altLabel/hiddenLabel
     VALUES (?p1 ?p2) {
       (skos:prefLabel skos:altLabel)
       (skos:prefLabel skos:hiddenLabel)
@@ -293,20 +297,28 @@ const QUERIES = {
     ?resource ?p1 ?value .
     ?resource ?p2 ?value .
   }`,
-  S14: PREFIX + `SELECT ?resource ?lang (COUNT(DISTINCT ?label) AS ?count) WHERE {
+  S14: PREFIX + `# Resources with more than one skos:prefLabel sharing the same language tag.
+SELECT ?resource ?lang (COUNT(DISTINCT ?label) AS ?count) WHERE {
     ?resource skos:prefLabel ?label .
+    # ?lang is the language tag of ?label
     BIND(LANG(?label) AS ?lang)
   }
+  # group per resource and language, then keep only groups with more than one distinct label
   GROUP BY ?resource ?lang
   HAVING (COUNT(DISTINCT ?label) > 1)`,
-  S27: PREFIX + "ASK { ?a skos:related ?b . { ?a skos:broader+ ?b } UNION { ?b skos:broader+ ?a } }",
-  S37: PREFIX + `ASK {
+  S27: PREFIX + `# True if any pair related by skos:related is also linked by the transitive closure of skos:broader.
+ASK { ?a skos:related ?b . { ?a skos:broader+ ?b } UNION { ?b skos:broader+ ?a } }`,
+  S37: PREFIX + `# True if any skos:Collection is also asserted as a skos:Concept or a skos:ConceptScheme.
+ASK {
     ?x a skos:Collection .
     ?x a ?other .
+    # ?other must be one of the two classes skos:Collection is disjoint with
     FILTER(?other = skos:Concept || ?other = skos:ConceptScheme)
   }`,
-  S46: PREFIX + `SELECT DISTINCT ?a ?b WHERE {
+  S46: PREFIX + `# Pairs linked by skos:exactMatch that also carry a mapping property disjoint from it.
+SELECT DISTINCT ?a ?b WHERE {
     ?a skos:exactMatch ?b .
+    # true if the pair is also skos:broadMatch, skos:relatedMatch, or the inverse skos:narrowMatch
     { ?a skos:broadMatch ?b } UNION { ?a skos:relatedMatch ?b } UNION { ?b skos:narrowMatch ?a }
   }`,
 };

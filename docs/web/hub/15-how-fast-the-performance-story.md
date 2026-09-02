@@ -118,7 +118,9 @@ for (let i = 0; i < N; i++) {
 
 const t0 = performance.now();
 const dataset = await fn.parse(nquads, { format: "nquads" });
-const rows = await fn.query(dataset, "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }");
+const rows = await fn.query(dataset, `# How many triples the parsed graph holds: count every solution of the
+# open triple pattern ?s ?p ?o.
+SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`);
 const t1 = performance.now();
 
 return pretty({

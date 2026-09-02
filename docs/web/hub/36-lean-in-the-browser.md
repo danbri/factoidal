@@ -59,6 +59,7 @@ PEOPLE_TTL = `
 
 ```observable-js
 NAME_AGE_QUERY = `
+  # People with both a name and an age, joined on the shared subject.
   SELECT ?s ?n ?a WHERE {
     ?s <${EX}name> ?n .
     ?s <${EX}age> ?a .
@@ -126,7 +127,10 @@ defines `>` over numeric operands, not over their lexical form. Both
 engines run the identical ASK against the identical data.
 
 ```observable-js
-ASK_QUERY = `ASK { ?s <${EX}age> ?a . FILTER(?a > 25) }`
+ASK_QUERY = `
+# Is there anyone older than 25? FILTER keeps only ?a values that
+# satisfy the numeric comparison.
+ASK { ?s <${EX}age> ?a . FILTER(?a > 25) }`
 ```
 
 ```observable-js

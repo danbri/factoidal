@@ -53,7 +53,7 @@ const ttl = `
 try {
   const before = await fn.parse(ttl, { format: "turtle" });
 
-  const insertData = `
+  const insertData = `# Add Bob's name to the dataset as a new ground triple.
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     INSERT DATA { <http://example.org/bob> foaf:name "Bob" . }
   `;
@@ -61,7 +61,8 @@ try {
 
   const rows = await fn.query(
     after,
-    "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
+    `# List every name now in the dataset, alphabetically.
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name`
   );
 
   return {
@@ -95,7 +96,8 @@ const ttl2 = `
 try {
   const before = await fn.parse(ttl2, { format: "turtle" });
 
-  const deleteInsertWhere = `
+  const deleteInsertWhere = `# Rename Bob to Bobby: find the triple matching foaf:name "Bob"
+    # and replace it with foaf:name "Bobby".
     PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     DELETE { ?s foaf:name "Bob" }
     INSERT { ?s foaf:name "Bobby" }
@@ -105,7 +107,8 @@ try {
 
   const rows = await fn.query(
     after,
-    "PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name"
+    `# List every name now in the dataset, alphabetically.
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/> SELECT ?name WHERE { ?s foaf:name ?name } ORDER BY ?name`
   );
 
   return {

@@ -127,11 +127,16 @@ add three times the wall-clock cost without changing the comparison.
 
 ```observable-js
 queries = ({
-  point: `PREFIX ex: <http://example.org/factoidal/> PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+  point: `# Look up one person's name: one bound subject and predicate,
+    # in one named graph.
+    PREFIX ex: <http://example.org/factoidal/> PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     SELECT ?name WHERE { GRAPH ex:gPeople { ex:person375 foaf:name ?name } }`,
-  star: `PREFIX ex: <http://example.org/factoidal/>
+  star: `# List every property/value pair one person has, in one named graph.
+    PREFIX ex: <http://example.org/factoidal/>
     SELECT ?p ?o WHERE { GRAPH ex:gPeople { ex:person375 ?p ?o } }`,
-  crossGraph: `PREFIX ex: <http://example.org/factoidal/> PREFIX foaf: <http://xmlns.com/foaf/0.1/> PREFIX org: <http://www.w3.org/ns/org#>
+  crossGraph: `# Three-graph join: a person's name from one graph, the
+    # organisation they work for from a second, and that org's name from a third.
+    PREFIX ex: <http://example.org/factoidal/> PREFIX foaf: <http://xmlns.com/foaf/0.1/> PREFIX org: <http://www.w3.org/ns/org#>
     SELECT ?personName ?orgName WHERE {
       GRAPH ex:gPeople { ex:person375 foaf:name ?personName }
       GRAPH ex:gAffiliations { ex:person375 org:worksFor ?org }
@@ -219,7 +224,8 @@ reopened = {
   const t0 = performance.now();
   const handle2 = await fn.openCottas(store.bytes);
   const openMs = performance.now() - t0;
-  const rows = await fn.queryCottas(handle2, "SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }");
+  const rows = await fn.queryCottas(handle2, `# Count every triple across all named graphs in the reopened store.
+    SELECT (COUNT(*) AS ?n) WHERE { GRAPH ?g { ?s ?p ?o } }`);
   await fn.closeCottas(handle2);
   return { openMs, count: Number(rows[0].get("n").value) };
 }

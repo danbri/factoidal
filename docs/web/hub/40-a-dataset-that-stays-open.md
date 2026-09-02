@@ -79,7 +79,11 @@ rowsOf = (maps) => maps.map((m) => Object.fromEntries([...m].map(([k, t]) => [k,
 ```
 
 ```observable-js
-crossGraphQuery = `PREFIX : <${EX}>
+crossGraphQuery = `
+# Every person's department, in whichever named graph holds them.
+PREFIX : <${EX}>
+# ?g is unbound, so GRAPH quantifies over every named graph the
+# handle holds, not one graph in particular.
 SELECT ?g ?person ?dept WHERE { GRAPH ?g { ?person :dept ?dept } }`
 ```
 
@@ -101,7 +105,9 @@ update to the SAME handle: `orgDataset` is not replaced, it is mutated.
 
 ```observable-js
 afterInsert = {
-  await fn.l4Update(orgDataset, `PREFIX : <${EX}>
+  await fn.l4Update(orgDataset, `
+    # Add a fourth engineer, Erin, to the :eng graph.
+    PREFIX : <${EX}>
     INSERT DATA { GRAPH :eng { :erin a :Manager ; :dept "Engineering" . } }`);
   return { rowsBefore: byDept.length, size: orgDataset.size };
 }
@@ -133,7 +139,10 @@ question before and after.
 ```observable-js
 closureCheck = {
   const ser = await fn.l4Call("datasetSerialize", [orgDataset.handle, "nquads"]);
-  const ask = `PREFIX : <${EX}> ASK { :alice a :Employee }`;
+  const ask = `
+# Does Alice have rdf:type Employee -- asked once before the RDFS
+# closure runs, once after.
+PREFIX : <${EX}> ASK { :alice a :Employee }`;
   const before = await fn.l4Call("queryDataset", [ser.nquads, ask]);
   const closed = await fn.l4Call("rdfsPlusClosure", [ser.nquads]);
   const after = await fn.l4Call("queryDataset", [closed.ntriples, ask]);
@@ -168,7 +177,10 @@ two classes the corpus already declared disjoint.
 
 ```observable-js
 consistentAfter = {
-  await fn.l4Update(orgDataset, `PREFIX : <${EX}>
+  await fn.l4Update(orgDataset, `
+    # State the contradiction: :alice is now both a :Manager and a
+    # :Contractor, classes the corpus already declared disjoint.
+    PREFIX : <${EX}>
     INSERT DATA { :alice a :Contractor . }`);
   const ser = await fn.l4Call("datasetSerialize", [orgDataset.handle, "nquads"]);
   const verdict = await fn.l4Call("owlIsConsistent", [ser.nquads, ""]);
