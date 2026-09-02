@@ -526,6 +526,17 @@ accept up to two consecutive quote characters inside. Port of
 `parse_single_string_body` / (for the double-quoted short form) the
 N-Triples `parse_string_body` that `Syntax.Lexing` already ports. -/
 
+/-- The result of a numeric escape once its code point is assembled: the
+character, the position after the escape (`k` = 6 for `\\u`, 10 for `\\U`)
+and the remaining input. Separate from `decodeEscape` so that proofs can
+reason about it with the code point as a variable (`TurtleFuelTheorems`:
+unfolding `d0 * 268435456` definitionally does not terminate in practice). -/
+def escapeResult (cp pos k : Nat) (r : List Char) :
+    Except ParseError (Char × Nat × List Char) :=
+  match codepointToChar cp pos with
+  | .error e => .error e
+  | .ok c    => .ok (c, pos + k, r)
+
 /-- [26] UCHAR + [159s] ECHAR, decoded. The argument list starts AFTER
 the backslash; `pos` points AT the backslash. Shared by all four string
 forms, and identical to the escape table `Syntax.Lexing`'s
@@ -542,20 +553,15 @@ def decodeEscape (pos : Nat) : List Char → Except ParseError (Char × Nat × L
   | 'u' :: h0 :: h1 :: h2 :: h3 :: r =>
       match hexVal h0, hexVal h1, hexVal h2, hexVal h3 with
       | some d0, some d1, some d2, some d3 =>
-          match codepointToChar (d0 * 4096 + d1 * 256 + d2 * 16 + d3) pos with
-          | .error e => .error e
-          | .ok c    => .ok (c, pos + 6, r)
+          escapeResult (d0 * 4096 + d1 * 256 + d2 * 16 + d3) pos 6 r
       | _, _, _, _ => .error ⟨"invalid hex digit in \\u escape", pos⟩
   | 'u' :: _ => .error ⟨"incomplete \\u escape", pos⟩
   | 'U' :: h0 :: h1 :: h2 :: h3 :: h4 :: h5 :: h6 :: h7 :: r =>
       match hexVal h0, hexVal h1, hexVal h2, hexVal h3,
             hexVal h4, hexVal h5, hexVal h6, hexVal h7 with
       | some d0, some d1, some d2, some d3, some d4, some d5, some d6, some d7 =>
-          let cp := d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
-                  + d4 * 4096 + d5 * 256 + d6 * 16 + d7
-          match codepointToChar cp pos with
-          | .error e => .error e
-          | .ok c    => .ok (c, pos + 10, r)
+          escapeResult (d0 * 268435456 + d1 * 16777216 + d2 * 1048576 + d3 * 65536
+                        + d4 * 4096 + d5 * 256 + d6 * 16 + d7) pos 10 r
       | _, _, _, _, _, _, _, _ => .error ⟨"invalid hex digit in \\U escape", pos⟩
   | 'U' :: _ => .error ⟨"incomplete \\U escape", pos⟩
   | c :: _   => .error ⟨s!"invalid escape: \\{c}", pos⟩
@@ -602,17 +608,42 @@ def readLongStringBody (qch : Char) : Nat → Nat → List Char → List Char �
             | _ => readLongStringBody qch fuel (pos + 1) rest (c :: acc)
           else readLongStringBody qch fuel (pos + 1) rest (c :: acc)
 
-/-- [17] String — dispatch on the opening quote run. Port of
-`parse_turtle_string`. -/
-def readTurtleString (pos : Nat) (cs : List Char) :
+/-- The fuel handed to the literal-body loops (`readShortStringBody`,
+`readLongStringBody`, `collectNum`). Each loop consumes at least one
+character per step, so every fuel above the remaining length gives the
+same result (`TurtleFuelTheorems`: `readShortStringBody_fuel_indep`,
+`readLongStringBody_fuel_indep`, `collectNum_fuel_indep`). Computing
+`cs.length + 1` per token, as the specification forms below do, traverses
+the rest of the document at every literal and made `parseTurtle`
+quadratic (measured 2026-09-02: 2,514 triples 0.38 s, 5,012 triples
+1.51 s, 10,012 triples 6.16 s). A document of `2^32` or more characters
+cannot be held as a `List Char` on any current host, so the constant is
+not a practical limit; the equality with the specification forms is
+stated under `cs.length < literalFuel`. -/
+def literalFuel : Nat := 4294967296
+
+/-- [17] String — dispatch on the opening quote run, with the loop fuel
+supplied by the caller. Port of `parse_turtle_string`. -/
+def readTurtleStringWith (fuel pos : Nat) (cs : List Char) :
     Except ParseError (String × Nat × List Char) :=
-  let fuel := cs.length + 1
   match cs with
   | '"' :: '"' :: '"' :: rest   => readLongStringBody '"' fuel (pos + 3) rest []
   | '\'' :: '\'' :: '\'' :: rest => readLongStringBody '\'' fuel (pos + 3) rest []
   | '"' :: rest                 => readShortStringBody '"' fuel (pos + 1) rest []
   | '\'' :: rest                => readShortStringBody '\'' fuel (pos + 1) rest []
   | _ => .error ⟨"expected string literal", pos⟩
+
+/-- The specification form: fuel from the remaining length, exactly as the
+F* `parse_turtle_string`. Equal to `readTurtleString` whenever
+`cs.length < literalFuel` (`readTurtleString_eq_spec`). -/
+def readTurtleStringSpec (pos : Nat) (cs : List Char) :
+    Except ParseError (String × Nat × List Char) :=
+  readTurtleStringWith (cs.length + 1) pos cs
+
+/-- [17] String, as the parser runs it: the constant loop fuel. -/
+def readTurtleString (pos : Nat) (cs : List Char) :
+    Except ParseError (String × Nat × List Char) :=
+  readTurtleStringWith literalFuel pos cs
 
 /-! ## Numeric literals — [16] NumericLiteral
 
@@ -675,15 +706,20 @@ def collectNum : Nat → Nat → List Char → List Char → Bool → Bool →
                 else (acc.reverse, hasDot, hasE, pos, cs)
           else (acc.reverse, hasDot, hasE, pos, cs)
 
-/-- [16] NumericLiteral. Port of `parse_numeric_literal`. -/
-def readNumericLiteral (pos : Nat) (cs : List Char) :
+/-- The optional sign of a [16] NumericLiteral: the sign text, the position
+after it, and the remaining input. Named so that
+`readNumericLiteralSpec` and `TurtleFuelTheorems` can refer to the tail the
+collector runs on. -/
+def numericSign (pos : Nat) : List Char → String × Nat × List Char
+  | '+' :: r => ("+", pos + 1, r)
+  | '-' :: r => ("-", pos + 1, r)
+  | cs       => ("", pos, cs)
+
+/-- [16] NumericLiteral with the collector fuel supplied by the caller.
+Port of `parse_numeric_literal`. -/
+def readNumericLiteralWith (fuel pos : Nat) (cs : List Char) :
     Except ParseError ((String × WfIri) × Nat × List Char) :=
-  let (signStr, pos0, cs0) :=
-    match cs with
-    | '+' :: r => ("+", pos + 1, r)
-    | '-' :: r => ("-", pos + 1, r)
-    | _        => ("", pos, cs)
-  let fuel := cs0.length + 1
+  let (signStr, pos0, cs0) := numericSign pos cs
   match cs0 with
   | '.' :: rest =>
       match rest with
@@ -699,6 +735,19 @@ def readNumericLiteral (pos : Nat) (cs : List Char) :
       else
         let dt := if hasE then xsdDouble else if hasDot then xsdDecimal else xsdInteger
         .ok ((signStr ++ String.ofList acc, dt), pos', rest')
+
+/-- The specification form: collector fuel from the remaining length (after
+an optional sign), exactly as the F* `parse_numeric_literal`. Equal to
+`readNumericLiteral` whenever `cs.length < literalFuel`
+(`readNumericLiteral_eq_spec`). -/
+def readNumericLiteralSpec (pos : Nat) (cs : List Char) :
+    Except ParseError ((String × WfIri) × Nat × List Char) :=
+  readNumericLiteralWith ((numericSign pos cs).2.2.length + 1) pos cs
+
+/-- [16] NumericLiteral, as the parser runs it: the constant loop fuel. -/
+def readNumericLiteral (pos : Nat) (cs : List Char) :
+    Except ParseError ((String × WfIri) × Nat × List Char) :=
+  readNumericLiteralWith literalFuel pos cs
 
 /-! ## Boolean literals and the `a` keyword -/
 

@@ -96,20 +96,71 @@ blocks, 0.12 s to 0.20 s), not with the triple count. The two costs that
 scale with bytes are activation (one full verification and index
 recomputation per generation, 45 s for 51 MB) and the whole-store count.
 
-## Rung 3, first attempt: the UK Parliament dump (in progress)
+## Rung 3: the UK Parliament dump, 3,143,406 triples
 
 `third_party/data/ukparliament/ukparliament-rdf-2019-07-27.trig`, 346,861,556
-bytes, 5,325,830 lines, of the order of five million triples, one unlabelled
-graph block (the TriG default graph). Converted to Turtle by dropping the two
-brace lines; packed with the same command as the rungs above.
+bytes, 5,325,830 lines, one unlabelled graph block (the TriG default graph).
+Converted to Turtle by dropping the two brace lines; packed with the same
+command as the rungs above. The content is dominated by e-petition signature
+counts (four predicates hold 2.2 million of the 3.1 million triples); the
+procedure-browser vocabulary the sample queries use is almost absent (29
+`:name` triples, 405 typed entities), so the sample queries answer zero or
+few rows, correctly: the F* engine's recorded bench shows no rows for the
+same queries.
 
-Findings so far (2026-09-02, late):
+| Step | Result |
+| --- | --- |
+| Pack (`ibk3`) | 309 blocks over 232 predicates, 6,134 s (512 triples/s; 70× slower per triple than rung 2.5) |
+| Activate | 356,214,197 logical bytes verified, 4,554 s (78 KB/s) |
+| Generation on disk | 716 MB |
 
-- The pack failed after 867 s with `Turtle parse error at 202943268: expected
-  object`. The byte offset falls in an ordinary one-line statement, and the
-  reported position may not be a plain byte offset; the failing statement is
-  being located by parsing paragraph-aligned 20 MB slices with `l4factoidal
-  parse`.
+| Query (`third_party/data/ukparliament/sparql/main/`) | Time | Rows | Path |
+| --- | --- | --- | --- |
+| enabling-legislation listing (5 OPTIONALs) | 0.05 s | 0 | 1 shard, 8 predicates named |
+| enabling-legislation first-letter counts (BIND, GROUP BY) | 1,125 s | 0 | full manifest, 309 blocks |
+| legislatures, organisations, procedures, step collections, steps by type (6 queries) | 0.03 to 0.05 s | 0 or 1 | 1 to 2 shards |
+| work packages current, count (MINUS with a property path) | 85 s | 1 | full manifest |
+| work packages current, listing | 43 s | 0 | full manifest |
+
+What this rung teaches:
+
+- **Answers stay correct at 3 million triples**; the selective paths stay
+  at tens of milliseconds even when a query names eight predicates.
+- **Pack and activation are the bottleneck, and something in them is
+  superlinear** in the number of predicates or blocks: rung 2.5 packed
+  36,000 triples/s over 26 predicates, this rung 512 triples/s over 232.
+  Activation at 78 KB/s is far below the HACL* hashing rate, so the cost is
+  in index recomputation. Both need a profile before any design change.
+- **The constant-predicate collector refuses BIND and property paths**, so
+  two queries read all 309 blocks (356 MB) and evaluate on the reference
+  path. BIND with a backend-local expression and a sequence or alternative
+  path whose steps are constant IRIs are both collectable by the same
+  argument the collector already relies on.
+
+Findings from the first, failed attempt (2026-09-02, late):
+
+- The first pack failed after 867 s with `Turtle parse error at 202943268:
+  expected object`. Cause: the TriG-to-Turtle conversion used BSD `awk`,
+  which stopped at about 203 MB on the 3.9 MB polygon line and truncated
+  the file; the error position is the cut-off last statement. Not a parser
+  defect. The conversion was redone in Python and the full pack repeated.
+- The reference Turtle parser (`parseTurtle`, behind `l4factoidal parse` and
+  the WASM `datasetOpen` Turtle path) is quadratic: 2,514 triples 0.38 s,
+  5,012 triples 1.51 s, 10,012 triples 6.16 s. Two token readers compute
+  their fuel as the length of the remaining character list once per token
+  (`readTurtleString`, `readNumericLiteral`); the whitespace skipper had the
+  same pattern removed earlier. The packer's chunked path bounds each chunk,
+  which is why packing still runs at about 4 MB/s. FIXED 2026-09-02 late:
+  the literal loops take the constant `literalFuel` (2^32) and the old
+  per-token forms are kept as `readTurtleStringSpec` /
+  `readNumericLiteralSpec`; `Syntax/TurtleFuelTheorems.lean` proves the
+  loops fuel-independent above the remaining length and the constant-fuel
+  readers equal to the specification forms for every input shorter than
+  2^32 characters (axioms: propext, Classical.choice, Quot.sound only).
+  After: 5,019 lines (2,734 triples) 0.30 s, 10,019 lines 0.37 s, 20,019
+  lines 0.74 s — linear. Gates: W3C RDF 1.1 Turtle 313 pass and TriG 356
+  pass, RDF 1.2 Turtle syntax 67 / eval 29, TriG syntax 35 / eval 25, all
+  0 fail; native-smoke 63 pass (out of 63).
 - The dump has a 3,875,112-character line (a `geosparql:wktLiteral` polygon)
   and 223 sibling polygon literals in one statement group. That group alone
   parses in 1.4 s and packs correctly, but the pack takes 57 s for 224
