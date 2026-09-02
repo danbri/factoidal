@@ -33,8 +33,8 @@ whole-document comparison) and by `tools/nquads-parser-differential.sh`,
 which serialises both parsers' results and compares them byte for byte
 (identical on the 43,103-statement life-sciences corpus and the
 31,325-statement label file, 2026-09-02); the kernel-checked theorem
-`parseNQuadsFast_eq_parseNQuads` is an open obligation, stated rather than
-admitted.  No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
+`parseNQuadsFast_eq_parseNQuads` is proved in `NQuadsFastTheorems.lean`.
+No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Syntax.NQuadsFold
 import Std.Data.HashMap
