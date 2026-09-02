@@ -239,6 +239,19 @@ def Expr.backendLocal : Expr → Bool
   | .arith _ left right | .compare _ left right | .and left right | .or left right
   | .sameTerm left right => Expr.backendLocal left && Expr.backendLocal right
   | .unaryMinus e | .unaryPlus e | .not e => Expr.backendLocal e
+  -- §17.4.2 node tests and term accessors. Each arm of `Expr.evalIn`
+  -- evaluates ONE sub-expression and applies a total function of the
+  -- resulting `EvalResult` alone: `fnIsIri`, `fnIsBlank`, `fnIsLiteral`,
+  -- `fnIsNumeric`, `fnStr`, `fnLang`, `fnDatatype`. None of those seven
+  -- functions reads the active graph, the dataset, `EvalEnv.base`, the
+  -- service resolver or the extension-function registry, and none of the
+  -- seven constructors carries a `QueryPattern`, so `substituteExistentials`
+  -- is the identity on them. `IRI()` is deliberately absent: it resolves
+  -- against `EvalEnv.base`. `regex`/`replace` and every `functionCall`
+  -- (which is how `langMatches` is dispatched) are absent because they
+  -- reach a host function.
+  | .isIri e | .isBlank e | .isLiteral e | .isNumeric e
+  | .str e | .lang e | .datatype e => Expr.backendLocal e
   | _ => false
 
 /-- Build a query, defaulting every optional part — the shape most

@@ -284,12 +284,24 @@ def readOps (store : OpenStore) : BackendReadOps :=
   , predicatePresent := fun predicate => !(scanBound { p := some predicate } store).isEmpty }
 
 /-- Conservative syntactic admission test for the selective manifest opener.
-    It accepts only evaluator-native pattern forms whose triple patterns all
-    carry a constant IRI predicate.  Filter, OPTIONAL, property paths, graph
-    clauses, SERVICE and sub-SELECT deliberately return `none`: those forms
-    can materialise the active backend or introduce a nested pattern, so the
+    It accepts only pattern forms whose triple patterns all carry a constant
+    IRI predicate.  Property paths, graph clauses, SERVICE, LATERAL, BIND,
+    VALUES and sub-SELECT deliberately return `none`: those forms can
+    materialise the active backend or introduce a nested pattern, so the
     complete-store opener remains the sound default until they receive their
-    own planning proof. -/
+    own planning proof.
+
+    Soundness of the accepted set (BGP, `join`, `union`, `minus`, `leftJoin`,
+    and `filter` with a `backendLocal` condition): the evaluation of each of
+    those operators is a function of its operands' solution sequences and of
+    the current solution mapping alone — `SPARQL.join`, `SPARQL.union`,
+    `SPARQL.minus` and `SPARQL.leftJoin` read no triples themselves, and a
+    `backendLocal` condition reads only the row (it carries no nested
+    `QueryPattern`, so `substituteExistentials` is the identity on it).  A BGP
+    whose every triple pattern has a constant predicate matches only triples
+    with those predicates.  By induction, evaluating an accepted pattern over
+    the dataset restricted to the collected predicates gives the same solution
+    sequence as evaluating it over the whole dataset. -/
 def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
   | .bgp patterns =>
       patterns.foldr (fun pattern rest => do
@@ -303,6 +315,12 @@ def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
       let l ← nativeConstantPredicates? left
       let r ← nativeConstantPredicates? right
       some (l ++ r)
+  | .leftJoin left right cond =>
+      if cond.backendLocal then do
+        let l ← nativeConstantPredicates? left
+        let r ← nativeConstantPredicates? right
+        some (l ++ r)
+      else none
   | .filter condition pattern =>
       if condition.backendLocal then nativeConstantPredicates? pattern else none
   | .empty => some []
@@ -512,6 +530,8 @@ def decode? (bytes : ByteArray) : Option Manifest := do
   if rest.isEmpty && valid manifest then some manifest else none
 
 private def samplePredicate : WfIri := ⟨"https://example.test/p", by decide⟩
+
+private def sampleOtherPredicate : WfIri := ⟨"https://example.test/q", by decide⟩
 private def sampleSubject : Subject := .iri ⟨"https://example.test/s", by decide⟩
 private def sampleObject : Term := .iri ⟨"https://example.test/o", by decide⟩
 private def sampleBlock : IndexedBlock.Block :=
@@ -641,5 +661,20 @@ private def sampleManifestWrongRows : Manifest :=
   == some [samplePredicate])
 #guard (nativeConstantPredicates? (.filter (.existsPat .empty)
   (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))).isNone
+#guard (nativeConstantPredicates? (.leftJoin
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o1" }])
+  (.bgp [{ s := .var "s", p := .iri sampleOtherPredicate, o := .var "o2" }])
+  (.boolLit true))
+  == some [samplePredicate, sampleOtherPredicate])
+#guard (nativeConstantPredicates? (.leftJoin
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o1" }])
+  (.bgp [{ s := .var "s", p := .iri sampleOtherPredicate, o := .var "o2" }])
+  (.existsPat .empty))).isNone
+-- `isIRI(?o1)` is a §17.4.2 node test: term-only, so it stays selective.
+#guard (nativeConstantPredicates? (.filter (.isIri (.var "o1")) (.leftJoin
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o1" }])
+  (.bgp [{ s := .var "s", p := .iri sampleOtherPredicate, o := .var "o2" }])
+  (.boolLit true)))
+  == some [samplePredicate, sampleOtherPredicate])
 
 end L4Factoidal.Storage.ShardManifest

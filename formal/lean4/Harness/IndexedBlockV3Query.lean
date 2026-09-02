@@ -493,6 +493,58 @@ private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manif
           | _, _ => pure none
   | _, _ => pure none
 
+/-- The subject-point shape: one BGP triple whose subject is a constant IRI
+    and whose predicate is a variable.  A blank-node subject is refused: a
+    blank node label is a scoped identity, not a global name, so it cannot be
+    resolved against a persisted term index.  The object position is
+    unconstrained — the parsed evaluator still applies the whole triple
+    pattern to the exact fragment this path returns, so a constant object or a
+    repeated variable simply filters it. -/
+private def subjectPointSubject? (query : Query) : Option WfIri :=
+  if !query.dataset.isEmpty || query.postValues.isSome then none else
+  match query.pattern with
+  | .bgp [tp] =>
+      match tp.s, tp.p with
+      | .iri subject, .var _ => some subject
+      | _, _ => none
+  | _ => none
+
+/-- Read every predicate-local block's SRI2 postings for one RDF subject.
+    Each entry is scanned under its OWN predicate, which is how the manifest
+    labels it; a malformed or unavailable artifact propagates `none` so the
+    caller falls through to the complete path. -/
+private def scanAllEntriesForSubject (directory : System.FilePath) (subject : Term) :
+    List Entry → List Triple → Counters → IO (Option (List Triple × Counters))
+  | [], triples, counters => pure (some (triples, counters))
+  | entry :: rest, triples, counters => do
+      match ← scanEntriesForSubjectsV2 directory entry.predicate [subject] [entry] [] {} 0 with
+      | none => pure none
+      | some (current, currentCounters, _) =>
+          scanAllEntriesForSubject directory subject rest (triples ++ current)
+            (addCounters counters currentCounters)
+
+/-- A constant-subject triple pattern with an unbound predicate has a
+    selective physical access path even though no predicate is named: every
+    triple with that subject lives in exactly one predicate-local block, and
+    every block's TLI1 term index and SRI2 subject postings were recomputed
+    and validated against its rows at activation (Shardborough §6.3).  The
+    union of the SRI2-selected rows over ALL manifest entries is therefore the
+    exact subject fragment, and only the pages those postings need are read.
+    The ordinary parsed evaluator supplies every SPARQL result semantic over
+    that fragment. -/
+private def trySubjectPointLookup (directory : System.FilePath) (manifest : Manifest) (query : Query) :
+    IO (Option UInt32) := do
+  match subjectPointSubject? query, ← readDefaultDelta? directory with
+  | some subject, some delta =>
+      if manifest.version < 5 || !deltaResolvedIsEmpty delta then pure none else
+      if manifest.entries.isEmpty then pure none else
+      match ← scanAllEntriesForSubject directory (.iri subject) manifest.entries [] {} with
+      | none => pure none
+      | some (triples, counters) =>
+          some <$> finish query manifest.entries (predicateOrder manifest.entries)
+            triples counters delta "ibk3-sri2-tli1-subject-point"
+  | _, _ => pure none
+
 /-- `LIMIT 0` is the one bounded SELECT case whose result is independent of
     physical BGP order, delta contents, grouping, ordering and expression
     evaluation: `sliceSolutions` necessarily returns `[]`.  Handle it after
@@ -525,6 +577,8 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         | none => match ← trySubjectIndexJoin directory manifest query with
         | some code => return code
         | none => match ← trySubjectTripleJoin directory manifest query with
+        | some code => return code
+        | none => match ← trySubjectPointLookup directory manifest query with
         | some code => return code
         | none => match queryNativeConstantPredicates? query with
         | none =>
