@@ -397,16 +397,18 @@ def leftJoin (omega1 omega2 : SolutionSeq) (cond : Binding → Bool) :
 
 /-! ## Hash-indexed evaluation — the performance path
 
-The functions above (`join`, `evalBgp`) are the §18.5/§18.3
-SPECIFICATION: nested-loop join, per-row graph scans. The functions in
-this section are what `GraphPattern.evalIn` actually runs: a hash join
+The functions above (`join`, `leftJoin`, `evalBgp`) are the
+§18.5/§18.3 SPECIFICATION: nested-loop join and left join, per-row
+graph scans. The functions in this section are what
+`GraphPattern.evalIn` actually runs: a hash join and a hash left join
 keyed on the shared always-bound variables, and a BGP step that
 buckets the graph once per triple pattern instead of scanning it once
 per row. Each is proved EQUAL — as a list, order included — to its
 specification twin in `SPARQL/IndexedEvalRefinement.lean`
-(`hashJoin_eq_join`, `evalBgpIdx_eq_evalBgp`); that equality is what
-licenses the wiring. The plain functions remain the spec, and every
-theorem about them transfers across the equality.
+(`hashJoin_eq_join`, `hashLeftJoin_eq_leftJoin`,
+`evalBgpIdx_eq_evalBgp`); that equality is what licenses the wiring.
+The plain functions remain the spec, and every theorem about them
+transfers across the equality.
 
 Keys are canonicalised with `Term.joinKey` (RDF/Core.lean) because row
 compatibility is `Term.eqb`, which is coarser than structural
@@ -481,6 +483,34 @@ def hashJoin (omega1 omega2 : SolutionSeq) : SolutionSeq :=
   match joinKeyVars omega1 omega2 with
   | [] => join omega1 omega2
   | v :: vs => hashJoinKeyed (v :: vs) omega1 omega2
+
+/-- The keyed core of the hash left join: bucket Ω2 on the key ONCE,
+probe with each μ1's key. The per-μ1 structure is that of `leftJoin` —
+the condition-passing compatible merges, or μ1 itself when there are
+none — so the two agree row for row and in order. The `none` fallback
+(a μ1 missing a key variable) scans Ω2 as the nested loop would. -/
+def hashLeftJoinKeyed (kvs : List VarName) (omega1 omega2 : SolutionSeq)
+    (cond : Binding → Bool) : SolutionSeq :=
+  let idx := groupByKey (Binding.hashKey? kvs) omega2
+  omega1.flatMap (fun mu1 =>
+    let extended :=
+      (match Binding.hashKey? kvs mu1 with
+       | none => omega2
+       | some k => bucketOf idx (some k)).filterMap (fun mu2 =>
+        if mu1.compatible mu2 then
+          let merged := mu1.merge mu2
+          if cond merged then some merged else none
+        else none)
+    if extended.isEmpty then [mu1] else extended)
+
+/-- LeftJoin(Ω1, Ω2, expr) by hash: equal to `leftJoin` as a list —
+same rows, same order (`hashLeftJoin_eq_leftJoin`). With no usable key
+variable it IS the nested-loop `leftJoin`. -/
+def hashLeftJoin (omega1 omega2 : SolutionSeq) (cond : Binding → Bool) :
+    SolutionSeq :=
+  match joinKeyVars omega1 omega2 with
+  | [] => leftJoin omega1 omega2 cond
+  | v :: vs => hashLeftJoinKeyed (v :: vs) omega1 omega2 cond
 
 /-! ### The indexed BGP step
 
@@ -800,8 +830,12 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
   -- included.
   | .join l r       =>
       SPARQL.hashJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+  -- Wired to the hash left join; `hashLeftJoin_eq_leftJoin`
+  -- (IndexedEvalRefinement.lean) proves it returns exactly the
+  -- nested-loop `SPARQL.leftJoin` of the two operands, list order
+  -- included.
   | .leftJoin l r c =>
-      SPARQL.leftJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
+      SPARQL.hashLeftJoin (GraphPattern.evalIn ds active l) (GraphPattern.evalIn ds active r)
         (c active)
   | .filter c q     => filterSeq (c active) (GraphPattern.evalIn ds active q)
   | .union l r      =>

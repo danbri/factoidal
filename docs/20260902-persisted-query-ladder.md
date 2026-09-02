@@ -94,6 +94,39 @@ returns 9,117 rows in 2.4 s through the subject-join path (4 shards,
 
   Block bytes are unchanged (the chromosome block keeps sha256 01484578…).
   What remains in a full read is decoding and index building, not hashing.
-- LeftJoin physical arm with refinement proof: queued.
+- LeftJoin physical arm with refinement proof: landed. `SPARQL.hashLeftJoin`
+  buckets the right side once on the shared always-bound variables, and
+  `hashLeftJoin_eq_leftJoin` (`SPARQL/IndexedEvalRefinement.lean`) proves it
+  equal to the nested-loop `leftJoin` as a list, rows and order; the
+  reference evaluator's OPTIONAL arm and a new backend arm (conditions in
+  `Expr.backendLocal`) both use it, and the backend join arm now uses
+  `hashJoin` (licensed by `hashJoin_eq_join`). Guards compare the backend
+  runner with the reference on extending, unmatched and rejected OPTIONALs.
+
+### Milestone table, 2026-09-02 evening
+
+Single cold runs on the same store, everything of the day landed; a WASM
+build was competing for CPU during these runs, so the quiet numbers are a
+little lower (q1 measures 3.94 s quiet).
+
+| # | Query shape | Rows | Morning | Evening | Path |
+| --- | --- | --- | --- | --- | --- |
+| q1 | `COUNT(*)` over everything | 1 | 12.5 s | 7.5 s (3.9 s quiet) | full read, 13 blocks, HACL* Merkle verification |
+| q2 | `COUNT` of P684 (759,263 rows) | 1 | 1.95 s | 1.3 s | per-predicate count |
+| q3 | subject point lookup, unbound predicate | 3 | 10.0 s | 0.12 s | TLI1/SRI2 subject point |
+| q4 | two-pattern join P684/P682 | 14 | 0.17 s | 0.07 s | SRI2/TLI1 subject join, hash join |
+| q5 | `GROUP BY ?p` with counts | 6 | 2.4 s | 0.62 s | per-predicate counts |
+| q6 | `?s P1057 ?o1 . OPTIONAL { ?s P688 ?o2 } FILTER(isIRI(?o1))` | 25,083 | 31.8 s | 0.86 s | 2 blocks, hash LeftJoin on the backend arm |
+| s1 | `?s P684 ?o LIMIT 10` | 10 | 0.66 s | 0.03 s | bounded prefix scan |
+| o1 | `?s P682 wd:Q14860489` | 0 | 0.05 s | 0.01 s | OLI2 object scan |
+
+Every row count and preview is unchanged from the morning. What backs the
+numbers: the codecs' round-trip theorems (spec section 10.1), the hash
+join and hash LeftJoin equalities, the backend-arm theorems, the encoder
+admission equal to the decoder's, and the HACL* SHA-256 differential probe
+in CI. What remains outside a theorem: the planner's choice of blocks
+(argued in docstrings, checked by the census and the row-count comparisons)
+and the extern hasher's agreement with the specification (checked by the
+probe).
 - Rung 3 (UK Parliament TriG, 347 MB, named graphs): blocked on the
   quad-aware layout (spec section 10, gate 4); the packer reads Turtle only.

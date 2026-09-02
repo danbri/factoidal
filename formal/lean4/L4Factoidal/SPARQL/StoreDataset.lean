@@ -27,10 +27,11 @@ Lean algebra states §18.6's EXISTS, and they are built at lowering
 time. So a backend-routed evaluator here either rebuilds the whole
 lowering or delegates.
 
-This module delegates: BGP, JOIN, UNION, MINUS, `GRAPH <constant>` and
-the empty pattern are backend-native; every other arm materialises the
-dataset and runs the algebra evaluator. That is the SAME device the F*
-source uses for its own hard arms, applied to more of them.
+This module delegates: BGP, JOIN, UNION, MINUS, `GRAPH <constant>`, the
+empty pattern, and FILTER / OPTIONAL whose condition is `backendLocal`
+are backend-native; every other arm materialises the dataset and runs
+the algebra evaluator. That is the SAME device the F* source uses for
+its own hard arms, applied to more of them.
 
 **What it costs is performance on those shapes, not correctness.** The
 delegate is the algebra evaluator, which is the semantic source of
@@ -68,6 +69,7 @@ a clean exit.
 No `sorry`, no user `axiom`, no `native_decide`.
 -/
 import L4Factoidal.SPARQL.StoreFastPath
+import L4Factoidal.SPARQL.IndexedEvalRefinement
 
 namespace L4Factoidal.SPARQL.StoreDataset
 
@@ -151,8 +153,28 @@ def evalPatternBackend (env : EvalEnv) (dsb : DatasetBackend) :
         let gCurrent := backendSearch gb patternBoundAll
         let ds := { ds0 with default := gCurrent }
         (QueryPattern.filter condition pattern).lowerWith env Binding.empty |>.evalIn ds gCurrent
+  -- The hash join, equal to `SPARQL.join` as a list (`hashJoin_eq_join`,
+  -- `IndexedEvalRefinement.lean`), as `GraphPattern.evalIn` already uses.
   | .join p1 p2, gb =>
-      SPARQL.join (evalPatternBackend env dsb p1 gb) (evalPatternBackend env dsb p2 gb)
+      SPARQL.hashJoin (evalPatternBackend env dsb p1 gb) (evalPatternBackend env dsb p2 gb)
+  -- OPTIONAL stays on the backend path under the same condition the
+  -- `.filter` arm uses: a `backendLocal` condition needs only the row,
+  -- so existential substitution is a no-op and the condition the
+  -- reference applies (`QueryPattern.lowerWith`'s `.leftJoin` arm,
+  -- Query.lean) reduces to `ebvOrFalse ∘ Expr.evalIn env` under the
+  -- empty seed binding. The join itself is the hash left join;
+  -- `hashLeftJoin_eq_leftJoin` (IndexedEvalRefinement.lean) proves it
+  -- returns exactly §18.5's `SPARQL.leftJoin`, list order included.
+  | .leftJoin p1 p2 cond, gb =>
+      if cond.backendLocal then
+        SPARQL.hashLeftJoin
+          (evalPatternBackend env dsb p1 gb) (evalPatternBackend env dsb p2 gb)
+          (fun row => ebvOrFalse (Expr.evalIn env row cond))
+      else
+        let ds0 := materialiseDatasetBackend dsb
+        let gCurrent := backendSearch gb patternBoundAll
+        let ds := { ds0 with default := gCurrent }
+        (QueryPattern.leftJoin p1 p2 cond).lowerWith env Binding.empty |>.evalIn ds gCurrent
   | .union p1 p2, gb =>
       SPARQL.union (evalPatternBackend env dsb p1 gb) (evalPatternBackend env dsb p2 gb)
   | .minus p1 p2, gb =>
@@ -431,6 +453,31 @@ theorem evalPatternBackend_union_native (env : EvalEnv) (dsb : DatasetBackend)
                      (evalPatternBackend env dsb p2 gb) := by
   simp [evalPatternBackend]
 
+/-- OPTIONAL with a `backendLocal` condition is backend-native: both
+operands recurse on the backend path and the arm computes §18.5's
+LeftJoin over them (through `SPARQL.hashLeftJoin`, which
+`hashLeftJoin_eq_leftJoin` proves equal to `SPARQL.leftJoin` as a
+list). -/
+theorem evalPatternBackend_leftJoin_native (env : EvalEnv) (dsb : DatasetBackend)
+    (p1 p2 : QueryPattern) (cond : Expr) (gb : GraphBackend)
+    (h : cond.backendLocal = true) :
+    evalPatternBackend env dsb (.leftJoin p1 p2 cond) gb
+      = SPARQL.hashLeftJoin (evalPatternBackend env dsb p1 gb)
+          (evalPatternBackend env dsb p2 gb)
+          (fun row => ebvOrFalse (Expr.evalIn env row cond)) := by
+  simp [evalPatternBackend, h]
+
+/-- ... and it denotes the specification's nested-loop LeftJoin. -/
+theorem evalPatternBackend_leftJoin_spec (env : EvalEnv) (dsb : DatasetBackend)
+    (p1 p2 : QueryPattern) (cond : Expr) (gb : GraphBackend)
+    (h : cond.backendLocal = true) :
+    evalPatternBackend env dsb (.leftJoin p1 p2 cond) gb
+      = SPARQL.leftJoin (evalPatternBackend env dsb p1 gb)
+          (evalPatternBackend env dsb p2 gb)
+          (fun row => ebvOrFalse (Expr.evalIn env row cond)) := by
+  rw [evalPatternBackend_leftJoin_native env dsb p1 p2 cond gb h,
+      SPARQL.hashLeftJoin_eq_leftJoin]
+
 theorem evalPatternBackend_empty (env : EvalEnv) (dsb : DatasetBackend)
     (gb : GraphBackend) :
     evalPatternBackend env dsb .empty gb = [Binding.empty] := by
@@ -633,6 +680,64 @@ private def envWithDataset : EvalEnv :=
           dsb1 with
         | some rows => rows.length | none => 99) == 0
 
+/-! OPTIONAL on the backend path answers exactly what the reference
+evaluator answers over the materialised dataset — the same rows, in the
+same order.
+
+`gDefault` is `a p b`. The right side of the OPTIONAL below matches
+`a p ?o2` (it does: `o2 = b`), so the left row EXTENDS; the second form
+asks for `?s p a`, which the default graph does not carry, so the left
+row is KEPT UNEXTENDED; the third form extends but a backend-local
+condition rejects the extension, so the left row is again kept
+unextended. -/
+private def tpSPO : TriplePattern :=
+  { s := .var "s", p := .var "p", o := .var "o" }
+private def tpExtend : TriplePattern :=
+  { s := .var "s", p := .var "p", o := .var "o2" }
+private def tpNoMatch : TriplePattern :=
+  { s := .var "s", p := .var "p", o := .iri iA }
+
+private def ljExtend : QueryPattern :=
+  .leftJoin (.bgp [tpSPO]) (.bgp [tpExtend]) (.boolLit true)
+private def ljUnmatched : QueryPattern :=
+  .leftJoin (.bgp [tpSPO]) (.bgp [tpNoMatch]) (.boolLit true)
+private def ljRejected : QueryPattern :=
+  .leftJoin (.bgp [tpSPO]) (.bgp [tpExtend]) (.isBlank (.var "o2"))
+
+private def backendRows (p : QueryPattern) : SolutionSeq :=
+  match runSelectQueryBackendDataset envWithDataset (mkQuery (.select .all) p) dsb1 with
+  | some rows => rows
+  | none => []
+
+private def referenceRows (p : QueryPattern) : SolutionSeq :=
+  (evalSelect envWithDataset (materialiseDatasetBackend dsb1)
+     (mkQuery (.select .all) p)).2
+
+/-! All three conditions are `backendLocal`, so all three exercise the
+NATIVE arm and not the materialise fallback. -/
+#guard (Expr.backendLocal (.boolLit true)) == true
+#guard (Expr.backendLocal (.isBlank (.var "o2"))) == true
+
+/-! (a) the OPTIONAL extends. -/
+#guard backendRows ljExtend == referenceRows ljExtend
+#guard (backendRows ljExtend).length == 1
+#guard (match (backendRows ljExtend).head? with
+        | some mu => (Binding.lookup "o2" mu).isSome | none => false) == true
+
+/-! (b) no compatible right row: the left row survives unextended. -/
+#guard backendRows ljUnmatched == referenceRows ljUnmatched
+#guard (backendRows ljUnmatched).length == 1
+#guard (match (backendRows ljUnmatched).head? with
+        | some mu => (Binding.lookup "o2" mu).isSome | none => true) == false
+
+/-! (c) a backend-local condition rejects the only extension: the left
+row survives unextended. -/
+#guard backendRows ljRejected == referenceRows ljRejected
+#guard (backendRows ljRejected).length == 1
+#guard (match (backendRows ljRejected).head? with
+        | some mu => (Binding.lookup "o2" mu).isSome | none => true) == false
+
+
 /-! The COTTAS dataset constructor makes one backend per named graph
 plus the default. -/
 #guard (cottasOnDiskDatasetBackend
@@ -646,6 +751,8 @@ plus the default. -/
 /-! ## Axiom audit -/
 
 #print axioms evalPatternBackend_bgp_native
+#print axioms evalPatternBackend_leftJoin_native
+#print axioms evalPatternBackend_leftJoin_spec
 #print axioms evalBgpBackend_allVars_list
 #print axioms countGroupByGraph_length
 #print axioms evalAskBackend_none_on_decode_failure
