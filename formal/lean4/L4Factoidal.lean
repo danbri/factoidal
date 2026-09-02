@@ -331,6 +331,7 @@ import L4Factoidal.Math.SigmoidTests
 import L4Factoidal.XForms.BindTests
 import L4Factoidal.GRDDL.Discovery
 import L4Factoidal.Storage.DeltaLog
+import L4Factoidal.Storage.TermCodecTheorems
 import L4Factoidal.Storage.DeltaLogTests
 import L4Factoidal.Storage.BlockMvp
 import L4Factoidal.Storage.BlockMvpTests
