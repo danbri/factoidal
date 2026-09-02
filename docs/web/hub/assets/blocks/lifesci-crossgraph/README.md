@@ -41,6 +41,21 @@ Blocks (predicate IRIs are `http://www.wikidata.org/prop/direct/<P>`):
 | `disease/P927.ibk3` | P927 anatomical location | 542 | 39,028 | `f145420c498cc83c2b207e942e39ab3143e2acf34c224fd18f010dbebc497152` |
 | `disease/P2176.ibk3` | P2176 drug or therapy used for treatment | 2,752 | 115,718 | `bfafa617d56ca49fa38284ff5dd61b1e2356b5e85f3071aa379749c660bb5579` |
 
+Labels (one extra block, used only to decorate results):
+
+| File | Property | Rows | Bytes | SHA-256 |
+|---|---|---:|---:|---|
+| `labels/rdfs-label.ibk3` | `rdfs:label` (English) | 31,325 | 4,703,960 | `1beeed7cc9f2d2e8313001dff03a9eda74c714c2ca98017f5f7699ff5a13cb25` |
+
+Source `examples/wikidata/subsets/lifesci-kgx/data/labels-en.ttl`
+(SHA-256 `920fdb951916ac0015190175a8dedff60a8ad64c035534828a4de997f43b1eff`):
+the English `rdfs:label` of every entity IRI appearing in the three members,
+fetched from the Wikidata Query Service (CC0) on 2026-09-02 with
+`SELECT ?item ?label WHERE { VALUES ?item { … } ?item rdfs:label ?label
+FILTER(lang(?label)="en") }` in batches of 400; 31,326 labels for 31,847
+entities (the rest have no English label), 31,325 statements as measured by
+`l4factoidal parse`.
+
 Row counts were measured by the Lean WASM `scanIBK3Predicate` operation on
 each block; source triple counts by `tools/corpus-profile.sh`. These are
 primary block bytes only: the notebook does not claim SBM activation, Merkle

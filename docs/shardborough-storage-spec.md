@@ -257,6 +257,13 @@ production remote-worker protocol. The caller must also authenticate the
 expected block identity: a self-consistent IBK3 file alone does not establish
 that it belongs to the active generation.
 
+The browser query operations (`queryDataset`, `datasetQuery`, and the
+block-set preview) evaluate `SELECT` and `ASK` through the same optimized
+Lean physical-plan path as the native host — `indexedDatasetBackend` with
+`runSelectQueryBackendDataset` — and fall back to the reference evaluator
+for any shape that path declines, so answers are never partial. A dataset
+handle builds its indexes once when opened.
+
 The native `l4block-id-v3-query` host has a broader, implemented path. It
 parses SPARQL, opens the active SBM generation, checks committed artifacts,
 uses SRI2/TLI1/OLI2 where the admitted query shape permits, merges durable

@@ -88,6 +88,52 @@ ASK { GRAPH <urn:kgx:disease> { ?s wdt:P1057 ?o } }`]);
   assert.equal(wrongGraph.boolean, false);
 });
 
+test('post50: the labels block decodes and resolves a known entity', async () => {
+  const borough = await manifest();
+  const fn = await engine();
+  const block = borough.labels;
+  const bytes = fs.readFileSync(new URL(block.file, ASSET_DIR));
+  assert.equal(bytes.length, block.bytes);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), block.sha256);
+  const scan = fn.call('scanIBK3Predicate', [hex(bytes), block.predicate, block.scope]);
+  assert.equal(scan.ok, true);
+  assert.equal(scan.rows, block.rows);
+  const opened = fn.call('datasetOpen', [scan.ntriples, 'nquads', '']);
+  assert.equal(opened.ok, true);
+  const answer = fn.call('datasetQuery', [opened.handle,
+    'SELECT ?label WHERE { <http://www.wikidata.org/entity/Q668633> <http://www.w3.org/2000/01/rdf-schema#label> ?label } LIMIT 1']);
+  assert.equal(answer.ok, true);
+  assert.equal(answer.srj.results.bindings[0].label.value, 'human chromosome 3');
+});
+
+test('post50: the four-hop chromosome-3 question answers through the indexed query path', async () => {
+  const borough = await manifest();
+  const fn = await engine();
+  const pick = (graph, property) => {
+    const member = borough.members.find(m => m.graph === graph);
+    const block = member.blocks.find(b => b.property === property);
+    const bytes = fs.readFileSync(new URL(block.file, ASSET_DIR));
+    const scan = fn.call('scanIBK3Predicate', [hex(bytes), `http://www.wikidata.org/prop/direct/${property}`, member.scope]);
+    return scan.ntriples.split('\n').filter(Boolean).map(line => line.replace(/ \.$/, ` <${graph}> .`)).join('\n');
+  };
+  const nquads = [pick('urn:kgx:sequence_variant', 'P1057'), pick('urn:kgx:sequence_variant', 'P3433'),
+    pick('urn:kgx:disease', 'P2293'), pick('urn:kgx:disease', 'P2176')].join('\n');
+  const opened = fn.call('datasetOpen', [nquads, 'nquads', '']);
+  assert.equal(opened.ok, true);
+  assert.equal(opened.count, 1357 + 1702 + 5586 + 2752);
+  const started = performance.now();
+  const answer = fn.call('datasetQuery', [opened.handle, `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+SELECT ?variant ?gene ?disease ?drug WHERE {
+  GRAPH <urn:kgx:sequence_variant> { ?variant wdt:P1057 wd:Q668633 . ?variant wdt:P3433 ?gene }
+  GRAPH <urn:kgx:disease> { ?disease wdt:P2293 ?gene . ?disease wdt:P2176 ?drug }
+} LIMIT 20`]);
+  const elapsed = performance.now() - started;
+  assert.equal(answer.ok, true);
+  assert.equal(answer.srj.results.bindings.length, 20);
+  assert.ok(elapsed < 60000, `four-hop query took ${Math.round(elapsed)} ms`);
+});
+
 test('post50: documents the bounded, cross-graph workload', () => {
   const source = fs.readFileSync('docs/web/hub/50-shardborough-life-sciences.md', 'utf8');
   assert.match(source, /GRAPH <urn:kgx:chromosome>/);
@@ -98,7 +144,10 @@ test('post50: documents the bounded, cross-graph workload', () => {
   assert.match(source, /fetches only the blocks it names/);
   assert.match(source, /complete fallback/);
   assert.match(source, /LIMIT 20\s+limits the displayed answers, not the input work/);
-  assert.match(source, /No RDF index or parsed dataset is saved\s+in a browser filesystem/);
+  assert.match(source, /navigator\.storage\.getDirectory/);
+  assert.match(source, /Clear local cache/);
+  assert.match(source, /re-verified against the manifest/);
+  assert.match(source, /decoded dataset is not persisted/);
   assert.match(source, /default-graph boundary explicitly/);
   assert.match(source, /do not carry graph identity yet/);
 });

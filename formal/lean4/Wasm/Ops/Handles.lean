@@ -44,14 +44,26 @@ namespace L4Wasm.Ops
 
 open L4Factoidal.RDF
 open L4Factoidal.Syntax
+open L4Factoidal.SPARQL.StoreDataset
 open L4Factoidal.JSON
 
 /-- Handle ids already issued; `datasetOpen` numbers handles "h1",
 "h2", … in open order. Closing a handle never reuses its id. -/
 initialize handleCounter : IO.Ref Nat ← IO.mkRef 0
 
+/-- An open dataset and its indexed backend.  The backend (equivalence-aware
+indexes over the default and every named graph) is built once when the
+handle is opened or updated, so every `datasetQuery` on the handle runs
+the optimized physical-plan path without rebuilding indexes. -/
+structure OpenDataset where
+  ds : Dataset
+  backend : DatasetBackend
+
+private def openDataset (ds : Dataset) : OpenDataset :=
+  { ds, backend := indexedDatasetBackend ds }
+
 /-- The open datasets, keyed by handle string. -/
-initialize handleTable : IO.Ref (Std.HashMap String Dataset) ← IO.mkRef ∅
+initialize handleTable : IO.Ref (Std.HashMap String OpenDataset) ← IO.mkRef ∅
 
 /-- The shared error envelope for a handle that is not in the store. -/
 def unknownHandle (h : String) : String :=
@@ -59,38 +71,39 @@ def unknownHandle (h : String) : String :=
 
 /-- Look `h` up and run `f` on the stored dataset; unknown handles get
 the shared error envelope. -/
-private def withHandle (h : String) (f : Dataset → IO String) : IO String := do
+private def withHandle (h : String) (f : OpenDataset → IO String) : IO String := do
   match (← handleTable.get)[h]? with
   | none    => pure (unknownHandle h)
-  | some ds => f ds
+  | some od => f od
 
-/-- `datasetOpen(text, formatTag, baseIri)` — parse once, store, and
-answer the new handle plus the quad count. A parse failure stores
-nothing and issues no handle. -/
+/-- `datasetOpen(text, formatTag, baseIri)` — parse once, index once,
+store, and answer the new handle plus the quad count. A parse failure
+stores nothing and issues no handle. -/
 def datasetOpen (text formatTag baseIri : String) : IO String := do
   match parseTextToDataset text formatTag baseIri with
   | .error msg => pure (errJson msg)
   | .ok ds =>
       let n ← handleCounter.modifyGet fun n => (n + 1, n + 1)
       let h := s!"h{n}"
-      handleTable.modify (·.insert h ds)
+      handleTable.modify (·.insert h (openDataset ds))
       pure (okWith [("handle", .string h),
                     ("count", .number (toString (datasetQuadCount ds)))])
 
 /-- `datasetQuery(handle, sparql)` — the `queryDataset` envelope family
-over the stored dataset, without the per-call N-Quads round trip. -/
+over the stored dataset and its cached indexed backend, without the
+per-call N-Quads round trip. -/
 def datasetQuery (h sparql : String) : IO String :=
-  withHandle h fun ds => pure (queryParsedDataset ds sparql)
+  withHandle h fun od => pure (queryParsedDatasetWith od.ds od.backend sparql)
 
 /-- `datasetUpdate(handle, sparqlUpdate)` — apply the update and
-REPLACE the stored dataset; answers the new quad count. On a parse or
-evaluation error the stored dataset is unchanged. -/
+REPLACE the stored dataset (and rebuild its index); answers the new quad
+count. On a parse or evaluation error the stored dataset is unchanged. -/
 def datasetUpdate (h updateText : String) : IO String :=
-  withHandle h fun ds =>
-    match applyUpdateText ds updateText with
+  withHandle h fun od =>
+    match applyUpdateText od.ds updateText with
     | .error e => pure (errJson e)
     | .ok ds' => do
-        handleTable.modify (·.insert h ds')
+        handleTable.modify (·.insert h (openDataset ds'))
         pure (okWith [("count", .number (toString (datasetQuadCount ds')))])
 
 /-- `datasetSerialize(handle, formatTag)` — canonical N-Quads, or the
@@ -98,7 +111,8 @@ prefix-compacted Turtle of the stateless `serializeTurtle` (named
 graphs flattened into the default graph on the turtle path, exactly as
 there). -/
 def datasetSerialize (h formatTag : String) : IO String :=
-  withHandle h fun ds =>
+  withHandle h fun od =>
+    let ds := od.ds
     match formatTag.toLower with
     | "" | "nquads" | "nq" | "n-quads" =>
         pure (okWith [("nquads", .string (Dataset.toCanonicalNQuads ds))])

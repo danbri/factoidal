@@ -54,6 +54,10 @@ lifeSciShardborough = ({
         { file: "disease/P2176.ibk3", property: "P2176", rows: 2752, bytes: 115718, sha256: "bfafa617d56ca49fa38284ff5dd61b1e2356b5e85f3071aa379749c660bb5579" },
       ] },
   ],
+  labels: { file: "labels/rdfs-label.ibk3", predicate: "http://www.w3.org/2000/01/rdf-schema#label", source: "labels-en.ttl", rows: 31325, bytes: 4703960,
+    sha256: "1beeed7cc9f2d2e8313001dff03a9eda74c714c2ca98017f5f7699ff5a13cb25",
+    scope: "source:labels-en.ttl:920fdb951916ac0015190175a8dedff60a8ad64c035534828a4de997f43b1eff",
+    provenance: "English rdfs:label for every entity of the three members, fetched from the Wikidata Query Service (CC0) on 2026-09-02" },
   integrity: "every block is checked against its published byte length and SHA-256 before the Lean worker decodes it; graph identity is assigned by this manifest, not carried by the block bytes",
 })
 ```
@@ -73,6 +77,21 @@ SELECT ?variant ?gene WHERE {
   GRAPH <urn:kgx:sequence_variant> {
     ?variant wdt:P1057 wd:Q138955 .
     ?variant wdt:P3433 ?gene .
+  }
+} LIMIT 20`;
+  // Four hops across both graphs: variants on human chromosome 3 (wd:Q668633)
+  // -> the genes they are variants of -> diseases genetically associated with
+  // those genes -> drugs used to treat those diseases.
+  const chromosomeThreeQuery = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+SELECT ?variant ?gene ?disease ?drug WHERE {
+  GRAPH <urn:kgx:sequence_variant> {
+    ?variant wdt:P1057 wd:Q668633 .
+    ?variant wdt:P3433 ?gene .
+  }
+  GRAPH <urn:kgx:disease> {
+    ?disease wdt:P2293 ?gene .
+    ?disease wdt:P2176 ?drug .
   }
 } LIMIT 20`;
   const allBlocks = manifest.members.flatMap(member => member.blocks.map(block => ({ member, block })));
@@ -95,8 +114,10 @@ SELECT ?variant ?gene WHERE {
     </style>
     <p><strong>${manifest.id}</strong> — ${manifest.members.length} graphs, ${manifest.members.reduce((n, x) => n + x.triples, 0).toLocaleString()} triples, ${allBlocks.length} IBK3 blocks, ${totalBytes.toLocaleString()} bytes. A query fetches only the blocks it names.</p>
     <label>SPARQL query<textarea spellcheck="false" aria-describedby="shardborough-status"></textarea></label>
-    <div class="actions"><button type="button" class="run">Run the query</button><button type="button" class="secondary cross">Cross-graph variant query</button><button type="button" class="secondary disease">Variants on one chromosome</button><button type="button" class="secondary show">Show manifest details</button></div>
+    <div class="actions"><button type="button" class="run">Run the query</button><button type="button" class="secondary cross">Cross-graph variant query</button><button type="button" class="secondary disease">Variants on one chromosome</button><button type="button" class="secondary hops">Chromosome 3: genes, diseases, drugs</button><button type="button" class="secondary show">Show manifest details</button><button type="button" class="secondary clear">Clear local cache</button></div>
+    <label class="labels-toggle"><input type="checkbox" class="labels" checked> Show English labels beside IRIs (loads one 4.7 MB label block once; cached like the others)</label>
     <p id="shardborough-status" class="status" aria-live="polite">Ready. Loading starts only when you choose to run it.</p>
+    <p class="cache" aria-live="polite">Checking this browser's private file system for cached blocks…</p>
     <details><summary>Execution report</summary><pre>No run yet.</pre></details>
     <div class="details" hidden></div>
     <div class="result" aria-live="polite"></div>
@@ -104,9 +125,61 @@ SELECT ?variant ?gene WHERE {
   const query = root.querySelector("textarea"), status = root.querySelector(".status"), report = root.querySelector("details pre");
   const details = root.querySelector(".details"), resultEl = root.querySelector(".result");
   const run = root.querySelector(".run"), cross = root.querySelector(".cross"), disease = root.querySelector(".disease"), show = root.querySelector(".show");
+  const clear = root.querySelector(".clear"), cacheEl = root.querySelector(".cache");
+  const hops = root.querySelector(".hops"), labelsToggle = root.querySelector("input.labels");
   query.value = crossGraphQuery;
   const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
   const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), byte => byte.toString(16).padStart(2, "0")).join("");
+  // Verified block bytes are kept in this origin's private file system
+  // (OPFS) so a later visit skips the download. Every cached block is
+  // re-verified against the manifest's byte length and SHA-256 before use;
+  // a stale or damaged file is refetched and overwritten. Nothing else is
+  // stored, and "Clear local cache" removes the directory. Browsers without
+  // OPFS writes (for example Safari on the main thread) simply fetch.
+  const cacheDirName = "shardborough-lifesci-crossgraph";
+  const cacheKey = file => file.replaceAll("/", "__");
+  const cacheDir = async create => {
+    try {
+      if (!navigator.storage?.getDirectory) return null;
+      const home = await navigator.storage.getDirectory();
+      return await home.getDirectoryHandle(cacheDirName, { create });
+    } catch { return null; }
+  };
+  const cacheSummary = async () => {
+    const dir = await cacheDir(false);
+    if (!dir) return { supported: !!navigator.storage?.getDirectory, count: 0, bytes: 0 };
+    let count = 0, bytes = 0;
+    try { for await (const [, handle] of dir.entries()) { if (handle.kind === "file") { count += 1; bytes += (await handle.getFile()).size; } } } catch {}
+    return { supported: true, count, bytes };
+  };
+  const showCache = async () => {
+    const summary = await cacheSummary();
+    cacheEl.textContent = !summary.supported
+      ? "This browser has no private file system; blocks are fetched on every run and nothing is stored."
+      : summary.count === 0
+        ? "Local cache: empty. Verified blocks are stored in this browser's private file system after a run, so a later visit skips the download; nothing is stored until you run a query."
+        : `Local cache: ${summary.count} of ${allBlocks.length + 1} blocks (twelve data blocks plus the label block), ${summary.bytes.toLocaleString()} bytes in this browser's private file system. Clear local cache removes them.`;
+  };
+  const readCached = async block => {
+    const dir = await cacheDir(false);
+    if (!dir) return null;
+    try {
+      const file = await (await dir.getFileHandle(cacheKey(block.file))).getFile();
+      if (file.size !== block.bytes) return null;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return (await digest(bytes)) === block.sha256 ? bytes : null;
+    } catch { return null; }
+  };
+  const writeCached = async (block, bytes) => {
+    const dir = await cacheDir(true);
+    if (!dir) return false;
+    try {
+      const writable = await (await dir.getFileHandle(cacheKey(block.file), { create: true })).createWritable();
+      await writable.write(bytes); await writable.close();
+      return true;
+    } catch { return false; }
+  };
+  showCache();
   // Block selection mirrors the native planner's constant-predicate rule:
   // a block is fetched when the query names its property (prefixed or full
   // IRI). A query that names no known property loads every block, which is
@@ -115,21 +188,67 @@ SELECT ?variant ?gene WHERE {
     const named = allBlocks.filter(({ block }) => text.includes(`wdt:${block.property}`) || text.includes(`/prop/direct/${block.property}>`));
     return named.length ? named : allBlocks;
   };
+  // Cache-first, always-verified block bytes: local file system, else network.
+  const loadBlockBytes = async block => {
+    let bytes = await readCached(block);
+    let source = "local cache";
+    if (!bytes) {
+      source = "network";
+      const response = await fetch(new URL(manifest.assetBase + block.file, location.href));
+      if (!response.ok) throw new Error(`${block.file}: HTTP ${response.status}`);
+      bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length !== block.bytes) throw new Error(`${block.file}: expected ${block.bytes} bytes, received ${bytes.length}`);
+      if ((await digest(bytes)) !== block.sha256) throw new Error(`${block.file}: SHA-256 identity does not match the manifest`);
+      if (await writeCached(block, bytes)) source = "network, now cached";
+    }
+    return { bytes, source };
+  };
+  // English labels: one rdfs:label block, opened once as its own dataset
+  // handle; each result IRI is then resolved by a bound-subject lookup.
+  let labelsPromise = null;
+  const labelsDataset = () => {
+    if (!labelsPromise) labelsPromise = (async () => {
+      const block = manifest.labels;
+      const { bytes, source } = await loadBlockBytes(block);
+      const scan = await fn.l4Call(manifest.workerOperation, [hex(bytes), block.predicate, block.scope]);
+      if (!scan.ok) throw new Error(`${block.file}: ${scan.error}`);
+      const opened = await fn.l4Call("datasetOpen", [scan.ntriples, "nquads", ""]);
+      if (!opened.ok) throw new Error(opened.error);
+      return { handle: opened.handle, rows: scan.rows, source };
+    })().catch(error => { labelsPromise = null; throw error; });
+    return labelsPromise;
+  };
+  const labelOf = new Map();
+  const decorateLabels = async srj => {
+    const labels = await labelsDataset();
+    const iris = new Set();
+    for (const row of srj.results.bindings) for (const v of srj.head.vars) if (row[v]?.type === "uri") iris.add(row[v].value);
+    for (const iri of iris) {
+      if (labelOf.has(iri)) continue;
+      const answer = await fn.l4Call("datasetQuery", [labels.handle, `SELECT ?label WHERE { <${iri}> <${manifest.labels.predicate}> ?label } LIMIT 1`]);
+      const found = answer.ok && answer.kind === "select" ? answer.srj.results.bindings[0]?.label : null;
+      labelOf.set(iri, found ? found.value : null);
+    }
+    const vars = [];
+    for (const v of srj.head.vars) { vars.push(v); if (srj.results.bindings.some(row => row[v]?.type === "uri")) vars.push(`${v}Label`); }
+    const bindings = srj.results.bindings.map(row => {
+      const out = { ...row };
+      for (const v of srj.head.vars) { const b = row[v]; if (b?.type === "uri") { const text = labelOf.get(b.value); if (text) out[`${v}Label`] = { type: "literal", value: text, "xml:lang": "en" }; } }
+      return out;
+    });
+    return { srj: { head: { vars }, results: { bindings } }, labels };
+  };
   const scanned = new Map();
   const scanBlock = async ({ member, block }) => {
     if (scanned.has(block.file)) return scanned.get(block.file);
-    const response = await fetch(new URL(manifest.assetBase + block.file, location.href));
-    if (!response.ok) throw new Error(`${block.file}: HTTP ${response.status}`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length !== block.bytes) throw new Error(`${block.file}: expected ${block.bytes} bytes, received ${bytes.length}`);
-    if ((await digest(bytes)) !== block.sha256) throw new Error(`${block.file}: SHA-256 identity does not match the manifest`);
+    const { bytes, source } = await loadBlockBytes(block);
     const scanStarted = performance.now();
     const scan = await fn.l4Call(manifest.workerOperation, [hex(bytes), `http://www.wikidata.org/prop/direct/${block.property}`, member.scope]);
     if (!scan.ok) throw new Error(`${block.file}: ${scan.error}`);
     // The worker returns default-graph N-Triples. The manifest assigns each
     // member's graph name, so the statements become N-Quads for the dataset.
     const nquads = scan.ntriples.split("\n").filter(Boolean).map(line => line.replace(/ \.$/, ` <${member.graph}> .`)).join("\n");
-    const entry = { file: block.file, graph: member.graph, rows: scan.rows, bytes: bytes.length, scanMs: Math.round((performance.now() - scanStarted) * 10) / 10, nquads };
+    const entry = { file: block.file, graph: member.graph, source, rows: scan.rows, bytes: bytes.length, scanMs: Math.round((performance.now() - scanStarted) * 10) / 10, nquads };
     scanned.set(block.file, entry);
     return entry;
   };
@@ -152,13 +271,23 @@ SELECT ?variant ?gene WHERE {
   });
   cross.addEventListener("click", () => { query.value = crossGraphQuery; query.focus(); });
   disease.addEventListener("click", () => { query.value = diseaseQuery; query.focus(); });
+  hops.addEventListener("click", () => { query.value = chromosomeThreeQuery; query.focus(); });
+  clear.addEventListener("click", async () => {
+    clear.disabled = true;
+    try {
+      const home = navigator.storage?.getDirectory ? await navigator.storage.getDirectory() : null;
+      if (home) await home.removeEntry(cacheDirName, { recursive: true }).catch(() => {});
+      scanned.clear(); datasets.clear();
+      status.textContent = "Local cache cleared. The next run fetches its blocks again; nothing of this notebook remains on disk.";
+    } finally { clear.disabled = false; await showCache(); }
+  });
   run.addEventListener("click", async () => {
     run.disabled = true; resultEl.replaceChildren();
     try {
       const started = performance.now();
       const selection = blocksFor(query.value);
       const selectedBytes = selection.reduce((n, x) => n + x.block.bytes, 0);
-      status.textContent = `Fetching, checking and decoding ${selection.length} of ${allBlocks.length} blocks (${selectedBytes.toLocaleString()} of ${totalBytes.toLocaleString()} bytes)…`;
+      status.textContent = `Loading, checking and decoding ${selection.length} of ${allBlocks.length} blocks (${selectedBytes.toLocaleString()} of ${totalBytes.toLocaleString()} bytes)…`;
       const dataset = await datasetFor(selection);
       status.textContent = `${dataset.triples.toLocaleString()} triples in Lean/WASM memory. Evaluating the query…`;
       const queryStarted = performance.now();
@@ -166,7 +295,18 @@ SELECT ?variant ?gene WHERE {
       if (!answer.ok) throw new Error(answer.error);
       const queryMs = Math.round(performance.now() - queryStarted), totalMs = Math.round(performance.now() - started);
       const rows = answer.kind === "select" ? answer.srj.results.bindings.length : 1;
-      status.textContent = `${rows.toLocaleString()} ${answer.kind === "select" ? "solution rows" : "result"} from ${selection.length} block${selection.length === 1 ? "" : "s"} (${dataset.triples.toLocaleString()} triples). Query ${queryMs.toLocaleString()} ms; ${totalMs.toLocaleString()} ms including fetch, verification and decode. LIMIT limits the displayed answers, not the input work.`;
+      let labelNote = "";
+      if (answer.kind === "select" && labelsToggle.checked && rows > 0) {
+        status.textContent = labelsPromise ? "Resolving English labels for the result IRIs…" : "Loading the 31,325-label block once (4.7 MB; verified, then cached) and resolving labels…";
+        const labelStarted = performance.now();
+        const decorated = await decorateLabels(answer.srj);
+        answer.srj = decorated.srj;
+        labelNote = ` Labels: ${Math.round(performance.now() - labelStarted).toLocaleString()} ms (label block ${decorated.labels.source}).`;
+      }
+      const fromCache = dataset.entries.filter(e => e.source === "local cache").length;
+      const origin = fromCache === dataset.entries.length ? "all from the local cache" : fromCache ? `${fromCache} from the local cache, ${dataset.entries.length - fromCache} fetched` : "fetched, verified and cached";
+      status.textContent = `${rows.toLocaleString()} ${answer.kind === "select" ? "solution rows" : "result"} from ${selection.length} block${selection.length === 1 ? "" : "s"} (${dataset.triples.toLocaleString()} triples; ${origin}). Query ${queryMs.toLocaleString()} ms; ${totalMs.toLocaleString()} ms including load, verification, decode and indexing.${labelNote} LIMIT limits the displayed answers, not the input work.`;
+      await showCache();
       report.textContent = JSON.stringify({ kernel: "Lean-derived l4factoidal.wasm", workerOperation: manifest.workerOperation, blocks: dataset.entries.map(({ nquads, ...e }) => e), datasetTriples: dataset.triples, queryKind: answer.kind, queryElapsedMs: queryMs, totalElapsedMs: totalMs, browserPersistence: "none; reload discards the dataset handle" }, null, 2);
       if (answer.kind === "select") { const view = document.createElement("factoidal-sparql-results"); view.setAttribute("palette", "ocean"); view.results = answer.srj; resultEl.append(view); }
       else if (answer.kind === "ask") { const view = document.createElement("factoidal-sparql-boolean"); view.setAttribute("palette", "ocean"); view.results = { boolean: answer.boolean }; resultEl.append(view); }
@@ -190,19 +330,32 @@ to the named members. Block selection is by predicate only, the same rule
 the native planner applies; graph-aware selection waits for a layout that
 carries graph identity. The second query names two properties of one
 member and fetches two blocks (201,653 bytes; 3,059 rows): the variants
-located on one chromosome and the genes they are variants of. Its first
-pattern binds the chromosome, so the join stays small; the browser query
-path is the reference Lean evaluator, which evaluates patterns left to
-right, and a wide unbound join (thousands by thousands of rows) exceeds
-the WebAssembly stack today. The native host's proved hash-join and
-shared-subject finishers are not yet wired into this browser operation. A query that names no known
-property loads every block: that is the complete fallback, the same rule the
-native planner applies, and it never returns a partial answer. LIMIT 20
+located on one chromosome and the genes they are variants of. The third
+asks a four-hop question across both graphs — the variants on human
+chromosome 3, the genes they are variants of, the diseases genetically
+associated with those genes, and the drugs used to treat those diseases —
+from four blocks (742,368 bytes; 11,397 rows). Browser queries run on the
+optimized Lean physical-plan path (equivalence-aware indexes and hash
+joins, proved equal to the reference evaluator for the shapes it handles;
+other shapes fall back to the reference evaluator), so a join of thousands
+of rows a side takes milliseconds; the cost that remains is opening a
+dataset, which parses the decoded statements once per block selection.
+With **Show English labels** on, every IRI in a result gains a label column
+resolved from one `rdfs:label` block (31,325 English labels from Wikidata,
+loaded once). A query that names no known property loads every block: that
+is the complete fallback, the same rule the native planner applies, and it
+never returns a partial answer. LIMIT 20
 limits the displayed answers, not the input work.
 
 Blocks decoded once stay in this page's Lean/WASM memory and later queries
-reuse them; a reload discards them. No RDF index or parsed dataset is saved
-in a browser filesystem.
+reuse them; a reload discards that. The verified block bytes themselves are
+kept in this browser's private file system (`navigator.storage.getDirectory`,
+the Origin Private File System) after a run, so a later visit reads them
+locally instead of downloading again; each cached block is re-verified
+against the manifest's byte length and SHA-256 before use, and a stale or
+damaged file is refetched. The decoded dataset is not persisted, nothing is
+stored until you run a query, and **Clear local cache** deletes the
+directory so the notebook leaves nothing on disk.
 
 ## What the block layout carries, and what it does not
 
