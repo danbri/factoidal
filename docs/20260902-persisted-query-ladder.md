@@ -96,6 +96,30 @@ blocks, 0.12 s to 0.20 s), not with the triple count. The two costs that
 scale with bytes are activation (one full verification and index
 recomputation per generation, 45 s for 51 MB) and the whole-store count.
 
+## Rung 3, first attempt: the UK Parliament dump (in progress)
+
+`third_party/data/ukparliament/ukparliament-rdf-2019-07-27.trig`, 346,861,556
+bytes, 5,325,830 lines, of the order of five million triples, one unlabelled
+graph block (the TriG default graph). Converted to Turtle by dropping the two
+brace lines; packed with the same command as the rungs above.
+
+Findings so far (2026-09-02, late):
+
+- The pack failed after 867 s with `Turtle parse error at 202943268: expected
+  object`. The byte offset falls in an ordinary one-line statement, and the
+  reported position may not be a plain byte offset; the failing statement is
+  being located by parsing paragraph-aligned 20 MB slices with `l4factoidal
+  parse`.
+- The dump has a 3,875,112-character line (a `geosparql:wktLiteral` polygon)
+  and 223 sibling polygon literals in one statement group. That group alone
+  parses in 1.4 s and packs correctly, but the pack takes 57 s for 224
+  triples: multi-megabyte literals go through the term codec, the PTD1
+  pages, the TLI1 keys and the Merkle leaves several times each. A
+  per-term size limit or a separate large-literal store is a design
+  question for the corpus ladder, not a correctness problem.
+- `l4block-shard-pack` on an empty input produced an empty generation that
+  activated (recorded in the `shardborough-storage` skill).
+
 ## Status
 
 - Planner fixes for q3 and q6: landed (commit 82d2f530e; the "after" column

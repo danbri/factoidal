@@ -59,6 +59,18 @@ Rules the commands enforce:
   root (CURRENT)". The older `l4block-shard-query` and
   `l4block-shard-merkle-query` read pre-SBM5 layouts (`manifest.sbm0`) and
   reject current generations; they are kept for the superseded formats.
+- **An empty input packs and activates an empty generation.** Seen
+  2026-09-02: a broken TriG-to-Turtle conversion produced a 0-byte file,
+  `l4block-shard-pack` reported `triples=0 blocks=0` and
+  `l4block-shard-activate` made it current with `verified-logical-bytes=0`.
+  Read the `triples=` count in the pack output before activating; an empty
+  RDF dataset is valid, so the tools do not refuse it.
+- **TriG input.** The packer reads Turtle. A TriG file whose only block is
+  an unlabelled `{ … }` (the default graph, as in the UK Parliament dump) is
+  Turtle after dropping that line and the closing `}`:
+  `awk 'NR==<line> && $0 ~ /^\{[[:space:]]*$/ {next} {print}' FILE.trig | sed '$d' > FILE.ttl`.
+  A TriG file with named graphs waits on the quad-aware layout
+  (`docs/designissues/2026-09-02-quad-aware-block-layout.md`).
 - **Updates route through CURRENT.** `l4block-delta-log COLLECTION --update`
   appends to the active generation's `deltas.dlog`; passing the generation
   directory does the same. Replay is exactly the valid suffix after the
