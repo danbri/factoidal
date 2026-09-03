@@ -310,8 +310,8 @@ em++ -O3 -DNDEBUG -fwasm-exceptions \
   "$LIB_OBJ"/*.o "$CORE_OBJ"/*.o "$RT_OBJ"/*.o \
   -o "$WORK/l4factoidal.mjs" \
   -sMODULARIZE=1 -sEXPORT_ES6=1 \
-  -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_call_c,_l4_call_blob_c,_l4_free_result,_malloc,_free \
-  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8 \
+  -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_call_c,_l4_call_blob_c,_l4_call_blob_io_c,_l4_free_result,_l4_free_blob,_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,getValue,setValue \
   -sALLOW_MEMORY_GROWTH=1 \
   -sSTACK_SIZE=8MB \
   -sENVIRONMENT=web,worker,node \

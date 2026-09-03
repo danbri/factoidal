@@ -343,7 +343,11 @@ char *l4_bgp_query_c(const char *data_json, const char *bgp_json);
 char *l4_call_c(const char *op, const char *args_json);
 char *l4_call_blob_c(const char *op, const char *args_json,
                      const uint8_t *blob, size_t blob_len);
+char *l4_call_blob_io_c(const char *op, const char *args_json,
+                        const uint8_t *blob, size_t blob_len,
+                        uint8_t **out_ptr, size_t *out_len);
 void  l4_free_result(char *p);
+void  l4_free_blob(uint8_t *p);
 ```
 
 ### Moving BYTES, not text: `l4_call_blob_c`
@@ -382,6 +386,42 @@ entry. The native driver has the same shape:
 
 Full design record, including the three Shardborough store ops that use it:
 [`docs/designissues/2026-09-03-wasm-shardborough-store-ops.md`](../../docs/designissues/2026-09-03-wasm-shardborough-store-ops.md).
+
+### Moving bytes OUT: `l4_call_blob_io_c`
+
+`l4_call_blob_c` carries bytes in and a JSON string out. Packing a store
+inside the module needs artifact bytes to come OUT with no encoding, for the
+same measured reason (and base64 was refused by the owner, 2026-09-03).
+
+`l4_call_blob_io_c` adds two out parameters. The Lean side is
+`l4_call_blob_io : String -> String -> ByteArray -> IO (String x ByteArray)`
+(`Wasm/Dispatch.lean`'s `callBlobIO`). The v4.33 code generator erases the IO
+world token, so the generated C takes THREE `lean_object *` arguments, the
+same as `l4_call_blob`, and returns an IO result object (tag 0 = ok) whose
+VALUE is a `Prod`: the shim takes the value with `lean_io_result_take_value`
+and reads field 0 (the Lean string) and field 1 (the ByteArray) with
+`lean_ctor_get`, which borrows, so both are copied out before the pair is
+released. This is checked against the generated `.lake/build/ir/Wasm/Exports.c`
+— read that file, never a sketch, when adding an export with a compound
+result.
+
+Two buffers, two release entries, on purpose: the envelope goes back to
+`l4_free_result`, and the byte region goes back to `l4_free_blob`. They hold
+different types, and a caller that mixes them is a bug that must be visible.
+On every path with no bytes — an op outside `L4Wasm.blobIoOpNames`, an error
+envelope, a failed allocation — `*out_ptr` is NULL and `*out_len` is 0.
+
+The JS binder is `callBlobIO(op, args, blobIn)` in `l4factoidal.js`, returning
+`{ envelope, bytes }`. It allocates one 8-byte cell for the two 32-bit out
+parameters, reads them with `getValue`, and COPIES the region out of `HEAPU8`
+with `slice` before releasing it — never a subarray view, because
+`ALLOW_MEMORY_GROWTH` replaces the heap buffer wholesale.
+
+`L4Wasm.blobIoOpNames` lists the ops that build an out region; the `ops`
+reflection reports it as `blobIoOps`. Today it holds only `blobEcho`, a self
+test whose byte `i` is `(i * 7 + 3) mod 256` — the gate is
+`tests/store-host/blob-io.mjs`, on Node and on Deno, with a 1,000,000-byte
+case that catches truncation.
 
 Ownership, in full:
 

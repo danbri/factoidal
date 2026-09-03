@@ -59,6 +59,15 @@ extern lean_object *l4_call(lean_object *op, lean_object *args_json);
 extern lean_object *l4_call_io(lean_object *op, lean_object *args_json);
 extern lean_object *l4_call_blob(lean_object *op, lean_object *args_json,
                                  lean_object *blob);
+/* `l4_call_blob_io` is an `IO (String x ByteArray)` export. The v4.33
+   code generator erases the IO world token here too (checked in the
+   generated Wasm/Exports.c -- THREE lean_object* arguments, the same as
+   l4_call_blob), and the result is an IO RESULT object (tag 0 = ok).
+   Its value is a PAIR object, so the shim takes the value with
+   lean_io_result_take_value and then reads field 0 (the Lean string)
+   and field 1 (the ByteArray) with lean_ctor_get. */
+extern lean_object *l4_call_blob_io(lean_object *op, lean_object *args_json,
+                                    lean_object *blob);
 
 /* Module initialiser for Wasm.Exports; it chains through every import,
    Init included. Name pattern: initialize_<package>_<Module_Path>. */
@@ -163,6 +172,89 @@ L4_EXPORT char *l4_call_blob_c(const char *op, const char *args_json,
     return l4_take_string(l4_call_blob(o, a, b));
 }
 
+/* Like l4_call_blob_c, but ALSO carries one contiguous byte region OUT.
+
+   The ops that build an out region are named by `L4Wasm.blobIoOpNames`
+   (the `ops` envelope lists them under "blobIoOps"); every other op
+   answers exactly as `l4_call_c` does, with an empty out region. Bytes
+   leave the module RAW: hexadecimal doubles them over the boundary, and
+   base64 was refused (owner, 2026-09-03).
+
+   MEMORY OWNERSHIP -- two buffers, two owners, two release entries.
+
+     * The returned `char *` is the JSON envelope. It is malloc'd here
+       and owned by the CALLER, exactly as for `l4_call_blob_c`. Release
+       it with `l4_free_result`.
+     * `*out_ptr` is the byte region. It is a SEPARATE malloc'd buffer,
+       also owned by the caller, and it is released with `l4_free_blob`
+       -- NOT with `l4_free_result`. The two entries are kept apart on
+       purpose: the buffers hold different types, and a caller that
+       mixes them is a bug that must be visible.
+     * `*out_len` is the length of that region in bytes.
+
+   On every path that returns no bytes -- an op with no out region, an
+   error envelope, a failed allocation -- `*out_ptr` is NULL and
+   `*out_len` is 0. A NULL return value means the envelope could not be
+   allocated and is not a Lean-level error; Lean-level errors come back
+   as an {"ok":false,"error":"..."} envelope.
+
+   `out_ptr` and `out_len` must both be non-NULL. `blob` / `blob_len`
+   name bytes the CALLER owns; they are copied once into a Lean
+   ByteArray, as in `l4_call_blob_c`.
+
+   This function MOVES bytes and never interprets them. */
+L4_EXPORT char *l4_call_blob_io_c(const char *op, const char *args_json,
+                                  const uint8_t *blob, size_t blob_len,
+                                  uint8_t **out_ptr, size_t *out_len) {
+    if (out_ptr == NULL || out_len == NULL) return NULL;
+    *out_ptr = NULL;
+    *out_len = 0;
+    if (!l4_ensure_init()) return NULL;
+    lean_object *o = lean_mk_string(op);
+    lean_object *a = lean_mk_string(args_json);
+    /* A ByteArray is a scalar array of 1-byte elements. */
+    lean_object *b = lean_alloc_sarray(1, blob_len, blob_len);
+    if (blob_len > 0 && blob != NULL) {
+        memcpy(lean_sarray_cptr(b), blob, blob_len);
+    }
+    lean_object *res = l4_call_blob_io(o, a, b);
+    if (!lean_io_result_is_ok(res)) {
+        /* callBlobIO never throws -- every failure is an {"ok":false}
+           envelope -- so this branch is defensive only. */
+        lean_dec(res);
+        return strdup("{\"ok\":false,\"error\":\"l4_call_blob_io returned an IO error\"}");
+    }
+    /* The IO value is a Prod: field 0 the envelope String, field 1 the
+       ByteArray. lean_ctor_get BORROWS, so both are read while the pair
+       still holds them; the pair is released afterwards. */
+    lean_object *pair = lean_io_result_take_value(res);
+    lean_object *env_obj = lean_ctor_get(pair, 0);
+    lean_object *arr_obj = lean_ctor_get(pair, 1);
+    char *envelope = strdup(lean_string_cstr(env_obj));
+    size_t n = lean_sarray_size(arr_obj);
+    if (envelope != NULL && n > 0) {
+        uint8_t *bytes = (uint8_t *)malloc(n);
+        if (bytes == NULL) {
+            /* The region could not be copied out. Give the caller
+               nothing rather than an envelope that promises bytes it
+               did not receive. */
+            free(envelope);
+            lean_dec(pair);
+            return NULL;
+        }
+        memcpy(bytes, lean_sarray_cptr(arr_obj), n);
+        *out_ptr = bytes;
+        *out_len = n;
+    }
+    lean_dec(pair);
+    return envelope;
+}
+
 /* Release a buffer returned by l4_version_c / l4_bgp_query_c /
-   l4_call_c / l4_call_blob_c. */
+   l4_call_c / l4_call_blob_c, or the ENVELOPE of l4_call_blob_io_c. */
 L4_EXPORT void l4_free_result(char *p) { free(p); }
+
+/* Release the byte region l4_call_blob_io_c wrote through `out_ptr`.
+   Kept apart from l4_free_result on purpose -- see the ownership note
+   on l4_call_blob_io_c. */
+L4_EXPORT void l4_free_blob(uint8_t *p) { free(p); }

@@ -96,6 +96,57 @@ these ops still answer — with an empty region, so a descriptor naming blob
 bytes is refused by name rather than silently reading nothing. -/
 def blobOpNames : List String := [ "storeQuery" ]
 
+/-- The op names that also RETURN a contiguous byte region, served by
+`callBlobIO` below (the `l4_call_blob_io` C export, wired to
+`l4_call_blob_io_c` in `Wasm/l4_shim.c`).
+
+`blobOpNames` above carries bytes IN. This table carries bytes OUT, for the
+same reason and with no encoding: an artifact returned as hexadecimal doubles
+the bytes over the boundary, and base64 was refused (owner, 2026-09-03). The
+measured cost on the read path was 242,416 bytes and 96 ms for hexadecimal
+against 4,893 bytes and 70 ms for the raw region.
+
+Today the table holds ONE op, `blobEcho`, which is a self test and nothing
+else: it builds a region whose byte `i` is `(i * 7 + 3) mod 256`, so a host
+can prove the whole path — Lean, the shim, the Emscripten export, the
+JavaScript binder — moves every byte without truncation. The pack operations
+of stage C in `docs/designissues/2026-09-03-npm-pack-in-wasm.md` join it
+here. -/
+def blobIoOpNames : List String := [ "blobEcho" ]
+
+/-- Largest out region `blobEcho` builds: 67,108,864 bytes. A count above
+this is refused by name rather than made into an allocation the module
+cannot serve. -/
+def blobEchoMaxBytes : Nat := 67108864
+
+/-- Byte `i` of the self-test region: `(i * 7 + 3) mod 256`. The stride is
+odd and coprime with 256, so a host that drops, duplicates or reorders a
+byte sees it. -/
+def blobEchoByte (i : Nat) : UInt8 := UInt8.ofNat ((i * 7 + 3) % 256)
+
+private def blobEchoFill : Nat → Nat → ByteArray → ByteArray
+  | 0,          _, acc => acc
+  | Nat.succ k, i, acc => blobEchoFill k (i + 1) (acc.push (blobEchoByte i))
+
+/-- The `n`-byte self-test region. -/
+def blobEchoRegion (n : Nat) : ByteArray :=
+  blobEchoFill n 0 (ByteArray.emptyWithCapacity n)
+
+/-- `blobEcho(lengthHint)`: `{"ok":true,"bytes":N}` plus an `N`-byte out
+region. This op has no RDF, SPARQL or storage content — it exists to prove
+the byte path, so it deliberately has no `Wasm/Ops/*.lean` module. -/
+private def blobEcho (arg : String) : String × ByteArray :=
+  match arg.toNat? with
+  | none => (errJson s!"blobEcho: '{arg}' is not a decimal byte count",
+             ByteArray.empty)
+  | some n =>
+    if n > blobEchoMaxBytes then
+      (errJson s!"blobEcho: {n} bytes is above the {blobEchoMaxBytes}-byte limit",
+       ByteArray.empty)
+    else
+      ((Json.object [("ok", .bool true), ("bytes", .number (toString n))]).toString,
+       blobEchoRegion n)
+
 private def arity1 (op : String) (f : String → String) :
     List String → String
   | [a] => f a
@@ -121,13 +172,14 @@ def handleOpNames : List String :=
   , "datasetSerialize"
   , "datasetClose" ]
 
-/-- `{"ok":true,"abiVersion":"…","ops":[…names…],"blobOps":[…names…]}`. -/
+/-- `{"ok":true,"abiVersion":"…","ops":[…],"blobOps":[…],"blobIoOps":[…]}`. -/
 private def opsReflectionFor (names : List String) : String :=
   (Json.object
     [ ("ok", .bool true)
     , ("abiVersion", .string dispatchAbiVersion)
     , ("ops", .array (names.map Json.string))
-    , ("blobOps", .array (blobOpNames.map Json.string)) ]).toString
+    , ("blobOps", .array (blobOpNames.map Json.string))
+    , ("blobIoOps", .array (blobIoOpNames.map Json.string)) ]).toString
 
 private def opsReflection : String := opsReflectionFor opNames
 
@@ -208,6 +260,30 @@ def callIO (op : String) (argsJson : String) : IO String :=
   | "datasetClose"     => withArgs (arityIO1 op Ops.datasetClose)
   | "ops"              => pure (opsReflectionFor (opNames ++ handleOpNames))
   | _                  => pure (call op argsJson)
+
+/-- The dispatch entry the `l4_call_blob_io` C export serves: the string
+arguments of `callIO`, ONE byte region in, and ONE byte region out.
+
+Only the ops of `blobIoOpNames` build an out region. Every other op answers
+exactly as it does today with an EMPTY out region — the blob-in ops of
+`blobOpNames` still read their region through `callBlob`, and everything else
+goes to `callIO` — so a host may route every call through this entry without
+changing any envelope. -/
+def callBlobIO (op : String) (argsJson : String) (blob : ByteArray) :
+    IO (String × ByteArray) :=
+  match op with
+  | "blobEcho" =>
+      match decodeArgs argsJson with
+      | .error e  => pure (errJson e, ByteArray.empty)
+      | .ok [a]   => pure (blobEcho a)
+      | .ok args  => pure (errJson s!"blobEcho expects 1 argument, got {args.length}",
+                           ByteArray.empty)
+  | _ =>
+      if blobOpNames.contains op then
+        pure (callBlob op argsJson blob, ByteArray.empty)
+      else do
+        let envelope ← callIO op argsJson
+        pure (envelope, ByteArray.empty)
 
 /-- Decode a `callseq` document — a JSON array of `[op, [arg, …]]`
 pairs — into each op paired with its args RE-SERIALISED as the JSON

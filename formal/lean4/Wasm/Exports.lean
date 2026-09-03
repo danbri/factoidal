@@ -77,3 +77,29 @@ failure comes back as `{"ok":false,"error":"…"}`. -/
 @[export l4_call_io]
 def l4CallIOExport (op : String) (argsJson : String) : IO String :=
   L4Wasm.callIO op argsJson
+
+/-- C symbol `l4_call_blob_io`. The dispatch entry that carries ONE
+contiguous byte region IN and ONE contiguous byte region OUT
+(`L4Wasm.blobIoOpNames`). Bytes leave the module raw: hexadecimal doubles
+them over the boundary, and base64 was refused (owner, 2026-09-03).
+
+The generated C prototype is
+
+  lean_object * l4_call_blob_io (lean_object * op, lean_object * argsJson,
+                                 lean_object * blob);
+
+The result type is `IO (String × ByteArray)`, so the v4.33 code generator
+ERASES the IO world token — three `lean_object *` arguments, as for
+`l4_call_blob` — and returns an IO RESULT object (tag 0 = ok). Its value is
+a `Prod` object, so the shim takes the value with
+`lean_io_result_take_value` and then projects field 0 (the Lean string) and
+field 1 (the ByteArray) with `lean_ctor_get`. `Wasm/l4_shim.c`'s
+`l4_call_blob_io_c` does exactly that and copies both out, so the wire
+surface stays a `char *` envelope plus a malloc'd byte buffer.
+
+Never throws: every failure comes back as `{"ok":false,"error":"…"}` with
+an empty out region. -/
+@[export l4_call_blob_io]
+def l4CallBlobIOExport (op : String) (argsJson : String) (blob : ByteArray) :
+    IO (String × ByteArray) :=
+  L4Wasm.callBlobIO op argsJson blob

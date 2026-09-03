@@ -37,7 +37,7 @@
 // bytes change.
 
 // Stamped by formal/lean4/Wasm/build-wasm.sh step 9 -- do not hand-edit.
-const WASM_VERSION = "9084903e6877";
+const WASM_VERSION = "f65534e755b5";
 
 import createModule from './l4factoidal.mjs';
 
@@ -184,6 +184,66 @@ export function loadL4() {
           return parsed;
         } finally {
           if (blobPtr) Module._free(blobPtr);
+        }
+      },
+
+      /**
+       * The dispatch ABI, plus ONE byte region IN and ONE byte region
+       * OUT.
+       *
+       * For the ops of `L4Wasm.blobIoOpNames` (the `ops` envelope lists
+       * them under `blobIoOps`), whose RESULT is bytes rather than
+       * text. The bytes leave the module raw — no hex, no base64 — and
+       * are copied out of the wasm heap into a fresh Uint8Array before
+       * the module's buffer is released. The copy is required: the heap
+       * is detached and replaced when the module grows, so a subarray
+       * view of it can go stale between calls.
+       *
+       * Every other op answers as `call` does, with an empty region.
+       *
+       * @param op     the method name, e.g. "blobEcho"
+       * @param args   array of positional STRING arguments
+       * @param blobIn Uint8Array (or ArrayBuffer) carried IN; may be omitted
+       * @returns      { envelope, bytes } — the parsed {"ok":true,...}
+       *               envelope and a Uint8Array of the out region
+       * @throws       if the Lean side reports {"ok":false,"error":...}
+       */
+      callBlobIO(op, args, blobIn) {
+        const bytes = blobIn instanceof Uint8Array
+          ? blobIn
+          : new Uint8Array(blobIn ?? 0);
+        // Two 32-bit out parameters, uint8_t **out_ptr and size_t
+        // *out_len, in one 8-byte cell.
+        const outCell = Module._malloc(8);
+        if (!outCell) throw new Error('l4factoidal: could not allocate the out-parameter cell');
+        const blobPtr = bytes.length > 0 ? Module._malloc(bytes.length) : 0;
+        if (bytes.length > 0 && !blobPtr) {
+          Module._free(outCell);
+          throw new Error('l4factoidal: could not allocate a WASM blob buffer');
+        }
+        let outPtr = 0;
+        try {
+          Module.setValue(outCell, 0, 'i32');
+          Module.setValue(outCell + 4, 0, 'i32');
+          if (bytes.length > 0) Module.HEAPU8.set(bytes, blobPtr);
+          const resultPtr = callWithHeapStrings(
+            (opPtr, argsPtr) => Module._l4_call_blob_io_c(
+              opPtr, argsPtr, blobPtr, bytes.length, outCell, outCell + 4),
+            [op, JSON.stringify(args)]);
+          outPtr = Module.getValue(outCell, 'i32') >>> 0;
+          const outLen = Module.getValue(outCell + 4, 'i32') >>> 0;
+          const envelope = JSON.parse(take(resultPtr));
+          if (envelope.ok === false) throw new Error(`l4factoidal: ${envelope.error}`);
+          // slice() copies; HEAPU8 is replaced wholesale when the
+          // module's memory grows, so a view would not survive.
+          const region = outPtr !== 0 && outLen > 0
+            ? Module.HEAPU8.slice(outPtr, outPtr + outLen)
+            : new Uint8Array(0);
+          return { envelope, bytes: region };
+        } finally {
+          if (outPtr) Module._l4_free_blob(outPtr);
+          if (blobPtr) Module._free(blobPtr);
+          Module._free(outCell);
         }
       },
 
