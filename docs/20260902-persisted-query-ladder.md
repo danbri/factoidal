@@ -115,6 +115,7 @@ same queries.
 | Generation on disk | 716 MB |
 | Pack, after the scanner fix (2026-09-03, commit 0a3d30671) | same 309 blocks, 254 s (12,400 triples/s) |
 | Activate, after the scanner fix and decode-once activation (389b47f1a) | 356,111,955 logical bytes verified, 165 s idle (2.2 MB/s) |
+| Activate, after the TLI1 key and decoder changes (7be6b9f17, f5f0c9dee) | same bytes, 152 s with two builds running on the machine |
 
 | Query (`third_party/data/ukparliament/sparql/main/`) | Time | Rows | Path |
 | --- | --- | --- | --- |
