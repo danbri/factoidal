@@ -189,4 +189,25 @@ OWL 32 must not be picked up in the same landing.
 
 | Commit | Rows added | RL before → after | `--dl` before → after |
 |---|---|---|---|
-| (pending) | cls-hs1, cls-hs2 | 1128 pass, 319 fail → | 1208 pass, 239 fail → |
+| `ae73d6e7d` | cls-hs1, cls-hs2 (`owl:hasSelf`) | 1128 pass, 319 fail → 1135 pass, 312 fail | 1208 pass, 239 fail → 1211 pass, 236 fail |
+
+**The marker over-counted, and by how much.** The marker put 7 RL units
+and 6 `--dl` units on `owl:hasSelf`. The rows closed 4 RL units and 3
+`--dl` units:
+
+- RL, closed by the rows: `New-Feature-SelfRestriction-001` in three
+  catalogs, and `Footnote-not-about-self [InconsistencyTest]`.
+- RL, closed by nothing: `WebOnt-miscellaneous-001`, `-002` and `-011`
+  `[ConsistencyTest]` tripped the 30-second closure cap in the before run
+  and not in the after run. That is cap variance and is NOT credited to the
+  rows. It also means the RL before figure of 319 fail carries three units
+  of cap noise.
+- `--dl`, closed by the rows: `New-Feature-SelfRestriction-001` in three
+  catalogs. `Footnote-not-about-self` was already decided by the tableau
+  refuter in this regime, so the row earns nothing there.
+- Still failing with the rows in place: `New-Feature-SelfRestriction-002`,
+  whose conclusion asks for the `owl:hasSelf` restriction triple itself.
+  That is a category-B1 failure — a conclusion that restates a class
+  expression — and no rule row closes it.
+
+No test regressed in either regime.
