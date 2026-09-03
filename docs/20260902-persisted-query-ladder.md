@@ -258,8 +258,18 @@ literal bytes, not triple count. The two lines that do the work: IBK3
 back with `++` (`IndexedBlockWireV3.lean`, `dictionary.data.toList` then
 `byteArrayOfList`); TLI1 `entriesOf` builds a `List UInt8` key per term
 and sorts with a cons-cell comparator (`TermLocalIndex.lean`,
-`lessBytes`). Both are dispatched as bounded changes with byte-identity
-and theorem gates. The reference parser on the same file: 22.9 s user,
+`lessBytes`). Both were dispatched as bounded changes with byte-identity
+and theorem gates. Outcome: the IBK3 encoder change (ce7db9def) saved the
+predicted 20 s. The TLI1 change (ByteArray keys, `mergeSort` with
+`entriesOf_eq_spec`) saved 2 to 3 s, because a sampler run
+(`/usr/bin/sample`) showed the 46 s index-sidecar stage is 17 s primary
+IBK3 decode plus 16 s `TermLocalIndexWire.decode?` (which re-serializes
+every term to check its stored key and walks the file as a `List UInt8`);
+`entriesOf` was 2.2 s and its sort 0.1 s. The code-reading attribution to
+the sort was wrong (anti-pattern 28: state the method next to the result;
+a sampler sees what a reading cannot). Next bounded item: the two
+decoders over `ByteArray` indices with the list forms kept as the
+specification. The reference parser on the same file: 22.9 s user,
 21.7 s system, 5.39 GB maximum resident set (the `List Char`
 representation; design record section 2.4).
 
