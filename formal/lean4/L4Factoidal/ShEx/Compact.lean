@@ -71,34 +71,79 @@ deriving Repr, DecidableEq, Inhabited
 abbrev Chars := Array Char
 
 def charAt (s : Chars) (i : Nat) : Option Char := s[i]?
+
+/-- A character READ at an index is a character IN RANGE. This is the
+    whole termination argument of every index-walking scanner below:
+    the walker only steps past an index it has read, so `s.size - i`
+    decreases at every step. -/
+theorem charAt_lt {s : Chars} {i : Nat} {c : Char} (h : charAt s i = some c) :
+    i < s.size := by
+  rcases Nat.lt_or_ge i s.size with hlt | hge
+  . exact hlt
+  . rw [charAt, Array.getElem?_eq_none hge] at h
+    simp at h
 def isAt (s : Chars) (i : Nat) (c : Char) : Bool := charAt s i == some c
 
 def isWs (c : Char) : Bool := c == ' ' || c == '\t' || c == '\n' || c == '\r'
 
-/-- Skip whitespace, `#` line comments and `/* … */` block comments.
+/-! ### Trivia
 
-    A `/` is only a comment opener when the next character is `*`;
-    otherwise it opens a regular expression, which is why this cannot
-    be a plain character class. -/
-partial def skipTrivia (s : Chars) (i : Nat) : Nat :=
-  match charAt s (i) with
+`skipTrivia` skips whitespace, `#` line comments and `/* … */` block
+comments. A `/` is only a comment opener when the next character is
+`*`; otherwise it opens a regular expression, which is why this cannot
+be a plain character class. -/
+
+/-- Skip to just past the next newline, ending a `#` comment.
+
+    The result is packaged with the proof that it did not go BACKWARDS.
+    `skipTrivia` restarts at that index, so without the bound its own
+    recursion has no measure; carrying the bound in the return type
+    avoids a separate induction over this function. -/
+def skipToEol (s : Chars) (j : Nat) : { k : Nat // j ≤ k } :=
+  match h : charAt s (j) with
+  | none => ⟨j, Nat.le_refl j⟩
+  | some d =>
+      if d == '\n' then ⟨j + 1, Nat.le_succ j⟩
+      else
+        let r := skipToEol s (j + 1)
+        ⟨r.1, Nat.le_trans (Nat.le_succ j) r.2⟩
+  termination_by s.size - j
+  decreasing_by (have hlt := charAt_lt h; omega)
+
+/-- Skip to just past the closing `*/` of a block comment, with the
+    same non-decreasing bound. -/
+def skipToBlockEnd (s : Chars) (j : Nat) : { k : Nat // j ≤ k } :=
+  match hA : charAt s (j) with
+  | none => ⟨j, Nat.le_refl j⟩
+  | some a =>
+      match charAt s (j+1) with
+      | none => ⟨j + 1, Nat.le_succ j⟩
+      | some b =>
+          if a == '*' && b == '/' then ⟨j + 2, by omega⟩
+          else
+            let r := skipToBlockEnd s (j + 1)
+            ⟨r.1, Nat.le_trans (Nat.le_succ j) r.2⟩
+  termination_by s.size - j
+  decreasing_by (have hlt := charAt_lt hA; omega)
+
+def skipTrivia (s : Chars) (i : Nat) : Nat :=
+  match h : charAt s (i) with
   | none   => i
   | some c =>
     if isWs c then skipTrivia s (i + 1)
     else if c == '#' then
-      let rec toEol (j : Nat) : Nat :=
-        match charAt s (j) with
-        | none => j
-        | some d => if d == '\n' then j + 1 else toEol (j + 1)
-      skipTrivia s (toEol (i + 1))
+      skipTrivia s (skipToEol s (i + 1)).1
     else if c == '/' && charAt s (i+1) == some '*' then
-      let rec toClose (j : Nat) : Nat :=
-        match charAt s (j), charAt s (j+1) with
-        | none,   _        => j
-        | some a, some b   => if a == '*' && b == '/' then j + 2 else toClose (j + 1)
-        | some _, none     => j + 1
-      skipTrivia s (toClose (i + 2))
+      skipTrivia s (skipToBlockEnd s (i + 2)).1
     else i
+  termination_by s.size - i
+  decreasing_by
+    all_goals
+      (have hlt := charAt_lt h
+       first
+         | omega
+         | (have hb := (skipToEol s (i + 1)).2; omega)
+         | (have hb := (skipToBlockEnd s (i + 2)).2; omega))
 
 /-! ### Name characters
 
@@ -118,9 +163,9 @@ def isPnCharsU (c : Char) : Bool := isPnCharsBase c || c == '_'
 /-- Scan `PN_LOCAL`, which admits `.` and `:` INSIDE but not at the
     end — a trailing dot is the statement separator, not part of the
     name. -/
-partial def scanPnLocal (s : Chars) (i : Nat) : String × Nat :=
+def scanPnLocal (s : Chars) (i : Nat) : String × Nat :=
   let rec go (j : Nat) (acc : List Char) : List Char × Nat :=
-    match charAt s (j) with
+    match h : charAt s (j) with
     | none   => (acc, j)
     | some c =>
         if isPnChars c || c == ':' || c == '%' then go (j + 1) (c :: acc)
@@ -135,12 +180,14 @@ partial def scanPnLocal (s : Chars) (i : Nat) : String × Nat :=
           | some d => if isPnChars d || d == ':' then go (j + 1) (c :: acc) else (acc, j)
           | none   => (acc, j)
         else (acc, j)
+  termination_by s.size - j
+  decreasing_by all_goals (have hlt := charAt_lt h; omega)
   let (acc, j) := go i []
   (String.ofList acc.reverse, j)
 
-partial def scanPnPrefix (s : Chars) (i : Nat) : String × Nat :=
+def scanPnPrefix (s : Chars) (i : Nat) : String × Nat :=
   let rec go (j : Nat) (acc : List Char) : List Char × Nat :=
-    match charAt s (j) with
+    match h : charAt s (j) with
     | none   => (acc, j)
     | some c =>
         if isPnChars c then go (j + 1) (c :: acc)
@@ -149,6 +196,8 @@ partial def scanPnPrefix (s : Chars) (i : Nat) : String × Nat :=
           | some d => if isPnChars d then go (j + 1) (c :: acc) else (acc, j)
           | none   => (acc, j)
         else (acc, j)
+  termination_by s.size - j
+  decreasing_by all_goals (have hlt := charAt_lt h; omega)
   let (acc, j) := go i []
   (String.ofList acc.reverse, j)
 
@@ -182,6 +231,18 @@ def readEscape (s : Chars) (i : Nat) : Option (Char × Nat) :=
     else if c == 'U' then (hexRun s (i + 1) 8).map (fun v => (Char.ofNat v, i + 9))
     else none
 
+/-- An escape CONSUMES at least one character. The string scanner
+    restarts at the index this returns, so the strict increase is its
+    whole termination argument. -/
+theorem readEscape_lt {s : Chars} {i : Nat} {d : Char} {k : Nat}
+    (h : readEscape s i = some (d, k)) : i < k := by
+  unfold readEscape at h
+  split at h
+  . simp at h
+  . repeat' split at h
+    all_goals simp_all
+    all_goals omega
+
 
 /-! ### Scanning one token -/
 
@@ -201,15 +262,15 @@ def xsdIri (localName : String) : String :=
 
 /-- Scan a quoted string. Handles the single- and triple-quoted forms
     with either quote character. -/
-partial def scanString (s : Chars) (i : Nat) (q : Char) : Option (String × Nat) :=
+def scanString (s : Chars) (i : Nat) (q : Char) : Option (String × Nat) :=
   let triple := charAt s (i) == some q && charAt s (i+1) == some q && charAt s (i+2) == some q
   let start := if triple then i + 3 else i + 1
   let rec go (j : Nat) (acc : List Char) : Option (String × Nat) :=
-    match charAt s (j) with
+    match h : charAt s (j) with
     | none => none
     | some c =>
       if c == '\\' then
-        match readEscape s (j + 1) with
+        match h2 : readEscape s (j + 1) with
         | some (d, k) => go k (d :: acc)
         | none        => none
       else if c == q then
@@ -219,6 +280,13 @@ partial def scanString (s : Chars) (i : Nat) (q : Char) : Option (String × Nat)
           else go (j + 1) (c :: acc)
         else some (String.ofList acc.reverse, j + 1)
       else go (j + 1) (c :: acc)
+  termination_by s.size - j
+  decreasing_by
+    all_goals
+      (have hlt := charAt_lt h
+       first
+         | omega
+         | (have he := readEscape_lt h2; omega))
   go start []
 
 /-- Scan a regular-expression literal `/pattern/flags`. A backslash
@@ -226,9 +294,9 @@ partial def scanString (s : Chars) (i : Nat) (q : Char) : Option (String × Nat)
     OTHER escape is kept VERBATIM, backslash included, because the
     pattern is handed to a regular-expression engine that reads its
     own escapes. -/
-partial def scanRegex (s : Chars) (i : Nat) : Option (String × String × Nat) :=
+def scanRegex (s : Chars) (i : Nat) : Option (String × String × Nat) :=
   let rec body (j : Nat) (acc : List Char) : Option (List Char × Nat) :=
-    match charAt s j with
+    match h : charAt s j with
     | none => none
     | some c =>
       if c == '\\' then
@@ -253,23 +321,29 @@ partial def scanRegex (s : Chars) (i : Nat) : Option (String × String × Nat) :
         | none     => none
       else if c == '/' then some (acc.reverse, j + 1)
       else body (j + 1) (c :: acc)
+  termination_by s.size - j
+  decreasing_by all_goals (have hlt := charAt_lt h; omega)
   match body (i + 1) [] with
   | none => none
   | some (pat, j) =>
       let rec flags (k : Nat) (acc : List Char) : List Char × Nat :=
-        match charAt s k with
+        match h : charAt s k with
         | some c => if c.isAlpha then flags (k + 1) (c :: acc) else (acc, k)
         | none   => (acc, k)
+      termination_by s.size - k
+      decreasing_by all_goals (have hlt := charAt_lt h; omega)
       let (fl, k) := flags j []
       some (String.ofList pat, String.ofList fl.reverse, k)
 
 /-- Scan a numeric literal, DOUBLE-AWARE first: `1e3` must not be read
     as the integer `1` followed by a name `e3` (anti-pattern 8). -/
-partial def scanNumber (s : Chars) (i : Nat) : Option (String × String × Nat) :=
+def scanNumber (s : Chars) (i : Nat) : Option (String × String × Nat) :=
   let rec digits (j : Nat) (acc : List Char) : List Char × Nat :=
-    match charAt s j with
+    match h : charAt s j with
     | some c => if c.isDigit then digits (j + 1) (c :: acc) else (acc, j)
     | none   => (acc, j)
+  termination_by s.size - j
+  decreasing_by all_goals (have hlt := charAt_lt h; omega)
   let (sign, i0) := match charAt s i with
     | some '+' => (['+'], i + 1)
     | some '-' => (['-'], i + 1)
@@ -305,9 +379,9 @@ def punctTable : List String :=
    "&", "=", "-", "~", "*", "+", "?", "!", ".", "%"]
 
 /-- Read the IRI between angle brackets. -/
-partial def scanAngle (s : Chars) (i : Nat) : Option (String × Nat) :=
+def scanAngle (s : Chars) (i : Nat) : Option (String × Nat) :=
   let rec go (j : Nat) (acc : List Char) : Option (String × Nat) :=
-    match charAt s j with
+    match h : charAt s j with
     | none   => none
     | some d =>
       if d == '>' then some (String.ofList acc.reverse, j + 1)
@@ -322,6 +396,8 @@ partial def scanAngle (s : Chars) (i : Nat) : Option (String × Nat) :=
          | some 'U' => (hexRun s (j + 2) 8).bind (fun v => go (j + 10) (Char.ofNat v :: acc))
          | _        => go (j + 1) (d :: acc))
       else go (j + 1) (d :: acc)
+  termination_by s.size - j
+  decreasing_by all_goals (have hlt := charAt_lt h; omega)
   go i []
 /-! ### The token loop -/
 
@@ -333,7 +409,7 @@ partial def scanAngle (s : Chars) (i : Nat) : Option (String × Nat) :=
 def pnameTag : String := " pname:"
 def bareTag : String := " bare"
 
-partial def tokenize (s : Chars) : Except String (List Tok) :=
+def tokenize (s : Chars) : Except String (List Tok) :=
   let rec go (i : Nat) (acc : List Tok) (fuel : Nat) : Except String (List Tok) :=
     match fuel with
     | 0     => .error "tokenizer fuel exhausted"
@@ -352,9 +428,11 @@ partial def tokenize (s : Chars) : Except String (List Tok) :=
           | some (lex, j) =>
             if charAt s j == some '@' then
               let rec tag (k : Nat) (a : List Char) : List Char × Nat :=
-                match charAt s k with
+                match h : charAt s k with
                 | some d => if d.isAlphanum || d == '-' then tag (k + 1) (d :: a) else (a, k)
                 | none   => (a, k)
+              termination_by s.size - k
+              decreasing_by all_goals (have hlt := charAt_lt h; omega)
               let (t, k) := tag (j + 1) []
               if t.isEmpty then .error "empty language tag"
               else
@@ -409,11 +487,13 @@ partial def tokenize (s : Chars) : Except String (List Tok) :=
              -- Scan to the closing `%}`, honouring `\` escapes so a
              -- `\%` inside the code body does not end it early.
              let rec toEnd (m : Nat) : Nat :=
-               match charAt s m with
+               match h : charAt s m with
                | none     => m
                | some '\\' => toEnd (m + 2)
                | some '%'  => if charAt s (m + 1) == some '}' then m + 2 else toEnd (m + 1)
                | some _    => toEnd (m + 1)
+             termination_by s.size - m
+             decreasing_by all_goals (have hlt := charAt_lt h; omega)
              go (toEnd (k3 + 1)) acc f
            | _ => .error "malformed semantic action")
         else if c == '/' && charAt s (i + 1) == some '/' then
@@ -621,7 +701,7 @@ def applyFacet (nc : NodeConstraint) (k : String) : Tok → Except String NodeCo
     reader that assumed `IriStemRange` disagreed with the JSON on
     every wildcard range whose exclusions were not IRIs
     (1val1dotMinusliteral3 and its language and stem variants). -/
-partial def parseOneExclusion (st : PState) (r : List Tok)
+def parseOneExclusion (st : PState) (r : List Tok)
     : Except String (Option ((VsvKind × Exclusion) × List Tok)) :=
   match r with
   | .punct "-" :: .lang tg :: rest =>
@@ -646,7 +726,7 @@ partial def parseOneExclusion (st : PState) (r : List Tok)
   | _ => .ok none
 
 /-- Every `- value` exclusion that follows a stem. -/
-partial def parseExclusions (st : PState) (ts : List Tok)
+def parseExclusions (st : PState) (ts : List Tok)
     : Except String (List (VsvKind × Exclusion) × List Tok) :=
   let rec go (r : List Tok) (acc : List (VsvKind × Exclusion)) (fuel : Nat)
       : Except String (List (VsvKind × Exclusion) × List Tok) :=
@@ -670,7 +750,7 @@ def wildcardKind (es : List (VsvKind × Exclusion)) : VsvKind :=
 /-- The `~` STEM forms. A bare stem is a `Stem`; a stem with
     exclusions is a `StemRange`, and the difference is what the ShExJ
     reader also makes, so the two front doors agree. -/
-partial def parseValueSetValue (st : PState) (ts : List Tok)
+def parseValueSetValue (st : PState) (ts : List Tok)
     : Except String (ValueSetValue × List Tok) :=
   match ts with
   | .punct "." :: rest =>
@@ -720,7 +800,7 @@ partial def parseValueSetValue (st : PState) (ts : List Tok)
         | _ => .ok (.object ov, rest)
   | [] => .error "unterminated value set"
 
-partial def parseValueSet (st : PState) (ts : List Tok)
+def parseValueSet (st : PState) (ts : List Tok)
     : Except String (List ValueSetValue × List Tok) :=
   let rec go (r : List Tok) (acc : List ValueSetValue) (fuel : Nat)
       : Except String (List ValueSetValue × List Tok) :=
@@ -741,7 +821,7 @@ partial def parseValueSet (st : PState) (ts : List Tok)
     run of facets — each followed by any number of further facets.
     `none` when the tokens do not begin one, which is how the caller
     tells a node constraint from a shape reference. -/
-partial def parseNodeConstraint (st : PState) (ts : List Tok)
+def parseNodeConstraint (st : PState) (ts : List Tok)
     : Except String (Option (NodeConstraint × List Tok)) :=
   let rec facets (nc : NodeConstraint) (r : List Tok) (fuel : Nat)
       : Except String (NodeConstraint × List Tok) :=
@@ -824,7 +904,7 @@ def emptyShape : ShapeExpr := .shape (.mk false [] none [] [] [])
     unconditionally — so skipping them here keeps the two front doors
     agreeing. Recording them on one side only would make every
     annotated schema differ. -/
-partial def skipAnnotations (ts : List Tok) : List Tok :=
+def skipAnnotations (ts : List Tok) : List Tok :=
   match ts with
   | .punct "//" :: _ :: obj :: r =>
       (match obj with
@@ -1137,7 +1217,7 @@ end
 /-- One statement: a directive, `start = …`, or a shape declaration.
     A directive may appear ANYWHERE among the statements, so the state
     is threaded rather than collected in a prologue pass. -/
-partial def parseStatement (st : PState) (sch : Schema) (ts : List Tok)
+def parseStatement (st : PState) (sch : Schema) (ts : List Tok)
     : Except String (PState × Schema × List Tok) :=
   match ts with
   | .kw "PREFIX" :: .pname ns lp :: .iri iri :: r =>

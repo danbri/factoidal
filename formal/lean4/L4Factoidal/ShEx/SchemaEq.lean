@@ -29,7 +29,7 @@ namespace L4Factoidal.ShEx
 
 mutual
 
-partial def shapeExprEq : ShapeExpr → ShapeExpr → Bool
+def shapeExprEq : ShapeExpr → ShapeExpr → Bool
   | .ref a,            .ref b            => a == b
   | .external,         .external         => true
   | .nodeConstraint a, .nodeConstraint b => a == b
@@ -39,37 +39,37 @@ partial def shapeExprEq : ShapeExpr → ShapeExpr → Bool
   | .shape a,          .shape b          => shapeEq a b
   | _,                 _                 => false
 
-partial def shapeExprListEq : List ShapeExpr → List ShapeExpr → Bool
+def shapeExprListEq : List ShapeExpr → List ShapeExpr → Bool
   | [],      []      => true
   | x :: xs, y :: ys => shapeExprEq x y && shapeExprListEq xs ys
   | _,       _       => false
 
-partial def shapeEq : Shape → Shape → Bool
+def shapeEq : Shape → Shape → Bool
   | .mk c1 e1 x1 _ _ r1, .mk c2 e2 x2 _ _ r2 =>
       c1 == c2 && e1 == e2 && r1 == r2 && tripleExprOptEq x1 x2
 
-partial def tripleExprOptEq : Option TripleExpr → Option TripleExpr → Bool
+def tripleExprOptEq : Option TripleExpr → Option TripleExpr → Bool
   | none,   none   => true
   | some a, some b => tripleExprEq a b
   | _,      _      => false
 
-partial def tripleExprEq : TripleExpr → TripleExpr → Bool
+def tripleExprEq : TripleExpr → TripleExpr → Bool
   | .ref a,              .ref b              => a == b
   | .tripleConstraint a, .tripleConstraint b => tripleConstraintEq a b
   | .eachOf a,           .eachOf b           => groupEq a b
   | .oneOf a,            .oneOf b            => groupEq a b
   | _,                   _                   => false
 
-partial def groupEq : Group → Group → Bool
+def groupEq : Group → Group → Bool
   | .mk i1 es1 mn1 mx1 _ _, .mk i2 es2 mn2 mx2 _ _ =>
       i1 == i2 && mn1 == mn2 && mx1 == mx2 && tripleExprListEq es1 es2
 
-partial def tripleExprListEq : List TripleExpr → List TripleExpr → Bool
+def tripleExprListEq : List TripleExpr → List TripleExpr → Bool
   | [],      []      => true
   | x :: xs, y :: ys => tripleExprEq x y && tripleExprListEq xs ys
   | _,       _       => false
 
-partial def tripleConstraintEq : TripleConstraint → TripleConstraint → Bool
+def tripleConstraintEq : TripleConstraint → TripleConstraint → Bool
   | .mk i1 inv1 p1 v1 mn1 mx1 _ _, .mk i2 inv2 p2 v2 mn2 mx2 _ _ =>
       i1 == i2 && inv1 == inv2 && p1 == p2 && mn1 == mn2 && mx1 == mx2 &&
       (match v1, v2 with

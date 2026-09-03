@@ -42,32 +42,59 @@ structure Arc where
   inverse   : Bool := false
 deriving Repr
 
+mutual
+
 /-- The predicates a triple expression MENTIONS — the set `closed`
     measures against. -/
-partial def mentionedPredicates : TripleExpr → List String
+def mentionedPredicates : TripleExpr → List String
   | .ref _              => []
-  | .tripleConstraint tc => [tc.predicate]
-  | .eachOf g | .oneOf g => g.expressions.flatMap mentionedPredicates
+  | .tripleConstraint (.mk _ _ p _ _ _ _ _) => [p]
+  | .eachOf (.mk _ ges _ _ _ _) | .oneOf (.mk _ ges _ _ _ _) =>
+      mentionedPredicatesList ges
+
+/-- `flatMap` written out: the higher-order form hides the decrease. -/
+def mentionedPredicatesList : List TripleExpr → List String
+  | []     => []
+  | e :: r => mentionedPredicates e ++ mentionedPredicatesList r
+
+end
 
 /-- Does an arc match a triple constraint's predicate and direction? -/
 def arcMatchesPredicate (tc : TripleConstraint) (a : Arc) : Bool :=
   a.predicate == tc.predicate && a.inverse == tc.inverse
 
-/-- Does an arc's value satisfy the constraint's valueExpr?
+/-! Does an arc's value satisfy the constraint's valueExpr?
 
-    Only the non-recursive shape-expression forms are decided here;
-    a reference or a nested `shape` is NOT resolved (see the module
-    header), and such an arc is treated as NOT matching so it becomes
-    leftover rather than being silently accepted. -/
-partial def arcSatisfiesValueExpr : Option ShapeExpr → Term → Bool
-  | none, _ => true
-  | some se, t =>
-      match se with
-      | .nodeConstraint nc => satisfiesNodeConstraint nc t
-      | .shapeAnd es       => es.all (fun e => arcSatisfiesValueExpr (some e) t)
-      | .shapeOr es        => es.any (fun e => arcSatisfiesValueExpr (some e) t)
-      | .shapeNot e        => !(arcSatisfiesValueExpr (some e) t)
-      | .ref _ | .shape _ | .external => false
+Only the non-recursive shape-expression forms are decided here;
+a reference or a nested `shape` is NOT resolved (see the module
+header), and such an arc is treated as NOT matching so it becomes
+leftover rather than being silently accepted. -/
+
+mutual
+
+/-- Decide a shape expression against a term. -/
+def arcSatisfiesShapeExpr : ShapeExpr → Term → Bool
+  | .nodeConstraint nc, t => satisfiesNodeConstraint nc t
+  | .shapeAnd es, t       => arcSatisfiesAll es t
+  | .shapeOr es, t        => arcSatisfiesAny es t
+  | .shapeNot e, t        => !(arcSatisfiesShapeExpr e t)
+  | .ref _, _ | .shape _, _ | .external, _ => false
+
+/-- `List.all` written out. -/
+def arcSatisfiesAll : List ShapeExpr → Term → Bool
+  | [], _     => true
+  | e :: r, t => arcSatisfiesShapeExpr e t && arcSatisfiesAll r t
+
+/-- `List.any` written out. -/
+def arcSatisfiesAny : List ShapeExpr → Term → Bool
+  | [], _     => false
+  | e :: r, t => arcSatisfiesShapeExpr e t || arcSatisfiesAny r t
+
+end
+
+def arcSatisfiesValueExpr : Option ShapeExpr → Term → Bool
+  | none, _    => true
+  | some se, t => arcSatisfiesShapeExpr se t
 
 /-! ## Matching a triple expression is a PARTITION, not a filter
 

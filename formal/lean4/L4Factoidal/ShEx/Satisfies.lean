@@ -69,26 +69,55 @@ scored as a failed shape.
 
 mutual
 
-/-- The triple expression with this `id` inside a shape expression. -/
-partial def findTeInShapeExpr (id : String) : ShapeExpr → Option TripleExpr
-  | .shape sh    => sh.expression.bind (findTeInTripleExpr id)
-  | .shapeAnd es => es.findSome? (findTeInShapeExpr id)
-  | .shapeOr es  => es.findSome? (findTeInShapeExpr id)
+/-- The triple expression with this `id` inside a shape expression.
+
+    The `Shape`/`Group`/`TripleConstraint` records are single-constructor
+    INDUCTIVES, not structures, so a field accessor (`sh.expression`) is
+    a match the equation compiler cannot see through. Matching the
+    constructor is what makes the recursion structural. -/
+def findTeInShapeExpr (id : String) : ShapeExpr → Option TripleExpr
+  | .shape (.mk _ _ expr _ _ _) =>
+      (match expr with
+       | some te => findTeInTripleExpr id te
+       | none    => none)
+  | .shapeAnd es => findTeInShapeExprList id es
+  | .shapeOr es  => findTeInShapeExprList id es
   | .shapeNot e  => findTeInShapeExpr id e
   | _            => none
 
+/-- `findSome?` over a list of shape expressions, written out so the
+    recursion is structural (rule: a higher-order `findSome?` hides
+    the decrease from the equation compiler). -/
+def findTeInShapeExprList (id : String) : List ShapeExpr → Option TripleExpr
+  | []      => none
+  | e :: r  =>
+      (match findTeInShapeExpr id e with
+       | some te => some te
+       | none    => findTeInShapeExprList id r)
+
 /-- The triple expression with this `id` inside a triple expression. -/
-partial def findTeInTripleExpr (id : String) : TripleExpr → Option TripleExpr
-  | te@(.tripleConstraint tc) =>
-      if tc.id == some id then some te
-      else tc.valueExpr.bind (findTeInShapeExpr id)
-  | te@(.eachOf g) =>
-      if g.id == some id then some te
-      else g.expressions.findSome? (findTeInTripleExpr id)
-  | te@(.oneOf g) =>
-      if g.id == some id then some te
-      else g.expressions.findSome? (findTeInTripleExpr id)
+def findTeInTripleExpr (id : String) : TripleExpr → Option TripleExpr
+  | te@(.tripleConstraint (.mk tcId _ _ ve _ _ _ _)) =>
+      if tcId == some id then some te
+      else
+        (match ve with
+         | some se => findTeInShapeExpr id se
+         | none    => none)
+  | te@(.eachOf (.mk gId ges _ _ _ _)) =>
+      if gId == some id then some te
+      else findTeInTripleExprList id ges
+  | te@(.oneOf (.mk gId ges _ _ _ _)) =>
+      if gId == some id then some te
+      else findTeInTripleExprList id ges
   | .ref _ => none
+
+/-- `findSome?` over a list of triple expressions, written out. -/
+def findTeInTripleExprList (id : String) : List TripleExpr → Option TripleExpr
+  | []     => none
+  | e :: r =>
+      (match findTeInTripleExpr id e with
+       | some te => some te
+       | none    => findTeInTripleExprList id r)
 
 end
 
@@ -216,7 +245,7 @@ partial def resolveExtends (sch : Schema) (labels : List String) (visited : List
 end
 
 /-- The labels a shape expression EXTENDS directly. -/
-partial def directExtends : ShapeExpr → List String
+def directExtends : ShapeExpr → List String
   | .shape sh    => sh.extendsRefs
   | .shapeAnd es => es.flatMap directExtends
   | _            => []
@@ -269,7 +298,7 @@ def backgroundSafe (valueOk : Option ShapeExpr → Term → Bool)
     of them must pass `acceptable`. An unbounded member's claim on an
     arc that is not background safe is handed BACK into its own
     leftover, so it does not shrink `running`. -/
-partial def chainResidueOk (valueOk : Option ShapeExpr → Term → Bool)
+def chainResidueOk (valueOk : Option ShapeExpr → Term → Bool)
     (lookupTe : String → Option TripleExpr) (arr : Array Arc)
     (unbounded : List TripleExpr)
     (members : List TripleExpr) (pool running : List Nat)
