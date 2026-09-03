@@ -827,6 +827,105 @@ private def pathInverse : QueryPattern :=
         | some mu => (Binding.lookup "o" mu) == some (Term.iri iA)
         | none => false) == true
 
+/-! ## EXISTS outside the WHERE clause and the selective read set
+
+https://github.com/danbri/factoidal/issues/638. §18.6 evaluates EXISTS /
+NOT EXISTS against the ACTIVE GRAPH, and `selectPost` runs HAVING, the SELECT
+expressions and ORDER BY over the query's `EvalEnv`, so an EXISTS in any of
+those positions reads triples the WHERE clause never names. A physical
+planner that opens only the predicates the WHERE clause names would evaluate
+such a query against a proper subset of the store, because
+`Harness/IndexedBlockV3Query.lean` `finish` builds `env.dataset` from exactly
+the entries it materialised.
+`Query.expressionsOutsidePatternExistsFree` is the admission test that keeps
+those queries on the full-store path.
+
+`gShardSplit` holds the two predicates a manifest would hold as two separate
+shards: `p` carries the subjects `a` and `g`, `q` carries only `a`. A HAVING
+EXISTS over `q` therefore has to read the `q` shard, which the WHERE clause
+never names.
+
+MEASURED GAP, recorded here rather than assumed away: this tree substitutes
+existentials only in a FILTER condition and an OPTIONAL condition
+(`QueryPattern.lowerWith`). `evalExprInGroup`, `compareOnCondition` and
+`evalSelectItems` call `Expr.evalIn` directly, and `Expr.evalIn` answers
+`.error` for `Expr.existsPat`. So an EXISTS in HAVING, ORDER BY or a
+projected expression currently evaluates to an error — HAVING drops every
+group, ORDER BY ties every row — in the reference evaluator and in the
+backend runners alike. The guards below pin that agreement and the row counts
+it produces; they are the CURRENT behaviour of the tree, not the §18.6
+answer. Whoever implements EXISTS in those positions must change these
+numbers deliberately, and by then the planner admission test above is already
+in place. -/
+
+private def gShardSplit : Graph :=
+  [ { s := .iri iA, p := iP, o := .iri iB },
+    { s := .iri iG, p := iP, o := .iri iB },
+    { s := .iri iA, p := iQ, o := .iri iB } ]
+
+private def dsbShardSplit : DatasetBackend := { default := .list gShardSplit, named := [] }
+private def envShardSplit : EvalEnv :=
+  { dataset := some (materialiseDatasetBackend dsbShardSplit) }
+
+private def tpPredicateP : TriplePattern := { s := .var "s", p := .iri iP, o := .var "o" }
+private def tpPredicateQ : TriplePattern := { s := .var "s", p := .iri iQ, o := .var "z" }
+
+private def countStarItems : List SelectItem :=
+  [.var "s", .expr (.aggregate .count false (.var "*")) "n"]
+
+/-- `SELECT ?s (COUNT(*) AS ?n) WHERE { ?s <p> ?o } GROUP BY ?s
+    HAVING EXISTS { ?s <q> ?z }`. -/
+private def havingExistsQuery : Query :=
+  mkQuery (.select (.vars countStarItems)) (.bgp [tpPredicateP])
+    (groupBy := some [.var "s"])
+    (having := [.existsPat (.bgp [tpPredicateQ])])
+
+/-- The same query with no HAVING: the aggregate and the GROUP BY key are on
+    their own no reason to leave the selective path. -/
+private def havingFreeQuery : Query :=
+  mkQuery (.select (.vars countStarItems)) (.bgp [tpPredicateP])
+    (groupBy := some [.var "s"])
+
+/-- `SELECT * WHERE { ?s <p> ?o } ORDER BY EXISTS { ?s <q> ?z }`. -/
+private def orderByExistsQuery : Query :=
+  mkQuery (.select .all) (.bgp [tpPredicateP])
+    (modifier := { orderBy := some [.asc (.existsPat (.bgp [tpPredicateQ]))] })
+
+private def splitBackendRows (q : Query) : SolutionSeq :=
+  match runSelectQueryBackendDataset envShardSplit q dsbShardSplit with
+  | some rows => rows
+  | none => []
+
+private def splitReferenceRows (q : Query) : SolutionSeq :=
+  (evalSelect envShardSplit (materialiseDatasetBackend dsbShardSplit) q).2
+
+/-! The admission test: an aggregate and a GROUP BY key stay selective, an
+EXISTS in HAVING or in an ORDER BY condition does not. -/
+#guard havingFreeQuery.expressionsOutsidePatternExistsFree == true
+#guard havingExistsQuery.expressionsOutsidePatternExistsFree == false
+#guard orderByExistsQuery.expressionsOutsidePatternExistsFree == false
+
+/-! HAVING EXISTS: the backend runner answers exactly what the reference
+evaluator answers, row for row. -/
+#guard splitBackendRows havingExistsQuery == splitReferenceRows havingExistsQuery
+
+/-! The gap made visible. The EXISTS evaluates to an error, so every group
+fails the HAVING and the answer is empty. §18.6 keeps the one group whose
+subject `a` has a `q` triple; change this number when that lands. -/
+#guard (splitBackendRows havingExistsQuery).length == 0
+
+/-! ORDER BY EXISTS: the same agreement, in the same order. -/
+#guard splitBackendRows orderByExistsQuery == splitReferenceRows orderByExistsQuery
+#guard (splitBackendRows orderByExistsQuery).length == 2
+
+/-! The control query, whose answer the gap above does not touch: one group
+per subject of `p`, each with COUNT 1, `a` before `g`. -/
+#guard splitBackendRows havingFreeQuery == splitReferenceRows havingFreeQuery
+#guard (splitBackendRows havingFreeQuery).length == 2
+#guard (match (splitBackendRows havingFreeQuery).head? with
+        | some mu => Binding.lookup "s" mu == some (Term.iri iA)
+        | none => false) == true
+
 /-! The COTTAS dataset constructor makes one backend per named graph
 plus the default. -/
 #guard (cottasOnDiskDatasetBackend

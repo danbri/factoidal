@@ -357,8 +357,21 @@ private def objectBoundPredicate? (query : Query) : Option (WfIri × Term) :=
   | .bgp [tp] => objectBoundTriple? tp
   | _ => none
 
+/-- Every selective access path below hands `finish` a PROPER SUBSET of the
+    store's triples, and `finish` builds `env.dataset` from exactly that
+    subset.  §18.6 evaluates an `EXISTS` / `NOT EXISTS` against the ACTIVE
+    GRAPH, so a query carrying one in its projection, a GROUP BY key, a
+    HAVING condition or an ORDER BY condition may not take a selective path;
+    it falls through to the full-manifest read.
+    `ShardManifest.queryNativeConstantPredicates?` carries the same guard for
+    the pattern-driven opener below
+    (https://github.com/danbri/factoidal/issues/638). -/
+private def selectivePathAdmissible (query : Query) : Bool :=
+  query.expressionsOutsidePatternExistsFree
+
 private def tryObjectIndexScan (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
+  if !selectivePathAdmissible query then pure none else
   match objectBoundPredicate? query, ← readDefaultDelta? directory with
   | some (predicate, object), some delta =>
       if manifest.version != 6 || !deltaResolvedIsEmpty delta then pure none else
@@ -378,6 +391,7 @@ private def tryObjectIndexScan (directory : System.FilePath) (manifest : Manifes
     avoid duplicating one physical fragment in the evaluator's input. -/
 private def tryObjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
+  if !selectivePathAdmissible query then pure none else
   if !query.dataset.isEmpty || query.postValues.isSome || manifest.version != 6 then pure none else
   match query.pattern, ← readDefaultDelta? directory with
   | .bgp [left, right], some delta =>
@@ -429,6 +443,7 @@ private def tryObjectIndexJoin (directory : System.FilePath) (manifest : Manifes
 
 private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
+  if !selectivePathAdmissible query then pure none else
   match sharedSubjectJoin? query, ← readDefaultDelta? directory with
   | some (leftPredicate, rightPredicate), some delta =>
       if !deltaResolvedIsEmpty delta then pure none else
@@ -461,6 +476,7 @@ private def trySubjectIndexJoin (directory : System.FilePath) (manifest : Manife
 
 private def trySubjectTripleJoin (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
+  if !selectivePathAdmissible query then pure none else
   match sharedSubjectTriple? query, ← readDefaultDelta? directory with
   | some plan, some delta =>
       if manifest.version < 5 || !deltaResolvedIsEmpty delta then pure none else
@@ -542,6 +558,7 @@ private def scanAllEntriesForSubject (directory : System.FilePath) (subject : Te
     that fragment. -/
 private def trySubjectPointLookup (directory : System.FilePath) (manifest : Manifest) (query : Query) :
     IO (Option UInt32) := do
+  if !selectivePathAdmissible query then pure none else
   match subjectPointSubject? query, ← readDefaultDelta? directory with
   | some subject, some delta =>
       if manifest.version < 5 || !deltaResolvedIsEmpty delta then pure none else

@@ -300,6 +300,114 @@ def Expr.backendLocalList : List Expr → Bool
   | e :: es => Expr.backendLocal e && Expr.backendLocalList es
 end
 
+/-! ## Expressions with no EXISTS inside them
+
+`Expr.existsPat` and `Expr.notExistsPat` are the only two `Expr`
+constructors that carry a `QueryPattern`, and therefore the only two
+through which a sub-SELECT (or any other triple-reading form) can be
+reached from an expression. §18.6 evaluates both by matching that
+pattern against the ACTIVE GRAPH, so an expression containing one reads
+triples the enclosing query's own pattern never names.
+
+This is deliberately NOT `Expr.backendLocal`. Aggregates, `IRI()`,
+`REGEX` and extension-function calls are all legitimate in a SELECT
+projection, a GROUP BY key, a HAVING condition or an ORDER BY
+condition, and none of them reads the dataset; only the two existential
+forms do. -/
+
+mutual
+/-- `true` when no `EXISTS` / `NOT EXISTS` occurs anywhere in the
+expression. -/
+def Expr.existsFree : Expr → Bool
+  | .existsPat _ | .notExistsPat _ => false
+  | .var _ | .iri _ | .lit _ | .boolLit _ | .numericLit _ | .decimalLit _
+  | .doubleLit _ | .bound _ | .now => true
+  | .unaryMinus e | .unaryPlus e | .not e
+  | .isIri e | .isBlank e | .isLiteral e | .isNumeric e
+  | .str e | .lang e | .datatype e | .iriFn e
+  | .hasLang e | .hasLangDir e | .langDir e
+  | .strLen e | .uCase e | .lCase e | .encodeForUri e
+  | .abs e | .round e | .ceil e | .floor e
+  | .md5 e | .sha1 e | .sha256 e | .sha384 e | .sha512 e
+  | .year e | .month e | .day e | .hours e | .minutes e | .seconds e
+  | .timezone e | .tz e
+  | .aggregate _ _ e
+  | .ttSubject e | .ttPredicate e | .ttObject e | .isTriple e =>
+      Expr.existsFree e
+  | .arith _ left right | .compare _ left right | .and left right
+  | .or left right | .sameTerm left right
+  | .strDt left right | .strLang left right
+  | .strStarts left right | .strEnds left right | .contains left right
+  | .strBefore left right | .strAfter left right =>
+      Expr.existsFree left && Expr.existsFree right
+  | .strLangDir a b c | .cond a b c | .tripleTerm a b c =>
+      Expr.existsFree a && Expr.existsFree b && Expr.existsFree c
+  | .coalesce es | .concat es | .functionCall _ es => Expr.existsFreeList es
+  | .inList e es | .notInList e es =>
+      Expr.existsFree e && Expr.existsFreeList es
+  | .substr e start none => Expr.existsFree e && Expr.existsFree start
+  | .substr e start (some len) =>
+      Expr.existsFree e && Expr.existsFree start && Expr.existsFree len
+  | .regex e pat none => Expr.existsFree e && Expr.existsFree pat
+  | .regex e pat (some flags) =>
+      Expr.existsFree e && Expr.existsFree pat && Expr.existsFree flags
+  | .replace e pat rep none =>
+      Expr.existsFree e && Expr.existsFree pat && Expr.existsFree rep
+  | .replace e pat rep (some flags) =>
+      Expr.existsFree e && Expr.existsFree pat && Expr.existsFree rep
+        && Expr.existsFree flags
+
+/-- `Expr.existsFree` over an argument list (COALESCE, CONCAT, IN,
+NOT IN, an extension-function call). -/
+def Expr.existsFreeList : List Expr → Bool
+  | [] => true
+  | e :: es => Expr.existsFree e && Expr.existsFreeList es
+end
+
+/-- A `SELECT` item: a bare variable carries no expression. -/
+def SelectItem.existsFree : SelectItem → Bool
+  | .var _ => true
+  | .expr e _ => Expr.existsFree e
+
+/-- Only `SELECT` carries expressions in its result clause. A CONSTRUCT
+template is a list of `TriplePattern`, and DESCRIBE a list of
+`PatternTerm`; neither holds an `Expr`. -/
+def QueryForm.existsFree : QueryForm → Bool
+  | .select (.vars items) => items.all SelectItem.existsFree
+  | .select .all => true
+  | .construct _ | .ask | .describe _ => true
+
+/-- A §18.2.4.1 GROUP BY key: a bare variable carries no expression. -/
+def GroupCondition.existsFree : GroupCondition → Bool
+  | .var _ => true
+  | .expr e _ => Expr.existsFree e
+
+/-- A §15.1 ORDER BY condition. -/
+def OrderCondition.existsFree : OrderCondition → Bool
+  | .asc e | .desc e => Expr.existsFree e
+
+/-- No expression the query carries OUTSIDE `query.pattern` contains
+`EXISTS` / `NOT EXISTS`.
+
+The positions checked are every one this AST has: the SELECT
+projection's expressions, the GROUP BY keys, the HAVING conditions and
+the ORDER BY conditions. The remaining query fields hold no `Expr` —
+`dataset` is a list of IRIs, `postValues` (the trailing §10.2 VALUES
+block) is a list of `Binding`, that is of already-evaluated terms, and
+`base` is a string. A BIND or a VALUES inside the WHERE clause is a
+`QueryPattern` constructor and so lives inside `query.pattern`.
+
+This is a PLANNER guard, not a semantic one. §18.6 evaluates an EXISTS
+against the active graph, and a physical planner that opens only the
+shards `query.pattern` names would hand such an expression a proper
+subset of the dataset. A planner asks this question and falls back to
+the complete store when the answer is `false`. -/
+def Query.expressionsOutsidePatternExistsFree (query : Query) : Bool :=
+  QueryForm.existsFree query.form
+    && (query.groupBy.getD []).all GroupCondition.existsFree
+    && Expr.existsFreeList query.having
+    && (query.modifier.orderBy.getD []).all OrderCondition.existsFree
+
 /-- Build a query, defaulting every optional part — the shape most
 call sites (and every test below) want. -/
 def mkQuery (form : QueryForm) (pattern : QueryPattern)

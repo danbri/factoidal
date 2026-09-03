@@ -371,9 +371,28 @@ def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
 
 /-- The query-level form of `nativeConstantPredicates?`.  It is a planner
     capability, not a semantic shortcut: `none` means "open the full
-    manifest", never "return no answers". -/
+    manifest", never "return no answers".
+
+    `nativeConstantPredicates?` reads `query.pattern` and nothing else, so it
+    cannot see the expressions a query carries in its SELECT projection, its
+    GROUP BY keys, its HAVING conditions or its ORDER BY conditions.  §18.6
+    evaluates an `EXISTS` / `NOT EXISTS` in any of those positions against the
+    ACTIVE GRAPH, and a caller that opens only the predicates collected from
+    the pattern would hand that sub-pattern a proper subset of the dataset —
+    `Harness/IndexedBlockV3Query.lean` sets `env.dataset` from exactly the
+    entries it materialised.  So the whole query is refused unless every
+    expression outside the pattern is `Expr.existsFree`
+    (https://github.com/danbri/factoidal/issues/638).
+
+    The test is `Query.expressionsOutsidePatternExistsFree` and NOT
+    `Expr.backendLocal`: an aggregate, `IRI()`, `REGEX` or an extension call
+    is legitimate in those positions and reads no triples, so rejecting them
+    would send every ordinary `GROUP BY` / `ORDER BY` query down the
+    full-manifest path for no soundness gain. -/
 def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
-  nativeConstantPredicates? query.pattern
+  if query.expressionsOutsidePatternExistsFree then
+    nativeConstantPredicates? query.pattern
+  else none
 
 /-- The field widths in SBM0.  Oversized manifests are refused rather than
     being truncated into an ambiguous byte stream. -/
@@ -699,6 +718,48 @@ private def sampleManifestWrongRows : Manifest :=
 #guard queryNativeConstantPredicates?
   (mkQuery (.select .all) (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))
   == some [samplePredicate]
+
+/-! https://github.com/danbri/factoidal/issues/638. `nativeConstantPredicates?`
+sees only the WHERE clause, so the query-level entry point also refuses a
+query whose HAVING, ORDER BY, GROUP BY key or SELECT projection carries an
+EXISTS: §18.6 would evaluate it against the shards the pattern named instead
+of the whole store. An aggregate in the same positions is NOT a reason to
+refuse — it reads no triples. -/
+private def selectiveBgp : QueryPattern :=
+  .bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]
+private def otherPredicateBgp : QueryPattern :=
+  .bgp [{ s := .var "s", p := .iri sampleOtherPredicate, o := .var "z" }]
+private def countStarItems : List SelectItem :=
+  [.var "s", .expr (.aggregate .count false (.var "*")) "n"]
+
+-- COUNT(*) in the projection with a GROUP BY key: still selective.
+#guard queryNativeConstantPredicates?
+  (mkQuery (.select (.vars countStarItems)) selectiveBgp
+    (groupBy := some [.var "s"]))
+  == some [samplePredicate]
+-- HAVING EXISTS over the other predicate: refused.
+#guard (queryNativeConstantPredicates?
+  (mkQuery (.select (.vars countStarItems)) selectiveBgp
+    (groupBy := some [.var "s"])
+    (having := [.existsPat otherPredicateBgp]))).isNone
+-- ORDER BY EXISTS: refused.
+#guard (queryNativeConstantPredicates?
+  (mkQuery (.select .all) selectiveBgp
+    (modifier := { orderBy := some [.asc (.existsPat otherPredicateBgp)] }))).isNone
+-- NOT EXISTS in a projected expression: refused.
+#guard (queryNativeConstantPredicates?
+  (mkQuery (.select (.vars [.var "s", .expr (.notExistsPat otherPredicateBgp) "e"]))
+    selectiveBgp)).isNone
+-- EXISTS in a GROUP BY key: refused.
+#guard (queryNativeConstantPredicates?
+  (mkQuery (.select .all) selectiveBgp
+    (groupBy := some [.expr (.existsPat otherPredicateBgp) (some "g")]))).isNone
+-- A sub-SELECT reaches an expression only through EXISTS, which is already
+-- refused; the wrapper form is pinned too.
+#guard (queryNativeConstantPredicates?
+  (mkQuery (.select .all) selectiveBgp
+    (having := [.and (.boolLit true)
+                 (.existsPat (.subSelect (mkQuery (.select .all) otherPredicateBgp)))]))).isNone
 #guard (nativeConstantPredicates? (.filter (.boolLit true)
   (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))
   == some [samplePredicate])
