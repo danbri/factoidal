@@ -62,14 +62,49 @@ def attrsOf : Node → List Attribute
   | .element _ a _ => a
   | _ => []
 
+mutual
+
 /-- All element paths in a document, in document order. The root is
-    `/tag[1]`. -/
-partial def allPaths (prefix' : String) (n : Node) : List String :=
-  let kids := elemChildren n
-  let numbered := (kids.zipIdx).map (fun (c, i) =>
-    let sameBefore := ((kids.take i).filter (fun k => tagOf k == tagOf c)).length
-    (c, prefix' ++ "/" ++ tagOf c ++ "[" ++ toString (sameBefore + 1) ++ "]"))
-  numbered.flatMap (fun (c, p) => p :: allPaths p c)
+    `/tag[1]`.
+
+    A mutual pair with `allPathsChildren`, over the LITERAL `children`
+    field of `.element`, in the `checkElement` / `checkChildren` idiom
+    (`XML.Namespaces`) — Lean's nested-inductive structural recursion
+    accepts this shape with no `termination_by`. The previous
+    single-declaration form first filtered to `elemChildren n`, then for each
+    element at position `i` counted same-tag elements in
+    `kids.take i`; that filtered list broke automatic structural
+    recursion (`allPaths p c` was a call on a value reached through
+    `.filter`/`.map`, not a matched constructor field), and gave no
+    proof obligation smaller than `n` for `c`. `allPathsChildren`
+    below walks the RAW children instead and keeps `seen`, the tags of
+    already-visited ELEMENT children in order; `(seen.filter
+    (· == tag)).length` at an element counts exactly the same
+    same-tag predecessors `kids.take i |>.filter (tagOf · ==
+    tag)` did, since `seen` only ever grows on an element child and
+    `kids` was the raw children with non-elements dropped in the same
+    left-to-right order. -/
+def allPaths (prefix' : String) (n : Node) : List String :=
+  match n with
+  | .element _ _ cs => allPathsChildren prefix' [] cs
+  | _               => []
+
+/-- `allPaths`'s children walk. `seen` carries the tag of every
+    ELEMENT child of the same parent visited so far, left to right;
+    non-element children are skipped without extending `seen` or
+    emitting a path, matching `elemChildren`'s filter. -/
+def allPathsChildren (prefix' : String) (seen : List String)
+    : List Node → List String
+  | []      => []
+  | c :: rest =>
+      match c with
+      | .element tag _ _ =>
+          let sameBefore := (seen.filter (· == tag)).length
+          let p := prefix' ++ "/" ++ tag ++ "[" ++ toString (sameBefore + 1) ++ "]"
+          (p :: allPaths p c) ++ allPathsChildren prefix' (seen ++ [tag]) rest
+      | _ => allPathsChildren prefix' seen rest
+
+end
 
 /-- The document's element paths, root included. -/
 def documentPaths (root : Node) : List String :=
@@ -97,7 +132,7 @@ def pathSteps (p : String) : List (String × Nat) :=
     zero for both and the assertion never fired (schematron
     `preceding-sibling-reverse-axis`). An index is IDENTITY here; a
     value comparison is not. -/
-partial def resolvePath (root : Node) (p : String)
+def resolvePath (root : Node) (p : String)
     : Option (Node × Nat × List (Node × Nat)) :=
   match pathSteps p with
   | []            => none
@@ -172,6 +207,42 @@ def axisOf (s : String) : Option Axis :=
   else if s == "parent" then some .parent
   else none
 
+/- The six functions below (`pOr` through `pPathFrom`) stay `partial`.
+   They are a precedence-climbing recursive-descent parser: `pOr`
+   delegates to `pAnd`, `pAnd` to `pCmp`, `pCmp` to `pPrimary`, and
+   `pArgs` to `pOr`, each on the SAME remaining `cs` before any
+   character is read. A well-founded `termination_by`/`decreasing_by`
+   proof can rank that first, same-length delegation by a fixed
+   priority (`pArgs` > `pOr` > `pAnd` > `pCmp` > `pPrimary`), and every
+   call that itself reads a character (`'(' :: r`, `.drop 1`, `.drop
+   2`, `takeName`) decreases structurally on its own.
+
+   The blocker is `pOr`'s SECOND call, `pOr (r.drop 2)`, taken after
+   `pAnd cs` returns `some (a, r)` and `r` starts with `"or"`. Its
+   decrease obligation is `(r.drop 2).length < cs.length`, which needs
+   `r.length ≤ cs.length` — a fact about what `pAnd` RETURNS. `pAnd` is
+   a sibling in the SAME mutual clique whose own termination is not
+   yet established at the point its decrease obligations are checked,
+   so no theorem about its output is available to cite (proving one
+   requires `pAnd` to already be defined, which requires the whole
+   clique's termination, which is what this proof is for). `pAnd`'s
+   parallel call into `pCmp`, and `pArgs`'s call into `pOr`, are the
+   same shape. This is not a proof-effort gap; it is the standard
+   result that call-graph well-founded recursion cannot rank a "used
+   how much of the input did my sibling consume" edge.
+
+   The fix in this repository's own style is method 3 of GitHub issue
+   https://github.com/danbri/factoidal/issues/617: add a `fuel : Nat`
+   parameter that every one of the six functions decrements on ENTRY
+   (unconditionally, so termination is by that Nat alone and needs no
+   fact about any sibling), keep the six definitions here as
+   `pOrSpec`/`pAndSpec`/... in the style of
+   `L4Factoidal/Syntax/TurtleFuelTheorems.lean`, and prove the fueled
+   and spec forms agree whenever `fuel ≥ cs.length` (a mutual
+   induction over the six functions together, since the equivalence
+   claim for one calls the others). Not attempted in this landing —
+   the six proofs plus their mutual induction are a session-sized
+   piece of work on their own. -/
 mutual
 
 /-- `OrExpr`. -/
@@ -312,13 +383,28 @@ inductive XVal where
   | bool  (b : Bool)
 deriving Inhabited
 
+mutual
+
 /-- The string-value of an element: its character data, descendants
-    included. -/
-partial def stringValue : Node → String
-  | .element _ _ cs => cs.foldl (fun acc c => acc ++ stringValue c) ""
+    included. Written as a mutual pair with `stringValueChildren` over
+    the LITERAL `children` field, matching the `checkElement` /
+    `checkChildren` idiom in `XML.Namespaces` — Lean's nested-inductive
+    structural recursion sees straight through that shape with no
+    `termination_by`. The previous single declaration folded with
+    `cs.foldl (fun acc c => acc ++ stringValue c) ""`, which is the
+    same left-to-right concatenation `stringValueChildren` performs
+    below. -/
+def stringValue : Node → String
+  | .element _ _ cs => stringValueChildren cs
   | .text t         => t
   | .cdata t        => t
   | _               => ""
+
+def stringValueChildren : List Node → String
+  | []          => ""
+  | c :: rest   => stringValue c ++ stringValueChildren rest
+
+end
 
 /-- One axis step. Node results keep each node's POSITION among its
     parent's element children, so the next step's sibling axes can
@@ -346,7 +432,7 @@ def stepIndexed (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat)) (st : Ste
           .inl (side.filter (fun (n, _) => nameOk n))
 
 /-- Walk a location path from the context node. -/
-partial def evalPath (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat))
+def evalPath (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat))
     : List Step → XVal
   | []      => .nodes [ctx]
   | st :: t =>
@@ -387,13 +473,23 @@ inductive XOut where
   | undecided (reason : String)
 deriving Inhabited
 
-partial def eval (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat))
+mutual
+
+/-- Evaluate an expression. A mutual pair with `evalArgs` over the
+    LITERAL `args` field of `.call`, in the same idiom as `allPaths` /
+    `allPathsChildren` above and `checkElement` / `checkChildren` in
+    `XML.Namespaces` — Lean's nested-inductive structural recursion
+    accepts this shape with no `termination_by`. The previous single
+    declaration computed `args.map (eval ctx ctxIdx anc)`, which is
+    the same left-to-right per-argument evaluation `evalArgs`
+    performs below. -/
+def eval (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat))
     : XExpr → XOut
   | .num n => .val (.num n)
   | .str s => .val (.str s)
   | .path steps => .val (evalPath ctx ctxIdx anc steps)
   | .call fn args =>
-      let vals := args.map (eval ctx ctxIdx anc)
+      let vals := evalArgs ctx ctxIdx anc args
       if vals.any (fun v => match v with | .undecided _ => true | _ => false) then
         .undecided ("an argument of " ++ fn ++ "() was undecided")
       else
@@ -445,6 +541,14 @@ partial def eval (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat))
                 if op == "=" then .val (.bool (xs.any (fun s => ys.contains s)))
                 else if op == "!=" then .val (.bool (xs.any (fun s => !(ys.contains s))))
                 else .undecided "an ordering comparison on non-numbers"
+
+/-- `eval`'s per-argument walk over `.call`'s literal `args` field. -/
+def evalArgs (ctx : Node) (ctxIdx : Nat) (anc : List (Node × Nat))
+    : List XExpr → List XOut
+  | []        => []
+  | a :: rest => eval ctx ctxIdx anc a :: evalArgs ctx ctxIdx anc rest
+
+end
 
 /-- Evaluate a `@test` at a node named by `path`, for
     `Schematron.Validate`'s `evalTest` parameter. -/
