@@ -225,6 +225,38 @@ decodes per block (`ShardActivate.verify*` each decode the primary again)
 over the same bytes. Those are the next two items for this rung, with the
 large-literal policy question above.
 
+Stage profile after the fixes (2026-09-03, temporary `IO.monoMsNow`
+timers, two runs each; the 134 MB region, 3,560 triples, 28 blocks):
+
+| Pack stage | Seconds | Share |
+| --- | --- | --- |
+| pre-pass SHA-256 | 7.0 to 8.0 | 9 to 10% |
+| chunk decode + scanner feed | 10.5 to 11.3 | 13 to 14% |
+| grammar (`consumeCandidates`) | 4.5 to 4.8 | 5 to 6% |
+| IBK3 encode | 20.9 to 21.0 | 26% |
+| SRI2/TLI1/OLI2 sidecar build | 18.1 to 19.0 | 23% |
+| Merkle leaf hashing + writes | 13.0 to 13.6 | 16 to 17% |
+| total real | 81 to 82 | |
+
+| Activate stage | Seconds |
+| --- | --- |
+| full SHA-256 + Merkle rebuild | 13.2 to 14.8 |
+| index sidecars (one decode, three comparisons) | 43.9 to 46.1 |
+| paged materialize | 9.4 to 9.6 |
+| total real | 66.5 to 70.7 |
+
+On the 370,355-triple slice without large literals the shares are similar
+but the absolute index-sidecar cost is 9 s, so both largest stages track
+literal bytes, not triple count. The two lines that do the work: IBK3
+`encode?` converts the PTD1 dictionary `ByteArray` to a `List UInt8` and
+back with `++` (`IndexedBlockWireV3.lean`, `dictionary.data.toList` then
+`byteArrayOfList`); TLI1 `entriesOf` builds a `List UInt8` key per term
+and sorts with a cons-cell comparator (`TermLocalIndex.lean`,
+`lessBytes`). Both are dispatched as bounded changes with byte-identity
+and theorem gates. The reference parser on the same file: 22.9 s user,
+21.7 s system, 5.39 GB maximum resident set (the `List Char`
+representation; design record section 2.4).
+
 Gates for the scanner change: all 378 artifacts of the 320,019-line slice
 byte-identical between the old and new scanner; W3C RDF 1.1 Turtle 313 and
 TriG 356, RDF 1.2 Turtle 67 + 29 and TriG 35 + 25, all 0 fail;
