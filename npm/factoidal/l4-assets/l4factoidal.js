@@ -37,7 +37,7 @@
 // bytes change.
 
 // Stamped by formal/lean4/Wasm/build-wasm.sh step 9 -- do not hand-edit.
-const WASM_VERSION = "3fd14d3f1791";
+const WASM_VERSION = "9084903e6877";
 
 import createModule from './l4factoidal.mjs';
 
@@ -148,6 +148,43 @@ export function loadL4() {
         const parsed = JSON.parse(take(resultPtr));
         if (parsed.ok === false) throw new Error(`l4factoidal: ${parsed.error}`);
         return parsed;
+      },
+
+      /**
+       * The dispatch ABI, plus ONE contiguous byte region.
+       *
+       * For ops whose input is block bytes rather than text
+       * (`storeQuery`; the `ops` reflection lists them under
+       * `blobOps`). The bytes are written straight into the wasm heap
+       * with no encoding — no hex, no base64 — and copied once into a
+       * Lean ByteArray on the Lean side. Which bytes belong to which
+       * artifact is said in `args`, as {"key","offset","len"} windows
+       * into the region; Lean bounds-checks every one of them, so this
+       * call cannot pass a stale or out-of-range pointer.
+       *
+       * @param op    the method name, e.g. "storeQuery"
+       * @param args  array of positional STRING arguments
+       * @param blob  Uint8Array (or ArrayBuffer) of the concatenated bytes
+       * @returns     the parsed {"ok":true,...} envelope
+       * @throws      if the Lean side reports {"ok":false,"error":...}
+       */
+      callBlob(op, args, blob) {
+        const bytes = blob instanceof Uint8Array ? blob : new Uint8Array(blob ?? 0);
+        const blobPtr = bytes.length > 0 ? Module._malloc(bytes.length) : 0;
+        if (bytes.length > 0 && !blobPtr) {
+          throw new Error('l4factoidal: could not allocate a WASM blob buffer');
+        }
+        try {
+          if (bytes.length > 0) Module.HEAPU8.set(bytes, blobPtr);
+          const resultPtr = callWithHeapStrings(
+            (opPtr, argsPtr) => Module._l4_call_blob_c(opPtr, argsPtr, blobPtr, bytes.length),
+            [op, JSON.stringify(args)]);
+          const parsed = JSON.parse(take(resultPtr));
+          if (parsed.ok === false) throw new Error(`l4factoidal: ${parsed.error}`);
+          return parsed;
+        } finally {
+          if (blobPtr) Module._free(blobPtr);
+        }
       },
 
       /** Escape hatch for tests: the raw Emscripten module. */
