@@ -116,6 +116,17 @@ same queries.
 | Pack, after the scanner fix (2026-09-03, commit 0a3d30671) | same 309 blocks, 254 s (12,400 triples/s) |
 | Activate, after the scanner fix and decode-once activation (389b47f1a) | 356,111,955 logical bytes verified, 165 s idle (2.2 MB/s) |
 | Activate, after the TLI1 key and decoder changes (7be6b9f17, f5f0c9dee) | same bytes, 152 s with two builds running on the machine |
+| Activate, after the IBK3 and PTD1 decoders by byte-array index (2228793cd) | same bytes, 104 s and 104 s (alternating runs against the pre-change binary: 1,931 s and 584 s) |
+
+Measurement caveat for this rung (2026-09-03): on the 16 GB MacBook the
+same binary on the same store gave 30 s and 985 s in two alternating runs
+(1,138,990 triples), and one run of the full-store activation took 1,017 s
+after a run of 152 s. The stalls coincide with memory pressure (the
+reference parse of the 134 MB region alone reaches 5.39 GB resident; the
+list-based decoders hold about sixteen bytes per artifact byte) and are
+not reproducible with the byte-array decoders, which were stable at 104 s.
+Report such numbers only from alternating runs on an idle machine, and say
+which runs were discarded and why.
 
 | Query (`third_party/data/ukparliament/sparql/main/`) | Time | Rows | Path |
 | --- | --- | --- | --- |
