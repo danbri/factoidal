@@ -2153,7 +2153,7 @@ restored.
 | `dt_timezone`, `dt_tz`, `strip_leading_zeros_num` | `dtTimezone`, `dtTz`, `stripLeadingZerosNum` | arm for arm |
 | `fx_key_row`, `fx_key_occ`, `fx_ctx_put`, `fx_ctx_get` | `SPARQL/Algebra.lean` `fxKeyRow`, `fxKeyOcc`, `Binding.withFreshnessCtx`, `Binding.freshnessCtx` | reserved keys with a U+0001 prefix, as the F\* |
 | `fx_bind_rows` | `Algebra.lean` `bindRowsFresh` (the `GraphPattern.bind` arm) | row index + bound variable as call-site tag |
-| `eval_select_item` / `eval_select_items_row` row+position context | `Query.lean` `evalSelectItemsRow`, `evalSelectItemsFrom` | same two seeds |
+| `eval_select_item` / `eval_select_items_row` row+position context | `Query.lean` `evalSelectItemsRowFrom`, `numberRows` | same two seeds |
 | `fx_uuid_of_seed`, `fx_bnode_of_seed` | `fxUuidOfSeed`, `fxBnodeOfSeed` | bnode label has no `_:` prefix (Lean labels never do) |
 | `q_base` / `eval_expr_with_base`'s `base` | `Query.base` (8th field) → `EvalEnv.base` | the parser records the prologue's BASE (else the document IRI it was given) |
 | `w3c_runner.ml` `numeric_literal_equal` | `Harness/Compare.lean` `numericLiteralEqual`, `termEqualLenient` | harness, not library |

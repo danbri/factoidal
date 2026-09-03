@@ -130,7 +130,7 @@ comparator the evaluator really uses (`compareOnConditions`). -/
 def propOrderByPerm (c : Case) : Option String :=
   let conds : List OrderCondition := [.asc (.var "x"), .desc (.var "y"), .asc (.var "z")]
   let input := c.omegaA ++ c.omegaB
-  let sorted := sortSolutions (compareOnConditions probeEnv conds) input
+  let sorted := sortSolutions (compareOnConditions probeEnv probeEnv.activeGraph conds) input
   if multisetEqBy (· == ·) sorted input then none
   else some s!"ORDER BY is not a permutation: input {rowsText input}; output {rowsText sorted}"
 

@@ -36,13 +36,22 @@ expression machinery in scope.
 
 TERMINATION. Nothing here uses fuel, `partial`, or well-founded
 recursion:
-  * sub-SELECT is STRUCTURAL. `QueryPattern` and `Query` are one
-    mutual inductive, so a sub-SELECT's own pattern is a subterm; the
-    inner query's post-pattern pipeline (`selectPost`) does not recurse
-    into patterns at all, so `lower` handles the whole nest in one
-    structural pass. (The F* source needs a lexicographic
-    `%[query_size; phase]` measure across a four-member clique for the
-    same thing.)
+  * sub-SELECT is STRUCTURAL. `QueryPattern`, `Query` and `Expr` are
+    one mutual inductive, so a sub-SELECT's own pattern, an EXISTS
+    body, a HAVING condition and an ORDER BY condition are all
+    subterms. `lowerWith`, `selectPost` and `substituteExistentials`
+    are therefore one mutual definition and handle the whole nest in
+    one structural pass: `lowerWith` reaches `selectPost` for a
+    sub-SELECT, `selectPost` reaches `substituteExistentials` for
+    §18.6 EXISTS in HAVING / ORDER BY / a projected expression, and
+    that reaches `lowerWith` for the EXISTS body. Every call takes a
+    STRICTLY smaller subterm, which is why the named F* ports
+    `having_filter`, `aggregate_groups` and `eval_select_items` are
+    inlined at their one call site in `selectPost` rather than kept as
+    wrappers: a wrapper would hand its own argument on unchanged, and
+    an argument that does not shrink is not a structural recursion.
+    (The F* source needs a lexicographic `%[query_size; phase]`
+    measure across a four-member clique for the same thing.)
   * LATERAL is structural too. `lateralSubstitute` in the F* source
     returns a pattern that is NOT a subterm of the LATERAL node, which
     is why that tree needs
@@ -543,23 +552,6 @@ def sortSolutions (cmp : Binding → Binding → Int) : SolutionSeq → Solution
 def sortSolutionsFast (cmp : Binding → Binding → Int) (omega : SolutionSeq) : SolutionSeq :=
   omega.mergeSort (fun left right => cmp left right ≤ 0)
 
-/-- Compare two rows on one ORDER BY condition; DESC swaps the
-operands (port of `compare_on_condition`). -/
-def compareOnCondition (env : EvalEnv) (c : OrderCondition)
-    (mu1 mu2 : Binding) : Int :=
-  match c with
-  | .asc e  => sparqlOrder (Expr.evalIn env mu1 e) (Expr.evalIn env mu2 e)
-  | .desc e => sparqlOrder (Expr.evalIn env mu2 e) (Expr.evalIn env mu1 e)
-
-/-- Lexicographic comparison over the ORDER BY list: the first
-non-equal condition decides (port of `compare_on_conditions`). -/
-def compareOnConditions (env : EvalEnv) : List OrderCondition →
-    Binding → Binding → Int
-  | [],      _,   _   => 0
-  | c :: rest, mu1, mu2 =>
-      let r := compareOnCondition env c mu1 mu2
-      if r ≠ 0 then r else compareOnConditions env rest mu1 mu2
-
 /-! ## §18.5.1 grouping and aggregation -/
 
 /-- One GROUP BY group: the key its rows share, and those rows. -/
@@ -769,37 +761,29 @@ def rewriteAggregates (env : EvalEnv) (g : SolutionGroup) : Expr → Expr
   | .not e1    => .not (rewriteAggregates env g e1)
   | e          => e
 
-/-- Evaluate an expression in GROUP context: aggregates first, then
-the §17 evaluator against the group's representative row (port of
-`eval_expr_in_group`). -/
-def evalExprInGroup (env : EvalEnv) (e : Expr) (g : SolutionGroup) : EvalResult :=
-  let rewritten := rewriteAggregates env g e
+/-- The group's REPRESENTATIVE row: the solution mapping §18.5.4
+evaluates a HAVING condition and a projected expression against. Every
+row of a group carries the GROUP BY key bindings, so the first row
+carries them; a group with no rows contributes the empty mapping. -/
+def SolutionGroup.representative (g : SolutionGroup) : Binding :=
   match g.solutions with
-  | mu :: _ => Expr.evalIn env mu rewritten
-  | []      => Expr.evalIn env Binding.empty rewritten
+  | mu :: _ => mu
+  | []      => Binding.empty
 
-/-- §18.5.1 HAVING: keep the groups whose every condition has an
-effective boolean value of true (port of `having_filter`). -/
-def havingFilter (env : EvalEnv) (conds : List Expr)
-    (groups : List SolutionGroup) : List SolutionGroup :=
-  groups.filter (fun g =>
-    conds.all (fun c => ebvOrFalse (evalExprInGroup env c g)))
+/-- Port of `eval_expr_in_group`: replace each aggregate sub-expression
+by its computed value, then run the §17 evaluator on the group's
+representative row.
 
-/-- One SELECT item's value for one group (port of
-`eval_select_item_group`). -/
-def evalSelectItemGroup (env : EvalEnv) (item : SelectItem) (g : SolutionGroup) :
-    Option (VarName × Term) :=
-  match item with
-  | .var v =>
-      match g.solutions with
-      | mu :: _ => (mu.lookup v).map (fun t => (v, t))
-      | []      => none
-  | .expr e v => ((evalExprInGroup env e g).toTerm?).map (fun t => (v, t))
-
-/-- One row per group (port of `aggregate_groups`). -/
-def aggregateGroups (env : EvalEnv) (items : List SelectItem)
-    (groups : List SolutionGroup) : SolutionSeq :=
-  groups.map (fun g => items.filterMap (fun it => evalSelectItemGroup env it g))
+The §18.6 EXISTS substitution is NOT done here. It is applied by the
+callers inside the mutual block below, to the expression they pass in,
+because `substituteExistentials` lives in that block and this function
+does not: a mutual structural recursion may only call a member of its
+own block on a STRICTLY smaller subterm, and an `e`-to-`e` call is not
+smaller. The callers hold the condition or the SELECT item, so they
+hold a strict subterm; this function then sees an expression whose
+EXISTS positions are already booleans. -/
+def evalExprInGroup (env : EvalEnv) (g : SolutionGroup) (e : Expr) : EvalResult :=
+  Expr.evalIn env g.representative (rewriteAggregates env g e)
 
 /-- Does this expression contain an aggregate anywhere? An aggregate
 in the SELECT clause triggers grouping even with no GROUP BY
@@ -830,35 +814,17 @@ def selectItemVars : List SelectItem → List VarName
   | .var v :: rest  => v :: selectItemVars rest
   | .expr _ v :: rest => v :: selectItemVars rest
 
-/-- Evaluate the `(expr AS ?v)` items of a non-aggregating SELECT over
-one row; each item sees the bindings the earlier items added (port of
-`eval_select_items_row`). `row` is the row's index and `i` the item's
-position: together they are the freshness context BNODE()/UUID()/
-STRUUID() derive a distinct value from (`Binding.withFreshnessCtx`,
-the F* `eval_select_item` design); the context is seen by the
-expression only and never stored in the returned row. -/
-def evalSelectItemsRow (env : EvalEnv) (row : String) (items : List SelectItem) (mu : Binding) :
-    Binding :=
-  (items.foldl (fun (st : Binding × Nat) it =>
-    let (acc, i) := st
-    match it with
-    | .var _    => (acc, i + 1)
-    | .expr e v =>
-        match (Expr.evalIn env (acc.withFreshnessCtx row (toString i)) e).toTerm? with
-        | some t => (acc.bind v t, i + 1)
-        -- §18.2.4.2: an expression error leaves the variable unbound.
-        | none   => (acc, i + 1)) (mu, 0)).1
-
-/-- Every row, numbered from 0 (port of `eval_select_items`'s row
-counter). -/
-def evalSelectItemsFrom (env : EvalEnv) (items : List SelectItem) :
+/-- Apply a row transformer to every row of a solution sequence,
+handing it the row's index as a string. That index is half the
+freshness context BNODE() / UUID() / STRUUID() derive a distinct value
+from (`Binding.withFreshnessCtx`, the F* `eval_select_item` design);
+the other half is the SELECT item's position. It stays outside the
+mutual block below because it recurses on the ROW list, which is not
+part of the query AST. -/
+def numberRows (f : String → Binding → Binding) :
     SolutionSeq → Nat → SolutionSeq
   | [],        _ => []
-  | mu :: rest, i => evalSelectItemsRow env (toString i) items mu :: evalSelectItemsFrom env items rest (i + 1)
-
-def evalSelectItems (env : EvalEnv) (items : List SelectItem)
-    (omega : SolutionSeq) : SolutionSeq :=
-  evalSelectItemsFrom env items omega 0
+  | mu :: rest, i => f (toString i) mu :: numberRows f rest (i + 1)
 
 /-- `is_synthetic_bnode_var`: the variables `QueryPattern.rewriteBnodes`
 (below) invents for WHERE-clause blank nodes. -/
@@ -871,72 +837,6 @@ BEFORE DISTINCT/REDUCED, as in the F* source, so rows that differ
 only in a synthetic binding collapse to one. -/
 def stripSyntheticBnodeVars (omega : SolutionSeq) : SolutionSeq :=
   omega.map (fun mu => mu.filter (fun b => !isSyntheticBnodeVar b.1))
-
-/-! ## The §18.2.4 pipeline
-
-`selectPost` is everything a SELECT query does AFTER its WHERE clause
-has produced a solution sequence: post-VALUES join, grouping,
-aggregation, HAVING, SELECT expressions, ORDER BY, projection,
-DISTINCT/REDUCED, and OFFSET/LIMIT — in that order, matching
-`eval_select_query`. Keeping it separate from pattern evaluation is
-what makes sub-SELECT structural (see the module banner). -/
-
-def selectPost (env : EvalEnv) (q : Query) (omega0 : SolutionSeq) : SolutionSeq :=
-  -- 1b. Post-query VALUES joins onto the WHERE result (§10.2).
-  let omega := match q.postValues with
-    | none      => omega0
-    | some vals => join omega0 vals
-  match q.form with
-  | .select sel =>
-      let needsGrouping := q.groupBy.isSome || selectHasAggregates sel
-      if needsGrouping then
-        -- 2. GROUP BY (§18.5.1).
-        let groups := match q.groupBy with
-          | some conds => groupSolutions env conds omega
-          | none       => implicitGroup omega
-        -- 3. HAVING.
-        let filtered := if q.having.isEmpty then groups
-                        else havingFilter env q.having groups
-        -- 4. Aggregation: one row per surviving group.
-        let omega' := match sel with
-          | .vars items => aggregateGroups env items filtered
-          | .all        =>
-              stripSyntheticBnodeVars (filtered.map (fun g => g.solutions.headD Binding.empty))
-        -- 6. ORDER BY.
-        let ordered := match q.modifier.orderBy with
-          | none   => omega'
-          | some o => sortSolutionsFast (compareOnConditions env o) omega'
-        -- 8. DISTINCT / REDUCED.
-        let deduped :=
-          if q.modifier.distinct then distinctSolutionsFast ordered
-          else if q.modifier.reduced then reducedSolutions ordered
-          else ordered
-        -- 9. OFFSET / LIMIT.
-        sliceSolutions q.modifier.offset q.modifier.limit deduped
-      else
-        -- 5. SELECT expressions.
-        let omega' := match sel with
-          | .vars items => evalSelectItems env items omega
-          | .all        => omega
-        -- 6. ORDER BY (before projection, so ORDER BY can name a
-        -- variable the projection drops — §15.1).
-        let ordered := match q.modifier.orderBy with
-          | none   => omega'
-          | some o => sortSolutionsFast (compareOnConditions env o) omega'
-        -- 7. Projection. `SELECT *` drops the rewrite-invented
-        -- `_bnode_*` variables here, before DISTINCT (F* site).
-        let projected := match sel with
-          | .vars items => projectSolutions (selectItemVars items) ordered
-          | .all        => stripSyntheticBnodeVars ordered
-        let deduped :=
-          if q.modifier.distinct then distinctSolutionsFast projected
-          else if q.modifier.reduced then reducedSolutions projected
-          else projected
-        sliceSolutions q.modifier.offset q.modifier.limit deduped
-  -- ASK / CONSTRUCT / DESCRIBE have their own entry points; as a
-  -- SOLUTION SEQUENCE producer they contribute nothing, exactly as
-  -- `eval_select_query`'s other arms return `[]`.
-  | _ => []
 
 /-! ## LATERAL — correlated evaluation
 
@@ -1062,15 +962,32 @@ embedded expressions, SERVICE bodies or VALUES rows.
 An EXISTS body IS an embedded expression, and until 2026-08-26 that
 left a blank node there matching as a constant — the residue of
 https://github.com/danbri/factoidal/issues/607 that survived the
-top-level rewrite. `substituteExistentials` now applies
-`rewriteBnodes` to the body it is about to evaluate, which reaches
-every EXISTS site at once (FILTER, an OPTIONAL condition, BIND, HAVING,
-a SELECT expression, ORDER BY). The F* tree still has the residue:
-`factoidal query` returned no results for
-`SELECT ?x { ?x ex:b1 ?o FILTER EXISTS { ?x ex:b1 _:d } }` on
-2026-08-26, where this tree now returns every row. A SERVICE body is
+top-level rewrite. `Expr.rewriteBnodes` descends into an `EXISTS` /
+`NOT EXISTS` body, and `Query.rewriteBnodes` applies it at every
+expression position a query has: the FILTER and OPTIONAL conditions
+and the BIND expressions inside the WHERE clause, the SELECT
+projection items, the GROUP BY keys, the HAVING conditions and the
+ORDER BY conditions, plus the same six positions inside a sub-SELECT.
+So the blank-node rewrite reaches every EXISTS body in the query.
+The F* tree still has the residue: `factoidal query` returned no
+results for `SELECT ?x { ?x ex:b1 ?o FILTER EXISTS { ?x ex:b1 _:d } }`
+on 2026-08-26, where this tree now returns every row. A SERVICE body is
 left alone deliberately: it is a query for a remote endpoint, which
-applies §18.3.1 itself. -/
+applies §18.3.1 itself.
+
+EVALUATING an EXISTS is a separate question from rewriting its blank
+nodes, and the two lists are not the same. `substituteExistentials`
+(above) is called at exactly five sites: the FILTER condition and the
+OPTIONAL condition in `QueryPattern.lowerWith`, the BIND expression in
+the same function, the HAVING conditions through `havingSatisfies`,
+the projected `(expr AS ?v)` items through `evalSelectItemGroup` (a
+grouping query) and `evalSelectItemsRowFrom` (a plain one), and the
+ORDER BY conditions through `compareOnCondition`. Two positions are NOT covered and still reach
+`Expr.evalIn` with the EXISTS in place, which is the expression-layer
+error: a GROUP BY key expression, and an expression inside an
+aggregate's argument (`SUM(IF(EXISTS { … }, 1, 0))`), whose per-row
+solution mapping `evalExprInGroup` does not have.
+https://github.com/danbri/factoidal/issues/639 -/
 
 /-- `rewrite_query_bnode_term`: a blank node becomes `?_bnode_<label>`;
 RDF 1.2 triple-term patterns are rewritten position by position. -/
@@ -1348,11 +1265,16 @@ def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
   | .lateral l r =>
       .lateral (QueryPattern.lowerWith env mu l)
         (fun mu2 => QueryPattern.lowerWith env (mu.merge mu2) r)
-  -- BIND: the F* `fx_bind_rows` evaluates the expression as is, with
-  -- no existential substitution, so `BIND(EXISTS {…} AS ?v)` is an
-  -- error there (and leaves ?v unbound); kept the same here.
+  -- §18.6 BIND: the bound expression is evaluated on the row with its
+  -- existentials already substituted, exactly as a FILTER condition
+  -- is, so `BIND(EXISTS {…} AS ?v)` binds a boolean instead of
+  -- erroring and leaving ?v unbound
+  -- (https://github.com/danbri/factoidal/issues/639). The binder takes
+  -- the ACTIVE graph for the same reason the FILTER closure does.
   | .bind e v q =>
-      .bind (fun row => (Expr.evalIn env (mu.merge row) e).toTerm?) v
+      .bind (fun active row =>
+          let mu' := mu.merge row
+          (Expr.evalIn env mu' (substituteExistentials env active mu' e)).toTerm?) v
         (QueryPattern.lowerWith env mu q)
   | .values vars rows => .values vars rows
   | .service i silent q =>
@@ -1367,14 +1289,19 @@ def QueryPattern.lowerWith (env : EvalEnv) (mu : Binding) (p : QueryPattern) :
        | _ =>
            .serviceVar v env.resolveService silent (QueryPattern.lowerWith env mu q))
   | .subSelect q =>
-      match q with
-      | .mk form dcs inner gb hv md pv bs =>
-          -- A sub-SELECT has no dataset clause in the SPARQL 1.1
-          -- grammar (`SubSelect ::= SelectClause WhereClause
-          -- SolutionModifier ValuesClause`), so `dcs` is carried for
-          -- shape only and does not re-scope the graph here.
-          .modified (selectPost env (.mk form dcs inner gb hv md pv bs))
-            (QueryPattern.lowerWith env (lateralVisibleMu mu form inner) inner)
+      -- A sub-SELECT has no dataset clause in the SPARQL 1.1 grammar
+      -- (`SubSelect ::= SelectClause WhereClause SolutionModifier
+      -- ValuesClause`), so the dataset clause list is carried for shape
+      -- only and does not re-scope the graph here.
+      -- `selectPost` receives `q` ITSELF, outside the match that opens
+      -- it up: a `match` generalises its discriminant, so a `q` written
+      -- inside the branch is no longer the subterm of `.subSelect q`
+      -- that the termination checker needs. The match that exposes the
+      -- inner pattern is therefore nested under the second argument.
+      .modified (fun active => selectPost env active q)
+        (match q with
+         | .mk form _dcs inner _gb _hv _md _pv _bs =>
+             QueryPattern.lowerWith env (lateralVisibleMu mu form inner) inner)
   | .propertyPath s path o =>
       .propertyPath (substPatternSubject mu s) path (substPatternTerm mu o)
   | .empty => .empty
@@ -1490,7 +1417,17 @@ def substituteExistentials (env : EvalEnv) (active : Graph) (mu : Binding) :
   | .tz a => .tz (substituteExistentials env active mu a)
   | .sameTerm a b => .sameTerm (substituteExistentials env active mu a)
                                (substituteExistentials env active mu b)
-  | .aggregate fn d a => .aggregate fn d (substituteExistentials env active mu a)
+  -- An aggregate's ARGUMENT is evaluated once per row of the group
+  -- (§18.5.1), each row being a different solution mapping, so §18.6's
+  -- "substitute the current solution mapping" has no single answer
+  -- here and the argument is left alone. `evalOverGroup` then reaches
+  -- an EXISTS inside an aggregate through `Expr.evalIn`, which is the
+  -- expression-layer error — the one expression position this module
+  -- still leaves unimplemented
+  -- (https://github.com/danbri/factoidal/issues/639). The arm is
+  -- unreachable from a FILTER or OPTIONAL condition, where the SPARQL
+  -- 1.1 grammar forbids aggregates.
+  | .aggregate fn d a => .aggregate fn d a
   | .functionCall i args => .functionCall i (substituteExistentialsList env active mu args)
   | .tripleTerm a b c => .tripleTerm (substituteExistentials env active mu a)
                                      (substituteExistentials env active mu b)
@@ -1513,11 +1450,208 @@ def substituteExistentialsOpt (env : EvalEnv) (active : Graph) (mu : Binding) :
   | none   => none
   | some e => some (substituteExistentials env active mu e)
 
+/- The §18.2.4 post-WHERE pipeline (a plain comment, not a section
+doc: a mutual block admits only definitions).
+
+`selectPost` is everything a SELECT query does AFTER its WHERE clause
+has produced a solution sequence: post-VALUES join, grouping,
+aggregation, HAVING, SELECT expressions, ORDER BY, projection,
+DISTINCT/REDUCED, and OFFSET/LIMIT — in that order, matching
+`eval_select_query`.
+
+It sits in THIS mutual block, and takes the ACTIVE graph, because
+§18.6 EXISTS may appear in a HAVING condition, an ORDER BY condition
+or a projected `(expr AS ?v)`, and every one of those is evaluated the
+way a FILTER condition is: `substituteExistentials` replaces the
+EXISTS by the boolean that lowering its body under the current
+solution mapping and evaluating it against the active graph gives.
+`lowerWith` reaches `selectPost` for a sub-SELECT, `selectPost`
+reaches `substituteExistentials`, and that reaches `lowerWith` again,
+so the three are one definition
+(https://github.com/danbri/factoidal/issues/639). The recursion stays
+structural: every call takes a subterm of the query AST — the EXISTS
+body is a subterm of the condition, the condition a subterm of the
+query, the sub-SELECT a subterm of the pattern. No fuel, no hook, no
+`partial`.
+
+The list helpers (`havingSatisfies`, `evalSelectItemsGroup`,
+`evalSelectItemsRowFrom`) recurse EXPLICITLY over the AST lists rather
+than calling `List.all` / `List.filterMap` / `List.foldl` with a
+lambda, because a list element bound by a lambda is not a subterm the
+termination checker can see. Where the list being walked is a list of
+ROWS rather than of AST (`numberRows`, `List.filter`, `List.map`), the
+lambda is fine: the AST argument passed through it is bound outside
+it. -/
+
+/-- Compare two rows on one ORDER BY condition; DESC swaps the
+operands (port of `compare_on_condition`). §18.6: each row gets its
+OWN substitution, so `ORDER BY EXISTS { … ?s … }` can separate two
+rows that bind `?s` differently. -/
+def compareOnCondition (env : EvalEnv) (active : Graph) (c : OrderCondition)
+    (mu1 mu2 : Binding) : Int :=
+  match c with
+  | .asc e  =>
+      sparqlOrder (Expr.evalIn env mu1 (substituteExistentials env active mu1 e))
+                  (Expr.evalIn env mu2 (substituteExistentials env active mu2 e))
+  | .desc e =>
+      sparqlOrder (Expr.evalIn env mu2 (substituteExistentials env active mu2 e))
+                  (Expr.evalIn env mu1 (substituteExistentials env active mu1 e))
+
+/-- Lexicographic comparison over the ORDER BY list: the first
+non-equal condition decides (port of `compare_on_conditions`). -/
+def compareOnConditions (env : EvalEnv) (active : Graph) :
+    List OrderCondition → Binding → Binding → Int
+  | [],        _,   _   => 0
+  | c :: rest, mu1, mu2 =>
+      let r := compareOnCondition env active c mu1 mu2
+      if r ≠ 0 then r else compareOnConditions env active rest mu1 mu2
+
+/-- §18.5.1 / §18.5.4 HAVING on one group: every condition must have an
+effective boolean value of true (port of `having_filter`'s inner
+test). §18.6 runs first, against the group's representative row, so an
+`EXISTS` in a HAVING condition is a boolean before `evalExprInGroup`
+sees it; the aggregate aliases are then supplied by
+`rewriteAggregates` inside that function. -/
+def havingSatisfies (env : EvalEnv) (active : Graph) :
+    List Expr → SolutionGroup → Bool
+  | [],        _ => true
+  | c :: rest, g =>
+      ebvOrFalse (evalExprInGroup env g
+        (substituteExistentials env active g.representative c))
+      && havingSatisfies env active rest g
+
+/-- One SELECT item's value for one group (port of
+`eval_select_item_group`). -/
+def evalSelectItemGroup (env : EvalEnv) (active : Graph) (item : SelectItem)
+    (g : SolutionGroup) : Option (VarName × Term) :=
+  match item with
+  | .var v => (g.representative.lookup v).map (fun t => (v, t))
+  | .expr e v =>
+      ((evalExprInGroup env g
+        (substituteExistentials env active g.representative e)).toTerm?).map
+          (fun t => (v, t))
+
+/-- One group's row: every SELECT item that produced a value. -/
+def evalSelectItemsGroup (env : EvalEnv) (active : Graph) :
+    List SelectItem → SolutionGroup → Binding
+  | [],         _ => []
+  | it :: rest, g =>
+      match evalSelectItemGroup env active it g with
+      | some b => b :: evalSelectItemsGroup env active rest g
+      | none   => evalSelectItemsGroup env active rest g
+
+/-- Evaluate the `(expr AS ?v)` items of a non-aggregating SELECT over
+one row; each item sees the bindings the earlier items added (port of
+`eval_select_items_row`). `row` is the row's index and `i` the item's
+position: together they are the freshness context BNODE()/UUID()/
+STRUUID() derive a distinct value from (`Binding.withFreshnessCtx`,
+the F* `eval_select_item` design); the context is seen by the
+expression only and never stored in the returned row. The item's
+expression is substituted against the accumulated row, so
+`SELECT (EXISTS { … } AS ?e)` projects a boolean. -/
+def evalSelectItemsRowFrom (env : EvalEnv) (active : Graph) (row : String) :
+    List SelectItem → Binding → Nat → Binding
+  | [],                acc, _ => acc
+  | .var _ :: rest,    acc, i => evalSelectItemsRowFrom env active row rest acc (i + 1)
+  | .expr e v :: rest, acc, i =>
+      let mu := acc.withFreshnessCtx row (toString i)
+      match (Expr.evalIn env mu (substituteExistentials env active mu e)).toTerm? with
+      | some t => evalSelectItemsRowFrom env active row rest (acc.bind v t) (i + 1)
+      -- §18.2.4.2: an expression error leaves the variable unbound.
+      | none   => evalSelectItemsRowFrom env active row rest acc (i + 1)
+
+/-- The §18.2.4 pipeline itself. -/
+def selectPost (env : EvalEnv) (active : Graph) (q : Query)
+    (omega0 : SolutionSeq) : SolutionSeq :=
+  match q with
+  | .mk form _dcs _pattern gb hv md pv _base =>
+    -- 1b. Post-query VALUES joins onto the WHERE result (§10.2).
+    let omega := match pv with
+      | none      => omega0
+      | some vals => join omega0 vals
+    match md with
+    | { orderBy := ob, distinct := dd, reduced := rr, offset := oo, limit := ll } =>
+    match form with
+    | .select sel =>
+        let needsGrouping := gb.isSome || selectHasAggregates sel
+        if needsGrouping then
+          -- 2. GROUP BY (§18.5.1). A GROUP BY key expression is still
+          -- evaluated by `Expr.evalIn` alone, so an EXISTS there stays
+          -- the expression-layer error; that position is not covered.
+          let groups := match gb with
+            | some conds => groupSolutions env conds omega
+            | none       => implicitGroup omega
+          -- 3. HAVING (§18.5.4 and §18.6). `having_filter`, inlined:
+          -- the condition list has to reach `havingSatisfies` as a
+          -- strict subterm of `q` for the recursion to stay structural.
+          let filtered := if hv.isEmpty then groups
+                          else groups.filter (fun g => havingSatisfies env active hv g)
+          -- 4. Aggregation: one row per surviving group
+          -- (`aggregate_groups`, inlined for the same reason).
+          let omega' := match sel with
+            | .vars items => filtered.map (fun g => evalSelectItemsGroup env active items g)
+            | .all        =>
+                stripSyntheticBnodeVars (filtered.map (fun g => g.solutions.headD Binding.empty))
+          -- 6. ORDER BY.
+          let ordered := match ob with
+            | none   => omega'
+            | some o => sortSolutionsFast
+                          (fun mu1 mu2 => compareOnConditions env active o mu1 mu2) omega'
+          -- 8. DISTINCT / REDUCED.
+          let deduped :=
+            if dd then distinctSolutionsFast ordered
+            else if rr then reducedSolutions ordered
+            else ordered
+          -- 9. OFFSET / LIMIT.
+          sliceSolutions oo ll deduped
+        else
+          -- 5. SELECT expressions (`eval_select_items`, inlined for
+          -- the same reason).
+          let omega' := match sel with
+            | .vars items =>
+                numberRows (fun row mu => evalSelectItemsRowFrom env active row items mu 0)
+                  omega 0
+            | .all        => omega
+          -- 6. ORDER BY (before projection, so ORDER BY can name a
+          -- variable the projection drops — §15.1).
+          let ordered := match ob with
+            | none   => omega'
+            | some o => sortSolutionsFast
+                          (fun mu1 mu2 => compareOnConditions env active o mu1 mu2) omega'
+          -- 7. Projection. `SELECT *` drops the rewrite-invented
+          -- `_bnode_*` variables here, before DISTINCT (F* site).
+          let projected := match sel with
+            | .vars items => projectSolutions (selectItemVars items) ordered
+            | .all        => stripSyntheticBnodeVars ordered
+          let deduped :=
+            if dd then distinctSolutionsFast projected
+            else if rr then reducedSolutions projected
+            else projected
+          sliceSolutions oo ll deduped
+    -- ASK / CONSTRUCT / DESCRIBE have their own entry points; as a
+    -- SOLUTION SEQUENCE producer they contribute nothing, exactly as
+    -- `eval_select_query`'s other arms return `[]`.
+    | _ => []
+
 end
 
 /-- Compile a query pattern into the §18.5 algebra. -/
 def QueryPattern.lower (env : EvalEnv) (p : QueryPattern) : GraphPattern :=
   QueryPattern.lowerWith env Binding.empty p
+
+/-- The active graph a TOP-LEVEL query's post-WHERE clauses see: the
+default graph of the query's dataset. §18.6 evaluates an EXISTS
+against the active graph, and outside a GRAPH clause that is the
+default graph. With no dataset in the environment the result is the
+empty graph, which agrees with `substituteExistentials`: it leaves the
+EXISTS in place, and the expression layer answers `.error`. Callers
+that already hold the active graph (`evalSelect`, after
+`applyDataset`; `GraphPattern.evalIn`, which passes it into the
+`modified` and `bind` closures) pass it directly instead. -/
+def EvalEnv.activeGraph (env : EvalEnv) : Graph :=
+  match env.dataset with
+  | some ds => ds.default
+  | none    => Graph.empty
 
 /-! ## §13.2 FROM / FROM NAMED -/
 
@@ -1576,7 +1710,7 @@ def evalSelect (env : EvalEnv) (ds : Dataset) (q : Query) :
   match q.form with
   | .select sel =>
       let omega := (q.pattern.rewriteBnodes.lower env).evalIn ds' active
-      let rows := selectPost env q omega
+      let rows := selectPost env active q omega
       let vars := match sel with
         | .vars items => selectItemVars items
         | .all        => collectVarsInOrder rows
@@ -1704,7 +1838,7 @@ def evalConstruct (env : EvalEnv) (ds : Dataset) (q : Query) : Graph :=
         | some vals => join omega0 vals
       let ordered := match q.modifier.orderBy with
         | none   => omega
-        | some o => sortSolutionsFast (compareOnConditions env o) omega
+        | some o => sortSolutionsFast (compareOnConditions env active o) omega
       let limited := sliceSolutions q.modifier.offset q.modifier.limit ordered
       (instantiateSolutions template limited 0).foldl (fun g t => g.add t) Graph.empty
   | _ => []

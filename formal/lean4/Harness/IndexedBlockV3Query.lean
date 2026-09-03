@@ -199,7 +199,7 @@ private def finishObjectSubjectSelect (query : Query) (entries : List Entry)
         "ibk3-sri2-tli1-oli2-object-subject-direct-select-distinct-subject")
     | none => (query, objectSubjectSolutions subjectVar objectVar drivers targets,
         "ibk3-sri2-tli1-oli2-object-subject-direct-select")
-  let rows := selectPost emptyEnv executionQuery inputRows
+  let rows := selectPost emptyEnv emptyEnv.activeGraph executionQuery inputRows
   IO.println s!"l4block-id-v3-query shards={entries.length} open-mode={mode}({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
   IO.println s!"l4block-id-v3-query sse={query.toSse}"
   IO.println s!"l4block-id-v3-query rows={rows.length} preview={toString (repr (rows.take 10))}"
@@ -213,7 +213,7 @@ private def finishObjectSubjectSelect (query : Query) (entries : List Entry)
 private def finishSubjectTripleSelect (query : Query) (entries : List Entry)
     (predicates : List WfIri) (subjectVar driverVar leftVar rightVar : VarName)
     (drivers lefts rights : List Triple) (counters : Counters) : IO UInt32 := do
-  let rows := selectPost emptyEnv query
+  let rows := selectPost emptyEnv emptyEnv.activeGraph query
     (subjectTripleSolutions subjectVar driverVar leftVar rightVar drivers lefts rights)
   IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-sri2-tli1-subject-triple-direct-select({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
   IO.println s!"l4block-id-v3-query sse={query.toSse}"
@@ -259,7 +259,7 @@ private def finishPredicateGroup (query : Query) (entries : List Entry) (predica
   let grouped := predicateGroupBySolutions predicateVar countAlias backend predicates
   let ordered := match query.modifier.orderBy with
     | none => grouped
-    | some order => sortSolutions (compareOnConditions emptyEnv order) grouped
+    | some order => sortSolutions (compareOnConditions emptyEnv emptyEnv.activeGraph order) grouped
   let rows := sliceSolutions query.modifier.offset query.modifier.limit ordered
   IO.println s!"l4block-id-v3-query shards={entries.length} open-mode=ibk3-paged-merkle-predicate-group-count({predicates.length}) delta=base logical-read-bytes={counters.requestedBytes} fetched-bytes={counters.fetchedBytes}"
   IO.println s!"l4block-id-v3-query sse={query.toSse}"

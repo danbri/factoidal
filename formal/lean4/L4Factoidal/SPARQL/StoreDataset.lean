@@ -336,7 +336,7 @@ def evalSelectBackendBgp (env : EvalEnv) (q : Query) (gb : GraphBackend) :
       else
         let ordered := match q.modifier.orderBy with
           | none => omega
-          | some o => sortSolutionsFast (compareOnConditions env o) omega
+          | some o => sortSolutionsFast (compareOnConditions env env.activeGraph o) omega
         let projected := match sel with
           | .vars items => projectSolutions (selectItemVars items) ordered
           | .all => ordered
@@ -375,7 +375,7 @@ def evalSelectBackendOnGraph (env : EvalEnv) (q : Query) (gb : GraphBackend)
           let omega := predicateGroupBySolutions predVar countAlias target preds
           let ordered := match q.modifier.orderBy with
             | none => omega
-            | some o => sortSolutionsFast (compareOnConditions env o) omega
+            | some o => sortSolutionsFast (compareOnConditions env env.activeGraph o) omega
           some (sliceSolutions q.modifier.offset q.modifier.limit ordered)
       | none =>
           match detectLimitSingleTp q with
@@ -386,7 +386,7 @@ def evalSelectBackendOnGraph (env : EvalEnv) (q : Query) (gb : GraphBackend)
           | none =>
               match q.form with
               | .select _ =>
-                  some (selectPost env q (evalPatternBackend env dsb q.pattern gb))
+                  some (selectPost env env.activeGraph q (evalPatternBackend env dsb q.pattern gb))
               | _ => none
 
 /-- SELECT against the whole dataset. The GROUP BY ?g fast path is the
@@ -399,7 +399,7 @@ def evalSelectBackendDataset (env : EvalEnv) (q : Query) (dsb : DatasetBackend) 
       let omega := countGroupByGraphSolutions graphVar countAlias dsb.named
       let ordered := match q.modifier.orderBy with
         | none => omega
-        | some o => sortSolutionsFast (compareOnConditions env o) omega
+        | some o => sortSolutionsFast (compareOnConditions env env.activeGraph o) omega
       some (sliceSolutions q.modifier.offset q.modifier.limit ordered)
   | none => evalSelectBackendOnGraph env q dsb.default dsb
 
@@ -845,18 +845,16 @@ shards: `p` carries the subjects `a` and `g`, `q` carries only `a`. A HAVING
 EXISTS over `q` therefore has to read the `q` shard, which the WHERE clause
 never names.
 
-MEASURED GAP, recorded here rather than assumed away: this tree substitutes
-existentials only in a FILTER condition and an OPTIONAL condition
-(`QueryPattern.lowerWith`). `evalExprInGroup`, `compareOnCondition` and
-`evalSelectItems` call `Expr.evalIn` directly, and `Expr.evalIn` answers
-`.error` for `Expr.existsPat`. So an EXISTS in HAVING, ORDER BY or a
-projected expression currently evaluates to an error — HAVING drops every
-group, ORDER BY ties every row — in the reference evaluator and in the
-backend runners alike. The guards below pin that agreement and the row counts
-it produces; they are the CURRENT behaviour of the tree, not the §18.6
-answer. Whoever implements EXISTS in those positions must change these
-numbers deliberately, and by then the planner admission test above is already
-in place. -/
+§18.6 IN THOSE POSITIONS IS IMPLEMENTED
+(https://github.com/danbri/factoidal/issues/639): `QueryPattern.lowerWith`
+substitutes existentials in a FILTER condition, an OPTIONAL condition and a
+BIND expression, and `selectPost` — now in the same mutual block, and taking
+the ACTIVE GRAPH — substitutes them in the HAVING conditions, in the ORDER BY
+conditions and in the projected `(expr AS ?v)` items. Every guard below states
+the §18.6 answer, computed by hand from `gShardSplit`, and pins that the
+backend runner and the reference evaluator both give it. Two positions are
+still the expression-layer error: a GROUP BY key expression, and an expression
+inside an aggregate's argument. -/
 
 private def gShardSplit : Graph :=
   [ { s := .iri iA, p := iP, o := .iri iB },
@@ -870,6 +868,16 @@ private def envShardSplit : EvalEnv :=
 private def tpPredicateP : TriplePattern := { s := .var "s", p := .iri iP, o := .var "o" }
 private def tpPredicateQ : TriplePattern := { s := .var "s", p := .iri iQ, o := .var "z" }
 
+/-- `EXISTS { ?s <q> ?z }` and its negation, the sub-pattern every query
+    below carries. Under `?s = a` it has one solution, under `?s = g` none. -/
+private def existsQ : Expr := .existsPat (.bgp [tpPredicateQ])
+private def notExistsQ : Expr := .notExistsPat (.bgp [tpPredicateQ])
+
+/-- The term `EXISTS` evaluates to, spelled out rather than derived: an
+    `xsd:boolean` literal. -/
+private def boolTerm (b : Bool) : Term :=
+  .literal (mkTypedLiteral (if b then "true" else "false") xsdBoolean)
+
 private def countStarItems : List SelectItem :=
   [.var "s", .expr (.aggregate .count false (.var "*")) "n"]
 
@@ -878,7 +886,13 @@ private def countStarItems : List SelectItem :=
 private def havingExistsQuery : Query :=
   mkQuery (.select (.vars countStarItems)) (.bgp [tpPredicateP])
     (groupBy := some [.var "s"])
-    (having := [.existsPat (.bgp [tpPredicateQ])])
+    (having := [existsQ])
+
+/-- The same query with `NOT EXISTS`. -/
+private def havingNotExistsQuery : Query :=
+  mkQuery (.select (.vars countStarItems)) (.bgp [tpPredicateP])
+    (groupBy := some [.var "s"])
+    (having := [notExistsQ])
 
 /-- The same query with no HAVING: the aggregate and the GROUP BY key are on
     their own no reason to leave the selective path. -/
@@ -889,7 +903,19 @@ private def havingFreeQuery : Query :=
 /-- `SELECT * WHERE { ?s <p> ?o } ORDER BY EXISTS { ?s <q> ?z }`. -/
 private def orderByExistsQuery : Query :=
   mkQuery (.select .all) (.bgp [tpPredicateP])
-    (modifier := { orderBy := some [.asc (.existsPat (.bgp [tpPredicateQ]))] })
+    (modifier := { orderBy := some [.asc existsQ] })
+
+/-- `SELECT ?s (EXISTS { ?s <q> ?z } AS ?e) WHERE { ?s <p> ?o }`. -/
+private def projectExistsQuery : Query :=
+  mkQuery (.select (.vars [.var "s", .expr existsQ "e"])) (.bgp [tpPredicateP])
+
+/-- `SELECT * WHERE { ?s <p> ?o BIND(EXISTS { ?s <q> ?z } AS ?e) }`. -/
+private def bindExistsQuery : Query :=
+  mkQuery (.select .all) (.bind existsQ "e" (.bgp [tpPredicateP]))
+
+/-- The same BIND with `NOT EXISTS`. -/
+private def bindNotExistsQuery : Query :=
+  mkQuery (.select .all) (.bind notExistsQ "e" (.bgp [tpPredicateP]))
 
 private def splitBackendRows (q : Query) : SolutionSeq :=
   match runSelectQueryBackendDataset envShardSplit q dsbShardSplit with
@@ -899,32 +925,82 @@ private def splitBackendRows (q : Query) : SolutionSeq :=
 private def splitReferenceRows (q : Query) : SolutionSeq :=
   (evalSelect envShardSplit (materialiseDatasetBackend dsbShardSplit) q).2
 
+/-- The value a row binds to a variable, or `none`. -/
+private def rowValue (v : VarName) (mu : Binding) : Option Term := Binding.lookup v mu
+
+/-- The column a solution sequence gives a variable. -/
+private def colValues (v : VarName) (rows : SolutionSeq) : List (Option Term) :=
+  rows.map (rowValue v)
+
 /-! The admission test: an aggregate and a GROUP BY key stay selective, an
-EXISTS in HAVING or in an ORDER BY condition does not. -/
+EXISTS in HAVING, in an ORDER BY condition or in a projected expression does
+not. A BIND lives inside `query.pattern`, so this test admits it; the read set
+of a BIND(EXISTS) is refused one level down instead, by
+`ShardManifest.nativeConstantPredicates?`, which admits a BIND only for a
+`backendLocal` expression and `EXISTS` is not one. -/
 #guard havingFreeQuery.expressionsOutsidePatternExistsFree == true
 #guard havingExistsQuery.expressionsOutsidePatternExistsFree == false
+#guard havingNotExistsQuery.expressionsOutsidePatternExistsFree == false
 #guard orderByExistsQuery.expressionsOutsidePatternExistsFree == false
+#guard projectExistsQuery.expressionsOutsidePatternExistsFree == false
+#guard bindExistsQuery.expressionsOutsidePatternExistsFree == true
+#guard Expr.backendLocal existsQ == false
+#guard Expr.backendLocal notExistsQ == false
 
-/-! HAVING EXISTS: the backend runner answers exactly what the reference
-evaluator answers, row for row. -/
+/-! HAVING EXISTS. §18.6 substitutes the group's representative row into
+`{ ?s <q> ?z }`: for the group `?s = a` that is `{ <a> <q> ?z }`, which has one
+solution, and for `?s = g` it is `{ <g> <q> ?z }`, which has none. One group
+survives, with COUNT 1. -/
 #guard splitBackendRows havingExistsQuery == splitReferenceRows havingExistsQuery
+#guard (splitBackendRows havingExistsQuery).length == 1
+#guard colValues "s" (splitBackendRows havingExistsQuery) == [some (Term.iri iA)]
+#guard colValues "n" (splitBackendRows havingExistsQuery)
+         == [some (Term.literal (mkTypedLiteral "1" xsdInteger))]
 
-/-! The gap made visible. The EXISTS evaluates to an error, so every group
-fails the HAVING and the answer is empty. §18.6 keeps the one group whose
-subject `a` has a `q` triple; change this number when that lands. -/
-#guard (splitBackendRows havingExistsQuery).length == 0
+/-! HAVING NOT EXISTS: the complementary group, also with COUNT 1. -/
+#guard splitBackendRows havingNotExistsQuery == splitReferenceRows havingNotExistsQuery
+#guard (splitBackendRows havingNotExistsQuery).length == 1
+#guard colValues "s" (splitBackendRows havingNotExistsQuery) == [some (Term.iri iG)]
 
-/-! ORDER BY EXISTS: the same agreement, in the same order. -/
+/-! ORDER BY EXISTS. `?s = a` gives `true`, `?s = g` gives `false`, and §15.1
+orders `false` before `true`, so the ascending order is `g` then `a` — the
+reverse of the input order, which is what makes this guard observe the
+substitution rather than the input. -/
 #guard splitBackendRows orderByExistsQuery == splitReferenceRows orderByExistsQuery
 #guard (splitBackendRows orderByExistsQuery).length == 2
+#guard colValues "s" (splitBackendRows orderByExistsQuery)
+         == [some (Term.iri iG), some (Term.iri iA)]
 
-/-! The control query, whose answer the gap above does not touch: one group
-per subject of `p`, each with COUNT 1, `a` before `g`. -/
+/-! A projected `(EXISTS { … } AS ?e)`: two rows in input order, each carrying
+the boolean its own subject gives. -/
+#guard splitBackendRows projectExistsQuery == splitReferenceRows projectExistsQuery
+#guard (splitBackendRows projectExistsQuery).length == 2
+#guard colValues "s" (splitBackendRows projectExistsQuery)
+         == [some (Term.iri iA), some (Term.iri iG)]
+#guard colValues "e" (splitBackendRows projectExistsQuery)
+         == [some (boolTerm true), some (boolTerm false)]
+
+/-! `BIND(EXISTS { … } AS ?e)`: the same two booleans, bound inside the WHERE
+clause instead of projected. -/
+#guard splitBackendRows bindExistsQuery == splitReferenceRows bindExistsQuery
+#guard (splitBackendRows bindExistsQuery).length == 2
+#guard colValues "s" (splitBackendRows bindExistsQuery)
+         == [some (Term.iri iA), some (Term.iri iG)]
+#guard colValues "e" (splitBackendRows bindExistsQuery)
+         == [some (boolTerm true), some (boolTerm false)]
+
+/-! `BIND(NOT EXISTS { … } AS ?e)`: the two booleans swapped. -/
+#guard splitBackendRows bindNotExistsQuery == splitReferenceRows bindNotExistsQuery
+#guard (splitBackendRows bindNotExistsQuery).length == 2
+#guard colValues "e" (splitBackendRows bindNotExistsQuery)
+         == [some (boolTerm false), some (boolTerm true)]
+
+/-! The control query, which carries no EXISTS: one group per subject of `p`,
+each with COUNT 1, `a` before `g`. -/
 #guard splitBackendRows havingFreeQuery == splitReferenceRows havingFreeQuery
 #guard (splitBackendRows havingFreeQuery).length == 2
-#guard (match (splitBackendRows havingFreeQuery).head? with
-        | some mu => Binding.lookup "s" mu == some (Term.iri iA)
-        | none => false) == true
+#guard colValues "s" (splitBackendRows havingFreeQuery)
+         == [some (Term.iri iA), some (Term.iri iG)]
 
 /-! The COTTAS dataset constructor makes one backend per named graph
 plus the default. -/

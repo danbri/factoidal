@@ -737,8 +737,12 @@ inductive GraphPattern where
   Jena: https://jena.apache.org/documentation/query/lateral-join.html -/
   | lateral  (l : GraphPattern) (r : Binding → GraphPattern)
   /-- `BIND(expr AS ?v)` appended to a pattern — §18.6. The binder is
-  abstract: `none` is the spec's "expression error, leave unbound". -/
-  | bind     (binder : Binding → Option Term) (v : VarName) (p : GraphPattern)
+  abstract: `none` is the spec's "expression error, leave unbound". It
+  is a function of the ACTIVE graph as well as the row, for the same
+  reason `filter` and `leftJoin` are: §18.6's EXISTS may appear in the
+  bound expression and is evaluated against the graph the enclosing
+  GRAPH clause selected. -/
+  | bind     (binder : Graph → Binding → Option Term) (v : VarName) (p : GraphPattern)
   /-- `VALUES (?x ?y) { (1 2) (3 UNDEF) }` — inline data, §10.2. -/
   | values   (vars : List VarName) (rows : List (List (Option Term)))
   /-- `SERVICE [SILENT] <iri> { P }` — §18.6 / SPARQL 1.1 Federated
@@ -754,8 +758,10 @@ inductive GraphPattern where
   algebra-level shape of a sub-SELECT (§18.2.4): evaluate the inner
   WHERE, then run the inner query's grouping / projection / DISTINCT /
   ORDER / slice pipeline over the result. `Query.lean` supplies that
-  pipeline as `post`. -/
-  | modified (post : SolutionSeq → SolutionSeq) (p : GraphPattern)
+  pipeline as `post`. That pipeline evaluates HAVING, the SELECT
+  expressions and ORDER BY, each of which may hold an EXISTS, so it
+  takes the ACTIVE graph too. -/
+  | modified (post : Graph → SolutionSeq → SolutionSeq) (p : GraphPattern)
   /-- `?s path ?o` — a property-path pattern, §18.4. -/
   | propertyPath (s : PatternSubject) (path : PropertyPath) (o : PatternTerm)
   /-- The empty group pattern `{}` — the identity for Join (§18.2.2.6:
@@ -782,16 +788,16 @@ of the row moves that obligation into the type.) -/
 /-- The BIND row loop (port of `fx_bind_rows`): row `i` is evaluated
 with its freshness context injected, and the value (if any, and if
 `v` is still unbound) is bound into the row WITHOUT the context. -/
-def bindRowsFresh (binder : Binding → Option Term) (v : VarName) :
-    SolutionSeq → Nat → SolutionSeq
+def bindRowsFresh (binder : Graph → Binding → Option Term) (active : Graph)
+    (v : VarName) : SolutionSeq → Nat → SolutionSeq
   | [],        _ => []
   | mu :: rest, i =>
-      let row := match binder (mu.withFreshnessCtx (toString i) v) with
+      let row := match binder active (mu.withFreshnessCtx (toString i) v) with
         | some t => match mu.lookup v with
                     | some _ => mu
                     | none   => mu.bind v t
         | none   => mu
-      row :: bindRowsFresh binder v rest (i + 1)
+      row :: bindRowsFresh binder active v rest (i + 1)
 
 def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
     SolutionSeq :=
@@ -875,7 +881,7 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
   -- tag, port of `fx_bind_rows`); the result binds into the PRISTINE
   -- row.
   | .bind binder v q =>
-      bindRowsFresh binder v (GraphPattern.evalIn ds active q) 0
+      bindRowsFresh binder active v (GraphPattern.evalIn ds active q) 0
   | .values vars rows => evalValues vars rows
   -- SERVICE with a fixed endpoint. On a miss, SILENT yields one empty
   -- solution mapping and non-SILENT yields none — the F* arm exactly.
@@ -885,7 +891,7 @@ def GraphPattern.evalIn (ds : Dataset) (active : Graph) (p : GraphPattern) :
       | none   => if silent then [Binding.empty] else []
   -- SERVICE ?v outside a join has no row to read the endpoint from.
   | .serviceVar _ _ silent _  => if silent then [Binding.empty] else []
-  | .modified post q => post (GraphPattern.evalIn ds active q)
+  | .modified post q => post active (GraphPattern.evalIn ds active q)
   -- §18.4 property paths, with the §18.2.2.5 constant-reflexivity fix.
   | .propertyPath ps path pt =>
       pathResultToSolutions ps pt
