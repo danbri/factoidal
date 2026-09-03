@@ -54,7 +54,7 @@ structure Res (α : Type) where
 /-- Ground a term pattern. `none` means it does not ground — an
     unbound variable — and `blocked` means a built-in was needed and
     not decided. -/
-partial def groundTm (s : Subst) : Tm → Option GTerm × Bool
+def groundTm (s : Subst) : Tm → Option GTerm × Bool
   | .var v      => (lookupVar s v, false)
   | .const l sp => (some (.const l sp), false)
   | .list xs    =>
@@ -155,7 +155,7 @@ def matchAtom (facts : Facts) (s : Subst) (a : Atom) : List Subst × Bool :=
              | (none, b)    => (acc, blk || b))
         | _ => (acc, blk)) ([], false)
 
-partial def matchFormula (facts : Facts) (s : Subst) : Formula → List Subst × Bool
+def matchFormula (facts : Facts) (s : Subst) : Formula → List Subst × Bool
   | .atom a => matchAtom facts s a
   | .and fs =>
       fs.foldl (fun (acc, blk) f =>
@@ -258,7 +258,7 @@ entail the conclusion, which is exactly what `Local_Predicate` and
 
 Qualifying the name with the document is the whole rule. -/
 
-partial def qualifyTm (tag : String) : Tm -> Tm
+def qualifyTm (tag : String) : Tm -> Tm
   | .var v         => .var v
   | .const l sp    => if sp == localSpace then .const (tag ++ "#" ++ l) sp else .const l sp
   | .list xs       => .list (xs.map (qualifyTm tag))
@@ -275,7 +275,7 @@ def qualifyAtom (tag : String) : Atom -> Atom
   | .equal a b        => .equal (qualifyTm tag a) (qualifyTm tag b)
   | .externalPred f a => .externalPred f (a.map (qualifyTm tag))
 
-partial def qualifyFormula (tag : String) : Formula -> Formula
+def qualifyFormula (tag : String) : Formula -> Formula
   | .atom a       => .atom (qualifyAtom tag a)
   | .and fs       => .and (fs.map (qualifyFormula tag))
   | .or fs        => .or (fs.map (qualifyFormula tag))
@@ -292,7 +292,7 @@ never binds, or a variable outside the `Forall` list, makes the
 document ill-formed -- which is what the three `NegativeSyntaxTest`
 cases assert, and what a parser alone cannot see. -/
 
-partial def varsOfTm : Tm -> List String
+def varsOfTm : Tm -> List String
   | .var v         => [v]
   | .const _ _     => []
   | .list xs       => xs.flatMap varsOfTm
@@ -314,7 +314,7 @@ def boundByAtom : Atom -> List String
   | .equal _ _        => []
   | a                 => varsOfAtom a
 
-partial def boundByFormula : Formula -> List String
+def boundByFormula : Formula -> List String
   | .atom a      => boundByAtom a
   | .and fs      => fs.flatMap boundByFormula
   | .or []       => []
@@ -323,7 +323,7 @@ partial def boundByFormula : Formula -> List String
       fs.foldl (fun acc g => acc.filter (boundByFormula g).contains) (boundByFormula f)
   | .exists vs f => (boundByFormula f).filter (fun v => !(vs.contains v))
 
-partial def varsOfFormula : Formula -> List String
+def varsOfFormula : Formula -> List String
   | .atom a      => varsOfAtom a
   | .and fs      => fs.flatMap varsOfFormula
   | .or fs       => fs.flatMap varsOfFormula
@@ -345,7 +345,7 @@ def bindingBuiltins : List String := ["iri-string"]
     head), and a binding built-in with one variable left binds it
     (`Core_Safeness_3`). Taking one pass over the body called both
     documents unsafe, and they are ordinary RIF Core. -/
-partial def boundFix : Nat -> Formula -> List String -> List String
+def boundFix : Nat -> Formula -> List String -> List String
   | 0,        _, acc => acc
   | fuel + 1, b, acc =>
       let conjuncts : List Atom :=
