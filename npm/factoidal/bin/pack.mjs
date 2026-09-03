@@ -120,7 +120,7 @@ export function packFile (engine, input, output, options) {
         if (chunk.length === 0) break
         offset += chunk.length
         bytesRead += chunk.length
-        engine.callBlobIO('packFeed', [handle, passName], chunk)
+        engine.callBlobIO('packFeed', [handle], chunk)
         const drained = drain(engine, handle, output)
         written.push(...drained.names)
         bytesWritten += drained.bytes
@@ -128,7 +128,7 @@ export function packFile (engine, input, output, options) {
           options.onProgress({ pass: passName, bytesRead, artifacts: written.length })
         }
       }
-      engine.call('packEndPass', [handle, passName])
+      engine.call('packEndPass', [handle])
       const drained = drain(engine, handle, output)
       written.push(...drained.names)
       bytesWritten += drained.bytes
