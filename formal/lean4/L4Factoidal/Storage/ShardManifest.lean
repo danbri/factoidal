@@ -21,17 +21,18 @@ def wireVersion3 : UInt8 := 3
 def wireVersion4 : UInt8 := 4
 def wireVersion5 : UInt8 := 5
 def wireVersion6 : UInt8 := 6
+def wireVersion7 : UInt8 := 7
 
-private def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
-private def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
+def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
+def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
 
 /-- Length-prefixed UTF-8.  Lengths in this first portable format are u32
     byte counts, never Lean character counts. -/
-private def encodeString (s : String) : List UInt8 :=
+def encodeString (s : String) : List UInt8 :=
   let bytes := s.toUTF8.toList
   writeU32LE (UInt32.ofNat bytes.length) ++ bytes
 
-private def decodeString (bytes : List UInt8) : Option (String × List UInt8) := do
+def decodeString (bytes : List UInt8) : Option (String × List UInt8) := do
   let length ← readU32LE bytes 0
   let body := (bytes.drop 4).take length.toNat
   if body.length != length.toNat then none
@@ -39,7 +40,7 @@ private def decodeString (bytes : List UInt8) : Option (String × List UInt8) :=
     let value ← String.fromUTF8? ⟨body.toArray⟩
     some (value, (bytes.drop 4).drop length.toNat)
 
-private def takeExact (n : Nat) (bytes : List UInt8) : Option (List UInt8 × List UInt8) :=
+def takeExact (n : Nat) (bytes : List UInt8) : Option (List UInt8 × List UInt8) :=
   let value := bytes.take n
   if value.length == n then some (value, bytes.drop n) else none
 
@@ -59,6 +60,47 @@ structure ArtifactRef where
   chunked : Option ChunkedArtifact.Ref := none
   deriving DecidableEq
 
+/-- The primary block codec of one entry's artifact.
+
+    SBM0 through SBM6 have no such field: their manifest-level `layout` label
+    fixes one codec for every entry of the generation (`predicate-ibk2-*` is
+    IBK2, `predicate-ibk3-*` is IBK3). SBM7 keeps that label — it still names
+    the generation's physical family and its sidecar contract — and adds this
+    per-entry kind, which names the block codec of THIS artifact. The two are
+    checked against each other in `valid`: under the `quad-ibk4-ptd1-merkle-v0`
+    label every entry must be `ibk4`. The `ibk3` constructor exists in the type
+    and on the wire so that the mixed generation of option C in
+    `docs/designissues/2026-09-02-quad-aware-block-layout.md` is a widening of
+    SBM7 ADMISSION rather than a new wire version; it is not admitted today. -/
+inductive BlockLayout where
+  | ibk3
+  | ibk4
+  deriving DecidableEq
+
+/-- One member of an entry's graph-set summary: the default graph, or the IRI
+    or blank-node label naming a graph.
+
+    This is the manifest's copy of the IBK4 header graph-set summary, resolved
+    through that block's own dictionary. The header stores block-local term
+    IDs, so the header alone cannot answer `GRAPH <iri>`: resolving an ID needs
+    a PTD1 page. Storing the NAMES here is what lets the planner select entries
+    for `GRAPH <iri> { ... }` from the manifest alone, and it is why a count
+    plus a default-graph flag was not enough. `graphSet` order is the block's
+    first-occurrence row order, so the manifest summary and the block header
+    summary are compared position by position. -/
+inductive GraphName where
+  | defaultGraph
+  | iri (value : WfIri)
+  | bnode (label : String)
+  deriving DecidableEq
+
+/-- The manifest name of a decoded IBK4 graph column value. `none` is the
+    default graph; a named graph is an IRI or a blank node (`GraphRef`). -/
+def GraphName.ofGraphRef : Option Subject → GraphName
+  | none => .defaultGraph
+  | some (.iri value) => .iri value
+  | some (.bnode label) => .bnode label
+
 /-- One predicate-local IBK2 block. SBM0/SBM1 admit one entry per predicate;
     SBM2 permits several bounded immutable blocks for one predicate. -/
 structure Entry where
@@ -74,6 +116,18 @@ structure Entry where
   /-- Present and mandatory for SBM6. This independently committed OLI2
       object maps this artifact's local object IDs to source-row offsets. -/
   objectIndex : Option ArtifactRef := none
+  /-- Present and mandatory for SBM7: the primary block codec of `artifact`. -/
+  blockLayout : Option BlockLayout := none
+  /-- Present and mandatory for SBM7: the blank-node scope of the source
+      partition this entry was packed from (specification section 2.4.1). The
+      packer writes the source file's SHA-256 as lowercase hexadecimal, which
+      is a content digest and is therefore sufficient only under the
+      `content-digest-shared` publication profile recorded on the manifest.
+      Empty for SBM0 through SBM6, which commit no scope. -/
+  blankNodeScope : String := ""
+  /-- Present and mandatory for SBM7: the graph set of the IBK4 artifact, in
+      the block's first-occurrence row order. Empty for SBM0 through SBM6. -/
+  graphSet : List GraphName := []
   rows : Nat
   ordinal : Nat
   deriving DecidableEq
@@ -85,6 +139,23 @@ structure Manifest where
   sourceIdentity : ByteArray
   termRegistryVersion : String
   layout : String
+  /-- Present and mandatory for SBM7, empty before it: the publication profile
+      under which each entry's `blankNodeScope` is read. Specification section
+      2.4.1 says a content digest identifies a blank-node allocation only when
+      the publication profile also says that repeated imports of those bytes
+      share one allocation; otherwise the scope must carry the import
+      occurrence. Two profiles are defined:
+
+      * `content-digest-shared` — repeated imports of the same source bytes
+        share one blank-node allocation, so a content digest is a sufficient
+        scope. This is what `l4block-shard-pack` writes.
+      * `import-occurrence` — the scope carries an import occurrence or
+        equivalent provenance identity, and two imports of identical bytes are
+        two allocations.
+
+      A reader that does not know the profile refuses the generation, so
+      widening this set later is a compatible change. -/
+  blankNodeProfile : String := ""
   entries : List Entry
   deriving DecidableEq
 
@@ -109,7 +180,43 @@ def layoutConsistent (version : Nat) (layout : String) : Bool :=
       layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1"
   | 6 => layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0" ||
       layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
+  /- SBM7 carries no index sidecar: the specification says SRI2, OLI2 and TLI1
+     need a graph dimension before they can describe an IBK4 artifact, and none
+     is defined yet. There is deliberately no compacted SBM7 layout name here
+     either; the compactor does not build IBK4 generations, and admitting a
+     label nothing writes would be an untested reader path. -/
+  | 7 => layout == "quad-ibk4-ptd1-merkle-v0"
   | _ => true
+
+/-- The block codec every entry of a generation must use, from its
+    manifest-level layout label. `none` for the labels that predate the
+    per-entry field. -/
+def layoutBlockKind (layout : String) : Option BlockLayout :=
+  if layout == "quad-ibk4-ptd1-merkle-v0" then some .ibk4 else none
+
+/-- The publication profiles this version of the manifest understands
+    (specification section 2.4.1). -/
+def knownBlankNodeProfile (profile : String) : Bool :=
+  profile == "content-digest-shared" || profile == "import-occurrence"
+
+/-- The scope string is bounded by the same 256 UTF-8 bytes the diagnostic ABI
+    of specification section 2.4.1 already imposes on a blank-node scope. -/
+def blankNodeScopeAdmitted (scope : String) : Bool :=
+  !scope.isEmpty && scope.toUTF8.size <= 256
+
+/-- A named graph's blank-node label must be nonempty; an IRI is already
+    well formed by its type. -/
+def graphNameAdmitted : GraphName → Bool
+  | .defaultGraph => true
+  | .iri _ => true
+  | .bnode label => !label.isEmpty
+
+/-- An entry's graph set is nonempty — an admitted IBK4 block has at least one
+    row and therefore at least one graph — and lists no graph twice, because it
+    is a copy of the block's DISTINCT graph column values. -/
+def graphSetAdmitted (names : List GraphName) : Bool :=
+  !names.isEmpty && names.all graphNameAdmitted &&
+    names.length == names.eraseDups.length
 
 /-- No immutable artifact key may play two manifest roles.  In particular an
     SBM3 subject-index sidecar cannot alias another block or sidecar. -/
@@ -121,7 +228,7 @@ def uniqueArtifactKeys (entries : List Entry) : Bool :=
   keys.length == keys.eraseDups.length
 
 /-- Structural acceptance before any host artifact is opened. -/
-private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
+def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
   artifact.bytes > 0 && artifact.sha256.size == 32 &&
     match version, artifact.chunked with
     | 0, none => true
@@ -131,31 +238,53 @@ private def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
     | 4, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 5, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 6, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
+    | 7, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | _, _ => false
 
-private def entryValid (version : Nat) (entry : Entry) : Bool :=
+def entryValid (version : Nat) (entry : Entry) : Bool :=
   entry.rows > 0 && artifactValidFor version entry.artifact &&
   (match version, entry.subjectIndex with
     | 3, some index => artifactValidFor 3 index && index.key != entry.artifact.key
     | 4, some index => artifactValidFor 4 index && index.key != entry.artifact.key
     | 5, some index => artifactValidFor 5 index && index.key != entry.artifact.key
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none => true
+    | 0, none | 1, none | 2, none | 7, none => true
     | _, _ => false) &&
   (match version, entry.termIndex with
     | 4, some index => artifactValidFor 4 index && index.key != entry.artifact.key
     | 5, some index => artifactValidFor 5 index && index.key != entry.artifact.key
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 3, none => true
+    | 0, none | 1, none | 2, none | 3, none | 7, none => true
     | _, _ => false) &&
   (match version, entry.objectIndex with
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none => true
-    | _, _ => false)
+    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none => true
+    | _, _ => false) &&
+  /- SBM7's three additions. They are MANDATORY at 7 and MUST BE ABSENT
+     before it: a pre-SBM7 manifest carrying them would encode to bytes that
+     drop them, and the round trip would silently lose data. -/
+  (match version, entry.blockLayout with
+    | 7, some _ => true
+    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none => true
+    | _, _ => false) &&
+  (if version == 7 then blankNodeScopeAdmitted entry.blankNodeScope &&
+      graphSetAdmitted entry.graphSet
+   else entry.blankNodeScope == "" && entry.graphSet == [])
+
+/-- The manifest-level layout label and the per-entry block kind must agree.
+    Before SBM7 the label is the only statement of the codec and there is no
+    per-entry field; at SBM7 every entry must carry the kind the label names. -/
+def entryLayoutsMatchLabel (manifest : Manifest) : Bool :=
+  match layoutBlockKind manifest.layout with
+  | none => manifest.entries.all fun entry => entry.blockLayout.isNone
+  | some kind => manifest.entries.all fun entry => entry.blockLayout == some kind
 
 def valid (manifest : Manifest) : Bool :=
-  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6) &&
+  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7) &&
     layoutConsistent manifest.version manifest.layout &&
+    (if manifest.version == 7 then knownBlankNodeProfile manifest.blankNodeProfile
+     else manifest.blankNodeProfile == "") &&
+    entryLayoutsMatchLabel manifest &&
     (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
     uniqueArtifactKeys manifest.entries &&
     contiguousOrdinals manifest.entries 0 &&
@@ -164,7 +293,7 @@ def valid (manifest : Manifest) : Bool :=
 /-- SBM1 and later retain the fixed-chunk Merkle commitment required by the
 range-backed local-file and remote readers. -/
 def rangeCommitted (manifest : Manifest) : Bool :=
-  manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6
+  manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7
 
 /-- Predicate selection is total and deterministic; a missing key means no
     candidate artifact, never a fallback that could hide an index error. -/
@@ -396,73 +525,218 @@ def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
 
 /-- The field widths in SBM0.  Oversized manifests are refused rather than
     being truncated into an ambiguous byte stream. -/
-private def fitsU32 (n : Nat) : Bool := n < 4294967296
+def fitsU32 (n : Nat) : Bool := n < 4294967296
 
-private def encodableEntry (version : Nat) (entry : Entry) : Bool :=
+/-! ## SBM7 field codecs
+
+One byte of kind, then a length-prefixed UTF-8 name.  The kind byte is what
+keeps the default graph distinguishable from a graph NAMED by an IRI, which is
+the requirement of specification section 5 that also shapes the IBK4 graph
+column. -/
+
+def blockLayoutTag : BlockLayout → UInt8
+  | .ibk3 => 0
+  | .ibk4 => 1
+
+def blockLayoutOfTag (tag : UInt8) : Option BlockLayout :=
+  if tag == 0 then some .ibk3 else if tag == 1 then some .ibk4 else none
+
+def graphNameTag : GraphName → UInt8
+  | .defaultGraph => 0
+  | .iri _ => 1
+  | .bnode _ => 2
+
+def graphNameText : GraphName → String
+  | .defaultGraph => ""
+  | .iri value => value.val
+  | .bnode label => label
+
+def encodeGraphName (name : GraphName) : List UInt8 :=
+  [graphNameTag name] ++ encodeString (graphNameText name)
+
+def graphNameEncodable (name : GraphName) : Bool :=
+  fitsU32 (graphNameText name).toUTF8.size
+
+def decodeGraphName (bytes : List UInt8) : Option (GraphName × List UInt8) := do
+  let (tag, afterTag) ← parseU8 bytes
+  let (text, rest) ← decodeString afterTag
+  if tag == 0 then
+    if text.isEmpty then some (.defaultGraph, rest) else none
+  else if tag == 1 then
+    if h : isIri text then some (.iri ⟨text, h⟩, rest) else none
+  else if tag == 2 then
+    if text.isEmpty then none else some (.bnode text, rest)
+  else none
+
+def decodeGraphNames : Nat → List UInt8 → Option (List GraphName × List UInt8)
+  | 0, bytes => some ([], bytes)
+  | n + 1, bytes => do
+      let (name, afterName) ← decodeGraphName bytes
+      let (names, rest) ← decodeGraphNames n afterName
+      some (name :: names, rest)
+
+/-- The wire-field bounds every version's entry must satisfy, whatever its
+    version-specific commitments are. -/
+def encodableCommon (entry : Entry) : Bool :=
   fitsU32 entry.predicate.val.toUTF8.size && fitsU32 entry.artifact.key.value.toUTF8.size &&
     fitsU32 entry.artifact.bytes && fitsU32 entry.rows && fitsU32 entry.ordinal &&
-    entry.artifact.sha256.size == 32 &&
-    match version, entry.artifact.chunked with
-    | 0, none => true
-    | 1, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-    | 2, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-    | 3, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-    | 4, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-    | 5, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-    | 6, some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-    | _, _ => false
-  && match version, entry.subjectIndex with
-    | 3, some index | 4, some index | 5, some index | 6, some index => fitsU32 index.key.value.toUTF8.size && fitsU32 index.bytes && index.sha256.size == 32 &&
-        match index.chunked with
-        | some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-        | none => false
-    | 0, none | 1, none | 2, none => true
-    | _, _ => false
-  && match version, entry.termIndex with
-    | 4, some index | 5, some index | 6, some index => fitsU32 index.key.value.toUTF8.size && fitsU32 index.bytes && index.sha256.size == 32 &&
-        match index.chunked with
-        | some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-        | none => false
-    | 0, none | 1, none | 2, none | 3, none => true
-    | _, _ => false
-  && match version, entry.objectIndex with
-    | 6, some index => fitsU32 index.key.value.toUTF8.size && fitsU32 index.bytes && index.sha256.size == 32 &&
-        match index.chunked with
-        | some chunked => fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
-        | none => false
-    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none => true
-    | _, _ => false
+    entry.artifact.sha256.size == 32
 
-private def encodable (manifest : Manifest) : Bool :=
+/-- The wire-field bounds of one Merkle chunk commitment. -/
+def encodableChunked (chunked : ChunkedArtifact.Ref) : Bool :=
+  fitsU32 chunked.chunkBytes && fitsU32 chunked.chunkCount && chunked.root.size == 32
+
+/-- The wire-field bounds of one index sidecar reference. A sidecar with no
+    chunk commitment encodes to no bytes, so it is refused here. -/
+def encodableSidecar (index : ArtifactRef) : Bool :=
+  fitsU32 index.key.value.toUTF8.size && fitsU32 index.bytes && index.sha256.size == 32 &&
+    (match index.chunked with
+     | some chunked => encodableChunked chunked
+     | none => false)
+
+/- Each version-dependent test below is PARENTHESISED. Before 2026-09-03 they
+   were written as `&& match ... | _, _ => false && match ...`, and a `match`
+   alternative extends as far as the parser can take it: every test after the
+   first was swallowed into the fallback alternative of the one before it, so
+   on a successful path only `encodableCommon` and the chunk-commitment test
+   ran. The sidecar field-width tests of SBM3 through SBM6 were dead. Found
+   2026-09-03 while proving `decodeEntry_encodeEntry`: the proof needed a
+   sidecar bound that the definition did not supply. -/
+def encodableEntry (version : Nat) (entry : Entry) : Bool :=
+  encodableCommon entry &&
+  (match version, entry.artifact.chunked with
+   | 0, none => true
+   | 1, some chunked | 2, some chunked | 3, some chunked | 4, some chunked
+   | 5, some chunked | 6, some chunked | 7, some chunked => encodableChunked chunked
+   | _, _ => false) &&
+  (match version, entry.subjectIndex with
+   | 3, some index | 4, some index | 5, some index | 6, some index => encodableSidecar index
+   | 0, none | 1, none | 2, none | 7, none => true
+   | _, _ => false) &&
+  (match version, entry.termIndex with
+   | 4, some index | 5, some index | 6, some index => encodableSidecar index
+   | 0, none | 1, none | 2, none | 3, none | 7, none => true
+   | _, _ => false) &&
+  (match version, entry.objectIndex with
+   | 6, some index => encodableSidecar index
+   | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none => true
+   | _, _ => false) &&
+  (match version, entry.blockLayout with
+   | 7, some _ => fitsU32 entry.blankNodeScope.toUTF8.size &&
+       fitsU32 entry.graphSet.length && entry.graphSet.all graphNameEncodable
+   | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none => true
+   | _, _ => false)
+
+def encodable (manifest : Manifest) : Bool :=
   fitsU32 manifest.sourceIdentity.size && fitsU32 manifest.termRegistryVersion.toUTF8.size &&
-    fitsU32 manifest.layout.toUTF8.size && fitsU32 manifest.entries.length &&
+    fitsU32 manifest.layout.toUTF8.size && fitsU32 manifest.blankNodeProfile.toUTF8.size &&
+    fitsU32 manifest.entries.length &&
     manifest.entries.all (encodableEntry manifest.version)
 
-private def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
-  let common := encodeString entry.predicate.val ++ encodeString entry.artifact.key.value ++
+/-! ## The entry codec, as composable framed objects
+
+`encodeEntry`/`decodeEntry` were one flat block each before 2026-09-03. They
+are split here into the framed objects they always wrote — common fields,
+Merkle chunk commitment, index sidecar, SBM7 quad tail — so each object has its
+own round-trip lemma in `ShardManifestTheorems` instead of one proof repeated
+per wire version. The bytes are unchanged. -/
+
+/-- The fields every entry carries in every version, before any version's own
+    commitments. -/
+structure CommonFields where
+  predicateText : String
+  keyText : String
+  artifactBytes : Nat
+  digest : List UInt8
+  rows : Nat
+  ordinal : Nat
+  deriving DecidableEq
+
+def encodeCommon (entry : Entry) : List UInt8 :=
+  encodeString entry.predicate.val ++ encodeString entry.artifact.key.value ++
     writeU32LE (UInt32.ofNat entry.artifact.bytes) ++ entry.artifact.sha256.toList ++
     writeU32LE (UInt32.ofNat entry.rows) ++ writeU32LE (UInt32.ofNat entry.ordinal)
+
+def decodeCommon (bytes : List UInt8) : Option (CommonFields × List UInt8) := do
+  let (predicateText, afterPredicate) ← decodeString bytes
+  let (keyText, afterKey) ← decodeString afterPredicate
+  let artifactBytes ← readU32LE afterKey 0
+  let (digest, afterDigest) ← takeExact 32 (afterKey.drop 4)
+  let rows ← readU32LE afterDigest 0
+  let ordinal ← readU32LE afterDigest 4
+  let (_, afterOrdinal) ← takeExact 8 afterDigest
+  some ({ predicateText, keyText, artifactBytes := artifactBytes.toNat, digest,
+          rows := rows.toNat, ordinal := ordinal.toNat }, afterOrdinal)
+
+/-- The fixed-chunk Merkle commitment of one artifact. `totalBytes` is not on
+    the wire here: it is the artifact byte extent already read. -/
+def encodeChunkedRef (chunked : ChunkedArtifact.Ref) : List UInt8 :=
+  writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
+    writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
+
+def decodeChunkedRef (totalBytes : Nat) (bytes : List UInt8) :
+    Option (ChunkedArtifact.Ref × List UInt8) := do
+  let chunkBytes ← readU32LE bytes 0
+  let chunkCount ← readU32LE bytes 4
+  let (root, rest) ← takeExact 32 (bytes.drop 8)
+  some ({ totalBytes := totalBytes, chunkBytes := chunkBytes.toNat,
+          chunkCount := chunkCount.toNat, root := byteArrayOfList root }, rest)
+
+/-- One index sidecar reference: key, extent, SHA-256 and its own Merkle
+    commitment. A sidecar with no chunk commitment encodes to nothing, which
+    `encodable` refuses. -/
+def encodeSidecarRef (index : ArtifactRef) : List UInt8 :=
+  match index.chunked with
+  | some chunked =>
+      encodeString index.key.value ++ writeU32LE (UInt32.ofNat index.bytes) ++
+        index.sha256.toList ++ encodeChunkedRef chunked
+  | none => []
+
+def decodeSidecarRef (bytes : List UInt8) : Option (ArtifactRef × List UInt8) := do
+  let (indexKey, afterKey) ← decodeString bytes
+  let indexBytes ← readU32LE afterKey 0
+  let (indexDigest, afterDigest) ← takeExact 32 (afterKey.drop 4)
+  let (chunked, rest) ← decodeChunkedRef indexBytes.toNat afterDigest
+  some ({ key := { value := indexKey }, bytes := indexBytes.toNat,
+          sha256 := byteArrayOfList indexDigest, chunked := some chunked }, rest)
+
+/-- SBM7's tail: block kind, blank-node scope, graph-set summary. -/
+def encodeQuadTail (kind : BlockLayout) (scope : String) (names : List GraphName) : List UInt8 :=
+  [blockLayoutTag kind] ++ encodeString scope ++
+    writeU32LE (UInt32.ofNat names.length) ++ names.flatMap encodeGraphName
+
+def decodeQuadTail (bytes : List UInt8) :
+    Option ((BlockLayout × String × List GraphName) × List UInt8) := do
+  let (tag, afterTag) ← parseU8 bytes
+  let kind ← blockLayoutOfTag tag
+  let (scope, afterScope) ← decodeString afterTag
+  let count ← readU32LE afterScope 0
+  let (_, afterCount) ← takeExact 4 afterScope
+  let (names, rest) ← decodeGraphNames count.toNat afterCount
+  some ((kind, scope, names), rest)
+
+def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
   match version, entry.artifact.chunked with
-  | 0, none => common
-  | 1, some chunked => common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
-      writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
-  | 2, some chunked => common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
-      writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
+  | 0, none => encodeCommon entry
+  | 1, some chunked | 2, some chunked =>
+      encodeCommon entry ++ encodeChunkedRef chunked
   | 3, some chunked | 4, some chunked | 5, some chunked | 6, some chunked =>
-      let primary := common ++ writeU32LE (UInt32.ofNat chunked.chunkBytes) ++
-        writeU32LE (UInt32.ofNat chunked.chunkCount) ++ chunked.root.toList
-      let encodeSidecar := fun index => match index.chunked with
-        | some indexChunks => encodeString index.key.value ++ writeU32LE (UInt32.ofNat index.bytes) ++
-            index.sha256.toList ++ writeU32LE (UInt32.ofNat indexChunks.chunkBytes) ++
-            writeU32LE (UInt32.ofNat indexChunks.chunkCount) ++ indexChunks.root.toList
-        | none => []
+      let primary := encodeCommon entry ++ encodeChunkedRef chunked
       match version, entry.subjectIndex, entry.termIndex, entry.objectIndex with
-      | 3, some subject, none, none => primary ++ encodeSidecar subject
-      | 4, some subject, some term, none => primary ++ encodeSidecar subject ++ encodeSidecar term
-      | 5, some subject, some term, none => primary ++ encodeSidecar subject ++ encodeSidecar term
+      | 3, some subject, none, none => primary ++ encodeSidecarRef subject
+      | 4, some subject, some term, none | 5, some subject, some term, none =>
+          primary ++ encodeSidecarRef subject ++ encodeSidecarRef term
       | 6, some subject, some term, some object =>
-          primary ++ encodeSidecar subject ++ encodeSidecar term ++ encodeSidecar object
+          primary ++ encodeSidecarRef subject ++ encodeSidecarRef term ++ encodeSidecarRef object
       | _, _, _, _ => []
+  /- SBM7 writes no index sidecar (there is no graph-aware SRI2/OLI2/TLI1 yet),
+     and appends the three quad-aware fields after the Merkle commitment. -/
+  | 7, some chunked =>
+      match entry.blockLayout with
+      | some kind =>
+          encodeCommon entry ++ encodeChunkedRef chunked ++
+            encodeQuadTail kind entry.blankNodeScope entry.graphSet
+      | none => []
   | _, _ => []
 
 /-- Canonical SBM0/SBM1/SBM2 bytes. SBM1 and SBM2 retain every SBM0 field and
@@ -473,100 +747,54 @@ def encode? (manifest : Manifest) : Option ByteArray :=
       writeU32LE magic ++ [UInt8.ofNat manifest.version] ++
       writeU32LE (UInt32.ofNat manifest.sourceIdentity.size) ++ manifest.sourceIdentity.toList ++
       encodeString manifest.termRegistryVersion ++ encodeString manifest.layout ++
+      (if manifest.version == 7 then encodeString manifest.blankNodeProfile else []) ++
       writeU32LE (UInt32.ofNat manifest.entries.length) ++ manifest.entries.flatMap (encodeEntry manifest.version)
   else none
 
-private def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UInt8) := do
-  let (predicateText, afterPredicate) ← decodeString bytes
-  let (keyText, afterKey) ← decodeString afterPredicate
-  let artifactBytes ← readU32LE afterKey 0
-  let (digest, afterDigest) ← takeExact 32 (afterKey.drop 4)
-  let rows ← readU32LE afterDigest 0
-  let ordinal ← readU32LE afterDigest 4
-  let afterCommon := afterDigest.drop 8
-  let chunked ← match version with
-    | 0 => some none
-    | 1 => do
-      let chunkBytes ← readU32LE afterCommon 0
-      let chunkCount ← readU32LE afterCommon 4
-      let (root, _) ← takeExact 32 (afterCommon.drop 8)
-      some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
-                   chunkCount := chunkCount.toNat, root := byteArrayOfList root })
-    | 2 => do
-      let chunkBytes ← readU32LE afterCommon 0
-      let chunkCount ← readU32LE afterCommon 4
-      let (root, _) ← takeExact 32 (afterCommon.drop 8)
-      some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
-                   chunkCount := chunkCount.toNat, root := byteArrayOfList root })
-    | 3 | 4 | 5 | 6 => do
-      let chunkBytes ← readU32LE afterCommon 0
-      let chunkCount ← readU32LE afterCommon 4
-      let (root, _) ← takeExact 32 (afterCommon.drop 8)
-      some (some { totalBytes := artifactBytes.toNat, chunkBytes := chunkBytes.toNat,
-                   chunkCount := chunkCount.toNat, root := byteArrayOfList root })
-    | _ => none
-  let rest := match version with
-    | 0 => afterCommon
-    | 1 => afterCommon.drop 40
-    | 2 => afterCommon.drop 40
-    | 3 | 4 | 5 | 6 => afterCommon.drop 40
-    | _ => afterCommon
-  if h : isIri predicateText then
-    let subjectIndex ← match version with
+def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UInt8) := do
+  let (common, afterCommon) ← decodeCommon bytes
+  if h : isIri common.predicateText then do
+    let (chunked, afterChunked) ← match version with
+      | 0 => some ((none : Option ChunkedArtifact.Ref), afterCommon)
+      | 1 | 2 | 3 | 4 | 5 | 6 | 7 => do
+          let (ref, rest) ← decodeChunkedRef common.artifactBytes afterCommon
+          some (some ref, rest)
+      | _ => none
+    let (subjectIndex, afterSubject) ← match version with
       | 3 | 4 | 5 | 6 => do
-          let (indexKey, afterKey) ← decodeString rest
-          let indexBytes ← readU32LE afterKey 0
-          let (indexDigest, afterDigest) ← takeExact 32 (afterKey.drop 4)
-          let indexChunkBytes ← readU32LE afterDigest 0
-          let indexChunkCount ← readU32LE afterDigest 4
-          let (indexRoot, afterRoot) ← takeExact 32 (afterDigest.drop 8)
-          let indexChunked : ChunkedArtifact.Ref :=
-            { totalBytes := indexBytes.toNat, chunkBytes := indexChunkBytes.toNat,
-              chunkCount := indexChunkCount.toNat, root := byteArrayOfList indexRoot }
-          let indexRef : ArtifactRef :=
-            { key := { value := indexKey }, bytes := indexBytes.toNat,
-              sha256 := byteArrayOfList indexDigest,
-              chunked := some indexChunked }
-          some (some indexRef, afterRoot)
-      | _ => some (none, rest)
-    let termIndex ← match version with
+          let (ref, rest) ← decodeSidecarRef afterChunked
+          some (some ref, rest)
+      | _ => some ((none : Option ArtifactRef), afterChunked)
+    let (termIndex, afterTerm) ← match version with
       | 4 | 5 | 6 => do
-          let (indexKey, afterKey) ← decodeString subjectIndex.2
-          let indexBytes ← readU32LE afterKey 0
-          let (indexDigest, afterDigest) ← takeExact 32 (afterKey.drop 4)
-          let indexChunkBytes ← readU32LE afterDigest 0
-          let indexChunkCount ← readU32LE afterDigest 4
-          let (indexRoot, afterRoot) ← takeExact 32 (afterDigest.drop 8)
-          some (some { key := { value := indexKey }, bytes := indexBytes.toNat,
-                       sha256 := byteArrayOfList indexDigest,
-                       chunked := some { totalBytes := indexBytes.toNat, chunkBytes := indexChunkBytes.toNat,
-                                         chunkCount := indexChunkCount.toNat, root := byteArrayOfList indexRoot } }, afterRoot)
-      | _ => some (none, subjectIndex.2)
-    let objectIndex ← match version with
+          let (ref, rest) ← decodeSidecarRef afterSubject
+          some (some ref, rest)
+      | _ => some ((none : Option ArtifactRef), afterSubject)
+    let (objectIndex, afterObject) ← match version with
       | 6 => do
-          let (indexKey, afterKey) ← decodeString termIndex.2
-          let indexBytes ← readU32LE afterKey 0
-          let (indexDigest, afterDigest) ← takeExact 32 (afterKey.drop 4)
-          let indexChunkBytes ← readU32LE afterDigest 0
-          let indexChunkCount ← readU32LE afterDigest 4
-          let (indexRoot, afterRoot) ← takeExact 32 (afterDigest.drop 8)
-          some (some { key := { value := indexKey }, bytes := indexBytes.toNat,
-                       sha256 := byteArrayOfList indexDigest,
-                       chunked := some { totalBytes := indexBytes.toNat, chunkBytes := indexChunkBytes.toNat,
-                                         chunkCount := indexChunkCount.toNat, root := byteArrayOfList indexRoot } }, afterRoot)
-      | _ => some (none, termIndex.2)
+          let (ref, rest) ← decodeSidecarRef afterTerm
+          some (some ref, rest)
+      | _ => some ((none : Option ArtifactRef), afterTerm)
+    let (quad, rest) ← match version with
+      | 7 => do
+          let (fields, rest) ← decodeQuadTail afterObject
+          some ((some fields.1, fields.2.1, fields.2.2), rest)
+      | _ => some (((none : Option BlockLayout), "", ([] : List GraphName)), afterObject)
     some
-      ({ predicate := ⟨predicateText, h⟩
-         artifact := { key := { value := keyText }, bytes := artifactBytes.toNat,
-                       sha256 := byteArrayOfList digest, chunked }
-         subjectIndex := subjectIndex.1
-         termIndex := termIndex.1
-         objectIndex := objectIndex.1
-         rows := rows.toNat
-         ordinal := ordinal.toNat }, objectIndex.2)
+      ({ predicate := ⟨common.predicateText, h⟩
+         artifact := { key := { value := common.keyText }, bytes := common.artifactBytes,
+                       sha256 := byteArrayOfList common.digest, chunked }
+         subjectIndex
+         termIndex
+         objectIndex
+         blockLayout := quad.1
+         blankNodeScope := quad.2.1
+         graphSet := quad.2.2
+         rows := common.rows
+         ordinal := common.ordinal }, rest)
   else none
 
-private def decodeEntries (version : Nat) : Nat → List UInt8 → Option (List Entry × List UInt8)
+def decodeEntries (version : Nat) : Nat → List UInt8 → Option (List Entry × List UInt8)
   | 0, bytes => some ([], bytes)
   | n + 1, bytes => do
       let (entry, afterEntry) ← decodeEntry version bytes
@@ -580,15 +808,18 @@ def decode? (bytes : ByteArray) : Option Manifest := do
   let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none else do
   let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 && foundVersion != wireVersion4 && foundVersion != wireVersion5 && foundVersion != wireVersion6 then none else do
+  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 && foundVersion != wireVersion4 && foundVersion != wireVersion5 && foundVersion != wireVersion6 && foundVersion != wireVersion7 then none else do
   let sourceLength ← readU32LE afterVersion 0
   let (sourceIdentity, afterSource) ← takeExact sourceLength.toNat (afterVersion.drop 4)
   let (termRegistryVersion, afterRegistry) ← decodeString afterSource
   let (layout, afterLayout) ← decodeString afterRegistry
-  let entryCount ← readU32LE afterLayout 0
-  let (entries, rest) ← decodeEntries foundVersion.toNat entryCount.toNat (afterLayout.drop 4)
+  let (blankNodeProfile, afterProfile) ←
+    if foundVersion == wireVersion7 then decodeString afterLayout
+    else some ("", afterLayout)
+  let entryCount ← readU32LE afterProfile 0
+  let (entries, rest) ← decodeEntries foundVersion.toNat entryCount.toNat (afterProfile.drop 4)
   let manifest := { version := foundVersion.toNat, sourceIdentity := byteArrayOfList sourceIdentity,
-                    termRegistryVersion, layout, entries }
+                    termRegistryVersion, layout, blankNodeProfile, entries }
   if rest.isEmpty && valid manifest then some manifest else none
 
 private def samplePredicate : WfIri := ⟨"https://example.test/p", by decide⟩
@@ -689,6 +920,66 @@ private def sampleManifestWrongRows : Manifest :=
   | entry :: _ => { sampleManifest with entries := [{ entry with rows := 2 }] }
   | [] => sampleManifest
 
+/-! ## SBM7 samples
+
+One IBK4 entry: no sidecar, a blank-node scope, and a two-member graph set
+whose first member is the default graph, as an IBK4 header summary would give
+it. -/
+
+/-- A source file's SHA-256 as lowercase hexadecimal, the shape
+    `l4block-shard-pack` writes into `blankNodeScope`. -/
+private def sampleScope : String :=
+  "0000000000000000000000000000000000000000000000000000000000000000"
+
+private def sampleGraphSet : List GraphName :=
+  [.defaultGraph, .iri ⟨"https://example.test/g1", by decide⟩]
+
+private def sampleEntryV7 (entry : Entry) : Entry :=
+  { entry with
+    blockLayout := some BlockLayout.ibk4,
+    blankNodeScope := sampleScope,
+    graphSet := sampleGraphSet }
+
+private def sampleManifestV7 : Manifest :=
+  { version := 7,
+    sourceIdentity := sampleManifestV1.sourceIdentity,
+    termRegistryVersion := "local-ibk4-ptd1-v0",
+    layout := "quad-ibk4-ptd1-merkle-v0",
+    blankNodeProfile := "content-digest-shared",
+    entries := sampleManifestV1.entries.map sampleEntryV7 }
+
+private def sampleManifestV7BlankScope : Manifest :=
+  { sampleManifestV7 with entries := sampleManifestV7.entries.map fun entry =>
+    { entry with blankNodeScope := "" } }
+
+private def sampleManifestV7NoGraphSet : Manifest :=
+  { sampleManifestV7 with entries := sampleManifestV7.entries.map fun entry =>
+    { entry with graphSet := [] } }
+
+private def sampleManifestV7RepeatedGraph : Manifest :=
+  { sampleManifestV7 with entries := sampleManifestV7.entries.map fun entry =>
+    { entry with graphSet := [.defaultGraph, .defaultGraph] } }
+
+private def sampleManifestV7Ibk3Entry : Manifest :=
+  { sampleManifestV7 with entries := sampleManifestV7.entries.map fun entry =>
+    { entry with blockLayout := some .ibk3 } }
+
+private def sampleManifestV7UnknownProfile : Manifest :=
+  { sampleManifestV7 with blankNodeProfile := "whatever" }
+
+private def sampleManifestV7WithSidecar : Manifest :=
+  { sampleManifestV7 with entries := sampleManifestV7.entries.map fun entry =>
+    { entry with subjectIndex := some { key := { value := "blocks/p.sri2" },
+                                        bytes := sampleBlockBytes.size,
+                                        sha256 := sampleDigest,
+                                        chunked := some sampleChunked } } }
+
+/-- An SBM6 manifest may not carry SBM7's fields: they would be dropped by the
+    encoder and the round trip would silently lose them. -/
+private def sampleManifestV6WithQuadFields : Manifest :=
+  { sampleManifestV6 with entries := sampleManifestV6.entries.map fun entry =>
+    { entry with blockLayout := some .ibk4 } }
+
 #guard decode? (encode? sampleManifest |>.getD ByteArray.empty) == some sampleManifest
 #guard decode? (encode? sampleManifestV1 |>.getD ByteArray.empty) == some sampleManifestV1
 #guard decode? (encode? sampleManifestV2 |>.getD ByteArray.empty) == some sampleManifestV2
@@ -696,6 +987,20 @@ private def sampleManifestWrongRows : Manifest :=
 #guard decode? (encode? sampleManifestV4 |>.getD ByteArray.empty) == some sampleManifestV4
 #guard decode? (encode? sampleManifestV5 |>.getD ByteArray.empty) == some sampleManifestV5
 #guard decode? (encode? sampleManifestV6 |>.getD ByteArray.empty) == some sampleManifestV6
+#guard decode? (encode? sampleManifestV7 |>.getD ByteArray.empty) == some sampleManifestV7
+#guard rangeCommitted sampleManifestV7
+-- Every SBM7 admission condition refuses its own violation, on both sides.
+#guard !(valid sampleManifestV7BlankScope) && (encode? sampleManifestV7BlankScope).isNone
+#guard !(valid sampleManifestV7NoGraphSet) && (encode? sampleManifestV7NoGraphSet).isNone
+#guard !(valid sampleManifestV7RepeatedGraph) && (encode? sampleManifestV7RepeatedGraph).isNone
+#guard !(valid sampleManifestV7Ibk3Entry) && (encode? sampleManifestV7Ibk3Entry).isNone
+#guard !(valid sampleManifestV7UnknownProfile) && (encode? sampleManifestV7UnknownProfile).isNone
+#guard !(valid sampleManifestV7WithSidecar) && (encode? sampleManifestV7WithSidecar).isNone
+#guard !(valid sampleManifestV6WithQuadFields) && (encode? sampleManifestV6WithQuadFields).isNone
+-- SBM6 stays readable, and its bytes are unchanged by SBM7's arrival.
+#guard (encode? sampleManifestV6).isSome
+#guard GraphName.ofGraphRef none == GraphName.defaultGraph
+#guard GraphName.ofGraphRef (some (.bnode "b0")) == GraphName.bnode "b0"
 #guard !(valid sampleManifestV3MissingIndex)
 #guard (encode? sampleManifestV3MissingIndex).isNone
 #guard !(valid sampleManifestV6MissingObjectIndex)

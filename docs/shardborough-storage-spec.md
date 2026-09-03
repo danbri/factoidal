@@ -403,9 +403,10 @@ RDF 1.2 triple terms and directional literals. Current IDs and row counts use
 The target full RDF-store model is quad-aware. IBK3/SBM6 is
 default-graph-oriented and does not define a `GraphId` layout.
 `Manifest.sourceIdentity` is not a substitute for graph identity. Section 6.1.1
-defines IBK4, which carries graph identity in the rows. The manifest side of
-beta gate 4 (`SBM7`, with the blank-node scope of each source partition), the
-packer, the graph-aware sidecars and the planner are not defined yet.
+defines IBK4, which carries graph identity in the rows, and section 6.3.1
+defines `SBM7`, the manifest that describes IBK4 artifacts and commits the
+blank-node scope of each source partition. The graph-aware index sidecars and
+the query planner are not defined yet.
 
 #### 6.1.1 IBK4 — quad rows with an in-block graph column
 
@@ -536,6 +537,7 @@ not a semantic role.
 | `SBM4` | TLI1 term indexes |
 | `SBM5` | pageable SRI2 replacing SRI1 |
 | `SBM6` | mandatory object-role OLI2 indexes |
+| `SBM7` | IBK4 quad blocks: a per-entry block kind, blank-node scope and graph-set summary, and a manifest-level blank-node publication profile |
 
 The current manifest structure records a wire version, source identity,
 term-registry version, physical-layout label, and ordered predicate/artifact
@@ -563,6 +565,82 @@ required posting. A reader may claim complete query results only for a
 generation that passed full activation, including complete block decoding and
 recomputation of each required sidecar relation. Direct selective reads from
 merely Merkle-committed files can be sound without being complete.
+
+#### 6.3.1 SBM7 — the manifest for quad blocks
+
+SBM7 is the manifest an IBK4 generation carries. It keeps every SBM0 field and
+every SBM1 chunk commitment, adds one manifest-level field and three per-entry
+fields, and writes NO index sidecar.
+
+**Manifest-level field.** After the layout label and before the entry count,
+SBM7 writes one length-prefixed UTF-8 string, `blankNodeProfile`. It says how
+each entry's `blankNodeScope` is to be read, which section 2.4.1 requires: a
+content digest identifies a blank-node allocation only when the publication
+profile also says that repeated imports of those bytes share one allocation.
+Two profiles are defined, and a manifest naming any other is refused:
+
+| Profile | Meaning |
+|---|---|
+| `content-digest-shared` | Repeated imports of the same source bytes share one blank-node allocation, so a content digest is a sufficient scope. `l4block-shard-pack` writes this. |
+| `import-occurrence` | The scope carries an import occurrence or equivalent provenance identity; two imports of identical bytes are two allocations. |
+
+**Per-entry fields.** Appended after the entry's chunk commitment, in this
+order:
+
+| Width | Field | Value |
+|---|---|---|
+| 1 | block kind | `0` is IBK3, `1` is IBK4 |
+| 4 + n | `blankNodeScope` | length-prefixed UTF-8, at most 256 bytes, nonempty |
+| 4 | graph count | number of members of the graph-set summary |
+| per member | graph name | one kind byte, then a length-prefixed UTF-8 name |
+
+A graph name's kind byte is `0` for the default graph (its name string is
+empty), `1` for an IRI, `2` for a blank node (its label is nonempty).
+
+**The graph-set summary carries NAMES, not the block's graph column values.**
+The IBK4 header summary of section 6.1.1 holds block-local term IDs, and
+resolving one to its graph name needs a PTD1 page of that block. A planner
+selecting entries for `GRAPH <iri> { ... }` from the manifest alone therefore
+needs the names, which is why a count plus a default-graph flag was not
+enough. The order is the block's first-occurrence row order, so the manifest
+summary and the block header summary are compared position by position at
+activation.
+
+**The manifest layout label and the per-entry block kind.** SBM0 through SBM6
+have no per-entry kind: their layout label fixes one codec for every entry
+(`predicate-ibk2-*` is IBK2, `predicate-ibk3-*` is IBK3). SBM7 keeps the label
+— it still names the generation's physical family and its sidecar contract —
+and adds the per-entry kind, which names the codec of that one artifact. The
+label admitted for SBM7 is `quad-ibk4-ptd1-merkle-v0`, and under it every entry
+must carry the kind `IBK4`. The kind `IBK3` exists in the type and on the wire
+so that a mixed generation is a widening of SBM7 admission rather than a new
+wire version; it is not admitted today. There is no compacted SBM7 label: the
+compactor does not build IBK4 generations, and a label nothing writes would be
+an untested reader path.
+
+**Admitted manifests.** Encoder admission equals decoder admission.
+
+1. Every SBM1 condition on the primary artifact: a nonempty byte extent, a
+   32-byte SHA-256, and a chunk commitment whose total byte count is the
+   artifact's.
+2. No index sidecar is present. SRI2, OLI2 and TLI1 are keyed by a block-local
+   ID with no graph dimension, so they cannot describe an IBK4 artifact; the
+   graph-aware sidecars are the next piece of work.
+3. Every entry's block kind is `IBK4`, matching the layout label.
+4. Every entry's `blankNodeScope` is nonempty and at most 256 UTF-8 bytes — the
+   same bound the diagnostic ABI of section 2.4.1 already imposes.
+5. Every entry's graph set is nonempty, lists no graph twice, and gives a
+   nonempty label to every blank-node graph name.
+6. The manifest's `blankNodeProfile` is one of the two defined profiles.
+7. Every SBM0 condition: unique artifact keys, contiguous ordinals, and the
+   per-entry field widths below 2^32.
+8. SBM0 through SBM6 must NOT carry the three per-entry fields or the
+   publication profile. A pre-SBM7 manifest carrying them would encode to bytes
+   that drop them, and the round trip would lose data without saying so.
+
+**Round trip.** `ShardManifestTheorems.decode?_encode?` proves
+`encode? manifest = some bytes → decode? bytes = some manifest`, over every
+wire version SBM0 through SBM7, with that as its only hypothesis.
 
 ### 6.4 Durable update and generation protocol
 
