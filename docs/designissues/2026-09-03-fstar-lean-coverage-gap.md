@@ -54,6 +54,12 @@ declares. ShEx passes 1182 of 1182 through 50 of them.
 
 ---
 
+The OWL row of the table below is split by cause — absent rule row,
+incomplete reasoning, harness, withdrawn upstream — in
+[`2026-09-03-owl-failure-split.md`](2026-09-03-owl-failure-split.md),
+which also re-measures both OWL regimes and corrects the figures quoted
+here and in the 2026-08-23 parity ledger.
+
 ## Axis 1 — conformance, suite by suite
 
 Method for each column, stated once:
