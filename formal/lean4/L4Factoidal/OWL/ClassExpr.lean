@@ -110,7 +110,7 @@ same class, and `beq` says nothing about that. -/
 
 mutual
 
-partial def ClassExpr.beq : ClassExpr → ClassExpr → Bool
+def ClassExpr.beq : ClassExpr → ClassExpr → Bool
   | .named a,          .named b          => a == b
   | .unknown,          .unknown          => true
   | .hasValue p v,     .hasValue q w     => p == q && v == w
@@ -129,7 +129,7 @@ partial def ClassExpr.beq : ClassExpr → ClassExpr → Bool
   | .union a,          .union b          => ClassExpr.beqList a b
   | _,                 _                 => false
 
-partial def ClassExpr.beqList : List ClassExpr → List ClassExpr → Bool
+def ClassExpr.beqList : List ClassExpr → List ClassExpr → Bool
   | [],      []      => true
   | x :: xs, y :: ys => ClassExpr.beq x y && ClassExpr.beqList xs ys
   | _,       _       => false
@@ -200,7 +200,7 @@ mutual
     Boolean marker and a restriction marker is malformed; reading the
     Boolean one first is what the mapping specification's own
     ordering says. -/
-partial def parseClassExpr (st : Store) (t : Term) (fuel : Nat) : ClassExpr :=
+def parseClassExpr (st : Store) (t : Term) (fuel : Nat) : ClassExpr :=
   match fuel with
   | 0 => .unknown
   | n + 1 =>
@@ -211,6 +211,7 @@ partial def parseClassExpr (st : Store) (t : Term) (fuel : Nat) : ClassExpr :=
        | none => .unknown
        | some s => parseCeMarkers st s n)
     | _ => .unknown
+termination_by 3 * fuel
 
 /-- The class expression a SUBJECT's OWN markers denote, with `n` the
     already-decremented fuel.
@@ -222,7 +223,7 @@ partial def parseClassExpr (st : Store) (t : Term) (fuel : Nat) : ClassExpr :=
     `named` — correct where an IRI appears as a FILLER, since the
     filler's own definition is the closure's business — so it can
     never see those markers. Reading them needs this entry. -/
-partial def parseCeMarkers (st : Store) (s : Subject) (n : Nat) : ClassExpr :=
+def parseCeMarkers (st : Store) (s : Subject) (n : Nat) : ClassExpr :=
          match firstObject st s owlIntersectionOf with
          | some head => .intersection (parseClassExprList st (walkRdfList st head (n + 1)) n)
          | none =>
@@ -284,10 +285,12 @@ partial def parseCeMarkers (st : Store) (s : Subject) (n : Nat) : ClassExpr :=
               | some k => .exactCard k p
               | none   => .unknown)
          | _ => .unknown
+termination_by 3 * n + 2
 
-partial def parseClassExprList (st : Store) (ts : List Term) (fuel : Nat)
+def parseClassExprList (st : Store) (ts : List Term) (fuel : Nat)
     : List ClassExpr :=
   ts.map (fun t => parseClassExpr st t fuel)
+termination_by 3 * fuel + 1
 
 end
 
