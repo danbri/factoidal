@@ -65,6 +65,12 @@ theorem byteArrayOfList_listOfByteArray (bytes : ByteArray) :
     byteArrayOfList (listOfByteArray bytes) = bytes := by
   simp [byteArrayOfList, listOfByteArray]
 
+/-- Building a byte array from an append is appending the two byte arrays. -/
+theorem byteArrayOfList_append (xs ys : List UInt8) :
+    byteArrayOfList (xs ++ ys) = byteArrayOfList xs ++ byteArrayOfList ys := by
+  apply ByteArray.ext
+  simp [byteArrayOfList]
+
 /-- A byte-range extract is the corresponding list slice. -/
 theorem extract_byteArrayOfList (xs : List UInt8) (a b : Nat) :
     (byteArrayOfList xs).extract a b = byteArrayOfList ((xs.drop a).take (b - a)) := by
@@ -389,6 +395,23 @@ theorem decodePrefix_ok (rowCount dictionaryBytes : Nat)
     Bool.false_eq_true, if_false, hr0, hr4,
     u32_toNat_ofNat_of_lt hrow, u32_toNat_ofNat_of_lt hdict]
 
+/-! ## The encoder refines its byte-list specification -/
+
+/-- `encodeBytes` produces exactly the bytes of `encodeListSpec`.
+
+    `encodeBytes` appends the PTD1 dictionary as a `ByteArray` and runs the
+    CRC32C over it in place, so no cons cell is allocated per dictionary byte.
+    `encodeListSpec` is the byte list the format is specified by, and the whole
+    round-trip proof below reasons about that list. This equation is the only
+    place where the two meet. -/
+theorem encodeBytes_eq (block : Block) (dictionary : ByteArray) (rows : List UInt8) :
+    encodeBytes block dictionary rows =
+      byteArrayOfList (encodeListSpec block dictionary rows) := by
+  have hdict : byteArrayOfList dictionary.data.toList = dictionary :=
+    byteArrayOfList_listOfByteArray dictionary
+  simp only [encodeBytes, encodeListSpec, encodeListPayload, crc32c_append_array,
+    byteArrayOfList_append, hdict, ByteArray.append_assoc]
+
 /-! ## The IBK3 round trip -/
 
 /-- Whatever `encode?` accepts, `decode` restores with the same dictionary
@@ -424,6 +447,8 @@ theorem decode_encode? (block : Block)
       · rename_i hguard
         injection h with h
         subst h
+        -- the assembler's bytes are the specification's bytes
+        simp only [encodeBytes_eq, encodeListSpec, encodeListPayload]
         -- the admission conditions `encode?` already checked
         have hu32 : (4294967296 : Nat) = UInt32.size := rfl
         have hfits1 : ∀ n : Nat, IndexedBlockWireV1.fitsU32 n = true → n < UInt32.size := by

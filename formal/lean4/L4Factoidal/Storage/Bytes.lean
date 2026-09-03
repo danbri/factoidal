@@ -212,6 +212,67 @@ def crc32cByte (crc : UInt32) (b : UInt8) : UInt32 :=
 def crc32c (bs : List UInt8) : UInt32 :=
   (bs.foldl crc32cByte 0xFFFFFFFF) ^^^ 0xFFFFFFFF
 
+/-- One step of the byte-array CRC32C loop, bounded by `fuel` so the
+    definition is structural. -/
+private def crc32cArrayLoop (bs : ByteArray) : Nat → Nat → UInt32 → UInt32
+  | 0, _, state => state
+  | fuel + 1, i, state =>
+      if h : i < bs.size then
+        crc32cArrayLoop bs fuel (i + 1) (crc32cByte state bs[i])
+      else state
+
+/-- Continue a CRC32C accumulator over a `ByteArray` region.
+
+    `crc32c` folds over a `List UInt8`. A codec that must checksum a large
+    `ByteArray` would otherwise convert it to a list first, which allocates one
+    cons cell per byte (`ByteArray.data` is itself a linear-time conversion).
+    This loop indexes the array in place. `crc32cAppendArray_eq` proves it
+    computes the same fold, so no format changes. -/
+def crc32cAppendArray (state : UInt32) (bs : ByteArray) : UInt32 :=
+  crc32cArrayLoop bs bs.size 0 state
+
+private theorem crc32cArrayLoop_eq (bs : ByteArray) :
+    ∀ fuel i state, bs.size - i ≤ fuel →
+      crc32cArrayLoop bs fuel i state = (bs.data.toList.drop i).foldl crc32cByte state := by
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro i state hfuel
+      have hnil : bs.data.toList.drop i = [] := by
+        apply List.drop_eq_nil_of_le
+        simp only [Array.length_toList, ByteArray.size_data]
+        omega
+      simp [crc32cArrayLoop, hnil]
+  | succ fuel ih =>
+      intro i state hfuel
+      rw [crc32cArrayLoop]
+      split
+      · rename_i hlt
+        have hlen : i < bs.data.toList.length := by
+          simp only [Array.length_toList, ByteArray.size_data]
+          exact hlt
+        rw [ih (i + 1) _ (by omega), List.drop_eq_getElem_cons hlen]
+        simp [ByteArray.getElem_eq_getElem_data]
+      · rename_i hlt
+        have hnil : bs.data.toList.drop i = [] := by
+          apply List.drop_eq_nil_of_le
+          simp only [Array.length_toList, ByteArray.size_data]
+          omega
+        simp [hnil]
+
+/-- The in-place loop computes the same accumulator as the list fold. -/
+theorem crc32cAppendArray_eq (state : UInt32) (bs : ByteArray) :
+    crc32cAppendArray state bs = bs.data.toList.foldl crc32cByte state := by
+  rw [crc32cAppendArray, crc32cArrayLoop_eq bs bs.size 0 state (by omega)]
+  simp
+
+/-- CRC32C of a byte list followed by a `ByteArray` region, without
+    materialising that region as a list. -/
+theorem crc32c_append_array (pre : List UInt8) (bs : ByteArray) :
+    crc32c (pre ++ bs.data.toList) =
+      crc32cAppendArray (pre.foldl crc32cByte 0xFFFFFFFF) bs ^^^ 0xFFFFFFFF := by
+  rw [crc32c, List.foldl_append, crc32cAppendArray_eq]
+
 /-- A checksummed section: the preamble guarded by CRC8, the data by
     CRC32C. Both must verify — a section that fails EITHER is
     rejected, never partially read. -/

@@ -126,14 +126,46 @@ def encodeList (block : Block) : List UInt8 :=
     writeU32LE (UInt32.ofNat dictionary.length) ++ rows ++ dictionary
   writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload)
 
+/-- The IBK3 CRC-covered payload: row count, dictionary byte length, the
+    fixed-width row area, then the whole PTD1 dictionary. `rows` is the encoded
+    row area and `dictionary` the encoded PTD1 artifact, both supplied by
+    `encode?`, so the specification and the assembler share one copy of each. -/
+def encodeListPayload (block : Block) (dictionary : ByteArray) (rows : List UInt8) :
+    List UInt8 :=
+  writeU32LE (UInt32.ofNat block.rows.size) ++
+    writeU32LE (UInt32.ofNat dictionary.size) ++ rows ++ dictionary.data.toList
+
+/-- The complete IBK3 artifact as a byte list. This is the SPECIFICATION of the
+    encoder output. `encodeBytes` assembles the same bytes without converting
+    the dictionary to a list; `IndexedBlockWireV3Theorems.encodeBytes_eq` proves
+    the two agree, and the round-trip proof reasons about this form. -/
+def encodeListSpec (block : Block) (dictionary : ByteArray) (rows : List UInt8) :
+    List UInt8 :=
+  writeU32LE magic ++ [version] ++ encodeListPayload block dictionary rows ++
+    writeU32LE (crc32c (encodeListPayload block dictionary rows))
+
+/-- `encodeListSpec` assembled as a `ByteArray`.
+
+    The dictionary carries every literal in the block and is the largest region
+    of the artifact. Building the specification list would allocate one cons
+    cell per dictionary byte, then copy the result back into a `ByteArray`. This
+    appends the dictionary bytes directly and runs the CRC32C over them in
+    place with `crc32cAppendArray`. `encodeBytes_eq` is the proof that the
+    produced bytes are the specification's. -/
+def encodeBytes (block : Block) (dictionary : ByteArray) (rows : List UInt8) : ByteArray :=
+  let leading := writeU32LE (UInt32.ofNat block.rows.size) ++
+    writeU32LE (UInt32.ofNat dictionary.size) ++ rows
+  let checksum :=
+    crc32cAppendArray (leading.foldl crc32cByte 0xFFFFFFFF) dictionary ^^^ 0xFFFFFFFF
+  byteArrayOfList (writeU32LE magic ++ [version] ++ leading) ++ dictionary ++
+    byteArrayOfList (writeU32LE checksum)
+
 def encode? (block : Block) : Option ByteArray := do
   if !supported block then none else
   let dictionary ← PagedTermDictionary.encode? block.dict
   let rows := positionedRows block |>.flatMap encodeRow
   if dictionary.size >= UInt32.size || rows.length >= UInt32.size then none else
-  let payload := writeU32LE (UInt32.ofNat block.rows.size) ++
-    writeU32LE (UInt32.ofNat dictionary.size) ++ rows ++ dictionary.data.toList
-  some <| byteArrayOfList (writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload))
+  some (encodeBytes block dictionary rows)
 
 def decodePrefix (bytes : ByteArray) : Option Prefix := do
   let input := listOfByteArray bytes
