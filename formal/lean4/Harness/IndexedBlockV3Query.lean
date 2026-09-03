@@ -37,6 +37,11 @@ private def backendFor (triples : List Triple) (delta : DeltaResolved) : GraphBa
   if deltaResolvedIsEmpty delta then indexedGraphBackend triples
   else .hdt (readOpsOfDelta triples delta)
 
+/-- SBM7's layout label. An IBK4 generation is refused by name, so the reason
+    is the layout rather than a decode failure inside an IBK3 reader. -/
+private def isIbk4Layout (layout : String) : Bool :=
+  layout == "quad-ibk4-ptd1-merkle-v0"
+
 private def isIbk3Layout (layout : String) : Bool :=
     layout == "predicate-ibk3-ptd1-merkle-v0" ||
     layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
@@ -589,6 +594,9 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | none, _ => IO.eprintln "l4block-id-v3-query rejected: malformed SBM2 manifest"; return 1
     | _, .error error => IO.eprintln s!"l4block-id-v3-query query parse error at {error.pos}: {error.msg}"; return 1
     | some manifest, .ok query =>
+        if isIbk4Layout manifest.layout || manifest.version == 7 then
+          IO.eprintln "l4block-id-v3-query rejected: this generation is SBM7 with IBK4 quad blocks; the quad-aware query path is not implemented, and an IBK3 reader would misread its rows"
+          return 1
         if !rangeCommitted manifest || !isIbk3Layout manifest.layout then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
         if manifest.version >= 5 && !(← (root / currentName).pathExists) then

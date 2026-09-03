@@ -11,6 +11,7 @@ import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.IndexedBlockWireV3
+import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.ChunkedArtifact
@@ -56,6 +57,14 @@ private def compactedIbk3Sri2Tli1Layout : String :=
 
 private def compactedIbk3Sri2Tli1Oli2Layout : String :=
   "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
+
+/-- SBM7's only layout label. There is no compacted variant: the compactor
+    does not build IBK4 generations. -/
+private def ibk4Layout : String :=
+  "quad-ibk4-ptd1-merkle-v0"
+
+private def isIbk4Layout (layout : String) : Bool :=
+  layout == ibk4Layout
 
 private def isIbk3Layout (layout : String) : Bool :=
   layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||
@@ -267,12 +276,55 @@ private def verifyIndexSidecars (directory : System.FilePath) (version : Nat) :
       | some failure => pure (some failure)
       | none => verifyIndexSidecars directory version rest
 
+private def quadEntryFailure : String :=
+  "candidate IBK4 artifact is missing, changed, malformed, mislabelled by predicate, or its graph set differs from the manifest entry"
+
+/-- Decode one IBK4 artifact and check it against its manifest entry.
+
+    `IndexedBlockWireV4.decode` already re-checks the framing, the CRC, the row
+    order, the predicate locality and the stored header graph-set summary
+    against the rows it decoded. Three checks are left to the manifest, because
+    only the manifest makes those claims: the committed row count, the
+    predicate the entry names, and the entry's copy of the graph set. The third
+    is what keeps `GRAPH <iri>` entry selection sound — a planner that reads
+    the manifest summary and never opens the block must not be able to see a
+    graph set the block does not have. -/
+private def verifyQuadEntry (directory : System.FilePath) (entry : Entry) : IO (Option Nat) := do
+  if !safeLeafKey entry.artifact.key then pure none else
+  try
+    let bytes ← IO.FS.readBinFile (directory / entry.artifact.key.value)
+    match L4Factoidal.Storage.IndexedBlockWireV4.decode bytes with
+    | none => pure none
+    | some block =>
+        if block.rows.size != entry.rows then pure none else
+        let predicateOk := block.rows.toList.all fun row =>
+          match block.dict[row.p]? with
+          | some (.iri value) => value == entry.predicate
+          | _ => false
+        if !predicateOk then pure none else
+        match L4Factoidal.Storage.IndexedBlockWireV4.graphNames? block with
+        | none => pure none
+        | some names =>
+            if names.map GraphName.ofGraphRef == entry.graphSet then pure (some bytes.size)
+            else pure none
+  catch _ => pure none
+
+private def verifyQuadEntries (directory : System.FilePath) :
+    List Entry → Nat → IO (Option Nat)
+  | [], total => pure (some total)
+  | entry :: rest, total => do
+      match ← verifyQuadEntry directory entry with
+      | none => pure none
+      | some bytes => verifyQuadEntries directory rest (total + bytes)
+
 /-- Validate the selected physical layout after full-file SHA-256 admission.
     IBK2 uses its existing all-entry materializer; IBK3 uses the paged reader,
     which rechecks every selected byte range against the committed Merkle
     leaves while decoding the same entries. -/
 private def verifyReadableEntries (directory : System.FilePath) (manifest : Manifest) : IO (Option Nat) := do
-  if isIbk3Layout manifest.layout then
+  if isIbk4Layout manifest.layout then
+    verifyQuadEntries directory manifest.entries 0
+  else if isIbk3Layout manifest.layout then
     match ← Harness.IndexedBlockV3Materialize.materializeEntries directory manifest.entries with
     | none => pure none
     | some (_, counters) => pure (some counters.requestedBytes)
@@ -301,7 +353,9 @@ private def activate (rootText generation : String) : IO UInt32 := do
         | some failure => throw <| IO.userError failure
         | none => pure ()
         match ← verifyReadableEntries candidate manifest with
-        | none => throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
+        | none =>
+            if isIbk4Layout manifest.layout then throw <| IO.userError quadEntryFailure
+            else throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
         | some verifiedBytes =>
             if ← activateGeneration root generation then
               IO.println s!"l4block-shard-activate root={root} generation={generation} verified-logical-bytes={verifiedBytes} pointer=CURRENT"
