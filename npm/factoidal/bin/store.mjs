@@ -71,6 +71,38 @@ function asStoreError (error) {
 }
 
 /**
+ * What to print when the runtime, not the engine, ran out of call stack.
+ *
+ * One copy of this text, used by every command that can hit the frame
+ * budget. `remedy` is the one line that differs: a query can be made
+ * smaller with a LIMIT, a pack cannot.
+ *
+ * The pack path normally never reaches this, because it runs on a worker
+ * thread with a raised stack (`bin/pack-host.mjs`,
+ * https://github.com/danbri/factoidal/issues/649). It is what a reader
+ * sees when the worker route is refused with --no-worker, is unavailable
+ * on their platform, or is not enough.
+ *
+ * @param {string} remedy
+ * @returns {string[]} the lines, in order, for stderr
+ */
+export function stackLimitAdvice (remedy) {
+  return [
+    'The runtime ran out of call stack inside the engine, not the store.',
+    'Some engine paths recurse once per row or per input chunk, and enough',
+    "of them exceed the runtime's default WebAssembly frame budget.",
+    remedy
+  ]
+}
+
+/** The remedies for each command that can run out of frames. */
+export const STACK_REMEDY = {
+  query: 'Raise it with node --stack-size=4000, add a LIMIT, or use Deno.',
+  pack: 'Raise it with node --stack-size=8000, or ' +
+    'deno run --v8-flags=--stack-size=8000.'
+}
+
+/**
  * Open a store and return its manifest bytes.
  *
  * With no `generationName` the activated generation is opened through

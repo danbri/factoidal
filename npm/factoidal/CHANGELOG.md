@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- `factoidal pack` no longer needs a runtime flag. The pack fold recurses
+  deeper than either runtime's default call stack allows, so an input
+  above roughly 0.5 MB ended with `Maximum call stack size exceeded`
+  (https://github.com/danbri/factoidal/issues/649). Under Node the pack
+  now runs on a `worker_threads` worker with a 64 MiB stack; under Deno
+  the command re-executes itself once with
+  `--v8-flags=--stack-size=65536`, which needs `--allow-run` and
+  `--allow-env` in addition to `--allow-read` and `--allow-write`.
+  `gene.ttl`, 17,363,312 bytes and 888,949 triples, packs on the default
+  stack of both runtimes, byte-identical to `l4block-shard-pack`.
+  `--no-worker` forces the in-process path, which still reports the
+  frame budget and the flag that raises it rather than crashing. A
+  browser tab has a fixed frame budget and no flag, so this does not
+  make an in-page packer possible.
+
 ## 0.3.0 — 2026-09-03
 
 - The `factoidal` command answers SPARQL against a persisted

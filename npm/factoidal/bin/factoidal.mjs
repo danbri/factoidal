@@ -26,10 +26,11 @@ import {
 import { fileUrlToPath, joinPath } from '../store-host/paths.mjs'
 import { loadEngine } from './engine.mjs'
 import { sampleStoreFacts, sampleStorePath } from '../sample-store.mjs'
-import { PackError, packFile, packSupported, verifyGeneration } from './pack.mjs'
+import { PackError, packSupported, verifyGeneration } from './pack.mjs'
+import { denoReexec, isStackOverflow, runPack } from './pack-host.mjs'
 import {
-  StoreOperationError, inspectManifest, openStore, planQuery, queryStore,
-  turtleOfNQuads
+  STACK_REMEDY, StoreOperationError, inspectManifest, openStore, planQuery,
+  queryStore, stackLimitAdvice, turtleOfNQuads
 } from './store.mjs'
 
 const EXIT_OK = 0
@@ -214,7 +215,14 @@ options:
   --layout LAYOUT    ibk3 (triples, default) or ibk4 (quads)
   --syntax SYNTAX    turtle, trig or nquads; default from the file extension
   --chunk-bytes N    Merkle chunk size; default is the engine's
-  --json             emit one JSON object`,
+  --json             emit one JSON object
+  --no-worker        pack in this process instead of on a worker thread
+
+The pack fold recurses deeper than either runtime's default call stack
+allows, so it runs on a worker thread with a raised stack under Node, and
+under Deno the command re-executes itself once with a raised V8 stack
+(https://github.com/danbri/factoidal/issues/649). --no-worker turns both
+off; a pack above about half a megabyte of input then overflows.`,
 
   activate: `factoidal activate - make one generation the activated generation
 
@@ -516,10 +524,7 @@ function reportStoreFailure (error) {
     err(`This query needs more of the store than one WebAssembly call may read: ${error.capValue} against a cap of ${error.capLimit}.`)
     err('Narrow the query - bind a predicate, or restrict the graph - or use the native l4block-* tools.')
   } else if (error.stackLimit) {
-    err('The runtime ran out of call stack inside the engine, not the store.')
-    err('Some evaluator paths recurse once per row, and a few thousand rows can')
-    err("exceed Node's default WebAssembly frame budget. Raise it with")
-    err('node --stack-size=4000, add a LIMIT, or run the query under Deno.')
+    for (const line of stackLimitAdvice(STACK_REMEDY.query)) err(line)
   } else if (error.digestKey !== null) {
     err(`The bytes of '${error.digestKey}' in the generation directory are not the bytes the manifest commits.`)
     err('The generation is damaged or was edited after it was packed; repack or restore it.')
@@ -687,29 +692,29 @@ async function commandPack (positional, options) {
   const [input, output] = positional
   const syntax = packSyntax(input, options)
   const layout = packLayout(options)
-  const engine = await loadEngine()
-  if (!packSupported(engine)) {
-    return notWired('pack',
-      'This install carries an engine built before the streaming pack ' +
-      'operations. Update @factoidal/core, or set FACTOIDAL_L4_ASSETS to ' +
-      'a newer build.')
-  }
+  // The pack fold needs a bigger call stack than either runtime gives by
+  // default (https://github.com/danbri/factoidal/issues/649). Under Node
+  // the work runs on a worker thread with a raised stack; under Deno the
+  // command re-executes itself once with --v8-flags=--stack-size, and
+  // this is where that happens, before any file is opened. --no-worker
+  // keeps the in-process path testable.
+  const host = { worker: options['no-worker'] !== true }
+  const reexec = await denoReexec(host)
+  if (reexec !== null) return reexec
   makeDirectory(output)
   const quiet = options.quiet === true
-  let report
+  let answer
   try {
-    report = packFile(engine, input, output, {
-      syntax,
-      layout,
-      base: packBase(input, options),
-      onProgress: quiet
+    answer = await runPack(
+      { input, output, syntax, layout, base: packBase(input, options) },
+      quiet
         ? undefined
         : (progress) => {
             if (progress.bytesRead % (16 * 1024 * 1024) < FEED_PROGRESS) {
               err(`${progress.pass}: ${progress.bytesRead} bytes read, ${progress.artifacts} artifacts written`)
             }
-          }
-    })
+          },
+      host)
   } catch (error) {
     if (error instanceof PackError || error instanceof StoreHostError) {
       err(`factoidal pack: ${error.message}`)
@@ -720,10 +725,21 @@ async function commandPack (positional, options) {
     // words. A stack trace here would hide them.
     if (error instanceof Error && typeof error.message === 'string') {
       err(`factoidal pack: ${error.message.replace(/^l4factoidal:\s*/, '')}`)
+      // The raised stack was refused, unavailable, or still not enough.
+      if (isStackOverflow(error)) {
+        for (const line of stackLimitAdvice(STACK_REMEDY.pack)) err(line)
+      }
       return EXIT_FAILURE
     }
     throw error
   }
+  if (answer.notWired === true) {
+    return notWired('pack',
+      'This install carries an engine built before the streaming pack ' +
+      'operations. Update @factoidal/core, or set FACTOIDAL_L4_ASSETS to ' +
+      'a newer build.')
+  }
+  const report = answer.report
   if (options.json === true) {
     out(JSON.stringify(report, null, 2))
     return EXIT_OK

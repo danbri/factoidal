@@ -88,8 +88,16 @@ const shim = isDeno
       // The command needs only --allow-read for inspect and query.
       cliArgs: (file, rest) => ['run', '--allow-read', file, ...rest],
       // pack and activate WRITE: a generation directory, and CURRENT.
+      // pack also RE-EXECUTES itself once with a raised V8 stack, which
+      // is how Deno gets a call stack deep enough for an input above
+      // about half a megabyte (https://github.com/danbri/factoidal/issues/649).
+      // That needs --allow-run, and --allow-env for the guard variable
+      // that stops the re-exec looping. Without them the command packs in
+      // process and a large input overflows, which is the behaviour the
+      // --no-worker check below gates on purpose.
       cliWriteArgs: (file, rest) =>
-        ['run', '--allow-read', '--allow-write', file, ...rest],
+        ['run', '--allow-read', '--allow-write', '--allow-run', '--allow-env',
+          file, ...rest],
       runtimeName: 'deno'
     }
   : await (async () => {
@@ -610,6 +618,27 @@ if (binDirectory === null) {
     skipped += 3
     console.log('  skip the pack path - this engine carries no pack operations')
   } else {
+    // The two generations must agree byte for byte. Named here once
+    // because four checks need it.
+    const assertSameBytes = (fromWasm, fromNative) => {
+      const namesOf = (directory) =>
+        listGeneration(directory).map((file) => file.name).sort()
+      const wasmNames = namesOf(fromWasm)
+      const nativeNames = namesOf(fromNative)
+      assert(wasmNames.join(',') === nativeNames.join(','),
+        `the two packers wrote different file sets:\n  command: ${wasmNames.join(', ')}\n  native:  ${nativeNames.join(', ')}`)
+      assert(wasmNames.length > 0, 'the packers wrote nothing')
+      for (const name of wasmNames) {
+        const a = readWhole(joinPath(fromWasm, name))
+        const b = readWhole(joinPath(fromNative, name))
+        assert(a.length === b.length,
+          `${name} is ${a.length} bytes from the command and ${b.length} from the native packer`)
+        for (let index = 0; index < a.length; index += 1) {
+          assert(a[index] === b[index], `${name} differs at byte ${index}`)
+        }
+      }
+    }
+
     await check('pack exits 0', () => {
       assert(packProbe.code === 0,
         `factoidal pack exited ${packProbe.code}: ${packProbe.stderr.trim()}`)
@@ -619,23 +648,56 @@ if (binDirectory === null) {
       const native = shim.run(joinPath(binDirectory, 'l4block-shard-pack'),
         [packFixture, packedNatively, 'ibk3'])
       assert(native.code === 0, `l4block-shard-pack: ${native.stderr.trim()}`)
-      const namesOf = (directory) =>
-        listGeneration(directory).map((file) => file.name).sort()
-      const wasmNames = namesOf(packedByCommand)
-      const nativeNames = namesOf(packedNatively)
-      assert(wasmNames.join(',') === nativeNames.join(','),
-        `the two packers wrote different file sets:\n  command: ${wasmNames.join(', ')}\n  native:  ${nativeNames.join(', ')}`)
-      assert(wasmNames.length > 0, 'the packers wrote nothing')
-      for (const name of wasmNames) {
-        const fromCommand = readWhole(joinPath(packedByCommand, name))
-        const fromNative = readWhole(joinPath(packedNatively, name))
-        assert(fromCommand.length === fromNative.length,
-          `${name} is ${fromCommand.length} bytes from the command and ${fromNative.length} from the native packer`)
-        for (let index = 0; index < fromCommand.length; index += 1) {
-          assert(fromCommand[index] === fromNative[index],
-            `${name} differs at byte ${index}`)
-        }
+      assertSameBytes(packedByCommand, packedNatively)
+    })
+
+    // ------------------------------- above the default frame budget
+    //
+    // https://github.com/danbri/factoidal/issues/649. On the DEFAULT
+    // stack of Node and of Deno the pack of anything above roughly
+    // 0.5 MB of Turtle ended with "Maximum call stack size exceeded".
+    // `anatomical_structure.ttl` is 3,811,378 bytes, which failed on
+    // both runtimes before the worker route landed, and is small
+    // enough to pack in seconds. These three checks are what stops
+    // that defect coming back.
+
+    const bigSource = joinPath(repoRoot,
+      'examples/wikidata/subsets/lifesci-kgx/data/anatomical_structure.ttl')
+
+    const packBig = (layout, name) => {
+      const byCommand = joinPath(workDirectory, `${name}-command-gen`)
+      const byNative = joinPath(workDirectory, `${name}-native-gen`)
+      const command = runCliWrite(['pack', bigSource, byCommand,
+        '--layout', layout, '--quiet'])
+      assert(command.code === 0,
+        `factoidal pack --layout ${layout} exited ${command.code}: ${command.stderr.trim()}`)
+      const native = shim.run(joinPath(binDirectory, 'l4block-shard-pack'),
+        [bigSource, byNative, layout])
+      assert(native.code === 0, `l4block-shard-pack ${layout}: ${native.stderr.trim()}`)
+      assertSameBytes(byCommand, byNative)
+    }
+
+    await check('pack builds an IBK3 generation from 3.8 MB, byte for byte',
+      () => { packBig('ibk3', 'big-ibk3') })
+
+    await check('pack builds an IBK4 generation from 3.8 MB, byte for byte',
+      () => { packBig('ibk4', 'big-ibk4') })
+
+    // The escape hatch keeps the old behaviour reachable, and the old
+    // behaviour must still explain itself rather than crash.
+    await check('--no-worker still reports the frame budget instead of crashing', () => {
+      const refused = runCliWrite(['pack', bigSource,
+        joinPath(workDirectory, 'big-no-worker-gen'), '--layout', 'ibk3',
+        '--quiet', '--no-worker'])
+      if (refused.code === 0) {
+        console.log('  note: this runtime packs 3.8 MB in process, so no advice was needed')
+        return
       }
+      assert(refused.code === 1, `the command exited ${refused.code}, expected 0 or 1`)
+      assert(refused.stderr.indexOf('call stack') >= 0,
+        `the failure was not the runtime's frame budget:\n${refused.stderr}`)
+      assert(refused.stderr.indexOf('--stack-size') >= 0,
+        `the failure suggested no next step:\n${refused.stderr}`)
     })
 
     await check('a packed generation activates and answers its own row count', () => {

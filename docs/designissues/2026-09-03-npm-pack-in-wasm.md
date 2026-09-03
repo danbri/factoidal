@@ -179,3 +179,149 @@ merged to 2,772,496 quads, 410,280,495 bytes of N-Quads. Packed with
 9.0 times the 31,003,388 bytes of `gzip -9`, which is not queryable.
 The published 0.3.0 CLI answered `COUNT(*)` over `skos:notation` from
 that store, reading 4,547,916 bytes of the 279 MB.
+
+## The call stack the pack needs, and what a browser cannot give it
+
+Added 2026-09-04, https://github.com/danbri/factoidal/issues/649.
+
+The pack completed and was byte-identical at every size that finished,
+but on the DEFAULT stack of Node 22.22.2 and of Deno 2.9.4 it ended with
+`Maximum call stack size exceeded` above roughly 0.25 MB of Turtle. The
+pack fold recurses far deeper per input chunk than a query does per row.
+
+### What was measured
+
+`examples/wikidata/subsets/lifesci-kgx/data/gene.ttl`, 17,363,312 bytes,
+888,949 triples, packed on a Node worker thread with
+`resourceLimits.stackSizeMb` set by hand (macOS 15 arm64, Node 22.22.2):
+
+| stackSizeMb | verdict |
+|---|---|
+| 4 (the Node default) | Maximum call stack size exceeded |
+| 6 | Maximum call stack size exceeded |
+| 7 | Maximum call stack size exceeded |
+| 8 | pass |
+| 10 | pass |
+| 64 | pass |
+
+8 MiB is the measured minimum for the largest input in the corpus.
+`npm/factoidal/bin/pack-host.mjs` asks for **64 MiB**, eight times that.
+The headroom is deliberate: recursion depth grows with the input, so a
+value just above the minimum moves the same defect to a larger file. It
+is also cheap, because a thread stack is reserved address space and only
+the pages actually touched become resident.
+
+### Where the frames are, and what sets their number
+
+The overflow is entirely inside the WebAssembly module, in ONE
+self-recursive function at ONE call site. Captured on Node 22.22.2 with
+`Error.stackTraceLimit = Infinity`, packing `biological_pathway.ttl`
+(1,475,535 bytes) on the default main-thread stack:
+
+    frames: 7890
+    distinct sites: 26
+    7865 at wasm://wasm/01434066:wasm-function[3201]:0x389740
+    1 at wasm://wasm/01434066:wasm-function[1577]:0x1c0095
+    1 at wasm://wasm/01434066:wasm-function[2336]:0x28e0dc
+    ...
+
+7,865 of 7,890 frames are the same function returning to the same
+address. No JavaScript frame appears above the entry point, so nothing
+on the host side recurses. Node's default main-thread budget is about
+1 MiB, which puts one frame at roughly 130 bytes.
+
+The number of frames does NOT follow the input size, the total row
+count, or the number of publication batches. It follows ONE BLOCK.
+Measured 2026-09-04, IBK3, `--layout ibk3`; "default stack" is
+`--no-worker` on Node's main thread, and "min stack" is the smallest
+`resourceLimits.stackSizeMb` that packs:
+
+| fixture | bytes | blocks | total rows | largest block, rows | default stack | min stack |
+|---|---|---|---|---|---|---|
+| `chemical_compound.ttl` | 6,620 | 6 | 130 | 103 | pass | 1 MiB |
+| `medication.ttl` | 176,609 | 7 | 6,780 | 3,928 | pass | 1 MiB |
+| `sequence_variant.ttl` | 241,149 | 5 | 6,455 | 1,800 | pass | 1 MiB |
+| `chromosome.ttl` | 316,116 | 1 | 9,227 | 9,227 | FAIL | 2 MiB |
+| `protein_domain.ttl` | 664,327 | 3 | 18,865 | 11,736 | FAIL | 2 MiB |
+| `disease.ttl` | 855,549 | 6 | 27,421 | 13,283 | FAIL | 2 MiB |
+| `Protein__protein2.ttl` | 1,342,034 | 2 | 44,756 | 30,968 | FAIL | 3 MiB |
+| `biological_pathway.ttl` | 1,475,535 | 3 | 67,219 | 60,930 | FAIL | 4 MiB |
+| `protein_family.ttl` | 2,347,031 | 2 | 65,475 | 44,631 | FAIL | 6 MiB |
+| `labels-en.ttl` | 2,594,952 | 1 | 31,325 | 31,325 | FAIL | 8 MiB |
+| `anatomical_structure.ttl` | 3,811,378 | 3 | 112,742 | 45,782 | FAIL | 6 MiB |
+| `gene.ttl` | 17,363,312 | 13 | 888,949 | 256,698 | FAIL | 8 MiB |
+
+Three readings of that table:
+
+1. **Not the file.** `chromosome.ttl`, `protein_domain.ttl` and
+   `disease.ttl` need the same 2 MiB while their sizes differ by 2.7
+   times and their total row counts by 3 times.
+2. **Not the batch.** `Storage/PackStream.lean` publishes every 64
+   chunks of 65,536 bytes, so everything up to 4 MiB of input publishes
+   exactly once. `sequence_variant.ttl` passes and `chromosome.ttl`
+   fails, and both publish once. Batch contents decide it, not batch
+   count.
+3. **Not the total row count, and not the largest block's row count
+   either.** `gene.ttl` has a block of 256,698 rows and needs 8 MiB;
+   `labels-en.ttl` has one block of 31,325 rows and needs the same
+   8 MiB. Eight times the rows, the same stack.
+4. **The block's DICTIONARY, which row count only sometimes tracks.**
+   `labels-en.ttl` is one `rdfs:label` predicate whose object is a
+   distinct literal on every row, so its 31,325 rows carry about 62,000
+   distinct terms — the worst ratio in the corpus.
+   `biological_pathway.ttl` repeats its objects and needs 4 MiB for
+   60,930 rows; `gene.ttl`'s largest blocks repeat theirs far more. At
+   about 7,800 frames per MiB, 62,000 terms is 8 MiB, and that rate
+   agrees with the 7,865 frames measured directly at 1 MiB.
+
+So the depth is one frame per TERM in one block's local term index.
+That is the shape of `entriesGo` in
+`formal/lean4/L4Factoidal/Storage/TermLocalIndex.lean`, which conses
+after its recursive call and is therefore not tail recursive. The
+native tool survives it on an 8 MiB thread stack; a browser gives about
+1 MiB.
+
+**The consequence.** The worker stack is the right immediate fix for
+Node and Deno, and it is what this change lands. It is not the cure.
+The cure is to make that fold tail recursive in the Lean source, which
+is the same change https://github.com/danbri/factoidal/issues/647 wants
+for the pack profile, and it is the only route to an in-page packer.
+
+### The two host routes
+
+- **Node** runs the pack on a `worker_threads` worker with
+  `resourceLimits.stackSizeMb`. The engine loads inside the worker, and
+  the worker writes every artifact itself through the same `store-host`
+  primitives, so no artifact byte crosses the thread boundary.
+- **Deno** takes neither `worker_threads` nor a stack size on its own
+  `Worker`. The command re-executes itself once with
+  `--v8-flags=--stack-size=…`, guarded by `FACTOIDAL_PACK_STACK_REEXEC`
+  so it cannot loop, and with exactly the permissions the parent process
+  was granted, queried rather than requested so no prompt appears. Deno
+  2.9.4 / V8 15.0.245.2 honours the flag.
+
+`--no-worker`, or `FACTOIDAL_NO_WORKER` in the environment, forces the
+in-process path. That path still prints the frame-budget advice
+(`bin/store.mjs`, `stackLimitAdvice`), which is also what a reader sees
+if the raised stack is refused or is still not enough.
+
+### What this does NOT fix: an in-page packer
+
+A browser tab has a fixed frame budget and no host flag. Chrome gives a
+main-thread JavaScript stack of about 984 KiB and a `Worker` about the
+same; Firefox gives about 1 MiB. `postMessage` cannot raise it, and
+`--js-flags` is a command-line switch on the browser binary, not
+something a page can set. So neither route above reaches a page.
+
+A page therefore gets what the `min stack` column above calls 1 MiB:
+`sequence_variant.ttl` (241,149 bytes, largest block 1,800 rows) is the
+largest fixture measured that packs there, and `chromosome.ttl`
+(316,116 bytes, one block of 9,227 rows) is the smallest that does not.
+Roughly, a page can pack a block holding up to about 7,800 terms and no
+more, whatever the file size.
+
+An in-page packer needs that recursion bounded, not a bigger stack:
+`entriesGo` and any sibling with the same shape must become an
+accumulator fold, which is what `formal/lean4` already does for its
+retired `partial def`s (`skills/lean4-proof-patterns`). Until that
+lands, in-page import is not promised.
