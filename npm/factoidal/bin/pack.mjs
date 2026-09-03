@@ -95,11 +95,14 @@ function drain (engine, handle, output) {
  * @param {object} options
  * @param {string} options.layout `ibk3` or `ibk4`
  * @param {string} options.syntax `turtle`, `trig` or `nquads`
+ * @param {string} [options.base] the base IRI relative IRIs resolve against;
+ *   the empty string means no base
  * @param {(progress: object) => void} [options.onProgress]
  * @returns {object} the engine's own finish envelope, plus what was written
  */
 export function packFile (engine, input, output, options) {
-  const begun = engine.call('packBegin', [options.syntax, options.layout])
+  const begun = engine.call('packBegin',
+    [options.syntax, options.layout, typeof options.base === 'string' ? options.base : ''])
   const handle = begun.handle
   if (typeof handle !== 'string') {
     throw new PackError('packBegin answered no handle')

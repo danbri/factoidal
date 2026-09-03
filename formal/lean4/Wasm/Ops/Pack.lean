@@ -66,9 +66,12 @@ the pass it is in and the pass it needs.
 ## The hasher
 
 `build-wasm.sh` skips every `Harness_*` translation unit, so
-`Harness.nativeHasher` (HACL* C) is not reachable inside the module. These
-operations pass `BlockMerkle.pureHasher`, the pure Lean SHA-256. The
-committed bytes are identical either way — the two hashers agree on every
+`Harness.nativeHasher` is not reachable inside the module. The HACL* PRIMITIVE is
+reachable: `Wasm/build-wasm.sh` compiles `Hacl_Hash_SHA2.c` and links
+`l4_hacl_sha256`. These operations therefore pass the library's own binding,
+`L4Factoidal.Crypto.sha256Hacl`, which is the same function the native
+packer hashes with. The committed bytes are identical to the pure Lean
+specification hasher's — the two hashers agree on every
 input, which `lake exe l4vc-probe` measures — and that is what makes the
 byte-identity gate against `l4block-shard-pack` meaningful. `PackStream`
 takes the hasher as a parameter for exactly this reason.
@@ -114,6 +117,7 @@ import Std.Data.HashMap
 import Wasm.Ops.Store
 import L4Factoidal.Storage.PackStream
 import L4Factoidal.Storage.GenerationVerify
+import L4Factoidal.Crypto.SHA2Native
 
 namespace L4Wasm.Ops
 
@@ -163,6 +167,10 @@ def passName : PackPass → String
 structure OpenPack where
   format : PackFormat
   grammar : PackSyntax
+  /-- The base IRI the grammar resolves relative IRIs against, as the host
+      gave it. `none` is no base. The native packer uses `file://<input>`;
+      a host that wants byte-identical output must pass the same string. -/
+  base : Option String
   pass : PackPass
   pre : PrepassState
   prepass : Option SourcePrepass
@@ -192,10 +200,15 @@ private def withPack (h : String) (f : OpenPack → IO String) : IO String := do
   | none => pure (unknownPackHandle h)
   | some pack => f pack
 
-/-- The pure hasher. See the module banner: the native packer's HACL* hasher
-    is not linked into the wasm module, and the two agree on every input. -/
+/-- HACL* SHA-256, the same primitive the native packer hashes with.
+    `Wasm/build-wasm.sh` compiles `Hacl_Hash_SHA2.c` and links
+    `l4_hacl_sha256` into the module, so the extern resolves here. What is
+    absent from the module is `Harness.nativeHasher`, because the build
+    skips every `Harness_*` translation unit -- so this names the library's
+    own binding (`L4Factoidal.Crypto.sha256Hacl`) rather than the harness
+    wrapper. Crypto policy: HACL* on every target. -/
 private def packHasher : L4Factoidal.Storage.BlockMerkle.Hasher :=
-  L4Factoidal.Storage.BlockMerkle.pureHasher
+  ⟨L4Factoidal.Crypto.sha256Hacl⟩
 
 private def totalBytes (artifacts : List Artifact) : Nat :=
   artifacts.foldl (fun total artifact => total + artifact.bytes.size) 0
@@ -215,9 +228,14 @@ private def passEnvelope (pass : PackPass) (pending : Nat) : String :=
 
 /-! ## The operations -/
 
-/-- `packBegin(syntaxTag, layoutTag)` — open a pack and enter the prepass.
+/-- `packBegin(syntaxTag, layoutTag, baseIri)` — open a pack and enter the
+    prepass. An empty `baseIri` means no base, and a relative IRI in the
+    source is then a parse error rather than a silently different term. The
+    native packer passes `file://<input>`; a host that wants the same bytes
+    must pass the same string, which is why this is an argument and not a
+    default chosen here.
     A tag which names no grammar or no layout issues no handle. -/
-def packBegin (syntaxTag layoutTag : String) : IO String := do
+def packBegin (syntaxTag layoutTag baseIri : String) : IO String := do
   match syntaxOfTag? syntaxTag, formatOfTag? layoutTag with
   | none, _ =>
       pure (errJson s!"packBegin: unknown grammar tag '{syntaxTag}' (turtle | trig | nquads | ntriples)")
@@ -239,7 +257,8 @@ def packBegin (syntaxTag layoutTag : String) : IO String := do
           let n ← packCounter.modifyGet fun n => (n + 1, n + 1)
           let h := s!"p{n}"
           packTable.modify (·.insert h
-            { format, grammar, pass := .prepass, pre := prepassInit, prepass := none,
+            { format, grammar, base := if baseIri.isEmpty then none else some baseIri,
+              pass := .prepass, pre := prepassInit, prepass := none,
               ingest := none, source := ByteArray.empty, packed := {},
               queue := [], queueBytes := 0, manifestPublished := false })
           pure (okWith [("handle", .string h), ("pass", .string (passName PackPass.prepass))])
@@ -288,7 +307,7 @@ private def finishQuadPass (pack : OpenPack) (prepass : SourcePrepass) :
   let text ← match String.fromUTF8? pack.source with
     | none => .error "l4block-shard-pack UTF-8 error: the source is not valid UTF-8"
     | some text => pure text
-  let result ← quadArtifacts packHasher pack.grammar prepass text none
+  let result ← quadArtifacts packHasher pack.grammar prepass text pack.base
   .ok (result.packed, result.artifacts)
 
 /-- `packEndPass(handle)` — end the pass the handle is in.
@@ -307,7 +326,7 @@ def packEndPass (h : String) : IO String :=
         | .ok prepass => do
             let ingest :=
               if pack.format == .ibk4 then none
-              else some (ingestInit packHasher pack.format prepass none)
+              else some (ingestInit packHasher pack.format prepass pack.base)
             packTable.modify (·.insert h
               { pack with pass := .ingest, prepass := some prepass, ingest })
             pure (passEnvelope .ingest 0)

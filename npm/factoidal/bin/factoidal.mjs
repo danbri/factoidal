@@ -50,6 +50,16 @@ const PACK_SUFFIXES = [
   ['.nt', 'ntriples'], ['.ntriples', 'ntriples']
 ]
 
+// Suffixes the engine parses elsewhere but the packer's streaming fold does
+// not read. Naming them is better than "cannot tell the syntax from its
+// name", which sends the reader looking for a --syntax value that does not
+// exist.
+const PACK_UNSUPPORTED_SUFFIXES = [
+  ['.rdf', 'RDF/XML'], ['.owl', 'RDF/XML'], ['.xml', 'RDF/XML'],
+  ['.jsonld', 'JSON-LD'], ['.json', 'JSON-LD'], ['.n3', 'Notation3'],
+  ['.csv', 'CSV'], ['.tsv', 'TSV'], ['.hdt', 'HDT']
+]
+
 /** The parent of a path, and its last component. The `activate` hint
  *  printed after a pack needs both; neither is a format decision. */
 function dirOf (path) {
@@ -289,7 +299,7 @@ const VALUE_OPTIONS = {
   'sample-store': new Set([]),
   inspect: new Set(['generation']),
   query: new Set(['query', 'file', 'format', 'limit', 'base', 'generation']),
-  pack: new Set(['layout', 'syntax', 'chunk-bytes']),
+  pack: new Set(['layout', 'syntax', 'chunk-bytes', 'base']),
   activate: new Set([]),
   update: new Set(['update', 'file']),
   compact: new Set([])
@@ -632,9 +642,37 @@ function packSyntax (input, options) {
   for (const [suffix, syntax] of PACK_SUFFIXES) {
     if (lower.endsWith(suffix)) return syntax
   }
+  for (const [suffix, name] of PACK_UNSUPPORTED_SUFFIXES) {
+    if (lower.endsWith(suffix)) {
+      throw new UsageError(
+        `pack does not read ${name}. The packer's streaming fold reads ` +
+        `${PACK_SYNTAXES.join(', ')} only. Convert the file first, for ` +
+        "example with: factoidal parse FILE --out nquads")
+    }
+  }
   throw new UsageError(
     `cannot tell the syntax of ${input} from its name; give --syntax ` +
     `(${PACK_SYNTAXES.join(', ')})`)
+}
+
+/**
+ * The base IRI relative IRIs in the source resolve against.
+ *
+ * The native packer uses `file://<input>`, so this matches it by default
+ * and byte-identical output needs no flag. `--base` overrides it, and
+ * `--base ''` asks for no base, which turns a relative IRI into a parse
+ * error rather than a silently different term.
+ */
+function packBase (input, options) {
+  if (typeof options.base === 'string') return options.base
+  const absolute = input.startsWith('/') ? input : joinPath(currentDirectory(), input)
+  return 'file://' + absolute
+}
+
+/** The process's working directory, on Node and on Deno. */
+function currentDirectory () {
+  if (isDeno) return globalThis.Deno.cwd()
+  return process.cwd()
 }
 
 function packLayout (options) {
@@ -663,6 +701,7 @@ async function commandPack (positional, options) {
     report = packFile(engine, input, output, {
       syntax,
       layout,
+      base: packBase(input, options),
       onProgress: quiet
         ? undefined
         : (progress) => {
@@ -672,8 +711,15 @@ async function commandPack (positional, options) {
           }
     })
   } catch (error) {
-    if (error instanceof PackError) {
+    if (error instanceof PackError || error instanceof StoreHostError) {
       err(`factoidal pack: ${error.message}`)
+      return EXIT_FAILURE
+    }
+    // Everything the engine refuses -- an unknown grammar tag, a parse
+    // error, a cap -- arrives as a plain Error carrying the engine's own
+    // words. A stack trace here would hide them.
+    if (error instanceof Error && typeof error.message === 'string') {
+      err(`factoidal pack: ${error.message.replace(/^l4factoidal:\s*/, '')}`)
       return EXIT_FAILURE
     }
     throw error
