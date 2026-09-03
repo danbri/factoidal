@@ -66,7 +66,11 @@ Modules, in data order:
    - *Comments.* If a comment precedes a `PREFIX`/`BASE` line inside the
      same candidate, the seven-character head reads `# ...` and the scanner
      does not cut at that line end; the directive stays in the candidate
-     until the next dot or the end of input. This is safe because a
+     until the next dot in normal mode or the end of input (a dot inside a
+     comment, an IRI or a string is not a boundary: `pendingDot` is set only
+     when the mode after the character is `normal`, and a comment keeps its
+     mode until the line end; four comment-dot guards cover it). This is
+     safe because a
      candidate may hold several statements and `TurtleChunkFold.consumeText`
      runs the grammar in a loop over it: the head test decides where
      boundaries fall, never what the text means, and the old
