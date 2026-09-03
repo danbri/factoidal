@@ -136,13 +136,26 @@ number cannot say how much of a large module arrived.
 `tools/lean-registry-audit.py`, run today against
 `docs/theorem-registry.md`: 56 rule ids parsed, 50 named by a Lean
 theorem, 5 absent by agreement with the F\* side, 1 reported as a real
-gap. **That 1 is a false positive.** The id is `dt-rng`, and it is a
-prefix of `dt-rng-intersect` at `docs/theorem-registry.md:2631`, which is
-not an OWL 2 RL rule id. This is the same defect the tool already patched
-by name for `dt-branch`: the regex ends at a `-` because `-` is a
-non-word character. The corrected figure is **55 rule ids, 50 named by a
-Lean theorem, 5 absent by agreement, 0 real gaps.** The tool needs a
-general fix, not a third name-specific exclusion.
+gap. **That 1 was a false positive, and the arithmetic around it was
+wrong too.**
+
+FIXED 2026-09-03. The id was `dt-rng`, a prefix of `dt-rng-intersect` at
+`docs/theorem-registry.md:2631`, which is not an OWL 2 RL rule id: the
+regex ended at a `-`, because `-` is a non-word character. The same
+defect ran the other way as well — `eq-rep-s`, `eq-rep-p` and
+`eq-rep-o` all collapsed to one id `eq-rep`, so three rules were counted
+as one, and five more non-rules (`cax-eqc`, `cls-int`, `prp-eqp`,
+`prp-inv`, `prp-rfl`) entered the same way. This paragraph first
+estimated the corrected figure as "55 rule ids, 50 named"; that was
+arithmetic on the broken set, not a measurement.
+
+The tool now reads whole hyphenated tokens, keeps only the 78 rule ids
+the OWL 2 Profiles Recommendation defines, prints every token it
+dropped, and matches Lean theorem names by camel/snake segment rather
+than by substring. The `dt-branch` name-specific exclusion is deleted.
+The measured figure is **52 rule ids, 47 named by a Lean theorem, 5
+absent by agreement with the F\* side, 0 real gaps.**
+See `skills/counting-coverage/SKILL.md` rule 8.
 
 ---
 
@@ -220,14 +233,16 @@ modules**, largest first `Parser.BallyhooCOTTAS` 13, `SPARQL11.Algebra`
 11, `RDF.CottasStore.LazyDict` 9, `RDF.CottasStore.OnDiskIndex` 7,
 `RDF.Store.LazyTermCache` 6.
 
-⚠️ Two committed documents disagree with that and with each other:
-CLAUDE.md iron rule 3 says "the ~148 `assume val`s today", and
-`docs/claude-rules/current-state.md` § assume val inventory says "138
-assume val declarations across 20 modules", with its own note that the
-table was already stale when written. Neither figure matches 82. I did
-not chase which landings closed the difference; the measured figure is 82
-and the two documents should be corrected against a fresh count rather
-than against each other.
+FIXED 2026-09-03. Two committed documents disagreed with that and with
+each other: CLAUDE.md iron rule 3 said "the ~148 `assume val`s today",
+and `docs/claude-rules/current-state.md` § assume val inventory said
+"138 assume val declarations across 20 modules", with its own note that
+the table was already stale when written. Neither figure matched 82.
+Both are now corrected to **82 across 18 modules**, each with the
+counting command printed beside the number so the next reader re-runs it
+instead of quoting it. Which landings closed the difference was not
+chased; the per-module tables in `current-state.md` stay as the
+2026-08-09 snapshot and are labelled as such.
 
 No `--lax` and no `admit` appear anywhere in the F\* tree, as iron rule
 10 requires.
@@ -324,14 +339,21 @@ the audit before it is evidence about the code.
    The 824 invocations are hand-placed, one per headline theorem. A
    theorem nobody wrote a `#print axioms` line for is not in the 817. The
    count is a project convention, not a completeness guarantee.
-4. **The Lean CI gate does not run an axiom audit.**
-   `.github/workflows/verify-lean4.yml` runs `lake build L4Factoidal` and
+4. **FIXED 2026-09-03 — the Lean CI gate did not run an axiom audit.**
+   `.github/workflows/verify-lean4.yml` ran `lake build L4Factoidal` and
    nothing else. A `sorryAx` breaks that build, because Lean emits it
    with an elaboration ERROR (the 2026-08-31 finding in
    `docs/20260831-lean-ci-gate.md`). A deliberate user `axiom` would NOT
    break it — it would compile, and its appearance in a `#print axioms`
-   line is an informational message, not a failure. Today's tree is clean;
-   the gate would not catch tomorrow's regression.
+   line is an informational message, not a failure. The workflow now
+   runs `tools/lean-hygiene-audit.py --build-log …` as a second step. It
+   fails on any `sorry`, user `axiom`, `native_decide`, `unsafe` or
+   `@[implemented_by]`, on any `#print axioms` output in the build log
+   naming an axiom other than `propext`, `Classical.choice` and
+   `Quot.sound`, and on any INCREASE in the `partial def` count against
+   `tools/lean-partial-def-baseline.txt` (217 today). It strips comments
+   and string literals before counting, because a raw grep sees 227
+   `partial def` of which 10 are prose.
 5. **Grep cannot see through an import, and the two halves cover
    different things.** The grep counts in the axis-2 table are counts of
    DECLARATIONS in this tree. The `#print axioms` result is what the
@@ -341,14 +363,26 @@ the audit before it is evidence about the code.
    Sixteen of the 217 are in `Harness/`, which is runner plumbing rather
    than library semantics. The table separates them; no weighting is
    claimed beyond that.
-7. **Two Lean runners disagree about RDF/XML and this audit does not
-   resolve it.** `l4w3c` over the RDF 1.1 manifest reports 1031 pass, 0
-   fail (out of 1031), which includes the RDF/XML entries.
-   `l4rdfxml-probe` over the same directory reports 130 pass, 2 fail (out
-   of 132) on eval-isomorphic. Both were run today. The likely cause is
-   that the two apply different comparisons to the same entries, but that
-   was not verified, and until it is, one of the two numbers is wrong
-   about RDF/XML.
+7. **RESOLVED 2026-09-03 — the two Lean runners cover different sets,
+   and both numbers are right.** `l4w3c` reads `manifest.ttl`; its
+   rdf-xml sub-score is 166 pass, 0 fail (out of 166), inside the 1031
+   pass, 0 fail (out of 1031) total. `l4rdfxml-probe` walks the
+   DIRECTORY on purpose, so that it measures the RDF/XML parser without
+   also depending on the Turtle parser to read the manifest (its own
+   header says so). The suite holds 173 `.rdf` files and 166 manifest
+   entries: upstream comments out 7 of them
+   (`third_party/testing/w3c/rdf/rdf11/rdf-xml/manifest.ttl` lines 56,
+   59, 65, 166-169). The probe's 2 failures,
+   `rdfms-xml-literal-namespaces/test001` and `test002`, are two of the
+   7 withdrawn entries; the withdrawn entries' own comment gives the
+   reason — treatment of namespaces that are not visibly used in an XML
+   literal "is implementation dependent". Neither runner counts a skip
+   as a pass. 1031 pass, 0 fail (out of 1031) is the conformance
+   number; 130 pass, 2 fail (out of 132) is a parser probe over the
+   directory including withdrawn entries. ⚠️ Still open: the probe's
+   own report line does not SAY that, and changing it needs an edit to
+   `formal/lean4/Harness/RdfXmlProbe.lean`. The rule is recorded as
+   `skills/counting-coverage/SKILL.md` rule 9.
 8. **Several rows compare different denominators over the same corpus.**
    RDF 1.2 (1363 against 371), OWL (per-type against per-case), XML
    conformance (1862 in profile against 1447 of 2585 with 1138 skips),
@@ -356,11 +390,19 @@ the audit before it is evidence about the code.
    below the F\* one means the runner did not READ those entries; a Lean
    denominator far ABOVE it means the F\* runner selected a subset. In
    neither direction is the ratio a pass rate.
-9. **`tools/lean-shacl-scores.sh` measures nothing on macOS.** It uses
-   `grep -P`, which BSD grep rejects. It prints `?` in the Lean column
-   rather than a wrong number, which is the right failure mode, but on
-   this platform it is not a source. The SHACL Lean figures in this
-   document were taken from the binaries directly.
+9. **FIXED 2026-09-03 — `tools/lean-shacl-scores.sh` measured nothing
+   on macOS.** It used `grep -P`, which BSD grep rejects, printed `?`
+   in every Lean cell and exited 0, so silence read as success. The
+   parse is now `sed -E` and the script exits 1 when any row produces
+   no number. Measured after the fix: SHACL 1.0 core 98 pass, 0 fail
+   (out of 98); SHACL 1.2 core 103 pass, 30 fail (out of 133); SHACL
+   1.2 sparql 22 pass, 3 fail (out of 25); SHACL 1.2 node-expr 140
+   pass, 0 fail (out of 142); SHACL 1.2 rules 88 pass, 0 fail (out of
+   88). ⚠️ The SHACL 1.2 row of the table above says 126 pass, 34 fail
+   (out of 160) from the hand transcription; the script's sum over the
+   same two manifests is 125 pass, 33 fail (out of 158). The difference
+   is not chased here. Hazard #37 in
+   `skills/workflow-gotchas-debugging/SKILL.md`.
 10. **`tools/lean-registry-audit.py` locates theorems; it does not review
     them.** A theorem whose hypothesis restates its conclusion satisfies
     the tool (anti-pattern #29). And its id regex still truncates at a

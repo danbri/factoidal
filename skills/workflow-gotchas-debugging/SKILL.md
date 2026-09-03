@@ -1732,3 +1732,76 @@ comfortable to 2.4 GB to zero while three more agents were dispatched.
    with `TaskStop` first (that tool needs no disk), which frees their output
    files, then delete worktrees. Do not try to diagnose first — the
    diagnosis command is itself what cannot run.
+
+## Hazard #37 — a measurement tool that cannot run on the developer's platform reports silence, and silence reads as success (2026-09-03)
+
+### Symptom
+
+`tools/lean-shacl-scores.sh` printed its table with `?` in every Lean
+cell and exited 0. Nothing in the output said the tool had failed. An
+audit needing SHACL figures had to run the probe binaries by hand and
+transcribe the numbers.
+
+### Root cause
+
+Two defects, and the second is the one that matters.
+
+1. The script parsed the probe's `TOTAL` line with `grep -oP`. `-P`
+   (Perl-compatible regular expressions) is a GNU grep extension. BSD
+   grep, which is the `grep` on macOS, rejects it. Every extraction
+   produced an empty string.
+2. The script had `|| echo "?"` on each extraction and a header saying
+   "Always exits 0 — this reports, it does not gate". So a tool that
+   measured NOTHING exited the same way as a tool that measured
+   everything.
+
+Anti-pattern 30 already required a measurement tool to derive its
+inputs from the repository on every run. This is the other half of the
+same rule: it must also SAY when it walked nothing.
+
+### Detection
+
+Run every measurement tool once on the platform the developer actually
+uses, and check the exit code, not only the output. `echo $?` after
+each. A tool whose only failure signal is a `?` in a column has no
+failure signal.
+
+### The rules
+
+1. **Every measurement tool exits non-zero on an empty walk.** No rows,
+   no files, no parsable output — exit 1 with a message naming what it
+   could not find. Reporting and gating are different jobs; a tool may
+   decline to gate on the SCORES and still must gate on having
+   measured them.
+2. **No GNU-only flags in a tool a developer runs locally.** `grep -P`,
+   `sed -i` without an argument, `readlink -f`, `date -d`. Use
+   `grep -E`, `sed -E`, or `python3`. The macOS versions of these tools
+   are BSD.
+3. **A placeholder is not a result.** `?`, `n/a`, `0/0` and an empty
+   cell must each come with a non-zero exit or a line on stderr naming
+   the cause. A number that is missing is not a zero and not a pass.
+4. **Run the tool on this machine before quoting it.** The corrected
+   script reports SHACL 1.0 core 98 pass, 0 fail (out of 98); SHACL 1.2
+   core 103 pass, 30 fail (out of 133); SHACL 1.2 sparql 22 pass, 3
+   fail (out of 25); SHACL 1.2 node-expr 140 pass, 0 fail (out of 142);
+   SHACL 1.2 rules 88 pass, 0 fail (out of 88).
+
+### The same class, in a second tool the same day
+
+`tools/lean-hygiene-audit.py` was written to fail the Lean CI gate on a
+`sorry`, a user `axiom`, `native_decide`, `unsafe`,
+`@[implemented_by]`, or an increase in the `partial def` count. Its
+first run reported one `sorry` and 184 `partial def` against a measured
+217. Both figures were wrong: the tool's comment-and-string stripper
+treated the Lean character literal `'"'` (in `escapeChar '"'`) as the
+opening of a string, and blanked the next two hundred lines of real
+code. A tool that under-reports looks like good news; check a new
+counting tool against a figure you already trust, and investigate a
+disagreement in EITHER direction before believing the tool. Corrected,
+it reports 0 and 217, which matches.
+
+A raw `grep -c 'partial def'` over the same tree returns 227. Ten of
+those are prose — this project writes "no `sorry`, no `axiom`, no
+`native_decide`, no `partial`" as a header comment on nearly every
+file. Strip comments and string literals before counting anything in
+Lean source.

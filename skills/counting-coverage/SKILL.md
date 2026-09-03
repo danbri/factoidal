@@ -248,6 +248,71 @@ covering two old ones. Both were present. Four items and 1,298 lines
 were already covered; the audit's silence about exactly those cases was
 read as coverage.
 
+## Rule 8 — a prefix is not an identifier
+
+Compare WHOLE identifiers. A matcher that stops at the first
+non-word character reports gaps that do not exist and hides gaps that
+do. When the identifiers come from a specification, keep the
+specification's own list in the tool and report every token that is
+not on it, rather than excluding a bad token by name.
+
+Why (2026-09-03). `tools/lean-registry-audit.py` read OWL 2 RL rule
+ids out of `docs/theorem-registry.md` with `\b(cax|prp|cls|eq|scm|dt)-…\b`.
+`\b` ends a match at a `-`, because `-` is a non-word character. Three
+consequences, all in one tool:
+
+1. `dt-rng-intersect` — a local rule-family name, not a rule — read as
+   the id `dt-rng`, which no Lean theorem names. The tool reported it
+   as a real gap, and the gap went into an audit document as a finding.
+2. `eq-rep-s`, `eq-rep-p` and `eq-rep-o` — three separate rules — all
+   read as one id `eq-rep`. Three rules were counted as one, and the
+   one hit any theorem name containing `eqRep`. That is the same defect
+   pointing the other way: it HID two rules instead of inventing one.
+   Five more non-rules (`cax-eqc`, `cls-int`, `prp-eqp`, `prp-inv`,
+   `prp-rfl`) entered the same way.
+3. An earlier session had patched the symptom by excluding the string
+   `dt-branch` (a git branch name) BY NAME. A name-specific exclusion
+   cannot report its own omissions — rule 4 — so the next bad token
+   arrived unannounced.
+
+Cost: the reported figure was 56 rule ids, 50 named by a Lean theorem,
+1 real gap. The measured figure is **52 rule ids, 47 named by a Lean
+theorem, 5 absent by agreement with the F\* side, 0 real gaps**. The
+tool now reads whole hyphenated tokens, keeps only the 78 rule ids the
+OWL 2 Profiles Recommendation defines, PRINTS the tokens it dropped,
+and matches a Lean theorem by its camel/snake segments rather than by
+substring.
+
+## Rule 9 — two runners over one specification must each say what they cover
+
+When two tools score the same specification and disagree, the
+disagreement is a question about SELECTION before it is a question
+about correctness. Find which files each one opened. Then make both
+names and both report lines say what each covers, so the next reader
+does not read the difference as a regression.
+
+Why (2026-09-03). `l4w3c` scored RDF 1.1 at 1031 pass, 0 fail (out of
+1031), of which rdf-xml is 166 pass, 0 fail (out of 166).
+`l4rdfxml-probe` scored 130 pass, 2 fail (out of 132) on the same
+directory. An audit recorded that one of the two numbers had to be
+wrong about RDF/XML and could not say which.
+
+Neither was wrong, and neither counted a skip as a pass. `l4w3c` reads
+`manifest.ttl`. `l4rdfxml-probe` walks the DIRECTORY on purpose, so
+that it can measure the RDF/XML parser without also depending on the
+Turtle parser to read the manifest — its own header says so. The
+rdf-xml suite has 173 `.rdf` files on disk and 166 manifest entries:
+upstream comments out 7, and the 2 the probe fails
+(`rdfms-xml-literal-namespaces/test001` and `test002`) are two of the
+7. The withdrawn entries' own comment gives the reason — treatment of
+namespaces that are not visibly used in an XML literal "is
+implementation dependent".
+
+So: 1031 pass, 0 fail (out of 1031) is the conformance number.
+130 pass, 2 fail (out of 132) is a parser probe over the directory,
+including entries the Recommendation's own suite withdrew. Both are
+true; only the labels were missing.
+
 ## The checklist before you publish a number
 
 1. Did the tool walk the tree this run?
@@ -260,9 +325,13 @@ read as coverage.
 7. For each newly covered item, does it carry the whole result?
 8. If the number came from comparing names, can it tell a rename from
    an absence? (Usually it cannot — see rule 6c.)
-9. Can you state the method next to the number?
+9. Does every match compare a WHOLE identifier, not a prefix? (Rule 8.)
+10. If another tool scores the same specification, do the two numbers
+    agree; and if they do not, can you name the files each one opened?
+    (Rule 9.)
+11. Can you state the method next to the number?
 
-Nine yes answers, then publish.
+Eleven yes answers, then publish.
 
 ## Related
 
