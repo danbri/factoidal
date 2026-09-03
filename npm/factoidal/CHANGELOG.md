@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-09-03
 
 - The `factoidal` command answers SPARQL against a persisted
   Shardborough store with no native binary. `factoidal inspect STORE`

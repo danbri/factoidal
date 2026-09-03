@@ -1,20 +1,20 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "gitSha": "49f8ca4d70bf57c12fea445611e2b01b067bf6ba",
   "builtAt": "2026-08-26T21:45:40Z",
   "claims": {
     "schema": "1",
-    "statement": "Proved sound with respect to an independent F* formalization of the W3C RDF/RDFS/OWL semantics, under the stated fragment restrictions and the trust surface recorded in docs/theorem-registry.md — never claimed as a complete formally verified implementation of RDF semantics (docs/theorem-registry.md § Calibrated claims).",
+    "statement": "Proved sound with respect to an independent F* formalization of the W3C RDF/RDFS/OWL semantics, under the stated fragment restrictions and the trust surface recorded in docs/theorem-registry.md \u2014 never claimed as a complete formally verified implementation of RDF semantics (docs/theorem-registry.md \u00a7 Calibrated claims).",
     "registry": "docs/theorem-registry.md",
-    "trustSurface": "docs/theorem-registry.md § Trust surface",
-    "notes": "Each item below names the exact theorem/lemma, the F* file that carries it, and the registry section a reader can open to check the claim. This is a summary, not the full registry — read docs/theorem-registry.md for the complete rule-by-rule table, hypothesis provenance, and open findings.",
+    "trustSurface": "docs/theorem-registry.md \u00a7 Trust surface",
+    "notes": "Each item below names the exact theorem/lemma, the F* file that carries it, and the registry section a reader can open to check the claim. This is a summary, not the full registry \u2014 read docs/theorem-registry.md for the complete rule-by-rule table, hypothesis provenance, and open findings.",
     "items": [
       {
         "id": "rho-df-closure-decides",
-        "claim": "The certified six-rule core-RDFS (ρdf) closure (rdfs2/3/5/7/9/11) decides entailment exactly on fragment inputs — its simple-query answers are exactly the entailed consequences.",
+        "claim": "The certified six-rule core-RDFS (\u03c1df) closure (rdfs2/3/5/7/9/11) decides entailment exactly on fragment inputs \u2014 its simple-query answers are exactly the entailed consequences.",
         "theorem": "rho_df_closure_sound, rho_df_closure_decides",
         "file": "formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst",
-        "registrySection": "docs/theorem-registry.md § Layer 3 — the composed regime theorem, rho_df_closure soundness/fragment-preservation rows",
+        "registrySection": "docs/theorem-registry.md \u00a7 Layer 3 \u2014 the composed regime theorem, rho_df_closure soundness/fragment-preservation rows",
         "npmSurface": [
           "coreRdfsClosure",
           "rhoDfClosure",
@@ -27,7 +27,7 @@
         "id": "owl-rl-licensing-truth",
         "claim": "Every OWL 2 RL/RDF engine rule classified [row] emits only input triples or a licensed W3C table-row application (licensing), and every row's conclusion is model-theoretically true given its premises (truth).",
         "file": "formal/fstar/OWL.RL.Spec.fst, OWL.RL.Refinement.fst, OWL.Semantics.fst",
-        "registrySection": "docs/theorem-registry.md § 1 (OWL 2 RL/RDF — licensing and truth, per engine rule)",
+        "registrySection": "docs/theorem-registry.md \u00a7 1 (OWL 2 RL/RDF \u2014 licensing and truth, per engine rule)",
         "npmSurface": [
           "owlClosure",
           "rdfsPlusClosure",
@@ -36,21 +36,21 @@
           "owlIsConsistent",
           "owlEntails"
         ],
-        "status": "proved per-rule; see §1 table for per-row status and PARKED clash-row exceptions"
+        "status": "proved per-rule; see \u00a71 table for per-row status and PARKED clash-row exceptions"
       },
       {
         "id": "rdfs-entailment-13-rows",
-        "claim": "11 of 13 RDF 1.1 Semantics §9 RDFS entailment rows have a shipping engine rule with both licensing and truth proved; the remaining 2 (rdfs6, rdfs10) are proved at the spec-predicate level but the shipping engine's reflexivity over-approximation for them is correctly flagged unsound (finding RS-1), not silently shipped as sound.",
+        "claim": "11 of 13 RDF 1.1 Semantics \u00a79 RDFS entailment rows have a shipping engine rule with both licensing and truth proved; the remaining 2 (rdfs6, rdfs10) are proved at the spec-predicate level but the shipping engine's reflexivity over-approximation for them is correctly flagged unsound (finding RS-1), not silently shipped as sound.",
         "file": "formal/fstar/RDF.Entailment.RDFS.Spec.fst, RDF.Entailment.RDFS.Refinement.fst, RDF.Entailment.RDFS.ModelTheory.fst",
-        "registrySection": "docs/theorem-registry.md § 2 (RDFS entailment — 13 rows)",
+        "registrySection": "docs/theorem-registry.md \u00a7 2 (RDFS entailment \u2014 13 rows)",
         "status": "11/13 proved sound+true; 2/13 truth-only, engine unsoundness flagged not hidden"
       },
       {
         "id": "sparql-rdfs-regime-exact-answer",
-        "claim": "The SPARQL evaluator's answer set over the ρdf closure IS the RDFS entailment regime's answer set, on fragment inputs, for ground answers (soundness + completeness, unconditional).",
+        "claim": "The SPARQL evaluator's answer set over the \u03c1df closure IS the RDFS entailment regime's answer set, on fragment inputs, for ground answers (soundness + completeness, unconditional).",
         "theorem": "theorem_rdfs_regime_bgp_exact_answer, theorem_rdfs_regime_ask_query_complete",
         "file": "formal/fstar/SPARQL11.EntailmentRegime.RDFS.fst",
-        "registrySection": "docs/theorem-registry.md § 5 (SPARQL algebra refinement, the query rung) § Layer 3",
+        "registrySection": "docs/theorem-registry.md \u00a7 5 (SPARQL algebra refinement, the query rung) \u00a7 Layer 3",
         "npmSurface": [
           "query (options.entail = 'RDFS')"
         ],
@@ -58,18 +58,18 @@
       },
       {
         "id": "streaming-multichunk",
-        "claim": "N-Quads streaming parse over ANY list of input chunks equals a batch parse of their concatenation (stream_parse chunks == batch_parse (concat_all chunks)) — the machine-checked answer to whether chunked/streamed parsing of arbitrarily large files agrees with parsing the whole file at once.",
+        "claim": "N-Quads streaming parse over ANY list of input chunks equals a batch parse of their concatenation (stream_parse chunks == batch_parse (concat_all chunks)) \u2014 the machine-checked answer to whether chunked/streamed parsing of arbitrarily large files agrees with parsing the whole file at once.",
         "theorem": "theorem_stream_eq_batch",
         "file": "formal/fstar/RDF.NQuads.Streaming.fst",
-        "registrySection": "docs/theorem-registry.md § 7 (G4/M1 parser round-trip theorems) — Task #48/#402 MULTI-CHUNK STREAMING THEOREM, 2026-08-11",
+        "registrySection": "docs/theorem-registry.md \u00a7 7 (G4/M1 parser round-trip theorems) \u2014 Task #48/#402 MULTI-CHUNK STREAMING THEOREM, 2026-08-11",
         "status": "proved"
       },
       {
         "id": "srj-n-row",
-        "claim": "SPARQL Results JSON serialisation (serialise_response_json) equals the fixed SRJ shape (head/vars block, comma-joined row texts) for ANY variable list and ANY row list of ANY length N — not just the 0/1/2-row cases spot-checked before.",
+        "claim": "SPARQL Results JSON serialisation (serialise_response_json) equals the fixed SRJ shape (head/vars block, comma-joined row texts) for ANY variable list and ANY row list of ANY length N \u2014 not just the 0/1/2-row cases spot-checked before.",
         "theorem": "lemma_srj_n_rows",
         "file": "formal/fstar/SPARQL.Protocol.RoundTrip.fst",
-        "registrySection": "docs/theorem-registry.md § 7 (G4/M1 parser round-trip theorems) — G4 M4 N-ROW symbolic SRJ theorem, 2026-08-11",
+        "registrySection": "docs/theorem-registry.md \u00a7 7 (G4/M1 parser round-trip theorems) \u2014 G4 M4 N-ROW symbolic SRJ theorem, 2026-08-11",
         "npmSurface": [
           "query (SELECT, output SPARQL Results JSON)"
         ],
@@ -77,10 +77,10 @@
       },
       {
         "id": "symbolic-iri-roundtrip",
-        "claim": "Parsing the printed N-Triples form of a SYMBOLIC IRI term (any ASCII codepoint list of IRI-safe characters, no escapes, no controls) recovers the original term exactly — proved against the real serializer, not a transcription.",
+        "claim": "Parsing the printed N-Triples form of a SYMBOLIC IRI term (any ASCII codepoint list of IRI-safe characters, no escapes, no controls) recovers the original term exactly \u2014 proved against the real serializer, not a transcription.",
         "theorem": "lemma_term_iri_round_trip_build_string",
         "file": "formal/fstar/RDF.NTriples.RoundTrip.fst",
-        "registrySection": "docs/theorem-registry.md § 7 (G4/M1 parser round-trip theorems) — G4 M1 SYMBOLIC IRI round-trip theorem, 2026-08-11",
+        "registrySection": "docs/theorem-registry.md \u00a7 7 (G4/M1 parser round-trip theorems) \u2014 G4 M1 SYMBOLIC IRI round-trip theorem, 2026-08-11",
         "npmSurface": [
           "parse",
           "serialize"
@@ -92,10 +92,11 @@
         "claim": "The FastString byte-primitive migration (steps 0-6) is complete: zero assume vals in the FastString family except the one documented CharBoundary primitive (unsafe_char_of_d7ff); the equivalence corpus is IDENTICAL between native OCaml and Node (js_of_ocaml) execution.",
         "measurement": "93846 pass, 962 expected-fail, 0 unexpected fail (out of 94808), verified 3 ways (fresh Node run, fresh same-source native compile, prior recorded number)",
         "file": "formal/fstar/Parser.FastString.fst, Parser.FastString.Spec.fst",
-        "registrySection": "docs/theorem-registry.md § 7 (G4/M1 parser round-trip theorems) — FastString migration COMPLETE, steps 0-6, 2026-08-11",
+        "registrySection": "docs/theorem-registry.md \u00a7 7 (G4/M1 parser round-trip theorems) \u2014 FastString migration COMPLETE, steps 0-6, 2026-08-11",
         "status": "complete, measured equivalent native+Node"
       }
     ],
-    "notClaimed": "A complete formally verified implementation of RDF semantics. See docs/theorem-registry.md § Trust surface for the assume-val count (~146, mostly COTTAS/HDT storage I/O per iron rule #11), the extraction-step caveat (fstar.exe --codegen OCaml is not itself re-verified), and the rdf-mt / W3C conformance suites this registry relies on as the independent runtime check. CLAUDE.md's standing qualifier applies: parser and algebra spec verified in F*; the on-disk backend carries unverified OCaml-side optimization layers being migrated back to F*."
-  }
+    "notClaimed": "A complete formally verified implementation of RDF semantics. See docs/theorem-registry.md \u00a7 Trust surface for the assume-val count (~146, mostly COTTAS/HDT storage I/O per iron rule #11), the extraction-step caveat (fstar.exe --codegen OCaml is not itself re-verified), and the rdf-mt / W3C conformance suites this registry relies on as the independent runtime check. CLAUDE.md's standing qualifier applies: parser and algebra spec verified in F*; the on-disk backend carries unverified OCaml-side optimization layers being migrated back to F*."
+  },
+  "note": "The F* engine bundle in this package was built at gitSha 49f8ca4d7 (2026-08-26T21:45:40Z) and is unchanged since; the version member mirrors the package version. The Lean engine's own provenance is in l4-assets/version.json."
 }
