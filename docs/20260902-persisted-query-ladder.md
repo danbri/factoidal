@@ -119,9 +119,9 @@ same queries.
 | Query (`third_party/data/ukparliament/sparql/main/`) | Time | Rows | Path |
 | --- | --- | --- | --- |
 | enabling-legislation listing (5 OPTIONALs) | 0.05 s | 0 | 1 shard, 8 predicates named |
-| enabling-legislation first-letter counts (BIND, GROUP BY) | 1,125 s (39 s warm) → 0 s after 1faed93d0 | 0 | full manifest, 309 blocks → 1 shard |
+| enabling-legislation first-letter counts (BIND, GROUP BY) | 1,125 s (39 s warm) → 0 s after cf36c8e90 | 0 | full manifest, 309 blocks → 1 shard |
 | legislatures, organisations, procedures, step collections, steps by type (6 queries) | 0.03 to 0.05 s | 0 or 1 | 1 to 2 shards |
-| work packages current, count (MINUS with a property path) | 85 s (46 s warm) → 0 s after 1faed93d0 | 1 | full manifest → 5 shards |
+| work packages current, count (MINUS with a property path) | 85 s (46 s warm) → 0 s after cf36c8e90 | 1 | full manifest → 5 shards |
 | work packages current, listing | 43 s | 0 | full manifest |
 
 What this rung teaches:
@@ -137,7 +137,7 @@ What this rung teaches:
   6,134 s went" below has the method).
 - **The constant-predicate collector refused BIND and property paths**, so
   two queries read all 309 blocks (356 MB) and evaluated on the reference
-  path. Since commit 1faed93d0 (2026-09-03) BIND with a backend-local
+  path. Since commit cf36c8e90 (2026-09-03) BIND with a backend-local
   expression and sequence, alternative and inverse paths over constant IRIs
   are collectable; `*`, `?`, `+` and negated property sets are not (the
   first two pair every node with itself, so restricting the dataset drops
