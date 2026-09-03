@@ -101,10 +101,11 @@ open).
 
 `IBK4`, the quad-aware block (a graph column in every row, a header graph-set
 summary, the same PTD1 dictionary), is defined in spec section 6.1.1 and
-proved in `Storage/IndexedBlockWireV4Theorems.lean` (2026-09-03). It is a
-codec only so far: the packer, the manifest (`SBM7`), the graph-aware sidecars
-and the planner still work on IBK3, so no `l4block-*` command writes or reads
-an IBK4 artifact yet.
+proved in `Storage/IndexedBlockWireV4Theorems.lean` (2026-09-03). `SBM7` is
+its manifest (spec section 6.3.1). `l4block-shard-pack ... ibk4` writes a
+quad generation, `l4block-shard-activate` admits one, and
+`l4block-quad-query` runs SPARQL over it; the graph-aware index sidecars are
+not written yet.
 
 ## Other CLIs, by purpose
 
@@ -117,6 +118,7 @@ an IBK4 artifact yet.
 | Convert an IBK2 block to IBK3 | `l4block-id-v3-convert INPUT.ibk2 OUTPUT-DIR PREDICATE-IRI` |
 | Session of many SELECTs over one shard | `l4block-shard-merkle-session SHARD-DIR < queries.rq` |
 | Pack a quad generation (IBK4, SBM7) | `l4block-shard-pack INPUT OUTPUT-DIR ibk4` (`.trig`, `.nq`, `.ttl`) |
+| Query an activated quad generation | `l4block-quad-query COLLECTION-ROOT --query SELECT...` |
 | Superseded formats (BLK0, IBK1, IBK2) | `l4block-pack`, `l4block-id-pack`, `l4block-id-v2-pack` and their `*-file-query` / `*-diff` partners |
 
 `l4block-shard-merkle-query SHARD-DIR --explain|--explain-json|--explain-analyze` prints the physical plan and, with `-analyze`, the executed
@@ -135,6 +137,7 @@ l4block-shard-pack tests/local/data/quad_sample.trig /tmp/store/gen-1 ibk4
 # format=quad-ibk4-ptd1-merkle-v0 syntax=trig quads=6 blocks=2 graphs=3
 # manifest=manifest.sbm2 wire-version=7 blank-node-scope=<source SHA-256 hex>
 l4block-shard-activate /tmp/store gen-1
+l4block-quad-query /tmp/store --query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
 ```
 
 What works:
@@ -147,24 +150,82 @@ What works:
 - Activation: full SHA-256, rebuilt Merkle leaves and root, an
   `IndexedBlockWireV4.decode` of every artifact, and a check that the block's
   graph set equals the manifest entry's summary.
+- **SPARQL through `l4block-quad-query`** (landed 2026-09-03; see the next
+  subsection).
 - `tools/blockengine-ibk4-quad-smoke.sh` and
   `tools/blockengine-ibk4-w3c-trig-smoke.sh` (241 pass, 0 fail out of 241
   positive W3C TriG 1.1 tests).
 
 What does NOT work yet:
 
-- **No query path.** `l4block-id-v3-query` refuses an SBM7/IBK4 generation by
-  layout, before opening an artifact: an IBK3 reader would read 20-byte quad
-  rows as 16-byte triple rows. `GRAPH <iri>` planning, entry selection from
-  the manifest graph sets, and the in-block graph filter are the next step.
 - **No index sidecars.** SRI2, OLI2 and TLI1 are keyed by a block-local ID
-  with no graph dimension, so they cannot describe an IBK4 artifact. The
-  graph-aware sidecars are the step after the query path.
+  with no graph dimension, so they cannot describe an IBK4 artifact, and SBM7
+  admits none. Every selected block is therefore read whole; there is no
+  selective row access path. The graph-aware sidecars are the next piece of
+  work.
 - **No streaming pack.** The IBK4 path parses the whole input file before it
   writes a block, because an IBK4 block commits its graph-set summary in the
   header and a batch boundary would split a predicate across blocks with
   partial graph sets. The IBK3 path is still the streaming one.
 - **No compaction and no delta log.** There is no compacted SBM7 layout label.
+
+### Querying an IBK4 generation
+
+`l4block-quad-query COLLECTION-ROOT --query SELECT...` opens the activated
+generation through `CURRENT`, decodes the blocks the planner selects, builds
+the RDF DATASET they denote (default graph = the rows whose graph column is
+`none`, one named graph per graph name), and evaluates the query with
+`env.dataset` set to that dataset. `GRAPH <iri>`, `GRAPH ?g`, default-graph
+patterns, `FROM`, `FROM NAMED`, SELECT, ASK and CONSTRUCT all work.
+
+It is a SIBLING of `l4block-id-v3-query`, not an arm of it, and
+`l4block-id-v3-query` still refuses SBM7 by layout. The reason is structural:
+every selective access path in the IBK3 tool is driven by an SRI2, OLI2 or
+TLI1 sidecar, and SBM7 admits none; and the IBK3 tool threads a `List Triple`
+plus a resolved DLOG overlay, where an IBK4 generation yields a dataset and
+carries no delta log. Revisit the split when the graph-aware sidecars land.
+
+**Block selection** (`ShardManifest.quadEntriesForQuery`) is what makes this
+less than a whole-store read. An entry survives unless one of two collectors
+excludes it:
+
+| Collector | Excludes an entry when | Gives up (keeps everything) when |
+| --- | --- | --- |
+| `queryQuadConstantPredicates?` | the entry's predicate is not one the pattern names | a triple pattern or path step has a variable predicate; a `{}` or empty BGP under a `GRAPH` clause; a non-`backendLocal` FILTER / OPTIONAL / BIND expression; a sub-SELECT, SERVICE, LATERAL or VALUES |
+| `queryGraphNames?` | the entry's manifest `graphSet` meets none of the names the pattern reads | `GRAPH ?v`; the query carries `FROM` / `FROM NAMED`; the same expression and pattern forms as above |
+
+Both are refused outright unless `Query.expressionsOutsidePatternExistsFree`
+holds, because section 18.6 evaluates an `EXISTS` in the projection, a
+GROUP BY key, a HAVING condition or an ORDER BY condition against the ACTIVE
+GRAPH, and neither collector reads those positions (the same guard
+`l4block-id-v3-query` carries,
+[issue 638](https://github.com/danbri/factoidal/issues/638)).
+
+Two rules that look small and are not:
+
+- `GRAPH <g> { }` reads no row but still asks whether the dataset names `g`,
+  so the graph collector adds `<g>` itself, and the predicate collector gives
+  up on an empty group under a `GRAPH` clause. Without both, an entry that
+  puts `g` into the dataset could be skipped and the query would answer zero
+  rows instead of one.
+- A query with `FROM` gets no graph-based selection at all. Section 13.2
+  rebuilds the default graph out of the `FROM` graphs, so a default-graph
+  pattern under `FROM <g>` reads `<g>` and not the default graph.
+
+The mode line names the path:
+
+```
+l4block-quad-query shards=1 open-mode=ibk4-full-manifest(1) graphs=2 logical-read-bytes=554 fetched-bytes=554
+```
+
+`ibk4-full-manifest` is the indexed backend path
+(`StoreDataset.indexedDatasetBackend`). `ibk4-full-manifest-reference` is the
+same answer through the reference evaluator, taken when the generation has a
+graph whose NAME is a blank node: `materialiseDatasetBackend` keeps only
+graphs with a well-formed IRI name, so the delegating arms of the backend
+seam would lose such a graph.
+
+Gate: `tools/blockengine-ibk4-quad-smoke.sh`.
 
 ## Browser and WASM path
 

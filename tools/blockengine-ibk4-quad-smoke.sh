@@ -55,6 +55,82 @@ cat "$run_dir/query.txt"
 test "$query_rc" -eq 1
 grep -q 'rejected: this generation is SBM7 with IBK4 quad blocks' "$run_dir/query.txt"
 
+# ---------------------------------------------------------------------------
+# SPARQL over the activated SBM7 generation (l4block-quad-query).
+#
+# Each case checks the row count AND the number of blocks the planner opened.
+# Block selection is `ShardManifest.quadEntriesForQuery`: the manifest graph
+# set skips a block a constant-IRI GRAPH clause cannot reach, and the constant
+# predicates of the pattern skip a block the query never names.
+# ---------------------------------------------------------------------------
+quad_query() {
+  "$bin/l4block-quad-query" "$run_dir/store" --query "$1"
+}
+
+# GRAPH <g1>: two rows, and only the `name` block carries g1, so one shard.
+quad_query 'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }' \
+  >"$run_dir/q-graph-g1.txt"
+cat "$run_dir/q-graph-g1.txt"
+grep -q '^l4block-quad-query shards=1 open-mode=ibk4-full-manifest(1) ' "$run_dir/q-graph-g1.txt"
+grep -q '^l4block-quad-query rows=2 ' "$run_dir/q-graph-g1.txt"
+
+# GRAPH ?g: four rows over both named graphs, and every row carries ?g. A
+# variable graph establishes no restriction, so both blocks are opened.
+quad_query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }' >"$run_dir/q-graph-var.txt"
+cat "$run_dir/q-graph-var.txt"
+grep -q '^l4block-quad-query shards=2 open-mode=ibk4-full-manifest(2) ' "$run_dir/q-graph-var.txt"
+grep -q '^l4block-quad-query rows=4 ' "$run_dir/q-graph-var.txt"
+grep -q 'http://example.org/g1' "$run_dir/q-graph-var.txt"
+grep -q 'http://example.org/g2' "$run_dir/q-graph-var.txt"
+grep -q '("g", ' "$run_dir/q-graph-var.txt"
+
+# A default-graph pattern sees the two default-graph quads and neither named
+# graph.
+quad_query 'SELECT * WHERE { ?s ?p ?o }' >"$run_dir/q-default.txt"
+cat "$run_dir/q-default.txt"
+grep -q '^l4block-quad-query rows=2 ' "$run_dir/q-default.txt"
+grep -q 'http://example.org/alice' "$run_dir/q-default.txt"
+grep -vq 'http://example.org/shared' "$run_dir/q-default.txt" || \
+  { echo 'default-graph query leaked a named-graph row'; exit 1; }
+
+# FROM NAMED restricts the dataset to g1, so GRAPH ?g answers two rows.
+quad_query 'SELECT * FROM NAMED <http://example.org/g1> WHERE { GRAPH ?g { ?s ?p ?o } }' \
+  >"$run_dir/q-from-named.txt"
+cat "$run_dir/q-from-named.txt"
+grep -q '^l4block-quad-query rows=2 ' "$run_dir/q-from-named.txt"
+grep -q 'http://example.org/g1' "$run_dir/q-from-named.txt"
+grep -vq 'http://example.org/g2' "$run_dir/q-from-named.txt" || \
+  { echo 'FROM NAMED query leaked a graph the dataset does not name'; exit 1; }
+
+# `ex:knows` is in the default graph only, so exactly one block is opened.
+quad_query 'SELECT * WHERE { ?s <http://example.org/knows> ?o }' \
+  >"$run_dir/q-one-block.txt"
+cat "$run_dir/q-one-block.txt"
+grep -q '^l4block-quad-query shards=1 open-mode=ibk4-full-manifest(1) ' "$run_dir/q-one-block.txt"
+grep -q '^l4block-quad-query rows=1 ' "$run_dir/q-one-block.txt"
+
+# `GRAPH <g1> { }` reads no row but still asks whether the dataset names g1,
+# so the block that carries g1 must not be skipped.
+quad_query 'SELECT * WHERE { GRAPH <http://example.org/g1> { } }' \
+  >"$run_dir/q-graph-empty.txt"
+cat "$run_dir/q-graph-empty.txt"
+grep -q '^l4block-quad-query shards=1 ' "$run_dir/q-graph-empty.txt"
+grep -q '^l4block-quad-query rows=1 ' "$run_dir/q-graph-empty.txt"
+
+# FILTER NOT EXISTS is decided by the reference semantics against
+# `env.dataset`, which is the same generation the backend answers from
+# (anti-pattern 34).
+quad_query 'SELECT * WHERE { ?s ?p ?o FILTER NOT EXISTS { ?s <http://example.org/knows> ?x } }' \
+  >"$run_dir/q-not-exists.txt"
+cat "$run_dir/q-not-exists.txt"
+grep -q '^l4block-quad-query shards=2 ' "$run_dir/q-not-exists.txt"
+grep -q '^l4block-quad-query rows=0 ' "$run_dir/q-not-exists.txt"
+
+# An unnamed graph is not a graph of the dataset.
+quad_query 'ASK WHERE { GRAPH <http://example.org/g9> { } }' >"$run_dir/q-absent.txt"
+cat "$run_dir/q-absent.txt"
+grep -q '^l4block-quad-query boolean=false' "$run_dir/q-absent.txt"
+
 # A manifest graph-set summary that the block header does not have is refused.
 # The block bytes, their digests and their Merkle roots are untouched: only the
 # manifest's copy of the graph name changes.

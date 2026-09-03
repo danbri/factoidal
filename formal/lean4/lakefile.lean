@@ -193,6 +193,11 @@ extern_lib libl4blockhost pkg := do
 @[default_target] lean_exe «l4block-predicate-shards» where root := `Harness.PredicateBlocksProbe
 @[default_target] lean_exe «l4block-predicate-query» where root := `Harness.PredicateBlocksQuery
 @[default_target] lean_exe «l4block-shard-pack» where root := `Harness.PredicateShardPack
+-- SPARQL over an activated SBM7 generation of IBK4 quad blocks: the quad
+-- sibling of `l4block-id-v3-query`, which reads IBK3 generations and refuses
+-- SBM7 by layout. `GRAPH <iri>`, `GRAPH ?g`, `FROM` / `FROM NAMED` and
+-- default-graph patterns all run against the dataset the blocks denote.
+@[default_target] lean_exe «l4block-quad-query» where root := `Harness.QuadQuery
 @[default_target] lean_exe «l4block-shard-query» where root := `Harness.ShardManifestQuery
 @[default_target] lean_exe «l4block-shard-session» where root := `Harness.ShardManifestSession
 

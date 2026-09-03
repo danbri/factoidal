@@ -15,10 +15,21 @@ Option B is landing in steps.
   graphs; `l4block-shard-activate` verifies each artifact and checks its graph
   set against the manifest entry; `l4block-id-v3-query` refuses an IBK4
   generation by layout.
-* Not implemented: the query path (`GRAPH <iri>` planning, entry selection
-  from the manifest graph sets, the in-block graph filter), the graph-aware
-  index sidecars, a streaming TriG pack, and compaction of an IBK4
-  generation.
+* Step 3, 2026-09-03: the query path. `l4block-quad-query COLLECTION-ROOT
+  --query ...` (`Harness/QuadQuery.lean`) opens an activated SBM7 generation,
+  decodes the selected IBK4 blocks, builds the RDF dataset they denote and
+  evaluates the query with `env.dataset` set, so `GRAPH <iri>`, `GRAPH ?g`,
+  `FROM`, `FROM NAMED` and default-graph patterns all work. Entry selection is
+  `ShardManifest.quadEntriesForQuery`: the manifest graph set skips a block a
+  constant-IRI `GRAPH` clause cannot reach, and the constant-predicate
+  collector — widened to descend through a `GRAPH` clause — skips a block the
+  query never names. `l4block-id-v3-query` keeps refusing SBM7 by layout; the
+  two tools are siblings because SBM7 admits no index sidecar and no delta
+  log, which is what the IBK3 tool's structure is built around.
+* Not implemented: the graph-aware index sidecars (so every selected block is
+  read whole — there is no selective row access path inside an IBK4 block),
+  the in-block graph filter those sidecars would drive, a streaming TriG pack,
+  and compaction of an IBK4 generation.
 
 ## Why now
 
@@ -165,11 +176,16 @@ landed 2026-09-03 (see the status line at the head of this file).
 3. The graph-aware index sidecars. SRI2, OLI2 and TLI1 are keyed by a
    block-local ID with no graph dimension. Each needs a graph dimension, or a
    separate graph-postings sidecar, with its own wire version and round-trip
-   theorem.
-4. The query path: `GRAPH <iri>` entry selection from the manifest graph sets,
-   `GRAPH ?g` binding, default-graph patterns, `FROM` and `FROM NAMED`, and
-   the in-block graph filter, with the completeness argument for entry
-   selection written down.
+   theorem. **Still open**, and it is what bounds the query path below: with
+   no sidecar there is no selective row access, so every selected block is
+   read whole.
+4. **Landed 2026-09-03.** The query path: `GRAPH <iri>` entry selection from
+   the manifest graph sets, `GRAPH ?g` binding, default-graph patterns, `FROM`
+   and `FROM NAMED`. `Harness/QuadQuery.lean` and the two collectors in
+   `Storage/ShardManifest.lean` (`queryGraphNames?`,
+   `queryQuadConstantPredicates?`), whose exclusion argument is written down
+   in their doc comments and exercised by `#guard`s. The in-block graph filter
+   waits on item 3.
 5. The streaming TriG pack, so an IBK4 generation is not bounded by input
    size. A batch boundary splits a predicate across blocks with partial graph
    sets, so it needs either a graph-set pre-pass or a manifest that admits

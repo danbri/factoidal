@@ -523,6 +523,143 @@ def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
     nativeConstantPredicates? query.pattern
   else none
 
+/-! ## SBM7 entry selection: which quad blocks a query can skip
+
+An SBM7 generation holds one IBK4 block per predicate, and that block carries
+that predicate's rows for EVERY graph of the dataset. Two independent facts
+about a query therefore let a planner drop an entry without reading a row:
+
+* the predicates the pattern reads, which `nativeConstantPredicates?` above
+  already collects for the IBK3 planner, and
+* the graph names the pattern reads, which each entry's `graphSet` answers
+  from the manifest alone. Specification section 6.3.1 fixes that the manifest
+  summary carries graph NAMES rather than the block's graph column values, and
+  activation checked the manifest summary against the block header
+  (`Harness/ShardActivate.lean`, `verifyQuadEntry`).
+
+Both collectors are conservative. `none` means "no restriction established",
+never "no answers": the caller then opens every entry. -/
+
+/-- The graph names a pattern can read, given the graph name active where the
+    pattern appears.
+
+    `none` is "cannot be established": a `GRAPH ?v`, a sub-SELECT, SERVICE,
+    LATERAL, VALUES, or a FILTER / OPTIONAL / BIND expression that is not
+    `Expr.backendLocal` — such an expression may carry an `EXISTS`, which
+    reads triples through `EvalEnv.dataset` and so reads graphs this
+    collector cannot see.
+
+    A `GRAPH <iri> { ... }` contributes its own name even when its body reads
+    no triple. Section 18.6 gives `GRAPH <g> { }` one solution when `<g>`
+    names a graph of the dataset and none when it does not, so an entry whose
+    rows put `<g>` into the materialised dataset must not be dropped. -/
+def graphsReadFrom (active : GraphName) : QueryPattern → Option (List GraphName)
+  | .bgp patterns => if patterns.isEmpty then some [] else some [active]
+  | .propertyPath _ _ _ => some [active]
+  | .empty => some []
+  | .join left right
+  | .union left right
+  | .minus left right => do
+      let l ← graphsReadFrom active left
+      let r ← graphsReadFrom active right
+      some (l ++ r)
+  | .leftJoin left right cond =>
+      if cond.backendLocal then do
+        let l ← graphsReadFrom active left
+        let r ← graphsReadFrom active right
+        some (l ++ r)
+      else none
+  | .filter cond pattern =>
+      if cond.backendLocal then graphsReadFrom active pattern else none
+  | .bind expression _ pattern =>
+      if expression.backendLocal then graphsReadFrom active pattern else none
+  | .graph (.iri name) pattern => do
+      let inner ← graphsReadFrom (.iri name) pattern
+      some (if inner.contains (.iri name) then inner else .iri name :: inner)
+  | _ => none
+
+/-- The graph names a whole query reads. Outside a `GRAPH` clause the active
+    graph is the default graph, so that is the seed.
+
+    Two guards. `Query.expressionsOutsidePatternExistsFree` is the same
+    EXISTS guard `queryNativeConstantPredicates?` carries: section 18.6
+    evaluates an `EXISTS` in the projection, a GROUP BY key, a HAVING
+    condition or an ORDER BY condition against the ACTIVE GRAPH, and
+    `graphsReadFrom` reads only `query.pattern`. And a query carrying `FROM` /
+    `FROM NAMED` gets no graph-based selection at all: section 13.2 rebuilds
+    the default graph out of the `FROM` graphs, so a default-graph pattern
+    under a `FROM <g>` reads `<g>` and not `GraphName.defaultGraph`. Modelling
+    that here would duplicate `applyDataset`; refusing the selection costs
+    only the reads it would have skipped. -/
+def queryGraphNames? (query : Query) : Option (List GraphName) :=
+  if query.expressionsOutsidePatternExistsFree && query.dataset.isEmpty then
+    graphsReadFrom .defaultGraph query.pattern
+  else none
+
+/-- `nativeConstantPredicates?` widened for IBK4. It descends through a
+    `GRAPH` clause, constant or variable: an IBK4 block holds one predicate
+    across every graph, so selecting entries by predicate does not restrict
+    WHICH graphs the opened entries carry, and the soundness induction of
+    `nativeConstantPredicates?` goes through unchanged with the active graph
+    as a parameter.
+
+    Two arms are NARROWER than the IBK3 collector: an empty BGP and the empty
+    group pattern give `none` where the IBK3 collector gives `some []`. Under
+    a `GRAPH` clause those read no triple but still observe whether the
+    dataset names a graph, and a predicate-selected entry set can leave that
+    graph out of the materialised dataset. -/
+def quadNativeConstantPredicates? : QueryPattern → Option (List WfIri)
+  | .bgp patterns =>
+      if patterns.isEmpty then none else
+      patterns.foldr (fun pattern rest => do
+        let predicates ← rest
+        match pattern.p with
+        | .iri predicate => some (predicate :: predicates)
+        | _ => none) (some [])
+  | .join left right
+  | .union left right
+  | .minus left right => do
+      let l ← quadNativeConstantPredicates? left
+      let r ← quadNativeConstantPredicates? right
+      some (l ++ r)
+  | .leftJoin left right cond =>
+      if cond.backendLocal then do
+        let l ← quadNativeConstantPredicates? left
+        let r ← quadNativeConstantPredicates? right
+        some (l ++ r)
+      else none
+  | .filter condition pattern =>
+      if condition.backendLocal then quadNativeConstantPredicates? pattern else none
+  | .bind expression _ pattern =>
+      if expression.backendLocal then quadNativeConstantPredicates? pattern else none
+  | .graph _ pattern => quadNativeConstantPredicates? pattern
+  | .propertyPath _ path _ => constantPathPredicates? path
+  | _ => none
+
+/-- The query-level form, under the same EXISTS guard as
+    `queryNativeConstantPredicates?`. -/
+def queryQuadConstantPredicates? (query : Query) : Option (List WfIri) :=
+  if query.expressionsOutsidePatternExistsFree then
+    quadNativeConstantPredicates? query.pattern
+  else none
+
+/-- The IBK4 entries a query can read, in manifest order.
+
+    An entry survives unless a collector excludes it, so a `none` from either
+    collector keeps every entry that collector could have excluded. An invalid
+    manifest selects nothing, as `selectAll` does. -/
+def quadEntriesForQuery (manifest : Manifest) (query : Query) : List Entry :=
+  if !valid manifest then [] else
+  let predicates := queryQuadConstantPredicates? query
+  let graphs := queryGraphNames? query
+  manifest.entries.filter fun entry =>
+    (match predicates with
+     | none => true
+     | some wanted => wanted.contains entry.predicate) &&
+    (match graphs with
+     | none => true
+     | some wanted => entry.graphSet.any fun name => wanted.contains name)
+
 /-- The field widths in SBM0.  Oversized manifests are refused rather than
     being truncated into an ambiguous byte stream. -/
 def fitsU32 (n : Nat) : Bool := n < 4294967296
@@ -1123,5 +1260,114 @@ Parliament "work packages current" count query. -/
   (.propertyPath (.var "s") (.sequence (.iri sampleOtherPredicate)
     (.iri samplePredicate)) (.var "o")))
   == some [samplePredicate, sampleOtherPredicate, samplePredicate])
+
+/-! ## SBM7 entry selection -/
+
+private def sampleG1 : WfIri := ⟨"https://example.test/g1", by decide⟩
+private def sampleG2 : WfIri := ⟨"https://example.test/g2", by decide⟩
+
+private def sampleTp : TriplePattern :=
+  { s := .var "s", p := .iri samplePredicate, o := .var "o" }
+private def sampleOtherTp : TriplePattern :=
+  { s := .var "s", p := .iri sampleOtherPredicate, o := .var "o" }
+private def sampleVarTp : TriplePattern :=
+  { s := .var "s", p := .var "p", o := .var "o" }
+
+/-! A pattern outside a `GRAPH` clause reads the default graph. -/
+#guard queryGraphNames? (mkQuery (.select .all) (.bgp [sampleVarTp]))
+  == some [GraphName.defaultGraph]
+
+/-! `GRAPH <g1> { ... }` reads `g1` and nothing else; a nested `GRAPH` adds
+its own name; a union of two `GRAPH` clauses reads both. -/
+#guard queryGraphNames? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) (.bgp [sampleVarTp]))) == some [GraphName.iri sampleG1]
+#guard queryGraphNames? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) (.graph (.iri sampleG2) (.bgp [sampleVarTp]))))
+  == some [GraphName.iri sampleG1, GraphName.iri sampleG2]
+#guard queryGraphNames? (mkQuery (.select .all)
+  (.union (.graph (.iri sampleG1) (.bgp [sampleVarTp]))
+          (.graph (.iri sampleG2) (.bgp [sampleVarTp]))))
+  == some [GraphName.iri sampleG1, GraphName.iri sampleG2]
+
+/-! `GRAPH <g1> { }` still needs `g1` in the dataset — section 18.6 gives it
+one solution exactly when the dataset names that graph. -/
+#guard queryGraphNames? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) .empty)) == some [GraphName.iri sampleG1]
+
+/-! `GRAPH ?g`, a sub-SELECT and a `FROM` clause each establish nothing. -/
+#guard (queryGraphNames? (mkQuery (.select .all)
+  (.graph (.var "g") (.bgp [sampleVarTp])))).isNone
+#guard (queryGraphNames? (mkQuery (.select .all)
+  (.subSelect (mkQuery (.select .all) (.bgp [sampleVarTp]))))).isNone
+#guard (queryGraphNames? (mkQuery (.select .all) (.bgp [sampleVarTp])
+  [DatasetClause.default sampleG1])).isNone
+
+/-! The quad predicate collector descends through both `GRAPH` forms, and
+refuses the two patterns that observe a graph name without reading a row. -/
+#guard queryQuadConstantPredicates? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) (.bgp [sampleTp]))) == some [samplePredicate]
+#guard queryQuadConstantPredicates? (mkQuery (.select .all)
+  (.graph (.var "g") (.bgp [sampleTp]))) == some [samplePredicate]
+#guard (queryQuadConstantPredicates? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) .empty))).isNone
+#guard (queryQuadConstantPredicates? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) (.bgp [])))).isNone
+#guard (queryQuadConstantPredicates? (mkQuery (.select .all)
+  (.bgp [sampleVarTp]))).isNone
+
+/-! Two IBK4 entries: `samplePredicate` with rows in the default graph and in
+`g1`, `sampleOtherPredicate` with rows in `g2` only. -/
+private def quadEntryA (entry : Entry) : Entry :=
+  { entry with
+    blockLayout := some BlockLayout.ibk4,
+    blankNodeScope := sampleScope,
+    graphSet := [.defaultGraph, .iri sampleG1],
+    ordinal := 0 }
+private def quadEntryB (entry : Entry) : Entry :=
+  { entry with
+    predicate := sampleOtherPredicate,
+    artifact := { entry.artifact with key := { value := "blocks/q.ibk4" } },
+    blockLayout := some BlockLayout.ibk4,
+    blankNodeScope := sampleScope,
+    graphSet := [.iri sampleG2],
+    ordinal := 1 }
+
+private def sampleQuadManifest : Manifest :=
+  match sampleManifestV7.entries with
+  | entry :: _ => { sampleManifestV7 with entries := [quadEntryA entry, quadEntryB entry] }
+  | [] => sampleManifestV7
+
+#guard valid sampleQuadManifest
+
+/-! A constant predicate outside a `GRAPH` clause selects its one entry. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all) (.bgp [sampleTp]))).map Entry.predicate == [samplePredicate]
+
+/-! Both collectors at once: the predicate names one entry and `GRAPH <g2>`
+names the same one. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all) (.graph (.iri sampleG2) (.bgp [sampleOtherTp])))).map
+  Entry.predicate == [sampleOtherPredicate]
+
+/-! `GRAPH <g1>` with an unbound predicate selects the one entry whose
+manifest graph set names `g1`, with no block read. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all) (.graph (.iri sampleG1) (.bgp [sampleVarTp])))).map
+  Entry.predicate == [samplePredicate]
+
+/-! `GRAPH ?g` establishes no graph restriction, so both entries stay. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all) (.graph (.var "g") (.bgp [sampleVarTp])))).length == 2
+
+/-! A default-graph pattern drops the entry that carries no default-graph
+row. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all) (.bgp [sampleVarTp]))).map Entry.predicate
+  == [samplePredicate]
+
+/-! An EXISTS in the ORDER BY disables both collectors. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all) (.bgp [sampleTp]) [] none []
+    { orderBy := some [.asc (.existsPat (.bgp [sampleOtherTp]))] })).length == 2
 
 end L4Factoidal.Storage.ShardManifest
