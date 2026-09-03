@@ -1,6 +1,6 @@
 ---
 name: lean4-proof-patterns
-description: Prove properties of this repository's fuel-bounded, match-heavy Lean 4 definitions (parsers, codecs, evaluators) without Mathlib — which tactics exist here, how to split nested matches without a case explosion, why `split`/`generalize` on large Nat literals never returns, the `rename_i` order after `split`, `omega` after `List.length_cons`, timed per-theorem compiles to bisect a hang, and the `#print axioms` gate. Use when a proof stalls, when `lake build` sits on one theorem for minutes, or before dispatching a proof subagent against `L4Factoidal`. Layers on the vendored `lean-proof` method; does not repeat it.
+description: Prove properties of this repository's fuel-bounded, match-heavy Lean 4 definitions (parsers, codecs, evaluators) without Mathlib — which tactics exist here, how to split nested matches without a case explosion, why `split`/`generalize` on large Nat literals never returns, the `rename_i` order after `split`, `omega` after `List.length_cons`, timed per-theorem compiles to bisect a hang, and the `#print axioms` gate. Use when a proof stalls, when `lake build` sits on one theorem for minutes, when retiring a `partial def`, or before dispatching a proof subagent against `L4Factoidal`. Layers on the vendored `lean-proof` method; does not repeat it.
 ---
 
 # Lean 4 proof patterns for L4Factoidal (no Mathlib)
@@ -115,7 +115,136 @@ proof at `done` after each tactic until the slow one shows. The scratch
 wrapper used on 2026-09-02 was ten lines of shell; write it again rather
 than guessing.
 
-## 9. Gate before commit
+## 9. Retiring a `partial def`: five techniques, cheapest first
+
+Measured on 2026-09-03/04 over ShEx (50 `partial def`) and RIF (15).
+Result: RIF 15 to 0, ShEx 50 to 21, with both suites byte-identical.
+Count with `grep -c "partial def" <file>` per file, before and after.
+
+**Do the technique-1 sweep across EVERY declaration of an area first**,
+and only then spend time on one hard declaration. `sed -i '' 's/^partial
+def /def /'` a whole file, `lake build` it, and read the "fail to show
+termination for" list. 27 of the 65 declarations needed nothing else.
+
+1. **Drop the marker.** Many are defensive. RIF/Engine went 8 to 0 this
+   way; ShEx/SchemaEq 8 to 0.
+
+2. **Match the CONSTRUCTOR, not the field accessor; write the list
+   recursion out.** `ShEx/Schema.lean` declares `Shape`, `Group` and
+   `TripleConstraint` as single-constructor `inductive`s inside a
+   `mutual` block, NOT as `structure`s. So `sh.expression` is a match
+   the equation compiler cannot see through, and `es.findSome? f` /
+   `g.expressions.flatMap f` hide the decrease inside a higher-order
+   argument. `findTeInShapeExpr` failed as
+   `| .shape sh => sh.expression.bind (findTeInTripleExpr id)` and
+   succeeded as
+   `| .shape (.mk _ _ expr _ _ _) => match expr with | some te => ...`,
+   with `findSome?` replaced by an explicit `List` companion in the same
+   `mutual` block. Four ShEx declarations retired this way. Note that
+   `flatMap` DOES work when its list argument comes straight from the
+   constructor pattern (`ShEx.directExtends`), which is why the failure
+   looks inconsistent until you check where the list came from.
+
+3. **`termination_by s.size - i` for an index walk over an `Array`.**
+   One theorem serves a whole module:
+
+   ```lean
+   theorem charAt_lt {s : Chars} {i : Nat} {c : Char}
+       (h : charAt s i = some c) : i < s.size := by
+     rcases Nat.lt_or_ge i s.size with hlt | hge
+     . exact hlt
+     . rw [charAt, Array.getElem?_eq_none hge] at h
+       simp at h
+   ```
+
+   `by_contra` does not exist here (no Mathlib); `rcases Nat.lt_or_ge`
+   is the replacement. `Option.noConfusion h` fails on `none = some c`;
+   use `simp at h`.
+
+   The scrutinee MUST be bound for the hypothesis to reach
+   `decreasing_by`: write `match h : charAt s j with`, not
+   `match charAt s j with`. Then
+
+   ```lean
+   termination_by s.size - j
+   decreasing_by all_goals (have hlt := charAt_lt h; omega)
+   ```
+
+   This works on a `let rec` inside a `def` — put the two clauses after
+   the `let rec` body and before the code that calls it. Six ShEx/Compact
+   scanners retired this way. It costs one `unusedVariables` warning per
+   arm where `h` is not needed; that is expected, not a defect.
+
+4. **When the walker restarts where a HELPER stopped, put the bound in
+   the helper's RETURN TYPE.** `skipTrivia` calls `skipTrivia s (toEol
+   (i+1))`, so its measure needs `i + 1 <= toEol s (i+1)` — a fact about
+   `toEol`, which would need functional induction over `toEol`. Cheaper:
+   lift the helper to a top-level `def` returning `{ k : Nat // j <= k }`
+   and build the proof as you build the value.
+
+   ```lean
+   def skipToEol (s : Chars) (j : Nat) : { k : Nat // j <= k } :=
+     match h : charAt s (j) with
+     | none => ⟨j, Nat.le_refl j⟩
+     | some d =>
+         if d == '\n' then ⟨j + 1, Nat.le_succ j⟩
+         else
+           let r := skipToEol s (j + 1)
+           ⟨r.1, Nat.le_trans (Nat.le_succ j) r.2⟩
+     termination_by s.size - j
+     decreasing_by (have hlt := charAt_lt h; omega)
+   ```
+
+   The caller then writes `skipTrivia s (skipToEol s (i + 1)).1` and
+   `decreasing_by` uses `(skipToEol s (i + 1)).2`. Where the helper is a
+   separate `def` already (`Compact.readEscape`), prove the bound
+   instead:
+
+   ```lean
+   unfold readEscape at h
+   split at h
+   . simp at h
+   . repeat' split at h
+     all_goals simp_all
+     all_goals omega
+   ```
+
+   `repeat' split at h` handles a ten-arm `if`/`else if` chain that a
+   single `split` cannot.
+
+5. **Fuel, last.** For recursive descent over a token list the remainder
+   is not visibly shorter, and nothing above helps. Give each recursive
+   group a `Nat` fuel as its FIRST match discriminant, keep the public
+   name as a wrapper that supplies `3 * ts.length + 3`, and make
+   exhaustion an error that NAMES the construct. RIF/Ps went 7 to 0 this
+   way. Justify the constant in the module text: every step of the group
+   either consumes a token or hands control to the one function of the
+   group that consumes a token before it recurses, so the group descends
+   at most two levels per token.
+
+   The gate for a fuel conversion is a BYTE-IDENTICAL runner output, not
+   a matching score line. `diff` the whole run against the baseline you
+   captured before touching the file.
+
+### What blocks the rest
+
+Four shapes resist all five techniques, and each is a design question
+rather than a proof question. Recognise them and stop early.
+
+- **A remainder returned by a mutual group** (ShEx/Compact's 10-def
+  shape and triple-expression parser). Fuel would work; the group is
+  large enough that the conversion is its own commit.
+- **Termination on a VISITED set** (ShEx `flattenSE`, `resolveExtends`,
+  `reachesLabel`). The measure is the schema's label count minus the
+  visited count, which is not an argument of the function.
+- **Recursion through a caller-supplied function** (ShEx `matchStates`,
+  `tripleConstraintsWith` recurse through `lookupTe`). An inclusion
+  cycle does not terminate at all, so no measure exists.
+- **Recursion into sub-documents through an untyped selector** (ShEx
+  `FromJson.shapeExprOf` recurses through `arr` and `fld?`, which carry
+  no size bound on the result).
+
+## 10. Gate before commit
 
 - `#print axioms <thm>` at the end of the module: only `propext`,
   `Classical.choice`, `Quot.sound`.
