@@ -73,4 +73,14 @@ private def allSplitsMatch (source : String) : Bool :=
 #guard allSplitsMatch "# c\r\nPREFIX ex: <http://example.org/>\r\nex:s ex:p ex:o .\r\n"
 #guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p ex:o ;\n   ex:q ex:PREFIXED .\n"
 
+
+/- Dots inside comments are not candidate boundaries: `pendingDot` is set only
+when the mode after the character is `normal`, and a comment keeps mode
+`comment` until its line end. The directive after such a comment is
+therefore deferred past the comment's dots too. -/
+#guard allSplitsMatch "# comment with a dot. and more text\nPREFIX ex: <http://example.org/>\nex:s ex:p ex:o .\n"
+#guard allSplitsMatch "# note.\nPREFIX ex: <http://example.org/>\nex:s ex:p ex:o .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p ex:o . # ends with a dot.\nex:s ex:q ex:o .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p ex:o ; # mid-statement comment.\n  ex:q ex:o .\n"
+
 end L4Factoidal.Syntax
