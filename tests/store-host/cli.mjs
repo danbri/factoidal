@@ -342,6 +342,71 @@ console.log(`factoidal command differential (${shim.runtimeName})`)
 const binDirectory = nativeBinDirectory()
 const workDirectory = shim.mkdirTemp('factoidal-cli-')
 
+// The store the package carries. These checks need no native binary,
+// because the point of the bundled store is that a fresh install with
+// nothing else on the machine answers a query.
+
+await check('sample-store prints a path that holds CURRENT', () => {
+  const printed = runCli(['sample-store'])
+  assert(printed.code === 0, `sample-store exited ${printed.code}: ${printed.stderr.trim()}`)
+  const root = printed.stdout.trim()
+  assert(root.length > 0, 'sample-store printed nothing')
+  assert(shim.exists(joinPath(root, 'CURRENT')),
+    `there is no CURRENT under ${root}`)
+})
+
+await check('sample-store --json names the licence of what it carries', () => {
+  const printed = runCli(['sample-store', '--json'])
+  assert(printed.code === 0, `sample-store --json exited ${printed.code}`)
+  const facts = JSON.parse(printed.stdout)
+  assert(facts.triples === 4434, `the facts claim ${facts.triples} triples, expected 4434`)
+  assert(facts.blocks === 13, `the facts claim ${facts.blocks} blocks, expected 13`)
+  assert(facts.licence === 'CC BY 4.0', `the facts claim the licence "${facts.licence}"`)
+})
+
+await check('inspect reads the bundled store and agrees with its own facts', () => {
+  const root = runCli(['sample-store']).stdout.trim()
+  const facts = JSON.parse(runCli(['sample-store', '--json']).stdout)
+  const inspected = runCli(['inspect', root, '--json'])
+  assert(inspected.code === 0, `inspect exited ${inspected.code}: ${inspected.stderr.trim()}`)
+  const envelope = JSON.parse(inspected.stdout)
+  assert(envelope.entries.length === facts.blocks,
+    `the manifest holds ${envelope.entries.length} entries, the facts claim ${facts.blocks}`)
+  assert(envelope.totalRows === facts.triples,
+    `the manifest commits ${envelope.totalRows} rows, the facts claim ${facts.triples}`)
+  assert(envelope.layout === facts.layout,
+    `the manifest layout is ${envelope.layout}, the facts claim ${facts.layout}`)
+})
+
+await check('the bundled store answers a COUNT with no native binary', () => {
+  const root = runCli(['sample-store']).stdout.trim()
+  const result = runCli(['query', root, '--query',
+    'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }', '--format', 'json', '--quiet'])
+  assert(result.code === 0, `query exited ${result.code}: ${result.stderr.trim()}`)
+  const srj = JSON.parse(result.stdout)
+  assert(srj.results.bindings.length === 1, 'COUNT answered no row')
+  assert(srj.results.bindings[0].n.value === '4434',
+    `COUNT answered ${srj.results.bindings[0].n.value}, expected 4434`)
+})
+
+await check('the bundled store answers the join the README prints', () => {
+  const root = runCli(['sample-store']).stdout.trim()
+  const result = runCli(['query', root, '--query',
+    'SELECT ?c ?l WHERE { ' +
+    '?c <http://www.w3.org/2004/02/skos/core#inScheme> ' +
+    '   <http://cv.iptc.org/newscodes/videocodec/> ; ' +
+    '   <http://www.w3.org/2004/02/skos/core#prefLabel> ?l . ' +
+    'FILTER(langMatches(lang(?l), "en")) } ORDER BY ?c ?l LIMIT 4',
+    '--format', 'json', '--quiet'])
+  assert(result.code === 0, `query exited ${result.code}: ${result.stderr.trim()}`)
+  const rows = JSON.parse(result.stdout).results.bindings
+  assert(rows.length === 4, `the join answered ${rows.length} rows, expected 4`)
+  assert(rows[0].c.value === 'http://cv.iptc.org/newscodes/videocodec/c001',
+    `the first concept is ${rows[0].c.value}`)
+  assert(rows[0].l.value === 'Analogue Black and White',
+    `the first label is "${rows[0].l.value}"`)
+})
+
 if (binDirectory === null) {
   skipped += 1
   console.log('  skip every check - no l4block-shard-pack found; build formal/lean4 or set L4_BIN_DIR')

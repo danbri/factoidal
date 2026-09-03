@@ -75,6 +75,10 @@
     "./select": {
       "types": "./select.d.ts",
       "default": "./select.js"
+    },
+    "./sample-store": {
+      "types": "./sample-store.d.ts",
+      "default": "./sample-store.mjs"
     }
   },
   "files": [
@@ -110,7 +114,11 @@
     "version.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "sample-store.mjs",
+    "sample-store.d.ts",
+    "sample-store/",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=20"

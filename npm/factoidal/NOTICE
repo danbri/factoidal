@@ -1,0 +1,31 @@
+@factoidal/core — third-party content notices
+=============================================
+
+The code in this package is Apache-2.0; see LICENSE.
+
+sample-store/
+-------------
+
+The bundled sample Shardborough store holds five IPTC NewsCodes
+vocabularies, converted from the publisher's RDF/XML and packed into
+IBK3 predicate blocks:
+
+  spamfstat, videoqualifier, subjectqualifier, videocodec, spct
+
+  Publisher: International Press Telecommunications Council
+             https://iptc.org/
+  Licence:   Creative Commons Attribution 4.0 International (CC BY 4.0)
+             https://creativecommons.org/licenses/by/4.0/
+  Obtained through: https://github.com/danbri/skosdex third_party/skos
+
+The IRIs, labels and structure are the IPTC's. The block layout, the
+dictionary, the indexes and the manifest are this package's encoding of
+them. Redistribution of the vocabulary content stays under CC BY 4.0.
+
+hacl-wasm/
+----------
+
+HACL* verified cryptographic primitives, from
+https://github.com/hacl-star/hacl-star, Apache-2.0 / MIT. See the
+provenance recorded in the Factoidal repository under
+skills/node-crypto-haclstar-vc-wasm-build/.

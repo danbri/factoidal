@@ -380,7 +380,41 @@ SHA-256, evaluating the SPARQL).
 > This command is not the native F\* `factoidal` binary that the API
 > table below refers to. That one is `bin/<platform>/factoidal` in the
 > repository and takes subcommands such as `shex` and `compact`. This
-> one takes `version`, `inspect` and `query`.
+> one takes `version`, `sample-store`, `inspect` and `query`.
+
+### First query, with nothing else to download
+
+The package carries an activated store, so a fresh install answers a
+SPARQL query at once:
+
+```console
+$ npm install @factoidal/core
+$ npx factoidal query "$(npx factoidal sample-store)" \
+    'SELECT ?c ?l
+     WHERE { ?c <http://www.w3.org/2004/02/skos/core#inScheme>
+                <http://cv.iptc.org/newscodes/videocodec/> ;
+                <http://www.w3.org/2004/02/skos/core#prefLabel> ?l .
+             FILTER(langMatches(lang(?l), "en")) }
+     LIMIT 4'
+c                                               l
+<http://cv.iptc.org/newscodes/videocodec/c001>  "Analogue Black and White"@en-gb
+<http://cv.iptc.org/newscodes/videocodec/c002>  "PAL"@en-gb
+<http://cv.iptc.org/newscodes/videocodec/c003>  "NTSC"@en-gb
+<http://cv.iptc.org/newscodes/videocodec/c004>  "SECAM"@en-gb
+```
+
+`factoidal sample-store` prints the path; `--json` adds what was
+recorded when the store was packed. From JavaScript:
+
+```js
+import { sampleStorePath, sampleStoreFacts } from '@factoidal/core/sample-store'
+```
+
+The store holds 4,434 triples in 13 predicate blocks: five IPTC
+NewsCodes vocabularies, published by the IPTC under CC BY 4.0 and taken
+from [danbri/skosdex](https://github.com/danbri/skosdex). See `NOTICE`.
+
+### Any other store
 
 ```console
 $ factoidal inspect ./mystore

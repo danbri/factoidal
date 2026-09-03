@@ -24,6 +24,7 @@ import {
 } from '../store-host/index.mjs'
 import { fileUrlToPath, joinPath } from '../store-host/paths.mjs'
 import { loadEngine } from './engine.mjs'
+import { sampleStoreFacts, sampleStorePath } from '../sample-store.mjs'
 import {
   StoreOperationError, inspectManifest, openStore, planQuery, queryStore,
   turtleOfNQuads
@@ -60,6 +61,7 @@ usage: factoidal <command> [options]
 
 commands:
   version                     print the package and engine versions
+  sample-store                print the path of the bundled sample store
   inspect  STORE              report what the activated manifest commits
   query    STORE [QUERY]      evaluate a SPARQL query against a store
   pack     INPUT OUTPUT       build one immutable generation from an RDF file
@@ -75,7 +77,10 @@ global options:
 exit codes:
   0 success   1 failure   2 usage error   3 not yet wired (${ISSUE})
 
-STORE is a collection root: the directory that holds CURRENT.`
+STORE is a collection root: the directory that holds CURRENT. This package
+carries one, so the first query needs no other download:
+
+  factoidal query "$(factoidal sample-store)" 'SELECT * WHERE { ?s ?p ?o } LIMIT 5'`
 
 const COMMAND_USAGE = {
   version: `factoidal version - print the package and engine versions
@@ -84,6 +89,21 @@ usage: factoidal version [--json]
 
 Prints the npm package version, the Lean engine's WebAssembly digest as
 recorded by its build, and which host-I/O implementation is loaded.`,
+
+  'sample-store': `factoidal sample-store - print the bundled store's path
+
+usage: factoidal sample-store [--json]
+
+Prints the collection root of the Shardborough store this package
+carries, so a fresh install can query something at once:
+
+  factoidal inspect "$(factoidal sample-store)"
+  factoidal query "$(factoidal sample-store)" \\
+    'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+
+The store holds five IPTC NewsCodes vocabularies (CC BY 4.0; see NOTICE)
+packed into IBK3 predicate blocks. --json adds what was recorded when it
+was packed.`,
 
   inspect: `factoidal inspect - report what a store's manifest commits
 
@@ -239,6 +259,7 @@ class UsageError extends Error {}
 
 const VALUE_OPTIONS = {
   version: new Set([]),
+  'sample-store': new Set([]),
   inspect: new Set(['generation']),
   query: new Set(['query', 'file', 'format', 'limit', 'base', 'generation']),
   pack: new Set(['layout', 'syntax', 'chunk-bytes']),
@@ -294,6 +315,16 @@ function commandVersion (options) {
   } else {
     out('engine (no l4-assets/version.json in this install)')
   }
+  return EXIT_OK
+}
+
+function commandSampleStore (options) {
+  const path = sampleStorePath()
+  if (options.json === true) {
+    out(JSON.stringify({ path, ...sampleStoreFacts }, null, 2))
+    return EXIT_OK
+  }
+  out(path)
   return EXIT_OK
 }
 
@@ -589,6 +620,7 @@ function commandCompact (positional, _options) {
 
 const COMMANDS = {
   version: (positional, options) => commandVersion(options),
+  'sample-store': (positional, options) => commandSampleStore(options),
   inspect: commandInspect,
   query: commandQuery,
   pack: commandPack,
