@@ -37,6 +37,14 @@ installs **four byte-identical copies**:
 | 3 | `npm/factoidal-lean/` | the superseded companion package |
 | 4 | `docs/npm/lean/` | the Pages mirror of that companion |
 
+`npm/factoidal/l4-assets/` also holds a four-line `package.json` that
+says `{"type": "module"}`. The parent package sets no `"type"`, so `.js`
+there is CommonJS, and without that file Node prints a
+`MODULE_TYPELESS_PACKAGE_JSON` warning on stderr every time
+`l4factoidal.js` is imported — which the `factoidal` command does on
+every `inspect` and every `query`. `build-wasm.sh` copies the three
+engine files by name and leaves it alone; do not delete it.
+
 Step 9 of the script compares all four against the freshly built
 SHA-256 and exits 1 when one differs. Trust that check; do not copy
 these files by hand. Copy 2 was missing from the script until
@@ -84,7 +92,12 @@ engines plus the command:
 
 `bin` maps the command `factoidal` to `./bin/factoidal.mjs`. A consumer
 gets it on PATH from a global install and in `node_modules/.bin` from a
-local one.
+local one. `bin/` holds three files: the command, `engine.mjs` (which
+resolves and loads the wasm engine, in ESM so it works under Deno where
+`l4.js` does not) and `store.mjs` (which drives the three store
+operations). `version`, `inspect` and `query` run; `pack`, `activate`,
+`update` and `compact` exit 3 and name
+https://github.com/danbri/factoidal/issues/641.
 
 Check the list before every publish:
 
@@ -174,7 +187,8 @@ to overwrite.
 | hub notebooks | `node --test tests/hub/*_test.mjs` | 414 pass, 0 fail, 1 skipped (out of 415) |
 | package suite | `cd npm/factoidal && npm test` | 252 pass, 0 fail, 2 skipped (out of 254) |
 | store host | `node tests/store-host/conformance.mjs` | 29 pass, 0 fail, 0 skipped (out of 29) under Node, and the same under Deno |
-| tarball | `cd npm/factoidal && npm pack --dry-run` | the `files` list above, 59 files |
+| the command | `node tests/store-host/cli.mjs` | 13 pass, 0 fail, 0 skipped (out of 13) under Node, and the same under Deno |
+| tarball | `cd npm/factoidal && npm pack --dry-run` | the `files` list above, 62 files |
 | wasm copies | the tail of `build-wasm.sh` | "all committed wasm copies agree" |
 | Lean native | `bash formal/lean4/Wasm/native-smoke.sh` | see the script's own report |
 | browser surface | `tests/web-demos/hub_browser_all.sh` | the node harness cannot see browser-only gaps; run this too |
@@ -193,7 +207,15 @@ mkdir /tmp/probe && cd /tmp/probe && npm init -y
 npm install /tmp/factoidal-core-<version>.tgz
 ./node_modules/.bin/factoidal --help
 ./node_modules/.bin/factoidal version
+# The store path, against a generation the native packer wrote:
+./node_modules/.bin/factoidal inspect STORE
+./node_modules/.bin/factoidal query STORE 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+deno run --allow-read node_modules/@factoidal/core/bin/factoidal.mjs query STORE 'ASK { ?s ?p ?o }'
 ```
+
+`version` alone does not exercise the engine: it reads
+`l4-assets/version.json` and never loads the wasm. `inspect` is the
+cheapest command that proves the shipped wasm loads and answers.
 
 ## Traps
 
@@ -233,6 +255,23 @@ npm install /tmp/factoidal-core-<version>.tgz
 9. **The version in `package.json` and the versions in the three
    `version.json` files diverge silently.** Bump, then rebuild, then
    check `factoidal version` before tagging.
+10. **`process.exit()` truncates a piped result.** Node writes to a pipe
+    asynchronously and drops what is still buffered when the process
+    exits. `factoidal query --format json` printing 6455 rows into a
+    pipe arrived cut at the 64 KiB boundary until `bin/factoidal.mjs`
+    stopped calling `process.exit()` and set `process.exitCode` instead
+    (2026-09-03). Any new subcommand that prints a large result must
+    keep that shape.
+11. **Node's WebAssembly frame budget is smaller than Deno's.** Some
+    Lean evaluator paths recurse once per row. Measured 2026-09-03 on a
+    6455-row store, `SELECT ?s ?p ?o WHERE { ?s ?p ?o }` raises a
+    `RangeError` inside the wasm module under Node's default while
+    `SELECT *`, or the same query with a `LIMIT`, does not, and Deno
+    clears all of them; `node --stack-size=4000` clears it too. The
+    command turns that into an explained exit 1, and
+    `tests/store-host/cli.mjs` gates the explanation rather than the
+    success, because the outcome depends on the runtime. Do not read a
+    green run under Deno as evidence that the Node path is clear.
 
 ## Where the pieces are
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- The `factoidal` command answers SPARQL against a persisted
+  Shardborough store with no native binary. `factoidal inspect STORE`
+  decodes the manifest through the engine's `storeManifestInspect`
+  operation and prints the wire version, layout, blank-node profile and
+  the entry table; `factoidal query STORE 'SELECT ...'` asks the engine
+  which artifacts the query needs, reads exactly those, and hands their
+  bytes to `storeQuery` through one WebAssembly heap buffer with no
+  encoding. Every artifact is verified against the SHA-256 the manifest
+  commits before an answer is given. Formats: `table`, `json`,
+  `nquads`, `turtle`; `--explain` prints the artifact plan. Runs under
+  Node and under Deno (`--allow-read`).
+- The three caps of the store query operation — 64 artifacts, 8388608
+  artifact bytes, 100000 rows — are reported with the cap, the value
+  and a next step, and are decided before a single file is read.
+  Nothing is truncated.
+- `pack`, `activate`, `update` and `compact` still exit 3; they need
+  operations that do not exist yet
+  (https://github.com/danbri/factoidal/issues/641).
+- A large piped result is no longer truncated: the command sets
+  `process.exitCode` instead of calling `process.exit()`, which dropped
+  everything past the 64 KiB pipe boundary.
+
 ## 0.3.0 — Lean block-worker preview
 
 - The bundled Lean-derived WASM artifact exports

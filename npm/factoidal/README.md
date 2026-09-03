@@ -368,6 +368,92 @@ model-theory modules run to about 22,000 lines — but only these reach
 JavaScript today. Everything else in the Lean tree is used through
 `parse`/`query`/`closure`, or not exposed at all.
 
+## The `factoidal` command: querying a persisted store
+
+Installing this package puts a `factoidal` command on PATH. It reads a
+**Shardborough** store — the on-disk format the Lean `l4block-*` tools
+write — with no native binary: JavaScript reads the files and moves the
+bytes, and the Lean engine running as WebAssembly makes every format
+decision (parsing the manifest, choosing the blocks, verifying their
+SHA-256, evaluating the SPARQL).
+
+> This command is not the native F\* `factoidal` binary that the API
+> table below refers to. That one is `bin/<platform>/factoidal` in the
+> repository and takes subcommands such as `shex` and `compact`. This
+> one takes `version`, `inspect` and `query`.
+
+```console
+$ factoidal inspect ./mystore
+store ./mystore
+generation gen-1 (activated through CURRENT)
+manifest manifest.sbm2, 2372 bytes, wire version 6
+layout predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0
+blank-node profile (none recorded)
+term registry local-ibk3-ptd1-v0
+fixed-chunk Merkle commitment yes
+5 entries, 393775 bytes, 6455 rows
+generation directory holds 42 files, 846592 bytes
+
+#  rows  bytes   kind  graphs  predicate
+0  1800  110085  IBK3  -       http://www.wikidata.org/prop/direct/P31
+1  719   35535   IBK3  -       http://www.wikidata.org/prop/direct/P361
+...
+
+$ factoidal query ./mystore 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+mode ibk3-paged-merkle-full-manifest(5), 5 artifacts, 393775 bytes read, plan declares 6455 block rows
+n
+"6455"^^<http://www.w3.org/2001/XMLSchema#integer>
+1 row
+```
+
+`STORE` is a collection root: the directory holding `CURRENT`. The plan
+line goes to stderr, so stdout carries only the result; `--quiet`
+removes it.
+
+| Option | What it does |
+|---|---|
+| `--format table` | default; a human display of the results |
+| `--format json` | SELECT prints the engine's SPARQL 1.1 Query Results JSON; ASK and CONSTRUCT print the operation's envelope |
+| `--format nquads` | CONSTRUCT only: the graph the engine serialized |
+| `--format turtle` | CONSTRUCT only: that graph through the engine's own Turtle writer |
+| `--explain` | print the artifacts the query needs and the open mode, and stop |
+| `--limit N` | print at most N table rows; the total is always named |
+| `--file PATH` | read the query text from a file |
+| `--generation NAME` | read that generation rather than the activated one |
+
+Under Deno, run the file directly; `inspect` and `query` need only
+`--allow-read`:
+
+```console
+$ deno run --allow-read node_modules/@factoidal/core/bin/factoidal.mjs query ./mystore 'ASK { ?s ?p ?o }'
+```
+
+### What the command answers for, and what it does not
+
+* **Every artifact is verified.** The engine refuses the whole query
+  when a block's bytes do not hash to the SHA-256 the manifest commits,
+  and names the artifact.
+* **Three caps.** One call reads at most 64 artifacts, 8388608 artifact
+  bytes and 100000 rows. A query over any of them is refused before a
+  single file is read, with the cap and the value named. Nothing is
+  truncated.
+* **Committed artifacts only.** A store carrying uncompacted delta-log
+  updates is not served by this path; use the native `l4block-*` tools.
+* **`pack`, `activate`, `update` and `compact` exit 3.** They need
+  WebAssembly operations that do not exist yet
+  (https://github.com/danbri/factoidal/issues/641).
+* **Node's WebAssembly frame budget.** Some evaluator paths recurse once
+  per row. Measured 2026-09-03 on a 6455-row store, `SELECT ?s ?p ?o
+  WHERE { ?s ?p ?o }` overflows the stack under Node's default while
+  `SELECT *`, or the same query with a `LIMIT`, does not, and Deno
+  clears all of them. The command reports it and exits 1 rather than
+  crashing; `node --stack-size=4000` clears it.
+
+Measured 2026-09-03 on macOS arm64, the 6455-triple `sequence_variant`
+store, `SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`, whole process
+including start-up: 220 ms through this command, 33 ms through the
+native `l4block-id-v3-query`.
+
 ## API (draft)
 
 The `factoidal` CLI (`bin/factoidal-cli/factoidal_cli.ml`, built to

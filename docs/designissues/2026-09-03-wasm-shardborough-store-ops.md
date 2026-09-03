@@ -206,6 +206,32 @@ widens on wasm32, where the character walk is slower than it is natively.
 | `formal/lean4/Wasm/l4_shim.c` | `l4_call_blob_c` |
 | `docs/web/hub/assets/l4/l4factoidal.js` | `l4.callBlob(op, args, bytes)` |
 | `formal/lean4/Wasm/Main.lean` | `l4wasm-cli callblob <op> <argsJsonFile> <blobFile>` |
+| `npm/factoidal/bin/store.mjs` | the shipped host: open, plan, read, one blob, render |
+| `npm/factoidal/bin/factoidal.mjs` | `factoidal inspect` and `factoidal query` |
+
+## 6.1 The shipped host
+
+`factoidal inspect` prints what `storeManifestInspect` decoded;
+`--json` prints that envelope unchanged. `factoidal query` runs the
+sequence in one process: `storeQueryPlan`, then `storeQuery` with an
+EMPTY descriptor list to get the cap decision before a byte is read
+(the caps are checked before the descriptors are), then the artifact
+reads, then `storeQuery` over one `_malloc` buffer with a
+`{"key","offset","len"}` window per artifact. The host holds none of
+the cap values; it asks.
+
+Two runtime characteristics the command surfaces rather than hides,
+both measured 2026-09-03:
+
+* Some evaluator paths recurse once per row. On a 6455-row generation
+  `SELECT ?s ?p ?o WHERE { ?s ?p ?o }` exhausts Node's default
+  WebAssembly frame budget, while `SELECT *`, or the same query with a
+  `LIMIT`, does not, and Deno clears all of them.
+  `node --stack-size=4000` clears it. The command reports it and exits
+  1.
+* Whole-process time for `SELECT (COUNT(*) AS ?n)` over the 6455-triple
+  `sequence_variant` store: 220 ms through the command, 33 ms through
+  `l4block-id-v3-query` (macOS arm64, three alternating runs each).
 
 ## 7. Gates
 
@@ -214,3 +240,4 @@ widens on wasm32, where the character walk is slower than it is natively.
 | `bash formal/lean4/Wasm/native-smoke.sh` | every operation, both transports, the digest refusal, the window-overrun refusal, the artifact-cap refusal, and the `blobOps` reflection — through the native CLI, so an ABI fault and a wasm-toolchain fault stay distinguishable |
 | `bash tools/wasm-store-query-smoke.sh` | the committed wasm module against generations the Lean packer just wrote, comparing rows with `l4block-id-v3-query` and `l4block-quad-query` |
 | `bash tools/blockengine-ibk4-quad-smoke.sh` | the native IBK4 path the wasm operations are compared against |
+| `node tests/store-host/cli.mjs` | the shipped `factoidal` command against `l4block-id-v3-query` and `l4block-quad-query`, comparing the ROWS and not only their count, under Node and under Deno |
