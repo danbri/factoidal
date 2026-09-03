@@ -4,18 +4,30 @@
 // https://github.com/danbri/factoidal/issues/641
 //
 // STATE TODAY. The argument surface below is complete and settled, so that
-// wiring the remaining subcommands changes no user-visible syntax. Only the
-// subcommands that need nothing beyond host file I/O run: `version` and
-// `inspect`. The other five parse their arguments, report what they would
-// do, and exit 3. Every format decision they are waiting on -- parsing RDF,
-// building blocks, verifying digests, evaluating SPARQL -- belongs to the
-// Lean source and reaches this command through WebAssembly operations
-// (iron rule 7).
+// wiring the remaining subcommands changes no user-visible syntax.
+// `version`, `inspect` and `query` run: the first needs only host file
+// I/O, and the other two drive the three WebAssembly store operations of
+// `formal/lean4/Wasm/Ops/Store.lean`. `pack`, `activate`, `update` and
+// `compact` parse their arguments, report what they would do, and exit 3;
+// they need operations that do not exist yet.
+//
+// This file reads files by name, moves bytes and renders what the engine
+// answered. It parses no manifest, verifies no digest, decodes no block
+// and chooses no artifact -- every one of those is a format decision and
+// it lives in the Lean source (iron rule 7). The table renderer is a
+// human display of the engine's own SPARQL Query Results JSON, not a
+// second serializer: `--format json`, `--format nquads` and
+// `--format turtle` all print documents the engine produced.
 
 import {
-  StoreHostError, listGeneration, openCollection, readWhole, runtime
+  StoreHostError, listGeneration, readWhole, runtime
 } from '../store-host/index.mjs'
 import { fileUrlToPath, joinPath } from '../store-host/paths.mjs'
+import { loadEngine } from './engine.mjs'
+import {
+  StoreOperationError, inspectManifest, openStore, planQuery, queryStore,
+  turtleOfNQuads
+} from './store.mjs'
 
 const EXIT_OK = 0
 const EXIT_FAILURE = 1
@@ -27,9 +39,14 @@ const ISSUE = 'https://github.com/danbri/factoidal/issues/641'
 const isDeno = typeof globalThis.Deno !== 'undefined'
 const argv = isDeno ? globalThis.Deno.args.slice() : process.argv.slice(2)
 
+// Node writes to a PIPE asynchronously, and `process.exit()` drops
+// whatever is still buffered. A SELECT that prints a few megabytes of
+// SPARQL Query Results JSON into `| jq` therefore arrived truncated at
+// the 64 KiB pipe boundary (measured 2026-09-03, 6455 rows). Setting the
+// exit code and letting the process end on its own flushes it.
 function exit (code) {
   if (isDeno) globalThis.Deno.exit(code)
-  else process.exit(code)
+  else process.exitCode = code
 }
 
 function out (line) { console.log(line) }
@@ -43,7 +60,7 @@ usage: factoidal <command> [options]
 
 commands:
   version                     print the package and engine versions
-  inspect  STORE              report the activated generation and its files
+  inspect  STORE              report what the activated manifest commits
   query    STORE [QUERY]      evaluate a SPARQL query against a store
   pack     INPUT OUTPUT       build one immutable generation from an RDF file
   activate STORE GENERATION   make one generation the activated generation
@@ -68,35 +85,66 @@ usage: factoidal version [--json]
 Prints the npm package version, the Lean engine's WebAssembly digest as
 recorded by its build, and which host-I/O implementation is loaded.`,
 
-  inspect: `factoidal inspect - report what is on disk in a store
+  inspect: `factoidal inspect - report what a store's manifest commits
 
 usage: factoidal inspect STORE [--json] [--generation NAME]
 
-Reads CURRENT, then lists the files of the activated generation with their
-sizes. It reports the manifest's file name and byte length; it does not
-decode the manifest, so it names no predicate, block count or digest.
-Decoding is a WebAssembly operation (${ISSUE}).
+Reads CURRENT, hands the manifest bytes to the engine's
+storeManifestInspect operation, and prints what it decoded: the wire
+version, the layout, the blank-node publication profile, the term-registry
+version, whether the manifest carries a fixed-chunk Merkle commitment, and
+one row per entry with its predicate, row count, byte length, block kind
+and graph set.
 
 options:
   --generation NAME  inspect this generation instead of the activated one
-  --json             emit one JSON object`,
+  --json             print the operation's envelope unchanged`,
 
   query: `factoidal query - evaluate a SPARQL query against a store
 
 usage: factoidal query STORE [QUERY] [options]
 
 QUERY is the query text. Give it as the second argument, or with --query,
-or in a file with --file. SELECT, ASK, CONSTRUCT and DESCRIBE are the
-target; the engine decides the form.
+or in a file with --file.
+
+The command reads CURRENT and the manifest, asks the engine which
+artifacts the query needs, reads exactly those, and hands their bytes to
+the engine's storeQuery operation. The engine verifies every artifact
+against the SHA-256 the manifest commits before it answers.
 
 options:
   --query TEXT       the query text
   --file PATH        read the query text from a file
-  --format FORMAT    json (default), xml, csv, tsv, turtle, nquads, table
-  --limit N          stop after N result rows
-  --base IRI         base IRI for resolving relative IRIs in the query
-  --explain          print the physical plan instead of the results
-  --json             shorthand for --format json`,
+  --format FORMAT    table (default), json, nquads, turtle
+  --limit N          print at most N table rows; the total is always named
+  --explain          print the artifact plan instead of the results
+  --generation NAME  query this generation instead of the activated one
+  --json             shorthand for --format json
+  --quiet            print the result only, no plan line on stderr
+
+formats:
+  table    a human display of the engine's SPARQL Query Results JSON;
+           ASK prints true or false, CONSTRUCT prints its N-Triples
+  json     SELECT prints the engine's SPARQL 1.1 Query Results JSON
+           document; ASK and CONSTRUCT print the operation's envelope,
+           because the operation answers those two with a boolean and a
+           serialized graph rather than with a results document
+  nquads   CONSTRUCT only: the graph the engine serialized
+  turtle   CONSTRUCT only: that graph through the engine's own Turtle
+           writer, which flattens named graphs into the default graph
+
+not available, and why:
+  --base IRI         the store query operation takes no base argument;
+                     put a BASE clause in the query text instead
+  xml, csv, tsv      the engine has no operation that writes the SPARQL
+                     Results XML, CSV or TSV documents, and writing one
+                     here would be a second serializer (iron rule 7)
+  DESCRIBE           the engine answers "DESCRIBE is not supported by the
+                     npm entry yet"
+
+A store carrying a non-empty delta log is not served by this path: the
+operation reads the manifest's committed artifacts only. Use the native
+l4block-* tools for a store with uncompacted updates.`,
 
   pack: `factoidal pack - build one immutable generation from an RDF file
 
@@ -192,7 +240,7 @@ class UsageError extends Error {}
 const VALUE_OPTIONS = {
   version: new Set([]),
   inspect: new Set(['generation']),
-  query: new Set(['query', 'file', 'format', 'limit', 'base']),
+  query: new Set(['query', 'file', 'format', 'limit', 'base', 'generation']),
   pack: new Set(['layout', 'syntax', 'chunk-bytes']),
   activate: new Set([]),
   update: new Set(['update', 'file']),
@@ -249,49 +297,97 @@ function commandVersion (options) {
   return EXIT_OK
 }
 
-function commandInspect (positional, options) {
+// ------------------------------------------------------------ rendering
+
+/**
+ * One graph name as the manifest reports it. `{"kind":"default"}` is the
+ * default graph; the operation marks it that way so a host never has to
+ * recognise a reserved IRI.
+ */
+function graphLabel (graph) {
+  if (graph.kind === 'default') return 'default'
+  if (graph.kind === 'iri') return `<${graph.value}>`
+  if (graph.kind === 'bnode') return `_:${graph.value}`
+  return JSON.stringify(graph)
+}
+
+/**
+ * One SPARQL Query Results JSON term as a table cell. This is a display,
+ * not a serialization: `--format json` prints the engine's own document
+ * and `--format nquads` prints the engine's own N-Triples.
+ */
+function cellOfTerm (term) {
+  if (term === undefined || term === null) return ''
+  if (term.type === 'uri') return `<${term.value}>`
+  if (term.type === 'bnode') return `_:${term.value}`
+  if (term.type === 'literal') {
+    const lang = term['xml:lang']
+    if (typeof lang === 'string' && lang.length > 0) return `"${term.value}"@${lang}`
+    if (typeof term.datatype === 'string') return `"${term.value}"^^<${term.datatype}>`
+    return `"${term.value}"`
+  }
+  return JSON.stringify(term)
+}
+
+function plural (count, noun) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+/** Print rows as columns padded to their widest cell. */
+function printTable (headers, rows) {
+  const widths = headers.map((header) => header.length)
+  for (const row of rows) {
+    for (let index = 0; index < row.length; index += 1) {
+      if (row[index].length > widths[index]) widths[index] = row[index].length
+    }
+  }
+  const line = (cells) => cells
+    .map((cell, index) => index === cells.length - 1 ? cell : cell.padEnd(widths[index]))
+    .join('  ')
+  out(line(headers))
+  for (const row of rows) out(line(row))
+}
+
+// ------------------------------------------------------------- inspect
+
+async function commandInspect (positional, options) {
   if (positional.length !== 1) throw new UsageError('inspect needs exactly one STORE')
   const root = positional[0]
-  let generation
-  let generationDir
-  let manifestName = null
-  let manifestBytes = null
-  if (typeof options.generation === 'string') {
-    generation = options.generation
-    generationDir = joinPath(root, generation)
-  } else {
-    const opened = openCollection(root)
-    generation = opened.generation
-    generationDir = opened.generationDir
-    manifestName = opened.manifestName
-    manifestBytes = opened.manifest.length
-  }
-  const files = listGeneration(generationDir)
-  let totalBytes = 0
-  for (const file of files) totalBytes += file.size
-  const report = {
-    store: root,
-    generation,
-    generationDir,
-    activated: typeof options.generation !== 'string',
-    manifest: manifestName === null ? null : { name: manifestName, bytes: manifestBytes },
-    fileCount: files.length,
-    totalBytes,
-    files
-  }
+  const named = typeof options.generation === 'string' ? options.generation : null
+  const store = openStore(root, named)
+  const engine = await loadEngine()
+  const envelope = inspectManifest(engine, store)
+
   if (options.json) {
-    out(JSON.stringify(report, null, 2))
+    // The operation's envelope, unchanged.
+    out(JSON.stringify(envelope, null, 2))
     return EXIT_OK
   }
-  out(`store ${report.store}`)
-  out(`generation ${report.generation}${report.activated ? ' (activated through CURRENT)' : ' (named on the command line)'}`)
-  if (report.manifest !== null) {
-    out(`manifest ${report.manifest.name} ${report.manifest.bytes} bytes (not decoded here)`)
-  }
-  out(`files ${report.fileCount}, ${report.totalBytes} bytes total`)
-  for (const file of files) {
-    out(`  ${String(file.size).padStart(12)}  ${file.name}`)
-  }
+
+  const files = listGeneration(store.generationDir)
+  let directoryBytes = 0
+  for (const file of files) directoryBytes += file.size
+
+  out(`store ${root}`)
+  out(`generation ${store.generation}${store.activated ? ' (activated through CURRENT)' : ' (named on the command line)'}`)
+  out(`manifest ${store.manifestName}, ${store.manifest.length} bytes, wire version ${envelope.wireVersion}`)
+  out(`layout ${envelope.layout}`)
+  out(`blank-node profile ${envelope.blankNodeProfile === '' ? '(none recorded)' : envelope.blankNodeProfile}`)
+  out(`term registry ${envelope.termRegistryVersion === '' ? '(none recorded)' : envelope.termRegistryVersion}`)
+  out(`fixed-chunk Merkle commitment ${envelope.rangeCommitted ? 'yes' : 'no'}`)
+  out(`${envelope.entries.length} ${envelope.entries.length === 1 ? 'entry' : 'entries'}, ${envelope.totalBytes} bytes, ${plural(envelope.totalRows, 'row')}`)
+  out(`generation directory holds ${files.length} files, ${directoryBytes} bytes`)
+  out('')
+  printTable(
+    ['#', 'rows', 'bytes', 'kind', 'graphs', 'predicate'],
+    envelope.entries.map((entry) => [
+      String(entry.ordinal),
+      String(entry.rows),
+      String(entry.bytes),
+      entry.blockKind,
+      entry.graphs.length === 0 ? '-' : entry.graphs.map(graphLabel).join(' '),
+      entry.predicate
+    ]))
   return EXIT_OK
 }
 
@@ -301,15 +397,168 @@ function notWired (command, detail) {
   return EXIT_NOT_WIRED
 }
 
-function commandQuery (positional, options) {
-  if (positional.length < 1) throw new UsageError('query needs a STORE')
-  const text = positional.length > 1
-    ? positional.slice(1).join(' ')
-    : (typeof options.query === 'string' ? options.query : null)
-  if (text === null && typeof options.file !== 'string') {
-    throw new UsageError('query needs QUERY, --query TEXT or --file PATH')
+const QUERY_FORMATS = ['table', 'json', 'nquads', 'turtle']
+const UNAVAILABLE_FORMATS = {
+  xml: 'the SPARQL Results XML document',
+  csv: 'the SPARQL Results CSV document',
+  tsv: 'the SPARQL Results TSV document'
+}
+
+function queryText (positional, options) {
+  if (typeof options.file === 'string') {
+    return new TextDecoder('utf-8', { fatal: true }).decode(readWhole(options.file))
   }
-  return notWired('query', 'The store query operation is stage 1 of the milestone.')
+  if (positional.length > 1) return positional.slice(1).join(' ')
+  if (typeof options.query === 'string') return options.query
+  throw new UsageError('query needs QUERY, --query TEXT or --file PATH')
+}
+
+function queryFormat (options) {
+  if (options.json === true && typeof options.format !== 'string') return 'json'
+  if (typeof options.format !== 'string') return 'table'
+  const format = options.format.toLowerCase()
+  if (QUERY_FORMATS.indexOf(format) >= 0) return format
+  if (Object.prototype.hasOwnProperty.call(UNAVAILABLE_FORMATS, format)) {
+    throw new UsageError(
+      `--format ${format} needs an engine operation that writes ` +
+      `${UNAVAILABLE_FORMATS[format]}; there is none, and writing one here ` +
+      'would be a second serializer. Use --format json.')
+  }
+  throw new UsageError(`--format ${options.format} is not one of ${QUERY_FORMATS.join(', ')}`)
+}
+
+function queryLimit (options, format) {
+  if (typeof options.limit !== 'string') return null
+  const limit = Number(options.limit)
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new UsageError('--limit needs a non-negative whole number')
+  }
+  if (format !== 'table') {
+    throw new UsageError(
+      '--limit truncates the printed table only; it is not carried into the ' +
+      "engine's own documents. Put a LIMIT clause in the query instead.")
+  }
+  return limit
+}
+
+/** Report a refusal the store operations made, and what to do about it. */
+function reportStoreFailure (error) {
+  err(`factoidal query: ${error.message}`)
+  if (error.capLimit !== null) {
+    err(`This query needs more of the store than one WebAssembly call may read: ${error.capValue} against a cap of ${error.capLimit}.`)
+    err('Narrow the query - bind a predicate, or restrict the graph - or use the native l4block-* tools.')
+  } else if (error.stackLimit) {
+    err('The runtime ran out of call stack inside the engine, not the store.')
+    err('Some evaluator paths recurse once per row, and a few thousand rows can')
+    err("exceed Node's default WebAssembly frame budget. Raise it with")
+    err('node --stack-size=4000, add a LIMIT, or run the query under Deno.')
+  } else if (error.digestKey !== null) {
+    err(`The bytes of '${error.digestKey}' in the generation directory are not the bytes the manifest commits.`)
+    err('The generation is damaged or was edited after it was packed; repack or restore it.')
+  }
+  return EXIT_FAILURE
+}
+
+async function commandQuery (positional, options) {
+  if (positional.length < 1) throw new UsageError('query needs a STORE')
+  if (typeof options.base === 'string') {
+    throw new UsageError(
+      'the store query operation takes no base argument; put a BASE clause ' +
+      'in the query text instead')
+  }
+  const root = positional[0]
+  const sparql = queryText(positional, options)
+  const format = queryFormat(options)
+  const limit = queryLimit(options, format)
+  const quiet = options.quiet === true
+
+  const named = typeof options.generation === 'string' ? options.generation : null
+  const store = openStore(root, named)
+  const engine = await loadEngine()
+
+  if (options.explain === true) {
+    let plan
+    try {
+      plan = planQuery(engine, store, sparql)
+    } catch (error) {
+      if (error instanceof StoreOperationError) return reportStoreFailure(error)
+      throw error
+    }
+    if (format === 'json' || options.json === true) {
+      out(JSON.stringify(plan, null, 2))
+      return EXIT_OK
+    }
+    out(`layout ${plan.layout} (wire version ${plan.wireVersion})`)
+    out(`mode ${plan.mode}`)
+    out(`${plural(plan.shards, 'artifact')}, ${plan.bytes} bytes, ${plural(plan.rows, 'row')}`)
+    for (const key of plan.keys) out(`  ${key}`)
+    return EXIT_OK
+  }
+
+  let answer
+  try {
+    answer = queryStore(engine, store, sparql)
+  } catch (error) {
+    if (error instanceof StoreOperationError) return reportStoreFailure(error)
+    throw error
+  }
+  const { plan, result, blobBytes } = answer
+  if (!quiet) {
+    err(`mode ${result.mode}, ${plural(result.shards, 'artifact')}, ${blobBytes} bytes read, plan declares ${plural(plan.rows, 'block row')}`)
+  }
+  return renderQueryResult(engine, result, format, limit, quiet)
+}
+
+function renderQueryResult (engine, result, format, limit, quiet) {
+  if (result.kind === 'select') {
+    const vars = result.srj.head.vars
+    const bindings = result.srj.results.bindings
+    if (format === 'json') {
+      out(JSON.stringify(result.srj, null, 2))
+      return EXIT_OK
+    }
+    if (format !== 'table') {
+      err(`factoidal query: --format ${format} needs a CONSTRUCT query; this one is a SELECT`)
+      return EXIT_FAILURE
+    }
+    const shown = limit === null ? bindings : bindings.slice(0, limit)
+    printTable(vars, shown.map((row) => vars.map((name) => cellOfTerm(row[name]))))
+    if (shown.length < bindings.length) {
+      err(`showing ${shown.length} of ${bindings.length} rows (--limit ${limit})`)
+    } else if (!quiet) {
+      err(plural(bindings.length, 'row'))
+    }
+    return EXIT_OK
+  }
+  if (result.kind === 'ask') {
+    if (format === 'json') {
+      // The operation answers ASK with a boolean, not with a results
+      // document, so the envelope is what there is to print.
+      out(JSON.stringify(result, null, 2))
+      return EXIT_OK
+    }
+    if (format !== 'table') {
+      err(`factoidal query: --format ${format} needs a CONSTRUCT query; this one is an ASK`)
+      return EXIT_FAILURE
+    }
+    out(result.boolean ? 'true' : 'false')
+    return EXIT_OK
+  }
+  if (result.kind === 'construct') {
+    if (format === 'json') {
+      out(JSON.stringify(result, null, 2))
+      return EXIT_OK
+    }
+    if (format === 'turtle') {
+      out(turtleOfNQuads(engine, result.nquads))
+      return EXIT_OK
+    }
+    // table and nquads both print what the engine serialized.
+    if (result.nquads.length > 0) out(result.nquads.replace(/\n$/, ''))
+    return EXIT_OK
+  }
+  err(`factoidal query: the engine answered an unknown result kind "${result.kind}"`)
+  return EXIT_FAILURE
 }
 
 function commandPack (positional, _options) {
@@ -350,7 +599,7 @@ const COMMANDS = {
 
 // ----------------------------------------------------------------- main
 
-function main () {
+async function main () {
   if (argv.length === 0) {
     out(USAGE)
     return EXIT_USAGE
@@ -386,7 +635,7 @@ function main () {
     return EXIT_OK
   }
   try {
-    return COMMANDS[command](parsed.positional, parsed.options)
+    return await COMMANDS[command](parsed.positional, parsed.options)
   } catch (error) {
     if (error instanceof UsageError) {
       err(`factoidal ${command}: ${error.message}`)
@@ -398,8 +647,12 @@ function main () {
       err(`factoidal ${command}: ${error.code}: ${error.message}`)
       return EXIT_FAILURE
     }
+    if (error instanceof StoreOperationError) {
+      err(`factoidal ${command}: ${error.message}`)
+      return EXIT_FAILURE
+    }
     throw error
   }
 }
 
-exit(main())
+exit(await main())
