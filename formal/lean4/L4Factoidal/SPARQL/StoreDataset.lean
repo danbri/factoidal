@@ -738,6 +738,95 @@ row survives unextended. -/
         | some mu => (Binding.lookup "o2" mu).isSome | none => true) == false
 
 
+/-! §18.5 MINUS and §18.2.4 sub-SELECT on the backend path answer exactly
+what the reference evaluator answers.  Both are regression pins for
+anti-pattern 34: a routing change that moves either shape onto a runner
+without the reference dataset would silently drop or keep rows here. -/
+private def minusSame : QueryPattern :=
+  .minus (.bgp [tpSPO]) (.bgp [tpSPO])
+private def minusDisjoint : QueryPattern :=
+  .minus (.bgp [tpSPO]) (.bgp [tpNoMatch])
+private def subSelectAll : QueryPattern :=
+  .subSelect (mkQuery (.select .all) (.bgp [tpSPO]))
+
+#guard backendRows minusSame == referenceRows minusSame
+#guard (backendRows minusSame).length == 0
+#guard backendRows minusDisjoint == referenceRows minusDisjoint
+#guard (backendRows minusDisjoint).length == 1
+#guard backendRows subSelectAll == referenceRows subSelectAll
+#guard (backendRows subSelectAll).length == 1
+
+/-! ## BIND and constant-IRI paths on the selective manifest path
+
+`ShardManifest.nativeConstantPredicates?` now admits `BIND(e AS ?v)` for a
+`backendLocal` `e`, and a property path whose every step is a constant IRI.
+Admission means the store opener reads ONLY the blocks of the predicates the
+query names, so the two shapes below have to answer over that restricted read
+set exactly what the reference evaluator answers over the whole dataset.
+
+`gChain` is `a p b` and `b q g`, so the sequence path `p/q` relates `a` to `g`
+and reads only the `p` and `q` blocks. -/
+
+private def iQ : WfIri := ⟨"http://example.org/q", by decide⟩
+
+private def gChain : Graph :=
+  [ { s := .iri iA, p := iP, o := .iri iB },
+    { s := .iri iB, p := iQ, o := .iri iG } ]
+
+private def dsbChain : DatasetBackend := { default := .list gChain, named := [] }
+private def envChain : EvalEnv :=
+  { dataset := some (materialiseDatasetBackend dsbChain) }
+
+private def chainBackendRows (p : QueryPattern) : SolutionSeq :=
+  match runSelectQueryBackendDataset envChain (mkQuery (.select .all) p) dsbChain with
+  | some rows => rows
+  | none => []
+
+private def chainReferenceRows (p : QueryPattern) : SolutionSeq :=
+  (evalSelect envChain (materialiseDatasetBackend dsbChain)
+     (mkQuery (.select .all) p)).2
+
+/-! `UCASE(SUBSTR(STR(?o), 1, 1))` is the UK Parliament first-letter shape.
+The three forms are §17.4.2 / §17.4.3 functions of one variable, so the
+expression is `backendLocal` and the BIND adds no triple read of its own. -/
+private def bindFirstLetter : QueryPattern :=
+  .bind (.uCase (.substr (.str (.var "o")) (.numericLit 1) (some (.numericLit 1))))
+    "first" (.bgp [tpSPO])
+
+#guard (Expr.backendLocal
+  (.uCase (.substr (.str (.var "o")) (.numericLit 1) (some (.numericLit 1))))) == true
+#guard chainBackendRows bindFirstLetter == chainReferenceRows bindFirstLetter
+#guard (chainBackendRows bindFirstLetter).length == 2
+#guard (chainBackendRows bindFirstLetter).all
+  (fun mu => (Binding.lookup "first" mu).isSome) == true
+
+/-! A sequence of two constant-IRI steps: one pair, `a` to `g`. -/
+private def pathSequence : QueryPattern :=
+  .propertyPath (.var "s") (.sequence (.iri iP) (.iri iQ)) (.var "o")
+
+#guard chainBackendRows pathSequence == chainReferenceRows pathSequence
+#guard (chainBackendRows pathSequence).length == 1
+#guard (match (chainBackendRows pathSequence).head? with
+        | some mu => (Binding.lookup "o" mu) == some (Term.iri iG)
+        | none => false) == true
+
+/-! An alternative of two constant-IRI steps reads both blocks: two pairs. -/
+private def pathAlternative : QueryPattern :=
+  .propertyPath (.var "s") (.alternative (.iri iP) (.iri iQ)) (.var "o")
+
+#guard chainBackendRows pathAlternative == chainReferenceRows pathAlternative
+#guard (chainBackendRows pathAlternative).length == 2
+
+/-! An inverse of a constant IRI reads the same block, with the pair
+swapped. -/
+private def pathInverse : QueryPattern :=
+  .propertyPath (.var "s") (.inverse (.iri iP)) (.var "o")
+
+#guard chainBackendRows pathInverse == chainReferenceRows pathInverse
+#guard (match (chainBackendRows pathInverse).head? with
+        | some mu => (Binding.lookup "o" mu) == some (Term.iri iA)
+        | none => false) == true
+
 /-! The COTTAS dataset constructor makes one backend per named graph
 plus the default. -/
 #guard (cottasOnDiskDatasetBackend

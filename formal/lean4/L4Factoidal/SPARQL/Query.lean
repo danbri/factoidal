@@ -227,6 +227,7 @@ def Query.postValues : Query → Option (List Binding)
 def Query.base : Query → Option String
   | .mk _ _ _ _ _ _ _ b => b
 
+mutual
 /-- Expressions whose evaluation depends only on the current solution mapping
     and `EvalEnv`, never on the active RDF graph.  This deliberately small
     subset permits backend-native FILTER evaluation without accidentally
@@ -252,7 +253,52 @@ def Expr.backendLocal : Expr → Bool
   -- reach a host function.
   | .isIri e | .isBlank e | .isLiteral e | .isNumeric e
   | .str e | .lang e | .datatype e => Expr.backendLocal e
+  -- §17.4.2 language / direction accessors and term constructors. Same
+  -- argument as the seven above: `fnHasLang`, `fnHasLangDir`, `fnLangDir`
+  -- and the STRDT / STRLANG / STRLANGDIR arms are total functions of their
+  -- operands' `EvalResult`s, carry no `QueryPattern`, and read neither the
+  -- active graph nor `EvalEnv`.
+  | .hasLang e | .hasLangDir e | .langDir e => Expr.backendLocal e
+  | .strDt lex dt | .strLang lex dt => Expr.backendLocal lex && Expr.backendLocal dt
+  | .strLangDir lex tag dir =>
+      Expr.backendLocal lex && Expr.backendLocal tag && Expr.backendLocal dir
+  -- §17.4.1 functional forms. IF chooses one of two already-admitted
+  -- sub-expressions on the EBV of a third; COALESCE, IN and NOT IN read an
+  -- argument LIST. None of the four reaches past `Expr.evalIn` on its own
+  -- operands.
+  | .cond c t e =>
+      Expr.backendLocal c && Expr.backendLocal t && Expr.backendLocal e
+  | .coalesce es => Expr.backendLocalList es
+  | .inList e es | .notInList e es => Expr.backendLocal e && Expr.backendLocalList es
+  -- §17.4.3 string functions, minus REGEX and REPLACE. Every arm below is
+  -- `Expr.evalIn` applied to its operands followed by a pure Lean string
+  -- function (`substrResult`, `erStringPreserve`, `strStartsWith`,
+  -- `strBeforeRaw`, `concatResults`, `strEncodeUri`, ...). REGEX and REPLACE
+  -- stay out: the F* tree reaches its regex engine through a host call-out,
+  -- and this predicate keeps the two trees' backend-native sets equal.
+  | .strLen e | .uCase e | .lCase e | .encodeForUri e => Expr.backendLocal e
+  | .strStarts e a | .strEnds e a | .contains e a
+  | .strBefore e a | .strAfter e a => Expr.backendLocal e && Expr.backendLocal a
+  | .substr e start none => Expr.backendLocal e && Expr.backendLocal start
+  | .substr e start (some len) =>
+      Expr.backendLocal e && Expr.backendLocal start && Expr.backendLocal len
+  | .concat es => Expr.backendLocalList es
+  -- §17.4.4 numeric functions (the four rounding forms). Pure functions of
+  -- the promoted numeric value.
+  | .abs e | .round e | .ceil e | .floor e => Expr.backendLocal e
+  -- §17.4.5 date/time accessors. Each reads the operand's xsd:dateTime
+  -- LEXICAL form (`erToDateTimeLex`) and nothing else. NOW() is absent: it
+  -- is the one date/time form that reads `EvalEnv.now`.
+  | .year e | .month e | .day e | .hours e | .minutes e | .seconds e
+  | .timezone e | .tz e => Expr.backendLocal e
   | _ => false
+
+/-- `Expr.backendLocal` over an argument list (COALESCE, CONCAT, IN, NOT IN).
+    An empty argument list is admitted: it reads no operand at all. -/
+def Expr.backendLocalList : List Expr → Bool
+  | [] => true
+  | e :: es => Expr.backendLocal e && Expr.backendLocalList es
+end
 
 /-- Build a query, defaulting every optional part — the shape most
 call sites (and every test below) want. -/

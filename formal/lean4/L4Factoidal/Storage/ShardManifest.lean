@@ -283,25 +283,58 @@ def readOps (store : OpenStore) : BackendReadOps :=
   , estimate := fun bound => estimateBound bound store
   , predicatePresent := fun predicate => !(scanBound { p := some predicate } store).isEmpty }
 
+/-- The step IRIs a property path can traverse, when every step is a constant
+    IRI.
+
+    §18.4 evaluates `iri` by a one-step lookup on that predicate, `^p` by
+    swapping the pairs `p` denotes, `p1/p2` by relational composition and
+    `p1|p2` by union.  Each of those four reads only triples whose predicate
+    is one of the step IRIs collected here, so the pair relation the path
+    denotes over the dataset restricted to those predicates equals the one it
+    denotes over the whole dataset.
+
+    `*`, `+`, `?` and the negated property set return `none`, for two separate
+    reasons.  `*` and `?` have a ZERO-LENGTH case whose pairs are
+    `(node, node)` for every node of the active graph (§18.4's
+    `ZeroLengthPath`), so restricting the dataset removes pairs from their
+    answer.  `+` reads only its step predicate, but `evalPath` bounds its
+    fixpoint with a fuel counter seeded from the graph's node count, so
+    admitting it needs an argument about the restricted seed as well as about
+    the read set; it stays out until that argument is written.  A negated
+    property set is defined by the predicates it does NOT name, so it has no
+    finite constant read set. -/
+def constantPathPredicates? : PropertyPath → Option (List WfIri)
+  | .iri predicate => some [predicate]
+  | .inverse path => constantPathPredicates? path
+  | .sequence p1 p2
+  | .alternative p1 p2 => do
+      let l ← constantPathPredicates? p1
+      let r ← constantPathPredicates? p2
+      some (l ++ r)
+  | _ => none
+
 /-- Conservative syntactic admission test for the selective manifest opener.
     It accepts only pattern forms whose triple patterns all carry a constant
-    IRI predicate.  Property paths, graph clauses, SERVICE, LATERAL, BIND,
-    VALUES and sub-SELECT deliberately return `none`: those forms can
-    materialise the active backend or introduce a nested pattern, so the
-    complete-store opener remains the sound default until they receive their
-    own planning proof.
+    IRI predicate.  Graph clauses, SERVICE, LATERAL, VALUES and sub-SELECT
+    deliberately return `none`: those forms can materialise the active backend
+    or introduce a nested pattern, so the complete-store opener remains the
+    sound default until they receive their own planning proof.
 
     Soundness of the accepted set (BGP, `join`, `union`, `minus`, `leftJoin`,
-    and `filter` with a `backendLocal` condition): the evaluation of each of
-    those operators is a function of its operands' solution sequences and of
-    the current solution mapping alone — `SPARQL.join`, `SPARQL.union`,
-    `SPARQL.minus` and `SPARQL.leftJoin` read no triples themselves, and a
-    `backendLocal` condition reads only the row (it carries no nested
-    `QueryPattern`, so `substituteExistentials` is the identity on it).  A BGP
-    whose every triple pattern has a constant predicate matches only triples
-    with those predicates.  By induction, evaluating an accepted pattern over
-    the dataset restricted to the collected predicates gives the same solution
-    sequence as evaluating it over the whole dataset. -/
+    `bind` and `filter` with a `backendLocal` expression, and `propertyPath`
+    over constant-IRI steps): the evaluation of each of those operators is a
+    function of its operands' solution sequences and of the current solution
+    mapping alone — `SPARQL.join`, `SPARQL.union`, `SPARQL.minus` and
+    `SPARQL.leftJoin` read no triples themselves, and a `backendLocal`
+    expression reads only the row (it carries no nested `QueryPattern`, so
+    `substituteExistentials` is the identity on it).  §18.6 `BIND(e AS ?v)`
+    extends each row of its sub-pattern with one value of `e`, so a
+    `backendLocal` `e` adds no triple read of its own.  A BGP whose every
+    triple pattern has a constant predicate matches only triples with those
+    predicates, and `constantPathPredicates?` above carries the same argument
+    for a path.  By induction, evaluating an accepted pattern over the dataset
+    restricted to the collected predicates gives the same solution sequence as
+    evaluating it over the whole dataset. -/
 def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
   | .bgp patterns =>
       patterns.foldr (fun pattern rest => do
@@ -323,6 +356,16 @@ def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
       else none
   | .filter condition pattern =>
       if condition.backendLocal then nativeConstantPredicates? pattern else none
+  -- §18.6 BIND: one extra binding per row of the sub-pattern, computed by
+  -- `Expr.evalIn` from the row alone when the expression is `backendLocal`.
+  -- A non-`backendLocal` expression can carry an EXISTS, which reads triples
+  -- through `EvalEnv.dataset` and would then see only the opened shards.
+  | .bind expression _ pattern =>
+      if expression.backendLocal then nativeConstantPredicates? pattern else none
+  -- §18.4 a path contributes exactly its step IRIs when every step is a
+  -- constant IRI. The subject and object positions are irrelevant here: they
+  -- constrain the pairs, they do not widen the set of predicates read.
+  | .propertyPath _ path _ => constantPathPredicates? path
   | .empty => some []
   | _ => none
 
@@ -676,5 +719,43 @@ private def sampleManifestWrongRows : Manifest :=
   (.bgp [{ s := .var "s", p := .iri sampleOtherPredicate, o := .var "o2" }])
   (.boolLit true)))
   == some [samplePredicate, sampleOtherPredicate])
+
+/-! §18.6 BIND. `UCASE(SUBSTR(STR(?o), 1, 1))` is the shape the UK Parliament
+first-letter query uses: three §17.4.2/§17.4.3 forms over one variable, so it
+reads no triple and the sub-pattern's one predicate is the whole read set. An
+EXISTS in the same position reads triples and must refuse. -/
+#guard (nativeConstantPredicates? (.bind
+  (.uCase (.substr (.str (.var "o")) (.numericLit 1) (some (.numericLit 1)))) "first"
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))
+  == some [samplePredicate])
+#guard (nativeConstantPredicates? (.bind (.existsPat .empty) "x"
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }]))).isNone
+
+/-! §18.4 property paths. A sequence, an alternative and an inverse of
+constant IRIs contribute their step IRIs; `*`, `+`, `?` and a negated set are
+refused. -/
+#guard (constantPathPredicates? (.sequence (.iri samplePredicate) (.iri sampleOtherPredicate))
+  == some [samplePredicate, sampleOtherPredicate])
+#guard (nativeConstantPredicates? (.propertyPath (.var "s")
+  (.sequence (.iri samplePredicate) (.iri sampleOtherPredicate)) (.var "o"))
+  == some [samplePredicate, sampleOtherPredicate])
+#guard (nativeConstantPredicates? (.propertyPath (.var "s")
+  (.alternative (.iri samplePredicate) (.inverse (.iri sampleOtherPredicate))) (.var "o"))
+  == some [samplePredicate, sampleOtherPredicate])
+#guard (nativeConstantPredicates? (.propertyPath (.var "s")
+  (.zeroOrMore (.iri samplePredicate)) (.var "o"))).isNone
+#guard (nativeConstantPredicates? (.propertyPath (.var "s")
+  (.oneOrMore (.iri samplePredicate)) (.var "o"))).isNone
+#guard (nativeConstantPredicates? (.propertyPath (.var "s")
+  (.zeroOrOne (.iri samplePredicate)) (.var "o"))).isNone
+#guard (nativeConstantPredicates? (.propertyPath (.var "s")
+  (.negatedSet [.iri samplePredicate]) (.var "o"))).isNone
+/-! A path step inside a MINUS still restricts, which is the shape of the UK
+Parliament "work packages current" count query. -/
+#guard (nativeConstantPredicates? (.minus
+  (.bgp [{ s := .var "s", p := .iri samplePredicate, o := .var "o" }])
+  (.propertyPath (.var "s") (.sequence (.iri sampleOtherPredicate)
+    (.iri samplePredicate)) (.var "o")))
+  == some [samplePredicate, sampleOtherPredicate, samplePredicate])
 
 end L4Factoidal.Storage.ShardManifest
