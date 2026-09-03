@@ -1,0 +1,6 @@
+<http://example.org/alice> <http://example.org/name> "Alice" .
+<http://example.org/alice> <http://example.org/knows> <http://example.org/bob> .
+<http://example.org/bob> <http://example.org/name> "Bob" <http://example.org/g1> .
+<http://example.org/shared> <http://example.org/name> "Shared" <http://example.org/g1> .
+<http://example.org/shared> <http://example.org/name> "Shared" <http://example.org/g2> .
+_:b0 <http://example.org/name> "Anonymous" <http://example.org/g2> .

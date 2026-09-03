@@ -1,0 +1,22 @@
+# RDF 1.1 TriG: the default graph and two named graphs.
+# `ex:shared ex:name "Shared"` appears in BOTH named graphs, which is two
+# distinct quads and therefore two rows of the `ex:name` block.
+# `_:b0` is a labelled blank node so that the N-Quads twin of this file can
+# carry the same label; an anonymous `[]` would take a parser-generated label
+# and the two files would not produce byte-identical blocks.
+@prefix ex: <http://example.org/> .
+
+{
+  ex:alice ex:name "Alice" .
+  ex:alice ex:knows ex:bob .
+}
+
+ex:g1 {
+  ex:bob ex:name "Bob" .
+  ex:shared ex:name "Shared" .
+}
+
+ex:g2 {
+  ex:shared ex:name "Shared" .
+  _:b0 ex:name "Anonymous" .
+}

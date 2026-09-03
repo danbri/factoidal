@@ -190,6 +190,21 @@ def decodeQuad? (dict : Array Term) (row : IdQuad) : Option QuadRow := do
 def QuadBlock.denotes (block : QuadBlock) : List QuadRow :=
   block.rows.toList.filterMap (decodeQuad? block.dict)
 
+/-- The header graph-set summary resolved to RDF graph names, in the block's
+    first-occurrence row order. This is what a manifest copies: the summary on
+    the wire holds block-local term IDs, so resolving one to a name needs a
+    PTD1 page of this block, which is the read a planner must not have to do.
+    `none` when a summary entry's ID is not assigned by the dictionary, which
+    `supported` and `decode` both refuse. -/
+def graphNames? (block : QuadBlock) : Option (List (Option GraphRef)) :=
+  (distinctGraphs block.rows.toList).mapM fun g =>
+    match g with
+    | none => some none
+    | some gid => do
+        let term ← block.dict[gid]?
+        let named ← term.toSubject?
+        some (some named)
+
 /-! ## The IBK4 byte format -/
 
 /-- `'IBK4'` in little-endian form. -/
