@@ -247,14 +247,50 @@ private def findTermIdGo (terms : Array Term) (wanted : Term) (index fuel : Nat)
 def findTermId? (terms : Array Term) (wanted : Term) : Option Nat :=
   findTermIdGo terms wanted 0 terms.size
 
-/-- Full validation/decoding for packer and conformance paths. -/
-def decode? (bytes : ByteArray) : Option (Array Term) := do
+/-! ## The admission decoder
+
+PTD1 carries every term of a block and is the largest region of an IBK3 or IBK4
+artifact, so this decoder runs over almost the whole file at activation and
+whenever a query opens a block. Reading it through `listOfByteArray` converts
+that region to a `List UInt8`, one cons cell per byte; the payload is then
+copied again by `List.drop`/`List.take`, `crc32c` folds over the copy, and the
+stored-checksum read drops the list once more.
+
+`decodeSpec?` keeps that list decoder as the SPECIFICATION of what PTD1 admits.
+`decode?` reads the same fields by byte-array index and checksums the payload in
+place with `Bytes.crc32cAppendArray`.
+`PagedTermDictionaryTheorems.decode?_eq_spec` proves
+
+    decode? bytes = decodeSpec? bytes
+
+for every `bytes`, so the format and the admission decision are unchanged. -/
+
+/-- Full validation/decoding for packer and conformance paths, stated over the
+    byte list.  This is the SPECIFICATION; `decode?` is proved equal to it. -/
+def decodeSpec? (bytes : ByteArray) : Option (Array Term) := do
   let input := listOfByteArray bytes
   let header ← decodePrefix (bytes.extract 0 prefixBytes)
   if input.length < prefixBytes + header.pageCount * 8 + 4 then none else
   let payload := input.drop 5 |>.take (input.length - 9)
   let storedCrc ← readU32LE input (input.length - 4)
   if storedCrc != crc32c payload then none else
+  let directoryBytes := bytes.extract prefixBytes (prefixBytes + header.pageCount * 8)
+  let directory ← decodeDirectory? header directoryBytes
+  let pageBytes := bytes.extract (pageAreaOffset header) (bytes.size - 4)
+  if !directoryCovers directory pageBytes.size then none else
+  let terms ← decodePages? header 0 directory pageBytes
+  if terms.length != header.termCount then none else some terms.toArray
+
+/-- Full validation/decoding for packer and conformance paths, reading the
+    artifact by byte-array index.  The bytes admitted, and the term array
+    returned, are exactly `decodeSpec?`'s;
+    `PagedTermDictionaryTheorems.decode?_eq_spec` is that proof. -/
+def decode? (bytes : ByteArray) : Option (Array Term) := do
+  let header ← decodePrefix (bytes.extract 0 prefixBytes)
+  if bytes.size < prefixBytes + header.pageCount * 8 + 4 then none else
+  let storedCrc ← readU32At? bytes (bytes.size - 4)
+  if storedCrc != (crc32cAppendArray 0xFFFFFFFF (bytes.extract 5 (bytes.size - 4))
+      ^^^ 0xFFFFFFFF) then none else
   let directoryBytes := bytes.extract prefixBytes (prefixBytes + header.pageCount * 8)
   let directory ← decodeDirectory? header directoryBytes
   let pageBytes := bytes.extract (pageAreaOffset header) (bytes.size - 4)

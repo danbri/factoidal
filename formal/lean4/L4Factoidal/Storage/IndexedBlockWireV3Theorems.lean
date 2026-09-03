@@ -98,6 +98,44 @@ theorem readU32At?_byteArrayOfList (xs : List UInt8) (off : Nat) :
   generalize xs.drop off = d
   rcases d with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, t⟩⟩⟩⟩ <;> simp
 
+/-- The byte list of a byte array has that array's length. -/
+theorem length_listOfByteArray (bytes : ByteArray) :
+    (listOfByteArray bytes).length = bytes.size := by
+  simp only [listOfByteArray, ByteArray.size, Array.length_toList]
+
+/-- A byte-range extract of a byte array is the corresponding list slice of its
+    byte list. -/
+theorem listOfByteArray_extract (bytes : ByteArray) (a b : Nat) :
+    listOfByteArray (bytes.extract a b)
+      = ((listOfByteArray bytes).drop a).take (b - a) := by
+  have h := extract_byteArrayOfList (listOfByteArray bytes) a b
+  rw [byteArrayOfList_listOfByteArray] at h
+  rw [h, listOfByteArray_byteArrayOfList]
+
+/-- The indexed four-byte read on a byte array is the little-endian read on its
+    byte list. -/
+theorem readU32LE_listOfByteArray (bytes : ByteArray) (off : Nat) :
+    readU32LE (listOfByteArray bytes) off = readU32At? bytes off := by
+  rw [← readU32At?_byteArrayOfList (listOfByteArray bytes) off,
+    byteArrayOfList_listOfByteArray]
+
+/-- The CRC32C the specification folds over the payload byte list is the CRC32C
+    the decoder accumulates over the payload byte range in place. -/
+theorem crc32c_payload_slice (bytes : ByteArray) :
+    crc32c (((listOfByteArray bytes).drop magicVersionBytes).take
+        (bytes.size - magicVersionBytes - crcBytes))
+      = crc32cAppendArray 0xFFFFFFFF
+          (bytes.extract magicVersionBytes (bytes.size - crcBytes)) ^^^ 0xFFFFFFFF := by
+  have hsub : bytes.size - crcBytes - magicVersionBytes
+      = bytes.size - magicVersionBytes - crcBytes := by omega
+  have hx := listOfByteArray_extract bytes magicVersionBytes (bytes.size - crcBytes)
+  rw [hsub] at hx
+  have hcrc : crc32cAppendArray 0xFFFFFFFF
+      (bytes.extract magicVersionBytes (bytes.size - crcBytes))
+      = (listOfByteArray (bytes.extract magicVersionBytes (bytes.size - crcBytes))).foldl
+        crc32cByte 0xFFFFFFFF := crc32cAppendArray_eq _ _
+  rw [hcrc, hx, crc32c]
+
 /-! ## Positioned rows -/
 
 /-- The pairing `positionedRows` applies to each source row and its index. -/
@@ -429,9 +467,9 @@ TOTAL term encoder `serializeTerm` that PTD1 calls — comes from
 terms and rows whose IDs resolve to RDF triple positions, come from the
 `(fromParts? block.dict block.rows).isSome` conjunct of `supported`, which is
 the decoder's reconstruction step run on the encoder's own inputs. -/
-theorem decode_encode? (block : Block)
+theorem decodeSpec_encode? (block : Block)
     (bytes : ByteArray) (h : encode? block = some bytes) :
-    ∃ decoded, decode bytes = some decoded ∧
+    ∃ decoded, decodeSpec bytes = some decoded ∧
       decoded.dict = block.dict ∧ decoded.rows = block.rows := by
   rw [encode?] at h
   split at h
@@ -591,7 +629,7 @@ theorem decode_encode? (block : Block)
           fromParts?_ok block.dict block.rows hpartsSome
         refine ⟨decoded, ?_, hddict, hdrows⟩
         -- assemble
-        rw [decode, listOfByteArray_byteArrayOfList]
+        rw [decodeSpec, listOfByteArray_byteArrayOfList]
         simp only [hheader, bind, Option.bind]
         rw [if_neg (by rw [hinpLen]; simp only [prefixBytes, rowBytes]; omega), hpayex, hcrc]
         simp only [bne_self_eq_false, Bool.false_eq_true, if_false]
@@ -609,6 +647,31 @@ theorem decode_encode? (block : Block)
           Bool.false_eq_true, if_false, hptddec]
         exact hparts
 
+/-! ## The admission decoder refines its byte-list specification -/
+
+/-- `decode` admits exactly the artifacts `decodeSpec` admits and returns the
+    same block.
+
+    `decodeSpec` converts the whole artifact to a `List UInt8`, copies the
+    payload out of that list, folds `crc32c` over the copy, and drops the list
+    again to read the stored checksum. `decode` reads the length, the stored
+    checksum and the payload from the byte array itself. This equation is the
+    only place where the two meet; every statement below is about `decode` and
+    is derived through it. -/
+theorem decode_eq_spec (bytes : ByteArray) : decode bytes = decodeSpec bytes := by
+  simp only [decode, decodeSpec, length_listOfByteArray, readU32LE_listOfByteArray,
+    crc32c_payload_slice]
+
+/-- Whatever `encode?` accepts, `decode` restores with the same dictionary
+    array and the same ID row array, so the two blocks denote the same graph.
+    The only hypothesis is that `encode?` accepted the block. -/
+theorem decode_encode? (block : Block)
+    (bytes : ByteArray) (h : encode? block = some bytes) :
+    ∃ decoded, decode bytes = some decoded ∧
+      decoded.dict = block.dict ∧ decoded.rows = block.rows := by
+  rw [decode_eq_spec]
+  exact decodeSpec_encode? block bytes h
+
 /-- The graph an IBK3 artifact denotes is the graph its source block denotes.
     `IndexedBlock.Block.denotes` reads only the dictionary array and the row
     array, which `decode_encode?` restores unchanged. -/
@@ -622,6 +685,8 @@ theorem denotes_decode_encode? (block : Block)
 #print axioms decodeRowsGo_ok
 #print axioms fromParts?_ok
 #print axioms ptd_pageTerms_of_encode?
+#print axioms decodeSpec_encode?
+#print axioms decode_eq_spec
 #print axioms decode_encode?
 #print axioms denotes_decode_encode?
 

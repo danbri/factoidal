@@ -81,6 +81,45 @@ theorem readU32At?_byteArrayOfList (xs : List UInt8) (off : Nat) :
   generalize xs.drop off = d
   rcases d with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, t⟩⟩⟩⟩ <;> simp
 
+/-- Building from a byte array's own list returns that byte array. -/
+theorem byteArrayOfList_listOfByteArray (bytes : ByteArray) :
+    byteArrayOfList (listOfByteArray bytes) = bytes := by
+  simp [byteArrayOfList, listOfByteArray]
+
+/-- The byte list of a byte array has that array's length. -/
+theorem length_listOfByteArray (bytes : ByteArray) :
+    (listOfByteArray bytes).length = bytes.size := by
+  simp only [listOfByteArray, ByteArray.size, Array.length_toList]
+
+/-- A byte-range extract of a byte array is the corresponding list slice of its
+    byte list. -/
+theorem listOfByteArray_extract (bytes : ByteArray) (a b : Nat) :
+    listOfByteArray (bytes.extract a b)
+      = ((listOfByteArray bytes).drop a).take (b - a) := by
+  have h := extract_byteArrayOfList (listOfByteArray bytes) a b
+  rw [byteArrayOfList_listOfByteArray] at h
+  rw [h, listOfByteArray_byteArrayOfList]
+
+/-- The indexed four-byte read on a byte array is the little-endian read on its
+    byte list. -/
+theorem readU32LE_listOfByteArray (bytes : ByteArray) (off : Nat) :
+    readU32LE (listOfByteArray bytes) off = readU32At? bytes off := by
+  rw [← readU32At?_byteArrayOfList (listOfByteArray bytes) off,
+    byteArrayOfList_listOfByteArray]
+
+/-- The CRC32C the specification folds over the payload byte list is the CRC32C
+    the decoder accumulates over the payload byte range in place. -/
+theorem crc32c_payload_slice (bytes : ByteArray) :
+    crc32c (((listOfByteArray bytes).drop 5).take (bytes.size - 9))
+      = crc32cAppendArray 0xFFFFFFFF (bytes.extract 5 (bytes.size - 4)) ^^^ 0xFFFFFFFF := by
+  have hsub : bytes.size - 4 - 5 = bytes.size - 9 := by omega
+  have hx := listOfByteArray_extract bytes 5 (bytes.size - 4)
+  rw [hsub] at hx
+  have hcrc : crc32cAppendArray 0xFFFFFFFF (bytes.extract 5 (bytes.size - 4))
+      = (listOfByteArray (bytes.extract 5 (bytes.size - 4))).foldl crc32cByte 0xFFFFFFFF :=
+    crc32cAppendArray_eq _ _
+  rw [hcrc, hx, crc32c]
+
 /-! ## Pagination -/
 
 /-- The recursive step of `pagesOf` on a nonempty term list. -/
@@ -557,7 +596,7 @@ theorem encodePages_ne_nil (L : List Term) : ∀ page ∈ encodePages L, page �
 
 /-- The decoder inverts the encoder on the byte object the encoder builds.
 The three size hypotheses are exactly the guards `encode?` checks. -/
-theorem decode?_encoded (L : List Term) (sz : Nat)
+theorem decodeSpec?_encoded (L : List Term) (sz : Nat)
     (hszL : L.length = sz)
     (hsup : ∀ t ∈ L, termSupported t = true)
     (hfit : ∀ t ∈ L, termFitsU32 t)
@@ -565,7 +604,7 @@ theorem decode?_encoded (L : List Term) (sz : Nat)
     (hpcfit : (encodePages L).length < UInt32.size)
     (hdirfit : ∀ e ∈ directoryFor (encodePages L),
       e.offset < UInt32.size ∧ e.length < UInt32.size) :
-    decode? (byteArrayOfList
+    decodeSpec? (byteArrayOfList
         (writeU32LE magic ++ [version] ++
           (writeU32LE (UInt32.ofNat sz) ++ writeU32LE (UInt32.ofNat defaultPageTerms) ++
             writeU32LE (UInt32.ofNat (encodePages L).length) ++
@@ -696,7 +735,7 @@ theorem decode?_encoded (L : List Term) (sz : Nat)
     rw [← hPmap] at key
     rw [decodePages?, hDeq, key, List.reverse_nil, List.nil_append, hpgflat]
   -- assemble
-  simp only [decode?, listOfByteArray_byteArrayOfList, hprefix, bind, Option.bind]
+  simp only [decodeSpec?, listOfByteArray_byteArrayOfList, hprefix, bind, Option.bind]
   rw [if_neg (by rw [hinplen]; simp only [prefixBytes]; omega)]
   rw [hpayex, hcrcread]
   simp only [bne_self_eq_false, Bool.false_eq_true, if_false]
@@ -720,9 +759,9 @@ turns the second into the `termFitsU32` that
 `L4Factoidal.Storage.parseTerm_serializeTerm` asks for. The remaining size
 conditions — the term count, the page count and every directory offset and
 length below `UInt32.size` — are the second guard of `encode?`. -/
-theorem decode?_encode? (terms : Array Term)
+theorem decodeSpec?_encode? (terms : Array Term)
     (bytes : ByteArray) (h : encode? terms = some bytes) :
-    decode? bytes = some terms := by
+    decodeSpec? bytes = some terms := by
   simp only [encode?] at h
   split at h
   · exact absurd h (by simp)
@@ -747,14 +786,63 @@ theorem decode?_encode? (terms : Array Term)
       simp [fitsU32] at hguard
       obtain ⟨⟨hpcfit, -⟩, hdirall⟩ := hguard
       have hu32 : (4294967296 : Nat) = UInt32.size := rfl
-      rw [decode?_encoded terms.toList terms.size Array.length_toList hsup hfit
+      rw [decodeSpec?_encoded terms.toList terms.size Array.length_toList hsup hfit
         (hu32 ▸ hszfit) (hu32 ▸ hpcfit)
         (fun e he => ⟨hu32 ▸ (hdirall e he).1, hu32 ▸ (hdirall e he).2⟩)]
+
+/-! ## The admission decoder refines its byte-list specification -/
+
+/-- `decode?` admits exactly the artifacts `decodeSpec?` admits and returns the
+    same term array.
+
+    `decodeSpec?` converts the whole dictionary to a `List UInt8`, copies the
+    payload out of that list, folds `crc32c` over the copy, and drops the list
+    again to read the stored checksum. `decode?` reads the length, the stored
+    checksum and the payload from the byte array itself. This equation is the
+    only place where the two meet; the two round-trip statements below are
+    about `decode?` and are derived through it. -/
+theorem decode?_eq_spec (bytes : ByteArray) : decode? bytes = decodeSpec? bytes := by
+  simp only [decode?, decodeSpec?, length_listOfByteArray, readU32LE_listOfByteArray,
+    crc32c_payload_slice]
+
+/-- `decodeSpec?_encoded` for the byte-indexed decoder. -/
+theorem decode?_encoded (L : List Term) (sz : Nat)
+    (hszL : L.length = sz)
+    (hsup : ∀ t ∈ L, termSupported t = true)
+    (hfit : ∀ t ∈ L, termFitsU32 t)
+    (hn : sz < UInt32.size)
+    (hpcfit : (encodePages L).length < UInt32.size)
+    (hdirfit : ∀ e ∈ directoryFor (encodePages L),
+      e.offset < UInt32.size ∧ e.length < UInt32.size) :
+    decode? (byteArrayOfList
+        (writeU32LE magic ++ [version] ++
+          (writeU32LE (UInt32.ofNat sz) ++ writeU32LE (UInt32.ofNat defaultPageTerms) ++
+            writeU32LE (UInt32.ofNat (encodePages L).length) ++
+            (directoryFor (encodePages L)).flatMap encodeDirectory ++
+            (encodePages L).flatten) ++
+          writeU32LE (crc32c (writeU32LE (UInt32.ofNat sz) ++
+            writeU32LE (UInt32.ofNat defaultPageTerms) ++
+            writeU32LE (UInt32.ofNat (encodePages L).length) ++
+            (directoryFor (encodePages L)).flatMap encodeDirectory ++
+            (encodePages L).flatten)))) = some L.toArray := by
+  rw [decode?_eq_spec]
+  exact decodeSpec?_encoded L sz hszL hsup hfit hn hpcfit hdirfit
+
+/-- The PTD1 codec round trip: whatever `encode?` accepts, `decode?` returns
+unchanged, as the same `Array Term` in the same order. -/
+theorem decode?_encode? (terms : Array Term)
+    (bytes : ByteArray) (h : encode? terms = some bytes) :
+    decode? bytes = some terms := by
+  rw [decode?_eq_spec]
+  exact decodeSpec?_encode? terms bytes h
 
 #print axioms decodePrefix_ok
 #print axioms decodeDirectory?_ok
 #print axioms decodeTerms_ok
 #print axioms decodePagesGo_ok
+#print axioms decodeSpec?_encoded
+#print axioms decodeSpec?_encode?
+#print axioms decode?_eq_spec
 #print axioms decode?_encoded
 #print axioms decode?_encode?
 

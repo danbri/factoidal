@@ -369,10 +369,32 @@ def scanRowRangePages (bound : PatternBound) (headerBytes : ByteArray) (rowStart
       | _, _ => none
   | _, _ => none
 
-/-- Complete admission decoder.  PTD1 validates its own canonical page layout
-    and CRC; IBK3 validates its enclosing framing, row count/order, and CRC
-    before restoring the established indexed-block denotation. -/
-def decode (bytes : ByteArray) : Option Block := do
+/-! ## The admission decoder
+
+`decode` runs on every IBK3 artifact at activation and on every block a query
+opens. Reading it through `listOfByteArray` converts the whole artifact to a
+`List UInt8`, one cons cell per byte; the payload is then copied again by
+`List.drop`/`List.take`, `crc32c` folds over that copy, and the stored CRC read
+drops the whole list once more. A sampler run on 2026-09-03 attributed 17 s of
+a 66 s activation of a 28-block generation with 345 literals over 100 KB to
+this decoder.
+
+`decodeSpec` below keeps that list decoder as the SPECIFICATION of what IBK3
+admits. `decode` reads the same fields by byte-array index, and checksums the
+payload in place with `Bytes.crc32cAppendArray`.
+`IndexedBlockWireV3Theorems.decode_eq_spec` proves
+
+    decode bytes = decodeSpec bytes
+
+for every `bytes`, so the format and the admission decision are unchanged. -/
+
+/-- Complete admission decoder, stated over the byte list.  This is the
+    SPECIFICATION; `decode` is proved equal to it.
+
+    PTD1 validates its own canonical page layout and CRC; IBK3 validates its
+    enclosing framing, row count/order, and CRC before restoring the
+    established indexed-block denotation. -/
+def decodeSpec (bytes : ByteArray) : Option Block := do
   let input := listOfByteArray bytes
   let header ← decodePrefix (bytes.extract 0 prefixBytes)
   if input.length < prefixBytes + header.rowCount * rowBytes + header.dictionaryBytes + 4 then none else do
@@ -383,6 +405,29 @@ def decode (bytes : ByteArray) : Option Block := do
   let rowEnd := rowsStart + header.rowCount * rowBytes
   let dictionaryEnd := rowEnd + header.dictionaryBytes
   if dictionaryEnd + 4 != input.length then none else do
+  let dictionaryBytes := bytes.extract rowEnd dictionaryEnd
+  let ptd ← PagedTermDictionary.decodePrefix (dictionaryBytes.extract 0 PagedTermDictionary.prefixBytes)
+  if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
+  let positioned ← decodeRows header.rowCount (bytes.extract rowsStart rowEnd)
+  let rows ← orderedRows? header.rowCount positioned
+  if !predicateLocal rows then none else do
+  let dictionary ← PagedTermDictionary.decode? dictionaryBytes
+  fromParts? dictionary rows
+
+/-- Complete admission decoder, reading the artifact by byte-array index.
+
+    The bytes admitted, and the block returned, are exactly `decodeSpec`'s;
+    `IndexedBlockWireV3Theorems.decode_eq_spec` is that proof. -/
+def decode (bytes : ByteArray) : Option Block := do
+  let header ← decodePrefix (bytes.extract 0 prefixBytes)
+  if bytes.size < prefixBytes + header.rowCount * rowBytes + header.dictionaryBytes + 4 then none else do
+  let storedCrc ← readU32At? bytes (bytes.size - crcBytes)
+  if storedCrc != (crc32cAppendArray 0xFFFFFFFF
+      (bytes.extract magicVersionBytes (bytes.size - crcBytes)) ^^^ 0xFFFFFFFF) then none else do
+  let rowsStart := prefixBytes
+  let rowEnd := rowsStart + header.rowCount * rowBytes
+  let dictionaryEnd := rowEnd + header.dictionaryBytes
+  if dictionaryEnd + 4 != bytes.size then none else do
   let dictionaryBytes := bytes.extract rowEnd dictionaryEnd
   let ptd ← PagedTermDictionary.decodePrefix (dictionaryBytes.extract 0 PagedTermDictionary.prefixBytes)
   if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
