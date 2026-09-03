@@ -1,0 +1,17 @@
+# tools/lean-partial-def-baseline.txt
+#
+# The number of `partial def` declarations allowed in formal/lean4
+# (L4Factoidal, Harness, Wasm). Enforced by tools/lean-hygiene-audit.py.
+#
+# A `partial def` compiles to an opaque constant with no equation
+# lemmas and no kernel reduction, so no theorem can be stated about
+# the function it declares. The backlog is tracked at
+# https://github.com/danbri/factoidal/issues/617.
+#
+# This number goes DOWN in a commit that retires a partial def. It is
+# never raised to make a build pass: raising it is an owner decision
+# and needs its reason recorded here.
+#
+# 2026-09-03: 217, the count measured in
+# docs/designissues/2026-09-03-fstar-lean-coverage-gap.md.
+217

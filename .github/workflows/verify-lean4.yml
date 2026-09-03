@@ -40,7 +40,30 @@ jobs:
 
       - name: Build library, proofs, and build-time guards
         working-directory: formal/lean4
-        run: lake build L4Factoidal
+        shell: bash
+        run: |
+          set -o pipefail
+          lake build L4Factoidal 2>&1 | tee "$RUNNER_TEMP/lake-build.log"
+
+      # `lake build` alone is NOT the soundness gate, and it was the whole
+      # gate until 2026-09-03. A `sorry` fails the build, because Lean emits
+      # it with an elaboration error. A DELIBERATE user `axiom` does not: it
+      # compiles, and its appearance in a `#print axioms` line is an
+      # informational message. The same holds for `native_decide`, `unsafe`,
+      # `@[implemented_by]`, and for a new `partial def` — which compiles to
+      # an opaque constant, so no theorem can be stated about the function it
+      # declares (https://github.com/danbri/factoidal/issues/617).
+      #
+      # The audit reads the build log as well as the source, because a grep
+      # cannot see through an import: a clean-looking theorem can rest on a
+      # lemma in another file that carries the hatch, and only `#print axioms`
+      # reports that. This workflow keeps no `.lake` cache, so every run
+      # compiles and the log carries the `#print axioms` output. If it ever
+      # does not, the audit FAILS with "NOTHING READ" instead of passing
+      # quietly (anti-pattern 30).
+      - name: Escape-hatch audit (sorry / axiom / native_decide / unsafe / partial def)
+        working-directory: ${{ github.workspace }}
+        run: python3 tools/lean-hygiene-audit.py --build-log "$RUNNER_TEMP/lake-build.log"
 
       # The two HACL* @[extern] families cannot be checked by a #guard: an
       # extern does not evaluate in the Lean interpreter that #guard runs in.
