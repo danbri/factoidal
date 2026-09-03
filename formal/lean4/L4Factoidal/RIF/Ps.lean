@@ -216,58 +216,85 @@ def parseConst (c : Ctx) : List Tok → PRes (String × String)
             | none   => .error (fail (Tok.name n :: r) s!"unknown prefix or bare name '{n}'"))
   | ts => .error (fail ts "expected a constant")
 
+/-! ### Fuel
+
+The recursive-descent functions below consume a token list and return
+the REMAINDER. Lean cannot see that the remainder is shorter, because
+the shortening happens inside `parseConst` and inside the recursive
+functions themselves. Each one therefore takes a fuel bound, exactly as
+`parseDocument.prologue` already does in this module.
+
+The bound is not a limit on the input. Every step of a group either
+consumes a token or hands control to the one function of the group that
+consumes a token before it recurses, so a group descends at most three
+levels per token. `parseFuel ts = 3 * ts.length + 3` is above that for
+every token list, and running out is reported as a parse error rather
+than a wrong parse. -/
+
+def parseFuel (ts : List Tok) : Nat := 3 * ts.length + 3
+
 mutual
 
-/-- `Term`. -/
-partial def parseTerm (c : Ctx) : List Tok → PRes Tm
-  | .var v :: r => .ok (.var v, r)
-  | .name "List" :: .lparen :: r =>
-      (match parseTermsUntilRParen c r with
+/-- `Term`, with a fuel bound. -/
+def parseTermF (c : Ctx) : Nat → List Tok → PRes Tm
+  | 0, ts => .error (fail ts "term nesting is too deep")
+  | _ + 1, .var v :: r => .ok (.var v, r)
+  | f + 1, .name "List" :: .lparen :: r =>
+      (match parseTermsGoF c f [] r with
        | .error e => .error e
        | .ok (xs, r2) => .ok (.list xs, r2))
-  | .name "External" :: .lparen :: r =>
+  | f + 1, .name "External" :: .lparen :: r =>
       (match parseConst c r with
        | .error e => .error e
        | .ok ((fn, _), r2) =>
          (match r2 with
           | .lparen :: r3 =>
-              (match parseTermsUntilRParen c r3 with
+              (match parseTermsGoF c f [] r3 with
                | .error e => .error e
                | .ok (args, r4) =>
                  (match r4 with
                   | .rparen :: r5 => .ok (.external fn args, r5)
                   | _ => .error (fail r4 "expected ')' closing External(")))
           | _ => .error (fail r2 "expected '(' after the function of an External term")))
-  | ts =>
+  | f + 1, ts =>
       (match parseConst c ts with
        | .error e => .error e
        | .ok ((lex, sp), r) =>
          (match r with
           | .lparen :: r2 =>
-              (match parseTermsUntilRParen c r2 with
+              (match parseTermsGoF c f [] r2 with
                | .error e => .error e
                | .ok (args, r3) => .ok (.fapp lex sp args, r3))
           | _ => .ok (.const lex sp, r)))
 
-partial def parseTermsUntilRParen (c : Ctx) : List Tok → PRes (List Tm) :=
-  fun ts => parseTermsGo c [] ts
-
-partial def parseTermsGo (c : Ctx) (acc : List Tm) : List Tok → PRes (List Tm)
-  | .rparen :: r => .ok (acc, r)
-  | .comma :: r  => parseTermsGo c acc r
-  | [] => .error (fail [] "expected ')' closing an argument list")
-  | ts =>
-      (match parseTerm c ts with
+/-- The comma-separated argument list up to `)`, with a fuel bound. -/
+def parseTermsGoF (c : Ctx) : Nat → List Tm → List Tok → PRes (List Tm)
+  | 0, _, ts => .error (fail ts "argument list is too long")
+  | _ + 1, acc, .rparen :: r => .ok (acc, r)
+  | f + 1, acc, .comma :: r  => parseTermsGoF c f acc r
+  | _ + 1, _, [] => .error (fail [] "expected ')' closing an argument list")
+  | f + 1, acc, ts =>
+      (match parseTermF c f ts with
        | .error e => .error e
-       | .ok (t, r) => parseTermsGo c (acc ++ [t]) r)
+       | .ok (t, r) => parseTermsGoF c f (acc ++ [t]) r)
 
 end
 
-/-- The `->` slot pairs of a frame, up to `]`. -/
-partial def parseSlots (c : Ctx) (o : Tm) (acc : List Atom) : List Tok → PRes (List Atom)
-  | .rbrack :: r => .ok (acc, r)
-  | [] => .error (fail [] "expected ']' closing a frame")
-  | ts =>
+/-- `Term`. -/
+def parseTerm (c : Ctx) (ts : List Tok) : PRes Tm := parseTermF c (parseFuel ts) ts
+
+/-- The argument list up to `)`. -/
+def parseTermsUntilRParen (c : Ctx) (ts : List Tok) : PRes (List Tm) :=
+  parseTermsGoF c (parseFuel ts) [] ts
+
+/-- The `->` slot pairs of a frame, up to `]`, with a fuel bound. Each
+    slot consumes a predicate term, an arrow and a value term, so one
+    unit of fuel per token is above the bound. -/
+def parseSlotsF (c : Ctx) (o : Tm) : Nat → List Atom → List Tok → PRes (List Atom)
+  | 0, _, ts => .error (fail ts "frame has too many slots")
+  | _ + 1, acc, .rbrack :: r => .ok (acc, r)
+  | _ + 1, _, [] => .error (fail [] "expected ']' closing a frame")
+  | f + 1, acc, ts =>
       match parseTerm c ts with
       | .error e => .error e
       | .ok (p, r) =>
@@ -275,8 +302,12 @@ partial def parseSlots (c : Ctx) (o : Tm) (acc : List Atom) : List Tok → PRes 
         | .arrow :: r2 =>
             (match parseTerm c r2 with
              | .error e => .error e
-             | .ok (v, r3) => parseSlots c o (acc ++ [.frame o p v]) r3)
+             | .ok (v, r3) => parseSlotsF c o f (acc ++ [.frame o p v]) r3)
         | _ => .error (fail r "expected '->' in a frame slot")
+
+/-- The `->` slot pairs of a frame, up to `]`. -/
+def parseSlots (c : Ctx) (o : Tm) (acc : List Atom) (ts : List Tok) : PRes (List Atom) :=
+  parseSlotsF c o (parseFuel ts) acc ts
 
 /-- `Atomic` — everything that can stand where a formula does. -/
 def parseAtomic (c : Ctx) (ts : List Tok) : PRes (List Atom) :=
@@ -328,14 +359,17 @@ def parseAtomic (c : Ctx) (ts : List Tok) : PRes (List Atom) :=
 
 mutual
 
-partial def parseFormula (c : Ctx) (ts : List Tok) : PRes Formula :=
+/-- `FORMULA`, with a fuel bound. -/
+def parseFormulaF (c : Ctx) : Nat → List Tok → PRes Formula
+  | 0, ts => .error (fail ts "formula nesting is too deep")
+  | fuel + 1, ts =>
   match ts with
   | .name "And" :: .lparen :: r =>
-      (match parseFormulasGo c [] r with
+      (match parseFormulasGoF c fuel [] r with
        | .error e => .error e
        | .ok (fs, r2) => .ok (.and fs, r2))
   | .name "Or" :: .lparen :: r =>
-      (match parseFormulasGo c [] r with
+      (match parseFormulasGoF c fuel [] r with
        | .error e => .error e
        | .ok (fs, r2) => .ok (.or fs, r2))
   | .name "Exists" :: r =>
@@ -344,7 +378,7 @@ partial def parseFormula (c : Ctx) (ts : List Tok) : PRes Formula :=
       let r2 := r.drop vars.length
       (match r2 with
        | .lparen :: r3 =>
-           (match parseFormula c r3 with
+           (match parseFormulaF c fuel r3 with
             | .error e => .error e
             | .ok (f, r4) =>
               (match r4 with
@@ -357,15 +391,21 @@ partial def parseFormula (c : Ctx) (ts : List Tok) : PRes Formula :=
        | .ok ([a], r) => .ok (.atom a, r)
        | .ok (as', r) => .ok (.and (as'.map Formula.atom), r))
 
-partial def parseFormulasGo (c : Ctx) (acc : List Formula) : List Tok → PRes (List Formula)
-  | .rparen :: r => .ok (acc, r)
-  | [] => .error (fail [] "expected ')' closing a connective")
-  | ts =>
-      (match parseFormula c ts with
+/-- The arguments of `And(…)` / `Or(…)`, with a fuel bound. -/
+def parseFormulasGoF (c : Ctx) : Nat → List Formula → List Tok → PRes (List Formula)
+  | 0, _, ts => .error (fail ts "connective has too many arguments")
+  | _ + 1, acc, .rparen :: r => .ok (acc, r)
+  | _ + 1, _, [] => .error (fail [] "expected ')' closing a connective")
+  | fuel + 1, acc, ts =>
+      (match parseFormulaF c fuel ts with
        | .error e => .error e
-       | .ok (f, r) => parseFormulasGo c (acc ++ [f]) r)
+       | .ok (f, r) => parseFormulasGoF c fuel (acc ++ [f]) r)
 
 end
+
+/-- `FORMULA`. -/
+def parseFormula (c : Ctx) (ts : List Tok) : PRes Formula :=
+  parseFormulaF c (parseFuel ts) ts
 
 /-- `Clause` — one or more head atoms (a frame with several slots is
     several atoms) and an optional body. -/
@@ -380,14 +420,16 @@ def parseClause (c : Ctx) (vars : List String) (ts : List Tok) : PRes (List Rule
          | .ok (b, r3) => .ok (heads.map (fun h => { vars := vars, head := h, body := some b }), r3))
     | _ => .ok (heads.map (fun h => ({ vars := vars, head := h } : Rule)), r)
 
-partial def parseGroupItems (c : Ctx) (acc : List Rule) : List Tok → PRes (List Rule)
-  | .rparen :: r => .ok (acc, r)
-  | [] => .error (fail [] "expected ')' closing Group(")
-  | .name "Group" :: .lparen :: r =>
-      (match parseGroupItems c [] r with
+/-- The items of a `Group(…)`, with a fuel bound. -/
+def parseGroupItemsF (c : Ctx) : Nat → List Rule → List Tok → PRes (List Rule)
+  | 0, _, ts => .error (fail ts "Group has too many items")
+  | _ + 1, acc, .rparen :: r => .ok (acc, r)
+  | _ + 1, _, [] => .error (fail [] "expected ')' closing Group(")
+  | fuel + 1, acc, .name "Group" :: .lparen :: r =>
+      (match parseGroupItemsF c fuel [] r with
        | .error e => .error e
-       | .ok (rs, r2) => parseGroupItems c (acc ++ rs) r2)
-  | .name "Forall" :: r =>
+       | .ok (rs, r2) => parseGroupItemsF c fuel (acc ++ rs) r2)
+  | fuel + 1, acc, .name "Forall" :: r =>
       let vars := (r.takeWhile (fun t => match t with | .var _ => true | _ => false)).filterMap
         (fun t => match t with | .var v => some v | _ => none)
       let r2 := r.drop vars.length
@@ -397,13 +439,17 @@ partial def parseGroupItems (c : Ctx) (acc : List Rule) : List Tok → PRes (Lis
             | .error e => .error e
             | .ok (rs, r4) =>
               (match r4 with
-               | .rparen :: r5 => parseGroupItems c (acc ++ rs) r5
+               | .rparen :: r5 => parseGroupItemsF c fuel (acc ++ rs) r5
                | _ => .error (fail r4 "expected ')' closing Forall(")))
        | _ => .error (fail r2 "expected '(' after the variables of Forall"))
-  | ts =>
+  | fuel + 1, acc, ts =>
       (match parseClause c [] ts with
        | .error e => .error e
-       | .ok (rs, r) => parseGroupItems c (acc ++ rs) r)
+       | .ok (rs, r) => parseGroupItemsF c fuel (acc ++ rs) r)
+
+/-- The items of a `Group(…)`. -/
+def parseGroupItems (c : Ctx) (acc : List Rule) (ts : List Tok) : PRes (List Rule) :=
+  parseGroupItemsF c (parseFuel ts) acc ts
 
 /-- The whole document. -/
 def parseDocument (input : String) : Except PErr Document := do
