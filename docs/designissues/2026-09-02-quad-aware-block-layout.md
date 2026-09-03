@@ -1,12 +1,24 @@
 # Quad-aware block layout: the design decision behind spec gate 4
 
 Status: decided by the owner 2026-09-02 evening (table below the options).
-Option B's block layer landed 2026-09-03: `IBK4` is specified byte for byte in
-section 6.1.1 of `docs/shardborough-storage-spec.md` and implemented in
-`formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean`, with the round-trip
-and denotation theorems in `IndexedBlockWireV4Theorems.lean`. The packer, the
-manifest (`SBM7`), the graph-aware sidecars, the planner and the query path are
-not implemented.
+Option B is landing in steps.
+
+* Step 1, 2026-09-03: the block layer. `IBK4` is specified byte for byte in
+  section 6.1.1 of `docs/shardborough-storage-spec.md` and implemented in
+  `formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean`, with the
+  round-trip and denotation theorems in `IndexedBlockWireV4Theorems.lean`.
+* Step 2, 2026-09-03: the manifest, the packer and activation. `SBM7` is
+  specified in section 6.3.1 and implemented in `Storage/ShardManifest.lean`,
+  with the round-trip theorem over every wire version in
+  `ShardManifestTheorems.lean`. `l4block-shard-pack INPUT OUTPUT ibk4` reads
+  TriG, N-Quads and Turtle and writes one IBK4 block per predicate across all
+  graphs; `l4block-shard-activate` verifies each artifact and checks its graph
+  set against the manifest entry; `l4block-id-v3-query` refuses an IBK4
+  generation by layout.
+* Not implemented: the query path (`GRAPH <iri>` planning, entry selection
+  from the manifest graph sets, the in-block graph filter), the graph-aware
+  index sidecars, a streaming TriG pack, and compaction of an IBK4
+  generation.
 
 ## Why now
 
@@ -135,7 +147,37 @@ C, starting with A as `SBM7` + a TriG/N-Quads packer input. Reasons:
 | 4. Next work after the Turtle parser fix | Scale first: profile `l4block-shard-pack` and `l4block-shard-activate` on the UK Parliament store | Named-graph work (B) starts after pack and activate are linear. |
 
 The work plan for A above is kept as the record of the alternative; the
-plan to execute is B. Status of this document: decided, not implemented.
+plan to execute is B. Status of this document: decided; steps 1 and 2 of B
+landed 2026-09-03 (see the status line at the head of this file).
+
+## Work plan for B
+
+1. **Landed 2026-09-03.** `Storage/IndexedBlockWireV4.lean`: the quad block,
+   the biased graph column, the header graph-set summary, the round-trip and
+   denotation theorems.
+2. **Landed 2026-09-03.** `Storage/ShardManifest.lean`: `SBM7` with a
+   per-entry block kind, blank-node scope and graph-set summary, and a
+   manifest-level blank-node publication profile; the round-trip theorem in
+   `ShardManifestTheorems.lean`. `Storage/PredicateQuadBlocks.lean` and
+   `Harness/PredicateShardPack.lean`: the packer.
+   `Harness/ShardActivate.lean`: activation, including the graph-set
+   cross-check. `Harness/IndexedBlockV3Query.lean`: the refusal.
+3. The graph-aware index sidecars. SRI2, OLI2 and TLI1 are keyed by a
+   block-local ID with no graph dimension. Each needs a graph dimension, or a
+   separate graph-postings sidecar, with its own wire version and round-trip
+   theorem.
+4. The query path: `GRAPH <iri>` entry selection from the manifest graph sets,
+   `GRAPH ?g` binding, default-graph patterns, `FROM` and `FROM NAMED`, and
+   the in-block graph filter, with the completeness argument for entry
+   selection written down.
+5. The streaming TriG pack, so an IBK4 generation is not bounded by input
+   size. A batch boundary splits a predicate across blocks with partial graph
+   sets, so it needs either a graph-set pre-pass or a manifest that admits
+   several IBK4 blocks per predicate.
+6. `tools/w3c-persisted-census.sh`: extend eligibility to the `qt:graphData`
+   tests once the query path lands. That number becomes the named-graph
+   coverage gate.
+7. Hub post 50: read graph identity from the SBM7 entries.
 
 ## 🧭 Decisions for the owner (as put, 2026-09-02 afternoon)
 

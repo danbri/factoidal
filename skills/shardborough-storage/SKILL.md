@@ -116,10 +116,55 @@ an IBK4 artifact yet.
 | Bounded Merkle scan or row range | `l4block-id-v3-merkle-scan SHARD-DIR PREDICATE-IRI LIMIT` / `--range START COUNT` |
 | Convert an IBK2 block to IBK3 | `l4block-id-v3-convert INPUT.ibk2 OUTPUT-DIR PREDICATE-IRI` |
 | Session of many SELECTs over one shard | `l4block-shard-merkle-session SHARD-DIR < queries.rq` |
+| Pack a quad generation (IBK4, SBM7) | `l4block-shard-pack INPUT OUTPUT-DIR ibk4` (`.trig`, `.nq`, `.ttl`) |
 | Superseded formats (BLK0, IBK1, IBK2) | `l4block-pack`, `l4block-id-pack`, `l4block-id-v2-pack` and their `*-file-query` / `*-diff` partners |
 
 `l4block-shard-merkle-query SHARD-DIR --explain|--explain-json|--explain-analyze` prints the physical plan and, with `-analyze`, the executed
 read trace; it targets the Merkle session layout, not an SBM6 collection.
+
+## IBK4 generations (quad-aware, landed 2026-09-03)
+
+`l4block-shard-pack INPUT OUTPUT ibk4` writes a quad generation: one IBK4
+block per predicate ACROSS ALL GRAPHS, with a graph column in every row and a
+graph-set summary in the block header and in the SBM7 manifest entry. The
+input syntax comes from the file extension — `.trig`, `.nq`/`.nquads`, and
+anything else as Turtle with every triple in the default graph.
+
+```bash
+l4block-shard-pack tests/local/data/quad_sample.trig /tmp/store/gen-1 ibk4
+# format=quad-ibk4-ptd1-merkle-v0 syntax=trig quads=6 blocks=2 graphs=3
+# manifest=manifest.sbm2 wire-version=7 blank-node-scope=<source SHA-256 hex>
+l4block-shard-activate /tmp/store gen-1
+```
+
+What works:
+
+- Pack from TriG, N-Quads and Turtle. The same quads in the same order from
+  either syntax give byte-identical blocks.
+- One `.merkle` leaf sidecar per block, and an SBM7 manifest committing the
+  source file's SHA-256 as each entry's blank-node scope under the
+  `content-digest-shared` publication profile.
+- Activation: full SHA-256, rebuilt Merkle leaves and root, an
+  `IndexedBlockWireV4.decode` of every artifact, and a check that the block's
+  graph set equals the manifest entry's summary.
+- `tools/blockengine-ibk4-quad-smoke.sh` and
+  `tools/blockengine-ibk4-w3c-trig-smoke.sh` (241 pass, 0 fail out of 241
+  positive W3C TriG 1.1 tests).
+
+What does NOT work yet:
+
+- **No query path.** `l4block-id-v3-query` refuses an SBM7/IBK4 generation by
+  layout, before opening an artifact: an IBK3 reader would read 20-byte quad
+  rows as 16-byte triple rows. `GRAPH <iri>` planning, entry selection from
+  the manifest graph sets, and the in-block graph filter are the next step.
+- **No index sidecars.** SRI2, OLI2 and TLI1 are keyed by a block-local ID
+  with no graph dimension, so they cannot describe an IBK4 artifact. The
+  graph-aware sidecars are the step after the query path.
+- **No streaming pack.** The IBK4 path parses the whole input file before it
+  writes a block, because an IBK4 block commits its graph-set summary in the
+  header and a batch boundary would split a predicate across blocks with
+  partial graph sets. The IBK3 path is still the streaming one.
+- **No compaction and no delta log.** There is no compacted SBM7 layout label.
 
 ## Browser and WASM path
 
