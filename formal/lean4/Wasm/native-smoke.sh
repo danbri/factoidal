@@ -64,6 +64,28 @@ assert ($expr), rs
   fi
 }
 
+# checkblob <label> <op> <argsfile> <blobfile> <python-assert-expr>
+# Runs `l4wasm-cli callblob <op> <argsfile> <blobfile>` — the native form of
+# the wasm module's `l4_call_blob_c`, which carries ONE contiguous byte region
+# beside the string arguments. The expression sees the envelope as `r`.
+checkblob() {
+  local label="$1" op="$2" argsfile="$3" blobfile="$4" expr="$5"
+  local out
+  out="$("$CLI" callblob "$op" "$argsfile" "$blobfile")"
+  if printf '%s' "$out" | python3 -c "
+import json, sys
+r = json.load(sys.stdin)
+assert ($expr), r
+"; then
+    echo "ok   $label"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL $label"
+    printf '     output: %s\n' "$out"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
 # check <label> <op> <argsfile> <python-assert-expr>
 # The expression sees the parsed envelope as `r`.
 check() {
@@ -198,6 +220,216 @@ check "queryIBK3BlockSetPreview bounded select" queryIBK3BlockSetPreview "$TMP/b
    and r["srj"]["results"]["bindings"][0]["s"]["value"] == "http://e/a"'
 check "queryIBK3BlockSetPreview requires LIMIT" queryIBK3BlockSetPreview "$TMP/block-set-nolimit.json" \
   'r["ok"] is False and "require LIMIT" in r["error"]'
+
+# --- Shardborough store family (manifest inspect / plan / query) ------
+# The WASM module has no file system, so a JavaScript host reads the files.
+# These three ops are what keep the host from having to understand any of
+# them: it carries bytes by name, and every decision stays in Lean.
+#
+# Fixtures come from the same Lean publisher a native store uses, so the
+# manifest bytes, the digests and the block bytes are the real ones.
+REPO_ROOT="$(cd "$LEAN_DIR/../.." && pwd)"
+
+printf '%s\n' \
+  '<http://e/a> <http://e/p> <http://e/b> .' \
+  '<http://e/a> <http://e/q> "one" .' \
+  '<http://e/c> <http://e/p> <http://e/d> .' >"$TMP/store.ttl"
+"$PACK" "$TMP/store.ttl" "$TMP/store-ibk3" ibk3 >/dev/null
+
+# One predicate per line, 65 of them: enough entries that a full-manifest
+# plan trips the 64-artifact cap without any large file.
+python3 - "$TMP/wide.ttl" <<'EOF'
+import sys
+with open(sys.argv[1], "w") as f:
+    for i in range(65):
+        f.write(f"<http://e/s> <http://e/p{i}> <http://e/o{i}> .\n")
+EOF
+"$PACK" "$TMP/wide.ttl" "$TMP/store-wide" ibk3 >/dev/null
+
+"$PACK" "$REPO_ROOT/tests/local/data/quad_sample.trig" "$TMP/store-ibk4" ibk4 >/dev/null
+
+# storeargs <out> <manifest-file> [extra json string]... — the manifest is
+# hex, so only the host's file read crosses the boundary.
+storeargs() {
+  local out="$1" manifest="$2"; shift 2
+  python3 - "$out" "$manifest" "$@" <<'EOF'
+import json, pathlib, sys
+out, manifest = sys.argv[1], sys.argv[2]
+argv = [pathlib.Path(manifest).read_bytes().hex()] + sys.argv[3:]
+pathlib.Path(out).write_text(json.dumps(argv))
+EOF
+}
+
+# blobargs <argsout> <blobout> <manifest> <sparql> <generation-dir> <key>...
+# The host path: the artifacts go into ONE contiguous region with no encoding,
+# and the args document describes {"key","offset","len"} windows into it.
+# `--tamper` as the last key flips one byte of the region.
+blobargs() {
+  local argsout="$1" blobout="$2" manifest="$3" sparql="$4" dir="$5"; shift 5
+  python3 - "$argsout" "$blobout" "$manifest" "$sparql" "$dir" "$@" <<'EOF'
+import json, pathlib, sys
+argsout, blobout, manifest, sparql, directory = sys.argv[1:6]
+keys = list(sys.argv[6:])
+tamper = "--tamper" in keys
+if tamper:
+    keys.remove("--tamper")
+blob = bytearray()
+descriptors = []
+for key in keys:
+    data = (pathlib.Path(directory) / key).read_bytes()
+    descriptors.append({"key": key, "offset": len(blob), "len": len(data)})
+    blob += data
+if tamper and blob:
+    blob[len(blob) // 2] ^= 0xFF
+pathlib.Path(blobout).write_bytes(bytes(blob))
+pathlib.Path(argsout).write_text(json.dumps(
+    [pathlib.Path(manifest).read_bytes().hex(), sparql, json.dumps(descriptors)]))
+EOF
+}
+
+# hexargs <argsout> <manifest> <sparql> <generation-dir> <key>... — the
+# diagnostic {"key","bytes":"<hex>"} form, reachable through the plain `call`
+# entry that carries no region. A host must not use it: it doubles the bytes
+# over the boundary and walks every character on the way in.
+hexargs() {
+  local argsout="$1" manifest="$2" sparql="$3" dir="$4"; shift 4
+  python3 - "$argsout" "$manifest" "$sparql" "$dir" "$@" <<'EOF'
+import json, pathlib, sys
+argsout, manifest, sparql, directory = sys.argv[1:5]
+payload = [{"key": key,
+            "bytes": (pathlib.Path(directory) / key).read_bytes().hex()}
+           for key in sys.argv[5:]]
+pathlib.Path(argsout).write_text(json.dumps(
+    [pathlib.Path(manifest).read_bytes().hex(), sparql, json.dumps(payload)]))
+EOF
+}
+
+storeargs "$TMP/store-inspect.json" "$TMP/store-ibk3/manifest.sbm2"
+check "storeManifestInspect reports an IBK3 generation" storeManifestInspect "$TMP/store-inspect.json" \
+  'r["ok"] is True and r["wireVersion"] >= 1 and r["rangeCommitted"] is True
+   and "ibk3" in r["layout"] and len(r["entries"]) == 2
+   and r["entries"][0]["key"].endswith(".ibk3")
+   and r["entries"][0]["blockKind"] == "IBK3"
+   and len(r["entries"][0]["sha256"]) == 64
+   and r["entries"][0]["rows"] >= 1
+   and r["entries"][0]["chunkBytes"] > 0
+   and len(r["entries"][0]["merkleRoot"]) == 64
+   and r["totalBytes"] > 0 and r["totalRows"] == 3'
+
+args "$TMP/store-inspect-bad.json" "00"
+check "storeManifestInspect refuses bytes that do not decode" storeManifestInspect "$TMP/store-inspect-bad.json" \
+  'r["ok"] is False and "do not decode" in r["error"]'
+
+storeargs "$TMP/store-plan-bound.json" "$TMP/store-ibk3/manifest.sbm2" \
+  'SELECT ?s WHERE { ?s <http://e/p> ?o }'
+check "storeQueryPlan selects one shard for a constant predicate" storeQueryPlan "$TMP/store-plan-bound.json" \
+  'r["ok"] is True and r["mode"] == "ibk3-paged-merkle(1)"
+   and r["shards"] == 1 and len(r["keys"]) == 1 and r["bytes"] > 0 and r["rows"] == 2'
+
+storeargs "$TMP/store-plan-open.json" "$TMP/store-ibk3/manifest.sbm2" \
+  'SELECT ?s WHERE { ?s ?p ?o }'
+check "storeQueryPlan opens the whole manifest for an unbound predicate" storeQueryPlan "$TMP/store-plan-open.json" \
+  'r["ok"] is True and r["mode"] == "ibk3-paged-merkle-full-manifest(2)"
+   and r["shards"] == 2 and len(r["keys"]) == 2'
+
+# An EXISTS outside the pattern is evaluated against the active graph
+# (section 18.6), so the plan must select every entry.
+storeargs "$TMP/store-plan-exists.json" "$TMP/store-ibk3/manifest.sbm2" \
+  'SELECT ?s (EXISTS { ?s <http://e/q> ?v } AS ?e) WHERE { ?s <http://e/p> ?o }'
+check "storeQueryPlan refuses predicate selection under EXISTS" storeQueryPlan "$TMP/store-plan-exists.json" \
+  'r["ok"] is True and r["mode"] == "ibk3-paged-merkle-full-manifest(2)" and r["shards"] == 2'
+
+# The HOST path: one contiguous region, no encoding, offset/len windows.
+blobargs "$TMP/store-query.json" "$TMP/store-query.blob" \
+  "$TMP/store-ibk3/manifest.sbm2" 'SELECT ?s ?o WHERE { ?s <http://e/p> ?o }' \
+  "$TMP/store-ibk3" predicate-0.ibk3
+checkblob "storeQuery answers over a supplied IBK3 block region" storeQuery \
+  "$TMP/store-query.json" "$TMP/store-query.blob" \
+  'r["ok"] is True and r["kind"] == "select" and r["shards"] == 1
+   and r["mode"] == "ibk3-paged-merkle(1)"
+   and len(r["srj"]["results"]["bindings"]) == 2'
+
+# The diagnostic hexadecimal form must answer exactly the same envelope, so a
+# fixture written either way pins the same behaviour.
+hexargs "$TMP/store-query-hex.json" "$TMP/store-ibk3/manifest.sbm2" \
+  'SELECT ?s ?o WHERE { ?s <http://e/p> ?o }' "$TMP/store-ibk3" predicate-0.ibk3
+check "storeQuery hexadecimal diagnostic path answers the same rows" storeQuery "$TMP/store-query-hex.json" \
+  'r["ok"] is True and r["kind"] == "select" and r["shards"] == 1
+   and len(r["srj"]["results"]["bindings"]) == 2'
+
+# A window that runs past the end of the region the call carried is an
+# ordinary refusal, not a memory fault: Lean never receives a host pointer.
+python3 - "$TMP/store-query.json" "$TMP/store-query-overrun.json" <<'EOF'
+import json, pathlib, sys
+argv = json.loads(pathlib.Path(sys.argv[1]).read_text())
+artifacts = json.loads(argv[2])
+artifacts[0]["offset"] += 1
+argv[2] = json.dumps(artifacts)
+pathlib.Path(sys.argv[2]).write_text(json.dumps(argv))
+EOF
+checkblob "storeQuery refuses a window past the end of the region" storeQuery \
+  "$TMP/store-query-overrun.json" "$TMP/store-query.blob" \
+  'r["ok"] is False and "names blob bytes" in r["error"]'
+
+# A digest that does not match its manifest entry refuses the whole query
+# and names the key; no partially trusted generation is answered from.
+blobargs "$TMP/store-query-tampered.json" "$TMP/store-query-tampered.blob" \
+  "$TMP/store-ibk3/manifest.sbm2" 'SELECT ?s ?o WHERE { ?s <http://e/p> ?o }' \
+  "$TMP/store-ibk3" predicate-0.ibk3 --tamper
+checkblob "storeQuery refuses an artifact whose SHA-256 differs" storeQuery \
+  "$TMP/store-query-tampered.json" "$TMP/store-query-tampered.blob" \
+  'r["ok"] is False and "predicate-0.ibk3" in r["error"] and "SHA-256" in r["error"]'
+
+storeargs "$TMP/store-query-missing.json" "$TMP/store-ibk3/manifest.sbm2" \
+  'SELECT ?s ?o WHERE { ?s <http://e/p> ?o }' '[]'
+check "storeQuery refuses a plan whose bytes were not supplied" storeQuery "$TMP/store-query-missing.json" \
+  'r["ok"] is False and "no bytes were supplied for artifact" in r["error"]'
+
+# Cap trip: 65 predicates, so the full-manifest plan needs 65 artifacts and
+# the cap is 64. The refusal names the cap and the value that exceeded it.
+storeargs "$TMP/store-query-cap.json" "$TMP/store-wide/manifest.sbm2" \
+  'SELECT ?s WHERE { ?s ?p ?o }' '[]'
+check "storeQuery refuses a plan over the artifact cap" storeQuery "$TMP/store-query-cap.json" \
+  'r["ok"] is False and "selects 65 artifacts" in r["error"] and "cap is 64" in r["error"]'
+
+# The same manifest still PLANS: the caps belong to storeQuery, so a host can
+# see what a query would cost before it fetches anything.
+storeargs "$TMP/store-plan-cap.json" "$TMP/store-wide/manifest.sbm2" \
+  'SELECT ?s WHERE { ?s ?p ?o }'
+check "storeQueryPlan reports a plan the query cap would refuse" storeQueryPlan "$TMP/store-plan-cap.json" \
+  'r["ok"] is True and r["shards"] == 65'
+
+# --- The same three ops over an SBM7 generation of IBK4 quad blocks ---
+storeargs "$TMP/store-inspect-ibk4.json" "$TMP/store-ibk4/manifest.sbm2"
+check "storeManifestInspect reports an IBK4 generation and its graph set" storeManifestInspect "$TMP/store-inspect-ibk4.json" \
+  'r["ok"] is True and r["wireVersion"] == 7
+   and r["layout"] == "quad-ibk4-ptd1-merkle-v0"
+   and r["blankNodeProfile"] == "content-digest-shared"
+   and len(r["entries"]) == 2
+   and r["entries"][0]["blockKind"] == "IBK4"
+   and len(r["entries"][0]["blankNodeScope"]) > 0
+   and [g["kind"] for g in r["entries"][0]["graphs"]][0] == "default"
+   and "http://example.org/g1" in [g["value"] for g in r["entries"][0]["graphs"]]'
+
+storeargs "$TMP/store-plan-ibk4.json" "$TMP/store-ibk4/manifest.sbm2" \
+  'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }'
+check "storeQueryPlan selects IBK4 entries by graph set" storeQueryPlan "$TMP/store-plan-ibk4.json" \
+  'r["ok"] is True and r["mode"] == "ibk4-full-manifest(1)" and r["shards"] == 1
+   and r["keys"] == ["predicate-0.ibk4"]'
+
+blobargs "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
+  "$TMP/store-ibk4/manifest.sbm2" \
+  'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }' \
+  "$TMP/store-ibk4" predicate-0.ibk4
+checkblob "storeQuery answers a GRAPH clause over a supplied IBK4 block region" storeQuery \
+  "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
+  'r["ok"] is True and r["kind"] == "select" and r["shards"] == 1
+   and r["mode"] == "ibk4-full-manifest(1)"
+   and len(r["srj"]["results"]["bindings"]) == 2'
+
+args "$TMP/store-arity.json" "00"
+check "storeQuery wrong arity -> error" storeQuery "$TMP/store-arity.json" \
+  'r["ok"] is False and "expects 3 arguments" in r["error"]'
 
 # --- Canon family -----------------------------------------------------
 args "$TMP/canon.json" '_:b0 <http://e/p> "v" .
@@ -512,13 +744,15 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
    and set(["parseToDatasetJson","queryDataset","updateDataset",
             "serializeNQuads","serializeTurtle","canonicalizeToNQuads",
             "scanIBK2Predicate","scanIBK3Predicate","queryIBK3BlockSetPreview",
+            "storeManifestInspect","storeQueryPlan","storeQuery",
             "owlClosure","owlIsConsistent","owlEntails",
             "rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clSerialize",
             "clAlphaNorm","clNormalize","clFiniteSat",
             "proofCheck","proofInspect","ops",
             "datasetOpen","datasetQuery","datasetUpdate",
-            "datasetSerialize","datasetClose"]) <= set(r["ops"])'
+            "datasetSerialize","datasetClose"]) <= set(r["ops"])
+   and r["blobOps"] == ["storeQuery"]'
 
 check "unknown op -> error" definitelyNotAnOp "$TMP/empty.json" \
   'r["ok"] is False and "unknown op" in r["error"]'

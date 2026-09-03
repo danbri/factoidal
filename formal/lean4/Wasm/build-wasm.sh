@@ -311,7 +311,7 @@ em++ -O3 -DNDEBUG -fwasm-exceptions \
   -o "$WORK/l4factoidal.mjs" \
   -sMODULARIZE=1 -sEXPORT_ES6=1 \
   -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_call_c,_l4_call_blob_c,_l4_free_result,_malloc,_free \
-  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8 \
+  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8 \
   -sALLOW_MEMORY_GROWTH=1 \
   -sSTACK_SIZE=8MB \
   -sENVIRONMENT=web,worker,node \

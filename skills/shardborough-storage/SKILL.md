@@ -237,6 +237,34 @@ System cache; the caller must check each block's byte length and SHA-256
 against the manifest before decoding. This is the diagnostic worker, not the
 bounded protocol worker of spec section 2.4.2.
 
+**A whole GENERATION, not a hand-picked block set** (2026-09-03). Three
+further operations let a host run SPARQL over a packed generation without
+understanding any of its formats — it reads files by name and carries bytes,
+and every decision stays in Lean (iron rule 7):
+
+| Op | Answers |
+|---|---|
+| `storeManifestInspect(manifestHex)` | wire version, layout, blank-node profile, and per entry: key, bytes, SHA-256, chunk bytes, Merkle root, predicate, rows, block kind, blank-node scope, graph-name set, sidecar keys |
+| `storeQueryPlan(manifestHex, sparql)` | the keys to fetch in manifest order, the same open mode the native tools print, and the byte and row totals |
+| `storeQuery(manifestHex, sparql, artifactsJson)` + one blob region | the `queryDataset` envelope, with `shards` and `mode` before `kind` |
+
+Block selection is `queryNativeConstantPredicates?` (IBK3) and
+`quadEntriesForQuery` (SBM7 / IBK4) — the collectors the native tools use, so
+the plan and the mode agree with `l4block-id-v3-query` and
+`l4block-quad-query`. `storeQuery` checks every artifact's byte length and
+SHA-256 against its manifest entry and refuses naming the key on a mismatch;
+caps are 64 artifacts, 8388608 bytes and 100000 rows, each an explicit refusal.
+
+Artifact bytes cross RAW through `l4_call_blob_c`: one buffer the host wrote
+into the wasm heap, and `{"key","offset","len"}` windows Lean bounds-checks.
+Hexadecimal cost 96 ms against 71 ms for one 118,769-byte block and a 49.5x
+larger args document, so it is kept for diagnostics only.
+
+Design record:
+[`docs/designissues/2026-09-03-wasm-shardborough-store-ops.md`](../../docs/designissues/2026-09-03-wasm-shardborough-store-ops.md).
+Gate: `bash tools/wasm-store-query-smoke.sh` (the committed wasm against
+generations the packer just wrote, rows compared with the native tools).
+
 ## Corpus ladder, profiling and the census
 
 - Corpus ladder (which files are used at which size rung, and the rules

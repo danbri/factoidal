@@ -74,3 +74,4 @@ worknote, kept as the record of a decision or a measurement),
 | 2026-09-02 | [Quad-aware block layout](designissues/2026-09-02-quad-aware-block-layout.md) | 4c037dd68 | current: proposal for spec gate 4; owner decisions pending |
 | 2026-09-03 | [RDF parsing strategy: layers, entry points, proofs, costs](designissues/2026-09-03-rdf-parsing-strategy.md) | 4c037dd68 | current: the record of how Turtle and the other syntaxes are parsed |
 | 2026-08-23 | [Specification coverage ledger](designissues/2026-08-23-spec-coverage-ledger.md) | 71db0d505 | record: structure current, scores are 2026-08-22 |
+| 2026-09-03 | [A browser reads a Shardborough generation: the three WASM store operations](designissues/2026-09-03-wasm-shardborough-store-ops.md) | b68bec8e5 | current: the record of the WASM store ABI, its blob transport and its caps |

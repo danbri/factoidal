@@ -340,8 +340,48 @@ The JS-facing surface is `Wasm/l4_shim.c`:
 int   l4_init(void);                                    /* idempotent */
 char *l4_version_c(void);
 char *l4_bgp_query_c(const char *data_json, const char *bgp_json);
+char *l4_call_c(const char *op, const char *args_json);
+char *l4_call_blob_c(const char *op, const char *args_json,
+                     const uint8_t *blob, size_t blob_len);
 void  l4_free_result(char *p);
 ```
+
+### Moving BYTES, not text: `l4_call_blob_c`
+
+The dispatch ABI carries strings, so an op whose input is block bytes cannot
+use it: hexadecimal doubles the bytes over the boundary and then costs a
+character walk on the way in, and base64 only fixes the first term. Measured on
+one 118,769-byte IBK3 block, whole operation, native, mean of 10 runs:
+hexadecimal 96 ms with a 242,416-byte args document, blob region 71 ms with a
+4,893-byte args document.
+
+`l4_call_blob_c` carries ONE contiguous byte region beside the two strings. The
+host allocates it with the already-exported `_malloc`, writes the bytes into
+`HEAPU8` with no encoding, and calls; the shim builds a Lean `ByteArray` with
+one `lean_alloc_sarray` plus one `memcpy` and calls
+`l4_call_blob : String -> String -> ByteArray -> String`
+(`Wasm/Dispatch.lean`'s `callBlob`). The op's JSON argument says which bytes
+belong to what, as `{"offset","len"}` windows that LEAN bounds-checks.
+
+Two rules that are the point of the shape, not decoration:
+
+* **Lean never receives a host pointer.** The region is copied on entry, so an
+  offset past the end is an ordinary `{"ok":false}` refusal rather than a
+  memory fault, a stale pointer cannot be expressed, and the host may free its
+  buffer the moment the call returns. Do NOT "optimise" this into passing the
+  pointer through: that trades a refusal for a fault.
+* **The shim moves bytes and never interprets them.** It holds no knowledge of
+  any format. A change that gives it any belongs in Lean (iron rule 11's
+  spirit).
+
+`L4Wasm.blobOpNames` lists the ops served this way (`storeQuery` today) and the
+`ops` reflection reports it as `blobOps`. Every other op delegates to the pure
+`call`, envelope for envelope, so a host may route everything through this
+entry. The native driver has the same shape:
+`lake exe l4wasm-cli callblob <op> <argsJsonFile> <blobFile>`.
+
+Full design record, including the three Shardborough store ops that use it:
+[`docs/designissues/2026-09-03-wasm-shardborough-store-ops.md`](../../docs/designissues/2026-09-03-wasm-shardborough-store-ops.md).
 
 Ownership, in full:
 
@@ -407,7 +447,11 @@ four CL/IKL ops of https://github.com/danbri/factoidal/issues/623 were
 added that way on 2026-08-26 and touched no C at all.
 
 Reach for the steps below only for a genuinely new C-level entry point
-— a different calling convention, not a new operation.
+— a different calling convention, not a new operation. `l4_call_blob`
+(2026-09-03) is the one example so far: an op whose input is raw BYTES
+rather than text needs a different convention, so it got a C entry
+point; the op itself is still an ordinary dispatch arm. See "Moving
+BYTES, not text" above.
 
 
 1. Write the Lean function in `Wasm/Abi.lean` as a pure
