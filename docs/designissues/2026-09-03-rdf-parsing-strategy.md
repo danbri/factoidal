@@ -59,6 +59,36 @@ Modules, in data order:
    after leading whitespace, so the directive test is O(1) per line end.
    The scanner never decides syntax; the grammar accepts or rejects every
    candidate.
+
+   Two questions the owner asked on 2026-09-03, with the tests that answer
+   them:
+
+   - *Comments.* If a comment precedes a `PREFIX`/`BASE` line inside the
+     same candidate, the seven-character head reads `# ...` and the scanner
+     does not cut at that line end; the directive stays in the candidate
+     until the next dot or the end of input. This is safe because a
+     candidate may hold several statements and `TurtleChunkFold.consumeText`
+     runs the grammar in a loop over it: the head test decides where
+     boundaries fall, never what the text means, and the old
+     reverse-the-candidate form had the same property (the theorem says
+     the two are equal). Fifteen sources (comment before and between
+     directives, a comment whose text is `PREFIX ...`, directives inside
+     long and short strings and inside an IRI fragment, a trailing
+     directive with no newline, CR line ends, `VERSION`, a local name
+     `ex:PREFIXED` at a line start) agree with `parseTurtle` at every
+     two-way chunk split plus one-character chunks: 1,115 chunkings, 0
+     disagreements. They are `#guard`s in `TurtleChunkFoldTests.lean`.
+   - *"Keep a flag for whether an E was seen instead."* The keywords are
+     matched case-insensitively (Turtle allows `prefix` and `base`), so the
+     flag would be "contains e or E". Measured on real files: UK Parliament
+     99.7% of statements contain one (26% a capital E); W3C rdf11 Turtle
+     test files 89.8%; the Wikidata extracts 44.7% (gene.ttl) and 0.2%
+     (disease.ttl, whose statements are all `wd:`/`wdt:` prefixed names).
+     So the flag would skip the test on some corpora and almost never on
+     others, and on a hit it would still need the reversal. The
+     seven-character head is O(1) per character with no skip and is what
+     landed. A chat message on 2026-09-03 said "contains an E is true of
+     most statements"; the measurement above corrects it.
 3. `TurtleChunkFold.lean`: hands each candidate to `readStatement` from
    the reference grammar with the fuel `text.length + 2` computed once per
    candidate, carrying `TurtleState` (prefixes, base, blank-node prefix,

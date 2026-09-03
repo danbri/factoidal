@@ -37,4 +37,40 @@ private def dotted : String :=
   "@prefix ex: <http://example.org/a.b/> .\nex:s ex:p 1.0 .\n"
 #guard chunksMatchParser dotted ["@prefix ex: <http://example.org/a", ".b/> .\nex:s ex:p 1.", "0 .\n"]
 
+
+/-! ## Comments and the no-dot directives (owner question, 2026-09-03)
+
+The scanner's directive test reads the first seven characters of the
+current candidate after leading whitespace. When a comment precedes a
+`PREFIX`/`BASE` line inside the same candidate, the test sees `# ...` and
+does not cut at that line end; the directive then stays in the candidate
+until the next dot or the end of input. That is safe because a candidate
+may hold several statements and `consumeText` runs the grammar in a loop
+over it; the test only decides where boundaries fall, never what the text
+means. Every two-way split of each source below, plus one-character chunks,
+agrees with `parseTurtle` (1,115 chunkings on 2026-09-03). -/
+
+private def allSplits (source : String) : List (List String) :=
+  let cs := source.toList
+  (List.range (cs.length + 1)).map
+    (fun i => [String.ofList (cs.take i), String.ofList (cs.drop i)]) ++ [charChunks source]
+
+private def allSplitsMatch (source : String) : Bool :=
+  (allSplits source).all (chunksMatchParser source)
+
+#guard allSplitsMatch "# leading comment\nPREFIX ex: <http://example.org/>\nex:s ex:p ex:o .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\n# note\nPREFIX ex2: <http://example.org/2/>\nex:s ex:p ex2:o .\n"
+#guard allSplitsMatch "# PREFIX not: <http://nope/>\nPREFIX ex: <http://example.org/>\nex:s ex:p ex:o .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p ex:o . # trailing\nBASE <http://base.example/>\n<rel> ex:p ex:o .\n"
+#guard allSplitsMatch "\n\n  # c\n   prefix ex: <http://example.org/>\nex:s ex:p ex:o .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p \"\"\"line one\nPREFIX fake: <http://x/>\nline three\"\"\" .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p \"PREFIX ex: <http://x/>\" .\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p <http://example.org/doc#PREFIX> .\n"
+#guard allSplitsMatch "<http://example.org/s> <http://example.org/p> <http://example.org/o> .\nPREFIX ex: <http://example.org/>"
+#guard allSplitsMatch "PREFIX a: <http://a/>\nPREFIX b: <http://b/>\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/> ex:s ex:p ex:o .\n"
+#guard allSplitsMatch "# c\n@prefix ex: <http://example.org/> .\nex:s ex:p ex:o .\n"
+#guard allSplitsMatch "# c\r\nPREFIX ex: <http://example.org/>\r\nex:s ex:p ex:o .\r\n"
+#guard allSplitsMatch "PREFIX ex: <http://example.org/>\nex:s ex:p ex:o ;\n   ex:q ex:PREFIXED .\n"
+
 end L4Factoidal.Syntax
