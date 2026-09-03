@@ -72,3 +72,4 @@ worknote, kept as the record of a decision or a measurement),
 | 2026-09-02 | [Fresh-eyes repository review](20260902-fresh-eyes-review.md) | d3033fd14 | current: review; section 7 is the open hygiene list |
 | 2026-09-02 | [Persisted query ladder](20260902-persisted-query-ladder.md) | 3b3a14bb6 | current: measurement record for the 2026-09-02 owner goal; milestone table and rung 2.5 |
 | 2026-09-02 | [Quad-aware block layout](designissues/2026-09-02-quad-aware-block-layout.md) | (this commit) | current: proposal for spec gate 4; owner decisions pending |
+| 2026-09-03 | [RDF parsing strategy: layers, entry points, proofs, costs](designissues/2026-09-03-rdf-parsing-strategy.md) | (this commit) | current: the record of how Turtle and the other syntaxes are parsed |

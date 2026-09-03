@@ -29,6 +29,10 @@ shim is not a semantic replacement.
 
 ## Factoidal RDF/block ingestion
 
+The parsing layers and their entry points are recorded in
+[`docs/designissues/2026-09-03-rdf-parsing-strategy.md`](../../docs/designissues/2026-09-03-rdf-parsing-strategy.md);
+read it before changing a parser path.
+
 `L4Factoidal/Syntax/Turtle.lean` preserves source triple order. Its statement
 parser and flat name/whitespace scanners use append-free/tail-recursive paths;
 retain that order contract when changing them. `parseTurtleFold` lets a packer

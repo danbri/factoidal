@@ -19,6 +19,12 @@ Owner, 2026-08-24, verbatim:
    commitments. Lead with the result or the decision needed.
 6. **A repeated steer means the last report failed.** Record decisions
    in this file the first time, not the third.
+7. **An explanation of how a subsystem works, once given in chat, is
+   written into `docs/designissues/` in the same landing** and linked
+   from the worknote index and the relevant skill. Owner, 2026-09-03,
+   verbatim: "this and similar ought to be recorded properly somewhere I
+   can find it. Ephemeral coding logs aren't that place." The first such
+   record: `docs/designissues/2026-09-03-rdf-parsing-strategy.md`.
 
 > **only report to me in ASD-STE100 Simplified Technical English.**
 
@@ -776,6 +782,10 @@ session.
   reviewable-core registry: every W3C rule id → spec predicate →
   engine function → proof status, plus the trust-surface enumeration.
   UPDATE WITH EVERY PROOF LANDING (hand-curated until generated).
+- [`docs/designissues/2026-09-03-rdf-parsing-strategy.md`](docs/designissues/2026-09-03-rdf-parsing-strategy.md)
+  — how each RDF syntax is parsed: the reference parser, the streaming
+  execution for the shard packer, the theorems between them, costs paid
+  and open. Update it when a parser layer changes.
 - [`docs/w3c-glossary.md`](docs/w3c-glossary.md) — the cross-spec
   architectural vocabulary: lexical space / value space / lexical
   mapping, entailment and models, open-world and no-unique-name,
