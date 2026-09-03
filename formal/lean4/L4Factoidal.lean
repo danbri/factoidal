@@ -429,6 +429,8 @@ import L4Factoidal.Storage.TermLocalIndexWireTheorems
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.IndexedBlockWireV3Theorems
 import L4Factoidal.Storage.IndexedBlockWireV3Tests
+import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.IndexedBlockWireV4Theorems
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.CL.Syntax
