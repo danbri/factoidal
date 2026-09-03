@@ -911,7 +911,7 @@ Build and test harness:
                                    <issue>_<description>.sh with GitHub issue
 ```
 
-Inventory summary: 90 modules, 47517 lines total, 141 assume val declarations. (This total predates the FastString re-founding migration, 2026-08-10: `Parser.FastString.fst` went from 7 assume vals to 0, so the true current total is a handful lower. Flagged, not recomputed — a full-tree recount is a separate task from this obsolescence sweep, which is scoped to FastString claims only.)
+Inventory summary: 90 modules, 47517 lines total. The per-module `assume val` figures in the block above are a 2026-08-09 snapshot and their sum (141) is superseded: the measured count on 2026-09-03 is **82 across 18 modules**. Re-run the command in the `assume val` inventory section below rather than adding the rows up.
 
 ## Rule-by-rule proof program (owner-approved 2026-08-04, live)
 
@@ -1008,12 +1008,41 @@ Hand-coded parsers have been deleted. Legacy copies remain in `junk/do_not_use/h
 
 ## assume val inventory
 
-138 assume val declarations across 20 modules (CORRECTED 2026-08-09,
-g4-exists-cycle-pilot: this table was already stale by 2 before this
-landing — `eval_expr_ebv`/`eval_expr_fwd` were retired to concrete F\*
-definitions by g4-filter-devacuation but never removed from the row
-below; `eval_exists_fwd` is retired by this landing, -1 more). Summary
-by module (largest first):
+**82 assume val declarations across 18 modules**, measured 2026-09-03.
+
+Re-run the count instead of trusting this number. From the repository
+root:
+
+```sh
+# how many
+grep -rhE '^[[:space:]]*assume val ' formal/fstar \
+     --include='*.fst' --include='*.fsti' | wc -l
+# how many modules, and which
+grep -rcE '^[[:space:]]*assume val ' formal/fstar \
+     --include='*.fst' --include='*.fsti' | grep -v ':0$' | sort -t: -k2 -rn
+```
+
+Measured 2026-09-03, largest first: `Parser.BallyhooCOTTAS` 13,
+`SPARQL11.Algebra` 11, `RDF.CottasStore.LazyDict` 9,
+`RDF.CottasStore.OnDiskIndex` 7, `RDF.Store.LazyTermCache` 6,
+`RDF.Store.Columnar.DeltaLog` 5, `RDF.CottasStore.LazyDictRegistry` 5,
+`VC.DataIntegrity` 4, `RDF.CottasStore.PageCache` 4,
+`RDF.CottasStore.ColumnSeq` 4, `RDF.CottasStore` 3, `RDF.Canonical` 3,
+`Parquet.Footer` 3, and one each in `Tableau.CountingOracle`,
+`SPARQL.Eval.TimeBudget`, `SHACL.Validation`,
+`Parser.FastString.CharBoundary`, `JSONLD.Loader`.
+
+⚠️ This section said "138 across 20 modules" until 2026-09-03 and
+carried its own note that the table was stale when written. CLAUDE.md
+iron rule 3 said "~148". Neither figure was re-measured; both are now
+corrected against the command above. A number in a document with no
+command beside it is a claim, not a measurement.
+
+The per-module tables below are the 2026-08-09 snapshot and are NOT
+re-audited to the 2026-09-03 count. Read them for WHICH declarations
+exist and why, never for HOW MANY.
+
+Summary by module (largest first, as of 2026-08-09):
 
 **SPARQL11.Algebra.fst** (11 assume vals — query evaluator core; verified
 against the tree 2026-08-09 — `regex_match`/`regex_replace` are GONE from

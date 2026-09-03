@@ -134,8 +134,14 @@ The two that corrupt files silently:
    socket; a host-engine call-out; a vendored crypto primitive; or an
    Option-B perf realisation whose byte-format spec lives in F\* with a
    hash-witness CI test) — realised in `experimental_ocaml_glue/*.sh`.
-   Most of the ~148 `assume val`s today are (b) (the COTTAS/HDT storage
-   I/O layer). Neither kind may be a *silent* hole: a (a)-gap without an
+   Most of the **82** `assume val`s today (18 modules, measured
+   2026-09-03) are (b) (the COTTAS/HDT storage I/O layer). Count them,
+   do not quote this line: `grep -rhE '^[[:space:]]*assume val '
+   formal/fstar --include='*.fst' --include='*.fsti' | wc -l`. This rule
+   said "~148" from an unmeasured estimate until 2026-09-03; per-module
+   figures are in `docs/claude-rules/current-state.md` § assume val
+   inventory, beside the same command.
+   Neither kind may be a *silent* hole: a (a)-gap without an
    issue, or a (b)-realisation carrying semantic/planning/byte-layout
    logic that belongs in F\*, is a violation. (Audit: `docs/designissues/
    fstar-ocaml-boundary-audit.md`.)
