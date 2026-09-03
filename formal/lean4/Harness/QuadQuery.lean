@@ -28,8 +28,8 @@ import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.QuadDataset
 import L4Factoidal.Storage.ShardManifest
-import Std.Data.HashMap
 
 namespace Harness.QuadQuery
 
@@ -37,11 +37,8 @@ open Harness.GenerationPointer
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreDataset
+open L4Factoidal.Storage.QuadDataset
 open L4Factoidal.Storage.ShardManifest
-
-/-- SBM7's only layout label. There is no compacted variant: the compactor
-    does not build IBK4 generations. -/
-private def ibk4Layout : String := "quad-ibk4-ptd1-merkle-v0"
 
 /-- Manifest artifact keys denote leaf files, never paths supplied by a query.
     The same admission rule as `IndexedBlockV3Materialize.safeLeafKey`. -/
@@ -95,31 +92,9 @@ private def readEntries (directory : System.FilePath) :
 
 /-! ## Quads to an RDF dataset
 
-`IBK4` rows are `(Option GraphRef, Triple)`. The default graph is the rows
-whose graph column is `none`; each distinct graph name becomes one named
-graph, in first-occurrence order over the selected entries in manifest order.
-Triple order inside each graph is the order the rows were read. -/
-
-private structure GraphBuckets where
-  defaultRev : List Triple := []
-  named : Std.HashMap GraphRef (List Triple) := ∅
-  orderRev : List GraphRef := []
-
-private def addQuad (buckets : GraphBuckets)
-    (quad : L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) : GraphBuckets :=
-  match quad.1 with
-  | none => { buckets with defaultRev := quad.2 :: buckets.defaultRev }
-  | some name =>
-      let known := buckets.named.contains name
-      { buckets with
-        named := buckets.named.insert name (quad.2 :: buckets.named.getD name []),
-        orderRev := if known then buckets.orderRev else name :: buckets.orderRev }
-
-def datasetOfQuads (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) : Dataset :=
-  let buckets := quads.foldl addQuad {}
-  { default := buckets.defaultRev.reverse
-  , named := buckets.orderRev.reverse.map fun name =>
-      { name, graph := (buckets.named.getD name []).reverse } }
+`Storage/QuadDataset.lean` owns this: the WASM store operations
+(`Wasm/Ops/Store.lean`) read the same generations and must answer the same
+dataset. -/
 
 /-! ## Evaluation
 
@@ -140,9 +115,6 @@ whole dataset. Two things it cannot carry, so they are handled here:
 private def stripDatasetClauses (query : Query) : Query :=
   .mk query.form [] query.pattern query.groupBy query.having query.modifier
       query.postValues query.base
-
-private def namesAreIris (ds : Dataset) : Bool :=
-  ds.named.all fun ng => match ng.name with | .iri _ => true | _ => false
 
 private def previewOf (rows : SolutionSeq) : String :=
   toString (repr (rows.take 10))
@@ -206,7 +178,7 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | _, .error error =>
         IO.eprintln s!"l4block-quad-query query parse error at {error.pos}: {error.msg}"; return 1
     | some manifest, .ok query =>
-        if manifest.version != 7 || manifest.layout != ibk4Layout then
+        if manifest.version != 7 || !isIbk4Layout manifest.layout then
           IO.eprintln "l4block-quad-query rejected: not an SBM7 generation of IBK4 quad blocks; use l4block-id-v3-query for an IBK3 generation"
           return 1
         if !rangeCommitted manifest then

@@ -93,7 +93,7 @@ def datasetOpen (text formatTag baseIri : String) : IO String := do
 over the stored dataset and its cached indexed backend, without the
 per-call N-Quads round trip. -/
 def datasetQuery (h sparql : String) : IO String :=
-  withHandle h fun od => pure (queryParsedDatasetWith od.ds od.backend sparql)
+  withHandle h fun od => pure (queryParsedDatasetWith od.ds (some od.backend) sparql)
 
 /-- `datasetUpdate(handle, sparqlUpdate)` — apply the update and
 REPLACE the stored dataset (and rebuild its index); answers the new quad

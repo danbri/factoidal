@@ -26,6 +26,7 @@ Lean-level errors come back as a JSON document with an "error" key, so
 the boundary itself never has to carry an exception.
 */
 #include <lean/lean.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,6 +57,8 @@ extern lean_object *l4_version(lean_object *unit);
 extern lean_object *l4_bgp_query(lean_object *data_json, lean_object *bgp_json);
 extern lean_object *l4_call(lean_object *op, lean_object *args_json);
 extern lean_object *l4_call_io(lean_object *op, lean_object *args_json);
+extern lean_object *l4_call_blob(lean_object *op, lean_object *args_json,
+                                 lean_object *blob);
 
 /* Module initialiser for Wasm.Exports; it chains through every import,
    Init included. Name pattern: initialize_<package>_<Module_Path>. */
@@ -130,6 +133,36 @@ L4_EXPORT char *l4_call_c(const char *op, const char *args_json) {
     return l4_take_string(lean_io_result_take_value(res));
 }
 
+/* Like l4_call_c, but also carries ONE contiguous byte region.
+
+   `blob` / `blob_len` name bytes the CALLER owns, typically written
+   straight into the wasm heap with _malloc + HEAPU8.set — no encoding
+   on either side. The region is copied ONCE into a Lean ByteArray
+   here, so the caller may free its buffer as soon as this returns and
+   Lean never holds a host pointer. Which bytes belong to which
+   artifact is stated in `args_json` as {"key","offset","len"}
+   descriptors, and Lean bounds-checks every window against the
+   ByteArray it owns (Wasm/Ops/Store.lean).
+
+   This function MOVES bytes and never interprets them: it contains no
+   knowledge of any block, manifest or digest format. A change that
+   gives it any belongs in Lean instead.
+
+   A NULL `blob` with `blob_len` 0 is the empty region. Returns a
+   malloc'd UTF-8 JSON envelope; free with l4_free_result. */
+L4_EXPORT char *l4_call_blob_c(const char *op, const char *args_json,
+                               const uint8_t *blob, size_t blob_len) {
+    if (!l4_ensure_init()) return NULL;
+    lean_object *o = lean_mk_string(op);
+    lean_object *a = lean_mk_string(args_json);
+    /* A ByteArray is a scalar array of 1-byte elements. */
+    lean_object *b = lean_alloc_sarray(1, blob_len, blob_len);
+    if (blob_len > 0 && blob != NULL) {
+        memcpy(lean_sarray_cptr(b), blob, blob_len);
+    }
+    return l4_take_string(l4_call_blob(o, a, b));
+}
+
 /* Release a buffer returned by l4_version_c / l4_bgp_query_c /
-   l4_call_c. */
+   l4_call_c / l4_call_blob_c. */
 L4_EXPORT void l4_free_result(char *p) { free(p); }

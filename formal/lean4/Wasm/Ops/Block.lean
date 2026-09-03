@@ -57,35 +57,6 @@ open L4Factoidal.Storage.IndexedBlockWireV2
 open L4Factoidal.Syntax
 open L4Factoidal.JSON
 
-private def hexDigitValue? (c : Char) : Option Nat :=
-  let n := c.toNat
-  if 0x30 ≤ n && n ≤ 0x39 then some (n - 0x30)
-  else if 0x61 ≤ n && n ≤ 0x66 then some (n - 0x61 + 10)
-  else if 0x41 ≤ n && n ≤ 0x46 then some (n - 0x41 + 10)
-  else none
-
-private def bytesOfHexCharsGo? : List Char → List UInt8 → Option (List UInt8)
-  | [], reversed => some reversed.reverse
-  | [_], _ => none
-  | hi :: lo :: rest, reversed => do
-      let h ← hexDigitValue? hi
-      let l ← hexDigitValue? lo
-      bytesOfHexCharsGo? rest (UInt8.ofNat (h * 16 + l) :: reversed)
-
-private def bytesOfHexChars? (chars : List Char) : Option (List UInt8) :=
-  bytesOfHexCharsGo? chars []
-
-private def bytesOfHex? (s : String) : Option ByteArray :=
-  (bytesOfHexChars? s.toList).map fun bytes => ByteArray.mk bytes.toArray
-
-private def hexChar (n : Nat) : Char :=
-  if n < 10 then Char.ofNat (0x30 + n) else Char.ofNat (0x61 + n - 10)
-
-private def hexOfBytes (bytes : ByteArray) : String :=
-  let reversed := bytes.data.toList.foldl (fun out byte =>
-    hexChar (byte.toNat % 16) :: hexChar (byte.toNat / 16) :: out) []
-  String.ofList reversed.reverse
-
 /-- A grammar-safe, injective encoding of the caller's blank-node scope.
 `s` supplies a legal leading character, hexadecimal UTF-8 avoids treating
 caller punctuation as N-Triples syntax, and `_` separates it from the original

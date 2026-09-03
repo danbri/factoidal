@@ -38,6 +38,7 @@ import Wasm.Ops.Query
 import Wasm.Ops.Reason
 import Wasm.Ops.Canon
 import Wasm.Ops.Block
+import Wasm.Ops.Store
 import Wasm.Ops.CL
 import Wasm.Ops.Proof
 import Wasm.Ops.Handles
@@ -65,6 +66,9 @@ def opNames : List String :=
   , "scanIBK2Predicate"
   , "scanIBK3Predicate"
   , "queryIBK3BlockSetPreview"
+  , "storeManifestInspect"
+  , "storeQueryPlan"
+  , "storeQuery"
   , "owlClosure"
   , "owlIsConsistent"
   , "owlEntails"
@@ -79,6 +83,18 @@ def opNames : List String :=
   , "proofCheck"
   , "proofInspect"
   , "ops" ]
+
+/-- The op names that read a BLOB REGION as well as their string arguments,
+served by `callBlob` below.
+
+The dispatch ABI carries strings, so an op that must read megabytes of block
+bytes cannot use it: hexadecimal doubles the bytes over the boundary and then
+walks every character on the way in. `callBlob` takes one contiguous byte
+region the host wrote directly into the wasm heap, and the op's JSON argument
+describes windows into it (`Wasm/Ops/Store.lean`). Through the plain `call`
+these ops still answer — with an empty region, so a descriptor naming blob
+bytes is refused by name rather than silently reading nothing. -/
+def blobOpNames : List String := [ "storeQuery" ]
 
 private def arity1 (op : String) (f : String → String) :
     List String → String
@@ -105,12 +121,13 @@ def handleOpNames : List String :=
   , "datasetSerialize"
   , "datasetClose" ]
 
-/-- `{"ok":true,"abiVersion":"…","ops":[…names…]}`. -/
+/-- `{"ok":true,"abiVersion":"…","ops":[…names…],"blobOps":[…names…]}`. -/
 private def opsReflectionFor (names : List String) : String :=
   (Json.object
     [ ("ok", .bool true)
     , ("abiVersion", .string dispatchAbiVersion)
-    , ("ops", .array (names.map Json.string)) ]).toString
+    , ("ops", .array (names.map Json.string))
+    , ("blobOps", .array (blobOpNames.map Json.string)) ]).toString
 
 private def opsReflection : String := opsReflectionFor opNames
 
@@ -129,6 +146,9 @@ def call (op : String) (argsJson : String) : String :=
     | "scanIBK2Predicate"    => arity2 op scanIBK2Predicate args
     | "scanIBK3Predicate"    => arity3 op scanIBK3Predicate args
     | "queryIBK3BlockSetPreview"    => arity3 op queryIBK3BlockSetPreview args
+    | "storeManifestInspect" => arity1 op storeManifestInspect args
+    | "storeQueryPlan"       => arity2 op storeQueryPlan args
+    | "storeQuery"           => arity3 op (fun a b c => storeQuery a b c ByteArray.empty) args
     | "owlClosure"           => arity2 op owlClosure args
     | "owlIsConsistent"      => arity2 op owlIsConsistent args
     | "owlEntails"           => arity3 op owlEntails args
@@ -144,6 +164,18 @@ def call (op : String) (argsJson : String) : String :=
     | "proofInspect"         => arity1 op proofInspect args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"
+
+/-- The dispatch entry the `l4_call_blob` C export serves: the string
+arguments of `call`, plus one byte region. Every other op delegates to `call`,
+envelope for envelope, so a host may route everything through this entry. -/
+def callBlob (op : String) (argsJson : String) (blob : ByteArray) : String :=
+  match op with
+  | "storeQuery" =>
+      match decodeArgs argsJson with
+      | .error e => errJson e
+      | .ok [a, b, c] => storeQuery a b c blob
+      | .ok args => errJson s!"storeQuery expects 3 arguments, got {args.length}"
+  | _ => call op argsJson
 
 private def arityIO1 (op : String) (f : String → IO String) :
     List String → IO String

@@ -194,6 +194,36 @@ def layoutConsistent (version : Nat) (layout : String) : Bool :=
 def layoutBlockKind (layout : String) : Option BlockLayout :=
   if layout == "quad-ibk4-ptd1-merkle-v0" then some .ibk4 else none
 
+/-- SBM7's only layout label: a generation of IBK4 quad blocks. -/
+def isIbk4Layout (layout : String) : Bool :=
+  layout == "quad-ibk4-ptd1-merkle-v0"
+
+/-- Every layout label naming a generation of IBK3 blocks, base or compacted.
+
+    A reader must select its block codec by NAME rather than by attempting a
+    decode: an IBK4 reader over IBK3 bytes, or the reverse, misreads rows
+    rather than failing. `Harness/IndexedBlockV3Query.lean` and
+    `Wasm/Ops/Store.lean` share this list so the two hosts admit the same
+    generations. -/
+def isIbk3Layout (layout : String) : Bool :=
+  layout == "predicate-ibk3-ptd1-merkle-v0" ||
+  layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
+  layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0" ||
+  layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0" ||
+  layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0" ||
+  layout == "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1" ||
+  layout == "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1" ||
+  layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1" ||
+  layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1" ||
+  layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
+
+/-- The distinct predicates of an entry list, in manifest order. This is the
+    count the native query tools report in their `open-mode=NAME(n)` header,
+    so every host that reports a mode reports the same `n`. -/
+def predicateOrder (entries : List Entry) : List WfIri :=
+  entries.foldl (fun seen entry =>
+    if seen.contains entry.predicate then seen else seen ++ [entry.predicate]) []
+
 /-- The publication profiles this version of the manifest understands
     (specification section 2.4.1). -/
 def knownBlankNodeProfile (profile : String) : Bool :=

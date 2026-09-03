@@ -37,23 +37,6 @@ private def backendFor (triples : List Triple) (delta : DeltaResolved) : GraphBa
   if deltaResolvedIsEmpty delta then indexedGraphBackend triples
   else .hdt (readOpsOfDelta triples delta)
 
-/-- SBM7's layout label. An IBK4 generation is refused by name, so the reason
-    is the layout rather than a decode failure inside an IBK3 reader. -/
-private def isIbk4Layout (layout : String) : Bool :=
-  layout == "quad-ibk4-ptd1-merkle-v0"
-
-private def isIbk3Layout (layout : String) : Bool :=
-    layout == "predicate-ibk3-ptd1-merkle-v0" ||
-    layout == "predicate-ibk3-ptd1-sri1-merkle-v0" ||
-    layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0" ||
-    layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0" ||
-    layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0" ||
-    layout == "predicate-ibk3-ptd1-merkle-v0-compacted-default-dlog-v1" ||
-    layout == "predicate-ibk3-ptd1-sri1-merkle-v0-compacted-default-dlog-v1" ||
-    layout == "predicate-ibk3-ptd1-sri1-tli1-merkle-v0-compacted-default-dlog-v1" ||
-    layout == "predicate-ibk3-ptd1-sri2-tli1-merkle-v0-compacted-default-dlog-v1" ||
-    layout == "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
-
 /-- A physically safe bounded-prefix shape. Subject/object must be distinct
     variables: constants or repeated variables could make early rows fail the
     SPARQL pattern and would need continued scanning. -/
@@ -86,10 +69,6 @@ private def groupPredicate? (query : Query) : Option (VarName × VarName) := do
   if !query.dataset.isEmpty then none else
   let (predicateVar, countAlias, scope) ← detectStreamingCountGroupByPredicate query
   if scope.isSome then none else some (predicateVar, countAlias)
-
-private def predicateOrder (entries : List Entry) : List WfIri :=
-  entries.foldl (fun seen entry =>
-    if seen.contains entry.predicate then seen else seen ++ [entry.predicate]) []
 
 private def countForPredicate (counts : List (WfIri × Nat)) (predicate : WfIri) : Nat :=
   (counts.find? fun pair => pair.1 == predicate).map Prod.snd |>.getD 0

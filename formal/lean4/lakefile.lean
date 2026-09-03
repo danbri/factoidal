@@ -96,6 +96,7 @@ extern_lib libl4blockhost pkg := do
              `Wasm.Ops.Support, `Wasm.Ops.Parse, `Wasm.Ops.Query,
              `Wasm.Ops.Reason, `Wasm.Ops.Canon, `Wasm.Ops.CL,
              `Wasm.Ops.Block,
+             `Wasm.Ops.Store,
              `Wasm.Ops.Proof,
              `Wasm.Ops.Handles]
 

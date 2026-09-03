@@ -48,8 +48,21 @@ path does not handle — it answers `none` — or a `FROM`/`FROM NAMED` clause
 falls back to the reference evaluator, so the answer is never partial.
 CONSTRUCT stays on the reference evaluator.  The backend is built once per
 dataset handle (`Wasm/Ops/Handles.lean`); the stateless op builds it per
-call. -/
-def queryParsedDatasetWith (ds : Dataset) (dsb : DatasetBackend) (sparql : String) : String :=
+call.
+
+`dsb` is `none` when the caller requires the reference evaluator for every
+form.  One caller does: `SPARQL/StoreDataset.lean`'s
+`materialiseDatasetBackend` keeps only graphs whose name is a well-formed IRI,
+so a dataset carrying a BLANK-NODE graph name would silently lose that graph
+in every delegating arm.  An SBM7 generation may carry one
+(`ShardManifest.GraphName.bnode`), so `Wasm/Ops/Store.lean` passes `none` for
+such a dataset — the same rule `Harness/QuadQuery.lean` applies natively.
+
+`extra` members are placed immediately after `"ok":true` in every arm, so an
+op can add its own fields (shard count, open mode) to the shared envelope
+without introducing a second envelope shape. -/
+def queryParsedDatasetWith (ds : Dataset) (dsb : Option DatasetBackend)
+    (sparql : String) (extra : List (String × Json) := []) : String :=
   match parseSparql sparql with
   | .error e => errJson s!"SPARQL parse error: {fmtParseError e}"
   | .ok q =>
@@ -69,13 +82,13 @@ def queryParsedDatasetWith (ds : Dataset) (dsb : DatasetBackend) (sparql : Strin
     let backendEligible := q.dataset.isEmpty
     match q.form with
     | .ask =>
-        let b := match (if backendEligible then runAskQueryBackendDataset env q dsb else none) with
+        let b := match (if backendEligible then dsb.bind (runAskQueryBackendDataset env q) else none) with
           | some answer => answer
           | none => evalAsk env ds q
-        okWith [("kind", .string "ask"), ("boolean", .bool b)]
+        okWith (extra ++ [("kind", .string "ask"), ("boolean", .bool b)])
     | .select sel =>
         let (vars, rows) :=
-          match (if backendEligible then runSelectQueryBackendDataset env q dsb else none) with
+          match (if backendEligible then dsb.bind (runSelectQueryBackendDataset env q) else none) with
           | some rows =>
               let vars := match sel with
                 | .vars items => selectItemVars items
@@ -84,13 +97,14 @@ def queryParsedDatasetWith (ds : Dataset) (dsb : DatasetBackend) (sparql : Strin
           | none => evalSelect env ds q
         let srj := QueryResult.toSrj (.bindings vars rows)
         -- srj is a JSON object document; splice it in verbatim.
-        "{\"ok\":true,\"kind\":\"select\",\"srj\":" ++ srj ++ "}"
+        "{\"ok\":true," ++ jsonMembers (extra ++ [("kind", .string "select")]) ++
+          ",\"srj\":" ++ srj ++ "}"
     | .construct _ =>
         let g := evalConstruct env ds q
         match Graph.toNTriples g with
         | .error e  => errJson s!"construct serialisation: {e}"
-        | .ok lines => okWith [("kind", .string "construct"),
-                               ("nquads", .string lines)]
+        | .ok lines => okWith (extra ++ [("kind", .string "construct"),
+                                         ("nquads", .string lines)])
     | .describe _ =>
         errJson "DESCRIBE is not supported by the npm entry yet"
 
@@ -99,7 +113,7 @@ shared by the stateless op below and the handle op `datasetQuery`
 (`Wasm/Ops/Handles.lean`), so both answer byte-identical envelopes.  The
 stateless form indexes the dataset for this one call. -/
 def queryParsedDataset (ds : Dataset) (sparql : String) : String :=
-  queryParsedDatasetWith ds (indexedDatasetBackend ds) sparql
+  queryParsedDatasetWith ds (some (indexedDatasetBackend ds)) sparql
 
 /-- `queryDataset(nquads, sparql)`. The N-Quads argument is read in
 RDF 1.2 mode: the engine's own ops emit RDF 1.2 canonical N-Quads,

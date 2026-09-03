@@ -44,6 +44,24 @@ callers of the committed wasm bind it — so it stays pure and 2-arg. -/
 def l4CallExport (op : String) (argsJson : String) : String :=
   L4Wasm.call op argsJson
 
+/-- C symbol `l4_call_blob`. The dispatch entry that also carries ONE
+contiguous byte region, for the ops of `L4Wasm.blobOpNames` whose bytes are
+too large for the string ABI (block artifacts: hexadecimal would double them
+over the boundary and walk every character on the way in). The generated C
+prototype is
+
+  lean_object * l4_call_blob (lean_object * op, lean_object * argsJson,
+                              lean_object * blob);
+
+where `blob` is a Lean `ByteArray` (a scalar array of `UInt8`).
+`Wasm/l4_shim.c`'s `l4_call_blob_c` builds it from a host pointer and length
+with one `lean_alloc_sarray` plus one `memcpy` — it moves bytes and never
+interprets them. Every op outside `blobOpNames` delegates to `L4Wasm.call`,
+envelope for envelope. Never throws. -/
+@[export l4_call_blob]
+def l4CallBlobExport (op : String) (argsJson : String) (blob : ByteArray) : String :=
+  L4Wasm.callBlob op argsJson blob
+
 /-- C symbol `l4_call_io`. The full dispatch entry: every stateless op
 (delegated to `L4Wasm.call`, envelope for envelope) PLUS the
 dataset-handle ops of https://github.com/danbri/factoidal/issues/585,
