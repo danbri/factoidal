@@ -242,7 +242,108 @@ def decodePage? (header : Prefix) (ordinal : Nat) (ref : PageRef) (bytes : ByteA
           !entries.all (fun entry => entry.localId < header.termCount) then none else
         some entries.toArray
 
-def decode? (bytes : ByteArray) : Option Index := do
+/-! ## The byte-indexed admission decoder
+
+`decode?` runs on every TLI1 sidecar at activation. Reading it through
+`listOfByteArray` converts the whole artifact to a `List UInt8`, one cons cell
+per byte, and then walks that list with `List.take`/`List.drop`: the payload,
+the directory and the page area are each copied again, and the page walk drops
+the whole remaining page area once per page, which is quadratic in the page
+count. Per entry it also rebuilt the canonical term serialization as a list to
+compare it with the stored key.
+
+`decodeSpec?` below keeps that list decoder as the SPECIFICATION of what TLI1
+admits. `decode?` reads the same fields by byte-array index, checksums the
+payload in place with `Bytes.crc32cAppendArray`, extracts one page at a time,
+and compares the re-serialized key as packed bytes.
+`TermLocalIndexWireTheorems.decode?_eq_spec` proves
+
+    decode? bytes = decodeSpec? bytes
+
+for every `bytes`, so the format and the admission decision are unchanged. -/
+
+/-- `readU32LE` at a byte-array offset, with no list conversion. -/
+def readU32LEB (bytes : ByteArray) (off : Nat) : Option UInt32 :=
+  if h : off + 4 <= bytes.size then
+    some ((bytes[off]'(by omega)).toUInt32 |||
+      ((bytes[off + 1]'(by omega)).toUInt32 <<< 8) |||
+      ((bytes[off + 2]'(by omega)).toUInt32 <<< 16) |||
+      ((bytes[off + 3]'(by omega)).toUInt32 <<< 24))
+  else none
+
+/-- `parseU8` at a byte-array offset. -/
+def byteAtB (bytes : ByteArray) (off : Nat) : Option UInt8 :=
+  if h : off < bytes.size then some (bytes[off]'h) else none
+
+/-- `serializeLString` as packed bytes. -/
+def serializeLStringBytes (s : String) : ByteArray :=
+  let b := s.toUTF8
+  byteArrayOfList (writeU32LE (UInt32.ofNat b.size)) ++ b
+
+/-- `serializeTerm` as packed bytes.
+
+    `parseEntry` confirms that the stored key is the canonical serialization of
+    the term it parsed. That check is NOT redundant: `parseTerm` reads each
+    length-prefixed field with `String.fromUTF8?`, and nothing in the term
+    codec proves that re-encoding the decoded `String` reproduces the stored
+    bytes, so the comparison is what rejects a key whose bytes are not the
+    canonical spelling of its own term. Building the comparison operand as a
+    `List UInt8` allocated one cons cell per key byte for every entry; this
+    builds the same bytes packed.
+    `TermLocalIndexWireTheorems.serializeTermBytes_eq` proves it equals
+    `serializeTerm`. -/
+def serializeTermBytes : Term -> ByteArray
+  | .iri i => byteArrayOfList [termTagIri] ++ serializeLStringBytes i.val
+  | .bnode b => byteArrayOfList [termTagBnode] ++ serializeLStringBytes b
+  | .literal l =>
+      byteArrayOfList [termTagLiteral] ++
+        (serializeLStringBytes l.val.lexicalForm ++
+          serializeLStringBytes l.val.datatype.val ++
+          (match l.val.langTag with
+           | none => byteArrayOfList [(0 : UInt8)]
+           | some tag => byteArrayOfList [(1 : UInt8)] ++ serializeLStringBytes tag))
+  | .tripleTerm _ _ _ => byteArrayOfList [termTagTripleTerm]
+
+/-- `parseEntry` at a byte-array offset.  Returns the entry and the offset of
+    the first byte after it. -/
+def parseEntryB (bytes : ByteArray) (off : Nat) : Option (Entry × Nat) := do
+  let keyLength <- readU32LEB bytes off
+  let keyEnd := off + 4 + keyLength.toNat
+  if keyEnd > bytes.size then none else do
+  let keySlice := bytes.extract (off + 4) keyEnd
+  let localId <- readU32LEB bytes keyEnd
+  let key := listOfByteArray keySlice
+  let (term, trailing) <- parseTerm key
+  if !trailing.isEmpty || serializeTermBytes term != keySlice then none else
+    some ({ key, term, localId := localId.toNat }, keyEnd + 4)
+
+/-- `parseEntries` at a byte-array offset. -/
+def parseEntriesB (bytes : ByteArray) : Nat -> Nat -> List Entry -> Option (List Entry × Nat)
+  | 0, off, reversed => some (reversed.reverse, off)
+  | count + 1, off, reversed => do
+      let (entry, next) <- parseEntryB bytes off
+      parseEntriesB bytes count next (entry :: reversed)
+
+/-- `decodePages` over the packed page area.  One page is extracted at a time,
+    so the walk is linear in the page area instead of dropping the remaining
+    area once per page. -/
+def decodePagesB : Nat -> List PageRef -> ByteArray -> Nat -> Nat -> List Entry -> Option (List Entry)
+  | _, [], pages, off, _, reversed => if off == pages.size then some reversed.reverse else none
+  | termCount, ref :: refs, pages, off, page, reversed => do
+      if off + ref.length > pages.size then none else do
+      let current := pages.extract off (off + ref.length)
+      let (entries, trailing) <- parseEntriesB current (pageEntryCount termCount page) 0 []
+      if trailing != current.size then none else
+      match entries with
+      | first :: _ =>
+          if first.key != ref.firstKey then none else
+          decodePagesB termCount refs pages (off + ref.length) (page + 1)
+            (entries.reverse ++ reversed)
+      | [] => none
+
+/-- The TLI1 admission decoder, stated over the byte list.  This is the
+    SPECIFICATION; `decode?` is proved equal to it. -/
+def decodeSpec? (bytes : ByteArray) : Option Index := do
   let input := listOfByteArray bytes
   let foundMagic ← readU32LE input 0
   if foundMagic != magic then none else do
@@ -270,6 +371,35 @@ def decode? (bytes : ByteArray) : Option Index := do
   if !canonicalEntries entries termCount.toNat then none else
     some { targetIBKSha256 := byteArrayOfList target, entries := entries.toArray }
 
+/-- The TLI1 admission decoder, reading the artifact by byte-array index. -/
+def decode? (bytes : ByteArray) : Option Index := do
+  let foundMagic <- readU32LEB bytes 0
+  if foundMagic != magic then none else do
+  let foundVersion <- byteAtB bytes 4
+  if foundVersion != version || bytes.size < prefixBytes + crcBytes then none else do
+  let termCount <- readU32LEB bytes 37
+  let foundPageTerms <- readU32LEB bytes 41
+  let pageCount <- readU32LEB bytes 45
+  let directoryBytes <- readU32LEB bytes 49
+  let pagesBytes <- readU32LEB bytes 53
+  if foundPageTerms.toNat != pageTerms ||
+      pageCount.toNat != (termCount.toNat + pageTerms - 1) / pageTerms then none else do
+  let payloadLength := 32 + 20 + directoryBytes.toNat + pagesBytes.toNat
+  if bytes.size != 5 + payloadLength + crcBytes then none else do
+  let storedCrc <- readU32LEB bytes (bytes.size - crcBytes)
+  if storedCrc !=
+      (crc32cAppendArray 0xFFFFFFFF (bytes.extract 5 (5 + payloadLength)) ^^^ 0xFFFFFFFF) then
+    none else do
+  let directory := bytes.extract 57 (57 + directoryBytes.toNat)
+  let pages := bytes.extract (57 + directoryBytes.toNat)
+    (57 + directoryBytes.toNat + pagesBytes.toNat)
+  let (refs, trailing) <- parseRefs pageCount.toNat (listOfByteArray directory) []
+  if !trailing.isEmpty || !refsContiguous refs 0 ||
+      refs.foldl (fun total ref => total + ref.length) 0 != pages.size then none else do
+  let entries <- decodePagesB termCount.toNat refs pages 0 0 []
+  if !canonicalEntries entries termCount.toNat then none else
+    some { targetIBKSha256 := bytes.extract 5 37, entries := entries.toArray }
+
 private def ex : WfIri := ⟨"https://example.test/a", by decide⟩
 private def ex2 : WfIri := ⟨"https://example.test/b", by decide⟩
 private def sampleTerms : Array Term := #[.iri ex2, .bnode "b", .iri ex]
@@ -296,6 +426,11 @@ private def samplePageLookup : Option (Option Nat) := do
   some (lookup? page (.iri ex))
 
 #guard decode? sampleBytes == some sample
+#guard decodeSpec? sampleBytes == decode? sampleBytes
+#guard decodeSpec? twoPageBytes == decode? twoPageBytes
+#guard decodeSpec? (corrupt sampleBytes) == decode? (corrupt sampleBytes)
+#guard decodeSpec? (sampleBytes.extract 0 (sampleBytes.size - 1))
+  == decode? (sampleBytes.extract 0 (sampleBytes.size - 1))
 #guard localIdsPermutation sample.entries.toList sample.entries.size
 #guard !localIdsPermutation duplicateLocalIds sample.entries.size
 #guard (decodePrefix? (sampleBytes.extract 0 prefixBytes)).map Prefix.termCount == some sample.entries.size

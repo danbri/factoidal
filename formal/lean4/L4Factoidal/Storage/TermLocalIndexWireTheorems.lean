@@ -14,8 +14,12 @@ agree:
 
 on the subset `encode?` admits, with no further hypothesis.
 
-`decode?` works on the byte LIST throughout, so the bridge here is only
-`listOfByteArray (byteArrayOfList xs) = xs` and its converse. The pagination
+`decodeSpec?` works on the byte LIST throughout, so the bridge for the
+round-trip proof is only `listOfByteArray (byteArrayOfList xs) = xs` and its
+converse. `decode?` reads the same artifact by byte-array index, and
+`decode?_eq_spec` proves the two are the same function, so the round-trip
+theorems below are stated about `decode?` and proved through that equality.
+The pagination
 lemmas give `chunks` its four properties: it partitions the entry list, its
 page count is the ceiling division the prefix records, its i-th page is the
 i-th window of `pageTerms` entries, and no page is empty. `refsFrom` restates
@@ -504,9 +508,497 @@ theorem headKey_mem (p : List Entry) (h : p ≠ []) : ∃ e ∈ p, headKey p = e
   match p, h with
   | e :: t, _ => exact ⟨e, by simp, rfl⟩
 
+/-! ## The byte-indexed decoder equals the list decoder
+
+`decodeSpec?` is the list decoder and states what TLI1 admits. `decode?` reads
+the same artifact by byte-array index. Everything below builds up to
+`decode?_eq_spec`, which proves the two are the same function, so the
+round-trip theorems and the activation decision are unchanged. -/
+
+private theorem toListLoop_eq (b : ByteArray) :
+    ∀ (fuel i : Nat) (r : List UInt8), b.size - i ≤ fuel →
+      ByteArray.toList.loop b i r = r.reverse ++ b.data.toList.drop i := by
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro i r h
+      rw [ByteArray.toList.loop]
+      have hnil : b.data.toList.drop i = [] := by
+        apply List.drop_eq_nil_of_le
+        simp only [Array.length_toList, ByteArray.size_data]
+        omega
+      rw [if_neg (by omega), hnil, List.append_nil]
+  | succ fuel ih =>
+      intro i r h
+      rw [ByteArray.toList.loop]
+      by_cases hlt : i < b.size
+      · rw [if_pos hlt, ih (i + 1) _ (by omega)]
+        have hlenList : i < b.data.toList.length := by
+          simp only [Array.length_toList, ByteArray.size_data]; exact hlt
+        rw [List.drop_eq_getElem_cons hlenList]
+        have hget : b.get! i = b.data.toList[i] := by
+          simp only [ByteArray.get!]
+          exact getElem!_pos b.data i (by simpa using hlt)
+        simp [hget]
+      · rw [if_neg hlt]
+        have hnil : b.data.toList.drop i = [] := by
+          apply List.drop_eq_nil_of_le
+          simp only [Array.length_toList, ByteArray.size_data]
+          omega
+        rw [hnil, List.append_nil]
+
+/-- `ByteArray.toList` is the list of the packed data. -/
+theorem toList_eq_listOfByteArray (b : ByteArray) : b.toList = listOfByteArray b := by
+  have := toListLoop_eq b b.size 0 [] (by omega)
+  simpa [ByteArray.toList, listOfByteArray] using this
+
+/-- Building a byte array from an append is appending the two byte arrays. -/
+theorem byteArrayOfList_append (xs ys : List UInt8) :
+    byteArrayOfList (xs ++ ys) = byteArrayOfList xs ++ byteArrayOfList ys := by
+  apply ByteArray.ext
+  simp [byteArrayOfList]
+
+/-- A byte-array extract is the corresponding list slice. -/
+theorem listOfByteArray_extract (b : ByteArray) (i j : Nat) :
+    listOfByteArray (b.extract i j) = ((listOfByteArray b).drop i).take (j - i) := by
+  simp [listOfByteArray, ByteArray.data_extract, List.extract]
+
+/-- Distinct byte lists build distinct byte arrays. -/
+theorem byteArrayOfList_inj (xs ys : List UInt8) :
+    byteArrayOfList xs = byteArrayOfList ys ↔ xs = ys := by
+  constructor
+  · intro h
+    have := congrArg ByteArray.data h
+    simpa [byteArrayOfList, ← Array.toList_inj] using this
+  · intro h; rw [h]
+
+private theorem byteArray_beq_eq (a b : ByteArray) : (a == b) = decide (a = b) := by
+  show ByteArray.beq a b = _
+  rw [ByteArray.beq]
+  by_cases h : a.data = b.data
+  · have hab : a = b := ByteArray.ext_iff.mpr h
+    simp [hab]
+  · have hab : a ≠ b := fun hx => h (by rw [hx])
+    simp [h, hab]
+
+theorem byteArrayOfList_beq (xs ys : List UInt8) :
+    (byteArrayOfList xs == byteArrayOfList ys) = (xs == ys) := by
+  rw [byteArray_beq_eq]
+  by_cases h : xs = ys
+  · subst h; simp
+  · have hne : byteArrayOfList xs ≠ byteArrayOfList ys :=
+      fun hb => h ((byteArrayOfList_inj _ _).mp hb)
+    simp [h, hne]
+
+/-! ### The packed term serialization -/
+
+theorem serializeLStringBytes_eq (s : String) :
+    serializeLStringBytes s = byteArrayOfList (serializeLString s) := by
+  have hlist : bytesOfString s = listOfByteArray s.toUTF8 := toList_eq_listOfByteArray s.toUTF8
+  have hpack : byteArrayOfList (bytesOfString s) = s.toUTF8 := by
+    rw [hlist]; exact byteArrayOfList_listOfByteArray s.toUTF8
+  have hlenStr : (bytesOfString s).length = s.toUTF8.size := by
+    rw [hlist]; exact length_listOfByteArray s.toUTF8
+  rw [serializeLString, serializeLStringBytes, byteArrayOfList_append, hlenStr, hpack]
+
+/-- The packed serialization is the byte list `serializeTerm` writes, so the
+    key check `parseEntryB` runs is the key check `parseEntry` runs. -/
+theorem serializeTermBytes_eq (t : Term) :
+    serializeTermBytes t = byteArrayOfList (serializeTerm t) := by
+  cases t with
+  | iri i => simp [serializeTermBytes, serializeTerm, serializeLStringBytes_eq,
+      ← byteArrayOfList_append]
+  | bnode b => simp [serializeTermBytes, serializeTerm, serializeLStringBytes_eq,
+      ← byteArrayOfList_append]
+  | literal l =>
+      cases hlang : l.val.langTag with
+      | none => simp [serializeTermBytes, serializeTerm, hlang, serializeLStringBytes_eq,
+          ← byteArrayOfList_append]
+      | some tag => simp [serializeTermBytes, serializeTerm, hlang, serializeLStringBytes_eq,
+          ← byteArrayOfList_append]
+  | tripleTerm a b c => simp [serializeTermBytes, serializeTerm]
+
+theorem serializeTermBytes_bne (t : Term) (b : ByteArray) :
+    (serializeTermBytes t != b) = (serializeTerm t != listOfByteArray b) := by
+  rw [serializeTermBytes_eq]
+  generalize hl : listOfByteArray b = xs
+  have hb : b = byteArrayOfList xs := by rw [← hl, byteArrayOfList_listOfByteArray]
+  rw [hb, bne, bne, byteArrayOfList_beq]
+
+/-! ### Field reads -/
+
+theorem readU32LEB_eq (bytes : ByteArray) (off : Nat) :
+    readU32LEB bytes off = readU32LE (listOfByteArray bytes) off := by
+  have hlenB : (listOfByteArray bytes).length = bytes.size := length_listOfByteArray bytes
+  rw [readU32LEB]
+  split
+  · rename_i h
+    have h0 : off < (listOfByteArray bytes).length := by omega
+    have h1 : off + 1 < (listOfByteArray bytes).length := by omega
+    have h2 : off + 2 < (listOfByteArray bytes).length := by omega
+    have h3 : off + 3 < (listOfByteArray bytes).length := by omega
+    simp only [readU32LE]
+    rw [List.drop_eq_getElem_cons h0, List.drop_eq_getElem_cons h1,
+      List.drop_eq_getElem_cons h2, List.drop_eq_getElem_cons h3]
+    simp [listOfByteArray, ByteArray.getElem_eq_getElem_data]
+  · rename_i h
+    simp only [readU32LE]
+    split
+    · rename_i b0 b1 b2 b3 t heq
+      have hl := congrArg List.length heq
+      simp only [List.length_drop, hlenB, List.length_cons] at hl
+      omega
+    · rfl
+
+theorem byteAtB_parseU8 (bytes : ByteArray) (off : Nat) :
+    parseU8 ((listOfByteArray bytes).drop off)
+      = (byteAtB bytes off).map (fun b => (b, (listOfByteArray bytes).drop (off + 1))) := by
+  have hlenB : (listOfByteArray bytes).length = bytes.size := length_listOfByteArray bytes
+  rw [byteAtB]
+  split
+  · rename_i h
+    have h0 : off < (listOfByteArray bytes).length := by omega
+    rw [List.drop_eq_getElem_cons h0]
+    simp [parseU8, listOfByteArray, ByteArray.getElem_eq_getElem_data]
+  · rename_i h
+    have hnil : (listOfByteArray bytes).drop off = [] := by
+      apply List.drop_eq_nil_of_le; omega
+    simp [hnil, parseU8]
+
+theorem readU32LE_drop_zero (l : List UInt8) (a : Nat) :
+    readU32LE (l.drop a) 0 = readU32LE l a := by
+  simp [readU32LE]
+
+/-- A four-byte field can only be read where four bytes remain. -/
+theorem readU32LE_bound (bytes : ByteArray) (off : Nat) (v : UInt32)
+    (h : readU32LE (listOfByteArray bytes) off = some v) : off + 4 ≤ bytes.size := by
+  have hlenB : (listOfByteArray bytes).length = bytes.size := length_listOfByteArray bytes
+  rcases Nat.lt_or_ge bytes.size (off + 4) with hc | hc
+  case inr => exact hc
+  exfalso
+  rw [readU32LE] at h
+  split at h
+  · rename_i b0 b1 b2 b3 t heq
+    have hl := congrArg List.length heq
+    simp only [List.length_drop, hlenB, List.length_cons] at hl
+    omega
+  · exact absurd h (by simp)
+
+/-- Reading a field after a prefix drop is reading it at the sum offset. -/
+theorem readU32LE_drop (l : List UInt8) (a k : Nat) :
+    readU32LE (l.drop a) k = readU32LE l (a + k) := by
+  simp [readU32LE, List.drop_drop]
+
+/-- CRC32C of the artifact's own bytes, computed in place. -/
+theorem crc32c_listOfByteArray (b : ByteArray) :
+    crc32c (listOfByteArray b) = crc32cAppendArray 0xFFFFFFFF b ^^^ 0xFFFFFFFF := by
+  rw [crc32c, crc32cAppendArray_eq]
+  rfl
+
+/-! ### Entries, pages and the page walk -/
+
+theorem takeExactB (bytes : ByteArray) (start n : Nat) (hstart : start <= bytes.size) :
+    takeExact n ((listOfByteArray bytes).drop start)
+      = if start + n > bytes.size then none
+        else some (listOfByteArray (bytes.extract start (start + n)),
+                   (listOfByteArray bytes).drop (start + n)) := by
+  have hlenB : (listOfByteArray bytes).length = bytes.size := length_listOfByteArray bytes
+  have hslice : ((listOfByteArray bytes).drop start).take n
+      = listOfByteArray (bytes.extract start (start + n)) := by
+    rw [listOfByteArray_extract]
+    simp
+  have hrest : ((listOfByteArray bytes).drop start).drop n
+      = (listOfByteArray bytes).drop (start + n) := by
+    rw [List.drop_drop]
+  rw [takeExact]
+  simp only [hslice, hrest]
+  by_cases h : start + n > bytes.size
+  · rw [if_pos h]
+    have : (listOfByteArray (bytes.extract start (start + n))).length != n := by
+      rw [length_listOfByteArray, ByteArray.size_extract, Nat.min_def]
+      simp only [bne_iff_ne, ne_eq]
+      split <;> omega
+    simp only [bne_iff_ne, ne_eq] at this
+    simp [this]
+  · rw [if_neg h]
+    have : (listOfByteArray (bytes.extract start (start + n))).length = n := by
+      rw [length_listOfByteArray, ByteArray.size_extract, Nat.min_def]
+      split <;> omega
+    simp [this]
+
+private theorem someBind {a : Type} {b : Type} (x : a) (f : a -> Option b) :
+    (some x >>= f) = f x := rfl
+
+theorem parseEntryB_eq (bytes : ByteArray) (off : Nat) :
+    (parseEntryB bytes off).map (fun p => (p.1, (listOfByteArray bytes).drop p.2))
+      = parseEntry ((listOfByteArray bytes).drop off) := by
+  simp only [parseEntryB, parseEntry, readU32LEB_eq, readU32LE_drop_zero]
+  cases hkl : readU32LE (listOfByteArray bytes) off with
+  | none => simp
+  | some kl =>
+      have hoff : off + 4 <= bytes.size := readU32LE_bound bytes off kl hkl
+      have hdrop : ((listOfByteArray bytes).drop off).drop 4
+          = (listOfByteArray bytes).drop (off + 4) := by rw [List.drop_drop]
+      rw [someBind, someBind, hdrop, takeExactB bytes (off + 4) kl.toNat hoff]
+      by_cases hfit : off + 4 + kl.toNat > bytes.size
+      · simp [hfit]
+      · simp only [if_neg hfit]
+        simp only [someBind]
+        simp only [readU32LE_drop_zero]
+        simp only [serializeTermBytes_bne]
+        cases hlid : readU32LE (listOfByteArray bytes) (off + 4 + kl.toNat) with
+        | none => simp
+        | some lid =>
+            cases hterm : parseTerm (listOfByteArray
+                (bytes.extract (off + 4) (off + 4 + kl.toNat))) with
+            | none => simp
+            | some pair =>
+                simp only [someBind]
+                split <;> simp
+
+theorem parseEntryB_le (bytes : ByteArray) (off : Nat) (e : Entry) (next : Nat)
+    (h : parseEntryB bytes off = some (e, next)) : next <= bytes.size := by
+  simp only [parseEntryB] at h
+  cases hkl : readU32LEB bytes off with
+  | none => rw [hkl] at h; simp at h
+  | some kl =>
+      rw [hkl] at h
+      simp only [someBind] at h
+      by_cases hfit : off + 4 + kl.toNat > bytes.size
+      · rw [if_pos hfit] at h; simp at h
+      · rw [if_neg hfit] at h
+        cases hlid : readU32LEB bytes (off + 4 + kl.toNat) with
+        | none => rw [hlid] at h; simp at h
+        | some lid =>
+            have hb : off + 4 + kl.toNat + 4 <= bytes.size := by
+              have hr := readU32LEB_eq bytes (off + 4 + kl.toNat)
+              rw [hlid] at hr
+              exact readU32LE_bound bytes _ lid hr.symm
+            rw [hlid] at h
+            simp only [someBind] at h
+            cases hterm : parseTerm (listOfByteArray
+                (bytes.extract (off + 4) (off + 4 + kl.toNat))) with
+            | none => rw [hterm] at h; simp at h
+            | some pair =>
+                rw [hterm] at h
+                simp only [someBind] at h
+                split at h
+                · simp at h
+                · simp only [Option.some.injEq, Prod.mk.injEq] at h
+                  omega
+
+theorem parseEntriesB_eq (bytes : ByteArray) : ∀ (count off : Nat) (rev : List Entry),
+    (parseEntriesB bytes count off rev).map (fun p => (p.1, (listOfByteArray bytes).drop p.2))
+      = parseEntries count ((listOfByteArray bytes).drop off) rev := by
+  intro count
+  induction count with
+  | zero => intro off rev; simp [parseEntriesB, parseEntries]
+  | succ count ih =>
+      intro off rev
+      have hstep := parseEntryB_eq bytes off
+      simp only [parseEntriesB, parseEntries]
+      cases hp : parseEntryB bytes off with
+      | none =>
+          rw [hp] at hstep
+          simp only [Option.map_none] at hstep
+          rw [← hstep]
+          simp
+      | some pair =>
+          obtain ⟨entry, next⟩ := pair
+          rw [hp] at hstep
+          simp only [Option.map_some] at hstep
+          rw [← hstep]
+          simp only [someBind]
+          exact ih next (entry :: rev)
+
+theorem parseEntriesB_le (bytes : ByteArray) : ∀ (count off : Nat) (rev es : List Entry)
+    (next : Nat), off <= bytes.size → parseEntriesB bytes count off rev = some (es, next) →
+      next <= bytes.size := by
+  intro count
+  induction count with
+  | zero =>
+      intro off rev es next hoff h
+      simp only [parseEntriesB, Option.some.injEq, Prod.mk.injEq] at h
+      omega
+  | succ count ih =>
+      intro off rev es next hoff h
+      simp only [parseEntriesB] at h
+      cases hp : parseEntryB bytes off with
+      | none => rw [hp] at h; simp at h
+      | some pair =>
+          obtain ⟨entry, mid⟩ := pair
+          have hmid : mid <= bytes.size := parseEntryB_le bytes off entry mid hp
+          rw [hp] at h
+          simp only [someBind] at h
+          exact ih mid (entry :: rev) es next hmid h
+
+theorem decodePagesB_eq (termCount : Nat) : ∀ (refs : List PageRef) (pages : ByteArray)
+    (off page : Nat) (rev : List Entry), off <= pages.size →
+      decodePagesB termCount refs pages off page rev
+        = decodePages termCount refs ((listOfByteArray pages).drop off) page rev := by
+  intro refs
+  induction refs with
+  | nil =>
+      intro pages off page rev hoff
+      have hlenP : (listOfByteArray pages).length = pages.size := length_listOfByteArray pages
+      simp only [decodePagesB]
+      by_cases heq : off = pages.size
+      · have hnil : (listOfByteArray pages).drop off = [] := by
+          apply List.drop_eq_nil_of_le; omega
+        rw [hnil, if_pos (by simp [heq])]
+        rfl
+      · have hlt : off < (listOfByteArray pages).length := by omega
+        rw [List.drop_eq_getElem_cons hlt, if_neg (by simp [heq])]
+        rfl
+  | cons ref rest ih =>
+      intro pages off page rev hoff
+      have hlenP : (listOfByteArray pages).length = pages.size := length_listOfByteArray pages
+      have hslice : ((listOfByteArray pages).drop off).take ref.length
+          = listOfByteArray (pages.extract off (off + ref.length)) := by
+        rw [listOfByteArray_extract]; simp
+      simp only [decodePagesB, decodePages, hslice]
+      by_cases hfit : off + ref.length > pages.size
+      · rw [if_pos hfit]
+        have hne : (listOfByteArray (pages.extract off (off + ref.length))).length != ref.length := by
+          rw [length_listOfByteArray, ByteArray.size_extract, Nat.min_def]
+          simp only [bne_iff_ne, ne_eq]
+          split <;> omega
+        simp only [bne_iff_ne, ne_eq] at hne
+        rw [if_pos (by simp [hne])]
+      · rw [if_neg hfit]
+        have heqlen : (listOfByteArray (pages.extract off (off + ref.length))).length
+            = ref.length := by
+          rw [length_listOfByteArray, ByteArray.size_extract, Nat.min_def]
+          split <;> omega
+        rw [if_neg (by simp [heqlen])]
+        obtain ⟨current, hcur⟩ : ∃ c, c = pages.extract off (off + ref.length) := ⟨_, rfl⟩
+        rw [← hcur]
+        have hcursize : current.size = ref.length := by
+          rw [hcur, ByteArray.size_extract, Nat.min_def]
+          split <;> omega
+        have hstep := parseEntriesB_eq current (pageEntryCount termCount page) 0 []
+        simp only [List.drop_zero] at hstep
+        cases hpe : parseEntriesB current (pageEntryCount termCount page) 0 [] with
+        | none =>
+            rw [hpe] at hstep
+            simp only [Option.map_none] at hstep
+            rw [← hstep]
+            simp
+        | some pair =>
+            obtain ⟨entries, trailing⟩ := pair
+            have htrail : trailing <= current.size :=
+              parseEntriesB_le current (pageEntryCount termCount page) 0 [] entries trailing
+                (by omega) hpe
+            rw [hpe] at hstep
+            simp only [Option.map_some] at hstep
+            rw [← hstep]
+            simp only [someBind]
+            by_cases htr : trailing = current.size
+            · have hnil : (listOfByteArray current).drop trailing = [] := by
+                apply List.drop_eq_nil_of_le
+                rw [length_listOfByteArray]; omega
+              rw [if_neg (by simp [htr]), hnil]
+              simp only [List.isEmpty_nil, Bool.not_true, Bool.false_eq_true, if_false]
+              cases entries with
+              | nil => rfl
+              | cons first others =>
+                  dsimp only
+                  by_cases hkey : first.key = ref.firstKey
+                  · rw [if_neg (by simp [hkey]), if_neg (by simp [hkey])]
+                    have hdd : ((listOfByteArray pages).drop off).drop ref.length
+                        = (listOfByteArray pages).drop (off + ref.length) := by
+                      rw [List.drop_drop]
+                    rw [hdd]
+                    exact ih pages (off + ref.length) (page + 1) _ (by omega)
+                  · rw [if_pos (by simp [hkey]), if_pos (by simp [hkey])]
+            · have hlt : trailing < (listOfByteArray current).length := by
+                rw [length_listOfByteArray]; omega
+              have hne : ((listOfByteArray current).drop trailing).isEmpty = false := by
+                rw [List.drop_eq_getElem_cons hlt]; rfl
+              rw [if_pos (by simp [htr]), hne]
+              simp
+
+/-! ### The whole-artifact decoder -/
+
+theorem drop_take_slice (l : List UInt8) (base pl a n : Nat) (h : a + n ≤ pl) :
+    (((l.drop base).take pl).drop a).take n = (l.drop (base + a)).take n := by
+  have hpl : a + (pl - a) = pl := by omega
+  have h1 : ((l.drop base).drop a).take (pl - a) = ((l.drop base).take pl).drop a := by
+    rw [List.take_drop, hpl]
+  rw [← h1, List.drop_drop, List.take_take]
+  congr 1
+  omega
+
+/-- A slice starting at the payload is the byte-array extract of that range. -/
+theorem listOfByteArray_slice (bytes : ByteArray) (a n : Nat) :
+    listOfByteArray (bytes.extract a (a + n)) = ((listOfByteArray bytes).drop a).take n := by
+  rw [listOfByteArray_extract]
+  congr 1
+  omega
+
+theorem crc32c_payload (bytes : ByteArray) (n : Nat) :
+    crc32c (((listOfByteArray bytes).drop 5).take n)
+      = crc32cAppendArray 0xFFFFFFFF (bytes.extract 5 (5 + n)) ^^^ 0xFFFFFFFF := by
+  rw [← listOfByteArray_slice bytes 5 n, crc32c_listOfByteArray]
+
+theorem directory_slice (bytes : ByteArray) (d p : Nat) :
+    ((((listOfByteArray bytes).drop 5).take (32 + 20 + d + p)).drop 52).take d
+      = listOfByteArray (bytes.extract 57 (57 + d)) := by
+  rw [drop_take_slice (listOfByteArray bytes) 5 (32 + 20 + d + p) 52 d (by omega),
+    listOfByteArray_slice]
+
+theorem pages_slice (bytes : ByteArray) (d p : Nat) :
+    ((((listOfByteArray bytes).drop 5).take (32 + 20 + d + p)).drop (52 + d)).take p
+      = listOfByteArray (bytes.extract (57 + d) (57 + d + p)) := by
+  rw [drop_take_slice (listOfByteArray bytes) 5 (32 + 20 + d + p) (52 + d) p (by omega),
+    listOfByteArray_slice]
+  congr 2
+  omega
+
+theorem decodePagesB_zero (termCount : Nat) (refs : List PageRef) (pages : ByteArray)
+    (rev : List Entry) :
+    decodePagesB termCount refs pages 0 0 rev
+      = decodePages termCount refs (listOfByteArray pages) 0 rev := by
+  rw [decodePagesB_eq termCount refs pages 0 0 rev (by omega), List.drop_zero]
+
+theorem decode?_eq_spec (bytes : ByteArray) : decode? bytes = decodeSpec? bytes := by
+  have hlenB : (listOfByteArray bytes).length = bytes.size := length_listOfByteArray bytes
+  simp only [decode?, decodeSpec?, readU32LEB_eq]
+  cases hm : readU32LE (listOfByteArray bytes) 0 with
+  | none => simp
+  | some fm =>
+      simp only [someBind]
+      by_cases hmagic : fm = magic
+      · simp only [if_neg (show ¬((fm != magic) = true) by simp [hmagic])]
+        rw [byteAtB_parseU8]
+        cases hv : byteAtB bytes 4 with
+        | none => simp
+        | some fv =>
+            simp only [Option.map_some, someBind, hlenB]
+            by_cases hver : (fv != version || decide (bytes.size < prefixBytes + crcBytes)) = true
+            · simp only [if_pos hver]
+            · simp only [if_neg hver]
+              have hsize : prefixBytes + crcBytes <= bytes.size := by
+                simp only [Bool.or_eq_true, decide_eq_true_eq, not_or] at hver
+                omega
+              have h5 : (5 : Nat) <= bytes.size := by
+                simp only [prefixBytes, crcBytes] at hsize; omega
+              simp only [show (4 : Nat) + 1 = 5 from rfl]
+              rw [takeExactB bytes 5 32 h5]
+              rw [if_neg (show ¬(5 + 32 > bytes.size) by
+                simp only [prefixBytes, crcBytes] at hsize; omega)]
+              simp only [someBind, show (5 : Nat) + 32 = 37 from rfl]
+              simp only [readU32LE_drop, show (37 : Nat) + 0 = 37 from rfl,
+                show (37 : Nat) + 4 = 41 from rfl, show (37 : Nat) + 8 = 45 from rfl,
+                show (37 : Nat) + 12 = 49 from rfl, show (37 : Nat) + 16 = 53 from rfl]
+              simp only [crc32c_payload, directory_slice, pages_slice]
+              simp only [length_listOfByteArray, decodePagesB_zero,
+                byteArrayOfList_listOfByteArray]
+      · simp only [if_pos (show ((fm != magic) = true) by simp [hmagic])]
+
 /-- The decoder inverts the encoder on the byte object the encoder builds. The
     hypotheses are exactly the guards `supported` and `encode?` check. -/
-theorem decode?_encoded (target : ByteArray) (es : List Entry)
+theorem decodeSpec?_encoded (target : ByteArray) (es : List Entry)
     (htarget : target.size = 32) (hcountfit : es.length < UInt32.size)
     (hok : ∀ e ∈ es, entryOk e) (hinc : strictlyIncreasing es = true)
     (hperm : localIdsPermutation es es.length = true)
@@ -514,7 +1006,7 @@ theorem decode?_encoded (target : ByteArray) (es : List Entry)
     (hdirfit : ((pageRefs (pageBytes es) (chunks es.length es)).flatMap
       encodePageRef).length < UInt32.size)
     (hareafit : (pageBytes es).flatten.length < UInt32.size) :
-    decode? (byteArrayOfList (writeU32LE magic ++ [version] ++
+    decodeSpec? (byteArrayOfList (writeU32LE magic ++ [version] ++
         (target.data.toList ++ writeU32LE (UInt32.ofNat es.length) ++
           writeU32LE (UInt32.ofNat pageTerms) ++
           writeU32LE (UInt32.ofNat (pageRefs (pageBytes es) (chunks es.length es)).length) ++
@@ -713,7 +1205,7 @@ theorem decode?_encoded (target : ByteArray) (es : List Entry)
   have hpt : (UInt32.ofNat pageTerms).toNat = pageTerms :=
     u32_toNat_ofNat_of_lt (by simp only [pageTerms]; decide)
   -- assemble
-  rw [decode?, listOfByteArray_byteArrayOfList]
+  rw [decodeSpec?, listOfByteArray_byteArrayOfList]
   simp only [hmagic, bind, Option.bind, bne_self_eq_false, Bool.false_eq_true, if_false,
     hafterVersion, parseU8_cons, hsplitT,
     takeExact_append tl T 32 htl,
@@ -734,6 +1226,36 @@ theorem decode?_encoded (target : ByteArray) (es : List Entry)
       simp only [bne_iff_ne, ne_eq, Decidable.not_not, hinplen, crcBytes]
       omega)]
 
+/-- The same statement for the byte-indexed decoder. -/
+theorem decode?_encoded (target : ByteArray) (es : List Entry)
+    (htarget : target.size = 32) (hcountfit : es.length < UInt32.size)
+    (hok : ∀ e ∈ es, entryOk e) (hinc : strictlyIncreasing es = true)
+    (hperm : localIdsPermutation es es.length = true)
+    (hpcfit : (pageRefs (pageBytes es) (chunks es.length es)).length < UInt32.size)
+    (hdirfit : ((pageRefs (pageBytes es) (chunks es.length es)).flatMap
+      encodePageRef).length < UInt32.size)
+    (hareafit : (pageBytes es).flatten.length < UInt32.size) :
+    decode? (byteArrayOfList (writeU32LE magic ++ [version] ++
+        (target.data.toList ++ writeU32LE (UInt32.ofNat es.length) ++
+          writeU32LE (UInt32.ofNat pageTerms) ++
+          writeU32LE (UInt32.ofNat (pageRefs (pageBytes es) (chunks es.length es)).length) ++
+          writeU32LE (UInt32.ofNat ((pageRefs (pageBytes es)
+            (chunks es.length es)).flatMap encodePageRef).length) ++
+          writeU32LE (UInt32.ofNat (pageBytes es).flatten.length) ++
+          (pageRefs (pageBytes es) (chunks es.length es)).flatMap encodePageRef ++
+          (pageBytes es).flatten) ++
+        writeU32LE (crc32c (target.data.toList ++ writeU32LE (UInt32.ofNat es.length) ++
+          writeU32LE (UInt32.ofNat pageTerms) ++
+          writeU32LE (UInt32.ofNat (pageRefs (pageBytes es) (chunks es.length es)).length) ++
+          writeU32LE (UInt32.ofNat ((pageRefs (pageBytes es)
+            (chunks es.length es)).flatMap encodePageRef).length) ++
+          writeU32LE (UInt32.ofNat (pageBytes es).flatten.length) ++
+          (pageRefs (pageBytes es) (chunks es.length es)).flatMap encodePageRef ++
+          (pageBytes es).flatten))))
+      = some { targetIBKSha256 := target, entries := es.toArray } := by
+  rw [decode?_eq_spec]
+  exact decodeSpec?_encoded target es htarget hcountfit hok hinc hperm hpcfit hdirfit hareafit
+
 /-- The TLI1 codec round trip: whatever `encode?` accepts, `decode?` returns
 unchanged. The only hypothesis is that `encode?` accepted the input.
 
@@ -746,8 +1268,8 @@ re-checks, and `termSupported` together with `termFitsU32b`, which
 `L4Factoidal.Storage.parseTerm_serializeTerm` needs so `parseEntry` can rebuild
 the RDF term. The key ordering is `encode?`'s own second guard, and the three
 remaining size conditions are its third. -/
-theorem decode?_encode? (index : Index) (bytes : ByteArray) (h : encode? index = some bytes) :
-    decode? bytes = some index := by
+theorem decodeSpec?_encode? (index : Index) (bytes : ByteArray) (h : encode? index = some bytes) :
+    decodeSpec? bytes = some index := by
   simp only [encode?] at h
   split at h
   · exact absurd h (by simp)
@@ -779,12 +1301,21 @@ theorem decode?_encode? (index : Index) (bytes : ByteArray) (h : encode? index =
             index.entries.toList.length = true := by rw [hlen]; exact hperm
         simp only [Bool.or_eq_true, Bool.not_eq_true', fitsU32, decide_eq_false_iff_not,
           Nat.not_lt, not_or, Nat.not_le] at hguard
-        rw [decode?_encoded index.targetIBKSha256 index.entries.toList htsize hcountfit
+        rw [decodeSpec?_encoded index.targetIBKSha256 index.entries.toList htsize hcountfit
           hok hinc hperm' (by omega) (by omega) (by omega)]
 
 #print axioms parseEntry_encodeEntry
 #print axioms parseRefs_ok
 #print axioms decodePages_ok
+/-- The TLI1 codec round trip for the byte-indexed decoder. -/
+theorem decode?_encode? (index : Index) (bytes : ByteArray) (h : encode? index = some bytes) :
+    decode? bytes = some index := by
+  rw [decode?_eq_spec]
+  exact decodeSpec?_encode? index bytes h
+
+#print axioms decodeSpec?_encoded
+#print axioms decodeSpec?_encode?
+#print axioms decode?_eq_spec
 #print axioms decode?_encoded
 #print axioms decode?_encode?
 
