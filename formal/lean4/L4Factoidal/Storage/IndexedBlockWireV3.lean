@@ -10,6 +10,12 @@ term pages, and then obtain only those PTD1 pages.  The term array and row
 denotation remain exactly `IndexedBlock.Block`; no vocabulary interpretation
 is encoded in this format.
 
+IBK3 stores triples and has no graph column. The quad-aware successor is
+`IndexedBlockWireV4` (IBK4), which adds a per-row graph column and a header
+graph-set summary over its own `QuadBlock` type. IBK4 does not replace this
+module: IBK3 artifacts stay readable and this file's bytes, denotation and
+theorems are unchanged.
+
 The current module establishes the canonical complete-artifact codec and its
 range layout.  The range executor is deliberately added separately so its
 partial-page admission and Merkle contracts can be tested against this full
