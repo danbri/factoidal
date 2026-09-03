@@ -194,7 +194,7 @@ private def totalBytesOf (entries : List Entry) : Nat :=
 private def totalRowsOf (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
-private def decodeManifest? (op manifestHex : String) : Except String Manifest :=
+def decodeManifest? (op manifestHex : String) : Except String Manifest :=
   match bytesOfHex? manifestHex with
   | none => .error s!"{op}: manifestHex must contain an even number of hexadecimal digits"
   | some bytes =>
@@ -304,22 +304,25 @@ private def natOfJson? (value : Json) : Option Nat :=
   | .number text => text.toNat?
   | _ => none
 
-private def artifactSourceOf (members : List (String × Json)) :
+def artifactSourceOf (op : String) (members : List (String × Json)) :
     Except String ArtifactSource :=
   match members.find? (fun m => m.1 == "offset"), members.find? (fun m => m.1 == "len"),
         members.find? (fun m => m.1 == "bytes") with
   | some (_, offsetJson), some (_, lenJson), none =>
       match natOfJson? offsetJson, natOfJson? lenJson with
       | some offset, some len => .ok (.window offset len)
-      | _, _ => .error "storeQuery: \"offset\" and \"len\" must be non-negative integers"
+      | _, _ => .error s!"{op}: \"offset\" and \"len\" must be non-negative integers"
   | none, none, some (_, .string text) => .ok (.hex text)
   | _, _, _ =>
-      .error "storeQuery: every artifact needs either \"offset\" and \"len\" (blob) or \"bytes\" (hex), not both"
+      .error s!"{op}: every artifact needs either \"offset\" and \"len\" (blob) or \"bytes\" (hex), not both"
 
-private def artifactSources (artifactsJson : String) :
+/-- The `[{"key","offset","len"}]` descriptor document, decoded once.
+`activateVerify` (Wasm/Ops/Pack.lean) takes the same shape and calls this,
+so there is one decoder for the window convention. -/
+def artifactSources (op artifactsJson : String) :
     Except String (List (String × ArtifactSource)) := do
   let json ← match parseJson artifactsJson with
-    | .error e => throw s!"storeQuery: artifactsJson parse error: {e}"
+    | .error e => throw s!"{op}: artifactsJson parse error: {e}"
     | .ok value => pure value
   match json with
   | .array items =>
@@ -328,11 +331,34 @@ private def artifactSources (artifactsJson : String) :
         | .object members =>
             match members.find? (fun m => m.1 == "key") with
             | some (_, .string key) => do
-                let source ← artifactSourceOf members
+                let source ← artifactSourceOf op members
                 pure (key, source)
-            | _ => throw "storeQuery: every artifact needs a string \"key\""
-        | _ => throw "storeQuery: artifactsJson entries must be JSON objects"
-  | _ => throw "storeQuery: artifactsJson must be a JSON array"
+            | _ => throw s!"{op}: every artifact needs a string \"key\""
+        | _ => throw s!"{op}: artifactsJson entries must be JSON objects"
+  | _ => throw s!"{op}: artifactsJson must be a JSON array"
+
+/-- The bytes of one descriptor, bounds-checked against the region the call
+carried. This applies NO manifest expectation: `storeQuery` adds the declared
+length and digest on top, and `activateVerify` gets them from
+`L4Factoidal.Storage.GenerationVerify`. -/
+def sourceBytes (op : String) (key : String) (source : ArtifactSource) (blob : ByteArray) :
+    Except String ByteArray :=
+  match source with
+  | .window offset len =>
+      if offset + len > blob.size then
+        .error s!"{op}: artifact '{key}' names blob bytes [{offset}, {offset + len}) but the call carried {blob.size} blob bytes"
+      else .ok (blob.extract offset (offset + len))
+  | .hex text =>
+      match bytesOfHex? text with
+      | none => .error s!"{op}: artifact '{key}' is not an even-length hexadecimal string"
+      | some bytes => .ok bytes
+
+/-- Every descriptor resolved to its bytes, in the order the host gave them. -/
+def resolveSources (op : String) (sources : List (String × ArtifactSource))
+    (blob : ByteArray) : Except String (List (String × ByteArray)) :=
+  sources.mapM fun pair => do
+    let bytes ← sourceBytes op pair.1 pair.2 blob
+    pure (pair.1, bytes)
 
 private def supplied? (sources : List (String × ArtifactSource)) (key : String) :
     Option ArtifactSource :=
@@ -347,19 +373,14 @@ private def admitArtifact (entry : Entry) (sources : List (String × ArtifactSou
   let source ← match supplied? sources key with
     | none => throw s!"storeQuery: no bytes were supplied for artifact '{key}'"
     | some source => pure source
-  let bytes ← match source with
-    | .window offset len =>
+  match source with
+    | .window _ len =>
         if len != entry.artifact.bytes then
           throw s!"storeQuery: artifact '{key}' is {len} bytes, the manifest declares {entry.artifact.bytes}"
-        else if offset + len > blob.size then
-          throw s!"storeQuery: artifact '{key}' names blob bytes [{offset}, {offset + len}) but the call carried {blob.size} blob bytes"
-        else pure (blob.extract offset (offset + len))
     | .hex text =>
         if text.length / 2 != entry.artifact.bytes then
           throw s!"storeQuery: artifact '{key}' is {text.length / 2} bytes, the manifest declares {entry.artifact.bytes}"
-        else match bytesOfHex? text with
-        | none => throw s!"storeQuery: artifact '{key}' is not an even-length hexadecimal string"
-        | some bytes => pure bytes
+  let bytes ← sourceBytes "storeQuery" key source blob
   if bytes.size != entry.artifact.bytes then
     throw s!"storeQuery: artifact '{key}' is {bytes.size} bytes, the manifest declares {entry.artifact.bytes}"
   if !L4Factoidal.Storage.BlockArtifact.verify entry.artifact.sha256 bytes then
@@ -442,7 +463,7 @@ def storeQuery (manifestHex sparql artifactsJson : String) (blob : ByteArray) : 
     let query ← parseQuery "storeQuery" sparql
     let plan ← planFor "storeQuery" manifest query
     checkCaps plan
-    let sources ← artifactSources artifactsJson
+    let sources ← artifactSources "storeQuery" artifactsJson
     let extra : List (String × Json) :=
       [ ("shards", .number (toString plan.entries.length))
       , ("mode", .string plan.mode) ]

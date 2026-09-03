@@ -91,18 +91,61 @@ moves bytes; it interprets none of them.
 
 New `Wasm/Ops/Pack.lean`, following the handle pattern of
 `Wasm/Ops/Handles.lean` (the one place in the entry layer that holds
-mutable state):
+mutable state).
 
-    packBegin(formatTag, layout) -> {"ok":true,"handle":"p1"}
-    packFeed(handle, blob)       -> {"ok":true,"pending":N}
-    packNext(handle)             -> {"ok":true,"name":"…","bytes":N}
-                                    with the bytes in the out region
-    packFinish(handle)           -> {"ok":true,"artifacts":N,"rows":N}
-    packClose(handle)            -> {"ok":true}
+Stage A corrected the sketch this section first carried. The packer has
+TWO bounded passes over the source, not one: the first computes the
+source SHA-256 and the generated-blank-node prefix, which must avoid the
+longest run of underscores in the WHOLE source and so cannot be known
+from a prefix of it; the second parses and publishes blocks. The
+operations therefore expose the pass, and a host feeds the source twice.
 
-and `activateVerify(manifestBlob, artifactWindows)` answering a verdict,
-so the host does the atomic `CURRENT` replace it already implements in
-`store-host/`.
+    packBegin(syntaxTag, layoutTag)
+      syntaxTag : turtle | trig | nquads | ntriples
+      layoutTag : ibk2 | ibk3 | ibk4
+      -> {"ok":true,"handle":"p1","pass":"prepass"}
+
+    packFeed(handle)          -- the chunk is the IN region
+      -> {"ok":true,"pass":"prepass"|"ingest","pending":N}
+
+    packEndPass(handle)
+      -> {"ok":true,"pass":"ingest","pending":0}   -- after the first pass
+      -> {"ok":true,"pass":"done","pending":N}     -- after the second
+
+    packNext(handle)          -- one artifact in the OUT region
+      -> {"ok":true,"name":"predicate-0.ibk3","bytes":N}
+      -> {"ok":true,"done":true}
+
+    packFinish(handle)
+      -> {"ok":true,"rows":N,"blocks":N,"layout":"…","wireVersion":N,
+          "pending":N}
+
+    packClose(handle) -> {"ok":true}
+
+The host drives it as: `packBegin`, feed the whole source, `packEndPass`,
+feed the whole source again, `packEndPass`, drain `packNext`,
+`packFinish`, drain `packNext`, `packClose`, draining after every feed.
+
+`activateVerify(manifestHex, windowsJson)` over one IN region answers a
+verdict — `{"ok":true,"artifacts":N,"bytes":N}` — so the host does the
+atomic `CURRENT` replace it already implements in `store-host/`. Its
+rules are `L4Factoidal/Storage/GenerationVerify.lean`, which
+`Harness/ShardActivate.lean` also runs, so the native activator and the
+wasm one reach the same verdict on the same bytes. It refuses SBM4 and
+earlier: their SRI1 subject index needs positioned reads, which the
+module does not have.
+
+The IBK3 path streams. The IBK4 path buffers the source, because an IBK4
+block commits a graph-set summary over the whole source; the module caps
+that buffer, and the caps of `Wasm/Ops/Pack.lean` name themselves in
+every refusal.
+
+The gate is `lake exe l4wasm-cli pack`, which reaches the packer only
+through `L4Wasm.callIO` and `L4Wasm.callBlobIO`. Measured 2026-09-03:
+`gene.ttl` (17,363,312 bytes, 888,949 triples, 13 blocks) packed through
+the operations wrote 106 files whose `shasum -a 256` list is identical to
+`l4block-shard-pack`'s, and the heterogeneous fixture is identical under
+both `ibk3` and `ibk4`.
 
 ### Stage D — the host
 

@@ -44,7 +44,7 @@ export class PackError extends Error {
 /**
  * Whether the loaded engine carries the pack operations.
  *
- * The engine reports its own operation lists in the `abiVersion`
+ * The engine reports its own operation lists in the `ops` reflection
  * envelope, so the command asks it rather than guessing from a package
  * version. An engine built before stage 3 answers a package that has the
  * subcommand, and this is how that pairing is detected.
@@ -52,7 +52,7 @@ export class PackError extends Error {
 export function packSupported (engine) {
   let envelope
   try {
-    envelope = engine.call('abiVersion', [])
+    envelope = engine.call('ops', [])
   } catch (_error) {
     return false
   }

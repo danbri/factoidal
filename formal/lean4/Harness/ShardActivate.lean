@@ -15,6 +15,7 @@ import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.ChunkedArtifact
+import L4Factoidal.Storage.GenerationVerify
 
 namespace Harness.ShardActivate
 
@@ -113,209 +114,61 @@ private def sourceStillCurrent (root candidate : System.FilePath) (manifest : Ma
     pure (expected == (← sourceIdentity? source))
   catch _ => pure false
 
-/-- Activation is intentionally stricter than a selective query: before a
-    generation becomes globally visible, every child must satisfy both
-    independently recorded commitments over the same observed bytes. The
-    later range scan checks the Merkle roots; this pass checks full SHA-256.
-    Thus a hand-crafted manifest whose digest and root describe different
-    artifacts is rejected at activation rather than deferred to a query path.
+/-! ## The checks, which are shared with the WebAssembly activator
 
-    The hashing itself uses `Harness.nativeHasher` (HACL* C) instead of the
-    pure Lean specification hash. Activation rebuilds every leaf and every
-    root of the whole generation, so this is the dominant cost; the two
-    hashers compute the same function (measured by `lake exe l4vc-probe`),
-    so no committed byte and no acceptance decision changes. -/
-private def verifyFullArtifact (directory : System.FilePath) (artifact : ArtifactRef) : IO Bool := do
-  if !safeLeafKey artifact.key then pure false else
+Every byte-level check below is `L4Factoidal.Storage.GenerationVerify`, which
+is pure and takes a READER from an artifact name to its bytes. This file
+supplies a reader over the candidate directory; `Wasm/Ops/Pack.lean` supplies
+one over a byte region a JavaScript host wrote into the module's heap. The
+two therefore reach the same verdict on the same generation, and there is one
+implementation of the rules (iron rule 7 of CLAUDE.md).
+
+Activation is intentionally stricter than a selective query: before a
+generation becomes globally visible, every child must satisfy both
+independently recorded commitments over the same observed bytes. The later
+range scan checks the Merkle roots; the full pass checks full SHA-256. A
+hand-crafted manifest whose digest and root describe different artifacts is
+rejected at activation rather than deferred to a query path.
+
+The hashing uses `Harness.nativeHasher` (HACL* C) instead of the pure Lean
+specification hash. Activation rebuilds every leaf and every root of the
+whole generation, so this is the dominant cost; the two hashers compute the
+same function (measured by `lake exe l4vc-probe`), so no committed byte and
+no acceptance decision changes. -/
+
+private def directoryReader (directory : System.FilePath) :
+    L4Factoidal.Storage.GenerationVerify.Reader IO := fun name => do
   try
-    let bytes ← IO.FS.readBinFile (directory / artifact.key.value)
-    match artifact.chunked with
-    | none => pure false
-    | some chunks =>
-        let leafBytes ← IO.FS.readBinFile ((directory / artifact.key.value).toString ++ ".merkle")
-        let rebuilt := L4Factoidal.Storage.ChunkedArtifact.chunksOf chunks.chunkBytes bytes |>
-          List.map (L4Factoidal.Storage.BlockMerkle.leafWith nativeHasher)
-        match leaves? chunks.chunkCount leafBytes with
-        | none => pure false
-        | some leaves =>
-            pure <| bytes.size == artifact.bytes &&
-              BlockArtifact.verifyWith nativeHasher artifact.sha256 bytes &&
-              leaves == rebuilt &&
-              L4Factoidal.Storage.BlockMerkle.rootWith nativeHasher leaves == chunks.root &&
-              L4Factoidal.Storage.ChunkedArtifact.fromChunksWith? nativeHasher chunks.chunkBytes
-                (L4Factoidal.Storage.ChunkedArtifact.chunksOf chunks.chunkBytes bytes) == some chunks
-  catch _ => pure false
-
-private def verifyFullEntries (directory : System.FilePath) : List Entry → IO Bool
-  | [] => pure true
-  | entry :: rest => do
-      if !(← verifyFullArtifact directory entry.artifact) then pure false
-      else
-        match entry.subjectIndex with
-        | none => verifyFullEntries directory rest
-        | some index =>
-            if !(← verifyFullArtifact directory index) then pure false
-            else match entry.termIndex with
-              | none => verifyFullEntries directory rest
-              | some term =>
-                  if !(← verifyFullArtifact directory term) then pure false
-                  else match entry.objectIndex with
-                    | none => verifyFullEntries directory rest
-                    | some object =>
-                        if !(← verifyFullArtifact directory object) then pure false
-                        else verifyFullEntries directory rest
-
-private def subjectIndexFailure : String :=
-  "candidate subject-index sidecar is missing, changed, or malformed"
-private def termIndexFailure : String :=
-  "candidate term-index sidecar is missing, changed, malformed, or bound to another block"
-private def objectIndexFailure : String :=
-  "candidate object-index sidecar is missing, changed, malformed, or inconsistent with its block"
-
-/-- Read and decode one entry's IBK3 artifact. `none` on any I/O or decode
-    failure; the caller turns that into the message of the first sidecar
-    check that needed the block. -/
-private def decodePrimary? (directory : System.FilePath) (entry : Entry) :
-    IO (Option L4Factoidal.Storage.IndexedBlock.Block) := do
-  try
-    let primary ← IO.FS.readBinFile (directory / entry.artifact.key.value)
-    pure (L4Factoidal.Storage.IndexedBlockWireV3.decode primary)
+    pure (some (← IO.FS.readBinFile (directory / name)))
   catch _ => pure none
 
-/-- SBM3's subject index is part of the generation, not optional query
-    advice: SRI2 framing/checksum, binding to the exact IBK3 digest,
-    agreement with the committed row count, and equality with the canonical
-    subject-to-row relation of the decoded block. -/
-private def subjectIndexAgrees (directory : System.FilePath) (version : Nat) (entry : Entry)
-    (index : ArtifactRef) (block? : Option L4Factoidal.Storage.IndexedBlock.Block) : IO Bool := do
-  if version >= 5 then
-    try
-      match block? with
-      | none => pure false
-      | some block =>
-          let indexBytes ← IO.FS.readBinFile (directory / index.key.value)
-          match L4Factoidal.Storage.SubjectRowIndexWireV2.decode? indexBytes with
-          | some decoded =>
-              pure (decoded.targetIBKSha256 == entry.artifact.sha256 && decoded.rowCount == entry.rows &&
-                decoded.pairs.toList == L4Factoidal.Storage.SubjectRowIndexWire.pairsOfRows block.rows)
-          | none => pure false
-    catch _ => pure false
-  else
-    try
-      match ← Harness.IndexedBlockV3Materialize.subjectPostings? directory entry with
-      | some _ => pure true
-      | none => pure false
-    catch _ => pure false
-
-/-- TLI1 is a physical identity bridge, not advisory planner metadata: it is
-   admissible only when its framing/checksum decode and its target digest binds
-   it to the exact IBK3 artifact in the same manifest entry. -/
-private def termIndexAgrees (directory : System.FilePath) (entry : Entry)
-    (index : ArtifactRef) (block? : Option L4Factoidal.Storage.IndexedBlock.Block) : IO Bool := do
-  if !safeLeafKey index.key then pure false else
+/-- The SBM4-and-earlier subject index, whose SRI1 postings only the paged
+    native materializer reads. A wasm caller has no positioned reads and
+    refuses a pre-SBM5 generation instead. -/
+private def legacySubjectPostings (directory : System.FilePath) :
+    Entry → ArtifactRef → IO Bool := fun entry _index => do
   try
-    match block? with
+    match ← Harness.IndexedBlockV3Materialize.subjectPostings? directory entry with
+    | some _ => pure true
     | none => pure false
-    | some block =>
-        let bytes ← IO.FS.readBinFile (directory / index.key.value)
-        match L4Factoidal.Storage.TermLocalIndexWire.decode? bytes with
-        | some decoded =>
-            pure (decoded.targetIBKSha256 == entry.artifact.sha256 &&
-              decoded.entries == L4Factoidal.Storage.TermLocalIndex.entriesOf block.dict)
-        | none => pure false
   catch _ => pure false
 
-/-- SBM6's OLI2 bytes use the pageable local-ID/row-offset framing, but are
-    separately manifest-typed and must equal the canonical object-to-row
-    relation of their IBK3 artifact before activation. -/
-private def objectIndexAgrees (directory : System.FilePath) (version : Nat) (entry : Entry)
-    (index : ArtifactRef) (block? : Option L4Factoidal.Storage.IndexedBlock.Block) : IO Bool := do
-  if version != 6 || !safeLeafKey index.key then pure false else
-  try
-    match block? with
-    | none => pure false
-    | some block =>
-        let indexBytes ← IO.FS.readBinFile (directory / index.key.value)
-        match L4Factoidal.Storage.SubjectRowIndexWireV2.decode? indexBytes with
-        | some decoded =>
-            pure (decoded.targetIBKSha256 == entry.artifact.sha256 && decoded.rowCount == entry.rows &&
-              decoded.pairs.toList == L4Factoidal.Storage.SubjectRowIndexWire.pairsOfObjects block.rows)
-        | none => pure false
-  catch _ => pure false
+private def verifyFullEntries (directory : System.FilePath) (entries : List Entry) : IO Bool :=
+  L4Factoidal.Storage.GenerationVerify.verifyFullEntries nativeHasher
+    (directoryReader directory) entries
 
-/-- One entry's three index sidecars, checked in the order subject, term,
-    object against ONE read and ONE decode of its IBK3 artifact. Returns the
-    failure message of the first check that fails. Before 2026-09-03 each
-    check re-read and re-decoded the primary (four reads and three decodes
-    per block over a whole generation); the acceptance decision is the same,
-    only the work is shared. -/
-private def verifyEntryIndexes (directory : System.FilePath) (version : Nat) (entry : Entry) :
-    IO (Option String) := do
-  let needsBlock := (entry.subjectIndex.isSome && version >= 5) ||
-    entry.termIndex.isSome || entry.objectIndex.isSome
-  let block? ← if needsBlock then decodePrimary? directory entry else pure none
-  let subjectOk ← match entry.subjectIndex with
-    | none => pure true
-    | some index => subjectIndexAgrees directory version entry index block?
-  if !subjectOk then return some subjectIndexFailure
-  let termOk ← match entry.termIndex with
-    | none => pure true
-    | some index => termIndexAgrees directory entry index block?
-  if !termOk then return some termIndexFailure
-  let objectOk ← match entry.objectIndex with
-    | none => pure true
-    | some index => objectIndexAgrees directory version entry index block?
-  if !objectOk then return some objectIndexFailure
-  pure none
-
-private def verifyIndexSidecars (directory : System.FilePath) (version : Nat) :
-    List Entry → IO (Option String)
-  | [] => pure none
-  | entry :: rest => do
-      match ← verifyEntryIndexes directory version entry with
-      | some failure => pure (some failure)
-      | none => verifyIndexSidecars directory version rest
+private def verifyIndexSidecars (directory : System.FilePath) (version : Nat)
+    (entries : List Entry) : IO (Option String) :=
+  L4Factoidal.Storage.GenerationVerify.verifyIndexSidecars (directoryReader directory)
+    version (legacySubjectPostings directory) entries
 
 private def quadEntryFailure : String :=
-  "candidate IBK4 artifact is missing, changed, malformed, mislabelled by predicate, or its graph set differs from the manifest entry"
+  L4Factoidal.Storage.GenerationVerify.quadEntryFailure
 
-/-- Decode one IBK4 artifact and check it against its manifest entry.
+private def verifyQuadEntries (directory : System.FilePath) (entries : List Entry) :
+    IO (Option Nat) :=
+  L4Factoidal.Storage.GenerationVerify.verifyQuadEntries (directoryReader directory) entries 0
 
-    `IndexedBlockWireV4.decode` already re-checks the framing, the CRC, the row
-    order, the predicate locality and the stored header graph-set summary
-    against the rows it decoded. Three checks are left to the manifest, because
-    only the manifest makes those claims: the committed row count, the
-    predicate the entry names, and the entry's copy of the graph set. The third
-    is what keeps `GRAPH <iri>` entry selection sound — a planner that reads
-    the manifest summary and never opens the block must not be able to see a
-    graph set the block does not have. -/
-private def verifyQuadEntry (directory : System.FilePath) (entry : Entry) : IO (Option Nat) := do
-  if !safeLeafKey entry.artifact.key then pure none else
-  try
-    let bytes ← IO.FS.readBinFile (directory / entry.artifact.key.value)
-    match L4Factoidal.Storage.IndexedBlockWireV4.decode bytes with
-    | none => pure none
-    | some block =>
-        if block.rows.size != entry.rows then pure none else
-        let predicateOk := block.rows.toList.all fun row =>
-          match block.dict[row.p]? with
-          | some (.iri value) => value == entry.predicate
-          | _ => false
-        if !predicateOk then pure none else
-        match L4Factoidal.Storage.IndexedBlockWireV4.graphNames? block with
-        | none => pure none
-        | some names =>
-            if names.map GraphName.ofGraphRef == entry.graphSet then pure (some bytes.size)
-            else pure none
-  catch _ => pure none
-
-private def verifyQuadEntries (directory : System.FilePath) :
-    List Entry → Nat → IO (Option Nat)
-  | [], total => pure (some total)
-  | entry :: rest, total => do
-      match ← verifyQuadEntry directory entry with
-      | none => pure none
-      | some bytes => verifyQuadEntries directory rest (total + bytes)
 
 /-- Validate the selected physical layout after full-file SHA-256 admission.
     IBK2 uses its existing all-entry materializer; IBK3 uses the paged reader,
@@ -323,7 +176,7 @@ private def verifyQuadEntries (directory : System.FilePath) :
     leaves while decoding the same entries. -/
 private def verifyReadableEntries (directory : System.FilePath) (manifest : Manifest) : IO (Option Nat) := do
   if isIbk4Layout manifest.layout then
-    verifyQuadEntries directory manifest.entries 0
+    verifyQuadEntries directory manifest.entries
   else if isIbk3Layout manifest.layout then
     match ← Harness.IndexedBlockV3Materialize.materializeEntries directory manifest.entries with
     | none => pure none

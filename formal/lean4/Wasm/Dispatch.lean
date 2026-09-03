@@ -42,6 +42,7 @@ import Wasm.Ops.Store
 import Wasm.Ops.CL
 import Wasm.Ops.Proof
 import Wasm.Ops.Handles
+import Wasm.Ops.Pack
 
 namespace L4Wasm
 
@@ -69,6 +70,7 @@ def opNames : List String :=
   , "storeManifestInspect"
   , "storeQueryPlan"
   , "storeQuery"
+  , "activateVerify"
   , "owlClosure"
   , "owlIsConsistent"
   , "owlEntails"
@@ -94,7 +96,7 @@ region the host wrote directly into the wasm heap, and the op's JSON argument
 describes windows into it (`Wasm/Ops/Store.lean`). Through the plain `call`
 these ops still answer — with an empty region, so a descriptor naming blob
 bytes is refused by name rather than silently reading nothing. -/
-def blobOpNames : List String := [ "storeQuery" ]
+def blobOpNames : List String := [ "storeQuery", "activateVerify" ]
 
 /-- The op names that also RETURN a contiguous byte region, served by
 `callBlobIO` below (the `l4_call_blob_io` C export, wired to
@@ -106,13 +108,18 @@ the bytes over the boundary, and base64 was refused (owner, 2026-09-03). The
 measured cost on the read path was 242,416 bytes and 96 ms for hexadecimal
 against 4,893 bytes and 70 ms for the raw region.
 
-Today the table holds ONE op, `blobEcho`, which is a self test and nothing
-else: it builds a region whose byte `i` is `(i * 7 + 3) mod 256`, so a host
-can prove the whole path — Lean, the shim, the Emscripten export, the
-JavaScript binder — moves every byte without truncation. The pack operations
-of stage C in `docs/designissues/2026-09-03-npm-pack-in-wasm.md` join it
-here. -/
-def blobIoOpNames : List String := [ "blobEcho" ]
+`blobEcho` is a self test and nothing else: it builds a region whose byte `i`
+is `(i * 7 + 3) mod 256`, so a host can prove the whole path — Lean, the
+shim, the Emscripten export, the JavaScript binder — moves every byte without
+truncation.
+
+`packFeed` and `packNext` (`Wasm/Ops/Pack.lean`) are the pack operations of
+stage C in `docs/designissues/2026-09-03-npm-pack-in-wasm.md`. `packFeed`
+reads one chunk of the source from the IN region and builds no OUT region;
+`packNext` reads nothing and returns one artifact's bytes. Both are here
+because both are served by the one entry which carries a region in either
+direction. -/
+def blobIoOpNames : List String := [ "blobEcho", "packFeed", "packNext" ]
 
 /-- Largest out region `blobEcho` builds: 67,108,864 bytes. A count above
 this is refused by name rather than made into an allocation the module
@@ -172,6 +179,19 @@ def handleOpNames : List String :=
   , "datasetSerialize"
   , "datasetClose" ]
 
+/-- The pack op names (`Wasm/Ops/Pack.lean`), served ONLY by `callIO` and
+`callBlobIO` — the pure `call` cannot reach the pack table. `packFeed` and
+`packNext` also need a byte region and are listed in `blobIoOpNames`; through
+`callIO`, which carries none, they answer an error naming the entry they
+need rather than feeding nothing. -/
+def packOpNames : List String :=
+  [ "packBegin"
+  , "packFeed"
+  , "packEndPass"
+  , "packNext"
+  , "packFinish"
+  , "packClose" ]
+
 /-- `{"ok":true,"abiVersion":"…","ops":[…],"blobOps":[…],"blobIoOps":[…]}`. -/
 private def opsReflectionFor (names : List String) : String :=
   (Json.object
@@ -201,6 +221,7 @@ def call (op : String) (argsJson : String) : String :=
     | "storeManifestInspect" => arity1 op storeManifestInspect args
     | "storeQueryPlan"       => arity2 op storeQueryPlan args
     | "storeQuery"           => arity3 op (fun a b c => storeQuery a b c ByteArray.empty) args
+    | "activateVerify"       => arity2 op (fun a b => activateVerify a b ByteArray.empty) args
     | "owlClosure"           => arity2 op owlClosure args
     | "owlIsConsistent"      => arity2 op owlIsConsistent args
     | "owlEntails"           => arity3 op owlEntails args
@@ -227,6 +248,11 @@ def callBlob (op : String) (argsJson : String) (blob : ByteArray) : String :=
       | .error e => errJson e
       | .ok [a, b, c] => storeQuery a b c blob
       | .ok args => errJson s!"storeQuery expects 3 arguments, got {args.length}"
+  | "activateVerify" =>
+      match decodeArgs argsJson with
+      | .error e => errJson e
+      | .ok [a, b] => activateVerify a b blob
+      | .ok args => errJson s!"activateVerify expects 2 arguments, got {args.length}"
   | _ => call op argsJson
 
 private def arityIO1 (op : String) (f : String → IO String) :
@@ -258,7 +284,13 @@ def callIO (op : String) (argsJson : String) : IO String :=
   | "datasetUpdate"    => withArgs (arityIO2 op Ops.datasetUpdate)
   | "datasetSerialize" => withArgs (arityIO2 op Ops.datasetSerialize)
   | "datasetClose"     => withArgs (arityIO1 op Ops.datasetClose)
-  | "ops"              => pure (opsReflectionFor (opNames ++ handleOpNames))
+  | "packBegin"        => withArgs (arityIO2 op Ops.packBegin)
+  | "packEndPass"      => withArgs (arityIO1 op Ops.packEndPass)
+  | "packFinish"       => withArgs (arityIO1 op Ops.packFinish)
+  | "packClose"        => withArgs (arityIO1 op Ops.packClose)
+  | "packFeed" | "packNext" =>
+      pure (errJson s!"{op} carries a byte region; call it through l4_call_blob_io")
+  | "ops"              => pure (opsReflectionFor (opNames ++ handleOpNames ++ packOpNames))
   | _                  => pure (call op argsJson)
 
 /-- The dispatch entry the `l4_call_blob_io` C export serves: the string
@@ -277,6 +309,18 @@ def callBlobIO (op : String) (argsJson : String) (blob : ByteArray) :
       | .error e  => pure (errJson e, ByteArray.empty)
       | .ok [a]   => pure (blobEcho a)
       | .ok args  => pure (errJson s!"blobEcho expects 1 argument, got {args.length}",
+                           ByteArray.empty)
+  | "packFeed" =>
+      match decodeArgs argsJson with
+      | .error e  => pure (errJson e, ByteArray.empty)
+      | .ok [a]   => do pure (← Ops.packFeed a blob, ByteArray.empty)
+      | .ok args  => pure (errJson s!"packFeed expects 1 argument, got {args.length}",
+                           ByteArray.empty)
+  | "packNext" =>
+      match decodeArgs argsJson with
+      | .error e  => pure (errJson e, ByteArray.empty)
+      | .ok [a]   => Ops.packNext a
+      | .ok args  => pure (errJson s!"packNext expects 1 argument, got {args.length}",
                            ByteArray.empty)
   | _ =>
       if blobOpNames.contains op then

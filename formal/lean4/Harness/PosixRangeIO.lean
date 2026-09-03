@@ -5,6 +5,7 @@
    of the verified block semantics and not available to the WASM target. -/
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.ChunkedArtifact
+import L4Factoidal.Storage.GenerationVerify
 import Harness.NativeHasher
 
 namespace Harness.PosixRangeIO
@@ -51,9 +52,7 @@ def readRange? (path : String) (range : ByteRange) : IO (Option ByteArray) := do
     root, never from the sidecar file itself. `extract` avoids copying the
     whole sidecar into a linked list for each individual leaf. -/
 def leaves? (expected : Nat) (bytes : ByteArray) : Option (List Digest) :=
-  if bytes.size != expected * 32 then none
-  else some <| (List.range expected).map fun index =>
-    bytes.extract (index * 32) (index * 32 + 32)
+  L4Factoidal.Storage.GenerationVerify.leaves? expected bytes
 
 private def singleChunkIndex? (ref : Ref) (range : ByteRange) : Option Nat := do
   if range.length == 0 || range.offset + range.length > ref.totalBytes then none else do

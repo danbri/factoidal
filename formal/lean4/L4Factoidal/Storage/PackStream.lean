@@ -30,7 +30,11 @@ import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
+import L4Factoidal.Storage.PredicateQuadBlocks
+import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Syntax.Turtle
+import L4Factoidal.Syntax.TriG
+import L4Factoidal.Syntax.NQuadsFast
 import L4Factoidal.Syntax.Utf8Stream
 import L4Factoidal.Syntax.TurtleChunkFold
 import L4Factoidal.Crypto.SHA2
@@ -328,5 +332,161 @@ def manifestArtifacts (format : PackFormat) (prepass : SourcePrepass) (state : P
       .ok [{ name := "manifest.sbm2", bytes := manifestBytes },
            { name := "manifest.tsv",
              bytes := (manifestTsv manifestTsvHeader state.linesRev).toUTF8 }]
+
+/-! ## The IBK4 path
+
+An IBK3 block holds one predicate of one graph, so the streaming fold above
+may open a new block for the same predicate in a later batch. An IBK4 block
+holds one predicate across ALL graphs and commits its graph-set summary in
+its header, so a batch boundary would either split a predicate across blocks
+with partial graph sets or need a further pass to recompute them. The IBK4
+packer is therefore bounded by the input size: it reads the whole source and
+publishes every block at the end.
+
+This is the shape `Harness/PredicateShardPack.lean` ran natively before
+2026-09-03. It is here, with no `IO` in any signature, so the WebAssembly
+entry layer runs the identical code and commits identical bytes. The one
+difference from the streaming path is that a caller must hold the source
+text, which is why `Wasm/Ops/Pack.lean` carries a buffered-input cap for
+this layout and not for IBK3.
+-/
+
+/-- Which grammar reads the source. The native packer chose this from the
+    file-name suffix; the wasm entry has no file name, so a caller states
+    it. `ntriples` reads with the Turtle grammar, of which N-Triples is a
+    subset — which is what the suffix rule did. -/
+inductive PackSyntax where
+  | turtle
+  | trig
+  | nquads
+  | ntriples
+  deriving Repr, DecidableEq
+
+def syntaxName : PackSyntax → String
+  | .turtle => "turtle"
+  | .trig => "trig"
+  | .nquads => "nquads"
+  | .ntriples => "ntriples"
+
+def syntaxOfTag? (tag : String) : Option PackSyntax :=
+  match tag.toLower with
+  | "turtle" | "ttl" => some .turtle
+  | "trig" => some .trig
+  | "nquads" | "nq" | "n-quads" => some .nquads
+  | "ntriples" | "nt" | "n-triples" => some .ntriples
+  | _ => none
+
+def formatOfTag? (tag : String) : Option PackFormat :=
+  match tag.toLower with
+  | "ibk2" => some .ibk2
+  | "ibk3" => some .ibk3
+  | "ibk4" => some .ibk4
+  | _ => none
+
+def formatName : PackFormat → String
+  | .ibk2 => "ibk2"
+  | .ibk3 => "ibk3"
+  | .ibk4 => "ibk4"
+
+/-- The whole source, as a dataset. `trig` and `nquads` carry named graphs;
+    `turtle` and `ntriples` put every triple in the default graph. -/
+def parseSource (grammar : PackSyntax) (text : String) (baseIri : Option String) :
+    Except String L4Factoidal.RDF.Dataset :=
+  match grammar with
+  | .trig =>
+      match L4Factoidal.Syntax.parseTriG text baseIri with
+      | .error e => .error s!"l4block-shard-pack TriG parse error at {e.pos}: {e.msg}"
+      | .ok ds => .ok ds
+  | .nquads =>
+      match L4Factoidal.Syntax.parseNQuadsFast text with
+      | .error e => .error s!"l4block-shard-pack N-Quads parse error at {e.pos}: {e.msg}"
+      | .ok ds => .ok ds
+  | .turtle | .ntriples =>
+      match L4Factoidal.Syntax.parseTurtle text baseIri with
+      | .error e => .error s!"l4block-shard-pack Turtle parse error at {e.pos}: {e.msg}"
+      | .ok graph => .ok { default := graph, named := [] }
+
+private def graphSetText (names : List GraphName) : String :=
+  String.intercalate "," (names.map fun name =>
+    match name with
+    | .defaultGraph => "default"
+    | .iri value => value.val
+    | .bnode label => "_:" ++ label)
+
+/-- One IBK4 block, its Merkle sidecar and its manifest row. The artifact
+    order is the block bytes and then the sidecar, which is the order the
+    native packer wrote them in. -/
+def publishQuadBlocks (h : Hasher) (scope : String) :
+    PackState → List Artifact →
+    List (L4Factoidal.RDF.WfIri × L4Factoidal.Storage.IndexedBlockWireV4.QuadBlock) →
+    Except String (PackState × List Artifact)
+  | state, outRev, [] => .ok (state, outRev.reverse)
+  | state, outRev, (predicate, block) :: rest => do
+      let bytes ← match L4Factoidal.Storage.IndexedBlockWireV4.encode? block with
+        | none => .error s!"unsupported quad block for {predicate.val}"
+        | some bytes => pure bytes
+      let ordinal := state.nextOrdinal
+      let name := artifactName .ibk4 ordinal
+      let artifact ← match artifactRef? h name bytes with
+        | some value => pure value
+        | none => .error s!"could not commit fixed chunks for {predicate.val}"
+      let graphSet ← match L4Factoidal.Storage.IndexedBlockWireV4.graphNames? block with
+        | none => .error s!"unresolvable graph name in block for {predicate.val}"
+        | some names => pure (names.map GraphName.ofGraphRef)
+      let outRev := merkleArtifact h name bytes :: { name := name, bytes := bytes } :: outRev
+      let entry : Entry :=
+        { predicate
+          artifact
+          blockLayout := some BlockLayout.ibk4
+          blankNodeScope := scope
+          graphSet
+          rows := block.rows.size
+          ordinal }
+      publishQuadBlocks h scope
+        { tripleCount := state.tripleCount + block.rows.size
+          nextOrdinal := ordinal + 1
+          entriesRev := entry :: state.entriesRev
+          linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}" :: state.linesRev }
+        outRev rest
+
+/-- Every IBK4 block of one source. The blank-node scope is the SOURCE
+    file's SHA-256, the same digest the manifest commits as its source
+    identity: specification section 2.4.1 admits a content digest only under
+    a publication profile which states that repeated imports of those bytes
+    share one blank-node allocation, and `content-digest-shared` states it. -/
+structure QuadPack where
+  /-- The named graphs of the source plus its default graph. Reported by the
+      native packer's summary line; not a committed value. -/
+  graphs : Nat
+  packed : PackState
+  artifacts : List Artifact
+
+def quadArtifacts (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
+    (text : String) (baseIri : Option String) : Except String QuadPack := do
+  let dataset ← parseSource grammar text baseIri
+  let (packed, artifacts) ←
+    publishQuadBlocks h (bytesToHex prepass.sourceIdentity) {}
+      [] (L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset)
+  .ok { graphs := dataset.named.length + 1, packed, artifacts }
+
+def quadManifestTsvHeader : String :=
+  "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\n"
+
+/-- The SBM7 manifest and the TSV of a finished IBK4 `PackState`. -/
+def quadManifestArtifacts (prepass : SourcePrepass) (state : PackState) :
+    Except String (List Artifact) :=
+  let manifest : Manifest :=
+    { version := manifestVersion .ibk4
+      sourceIdentity := prepass.sourceIdentity
+      termRegistryVersion := registryVersion .ibk4
+      layout := layoutName .ibk4
+      blankNodeProfile := "content-digest-shared"
+      entries := state.entriesRev.reverse }
+  match L4Factoidal.Storage.ShardManifest.encode? manifest with
+  | none => .error "could not encode structurally valid SBM7 manifest"
+  | some manifestBytes =>
+      .ok [{ name := "manifest.sbm2", bytes := manifestBytes },
+           { name := "manifest.tsv",
+             bytes := (manifestTsv quadManifestTsvHeader state.linesRev).toUTF8 }]
 
 end L4Factoidal.Storage.PackStream

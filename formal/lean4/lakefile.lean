@@ -98,7 +98,8 @@ extern_lib libl4blockhost pkg := do
              `Wasm.Ops.Block,
              `Wasm.Ops.Store,
              `Wasm.Ops.Proof,
-             `Wasm.Ops.Handles]
+             `Wasm.Ops.Handles,
+             `Wasm.Ops.Pack]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See

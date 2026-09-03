@@ -28,7 +28,7 @@
 // order. Row counts are compared without a limit as well.
 
 import { fileUrlToPath, joinPath } from '../../npm/factoidal/store-host/paths.mjs'
-import { readWhole } from '../../npm/factoidal/store-host/index.mjs'
+import { listGeneration, readWhole } from '../../npm/factoidal/store-host/index.mjs'
 
 const isDeno = typeof globalThis.Deno !== 'undefined'
 const argv = isDeno ? globalThis.Deno.args.slice() : process.argv.slice(2)
@@ -87,6 +87,9 @@ const shim = isDeno
         ['run', '--allow-read', '--allow-write', '--allow-run', '--allow-env', file, ...rest],
       // The command needs only --allow-read for inspect and query.
       cliArgs: (file, rest) => ['run', '--allow-read', file, ...rest],
+      // pack and activate WRITE: a generation directory, and CURRENT.
+      cliWriteArgs: (file, rest) =>
+        ['run', '--allow-read', '--allow-write', file, ...rest],
       runtimeName: 'deno'
     }
   : await (async () => {
@@ -123,6 +126,7 @@ const shim = isDeno
         selfCommand: () => process.execPath,
         selfArgs: (file, rest) => [file, ...rest],
         cliArgs: (file, rest) => [file, ...rest],
+        cliWriteArgs: (file, rest) => [file, ...rest],
         runtimeName: 'node'
       }
     })()
@@ -308,6 +312,13 @@ function nativeBinDirectory () {
 function runCli (args) {
   const result = shim.run(shim.selfCommand(), shim.cliArgs(cliFile, args))
   return result
+}
+
+/** `factoidal pack` and `factoidal activate` write files, so the Deno
+ *  child needs --allow-write as well. Every other command is read-only,
+ *  and `runCli` keeps proving that. */
+function runCliWrite (args) {
+  return shim.run(shim.selfCommand(), shim.cliWriteArgs(cliFile, args))
 }
 
 /** `factoidal query --format json --quiet`, as canonical rows. */
@@ -573,6 +584,76 @@ if (binDirectory === null) {
     assert(result.stderr.indexOf('Narrow the query') >= 0,
       `the refusal suggested no next step:\n${result.stderr}`)
   })
+
+  // ------------------------------------------------------- the pack path
+  //
+  // `factoidal pack` builds a generation inside the WebAssembly module and
+  // writes what the module hands back. The gate is byte identity with
+  // `l4block-shard-pack` over the same input: the two run the same pure
+  // packer (L4Factoidal/Storage/PackStream.lean) and differ only in which
+  // SHA-256 implementation hashes the leaves, which must not change a
+  // committed byte. An engine built before the pack operations skips this
+  // section by name rather than reporting a pass it did not measure.
+
+  const packFixture = joinPath(repoRoot,
+    'formal/lean4/Harness/TestData/heterogeneous-fixture.ttl')
+  const packedByCommand = joinPath(workDirectory, 'pack-command-gen')
+  const packProbe = runCliWrite(['pack', packFixture, packedByCommand,
+    '--layout', 'ibk3', '--quiet'])
+  // ONLY the "not yet wired" refusal is a skip. Any other failure is a
+  // failure: a skip on every non-zero exit would report a broken pack as
+  // an absent one.
+  const packUnwired = packProbe.code !== 0 &&
+    packProbe.stderr.indexOf('built before the streaming pack') >= 0
+
+  if (packUnwired) {
+    skipped += 3
+    console.log('  skip the pack path - this engine carries no pack operations')
+  } else {
+    await check('pack exits 0', () => {
+      assert(packProbe.code === 0,
+        `factoidal pack exited ${packProbe.code}: ${packProbe.stderr.trim()}`)
+    })
+    await check('pack writes what the native packer writes, byte for byte', () => {
+      const packedNatively = joinPath(workDirectory, 'pack-native-gen')
+      const native = shim.run(joinPath(binDirectory, 'l4block-shard-pack'),
+        [packFixture, packedNatively, 'ibk3'])
+      assert(native.code === 0, `l4block-shard-pack: ${native.stderr.trim()}`)
+      const namesOf = (directory) =>
+        listGeneration(directory).map((file) => file.name).sort()
+      const wasmNames = namesOf(packedByCommand)
+      const nativeNames = namesOf(packedNatively)
+      assert(wasmNames.join(',') === nativeNames.join(','),
+        `the two packers wrote different file sets:\n  command: ${wasmNames.join(', ')}\n  native:  ${nativeNames.join(', ')}`)
+      assert(wasmNames.length > 0, 'the packers wrote nothing')
+      for (const name of wasmNames) {
+        const fromCommand = readWhole(joinPath(packedByCommand, name))
+        const fromNative = readWhole(joinPath(packedNatively, name))
+        assert(fromCommand.length === fromNative.length,
+          `${name} is ${fromCommand.length} bytes from the command and ${fromNative.length} from the native packer`)
+        for (let index = 0; index < fromCommand.length; index += 1) {
+          assert(fromCommand[index] === fromNative[index],
+            `${name} differs at byte ${index}`)
+        }
+      }
+    })
+
+    await check('a packed generation activates and answers its own row count', () => {
+      const root = joinPath(workDirectory, 'pack-store')
+      shim.mkdir(root)
+      shim.copyTree(packedByCommand, joinPath(root, 'gen-1'))
+      const activated = runCliWrite(['activate', root, 'gen-1'])
+      assert(activated.code === 0,
+        `factoidal activate exited ${activated.code}: ${activated.stderr.trim()}`)
+      const result = runCli(['query', root, '--query',
+        'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }', '--format', 'json', '--quiet'])
+      assert(result.code === 0, `query exited ${result.code}: ${result.stderr.trim()}`)
+      const rows = JSON.parse(result.stdout).results.bindings
+      assert(rows.length === 1, 'COUNT answered no row')
+      assert(rows[0].n.value === '44',
+        `COUNT answered ${rows[0].n.value}, the fixture holds 44 triples`)
+    })
+  }
 }
 
 // ------------------------------------------------------------ reporting

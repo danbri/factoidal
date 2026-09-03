@@ -8,9 +8,11 @@
    same fold runs unchanged inside the WebAssembly module, which has no file
    I/O.
 
-   The IBK4 path below still reads the whole input with `IO.FS.readFile` and
-   still writes its own blocks; lifting it needs the streaming TriG fold and
-   is separate work. -/
+   The IBK4 path below still reads the whole input with `IO.FS.readFile`,
+   because an IBK4 block commits a graph-set summary over the whole source;
+   lifting it needs the streaming TriG fold and is separate work. Its blocks,
+   sidecars and manifest are decided by `PackStream.quadArtifacts` and
+   `PackStream.quadManifestArtifacts` like everything else here. -/
 import L4Factoidal.Storage.PackStream
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.IndexedBlockWireV4
@@ -105,87 +107,22 @@ predicate). An IBK4 block holds one predicate across ALL graphs and commits its
 graph-set summary in the header, so a batch boundary would either split a
 predicate across blocks with partial graph sets or need a second pass to
 recompute them. The streaming TriG path is the next step; until it lands the
-IBK4 packer is bounded by the input size, and it keeps its own file writes.
+IBK4 packer is bounded by the input size.
 
-The input syntax is chosen by file extension: `.trig` is TriG, `.nq` and
-`.nquads` are N-Quads, and anything else is Turtle, whose triples all land in
-the default graph. -/
+Every block, sidecar and manifest byte is decided by
+`PackStream.quadArtifacts` and `PackStream.quadManifestArtifacts`, which are
+pure and are what the WebAssembly pack operations run. This file only reads
+the input and writes what it is given.
 
-private inductive InputSyntax where
-  | turtle
-  | trig
-  | nquads
+The input grammar is chosen by file extension: `.trig` is TriG, `.nq` and
+`.nquads` are N-Quads, `.nt` is N-Triples, and anything else is Turtle, whose
+triples all land in the default graph. -/
 
-private def syntaxOf (input : String) : InputSyntax :=
+private def syntaxOf (input : String) : PackSyntax :=
   if input.endsWith ".trig" then .trig
   else if input.endsWith ".nq" || input.endsWith ".nquads" then .nquads
+  else if input.endsWith ".nt" then .ntriples
   else .turtle
-
-private def syntaxName : InputSyntax → String
-  | .turtle => "turtle"
-  | .trig => "trig"
-  | .nquads => "nquads"
-
-private def parseDataset (input : String) (text : String) :
-    IO L4Factoidal.RDF.Dataset := do
-  let base := some ("file://" ++ input)
-  match syntaxOf input with
-  | .trig =>
-      match L4Factoidal.Syntax.parseTriG text base with
-      | .error e => throw <| IO.userError s!"l4block-shard-pack TriG parse error at {e.pos}: {e.msg}"
-      | .ok ds => pure ds
-  | .nquads =>
-      match L4Factoidal.Syntax.parseNQuadsFast text with
-      | .error e => throw <| IO.userError s!"l4block-shard-pack N-Quads parse error at {e.pos}: {e.msg}"
-      | .ok ds => pure ds
-  | .turtle =>
-      match L4Factoidal.Syntax.parseTurtle text base with
-      | .error e => throw <| IO.userError s!"l4block-shard-pack Turtle parse error at {e.pos}: {e.msg}"
-      | .ok graph => pure { default := graph, named := [] }
-
-private def graphSetOf (predicate : L4Factoidal.RDF.WfIri)
-    (block : L4Factoidal.Storage.IndexedBlockWireV4.QuadBlock) : IO (List GraphName) := do
-  match L4Factoidal.Storage.IndexedBlockWireV4.graphNames? block with
-  | none => throw <| IO.userError s!"unresolvable graph name in block for {predicate.val}"
-  | some names => pure (names.map GraphName.ofGraphRef)
-
-private def graphSetText (names : List GraphName) : String :=
-  String.intercalate "," (names.map fun name =>
-    match name with
-    | .defaultGraph => "default"
-    | .iri value => value.val
-    | .bnode label => "_:" ++ label)
-
-private def publishQuadBlocks (output : String) (scope : String) :
-    PackState → List (L4Factoidal.RDF.WfIri × L4Factoidal.Storage.IndexedBlockWireV4.QuadBlock) →
-    IO PackState
-  | state, [] => pure state
-  | state, (predicate, block) :: rest => do
-      match L4Factoidal.Storage.IndexedBlockWireV4.encode? block with
-      | none => throw <| IO.userError s!"unsupported quad block for {predicate.val}"
-      | some bytes =>
-          let ordinal := state.nextOrdinal
-          let name := artifactName .ibk4 ordinal
-          IO.FS.writeBinFile (output ++ "/" ++ name) bytes
-          let artifact ← match artifactRef? hasher name bytes with
-            | some value => pure value
-            | none => throw <| IO.userError s!"could not commit fixed chunks for {predicate.val}"
-          writeArtifacts output [merkleArtifact hasher name bytes]
-          let graphSet ← graphSetOf predicate block
-          let entry : Entry :=
-            { predicate
-              artifact
-              blockLayout := some BlockLayout.ibk4
-              blankNodeScope := scope
-              graphSet
-              rows := block.rows.size
-              ordinal }
-          publishQuadBlocks output scope
-            { tripleCount := state.tripleCount + block.rows.size
-              nextOrdinal := ordinal + 1
-              entriesRev := entry :: state.entriesRev
-              linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}" :: state.linesRev }
-            rest
 
 private def packQuads (input output : String) : IO UInt32 := do
   try
@@ -195,31 +132,13 @@ private def packQuads (input output : String) : IO UInt32 := do
       throw <| IO.userError s!"refusing to replace committed collection at {output}; choose a fresh output directory"
     IO.FS.createDirAll outputPath
     let text ← IO.FS.readFile input
-    let dataset ← parseDataset input text
-    /- The blank-node scope is the SOURCE FILE's SHA-256, the same digest the
-       manifest commits as its source identity. Specification section 2.4.1
-       admits a content digest only under a publication profile that says
-       repeated imports of those bytes share one blank-node allocation, which
-       is what `content-digest-shared` states. -/
-    let scope := bytesToHex prepass.sourceIdentity
-    let blocks := L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset
-    let published ← publishQuadBlocks output scope {} blocks
-    let entries := published.entriesRev.reverse
-    let lines := published.linesRev.reverse
-    let manifest : Manifest :=
-      { version := 7, sourceIdentity := prepass.sourceIdentity,
-        termRegistryVersion := registryVersion .ibk4,
-        layout := layoutName .ibk4,
-        blankNodeProfile := "content-digest-shared",
-        entries }
-    match L4Factoidal.Storage.ShardManifest.encode? manifest with
-    | none => throw <| IO.userError "could not encode structurally valid SBM7 manifest"
-    | some manifestBytes => IO.FS.writeBinFile (output ++ "/manifest.sbm2") manifestBytes
-    IO.FS.writeFile (output ++ "/manifest.tsv")
-      ("# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\n" ++
-        String.intercalate "\n" lines ++ "\n")
-    let graphCount := (dataset.named.length) + 1
-    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName (syntaxOf input)} input={input} quads={published.tripleCount} blocks={entries.length} graphs={graphCount} output={output} manifest=manifest.sbm2 wire-version=7 blank-node-scope={scope} chunk-bytes={chunkBytes}"
+    let grammar := syntaxOf input
+    let result ← ofExcept
+      (quadArtifacts hasher grammar prepass text (some ("file://" ++ input)))
+    writeArtifacts output result.artifacts
+    let manifest ← ofExcept (quadManifestArtifacts prepass result.packed)
+    writeArtifacts output manifest
+    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} output={output} manifest=manifest.sbm2 wire-version=7 blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
     return 0
   catch error =>
     IO.eprintln s!"l4block-shard-pack failure: {error}"
@@ -230,7 +149,7 @@ def main (args : List String) : IO UInt32 := do
   | [input, output] => try pack .ibk2 input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
   | [input, output, "ibk3"] => try pack .ibk3 input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
   | [input, output, "ibk4"] => try packQuads input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
-  | _ => IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4]  (ibk4 accepts .ttl, .trig, .nq)"; return 2
+  | _ => IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4]  (ibk4 accepts .ttl, .trig, .nq, .nt)"; return 2
 
 end Harness.PredicateShardPack
 def main (args : List String) : IO UInt32 := Harness.PredicateShardPack.main args

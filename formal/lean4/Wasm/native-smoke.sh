@@ -751,8 +751,12 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "clAlphaNorm","clNormalize","clFiniteSat",
             "proofCheck","proofInspect","ops",
             "datasetOpen","datasetQuery","datasetUpdate",
-            "datasetSerialize","datasetClose"]) <= set(r["ops"])
-   and r["blobOps"] == ["storeQuery"]'
+            "datasetSerialize","datasetClose",
+            "activateVerify",
+            "packBegin","packFeed","packEndPass",
+            "packNext","packFinish","packClose"]) <= set(r["ops"])
+   and r["blobOps"] == ["storeQuery","activateVerify"]
+   and r["blobIoOps"] == ["blobEcho","packFeed","packNext"]'
 
 check "unknown op -> error" definitelyNotAnOp "$TMP/empty.json" \
   'r["ok"] is False and "unknown op" in r["error"]'
