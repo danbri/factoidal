@@ -1690,3 +1690,45 @@ already a FILTER NOT EXISTS query over the W3C manifests); the two
 4. **The census doc pins a tip.** `docs/20260901-persisted-executability-census.md`
    records the commit it measured; re-measure before quoting it against a
    newer tip.
+
+## Hazard #36 — worktree agents filled the disk and every tool call failed (2026-09-03)
+
+### Symptom
+
+Every `Bash` call, including `df -h`, returned
+`ENOSPC: no space left on device` while trying to create the harness's own
+output file. The session could not read the disk to find out what filled
+it, could not delete anything, and could not report. Agents already running
+kept writing.
+
+### Root cause
+
+Each `isolation: "worktree"` agent copies the Lean build cache into its
+worktree so its builds are incremental (`rsync -a
+formal/lean4/.lake/ <worktree>/formal/lean4/.lake/`). One worktree costs
+1.5 to 2.8 GB. Seven were live at once, five of them for agents that had
+already reported and been landed; nothing removed them. Free space went from
+comfortable to 2.4 GB to zero while three more agents were dispatched.
+
+### The rules
+
+1. **Check free space before dispatching a worktree agent.** `df -h /`. If
+   free space is under about 10 GB, land or remove a worktree first.
+2. **Remove the worktree in the same turn you land the commit.**
+   `git worktree remove -f -f <path>` then `git branch -D <branch>` then
+   `git worktree prune`. Do not leave it for later; later is when the disk
+   fills.
+3. **Cap concurrent worktree agents at three.** That is a disk and CPU
+   limit, not a style preference: more than three concurrent Lean builds
+   also makes every timing measurement on this machine meaningless
+   (`docs/20260902-persisted-query-ladder.md`, the machine-stall caveat).
+4. **Before deleting a worktree, check it for unlanded commits**:
+   `git -C <path> log --oneline origin/claude/main..HEAD`. On 2026-09-03 a
+   deletion sweep found `docs/designissues/2026-08-23-spec-coverage-ledger.md`,
+   301 lines written twelve days earlier by an agent whose branch was never
+   landed. It was rescued by cherry-pick (`d99beb10f`). Anything else in
+   that worktree would have gone silently.
+5. **Recovery, when every command already fails:** stop background agents
+   with `TaskStop` first (that tool needs no disk), which frees their output
+   files, then delete worktrees. Do not try to diagnose first — the
+   diagnosis command is itself what cannot run.

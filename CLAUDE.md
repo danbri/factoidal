@@ -438,6 +438,16 @@ dispatching against the COTTAS backend or evaluator, the agent prompt
 MUST forbid additions to `experimental_ocaml_glue/` other than the
 rule-#11 acceptable forms.
 
+**Check `df -h /` before dispatching a worktree agent, cap concurrency at
+three, and remove each worktree in the same turn you land its commit.**
+Each worktree holds a 1.5-2.8 GB copy of the Lean build cache; seven live
+at once filled the disk on 2026-09-03 and every tool call failed, including
+the one that would have diagnosed it. Before deleting a worktree, check it
+for unlanded commits (`git -C <path> log --oneline origin/claude/main..HEAD`)
+— that sweep rescued a 301-line design document written twelve days
+earlier. Full recovery procedure: hazard #36 in
+`skills/workflow-gotchas-debugging`.
+
 **Worktree agents start with `tools/ensure-test-env.sh`** — worktrees
 inherit zero test submodules, and absent fixtures produce lying 0/0
 scores and phantom ENOENT failures (hazard #15,
