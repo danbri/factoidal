@@ -668,6 +668,13 @@ session.
   toolchain route and the three rejected, rebuilding Lean's runtime and
   core library for wasm32 GMP-free, the C ABI + memory ownership, how to
   add an export, and the traps (silent `leanir`, the `-DNDEBUG` abort).
+- [`npm-release`](skills/npm-release/SKILL.md) — release
+  `@factoidal/core`: which artifacts `Wasm/build-wasm.sh` and
+  `build-ocaml.sh npm` produce, the four byte-identical wasm mirrors,
+  the three `version.json` files and their writers, trusted publishing
+  through the OIDC workflow (the owner's npm account is
+  security-key-only, so token and one-time-password publishing always
+  fail), the gates with their current numbers, and the packaging traps.
 - [`crypto-policy`](skills/crypto-policy/SKILL.md) — never roll our
   own crypto; HACL\* adoption order for the hash/signature
   `assume val`s (#63), and the wasm compatibility gate.

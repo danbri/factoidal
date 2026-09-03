@@ -29,6 +29,9 @@
   "module": "./index.mjs",
   "browser": "./browser.js",
   "types": "./index.d.ts",
+  "bin": {
+    "factoidal": "./bin/factoidal.mjs"
+  },
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -67,6 +70,8 @@
       "default": "./l4-core.js"
     },
     "./l4-assets/*": "./l4-assets/*",
+    "./store-host": "./store-host/index.mjs",
+    "./store-host/paths": "./store-host/paths.mjs",
     "./select": {
       "types": "./select.d.ts",
       "default": "./select.js"
@@ -89,6 +94,8 @@
     "select.js",
     "select.d.ts",
     "lib/",
+    "bin/",
+    "store-host/",
     "browser.js",
     "browser.d.ts",
     "browser-wasm.js",
