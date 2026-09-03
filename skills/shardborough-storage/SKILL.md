@@ -99,6 +99,13 @@ IBK3 proved 2026-09-02 with `encode? = some bytes` as the only hypothesis;
 SRI2/OLI2 and TLI1 in progress the same day; SBM6 and Merkle range admission
 open).
 
+`IBK4`, the quad-aware block (a graph column in every row, a header graph-set
+summary, the same PTD1 dictionary), is defined in spec section 6.1.1 and
+proved in `Storage/IndexedBlockWireV4Theorems.lean` (2026-09-03). It is a
+codec only so far: the packer, the manifest (`SBM7`), the graph-aware sidecars
+and the planner still work on IBK3, so no `l4block-*` command writes or reads
+an IBK4 artifact yet.
+
 ## Other CLIs, by purpose
 
 | Purpose | Command |

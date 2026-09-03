@@ -1,7 +1,12 @@
 # Quad-aware block layout: the design decision behind spec gate 4
 
 Status: decided by the owner 2026-09-02 evening (table below the options).
-Nothing here is implemented.
+Option B's block layer landed 2026-09-03: `IBK4` is specified byte for byte in
+section 6.1.1 of `docs/shardborough-storage-spec.md` and implemented in
+`formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean`, with the round-trip
+and denotation theorems in `IndexedBlockWireV4Theorems.lean`. The packer, the
+manifest (`SBM7`), the graph-aware sidecars, the planner and the query path are
+not implemented.
 
 ## Why now
 

@@ -393,15 +393,123 @@ host realization: files / mmap / PostgreSQL / TiKV / OPFS / WASM buffers
 | `IBK2` | Predicate-selective segmented ID block | superseded; retained range-soundness results | [IndexedBlockWireV2.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV2.lean) |
 | `IBK3` | Current predicate-local fixed ID rows followed by an embedded pageable dictionary | current primary alpha block | [IndexedBlockWireV3.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3.lean) |
 | `PTD1` | IBK3-local ID to RDF term, split into independently readable pages | current embedded dictionary | [PagedTermDictionary.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionary.lean) |
+| `IBK4` | Quad rows: one predicate across all graphs, a graph column in every row, a header graph-set summary, then the same embedded PTD1 | current quad-aware block; codec and round-trip theorem landed, packer and manifest not yet | [IndexedBlockWireV4.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean) |
 
 IBK3 contains triples and requires one predicate per artifact. Its current
 term codec accepts IRIs, blank nodes, and RDF 1.1-style literals, but refuses
 RDF 1.2 triple terms and directional literals. Current IDs and row counts use
 32-bit wire fields. These are explicit alpha limits.
 
-The target full RDF-store model is quad-aware. Current IBK3/SBM6 is
-default-graph-oriented and does not define the final `GraphId` layout.
-`Manifest.sourceIdentity` is not a substitute for graph identity.
+The target full RDF-store model is quad-aware. IBK3/SBM6 is
+default-graph-oriented and does not define a `GraphId` layout.
+`Manifest.sourceIdentity` is not a substitute for graph identity. Section 6.1.1
+defines IBK4, which carries graph identity in the rows. The manifest side of
+beta gate 4 (`SBM7`, with the blank-node scope of each source partition), the
+packer, the graph-aware sidecars and the planner are not defined yet.
+
+#### 6.1.1 IBK4 — quad rows with an in-block graph column
+
+IBK4 is the quad-aware primary block. One artifact still holds one predicate;
+it now holds that predicate across every graph of a dataset, and each row
+carries a graph column. `GRAPH <iri> { ... }` is therefore a bounded filter
+inside the block rather than a selection between manifest entries.
+
+Every integer field is unsigned little-endian. Every offset is a byte offset
+from the start of the artifact. Let `G` be `graphCount`, `R` be `rowCount` and
+`D` be `dictionaryBytes` as read from the header.
+
+**Fixed header, 17 bytes at offset 0**
+
+| Offset | Width | Field | Value |
+|---|---|---|---|
+| 0 | 4 | magic | `IBK4`, the bytes `0x49 0x42 0x4B 0x34` |
+| 4 | 1 | version | `4` |
+| 5 | 4 | `rowCount` | number of quad rows |
+| 9 | 4 | `dictionaryBytes` | byte length of the embedded PTD1 dictionary |
+| 13 | 4 | `graphCount` | number of distinct graph column values |
+
+**Graph-set summary, `G × 4` bytes at offset 17**
+
+One u32 graph column value per distinct graph, in first-occurrence row order.
+This is what lets a planner refuse a block for `GRAPH <iri>` after reading 17
+bytes plus this array, with no row and no dictionary page read. It is a
+summary, never an independent source of truth: `decode` recomputes the set
+from the rows it decoded and refuses an artifact whose stored summary differs.
+
+**Rows, `R × 20` bytes at offset `17 + G × 4`**
+
+| Offset in row | Width | Field |
+|---|---|---|
+| 0 | 4 | `position`, the source row index |
+| 4 | 4 | `g`, the graph column |
+| 8 | 4 | `s`, subject local ID |
+| 12 | 4 | `p`, predicate local ID |
+| 16 | 4 | `o`, object local ID |
+
+`s`, `p` and `o` are local IDs into the block's own PTD1 dictionary, as in
+IBK3.
+
+**Dictionary, `D` bytes at offset `17 + G × 4 + R × 20`**
+
+One complete PTD1 paged term dictionary, unchanged from IBK3. It validates its
+own page layout and its own CRC.
+
+**Checksum, 4 bytes at offset `17 + G × 4 + R × 20 + D`**
+
+CRC32C over every byte from offset 5 to the end of the dictionary — that is,
+over the whole artifact after the version byte and before the checksum itself.
+The artifact is exactly `21 + G × 4 + R × 20 + D` bytes long.
+
+**The graph column is a biased field, not a reserved ID.** Wire value `0` is
+the default graph. Wire value `k + 1` is the block-local term ID `k`, whose
+term is the graph name. The alternative — reserving local ID 0 as a
+default-graph sentinel that the dictionary never assigns — is refused by
+section 5 of this specification: "Graph identity must distinguish the default
+graph from an RDF term used to name a graph. A normal term ID is not reserved
+as a default-graph sentinel in the target model." The bias lives in the field,
+so PTD1 keeps assigning IDs from 0 and its codec, its page arithmetic and its
+round-trip theorem are unchanged. The cost is one usable ID: a block cannot
+name a graph whose local ID is `2^32 - 1`, which the admission list below
+states as a condition rather than leaving it to a silent truncation.
+
+**Admitted artifacts.** Encoder admission equals decoder admission: every item
+below is a test that `IndexedBlockWireV4.encode?` runs on the block and that
+`IndexedBlockWireV4.decode` runs again on what it read back.
+
+1. Every dictionary term is in the wire-supported term subset: IRIs, blank
+   nodes and RDF 1.1-style literals. RDF 1.2 triple terms and directional
+   literals are refused, as in IBK3.
+2. Every dictionary term satisfies the u32 length-prefix condition of the term
+   encoder (`termFitsU32`), so no string length is truncated.
+3. The dictionary size and the row count are below `2^32`.
+4. Every row's `s`, `p` and `o` is below `2^32`.
+5. Every row's graph column value `graphField(g)` is below `2^32`; that is, a
+   named graph's local ID is below `2^32 - 1`.
+6. Every graph-set summary entry satisfies the same bound.
+7. The block is nonempty and predicate-local: every row carries the same `p`.
+8. Row positions are exactly `0, 1, ..., rowCount - 1`.
+9. The dictionary has no repeated term, so its ID map is injective; and every
+   row resolves — `s` to an RDF subject, `p` to an IRI, `o` to any term, and a
+   named graph's `g` to an IRI or a blank node (`GraphRef`). A row whose graph
+   ID the dictionary never assigned is refused here, by the encoder and by the
+   decoder.
+10. The encoded graph-set summary is exactly the distinct graph column values
+    of the rows, in first-occurrence order.
+11. The framing is exact — no trailing bytes — and the CRC32C matches.
+
+**Denotation.** An admitted IBK4 artifact denotes the list of quads
+`(g, s, p, o)` in physical row order, where `s`, `p` and `o` are the RDF terms
+its dictionary assigns to the row's local IDs, and `g` is `none` for the
+default graph and `some name` for a named graph. This is the type
+`Option GraphRef × Triple`, the shape RDFC-1.0 canonicalization also uses.
+`denotes_decode_encode?` proves that decoding an encoded block gives the same
+list of quads.
+
+**Version rules.** IBK3 stays readable and is unchanged; nothing in this
+subsection alters its bytes or its meaning. IBK4 is a new magic/version pair,
+not a reinterpretation of IBK3 (section 4.5). Any later change to the byte
+layout or the meaning above requires a further new version, not an amendment
+of `IBK4`.
 
 ### 6.2 Index sidecars
 
@@ -767,6 +875,7 @@ of the current family. Each depends only on the three standard Lean axioms.
 | Term codec (`serializeTerm` / `parseTerm`) | `parseTerm_serializeTerm` | [`Storage/TermCodecTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermCodecTheorems.lean) | `termSupported` (no base direction, no triple term); `termFitsU32` (every length-prefixed string below the u32 limit) |
 | PTD1 | `decode?_encode?` | [`Storage/PagedTermDictionaryTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryTheorems.lean) | none beyond `encode? terms = some bytes`: `supported` checks both term conditions |
 | IBK3 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV3Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3Theorems.lean) | none beyond `encode? block = some bytes`: `supported` runs the decoder's own `fromParts?` admission |
+| IBK4 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV4Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4Theorems.lean) | none beyond `encode? block = some bytes`: `supported` runs the graph-column bounds, the graph-set summary condition and the decoder's own `fromParts?` admission |
 | SRI2 (also the OLI2 object role) | `decode?_encode?` | [`Storage/SubjectRowIndexWireV2Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/SubjectRowIndexWireV2Theorems.lean) | none beyond `encode? index = some bytes`: `supported` now runs `offsetsPermutation`, which the decoder re-runs |
 | TLI1 | `decode?_encode?` | [`Storage/TermLocalIndexWireTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermLocalIndexWireTheorems.lean) | none beyond `encode? index = some bytes`: `supported` now runs `localIdsPermutation`, `termSupported` and `termFitsU32b` |
 
@@ -796,7 +905,20 @@ Findings recorded by these proofs:
   encoder also required the two term-codec admission conditions, since the
   decoder rebuilds the RDF term from the stored key.
 
+- IBK4's graph-set summary would be a second source of truth if the decoder
+  accepted it as written. It does not: `decode` recomputes the distinct graph
+  set from the rows it decoded and refuses a mismatch, so the summary is a
+  planning shortcut whose only admitted value is the one the rows imply.
+- IBK4's biased graph column costs one usable local ID (`2^32 - 1` cannot name
+  a graph). That is an admission condition in `supported`, not a silent
+  truncation of the field.
+
 Still open under gate 2: SBM6 and Merkle range admission.
+
+Gate 4 is partly met: IBK4 is the tagged quad layout at block level. The
+generation manifest that commits each source partition's blank-node scope
+(`SBM7`), the packer, the graph-aware sidecars and the planner are not done,
+and the RDF 1.2 term codec is unchanged.
 
 ## 11. Implementation map and supporting design records
 
