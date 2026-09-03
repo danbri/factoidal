@@ -414,6 +414,22 @@ def clsHv2ForS (s : Store) (d : Triple) : List Triple :=
         (s.withPredObj p d.o).map (fun u => ⟨u.s, rdfType, d.s.toTerm⟩)))
   else []
 
+def clsHs1ForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlHasSelf && d.o == Term.literal litTrueBoolean then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (s.withPredObj rdfType d.s.toTerm).map (fun tu =>
+          ⟨tu.s, p, tu.s.toTerm⟩)))
+  else []
+
+def clsHs2ForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlHasSelf && d.o == Term.literal litTrueBoolean then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (s.withPred p).flatMap (fun u =>
+          if u.o == u.s.toTerm then [⟨u.s, rdfType, d.s.toTerm⟩] else [])))
+  else []
+
 def clsMaxc2ForS (s : Store) (d : Triple) : List Triple :=
   if d.p == owlMaxCardinality && d.o == Term.literal litNni1 then
     (s.withSubjPred d.s owlOnProperty).flatMap (fun onp =>
@@ -678,7 +694,8 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       prpKeyForS s d,
       clsInt1ForS s d, clsInt2ForS s d, clsUniForS s d,
       clsSvf1ForS s d, clsSvf2ForS s d, clsAvfForS s d,
-      clsHv1ForS s d, clsHv2ForS s d, clsMaxc2ForS s d, clsOoForS s d,
+      clsHv1ForS s d, clsHv2ForS s d, clsHs1ForS s d, clsHs2ForS s d,
+      clsMaxc2ForS s d, clsOoForS s d,
       caxScoForS s d, caxEqc1ForS s d, caxEqc2ForS s d,
       scmClsForS s d, scmScoForS s d, scmEqc1ForS s d, scmEqc2ForS s d,
       scmSpoForS s d, scmEqp1ForS s d, scmEqp2ForS s d,
@@ -916,6 +933,8 @@ theorem clsSvf2ForS_ofGraph (g : Graph) : clsSvf2ForS (Store.ofGraph g) = clsSvf
 theorem clsAvfForS_ofGraph (g : Graph) : clsAvfForS (Store.ofGraph g) = clsAvfFor g := rfl
 theorem clsHv1ForS_ofGraph (g : Graph) : clsHv1ForS (Store.ofGraph g) = clsHv1For g := rfl
 theorem clsHv2ForS_ofGraph (g : Graph) : clsHv2ForS (Store.ofGraph g) = clsHv2For g := rfl
+theorem clsHs1ForS_ofGraph (g : Graph) : clsHs1ForS (Store.ofGraph g) = clsHs1For g := rfl
+theorem clsHs2ForS_ofGraph (g : Graph) : clsHs2ForS (Store.ofGraph g) = clsHs2For g := rfl
 theorem clsMaxc2ForS_ofGraph (g : Graph) : clsMaxc2ForS (Store.ofGraph g) = clsMaxc2For g := rfl
 theorem clsOoForS_ofGraph (g : Graph) : clsOoForS (Store.ofGraph g) = clsOoFor g := by
   funext d
@@ -1002,7 +1021,8 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     prpKeyForS_ofGraph,
     clsInt1ForS_ofGraph, clsInt2ForS_ofGraph, clsUniForS_ofGraph,
     clsSvf1ForS_ofGraph, clsSvf2ForS_ofGraph, clsAvfForS_ofGraph,
-    clsHv1ForS_ofGraph, clsHv2ForS_ofGraph, clsMaxc2ForS_ofGraph, clsOoForS_ofGraph,
+    clsHv1ForS_ofGraph, clsHv2ForS_ofGraph, clsHs1ForS_ofGraph, clsHs2ForS_ofGraph,
+    clsMaxc2ForS_ofGraph, clsOoForS_ofGraph,
     caxScoForS_ofGraph, caxEqc1ForS_ofGraph, caxEqc2ForS_ofGraph,
     scmClsForS_ofGraph, scmScoForS_ofGraph, scmEqc1ForS_ofGraph, scmEqc2ForS_ofGraph,
     scmSpoForS_ofGraph, scmEqp1ForS_ofGraph, scmEqp2ForS_ofGraph,

@@ -1043,6 +1043,12 @@ theorem rlHerb_conditions (hcons : ¬ Clash c) :
       (Derives.base hm2) (Derives.base hm3')))
     rw [toTerm_subjTerm] at he
     exact he
+  clsHs1 := by
+    intro p c u h1 _ _
+    exact absurd h1 (no_literal_object hfrag (by decide))
+  clsHs2 := by
+    intro p c u h1 _ _
+    exact absurd h1 (no_literal_object hfrag (by decide))
   clsMaxc2 := by
     intro p x u y1 y2 h1 _ _ _ _
     exact absurd h1 (no_literal_object hfrag (by decide))

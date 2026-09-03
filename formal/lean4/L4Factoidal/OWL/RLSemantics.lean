@@ -440,6 +440,11 @@ theorem derives_irisNonReserved {g : Graph} (hg : RlReservedFree g)
       exact tin_mk (tin_s ih3) (irw_of_termIri (tin_o ih2)) (tin_o ih1)
   | clsHv2 _ _ _ ih1 ih2 ih3 =>
       exact tin_mk (tin_s ih3) (by decide) (sin_toTerm (tin_s ih1))
+  | clsHs1 _ _ _ ih1 ih2 ih3 =>
+      exact tin_mk (tin_s ih3) (irw_of_termIri (tin_o ih2))
+        (sin_toTerm (tin_s ih3))
+  | clsHs2 _ _ _ ih1 ih2 ih3 =>
+      exact tin_mk (tin_s ih3) (by decide) (sin_toTerm (tin_s ih1))
   | clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
       exact tin_mk (sin_of_toTerm (tin_o ih4)) (by decide) (tin_o ih5)
   | clsOo _ _ hm ihgc ih =>
@@ -773,6 +778,21 @@ def RlCondClsHv2 : Prop :=
   ∀ (p : WfIri) (x u yv : i.idom), i.iext (i.iIri owlHasValue) x yv →
     i.iext (i.iIri owlOnProperty) x (i.iIri p) →
     i.iext (i.iIri p) u yv → icext i u x
+
+/-- **cls-hs1** — the `owl:hasSelf` object denotes through `iLit`,
+matched lexically exactly as the engine matches it. -/
+def RlCondClsHs1 : Prop :=
+  ∀ (p : WfIri) (c u : i.idom),
+    i.iext (i.iIri owlHasSelf) c (i.iLit litTrueBoolean) →
+    i.iext (i.iIri owlOnProperty) c (i.iIri p) → icext i u c →
+    i.iext (i.iIri p) u u
+
+/-- **cls-hs2**. -/
+def RlCondClsHs2 : Prop :=
+  ∀ (p : WfIri) (c u : i.idom),
+    i.iext (i.iIri owlHasSelf) c (i.iLit litTrueBoolean) →
+    i.iext (i.iIri owlOnProperty) c (i.iIri p) →
+    i.iext (i.iIri p) u u → icext i u c
 
 /-- **cls-maxc2** — the cardinality literal denotes through `iLit`,
 matched lexically exactly as the engine matches it. -/
@@ -1116,6 +1136,8 @@ structure RlConditions (i : Interp) : Prop where
   clsAvf : RlCondClsAvf i
   clsHv1 : RlCondClsHv1 i
   clsHv2 : RlCondClsHv2 i
+  clsHs1 : RlCondClsHs1 i
+  clsHs2 : RlCondClsHs2 i
   clsMaxc2 : RlCondClsMaxc2 i
   clsOo : RlCondClsOo i
   caxSco : RlCondCaxSco i
@@ -1595,6 +1617,12 @@ theorem rl_derives_holds {i : Interp} (hc : RlConditions i) {g : Graph}
   | clsHv2 _ _ _ ih1 ih2 ih3 =>
       simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ⊢
       exact hc.clsHv2 _ _ _ _ ih1 ih2 ih3
+  | clsHs1 _ _ _ ih1 ih2 ih3 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ⊢
+      exact hc.clsHs1 _ _ _ ih1 ih2 ih3
+  | clsHs2 _ _ _ ih1 ih2 ih3 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ⊢
+      exact hc.clsHs2 _ _ _ ih1 ih2 ih3
   | clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
       simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ih4 ih5 ⊢
       exact hc.clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5

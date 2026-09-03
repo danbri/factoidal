@@ -734,6 +734,22 @@ inductive Derives (g : Graph) : Triple → Prop where
       (honp : Derives g ⟨x, owlOnProperty, Term.iri p⟩)
       (hd : Derives g ⟨u, p, yv⟩) :
       Derives g ⟨u, rdfType, x.toTerm⟩
+  /-- **cls-hs1** — `T(?c, owl:hasSelf, "true"^^xsd:boolean)
+  T(?c, owl:onProperty, ?p) T(?u, rdf:type, ?c) | T(?u,?p,?u)`. The
+  `owl:hasSelf` object is matched LEXICALLY — see
+  `Vocabulary.litTrueBoolean`. -/
+  | clsHs1 {c u : Subject} {p : WfIri}
+      (hhs : Derives g ⟨c, owlHasSelf, Term.literal litTrueBoolean⟩)
+      (honp : Derives g ⟨c, owlOnProperty, Term.iri p⟩)
+      (hty : Derives g ⟨u, rdfType, c.toTerm⟩) :
+      Derives g ⟨u, p, u.toTerm⟩
+  /-- **cls-hs2** — `T(?c, owl:hasSelf, "true"^^xsd:boolean)
+  T(?c, owl:onProperty, ?p) T(?u,?p,?u) | T(?u, rdf:type, ?c)`. -/
+  | clsHs2 {c u : Subject} {p : WfIri}
+      (hhs : Derives g ⟨c, owlHasSelf, Term.literal litTrueBoolean⟩)
+      (honp : Derives g ⟨c, owlOnProperty, Term.iri p⟩)
+      (hd : Derives g ⟨u, p, u.toTerm⟩) :
+      Derives g ⟨u, rdfType, c.toTerm⟩
   /-- **cls-maxc2** — `T(?x, owl:maxCardinality, "1"^^xsd:nnI)
   T(?x, owl:onProperty, ?p) T(?u, rdf:type, ?x) T(?u,?p,?y1)
   T(?u,?p,?y2) | T(?y1, owl:sameAs, ?y2)`. The cardinality literal is
@@ -1360,6 +1376,8 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | clsAvf _ _ _ _ ih1 ih2 ih3 ih4 => exact Derives.clsAvf ih1 ih2 ih3 ih4
   | clsHv1 _ _ _ ih1 ih2 ih3 => exact Derives.clsHv1 ih1 ih2 ih3
   | clsHv2 _ _ _ ih1 ih2 ih3 => exact Derives.clsHv2 ih1 ih2 ih3
+  | clsHs1 _ _ _ ih1 ih2 ih3 => exact Derives.clsHs1 ih1 ih2 ih3
+  | clsHs2 _ _ _ ih1 ih2 ih3 => exact Derives.clsHs2 ih1 ih2 ih3
   | clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
       exact Derives.clsMaxc2 ih1 ih2 ih3 ih4 ih5
   | clsOo _ _ hm ihgc ih => exact Derives.clsOo ihgc ih hm
@@ -1461,6 +1479,8 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | clsAvf _ _ _ _ ih1 ih2 ih3 ih4 => exact Derives.clsAvf ih1 ih2 ih3 ih4
   | clsHv1 _ _ _ ih1 ih2 ih3 => exact Derives.clsHv1 ih1 ih2 ih3
   | clsHv2 _ _ _ ih1 ih2 ih3 => exact Derives.clsHv2 ih1 ih2 ih3
+  | clsHs1 _ _ _ ih1 ih2 ih3 => exact Derives.clsHs1 ih1 ih2 ih3
+  | clsHs2 _ _ _ ih1 ih2 ih3 => exact Derives.clsHs2 ih1 ih2 ih3
   | clsMaxc2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
       exact Derives.clsMaxc2 ih1 ih2 ih3 ih4 ih5
   | clsOo _ _ hm ihgc ih => exact Derives.clsOo ihgc ih hm

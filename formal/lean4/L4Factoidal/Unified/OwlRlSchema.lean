@@ -125,6 +125,7 @@ inductive RlRowId where
   | clsThing | clsNothing1 | clsInt1
   | typedAllBase | typedAllStep | listMemBase | listMemStep
   | clsInt2 | clsUni | clsSvf1 | clsSvf2 | clsAvf | clsHv1 | clsHv2
+  | clsHs1 | clsHs2
   | clsMaxc2
   | clsOo | caxSco | caxEqc1 | caxEqc2
   | scmClsSelf | scmClsEqc | scmClsThing | scmClsNothing
@@ -346,6 +347,14 @@ def rlRowRule : RlRowId → DRule
       [dbin (dk owlInverseOf) (.v "p") (.v "q"),
        dbin (dk rdfsRange) (.v "q") (.v "c")]⟩
 
+  | .clsHs1 => ⟨dbin (.v "p") (.v "u") (.v "u"),
+      [dbin (dk owlHasSelf) (.v "x") (dlit litTrueBoolean),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dtyp (.v "u") (.v "x")]⟩
+  | .clsHs2 => ⟨dtyp (.v "u") (.v "x"),
+      [dbin (dk owlHasSelf) (.v "x") (dlit litTrueBoolean),
+       dbin (dk owlOnProperty) (.v "x") (.v "p"),
+       dbin (.v "p") (.v "u") (.v "u")]⟩
   | .clsMaxc2 => ⟨dbin (dk owlSameAs) (.v "y") (.v "z"),
       [dbin (dk owlMaxCardinality) (.v "x") (dlit litNni1),
        dbin (dk owlOnProperty) (.v "x") (.v "p"),
@@ -667,6 +676,31 @@ theorem cond_clsHv1 : RlCondClsHv1 (restrictInterp i) := by
 theorem cond_clsHv2 : RlCondClsHv2 (restrictInterp i) := by
   intro p x u yv h1 h2 h3
   refine rlRowAt hS .clsHv2 (vals i [("x", x), ("y", yv), ("p", (restrictInterp i).iIri p), ("u", u)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+/-- **cls-hs1**: the `owl:hasSelf` premise carries `"true"^^xsd:boolean`
+as `dlit litTrueBoolean`, whose denotation IS `iLit litTrueBoolean`. -/
+theorem cond_clsHs1 : RlCondClsHs1 (restrictInterp i) := by
+  intro p c u h1 h2 h3
+  refine rlRowAt hS .clsHs1
+    (vals i [("x", c), ("p", (restrictInterp i).iIri p), ("u", u)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+
+/-- **cls-hs2**. -/
+theorem cond_clsHs2 : RlCondClsHs2 (restrictInterp i) := by
+  intro p c u h1 h2 h3
+  refine rlRowAt hS .clsHs2
+    (vals i [("x", c), ("p", (restrictInterp i).iIri p), ("u", u)]) ?_
   intro a ha
   simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
   rcases ha with rfl | rfl | rfl
@@ -2060,6 +2094,8 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       clsAvf := cond_clsAvf hH
       clsHv1 := cond_clsHv1 hH
       clsHv2 := cond_clsHv2 hH
+      clsHs1 := cond_clsHs1 hH
+      clsHs2 := cond_clsHs2 hH
       clsMaxc2 := cond_clsMaxc2 hH
       clsOo := cond_clsOo hH
       caxSco := cond_caxSco hH

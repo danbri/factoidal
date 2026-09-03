@@ -235,6 +235,19 @@ private def gHv : Graph :=
 #guard derives gHv 2 ⟨S iZ, rdfType, .bnode "R"⟩
 #guard !derives gHv 2 ⟨S iX, pP, O iW⟩
 
+-- cls-hs1 / cls-hs2: a self-restriction on pP types its members into a
+-- pP-loop, and a pP-loop types its subject into the restriction.
+private def gHs : Graph :=
+  [⟨.bnode "R", owlHasSelf, .literal litTrueBoolean⟩,
+   ⟨.bnode "R", owlOnProperty, O pP⟩,
+   ⟨S iX, rdfType, .bnode "R"⟩,
+   ⟨S iZ, pP, O iZ⟩,
+   ⟨S iY, pP, O iW⟩]
+
+#guard derives gHs 2 ⟨S iX, pP, O iX⟩
+#guard derives gHs 2 ⟨S iZ, rdfType, .bnode "R"⟩
+#guard !derives gHs 2 ⟨S iY, rdfType, .bnode "R"⟩
+
 /-! ## Table 6 and Table 8 — class axioms and schema vocabulary -/
 
 -- cax-sco, plus scm-sco (transitivity of the class hierarchy).

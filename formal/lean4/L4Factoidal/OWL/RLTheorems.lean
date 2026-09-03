@@ -871,6 +871,44 @@ theorem clsHv2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
       (derives_of_parts hug rfl hup huo)
   · simp at h
 
+/-- **cls-hs1**. -/
+theorem clsHs1For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ clsHs1For g d) : Derives g t := by
+  unfold clsHs1For at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    simp only [List.mem_flatMap, List.mem_map] at h
+    obtain ⟨onp, honp, p, hpi, tu, htu, rfl⟩ := h
+    obtain ⟨honpg, honps, honpp⟩ := mem_withSubjPred honp
+    obtain ⟨htug, htup, htuo⟩ := mem_withPredObj htu
+    exact Derives.clsHs1 (derives_of_parts hd rfl hp.1 hp.2)
+      (derives_of_parts honpg honps honpp (mem_asIri hpi))
+      (derives_of_parts htug rfl htup htuo)
+  · simp at h
+
+/-- **cls-hs2**. -/
+theorem clsHs2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ clsHs2For g d) : Derives g t := by
+  unfold clsHs2For at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨onp, honp, p, hpi, u, hu, hmem⟩ := h
+    obtain ⟨honpg, honps, honpp⟩ := mem_withSubjPred honp
+    obtain ⟨hug, hup⟩ := mem_withPred hu
+    split at hmem
+    · rename_i hself
+      rw [beq_iff_eq] at hself
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      subst hmem
+      exact Derives.clsHs2 (derives_of_parts hd rfl hp.1 hp.2)
+        (derives_of_parts honpg honps honpp (mem_asIri hpi))
+        (derives_of_parts hug rfl hup hself)
+    · simp at hmem
+  · simp at h
+
 /-- **cls-maxc2**. -/
 theorem clsMaxc2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     (h : t ∈ clsMaxc2For g d) : Derives g t := by
@@ -1467,7 +1505,8 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl
   · exact eqRefSFor_sound hd ht
   · exact eqRefPFor_sound hd ht
   · exact eqRefOFor_sound hd ht
@@ -1497,6 +1536,8 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact clsAvfFor_sound hd ht
   · exact clsHv1For_sound hd ht
   · exact clsHv2For_sound hd ht
+  · exact clsHs1For_sound hd ht
+  · exact clsHs2For_sound hd ht
   · exact clsMaxc2For_sound hd ht
   · exact clsOoFor_sound hd ht
   · exact caxScoFor_sound hd ht
@@ -2287,6 +2328,24 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
       exact ⟨⟨x, owlOnProperty, Term.iri p⟩,
         mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
         ⟨u, p, yv⟩, mem_withPredObj_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsHs1 c u p _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨u, p, u.toTerm⟩ : Triple) ∈
+        clsHs1For sat ⟨c, owlHasSelf, Term.literal litTrueBoolean⟩ := by
+      simp only [clsHs1For, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap, List.mem_map]
+      exact ⟨⟨c, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, rdfType, c.toTerm⟩, mem_withPredObj_of ih3 rfl rfl, rfl⟩
+    exact R ih1 hc (by simp [conclusionsList])
+  | @clsHs2 c u p _ _ _ ih1 ih2 ih3 =>
+    have hc : (⟨u, rdfType, c.toTerm⟩ : Triple) ∈
+        clsHs2For sat ⟨c, owlHasSelf, Term.literal litTrueBoolean⟩ := by
+      simp only [clsHs2For, beq_self_eq_true, Bool.and_self, if_true,
+        List.mem_flatMap]
+      exact ⟨⟨c, owlOnProperty, Term.iri p⟩,
+        mem_withSubjPred_of ih2 rfl rfl, p, mem_asIri_self p,
+        ⟨u, p, u.toTerm⟩, mem_withPred_of ih3 rfl, by simp⟩
     exact R ih1 hc (by simp [conclusionsList])
   | @clsMaxc2 x u y1s y2 p _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
     have hc : (⟨y1s, owlSameAs, y2⟩ : Triple) ∈

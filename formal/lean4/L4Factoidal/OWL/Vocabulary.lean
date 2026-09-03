@@ -156,6 +156,9 @@ def owlOnProperty : WfIri :=
 def owlHasValue : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#hasValue", rfl⟩
 
+def owlHasSelf : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#hasSelf", rfl⟩
+
 def owlMaxCardinality : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#maxCardinality", rfl⟩
 
@@ -201,6 +204,22 @@ def litNni0 : WfLiteral :=
 /-- `"1"^^xsd:nonNegativeInteger`. -/
 def litNni1 : WfLiteral :=
   ⟨{ lexicalForm := "1", datatype := xsdNonNegativeInteger,
+     langTag := none, direction := none }, rfl⟩
+
+/-! ## The self-restriction literal
+
+Table 6's cls-hs1 and cls-hs2 rows quote `"true"^^xsd:boolean`
+LITERALLY, the same way the cardinality rows quote their
+`xsd:nonNegativeInteger` values. The transcription matches the lexical
+form the Recommendation prints, so a graph writing the same value as
+`"1"^^xsd:boolean` is not matched: the lexical mapping of
+`xsd:boolean` is not injective. Value-space matching is an engine
+question, not a rule-table one. -/
+
+/-- `"true"^^xsd:boolean` — the object of the `owl:hasSelf` premise of
+cls-hs1 and cls-hs2. -/
+def litTrueBoolean : WfLiteral :=
+  ⟨{ lexicalForm := "true", datatype := xsdBoolean,
      langTag := none, direction := none }, rfl⟩
 
 /-! ## Vocabulary the `[ext]` rows name

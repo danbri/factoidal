@@ -512,6 +512,24 @@ def clsHv2For (g : Graph) (d : Triple) : List Triple :=
         (withPredObj g p d.o).map (fun u => ⟨u.s, rdfType, d.s.toTerm⟩)))
   else []
 
+/-- **cls-hs1**. -/
+def clsHs1For (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlHasSelf && d.o == Term.literal litTrueBoolean then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (withPredObj g rdfType d.s.toTerm).map (fun tu =>
+          ⟨tu.s, p, tu.s.toTerm⟩)))
+  else []
+
+/-- **cls-hs2**. -/
+def clsHs2For (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlHasSelf && d.o == Term.literal litTrueBoolean then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun onp =>
+      (asIri onp.o).flatMap (fun p =>
+        (withPred g p).flatMap (fun u =>
+          if u.o == u.s.toTerm then [⟨u.s, rdfType, d.s.toTerm⟩] else [])))
+  else []
+
 /-- **cls-maxc2**. -/
 def clsMaxc2For (g : Graph) (d : Triple) : List Triple :=
   if d.p == owlMaxCardinality && d.o == Term.literal litNni1 then
@@ -826,7 +844,8 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       prpKeyFor g d,
       clsInt1For g d, clsInt2For g d, clsUniFor g d,
       clsSvf1For g d, clsSvf2For g d, clsAvfFor g d,
-      clsHv1For g d, clsHv2For g d, clsMaxc2For g d, clsOoFor g d,
+      clsHv1For g d, clsHv2For g d, clsHs1For g d, clsHs2For g d,
+      clsMaxc2For g d, clsOoFor g d,
       caxScoFor g d, caxEqc1For g d, caxEqc2For g d,
       scmClsFor g d, scmScoFor g d, scmEqc1For g d, scmEqc2For g d,
       scmSpoFor g d, scmEqp1For g d, scmEqp2For g d,
