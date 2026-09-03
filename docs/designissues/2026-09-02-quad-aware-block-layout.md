@@ -190,9 +190,13 @@ landed 2026-09-03 (see the status line at the head of this file).
    size. A batch boundary splits a predicate across blocks with partial graph
    sets, so it needs either a graph-set pre-pass or a manifest that admits
    several IBK4 blocks per predicate.
-6. `tools/w3c-persisted-census.sh`: extend eligibility to the `qt:graphData`
-   tests once the query path lands. That number becomes the named-graph
-   coverage gate.
+6. **Landed 2026-09-03.** `tools/w3c-persisted-census.sh` extends eligibility
+   to the `qt:graphData` tests, and every executed test on BOTH passes now has
+   its answer compared with the reference in-memory engine over the same file.
+   Measured: default graph 535 executed, 535 matched, 0 differed (out of 535);
+   named graphs 29 executed, 29 matched, 0 differed (out of 35 eligible). The
+   6 named-graph refusals carry a relative IRI in the query text, which no
+   query CLI resolves; the reference engine refuses the same six.
 7. Hub post 50: read graph identity from the SBM7 entries.
 
 ## 🧭 Decisions for the owner (as put, 2026-09-02 afternoon)

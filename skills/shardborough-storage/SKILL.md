@@ -246,10 +246,16 @@ bounded protocol worker of spec section 2.4.2.
 - Profile one file for the ladder (bytes, SHA-256, engine-counted
   statements, predicate and object-kind histograms):
   `tools/corpus-profile.sh FILE`.
-- Executability census of the W3C SPARQL QueryEvaluationTests through the
-  persisted path (pack, activate, query; NOT a pass/fail conformance
-  result): `tools/w3c-persisted-census.sh`, results in
+- Executability and row-agreement census of the W3C SPARQL
+  QueryEvaluationTests through the persisted path (pack, activate, query,
+  then compare the answer with the reference in-memory engine over the same
+  file; NOT a pass/fail conformance result — that is `lake exe l4w3c`):
+  `tools/w3c-persisted-census.sh`, results in
   [`docs/20260901-persisted-executability-census.md`](../../docs/20260901-persisted-executability-census.md).
+  Measured 2026-09-03: default graph 535 executed, 535 matched, 0 differed
+  (out of 535 eligible); named graphs 29 executed, 29 matched, 0 differed
+  (out of 35 eligible `qt:graphData` entries; the 6 refusals all carry a
+  relative IRI in the query text, which no query CLI resolves).
 - Parser differential for the N-Quads path the browser uses:
   `tools/nquads-parser-differential.sh FILE.nq`.
 
