@@ -20,11 +20,13 @@
 // `--format turtle` all print documents the engine produced.
 
 import {
-  StoreHostError, listGeneration, readWhole, runtime
+  StoreHostError, atomicReplace, listGeneration, makeDirectory, readWhole,
+  runtime
 } from '../store-host/index.mjs'
 import { fileUrlToPath, joinPath } from '../store-host/paths.mjs'
 import { loadEngine } from './engine.mjs'
 import { sampleStoreFacts, sampleStorePath } from '../sample-store.mjs'
+import { PackError, packFile, packSupported, verifyGeneration } from './pack.mjs'
 import {
   StoreOperationError, inspectManifest, openStore, planQuery, queryStore,
   turtleOfNQuads
@@ -34,6 +36,31 @@ const EXIT_OK = 0
 const EXIT_FAILURE = 1
 const EXIT_USAGE = 2
 const EXIT_NOT_WIRED = 3
+
+// Progress is reported about every 16 MiB; the packer feeds 65,536 bytes
+// a time, so this is the window that catches one feed per report.
+const FEED_PROGRESS = 65536
+
+const PACK_LAYOUTS = ['ibk3', 'ibk4']
+const PACK_SYNTAXES = ['turtle', 'trig', 'nquads', 'ntriples']
+const PACK_SUFFIXES = [
+  ['.ttl', 'turtle'], ['.turtle', 'turtle'],
+  ['.trig', 'trig'],
+  ['.nq', 'nquads'], ['.nquads', 'nquads'],
+  ['.nt', 'ntriples'], ['.ntriples', 'ntriples']
+]
+
+/** The parent of a path, and its last component. The `activate` hint
+ *  printed after a pack needs both; neither is a format decision. */
+function dirOf (path) {
+  const cut = path.replace(/[/\\]+$/, '').lastIndexOf('/')
+  return cut <= 0 ? '.' : path.slice(0, cut)
+}
+function nameOf (path) {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const cut = trimmed.lastIndexOf('/')
+  return cut < 0 ? trimmed : trimmed.slice(cut + 1)
+}
 
 const ISSUE = 'https://github.com/danbri/factoidal/issues/641'
 
@@ -592,14 +619,118 @@ function renderQueryResult (engine, result, format, limit, quiet) {
   return EXIT_FAILURE
 }
 
-function commandPack (positional, _options) {
-  if (positional.length !== 2) throw new UsageError('pack needs INPUT and OUTPUT')
-  return notWired('pack', 'The streaming pack operations are stage 3 of the milestone.')
+/** The syntax tag for an input, from --syntax or from the file name. The
+ *  engine is what actually decides how to read the bytes; this only picks
+ *  which of its parsers to name. */
+function packSyntax (input, options) {
+  if (typeof options.syntax === 'string') {
+    const syntax = options.syntax.toLowerCase()
+    if (PACK_SYNTAXES.indexOf(syntax) >= 0) return syntax
+    throw new UsageError(`--syntax ${options.syntax} is not one of ${PACK_SYNTAXES.join(', ')}`)
+  }
+  const lower = input.toLowerCase()
+  for (const [suffix, syntax] of PACK_SUFFIXES) {
+    if (lower.endsWith(suffix)) return syntax
+  }
+  throw new UsageError(
+    `cannot tell the syntax of ${input} from its name; give --syntax ` +
+    `(${PACK_SYNTAXES.join(', ')})`)
 }
 
-function commandActivate (positional, _options) {
+function packLayout (options) {
+  if (typeof options.layout !== 'string') return 'ibk3'
+  const layout = options.layout.toLowerCase()
+  if (PACK_LAYOUTS.indexOf(layout) >= 0) return layout
+  throw new UsageError(`--layout ${options.layout} is not one of ${PACK_LAYOUTS.join(', ')}`)
+}
+
+async function commandPack (positional, options) {
+  if (positional.length !== 2) throw new UsageError('pack needs INPUT and OUTPUT')
+  const [input, output] = positional
+  const syntax = packSyntax(input, options)
+  const layout = packLayout(options)
+  const engine = await loadEngine()
+  if (!packSupported(engine)) {
+    return notWired('pack',
+      'This install carries an engine built before the streaming pack ' +
+      'operations. Update @factoidal/core, or set FACTOIDAL_L4_ASSETS to ' +
+      'a newer build.')
+  }
+  makeDirectory(output)
+  const quiet = options.quiet === true
+  let report
+  try {
+    report = packFile(engine, input, output, {
+      syntax,
+      layout,
+      onProgress: quiet
+        ? undefined
+        : (progress) => {
+            if (progress.bytesRead % (16 * 1024 * 1024) < FEED_PROGRESS) {
+              err(`${progress.pass}: ${progress.bytesRead} bytes read, ${progress.artifacts} artifacts written`)
+            }
+          }
+    })
+  } catch (error) {
+    if (error instanceof PackError) {
+      err(`factoidal pack: ${error.message}`)
+      return EXIT_FAILURE
+    }
+    throw error
+  }
+  if (options.json === true) {
+    out(JSON.stringify(report, null, 2))
+    return EXIT_OK
+  }
+  out(`packed ${report.bytesRead} bytes of ${syntax} into ${output}`)
+  out(`${report.written.length} artifacts, ${report.bytesWritten} bytes, layout ${layout}`)
+  if (typeof report.rows === 'number') out(`${plural(report.rows, 'row')}`)
+  out(`activate it with: factoidal activate ${dirOf(output)} ${nameOf(output)}`)
+  return EXIT_OK
+}
+
+async function commandActivate (positional, options) {
   if (positional.length !== 2) throw new UsageError('activate needs STORE and GENERATION')
-  return notWired('activate', 'Activation must verify every artifact before it replaces CURRENT.')
+  const [root, generation] = positional
+  const store = openStore(root, generation)
+  const engine = await loadEngine()
+  if (!packSupported(engine)) {
+    return notWired('activate',
+      'This install carries an engine built before the activation ' +
+      'verification operation. Update @factoidal/core.')
+  }
+  const files = listGeneration(store.generationDir)
+  const artifacts = files
+    .filter((file) => file.name !== store.manifestName)
+    .map((file) => ({
+      key: file.name,
+      bytes: readWhole(joinPath(store.generationDir, file.name))
+    }))
+  let verdict
+  try {
+    verdict = verifyGeneration(engine, store.manifestHex, artifacts)
+  } catch (error) {
+    err(`factoidal activate: ${error.message}`)
+    return EXIT_FAILURE
+  }
+  if (verdict.ok !== true) {
+    err(`factoidal activate: ${verdict.error}`)
+    err('The generation is NOT activated; CURRENT is unchanged.')
+    return EXIT_FAILURE
+  }
+  // Only now does the pointer move, and it moves atomically.
+  const pointer = new TextEncoder().encode(generation)
+  const synced = atomicReplace(joinPath(root, 'CURRENT'), pointer)
+  if (options.json === true) {
+    out(JSON.stringify({ ...verdict, generation, directorySynced: synced }, null, 2))
+    return EXIT_OK
+  }
+  out(`activated ${generation}: ${verdict.artifacts} artifacts verified, ${verdict.bytes} bytes`)
+  if (!synced) {
+    err('CURRENT was replaced, but the directory entry was not synced; a ' +
+        'crash now could lose the pointer update.')
+  }
+  return EXIT_OK
 }
 
 function commandUpdate (positional, options) {

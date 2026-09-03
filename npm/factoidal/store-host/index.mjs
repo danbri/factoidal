@@ -106,6 +106,45 @@ export function readRange (path, offset, length) {
 }
 
 /**
+ * Read at most `length` bytes starting at `offset`. A short read is not an
+ * error: fewer bytes than asked for means the file ended there, and zero
+ * bytes means the offset is at or past the end. This is the shape a
+ * streaming reader needs; `readRange` is the exact-length shape the store
+ * uses when the manifest already committed a length.
+ * @param {string} path
+ * @param {number} offset
+ * @param {number} length
+ * @returns {Uint8Array} between 0 and `length` bytes
+ */
+export function readChunk (path, offset, length) {
+  requirePath(path, 'path')
+  requireCount(offset, 'offset')
+  requireCount(length, 'length')
+  return impl.readChunk(path, offset, length)
+}
+
+/**
+ * Create `path`, write `bytes` and fsync. Refuses an existing file with
+ * code FILE_EXISTS: a generation directory is immutable once written, so
+ * a silent overwrite would hide a name collision rather than report it.
+ * @param {string} path
+ * @param {Uint8Array} bytes
+ */
+export function writeNew (path, bytes) {
+  requirePath(path, 'path')
+  impl.writeNew(path, bytes)
+}
+
+/**
+ * Create a directory and every missing parent.
+ * @param {string} path
+ */
+export function makeDirectory (path) {
+  requirePath(path, 'path')
+  impl.makeDirectory(path)
+}
+
+/**
  * Append `bytes` only if the file currently has exactly `expectedSize`
  * bytes, then fsync it. The counterpart of
  * `l4_delta_log_append_sync_at_size`, minus its advisory lock

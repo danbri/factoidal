@@ -79,6 +79,69 @@ export function readRange (path, offset, length) {
   }
 }
 
+/**
+ * Read at most `length` bytes at `offset`. Unlike `readRange` a short read
+ * is NOT an error: it is how the reader learns it reached the end of the
+ * file. The packer streams a file it did not stat first, so it needs this
+ * shape rather than the exact-length one.
+ */
+export function readChunk (path, offset, length) {
+  if (length === 0) return new Uint8Array(0)
+  const file = openRead(path)
+  try {
+    const out = new Uint8Array(length)
+    const done = readInto(file, out, length, offset, path)
+    return done === length ? out : out.subarray(0, done)
+  } finally {
+    file.close()
+  }
+}
+
+/**
+ * Create `path` and write `bytes`. Refuses to replace an existing file:
+ * a generation directory is immutable once written, and a packer that
+ * silently overwrote an artifact would hide a name collision.
+ */
+export function writeNew (path, bytes) {
+  let file
+  try {
+    file = Deno.openSync(path, { write: true, createNew: true })
+  } catch (cause) {
+    if (cause instanceof Deno.errors.AlreadyExists) {
+      throw new StoreHostError('FILE_EXISTS', `${path} already exists`, { path })
+    }
+    throw wrap('OPEN_FAILED', `cannot create ${path}`, path, cause)
+  }
+  try {
+    let done = 0
+    while (done < bytes.length) {
+      let written
+      try {
+        written = file.writeSync(bytes.subarray(done))
+      } catch (cause) {
+        throw wrap('WRITE_FAILED', `write failed on ${path}`, path, cause)
+      }
+      done += written
+    }
+    try {
+      file.syncSync()
+    } catch (cause) {
+      throw wrap('FSYNC_FAILED', `fsync failed on ${path}`, path, cause)
+    }
+  } finally {
+    file.close()
+  }
+}
+
+/** Create a directory and every missing parent. */
+export function makeDirectory (path) {
+  try {
+    Deno.mkdirSync(path, { recursive: true })
+  } catch (cause) {
+    throw wrap('MKDIR_FAILED', `cannot create ${path}`, path, cause)
+  }
+}
+
 export function appendSyncAtSize (path, bytes, expectedSize) {
   let file
   try {

@@ -6,7 +6,7 @@
 // moves bytes, and syncs.
 
 import {
-  closeSync, fstatSync, fsyncSync, openSync, readSync, readdirSync,
+  closeSync, fstatSync, fsyncSync, mkdirSync, openSync, readSync, readdirSync,
   renameSync, statSync, unlinkSync, writeSync
 } from 'node:fs'
 
@@ -82,6 +82,67 @@ export function readRange (path, offset, length) {
     return out
   } finally {
     closeSync(fd)
+  }
+}
+
+/**
+ * Read at most `length` bytes at `offset`. Unlike `readRange` a short read
+ * is NOT an error: it is how the reader learns it reached the end of the
+ * file. The packer streams a file it did not stat first, so it needs this
+ * shape rather than the exact-length one.
+ */
+export function readChunk (path, offset, length) {
+  if (length === 0) return new Uint8Array(0)
+  const fd = openRead(path)
+  try {
+    const out = new Uint8Array(length)
+    const done = preadInto(fd, out, 0, length, offset, path)
+    return done === length ? out : out.subarray(0, done)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/**
+ * Create `path` and write `bytes`. Refuses to replace an existing file:
+ * a generation directory is immutable once written, and a packer that
+ * silently overwrote an artifact would hide a name collision.
+ */
+export function writeNew (path, bytes) {
+  let fd
+  try {
+    // 'wx' is O_WRONLY | O_CREAT | O_EXCL.
+    fd = openSync(path, 'wx')
+  } catch (cause) {
+    if (cause && cause.code === 'EEXIST') {
+      throw new StoreHostError('FILE_EXISTS', `${path} already exists`, { path })
+    }
+    throw wrap('OPEN_FAILED', `cannot create ${path}`, path, cause)
+  }
+  try {
+    let done = 0
+    while (done < bytes.length) {
+      let written
+      try {
+        written = writeSync(fd, bytes, done, bytes.length - done, null)
+      } catch (cause) {
+        if (isInterrupt(cause)) continue
+        throw wrap('WRITE_FAILED', `write failed on ${path}`, path, cause)
+      }
+      done += written
+    }
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/** Create a directory and every missing parent. */
+export function makeDirectory (path) {
+  try {
+    mkdirSync(path, { recursive: true })
+  } catch (cause) {
+    throw wrap('MKDIR_FAILED', `cannot create ${path}`, path, cause)
   }
 }
 
