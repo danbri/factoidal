@@ -508,4 +508,58 @@ has a model (quiescence, `some true`) — a countermodel, reported as
                               fuel == some true))
        == some true
 
+
+/-! ## Literal distinctness is decided on VALUES
+
+`provablyDistinct` used to compare LEXICAL forms and only for
+`xsd:string`. These checks pin both directions of the value-level
+replacement: a `true` is a licence to clash and must hold in every
+model; a `false` is a withholding and must be kept wherever the value
+question is open. -/
+
+private def lit (lex : String) (dt : WfIri) : Literal :=
+  { lexicalForm := lex, datatype := dt, langTag := none, direction := none }
+
+/-! Different integers, and the lexical mapping of the integer family
+    is not injective, so this needs the VALUE. -/
+#guard literalValuesDistinct (lit "18" xsdInteger) (lit "19" xsdInteger)
+#guard literalValuesDistinct (lit "18" xsdInteger) (lit "19" XSD.xsdInt)
+
+/-! One integer written two ways is ONE value. `"1"` and `"01"` are
+    the case the lexical predicate got wrong in the other direction. -/
+#guard !literalValuesDistinct (lit "1" xsdInteger) (lit "01" xsdInteger)
+#guard !literalValuesDistinct (lit "1" xsdInteger) (lit "1.0" xsdDecimal)
+
+/-! XSD Datatypes §3.2.4: `positiveZero` and `negativeZero` are two
+    distinct members of the `xsd:float` value space. -/
+#guard literalValuesDistinct (lit "+0.0" XSD.xsdFloat) (lit "-0.0" XSD.xsdFloat)
+#guard !literalValuesDistinct (lit "+0.0" XSD.xsdFloat) (lit "0" XSD.xsdFloat)
+
+/-! Two finite non-zero floats WITHHOLD: the lexical-to-value map
+    rounds to the grid, so unequal lexical forms can be one value. -/
+#guard !literalValuesDistinct (lit "1.5" XSD.xsdFloat) (lit "1.6" XSD.xsdFloat)
+
+/-! OWL 2 Syntax §4: the value spaces of the datatype-map families are
+    pairwise disjoint. -/
+#guard literalValuesDistinct (lit "1" xsdInteger) (lit "1" xsdString)
+#guard literalValuesDistinct (lit "true" xsdBoolean) (lit "true" xsdString)
+
+/-! `xsd:boolean` has two values and four lexical forms. -/
+#guard !literalValuesDistinct (lit "1" xsdBoolean) (lit "true" xsdBoolean)
+#guard literalValuesDistinct (lit "0" xsdBoolean) (lit "true" xsdBoolean)
+
+/-! A datatype outside every family withholds. -/
+#guard !literalValuesDistinct (lit "2026-09-04T00:00:00Z" XSD.xsdDateTime)
+                              (lit "2026-09-05T00:00:00Z" XSD.xsdDateTime)
+
+/-! `rdf:XMLLiteral` by exclusive canonical XML, RDF 1.1 Concepts
+    §5.1. The first pair is `WebOnt-miscellaneous-202`, asserted
+    CONSISTENT: insignificant whitespace, one value, no clash. The
+    second is the `-203` shape: leading text is significant, two
+    values, clash. -/
+#guard !literalValuesDistinct (lit "<br></br>" rdfXMLLiteral)
+                              (lit "<br\n></br>" rdfXMLLiteral)
+#guard literalValuesDistinct (lit "\n<br></br>" rdfXMLLiteral)
+                             (lit "<br></br>" rdfXMLLiteral)
+
 end L4Factoidal.OWL.Refute

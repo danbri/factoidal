@@ -480,16 +480,127 @@ def differentFromAsserted (g : Graph) (a b : Term) : Bool :=
     with a functional datatype property whose two asserted values are
     the same `rdf:XMLLiteral` written with different whitespace. The
     predicate reported them distinct, the cardinality clash fired,
-    and the refuter reported no model for a premise that has one. -/
+    and the refuter reported no model for a premise that has one.
+
+    Kept for the record of that incident. `literalValuesDistinct`
+    below is what `provablyDistinct` now calls; this predicate decides
+    a LEXICAL question and could never see the value-level cases. -/
 def lexicalMappingIsInjective (dt : WfIri) : Bool := dt == xsdString
+
+/-! ### Literal distinctness decided on VALUES, not on lexical forms
+
+`lexicalMappingIsInjective` answers a lexical question, and only for
+`xsd:string`. It cannot see that `"18"^^xsd:integer` and
+`"19"^^xsd:integer` denote different integers, which is what
+`functionality-clash` needs, and it cannot see that two
+`rdf:XMLLiteral` literals with DIFFERENT canonical forms denote
+different values, which is what `WebOnt-miscellaneous-203` and
+`-204` need.
+
+The predicates below decide the same question one level lower, on the
+data value. Each arm returns `true` only where the OWL 2 datatype map
+fixes the two values as different, and `false` — WITHHOLD — everywhere
+it cannot decide. Withholding costs refutations; a wrong `true` costs
+soundness, and `WebOnt-miscellaneous-202` is the standing witness for
+that direction. -/
+
+/-- The part of the `xsd:float` / `xsd:double` value space this module
+    decides exactly.
+
+    XSD Datatypes §3.2.4 (float) and §3.2.5 (double) give the value
+    space as the IEEE single/double grid together with
+    `positiveZero`, `negativeZero`, `positiveInfinity`,
+    `negativeInfinity` and `NaN`, and state that positive zero and
+    negative zero are two DISTINCT values. OWL 2 Syntax §4.3 adopts
+    those value spaces unchanged.
+
+    The lexical-to-value map of the finite non-zero part ROUNDS to the
+    nearest grid point, so two different decimal lexical forms can
+    denote one value. This classifier therefore names only the values
+    it can read off the lexical form with no rounding: the two
+    infinities, `NaN`, and the two zeroes. Everything else is `none`
+    and the caller withholds. -/
+inductive FpExact where
+  | posZero | negZero | posInf | negInf | nan
+  deriving DecidableEq, Repr
+
+def fpExactValue (lex : String) : Option FpExact :=
+  if lex == "NaN" then some .nan
+  else if lex == "INF" || lex == "+INF" then some .posInf
+  else if lex == "-INF" then some .negInf
+  else match parseDecimalRat lex with
+    | some r =>
+        if r.num == 0 then
+          some (if lex.startsWith "-" then .negZero else .posZero)
+        else none
+    | none => none
+
+/-- The exact rational a literal on the `owl:real` line denotes.
+    `xsd:float` and `xsd:double` are absent for the reason
+    `XSD.termExactRat` states: their value is the ROUNDED grid point,
+    in a different value space. `owl:real` itself has no lexical
+    space in OWL 2 Syntax §4.1, so it is absent too. -/
+def literalExactRat (l : Literal) : Option XSD.Rat :=
+  if isIntegerFamilyDatatype l.datatype then
+    (parseFacetInt l.lexicalForm).map (fun v => { num := v, den := 1 })
+  else if l.datatype == xsdDecimal then parseDecimalRat l.lexicalForm
+  else if l.datatype == owlRational then parseRationalLex l.lexicalForm
+  else none
+
+def literalBoolValue (l : Literal) : Option Bool :=
+  if l.datatype == xsdBoolean then
+    if l.lexicalForm == "true" || l.lexicalForm == "1" then some true
+    else if l.lexicalForm == "false" || l.lexicalForm == "0" then some false
+    else none
+  else none
+
+/-- Do these two literals denote DIFFERENT data values?
+
+    `rdf:XMLLiteral` first: RDF 1.1 Concepts §5.1 maps a well-formed
+    lexical form to its exclusive canonical XML form, and that map is
+    injective on canonical forms — so two XMLLiterals denote different
+    values exactly when their canonical forms differ. This arm keeps
+    `WebOnt-miscellaneous-202` (same canonical form, no clash) apart
+    from `-203` and `-204` (different canonical forms, clash), which a
+    lexical comparison cannot do in either direction.
+
+    Otherwise the two datatypes are placed in the value-space families
+    of `XSD.classifyFamily`, whose members OWL 2 Syntax §4 fixes as
+    PAIRWISE DISJOINT. Two literals in different families therefore
+    denote different values. Inside one family the value is computed
+    and compared: exact rationals on the `owl:real` line, the Boolean
+    pair, `xsd:string` (whose lexical map is the identity), and the
+    exactly-readable part of the floating-point grid. A datatype
+    outside every family, or a lexical form the arm cannot read,
+    withholds. -/
+def literalValuesDistinct (a b : Literal) : Bool :=
+  if a.datatype == rdfXMLLiteral && b.datatype == rdfXMLLiteral then
+    !XmlCanon.xmlCanonEq a.lexicalForm b.lexicalForm
+  else
+    match classifyFamily a.datatype, classifyFamily b.datatype with
+    | some fa, some fb =>
+        if fa != fb then true
+        else match fa with
+          | .string  => a.lexicalForm != b.lexicalForm
+          | .boolean =>
+              match literalBoolValue a, literalBoolValue b with
+              | some x, some y => x != y
+              | _,      _      => false
+          | .numeric =>
+              match literalExactRat a, literalExactRat b with
+              | some x, some y => !ratEq x y
+              | _,      _      => false
+          | .float | .double =>
+              match fpExactValue a.lexicalForm, fpExactValue b.lexicalForm with
+              | some x, some y => x != y
+              | _,      _      => false
+    | _, _ => false
 
 def provablyDistinct (g : Graph) (a b : Term) : Bool :=
   if a == b then false
   else match a, b with
     | .literal x, .literal y =>
-        (x.val.datatype == y.val.datatype && lexicalMappingIsInjective x.val.datatype &&
-         x.val.lexicalForm != y.val.lexicalForm)
-        || differentFromAsserted g a b
+        literalValuesDistinct x.val y.val || differentFromAsserted g a b
     | _, _ => differentFromAsserted g a b
 
 /-- Is there a subset of `ts` of size `n` whose members are PAIRWISE
