@@ -315,6 +315,135 @@ def tripleMatches (pat t : Triple) : Bool :=
 /-- Port of `conclusion_triple_in_closure`. -/
 def inClosure (cl : Graph) (pat : Triple) : Bool := cl.any (tripleMatches pat)
 
+/-! ## Conclusion matching — the single-mapping (interpolation) rule
+
+`tripleMatches` above lets each conclusion triple choose its OWN
+witness for a blank node. RDF 1.1 Semantics asks for one mapping that
+serves the whole graph:
+
+> "G simply entails a graph E if and only if a subgraph of G is an
+> instance of E." — RDF 1.1 Semantics, interpolation lemma
+
+> "An instance of a graph is obtained by replacing some or all blank
+> nodes with IRIs, literals or blank nodes." — RDF 1.1 Semantics §1.5
+
+So a conclusion blank node is a variable that must take ONE value in
+every triple it occurs in. The check below searches for such a value
+assignment. It is strictly STRONGER than `inClosure` on every triple:
+any single mapping is one of the per-triple assignments the relaxed
+rule already admits, so switching to it can only REMOVE passes.
+Measured in
+`docs/designissues/2026-09-04-owl-conclusion-matching.md`. -/
+
+/-- A partial mapping from conclusion blank-node labels to closure
+terms. A conclusion blank node is a variable here, never a constant,
+so a label shared with the closure needs no renaming. -/
+abbrev CBind := List (BNodeId × Term)
+
+def cbindLookup (bs : CBind) (b : BNodeId) : Option Term :=
+  (bs.find? (fun kv => kv.1 == b)).map Prod.snd
+
+def matchSubjB (pat s : Subject) (bs : CBind) : Option CBind :=
+  match pat with
+  | .bnode b =>
+      let v : Term := match s with | .iri i => .iri i | .bnode n => .bnode n
+      match cbindLookup bs b with
+      | some w => if w.eqb v then some bs else none
+      | none   => some ((b, v) :: bs)
+  | _ => if pat == s then some bs else none
+
+def matchTermB : Term → Term → CBind → Option CBind
+  | .bnode b, o, bs =>
+      match cbindLookup bs b with
+      | some w => if w.eqb o then some bs else none
+      | none   => some ((b, o) :: bs)
+  | .tripleTerm ps pp po, .tripleTerm ts tp to, bs =>
+      if pp == tp then
+        match matchSubjB ps ts bs with
+        | some bs' => matchTermB po to bs'
+        | none     => none
+      else none
+  | pat, o, bs => if pat.eqb o then some bs else none
+
+def matchTripleB (pat t : Triple) (bs : CBind) : Option CBind :=
+  if pat.p == t.p then
+    match matchSubjB pat.s t.s bs with
+    | some bs' => matchTermB pat.o t.o bs'
+    | none     => none
+  else none
+
+/-- Blank-node labels of a term / a triple. -/
+def termBnodeIds : Term → List BNodeId
+  | .bnode b          => [b]
+  | .tripleTerm s _ o => (match s with | .bnode b => [b] | _ => []) ++ termBnodeIds o
+  | _                 => []
+
+def tripleBnodeIds (t : Triple) : List BNodeId :=
+  (match t.s with | .bnode b => [b] | _ => []) ++ termBnodeIds t.o
+
+/-- Search-order rank of a candidate pattern given the blank nodes a
+prefix of the order has already bound: fewest UNBOUND blank nodes
+first, then most already-bound ones (a triple joined to the prefix
+prunes harder than a disconnected one). Lower is better. -/
+def patRank (seen : List BNodeId) (t : Triple) : Nat :=
+  let bs := (tripleBnodeIds t).eraseDups
+  let known := (bs.filter (fun b => seen.contains b)).length
+  let unknown := bs.length - known
+  unknown * 64 + (63 - min known 63)
+
+def bestIdx (seen : List BNodeId) (rem : Graph) : Nat :=
+  let step := fun (acc : Nat × Nat × Nat) (t : Triple) =>
+    let (i, bi, br) := acc
+    let r := patRank seen t
+    if r < br then (i + 1, i, r) else (i + 1, bi, br)
+  (rem.foldl step (0, 0, 1000000)).2.1
+
+/-- Greedy connected ordering. Ordering does not change the answer,
+only the work: ground triples first, then triples that join what is
+already bound. -/
+def orderPatsGo (seen : List BNodeId) : Graph → Nat → Graph
+  | [],  _     => []
+  | rem, 0     => rem
+  | rem, f + 1 =>
+      let i := bestIdx seen rem
+      match rem[i]? with
+      | none   => rem
+      | some t => t :: orderPatsGo (seen ++ tripleBnodeIds t) (rem.eraseIdx i) f
+
+def orderPats (g : Graph) : Graph := orderPatsGo [] g g.length
+
+/-- Backtracking search for one mapping, under a step budget. The
+budget is threaded, so `(false, 0)` means "no mapping found AND the
+budget ran out" — an indeterminate answer that the caller reports as
+its own outcome rather than silently scoring it. -/
+def searchMapping (cl : Graph) : Graph → CBind → Nat → Bool × Nat
+  | [],        _,  budget => (true, budget)
+  | p :: rest, bs, budget =>
+      cl.foldl (fun (acc : Bool × Nat) t =>
+        if acc.1 || acc.2 == 0 then acc
+        else match matchTripleB p t bs with
+             | some bs' => searchMapping cl rest bs' (acc.2 - 1)
+             | none     => acc) (false, budget)
+termination_by pats _ _ => pats.length
+
+def matchBudget : Nat := 100000
+
+/-- The interpolation-lemma check: is some subgraph of `cl` an
+instance of `gc`? `none` means the step budget ran out with no
+mapping found.
+
+Two short-circuits, neither of which changes the answer. The
+single-mapping rule is STRICTLY STRONGER than the per-triple rule, so
+a conclusion with a triple that has no witness at all has no mapping
+either. And on a conclusion with no blank node the two rules coincide,
+because there is nothing to map. -/
+def graphInClosure? (cl : Graph) (gc : Graph) : Option Bool :=
+  if !(gc.all (fun t => inClosure cl t)) then some false
+  else if gc.all (fun t => (tripleBnodeIds t).isEmpty) then some true
+  else
+    let (ok, left) := searchMapping cl (orderPats gc) [] matchBudget
+    if ok then some true else if left == 0 then none else some false
+
 /-- Port of `OWL_DirectMapping_Filter.exclude_annotation_triples`: drop
 the triples whose predicate the graph itself types as an annotation or
 ontology property. -/
@@ -719,6 +848,7 @@ def refuteEntails (closure : Graph) (gc : Graph) (rb : Nat) : Option Bool :=
     goals.foldl step (some true)
 
 def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+    (strict : Bool)
     : IO (Harness.Outcome × Measure) := do
   if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   match (match c.conclusion with
@@ -735,30 +865,46 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat
       | .ok r =>
         let gc := if isDirectOnly c then excludeAnnotationTriples gc0 else gc0
         let m := { m with triplesParsed := m.triplesParsed + gc0.length }
-        match gc.find? (fun t => !inClosure r.graph t) with
-        | none => return (.pass, m)
-        | some t =>
-          -- The containment check did not find it. Under `--dl` the
-          -- conformance relation itself is tried: entailment by
-          -- refutation. Only `some true` overrides; anything else
-          -- leaves the containment verdict in place.
-          if dl && refuteEntails r.graph gc rb == some true then
-            -- Evidence line, one per fallback pass. `premise_alone` is
-            -- falsification test 2 of the decision document: a premise
-            -- closure that is ITSELF refuted entails everything, so a
-            -- pass on such a case proves nothing about the conclusion.
-            -- `premise_alone=false` is the reading that keeps the pass
-            -- meaningful.
-            let alone := L4Factoidal.OWL.Refute.refute r.graph rb == some false
-            IO.println s!"PE-BY-REFUTATION {c.id}: premise_alone_refuted={alone} \
+        -- `strict`: one mapping for the whole conclusion graph
+        -- (RDF 1.1 Semantics interpolation lemma). Otherwise the
+        -- per-triple wildcard. The strict rule is stronger, so the
+        -- witness triple reported on failure is still the first
+        -- triple with NO witness at all, when one exists; when every
+        -- triple has one but no single mapping serves them all, the
+        -- reason names that.
+        let contained :=
+          if strict then graphInClosure? r.graph gc == some true
+          else gc.all (fun t => inClosure r.graph t)
+        if contained then return (.pass, m) else
+        let why :=
+          match gc.find? (fun t => !inClosure r.graph t) with
+          | some t => s!"missing {showTriple t}"
+          | none   =>
+            if graphInClosure? r.graph gc == none then
+              "match-budget: the single-mapping search ran out of steps"
+            else "no single blank-node mapping serves every conclusion triple"
+        -- The containment check did not hold. Under `--dl` the
+        -- conformance relation itself is tried: entailment by
+        -- refutation. Only `some true` overrides; anything else
+        -- leaves the containment verdict in place.
+        if dl && refuteEntails r.graph gc rb == some true then
+          -- Evidence line, one per fallback pass. `premise_alone` is
+          -- falsification test 2 of the decision document: a premise
+          -- closure that is ITSELF refuted entails everything, so a
+          -- pass on such a case proves nothing about the conclusion.
+          -- `premise_alone=false` is the reading that keeps the pass
+          -- meaningful.
+          let alone := L4Factoidal.OWL.Refute.refute r.graph rb == some false
+          IO.println s!"PE-BY-REFUTATION {c.id}: premise_alone_refuted={alone} \
 (closure {r.graph.length} triples)"
-            return (.pass, { m with clashes := m.clashes + 1 })
-          else if r.capped then
-            return (.fail s!"cap: closure budget hit after {r.rounds} rounds ({r.graph.length} triples); missing {showTriple t}", m)
-          else
-            return (.fail s!"closure-gap: missing {showTriple t} (closure {r.graph.length} triples, {r.rounds} rounds)", m)
+          return (.pass, { m with clashes := m.clashes + 1 })
+        else if r.capped then
+          return (.fail s!"cap: closure budget hit after {r.rounds} rounds ({r.graph.length} triples); {why}", m)
+        else
+          return (.fail s!"closure-gap: {why} (closure {r.graph.length} triples, {r.rounds} rounds)", m)
 
 def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+    (strict : Bool)
     : IO (Harness.Outcome × Measure) := do
   if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   match (match c.nonConclusion with
@@ -774,7 +920,10 @@ def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
       | .error o => return (o, m)
       | .ok r =>
         let m := { m with triplesParsed := m.triplesParsed + gc.length }
-        if gc.any (fun t => !inClosure r.graph t) then
+        let contained :=
+          if strict then graphInClosure? r.graph gc == some true
+          else gc.all (fun t => inClosure r.graph t)
+        if !contained then
           if r.capped then
             return (.fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds", m)
           else return (.pass, m)
@@ -823,9 +972,10 @@ def testTypes : List String :=
   ["PositiveEntailmentTest", "NegativeEntailmentTest", "ConsistencyTest", "InconsistencyTest"]
 
 def judge (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+    (strict : Bool)
     : String → IO (Harness.Outcome × Measure)
-  | "PositiveEntailmentTest" => judgePositive cat c capMs dl rb
-  | "NegativeEntailmentTest" => judgeNegative cat c capMs dl
+  | "PositiveEntailmentTest" => judgePositive cat c capMs dl rb strict
+  | "NegativeEntailmentTest" => judgeNegative cat c capMs dl strict
   | "ConsistencyTest"        => judgeConsistency cat c capMs dl rb
   | "InconsistencyTest"      => judgeInconsistency cat c capMs dl rb
   | ty                       => pure (.unsupported s!"test type {ty}", {})
@@ -853,14 +1003,14 @@ def bumpType (l : List (String × Harness.Score)) (ty : String) (o : Harness.Out
   | none   => l ++ [(ty, Harness.Score.bump {} o)]
 
 def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (rb : Nat)
-    (verbose : Bool)
+    (strict : Bool) (verbose : Bool)
     : IO CatalogResult := do
   let t0 ← IO.monoMsNow
   let mut r : CatalogResult := {}
   for c in cat.cases do
     for ty in testTypes do
       if c.types.contains ty then
-        let (o, m) ← judge cat c capMs dl rb ty
+        let (o, m) ← judge cat c capMs dl rb strict ty
         let label := s!"{c.id} [{ty}]"
         -- A cap hit is named even when the unit still scored (a
         -- conclusion found before the budget, a clash on a truncated
@@ -951,6 +1101,11 @@ structure Opts where
   dl : Bool := false
   /-- `--refute-budget N`: the refuter's per-premise budget. -/
   refuteBudget : Nat := defaultRefuteBudget
+  /-- `--strict-match`: decide conclusion containment by ONE
+  blank-node mapping over the whole conclusion graph (the RDF 1.1
+  Semantics interpolation lemma) instead of a per-triple wildcard.
+  A flag so both numbers come from the same binary. -/
+  strictMatch : Bool := false
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
@@ -962,6 +1117,7 @@ def parseArgs : List String → Opts → Opts
   | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
   | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
   | "--dl" :: rest, o => parseArgs rest { o with dl := true }
+  | "--strict-match" :: rest, o => parseArgs rest { o with strictMatch := true }
   | "--refute-budget" :: n :: rest, o =>
       parseArgs rest { o with refuteBudget := n.toNat!.max 1 }
   | a :: rest, o =>
@@ -1056,6 +1212,9 @@ def main (args : List String) : IO UInt32 := do
     s!"regime: RL closure + class-expression materialisation + tableau refuter \
 (--dl), refuter budget {o.refuteBudget}"
   else "regime: RL closure only")
+  IO.println (if o.strictMatch then
+    "conclusion matching: single blank-node mapping (interpolation lemma)"
+  else "conclusion matching: per-triple blank-node wildcard")
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
 unrelated triple absent = {!unrelatedAbsent}"
@@ -1075,7 +1234,7 @@ unrelated triple absent = {!unrelatedAbsent}"
       | none => notRead := notRead ++ [name]
       | some cat =>
         printCensus name cat.cases
-        let r ← runCatalog name cat o.capMs o.dl o.refuteBudget o.verbose
+        let r ← runCatalog name cat o.capMs o.dl o.refuteBudget o.strictMatch o.verbose
         total := total.add r.score
         totalM := totalM.add r.measure
         totalCases := totalCases + cat.cases.length
