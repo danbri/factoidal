@@ -464,3 +464,147 @@ closure. Reasons:
 So the shape to build is a third regime flag, not a wider RL rule set —
 and the RL score line should keep reporting the closure alone, because
 that number is what the profile's completeness claim is about.
+
+## The landing: `--rl-refute`, a third regime with two score lines
+
+Date: 2026-09-04. Implements the judgement above. `Harness/OwlProbe.lean`
+only; no rule row, no closure change, no `Refute.lean` change.
+
+### What was built
+
+`OwlProbe.Regime` replaces the single `dl : Bool` with two independent
+capabilities — `materialise` (one class-expression pass between two
+closures) and `refuter` (the tableau may decide a unit the closure did
+not). Three regimes are named from them:
+
+| Flag | `materialise` | `refuter` |
+|---|---|---|
+| (default) | false | false |
+| `--rl-refute` | false | **true** |
+| `--dl` | true | true |
+
+Every judge now returns a `Verdict` carrying TWO outcomes: the verdict
+under the regime, and the verdict the CLOSURE ALONE reached on the same
+unit. They are equal wherever the refuter is off. `runCatalog` scores
+both, so a run with the refuter on prints two labelled score lines per
+catalog and per test type, plus `TOTAL [closure alone]` and
+`TOTAL [closure or refutation]`.
+
+### The measurement
+
+Binary built at this commit, corpus `third_party/testing/owl`, six
+catalogs, closure fuel 100, per-closure cap 30000 ms, refuter budget 64,
+single-blank-node-mapping conclusion matching.
+
+| Regime | Score |
+|---|---|
+| default (RL closure only) | 1162 pass, 285 fail, 2 skip, 8 unsupported (out of 1457) |
+| `--rl-refute` **[closure alone]** | 1162 pass, 285 fail, 2 skip, 8 unsupported (out of 1457) |
+| `--rl-refute` **[closure or refutation]** | 1307 pass, 140 fail, 2 skip, 8 unsupported (out of 1457) |
+| `--dl` | 1316 pass, 131 fail, 2 skip, 8 unsupported (out of 1457) |
+
+`--dl` now also prints a closure line of its own, 1176 pass, 271 fail
+(out of 1457): the class-expression materialisation pass closes 14 of
+the 285 by CONTAINMENT, before any refutation.
+
+The `--rl-refute` closure line reproduces the default regime EXACTLY,
+and its 285 FAIL lines are byte-identical to the default regime's. That
+equality is the check that the closure's answer was not touched: the
+same closure ran, and the refuter was added beside it and never inside
+it. `--dl` did not move.
+
+`refuter_passes=145`, `refuter_flips_to_fail=0`, `cap_hits=0`.
+
+### Which of the 285 the refuter closed, by bucket
+
+Classifier `tools/owl-rl-failure-split.py` on both runs.
+
+| Bucket | Closure alone | With refutation | Closed |
+|---|---|---|---|
+| B3 — a premise asserted inconsistent produced no clash | 107 | 15 | **92** |
+| B1 — the conclusion restates class-expression structure | 73 | 42 | **31** |
+| B5 — an assertional triple is not derived | 47 | 37 | **10** |
+| B7 — a schema-level triple is not derived | 50 | 40 | **10** |
+| B6 — no single blank-node mapping serves the conclusion | 2 | 0 | **2** |
+| B2 — an annotation does not travel | 5 | 5 | 0 |
+| C — an RDF/XML parse failure | 1 | 1 | 0 |
+| **total** | **285** | **140** | **145** |
+
+B3 is where refutation belongs and the number says so: 92 of 107
+inconsistencies no RL clash row decides are decided by the tableau. The
+92 come from `judgeInconsistency`; the other 53 are the
+positive-entailment fallback.
+
+### The refuter's reach, stated as a limit and not hidden in a fail count
+
+Of the 177 positive-entailment units the closure failed:
+
+- **53** were decided by refutation (`PE-BY-REFUTATION`, all with
+  `premise_alone_refuted=false`, so none is a vacuous pass);
+- **70 produced NO negation goal at all** — `OWL.NegationGoals`
+  does not negate that conclusion shape, so the refuter never got to
+  ask the question. This is the single largest limit on the regime and
+  it is now a counted diagnostic (`pe_no_negation_goal`) and a printed
+  line per unit (`PE-REFUTER-WITHHELD ... noGoals`), not a silent part
+  of the 140;
+- **54** were answered with a countermodel: the refuter looked and said
+  the entailment does not hold on the RL closure it was given;
+- **0** exhausted the tableau budget, so no part of the residue is
+  budget noise.
+
+The 70 concentrate in `WebOnt-I5.5-005` and `WebOnt-I4.6-005-Direct`
+(5 units each), the two `New-Feature-Disjoint*Properties-002` cases
+(4 each), and about thirty cases at 2 units each. Extending
+`negationGoals` to those shapes is the next work order for this regime,
+and it is a `NegationGoals` change, not a closure change.
+
+### Which number to publish
+
+**Publish the closure-alone number, 1162 pass, 285 fail (out of 1457),
+as OWL 2 RL conformance.** The OWL 2 RL profile's guarantee is about a
+CLOSURE: it is a sound consequence operator and complete for the
+RL-restricted fragment. A tableau refutation of
+`premise union not-conclusion` is a different decision procedure with a
+different completeness claim, so a number that mixes them supports
+neither claim. The 1307 is publishable, and conforming under the
+model-theoretic definition of the OWL 2 conformance tests, as an
+**engine** figure with its regime named — never as an RL-profile figure.
+
+The probe enforces the distinction in its OUTPUT, not only here: a run
+with the refuter on prints the explanation of the two lines in its
+header, prints both lines at every catalog and at TOTAL, and prints
+`DECIDED-BY-REFUTER <unit>` for each of the 145 units the two verdicts
+disagree on.
+
+### Soundness gates, before and after
+
+| Gate | Value |
+|---|---|
+| ConsistencyTest, `--rl-refute` | 761 pass, 1 fail (out of 762) — unchanged |
+| NegativeEntailmentTest, `--rl-refute` | 38 pass, 0 fail (out of 38) |
+| `refuter_flips_to_fail` | 0 — the refuter fabricated no contradiction on any premise asserted consistent |
+| `cap_hits` | 0 |
+| RDF 1.1 | 1031 pass, 0 fail (out of 1031) |
+| SPARQL 1.1 | 631 pass, 0 fail (out of 631) |
+
+`judgeConsistency` under `--rl-refute` runs the refuter on the RL
+closure of every consistent premise — 762 units — and refuted none of
+them. That is the gate that would have caught a refuter fabricating a
+clash, and it is why the consistency line is run in this regime rather
+than assumed from `--dl`.
+
+### Cost, and whether CI can afford it
+
+`/usr/bin/time -l`, whole corpus, this machine, with other work running:
+
+| Regime | Wall | Peak resident |
+|---|---|---|
+| default | 28 s | 239 MB |
+| `--rl-refute` | 546 s | 213 MB |
+| `--dl` | 585 s | 241 MB |
+
+Affordable in CI beside the other two: 546 s of one core and 213 MB.
+It is nineteen times the default regime's wall clock and that is the
+refuter, not the closure — the closure half is the same 28 s of work.
+Peak memory is BELOW the default regime's, because no materialisation
+pass runs.

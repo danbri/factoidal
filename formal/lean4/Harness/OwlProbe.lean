@@ -35,6 +35,25 @@ none of the four types (ProfileIdentificationTest-only cases, and the
 syntax-only `rdfXmlInputOntology` cases) contribute NO unit, exactly as
 in the F* runner, and are counted in the diagnostics line instead.
 
+## Three regimes, and why the score lines stay apart
+
+`--dl` = RL closure + one class-expression materialisation pass +
+the tableau refuter. Default = the RL closure alone. `--rl-refute`
+(2026-09-04) = the RL closure with the refuter as a FALLBACK and no
+materialisation pass.
+
+The refutation fallback is NOT put inside the RL closure, and this is
+a decision, not an accident. The OWL 2 RL profile's guarantee is that
+its closure is a sound consequence operator, complete for the
+RL-restricted fragment. A tableau refutation of
+`premise union not-conclusion` is a different decision procedure with
+a different completeness claim. A single number that mixes them makes
+neither claim statable. So a run with the refuter on prints TWO score
+lines — `[closure alone]` and `[closure or refutation]` — and prints
+`DECIDED-BY-REFUTER` for every unit they disagree on, so the split is
+readable per unit and not only in a document.
+`docs/designissues/2026-09-04-owl-rl-resplit.md` records the judgement.
+
 ## The four judgements (reproduced from the F* runner, not invented)
 
 Premise base IRI = the case IRI (`rdf:about` of the TestCase), as the
@@ -53,11 +72,12 @@ F* runner does (`let base = info.iri`).
   is named as a gap when it bites: datatype VALUE equality on literals
   (`XSD_Facets.term_provably_equal`, so `"1"^^xsd:int` vs
   `"1"^^xsd:integer` differ here). The PE-via-refutation fallback
-  through the DL tableau IS ported (2026-09-04): under `--dl` a
-  conclusion the containment check misses is then tried against the
-  conformance relation itself, `Ont(d1) union not-Ont(d2)`
-  unsatisfiable, through `OWL.Refute.negationGoals` and
-  `tableauConsistent` — see `refuteEntails` below and
+  through the DL tableau IS ported (2026-09-04): under `--dl` and
+  under `--rl-refute` a conclusion the containment check misses is
+  then tried against the conformance relation itself,
+  `Ont(d1) union not-Ont(d2)` unsatisfiable, through
+  `OWL.Refute.negationGoals` and `tableauConsistent` — see
+  `refuteEntailsWhy` below and
   `docs/designissues/2026-09-04-owl-b1-class-expression-structure.md`.
   DIRECT-only cases (test:semantics DIRECT
   without RDF-BASED) drop conclusion triples whose predicate the
@@ -574,6 +594,51 @@ case against. Above it nothing more closes — the remaining 35 need
 rules, not budget. -/
 def defaultRefuteBudget : Nat := 64
 
+/-! ## Regimes
+
+Three regimes ship from this one binary, and they are kept SEPARATE on
+purpose. The OWL 2 RL profile's guarantee is a statement about a
+CLOSURE: `RLClosure` is a sound consequence operator, and complete for
+the RL-restricted fragment. A tableau refutation of
+`premise union not-conclusion` is a DIFFERENT decision procedure with a
+different completeness claim. A single number that mixes the two makes
+neither claim statable, so every run that lets the refuter decide a
+unit reports TWO score lines: what the closure derived on its own, and
+what closure-or-refutation together decided. -/
+
+/-- Which decision procedures a run may use. -/
+structure Regime where
+  /-- One class-expression materialisation pass between two closures
+  (`--dl`). -/
+  materialise : Bool := false
+  /-- The tableau refuter may decide a unit the closure did not
+  (`--dl` and `--rl-refute`). -/
+  refuter : Bool := false
+  deriving DecidableEq, Repr
+
+/-- The RL closure alone: the default, and the number the OWL 2 RL
+profile's completeness claim is about. -/
+def Regime.rl : Regime := {}
+
+/-- `--dl`: materialisation pass plus refuter. -/
+def Regime.dl : Regime := { materialise := true, refuter := true }
+
+/-- `--rl-refute`: the RL closure, with refutation as a fallback where
+containment or the clash rows did not decide the unit. No
+materialisation pass, so the closure half of the run is BYTE-FOR-BYTE
+the default regime's, and its score line must reproduce the default
+regime's exactly. -/
+def Regime.rlRefute : Regime := { materialise := false, refuter := true }
+
+def Regime.describe (r : Regime) : String :=
+  if r.materialise && r.refuter then
+    "RL closure + class-expression materialisation + tableau refuter (--dl)"
+  else if r.refuter then
+    "RL closure + tableau refutation fallback (--rl-refute)"
+  else if r.materialise then
+    "RL closure + class-expression materialisation (no refuter)"
+  else "RL closure only"
+
 /-- Per-catalog measurement counters. -/
 structure Measure where
   triplesParsed  : Nat := 0
@@ -581,13 +646,42 @@ structure Measure where
   clashes        : Nat := 0
   capHits        : Nat := 0
   parseFailures  : Nat := 0
+  /-- Positive-entailment units the containment check missed and for
+  which `negationGoals` produced NO goal at all: the refuter could not
+  state the question, let alone answer it. This is a limit of the
+  refuter's negation coverage and it is counted here so that it is
+  visible in the diagnostics instead of hidden inside a fail count. -/
+  peNoGoals      : Nat := 0
+  /-- Containment missed, goals stated, a goal exhausted the tableau
+  budget: indeterminate. -/
+  peBudget       : Nat := 0
+  /-- Containment missed, goals stated, a goal has a countermodel:
+  the refuter says the entailment does not hold. -/
+  peCountermodel : Nat := 0
 deriving Repr
 
 def Measure.add (a b : Measure) : Measure :=
   { triplesParsed := a.triplesParsed + b.triplesParsed,
     closureRounds := a.closureRounds + b.closureRounds,
     clashes := a.clashes + b.clashes, capHits := a.capHits + b.capHits,
-    parseFailures := a.parseFailures + b.parseFailures }
+    parseFailures := a.parseFailures + b.parseFailures,
+    peNoGoals := a.peNoGoals + b.peNoGoals,
+    peBudget := a.peBudget + b.peBudget,
+    peCountermodel := a.peCountermodel + b.peCountermodel }
+
+/-- What a judge returns: the verdict UNDER THE REGIME, the verdict the
+CLOSURE ALONE reached, and the measurement delta. The two verdicts are
+equal in every regime the refuter is off in; where they differ, the
+difference is exactly what the refuter decided, and `runCatalog` scores
+both so a reader can tell the two claims apart. -/
+structure Verdict where
+  regime  : Harness.Outcome
+  closure : Harness.Outcome
+  measure : Measure
+
+/-- The closure decided it; the regime agrees. -/
+def Verdict.same (o : Harness.Outcome) (m : Measure) : Verdict :=
+  { regime := o, closure := o, measure := m }
 
 def isFunctionalOnly (c : Case) : Bool :=
   c.premise.isNone && c.fsPremise && c.normSyntax.contains "FUNCTIONAL"
@@ -635,14 +729,14 @@ def premiseGraph (cat : Catalog) (c : Case) : Except Harness.Outcome Graph :=
 /-- Parse the premise, merge imports, run the closure. Shared by the
 four judges. Returns the closure result or a fail outcome, plus the
 measurement delta. -/
-def premiseClosure (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+def premiseClosure (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime)
     : IO (Except Harness.Outcome ClosureResult × Measure) := do
   match premiseGraph cat c with
   | .error o => return (.error o, { parseFailures := 1 })
   | .ok gp =>
     let t0 ← IO.monoMsNow
     let r ← closureIO gp closureFuel (t0 + capMs)
-    if !dl then
+    if !rg.materialise then
       let m : Measure := { triplesParsed := gp.length, closureRounds := r.rounds,
                            capHits := if r.capped then 1 else 0 }
       return (.ok r, m)
@@ -823,45 +917,58 @@ def renameTermBNode : Term → Term
 def renameConclusionBNodes (g : Graph) : Graph :=
   g.map (fun t => { t with s := renameSubjectBNode t.s, o := renameTermBNode t.o })
 
-/-- `some true` when the premise closure REFUTES the negation of every
-content assertion of the conclusion — the entailment is proven. `some
-false` when a goal produced a countermodel. `none` when the conclusion
-has no supported negation, or a goal's budget ran out: indeterminate,
-and the caller keeps its containment verdict.
+/-- Why the refutation check answered as it did.
+
+`entailed` is the only verdict that can turn a containment failure
+into a pass. The other three are the refuter's LIMITS and each is
+counted separately: `noGoals` means `negationGoals` does not negate
+this conclusion shape, so the refuter never got to ask the question;
+`budget` means a tableau ran out of steps; `countermodel` means the
+refuter found a model of the premise closure plus the negated
+conclusion and so says the entailment does not hold.
 
 The goals are ANDed because a conclusion graph is the conjunction of
 its content assertions, and each is negated SEPARATELY
 (`NegationGoals`'s soundness contract: assuming an unproven conjunct
 while proving another is the unsound direction). -/
-def refuteEntails (closure : Graph) (gc : Graph) (rb : Nat) : Option Bool :=
-  match L4Factoidal.OWL.Refute.negationGoals (renameConclusionBNodes gc) with
-  | none       => none
-  | some goals =>
-    let step (acc : Option Bool) (goal : Graph) : Option Bool :=
-      match acc with
-      | some true =>
-        match L4Factoidal.OWL.Refute.tableauConsistent (closure ++ goal) rb with
-        | some false => some true      -- this conjunct is entailed
-        | some true  => some false     -- countermodel: not entailed
-        | none       => none           -- budget out: indeterminate
-      | other => other
-    goals.foldl step (some true)
+inductive RefuteWhy where
+  | entailed
+  | countermodel
+  | budget
+  | noGoals
+  deriving DecidableEq, Repr
 
-def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+def refuteEntailsWhy (closure : Graph) (gc : Graph) (rb : Nat) : RefuteWhy :=
+  match L4Factoidal.OWL.Refute.negationGoals (renameConclusionBNodes gc) with
+  | none       => .noGoals
+  | some goals =>
+    let step (acc : RefuteWhy) (goal : Graph) : RefuteWhy :=
+      match acc with
+      | .entailed =>
+        match L4Factoidal.OWL.Refute.tableauConsistent (closure ++ goal) rb with
+        | some false => .entailed      -- this conjunct is entailed
+        | some true  => .countermodel  -- countermodel: not entailed
+        | none       => .budget        -- budget out: indeterminate
+      | other => other
+    goals.foldl step .entailed
+
+def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
     (strict : Bool)
-    : IO (Harness.Outcome × Measure) := do
-  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+    : IO Verdict := do
+  if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
   match (match c.conclusion with
          | some ctxt => parseDoc "conclusion" c.iri ctxt
          | none => match fsGraph c.fsConclusionText with
              | some g => .ok g
              | none   => .error "harness: no RDF/XML conclusion") with
-    | .error e => return (.fail e, { parseFailures := 1 })
+    | .error e => return Verdict.same (.fail e) { parseFailures := 1 }
     | .ok gc0 =>
-      if gc0.isEmpty then return (.fail "parser: conclusion parsed to zero triples", { parseFailures := 1 })
-      let (res, m) ← premiseClosure cat c capMs dl
+      if gc0.isEmpty then
+        return Verdict.same (.fail "parser: conclusion parsed to zero triples")
+                 { parseFailures := 1 }
+      let (res, m) ← premiseClosure cat c capMs rg
       match res with
-      | .error o => return (o, m)
+      | .error o => return Verdict.same o m
       | .ok r =>
         let gc := if isDirectOnly c then excludeAnnotationTriples gc0 else gc0
         let m := { m with triplesParsed := m.triplesParsed + gc0.length }
@@ -875,7 +982,7 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat
         let contained :=
           if strict then graphInClosure? r.graph gc == some true
           else gc.all (fun t => inClosure r.graph t)
-        if contained then return (.pass, m) else
+        if contained then return Verdict.same .pass m else
         let why :=
           match gc.find? (fun t => !inClosure r.graph t) with
           | some t => s!"missing {showTriple t}"
@@ -883,11 +990,25 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat
             if graphInClosure? r.graph gc == none then
               "match-budget: the single-mapping search ran out of steps"
             else "no single blank-node mapping serves every conclusion triple"
-        -- The containment check did not hold. Under `--dl` the
-        -- conformance relation itself is tried: entailment by
-        -- refutation. Only `some true` overrides; anything else
-        -- leaves the containment verdict in place.
-        if dl && refuteEntails r.graph gc rb == some true then
+        -- The verdict the CLOSURE alone reaches. It is what the score
+        -- line for the RL profile reports, whatever the refuter then
+        -- says.
+        let closureOutcome : Harness.Outcome :=
+          if r.capped then
+            .fail s!"cap: closure budget hit after {r.rounds} rounds ({r.graph.length} triples); {why}"
+          else
+            .fail s!"closure-gap: {why} (closure {r.graph.length} triples, {r.rounds} rounds)"
+        if !rg.refuter then return Verdict.same closureOutcome m
+        -- Containment did not hold and the regime allows the
+        -- conformance relation itself to be tried: entailment by
+        -- refutation. Only `entailed` overrides; anything else leaves
+        -- the containment verdict in place.
+        let w := refuteEntailsWhy r.graph gc rb
+        let m := { m with peNoGoals := m.peNoGoals + (if w == .noGoals then 1 else 0),
+                          peBudget := m.peBudget + (if w == .budget then 1 else 0),
+                          peCountermodel :=
+                            m.peCountermodel + (if w == .countermodel then 1 else 0) }
+        if w == .entailed then
           -- Evidence line, one per fallback pass. `premise_alone` is
           -- falsification test 2 of the decision document: a premise
           -- closure that is ITSELF refuted entails everything, so a
@@ -897,27 +1018,31 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat
           let alone := L4Factoidal.OWL.Refute.refute r.graph rb == some false
           IO.println s!"PE-BY-REFUTATION {c.id}: premise_alone_refuted={alone} \
 (closure {r.graph.length} triples)"
-          return (.pass, { m with clashes := m.clashes + 1 })
-        else if r.capped then
-          return (.fail s!"cap: closure budget hit after {r.rounds} rounds ({r.graph.length} triples); {why}", m)
+          return { regime := .pass, closure := closureOutcome,
+                   measure := { m with clashes := m.clashes + 1 } }
         else
-          return (.fail s!"closure-gap: {why} (closure {r.graph.length} triples, {r.rounds} rounds)", m)
+          -- Named, not silent: a fail the refuter could not even ask
+          -- about reads differently from one it asked and lost.
+          IO.println s!"PE-REFUTER-WITHHELD {c.id}: {repr w}"
+          return { regime := closureOutcome, closure := closureOutcome, measure := m }
 
-def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime)
     (strict : Bool)
-    : IO (Harness.Outcome × Measure) := do
-  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
+    : IO Verdict := do
+  if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
   match (match c.nonConclusion with
          | some ctxt => parseDoc "non-conclusion" c.iri ctxt
          | none => match fsGraph c.fsNonConclusionText with
              | some g => .ok g
              | none   => .error "harness: no RDF/XML non-conclusion") with
-    | .error e => return (.fail e, { parseFailures := 1 })
+    | .error e => return Verdict.same (.fail e) { parseFailures := 1 }
     | .ok gc =>
-      if gc.isEmpty then return (.fail "parser: non-conclusion parsed to zero triples", { parseFailures := 1 })
-      let (res, m) ← premiseClosure cat c capMs dl
+      if gc.isEmpty then
+        return Verdict.same (.fail "parser: non-conclusion parsed to zero triples")
+                 { parseFailures := 1 }
+      let (res, m) ← premiseClosure cat c capMs rg
       match res with
-      | .error o => return (o, m)
+      | .error o => return Verdict.same o m
       | .ok r =>
         let m := { m with triplesParsed := m.triplesParsed + gc.length }
         let contained :=
@@ -925,60 +1050,74 @@ def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
           else gc.all (fun t => inClosure r.graph t)
         if !contained then
           if r.capped then
-            return (.fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds", m)
-          else return (.pass, m)
+            return Verdict.same (.fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds") m
+          else return Verdict.same .pass m
         else
-          return (.fail s!"closure-gap: every non-conclusion triple was derived (unexpected entailment)", m)
+          return Verdict.same (.fail s!"closure-gap: every non-conclusion triple was derived (unexpected entailment)") m
 
-def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
-    : IO (Harness.Outcome × Measure) := do
-  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
-  let (res, m) ← premiseClosure cat c capMs dl
+def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
+    : IO Verdict := do
+  if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
+  let (res, m) ← premiseClosure cat c capMs rg
   match res with
-  | .error o => return (o, m)
+  | .error o => return Verdict.same o m
   | .ok r =>
     let clash := detectClashI r.index
-    -- Under `--dl` the refuter is consulted too. A refutation of a
-    -- premise the catalog asserts CONSISTENT is a defect in the
+    -- Where the refuter is on it is consulted here too. A refutation
+    -- of a premise the catalog asserts CONSISTENT is a defect in the
     -- refuter, and it has to be visible as a failure — a refuter
     -- scored only on the cases it is meant to close cannot be caught
     -- fabricating a contradiction.
-    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph rb == some false
+    let refuted := rg.refuter && L4Factoidal.OWL.Refute.refute r.graph rb == some false
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
-    if clash then return (.fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)", m)
+    let closureOutcome : Harness.Outcome :=
+      if clash then
+        .fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)"
+      else if r.capped then
+        .fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds"
+      else .pass
+    if clash then return Verdict.same closureOutcome m
     else if refuted then
-      return (.fail s!"clash: the tableau refuted a premise asserted consistent ({r.graph.length} triples)", m)
-    else if r.capped then
-      return (.fail s!"cap: absence verdict on a closure that hit the budget after {r.rounds} rounds", m)
-    else return (.pass, m)
+      IO.println s!"CONSISTENCY-REFUTER-CLASH {c.id}: the tableau refuted a premise asserted consistent"
+      return { regime := .fail s!"clash: the tableau refuted a premise asserted consistent ({r.graph.length} triples)",
+               closure := closureOutcome, measure := m }
+    else return Verdict.same closureOutcome m
 
-def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
-    : IO (Harness.Outcome × Measure) := do
-  if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
-  if isRdfBasedOnly c then return (.skip "semantics-rdf-based-only", {})
-  let (res, m) ← premiseClosure cat c capMs dl
+def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
+    : IO Verdict := do
+  if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
+  if isRdfBasedOnly c then return Verdict.same (.skip "semantics-rdf-based-only") {}
+  let (res, m) ← premiseClosure cat c capMs rg
   match res with
-  | .error o => return (o, m)
+  | .error o => return Verdict.same o m
   | .ok r =>
     let clash := detectClashI r.index
-    let refuted := dl && L4Factoidal.OWL.Refute.refute r.graph rb == some false
+    let refuted := rg.refuter && L4Factoidal.OWL.Refute.refute r.graph rb == some false
     let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0) }
-    if clash || refuted then return (.pass, m)
-    else if r.capped then
-      return (.fail s!"cap: no clash on a closure that hit the budget after {r.rounds} rounds", m)
-    else return (.fail s!"closure-gap: no clash row fired on a premise asserted inconsistent ({r.graph.length} triples, {r.rounds} rounds)", m)
+    let closureOutcome : Harness.Outcome :=
+      if clash then .pass
+      else if r.capped then
+        .fail s!"cap: no clash on a closure that hit the budget after {r.rounds} rounds"
+      else
+        .fail s!"closure-gap: no clash row fired on a premise asserted inconsistent ({r.graph.length} triples, {r.rounds} rounds)"
+    if clash then return Verdict.same .pass m
+    else if refuted then
+      IO.println s!"INCONSISTENCY-BY-REFUTATION {c.id}: no RL clash row fired; \
+the tableau refuted the premise closure ({r.graph.length} triples)"
+      return { regime := .pass, closure := closureOutcome, measure := m }
+    else return Verdict.same closureOutcome m
 
 def testTypes : List String :=
   ["PositiveEntailmentTest", "NegativeEntailmentTest", "ConsistencyTest", "InconsistencyTest"]
 
-def judge (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
+def judge (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
     (strict : Bool)
-    : String → IO (Harness.Outcome × Measure)
-  | "PositiveEntailmentTest" => judgePositive cat c capMs dl rb strict
-  | "NegativeEntailmentTest" => judgeNegative cat c capMs dl strict
-  | "ConsistencyTest"        => judgeConsistency cat c capMs dl rb
-  | "InconsistencyTest"      => judgeInconsistency cat c capMs dl rb
-  | ty                       => pure (.unsupported s!"test type {ty}", {})
+    : String → IO Verdict
+  | "PositiveEntailmentTest" => judgePositive cat c capMs rg rb strict
+  | "NegativeEntailmentTest" => judgeNegative cat c capMs rg strict
+  | "ConsistencyTest"        => judgeConsistency cat c capMs rg rb
+  | "InconsistencyTest"      => judgeInconsistency cat c capMs rg rb
+  | ty                       => pure (Verdict.same (.unsupported s!"test type {ty}") {})
 
 /-- The cause tag of a FAIL reason: the text before the first `:`. -/
 def causeOf (reason : String) : String :=
@@ -989,10 +1128,24 @@ def causeOf (reason : String) : String :=
 /-! ## Per-catalog run -/
 
 structure CatalogResult where
+  /-- The regime's score: what closure-or-refutation decided. -/
   score    : Harness.Score := {}
+  /-- The score the CLOSURE alone reached on the same units. Equal to
+  `score` whenever the refuter is off. This is the number the OWL 2 RL
+  profile's completeness claim is about, and it is kept separate so
+  that claim stays statable. -/
+  closureScore : Harness.Score := {}
   perType  : List (String × Harness.Score) := []
+  perTypeClosure : List (String × Harness.Score) := []
   measure  : Measure := {}
   fails    : List (String × String × String) := []  -- (cause, id, reason)
+  /-- Units the refuter turned from a closure FAIL into a PASS. -/
+  refuterPasses : Nat := 0
+  /-- Units the refuter turned from a closure PASS into a FAIL. Only
+  the ConsistencyTest line can do this, and only when the refuter
+  fabricates a contradiction, so a non-zero count here is a defect
+  report, not a score. -/
+  refuterFlips  : Nat := 0
   units    : Nat := 0
   wallMs   : Nat := 0
 
@@ -1002,7 +1155,7 @@ def bumpType (l : List (String × Harness.Score)) (ty : String) (o : Harness.Out
   | some _ => l.map (fun p => if p.1 == ty then (p.1, p.2.bump o) else p)
   | none   => l ++ [(ty, Harness.Score.bump {} o)]
 
-def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (rb : Nat)
+def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (rg : Regime) (rb : Nat)
     (strict : Bool) (verbose : Bool)
     : IO CatalogResult := do
   let t0 ← IO.monoMsNow
@@ -1010,7 +1163,9 @@ def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (rb : N
   for c in cat.cases do
     for ty in testTypes do
       if c.types.contains ty then
-        let (o, m) ← judge cat c capMs dl rb strict ty
+        let v ← judge cat c capMs rg rb strict ty
+        let o := v.regime
+        let m := v.measure
         let label := s!"{c.id} [{ty}]"
         -- A cap hit is named even when the unit still scored (a
         -- conclusion found before the budget, a clash on a truncated
@@ -1024,20 +1179,49 @@ def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (dl : Bool) (rb : N
             IO.println (o.line label)
             r := { r with fails := r.fails ++ [(causeOf reason, c.id, reason)] }
         | _ => IO.println (o.line label)
+        -- The unit's provenance, printed for every unit the two
+        -- verdicts disagree on. A reader must be able to tell from
+        -- the OUTPUT which units the closure derived and which the
+        -- refuter decided; a document saying so is not enough.
+        if v.regime != v.closure then
+          match v.regime, v.closure with
+          | .pass, .fail cr =>
+              IO.println s!"DECIDED-BY-REFUTER {label}: the closure did not ({cr})"
+              r := { r with refuterPasses := r.refuterPasses + 1 }
+          | .fail _, .pass =>
+              IO.println s!"REFUTER-FLIPPED-TO-FAIL {label}: the closure passed it"
+              r := { r with refuterFlips := r.refuterFlips + 1 }
+          | _, _ => pure ()
         r := { r with score := r.score.bump o, perType := bumpType r.perType ty o,
+                      closureScore := r.closureScore.bump v.closure,
+                      perTypeClosure := bumpType r.perTypeClosure ty v.closure,
                       measure := r.measure.add m, units := r.units + 1 }
   let t1 ← IO.monoMsNow
   r := { r with wallMs := t1 - t0 }
-  -- Score lines.
+  -- Score lines. With the refuter off the two are the same run and
+  -- only one line is printed. With it on BOTH are printed, always in
+  -- this order and always labelled by the claim each supports.
   for ty in testTypes do
     match r.perType.find? (fun p => p.1 == ty) with
     | some (_, s) => IO.println (Harness.Score.line s!"{name} {ty}" s)
     | none => pure ()
-  IO.println (Harness.Score.line name r.score)
+  if rg.refuter then
+    for ty in testTypes do
+      match r.perTypeClosure.find? (fun p => p.1 == ty) with
+      | some (_, s) =>
+          IO.println (Harness.Score.line s!"{name} {ty} [closure alone]" s)
+      | none => pure ()
+    IO.println (Harness.Score.line s!"{name} [closure alone]" r.closureScore)
+    IO.println (Harness.Score.line s!"{name} [closure or refutation]" r.score)
+  else
+    IO.println (Harness.Score.line name r.score)
   IO.println s!"HARNESS-DIAG-OWL {name}: cases={cat.cases.length} units={r.units} \
 triples_parsed={r.measure.triplesParsed} closure_rounds={r.measure.closureRounds} \
 clashes={r.measure.clashes} cap_hits={r.measure.capHits} \
-parse_failures={r.measure.parseFailures} wall_ms={r.wallMs}"
+parse_failures={r.measure.parseFailures} \
+refuter_passes={r.refuterPasses} refuter_flips_to_fail={r.refuterFlips} \
+pe_no_negation_goal={r.measure.peNoGoals} pe_refuter_budget={r.measure.peBudget} \
+pe_countermodel={r.measure.peCountermodel} wall_ms={r.wallMs}"
   -- FAILs grouped by cause.
   let causes := (r.fails.map (·.1)).eraseDups
   for cause in causes do
@@ -1093,12 +1277,12 @@ structure Opts where
   /-- `--indexed-only`: profile rounds of the indexed engine alone
   (no list-engine rows), for inputs the list engine cannot finish. -/
   indexedOnly : Bool := false
-  /-- `--dl`: run one class-expression materialisation pass
-  (`L4Factoidal.OWL.Mat.materialise`) between two closures, instead
-  of the RL closure alone. Kept a FLAG rather than made the default
-  so both numbers can be measured from the same binary and the
-  difference attributed to the pass. -/
-  dl : Bool := false
+  /-- Which decision procedures this run may use. `--dl` sets the
+  materialisation pass and the refuter; `--rl-refute` sets the refuter
+  alone. Kept FLAGS rather than made the default so every number can
+  be measured from the same binary and each difference attributed to
+  the procedure that made it. -/
+  regime : Regime := Regime.rl
   /-- `--refute-budget N`: the refuter's per-premise budget. -/
   refuteBudget : Nat := defaultRefuteBudget
   /-- Decide conclusion containment by ONE blank-node mapping over the
@@ -1119,7 +1303,8 @@ def parseArgs : List String → Opts → Opts
   | "--case" :: c :: rest, o => parseArgs rest { o with cases := o.cases ++ [c] }
   | "--rounds" :: n :: rest, o => parseArgs rest { o with rounds := n.toNat!.max 1 }
   | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
-  | "--dl" :: rest, o => parseArgs rest { o with dl := true }
+  | "--dl" :: rest, o => parseArgs rest { o with regime := Regime.dl }
+  | "--rl-refute" :: rest, o => parseArgs rest { o with regime := Regime.rlRefute }
   | "--strict-match" :: rest, o => parseArgs rest { o with strictMatch := true }
   | "--wildcard-match" :: rest, o => parseArgs rest { o with strictMatch := false }
   | "--refute-budget" :: n :: rest, o =>
@@ -1212,10 +1397,27 @@ def main (args : List String) : IO UInt32 := do
   let dir : System.FilePath := o.dir
   IO.println "Lean OWL 2 RL/RDF probe — corpus census + closure run"
   IO.println s!"corpus dir: {dir}  closure fuel: {closureFuel}  per-closure cap: {o.capMs} ms"
-  IO.println (if o.dl then
-    s!"regime: RL closure + class-expression materialisation + tableau refuter \
-(--dl), refuter budget {o.refuteBudget}"
-  else "regime: RL closure only")
+  IO.println (if o.regime.refuter then
+    s!"regime: {o.regime.describe}, refuter budget {o.refuteBudget}"
+  else s!"regime: {o.regime.describe}")
+  if o.regime.refuter then
+    IO.println "TWO SCORE LINES ARE REPORTED, and they support different claims."
+    IO.println "  [closure alone]          — what the OWL 2 RL closure derives on its"
+    IO.println "                             own. This is the number the RL profile's"
+    IO.println "                             sound-and-complete consequence-operator"
+    IO.println "                             claim is about. Publish this one as"
+    IO.println "                             OWL 2 RL conformance."
+    IO.println "  [closure or refutation]  — the same units, with a tableau refutation"
+    IO.println "                             of premise plus negated conclusion allowed"
+    IO.println "                             to decide a unit the closure did not. A"
+    IO.println "                             different decision procedure with a"
+    IO.println "                             different completeness claim; conforming"
+    IO.println "                             under the model-theoretic definition of"
+    IO.println "                             the OWL 2 conformance tests, but NOT an"
+    IO.println "                             RL-profile number."
+    IO.println "  Every unit the two disagree on is printed as DECIDED-BY-REFUTER or"
+    IO.println "  REFUTER-FLIPPED-TO-FAIL, so the split is readable per unit."
+
   IO.println (if o.strictMatch then
     "conclusion matching: single blank-node mapping (interpolation lemma)"
   else "conclusion matching: per-triple blank-node wildcard (SUPERSEDED — this over-reports; see 2026-09-04-owl-conclusion-matching.md)")
@@ -1225,6 +1427,9 @@ unrelated triple absent = {!unrelatedAbsent}"
   if o.profile then return (← profileMain o)
   let names := if o.only.isEmpty then catalogs else o.only
   let mut total : Harness.Score := {}
+  let mut totalClosure : Harness.Score := {}
+  let mut totalRefPass := 0
+  let mut totalRefFlip := 0
   let mut totalM : Measure := {}
   let mut totalCases := 0
   let mut notRead : List String := []
@@ -1238,15 +1443,32 @@ unrelated triple absent = {!unrelatedAbsent}"
       | none => notRead := notRead ++ [name]
       | some cat =>
         printCensus name cat.cases
-        let r ← runCatalog name cat o.capMs o.dl o.refuteBudget o.strictMatch o.verbose
+        let r ← runCatalog name cat o.capMs o.regime o.refuteBudget o.strictMatch o.verbose
         total := total.add r.score
+        totalClosure := totalClosure.add r.closureScore
+        totalRefPass := totalRefPass + r.refuterPasses
+        totalRefFlip := totalRefFlip + r.refuterFlips
         totalM := totalM.add r.measure
         totalCases := totalCases + cat.cases.length
         IO.println ""
-  IO.println (Harness.Score.line "TOTAL" total)
+  if o.regime.refuter then
+    IO.println (Harness.Score.line "TOTAL [closure alone]" totalClosure)
+    IO.println (Harness.Score.line "TOTAL [closure or refutation]" total)
+  else
+    IO.println (Harness.Score.line "TOTAL" total)
   IO.println s!"HARNESS-DIAG-OWL TOTAL: cases={totalCases} units={total.total} \
 triples_parsed={totalM.triplesParsed} closure_rounds={totalM.closureRounds} \
-clashes={totalM.clashes} cap_hits={totalM.capHits} parse_failures={totalM.parseFailures}"
+clashes={totalM.clashes} cap_hits={totalM.capHits} parse_failures={totalM.parseFailures} \
+refuter_passes={totalRefPass} refuter_flips_to_fail={totalRefFlip} \
+pe_no_negation_goal={totalM.peNoGoals} pe_refuter_budget={totalM.peBudget} \
+pe_countermodel={totalM.peCountermodel}"
+  if o.regime.refuter then
+    IO.println s!"REFUTER-REACH: {totalRefPass} units the closure failed were decided \
+by refutation; {totalM.peNoGoals} positive-entailment units the closure failed produced \
+NO negation goal at all (`negationGoals` does not negate that conclusion shape, so the \
+refuter could not state the question), {totalM.peBudget} exhausted the tableau budget, \
+{totalM.peCountermodel} were answered with a countermodel."
+
   IO.println "F* owl_runner comparison (docs/test-results/latest.json, RL regime"
   IO.println "  unless stated). Each F* number is the SUM of that catalog's"
   IO.println "  per-test-type runs (PE + NE + Consistency + Inconsistency), the"
