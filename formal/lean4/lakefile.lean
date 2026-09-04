@@ -201,6 +201,7 @@ extern_lib libl4blockhost pkg := do
 -- SBM7 by layout. `GRAPH <iri>`, `GRAPH ?g`, `FROM` / `FROM NAMED` and
 -- default-graph patterns all run against the dataset the blocks denote.
 @[default_target] lean_exe «l4block-quad-query» where root := `Harness.QuadQuery
+@[default_target] lean_exe «l4block-literal-gram» where root := `Harness.LiteralGramProbe
 @[default_target] lean_exe «l4block-shard-query» where root := `Harness.ShardManifestQuery
 @[default_target] lean_exe «l4block-shard-session» where root := `Harness.ShardManifestSession
 
