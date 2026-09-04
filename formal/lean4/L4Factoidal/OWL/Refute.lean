@@ -1217,15 +1217,18 @@ def cesMinMaxClash (ces : List ClassExpr) : Bool :=
                                    | _            => false)
     | _ => false)
 
-def unsatNamedClasses (g : Graph) : List WfIri :=
-  let st := Store.ofGraph g
-  let fillers := (g.filterMap (fun t =>
+/-- Store-parameterised: the graph it reads is `st.graph`. -/
+def unsatNamedClassesS (st : Store) : List WfIri :=
+  let fillers := (st.graph.filterMap (fun t =>
     if t.p == owlAllValuesFrom then
       match t.o with
       | .iri c => some c
       | _      => none
     else none)).eraseDups
   fillers.filter (fun c => cesMinMaxClash (superclassCes st c))
+
+def unsatNamedClasses (g : Graph) : List WfIri :=
+  unsatNamedClassesS (Store.ofGraph g)
 
 mutual
 
@@ -1280,10 +1283,16 @@ def parseNnf (st : Store) (t : Term) : ClassExpr := nnf (parseClassExpr st t 32)
 def parseNnfSubject (st : Store) (s : Subject) : ClassExpr :=
   nnf (parseCeOfSubject st s)
 
-def collectAxioms (g : Graph) : List (ClassExpr × ClassExpr) :=
-  let st := Store.ofGraph g
-  let us := unsatNamedClasses g
-  g.flatMap (fun t =>
+/-- Store-parameterised: the graph it reads is `st.graph`.
+
+    Every lookup below runs through `st`, so the store decides the
+    COST and not the answer. Over `Store.ofGraph g` each lookup is a
+    filter of the whole list; over `Store.ofIndex (Index.ofGraph g)`
+    each is a hash lookup. `collectAxioms_eq` is the record that the
+    two agree. -/
+def collectAxiomsS (st : Store) : List (ClassExpr × ClassExpr) :=
+  let us := unsatNamedClassesS st
+  st.graph.flatMap (fun t =>
     if t.p == rdfsSubClassOf then
       [(parseNnfSubjectWith us st t.s, parseNnfWith us st t.o)]
     else if t.p == owlEquivalentClass then
@@ -1295,6 +1304,24 @@ def collectAxioms (g : Graph) : List (ClassExpr × ClassExpr) :=
       let b := parseNnfWith us st t.o
       [(a, nnfNeg b), (b, nnfNeg a)]
     else [])
+
+/-- The TBox of a graph, read through the HASH INDEX.
+
+    `collectAxiomsS` parses a class expression for BOTH sides of every
+    `rdfs:subClassOf`, `owl:equivalentClass`, `owl:disjointWith` and
+    `owl:complementOf` triple, and each parse makes several
+    subject-plus-predicate lookups. Over the list store that is a scan
+    of the whole graph per lookup, so the pass is quadratic in the
+    graph and the tableau refuter pays it once per goal. Over the index
+    each lookup is O(1). -/
+def collectAxioms (g : Graph) : List (ClassExpr × ClassExpr) :=
+  collectAxiomsS (Store.ofIndex (Index.ofGraph g))
+
+/-- The index store and the list store give `collectAxiomsS` the same
+    value, so `collectAxioms` is the list-scan definition it replaced. -/
+theorem collectAxioms_eq (g : Graph) :
+    collectAxioms g = collectAxiomsS (Store.ofGraph g) := by
+  rw [collectAxioms, Store.ofIndex_eq (Index.Wf.ofGraph g)]
 
 /-! ## Expansion -/
 
