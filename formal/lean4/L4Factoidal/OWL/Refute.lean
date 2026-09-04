@@ -794,9 +794,31 @@ def existsUnsatisfiableWitness (p : WfIri) (ls : List ClassExpr) (universal : Va
                    | _          => false)
     | _ => false)
 
+/-- The value space every `p`-filler must lie in: the `∀`-intersection
+    of the node's own labels, MET with the asserted `rdfs:range` of `p`
+    and of every super-property of `p`.
+
+    The range half was missing until 2026-09-04, and only from this
+    rule: `datatypeCardinalityClash` below already read `st.ranges`.
+    OWL 2 Syntax §9.2.5 `DataPropertyRange( DPE DR )` is satisfied only
+    when every filler of `DPE` is in the data range, so the range
+    constrains a filler exactly as a `∀` label does, and the two
+    combine by intersection. `string-integer-clash` is the shape it
+    could not see: `DataPropertyRange(:hasAge xsd:integer)` with an
+    asserted `xsd:string` filler.
+
+    A range triple can be DERIVED, never invented: the RL rows widen a
+    range to a superclass (scm-rng1) or carry it down to a
+    sub-property (scm-rng2), and both readings are sound here. The
+    float and double families stay withheld inside
+    `foldDatatypeConstraint` for the reason recorded there. -/
+def fillerValueSet (st : RState) (p : WfIri) (ls : List ClassExpr) : ValueSet :=
+  valueSetIntersect (universalForProperty st p ls .unconstrained)
+                    (rangeValueSet st st.ranges p .unconstrained)
+
 def datatypeRangeClash (st : RState) (ls : List ClassExpr) : Bool :=
   (collectDtProperties ls).any (fun p =>
-    existsUnsatisfiableWitness p ls (universalForProperty st p ls .unconstrained))
+    existsUnsatisfiableWitness p ls (fillerValueSet st p ls))
 
 def collectCardProps (ls : List ClassExpr) : List (Nat × WfIri) :=
   ls.filterMap (fun l => match l with
@@ -807,10 +829,7 @@ def collectCardProps (ls : List ClassExpr) : List (Nat × WfIri) :=
 def datatypeCardinalityClash (st : RState) (ls : List ClassExpr) : Bool :=
   (collectCardProps ls).any (fun (k, p) =>
     k ≥ 1 &&
-    (let u := valueSetIntersect
-                (universalForProperty st p ls .unconstrained)
-                (rangeValueSet st st.ranges p .unconstrained)
-     match valueSetMaxSize u with
+    (match valueSetMaxSize (fillerValueSet st p ls) with
      | some m => k > m
      | none   => false))
 
