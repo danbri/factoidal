@@ -1867,6 +1867,122 @@ theorem caxAdcAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
       (mem_of_memB hm)
   · simp at h
 
+/-- The cell walk is sound: a cell it returns really is a cell of the
+collection, so that cell's `rdf:first` value really is a member. -/
+theorem listCells_sound (g : Graph) :
+    ∀ (n : Nat) (head : Term) {cell : Subject} {e : Term},
+      cell ∈ listCells g head n → (⟨cell, rdfFirst, e⟩ : Triple) ∈ g →
+      ListMember g head e := by
+  intro n
+  induction n with
+  | zero => intro head cell e h _; simp [listCells] at h
+  | succ n ih =>
+    intro head cell e h hf
+    simp only [listCells, List.mem_flatMap] at h
+    obtain ⟨node, hnode, h⟩ := h
+    have hhead : head = node.toTerm := mem_asSubject hnode
+    subst hhead
+    simp only [List.mem_cons] at h
+    rcases h with rfl | h
+    · exact ListMember.here hf
+    · simp only [List.mem_flatMap] at h
+      obtain ⟨r, hr, h⟩ := h
+      obtain ⟨hrg, hrs, hrp⟩ := mem_withSubjPred hr
+      exact ListMember.there (mem_of_parts hrg hrs hrp rfl) (ih r.o h hf)
+
+/-- **eq-diff2**. -/
+theorem eqDiff2At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : eqDiff2At g d = true) : Clash g := by
+  unfold eqDiff2At at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, beq_eq_false_iff_ne, ne_eq] at h
+    obtain ⟨mem, hmem, ci, hci, cj, hcj, -, fi, hfi, fj, hfj, hne, zs, hzs, hm⟩ := h
+    obtain ⟨hmg, hms, hmp⟩ := mem_withSubjPred hmem
+    obtain ⟨hfig, hfis, hfip⟩ := mem_withSubjPred hfi
+    obtain ⟨hfjg, hfjs, hfjp⟩ := mem_withSubjPred hfj
+    have hzt : fi.o = zs.toTerm := mem_asSubject hzs
+    have hlm1 : ListMember g mem.o fi.o :=
+      listCells_sound g (listFuel g) mem.o hci
+        (mem_of_parts hfig hfis hfip rfl)
+    rw [hzt] at hne hlm1
+    exact Clash.eqDiff2 (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts hmg hms hmp rfl)
+      hlm1
+      (listCells_sound g (listFuel g) mem.o hcj
+        (mem_of_parts hfjg hfjs hfjp rfl))
+      hne
+      (mem_of_memB hm)
+  · simp at h
+
+/-- **eq-diff3**. -/
+theorem eqDiff3At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : eqDiff3At g d = true) : Clash g := by
+  unfold eqDiff3At at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, beq_eq_false_iff_ne, ne_eq] at h
+    obtain ⟨mem, hmem, ci, hci, cj, hcj, -, fi, hfi, fj, hfj, hne, zs, hzs, hm⟩ := h
+    obtain ⟨hmg, hms, hmp⟩ := mem_withSubjPred hmem
+    obtain ⟨hfig, hfis, hfip⟩ := mem_withSubjPred hfi
+    obtain ⟨hfjg, hfjs, hfjp⟩ := mem_withSubjPred hfj
+    have hzt : fi.o = zs.toTerm := mem_asSubject hzs
+    have hlm1 : ListMember g mem.o fi.o :=
+      listCells_sound g (listFuel g) mem.o hci
+        (mem_of_parts hfig hfis hfip rfl)
+    rw [hzt] at hne hlm1
+    exact Clash.eqDiff3 (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts hmg hms hmp rfl)
+      hlm1
+      (listCells_sound g (listFuel g) mem.o hcj
+        (mem_of_parts hfjg hfjs hfjp rfl))
+      hne
+      (mem_of_memB hm)
+  · simp at h
+
+/-- **prp-adp**. -/
+theorem prpAdpAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpAdpAt g d = true) : Clash g := by
+  unfold prpAdpAt at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, beq_eq_false_iff_ne, ne_eq] at h
+    obtain ⟨mem, hmem, ci, hci, cj, hcj, -, fi, hfi, fj, hfj, hne,
+      q1, hq1i, q2, hq2i, u, hu, hm⟩ := h
+    obtain ⟨hmg, hms, hmp⟩ := mem_withSubjPred hmem
+    obtain ⟨hfig, hfis, hfip⟩ := mem_withSubjPred hfi
+    obtain ⟨hfjg, hfjs, hfjp⟩ := mem_withSubjPred hfj
+    obtain ⟨hug, hup⟩ := mem_withPred hu
+    have hqi : fi.o = Term.iri q1 := mem_asIri hq1i
+    have hqj : fj.o = Term.iri q2 := mem_asIri hq2i
+    have hlm1 : ListMember g mem.o fi.o :=
+      listCells_sound g (listFuel g) mem.o hci
+        (mem_of_parts hfig hfis hfip rfl)
+    have hlm2 : ListMember g mem.o fj.o :=
+      listCells_sound g (listFuel g) mem.o hcj
+        (mem_of_parts hfjg hfjs hfjp rfl)
+    rw [hqi] at hne hlm1
+    rw [hqj] at hne hlm2
+    have hne' : q1 ≠ q2 := by
+      intro he
+      exact hne (by rw [he])
+    exact Clash.prpAdp (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts hmg hms hmp rfl)
+      hlm1 hlm2
+      hne'
+      (mem_of_parts hug rfl hup rfl)
+      (mem_of_memB hm)
+  · simp at h
+
 /-- Every clash-row verdict for one driving triple is a real clash. -/
 theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
     (h : clashFrom g d = true) : Clash g := by
@@ -1874,7 +1990,7 @@ theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
     List.not_mem_nil, or_false] at h
   obtain ⟨b, hb, hv⟩ := h
   rcases hb with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqDiff1At_sound hd hv
   · exact prpIrpAt_sound hd hv
   · exact prpAsypAt_sound hd hv
@@ -1888,6 +2004,9 @@ theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
   · exact clsMaxqc2At_sound hd hv
   · exact caxDwAt_sound hd hv
   · exact caxAdcAt_sound hd hv
+  · exact eqDiff2At_sound hd hv
+  · exact eqDiff3At_sound hd hv
+  · exact prpAdpAt_sound hd hv
 
 /-- **Clash soundness.** Every `true` verdict of the decision procedure
 is a real `Clash` — the graph really does satisfy the premises of a

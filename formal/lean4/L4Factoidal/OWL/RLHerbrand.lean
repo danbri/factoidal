@@ -1742,6 +1742,72 @@ theorem rlHerb_clash_conditions : RlClashConditions (rlHerb c) where
       intro h
       exact hne (by injection h)
     exact hcons (Clash.caxAdc hm1 hm2 hlm1 hlm2 hne' hm3 hm4)
+  eqDiff2 := by
+    rintro z1 z2 hne y l ⟨hty, hmem, hl1, hl2, hsame⟩
+    obtain ⟨sy, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) hty
+    have ho1 : o1 = Term.iri owlAllDifferent := hy1.symm
+    subst ho1
+    obtain ⟨sy2, o2, hm2, hx2, rfl⟩ := herb_decode (by decide) hmem
+    have hsy : sy = sy2 := subjTerm_injective hx2
+    subst hsy
+    have hlm1 := listMem_decode hfrag hl1
+    have hlm2 := listMem_decode hfrag hl2
+    obtain ⟨sz, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) hsame
+    have hsz : sz = Subject.iri z1 := subjTerm_iri hx3.symm
+    subst hsz
+    have ho3 : o3 = Term.iri z2 := hy3.symm
+    subst ho3
+    have hne' : (Subject.iri z1).toTerm ≠ (Term.iri z2) := by
+      intro he
+      apply hne
+      have hee : Term.iri z1 = Term.iri z2 := he
+      injection hee
+    exact hcons (Clash.eqDiff2 (zi := Subject.iri z1) (zj := Term.iri z2)
+      hm1 hm2 hlm1 hlm2 hne' hm3)
+  eqDiff3 := by
+    rintro z1 z2 hne y l ⟨hty, hmem, hl1, hl2, hsame⟩
+    obtain ⟨sy, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) hty
+    have ho1 : o1 = Term.iri owlAllDifferent := hy1.symm
+    subst ho1
+    obtain ⟨sy2, o2, hm2, hx2, rfl⟩ := herb_decode (by decide) hmem
+    have hsy : sy = sy2 := subjTerm_injective hx2
+    subst hsy
+    have hlm1 := listMem_decode hfrag hl1
+    have hlm2 := listMem_decode hfrag hl2
+    obtain ⟨sz, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) hsame
+    have hsz : sz = Subject.iri z1 := subjTerm_iri hx3.symm
+    subst hsz
+    have ho3 : o3 = Term.iri z2 := hy3.symm
+    subst ho3
+    have hne' : (Subject.iri z1).toTerm ≠ (Term.iri z2) := by
+      intro he
+      apply hne
+      have hee : Term.iri z1 = Term.iri z2 := he
+      injection hee
+    exact hcons (Clash.eqDiff3 (zi := Subject.iri z1) (zj := Term.iri z2)
+      hm1 hm2 hlm1 hlm2 hne' hm3)
+  prpAdp := by
+    rintro p1 p2 hne y l u v ⟨hty, hmem, hl1, hl2, he1, he2⟩
+    obtain ⟨sy, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) hty
+    have ho1 : o1 = Term.iri owlAllDisjointProperties := hy1.symm
+    subst ho1
+    obtain ⟨sy2, o2, hm2, hx2, rfl⟩ := herb_decode (by decide) hmem
+    have hsy : sy = sy2 := subjTerm_injective hx2
+    subst hsy
+    have hlm1 := listMem_decode hfrag hl1
+    have hlm2 := listMem_decode hfrag hl2
+    have hnr1 : rlReservedIri p1 = false :=
+      irw_of_termIri (listMember_termIris (fun t ht => frag_iris hfrag ht) hlm1)
+    have hnr2 : rlReservedIri p2 = false :=
+      irw_of_termIri (listMember_termIris (fun t ht => frag_iris hfrag ht) hlm2)
+    obtain ⟨su, ou, hm3, hx3, hy3⟩ := herb_decode hnr1 he1
+    obtain ⟨su2, ou2, hm4, hx4, hy4⟩ := herb_decode hnr2 he2
+    have hsu : su = su2 := subjTerm_injective (hx3.symm.trans hx4)
+    subst hsu
+    have hoo : ou = ou2 := hy3.symm.trans hy4
+    subst hoo
+    exact hcons (Clash.prpAdp (p1 := p1) (p2 := p2)
+      hm1 hm2 hlm1 hlm2 hne hm3 hm4)
 
 end HerbClashConditions
 

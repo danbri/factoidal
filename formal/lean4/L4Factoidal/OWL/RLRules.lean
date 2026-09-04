@@ -1293,6 +1293,35 @@ inductive Clash (g : Graph) : Prop where
       (hne : ci ≠ cj)
       (t1 : (⟨z, rdfType, ci⟩ : Triple) ∈ g)
       (t2 : (⟨z, rdfType, cj⟩ : Triple) ∈ g) : Clash g
+  /-- **eq-diff2** — an `owl:AllDifferent` / `owl:members` list with two
+  DISTINCT members related by `owl:sameAs`. (Distinct TERMS, the same
+  deviation from the table's distinct POSITIONS that cax-adc carries.) -/
+  | eqDiff2 {y zi : Subject} {lst zj : Term}
+      (hty : (⟨y, rdfType, Term.iri owlAllDifferent⟩ : Triple) ∈ g)
+      (hmem : (⟨y, owlMembers, lst⟩ : Triple) ∈ g)
+      (h1 : ListMember g lst zi.toTerm)
+      (h2 : ListMember g lst zj)
+      (hne : zi.toTerm ≠ zj)
+      (hsame : (⟨zi, owlSameAs, zj⟩ : Triple) ∈ g) : Clash g
+  /-- **eq-diff3** — the same through `owl:distinctMembers`. -/
+  | eqDiff3 {y zi : Subject} {lst zj : Term}
+      (hty : (⟨y, rdfType, Term.iri owlAllDifferent⟩ : Triple) ∈ g)
+      (hmem : (⟨y, owlDistinctMembers, lst⟩ : Triple) ∈ g)
+      (h1 : ListMember g lst zi.toTerm)
+      (h2 : ListMember g lst zj)
+      (hne : zi.toTerm ≠ zj)
+      (hsame : (⟨zi, owlSameAs, zj⟩ : Triple) ∈ g) : Clash g
+  /-- **prp-adp** — an `owl:AllDisjointProperties` list with two
+  DISTINCT member properties sharing a subject-object pair. -/
+  | prpAdp {y u : Subject} {lst v : Term} {p1 p2 : WfIri}
+      (hty : (⟨y, rdfType,
+        Term.iri owlAllDisjointProperties⟩ : Triple) ∈ g)
+      (hmem : (⟨y, owlMembers, lst⟩ : Triple) ∈ g)
+      (h1 : ListMember g lst (Term.iri p1))
+      (h2 : ListMember g lst (Term.iri p2))
+      (hne : p1 ≠ p2)
+      (t1 : (⟨u, p1, v⟩ : Triple) ∈ g)
+      (t2 : (⟨u, p2, v⟩ : Triple) ∈ g) : Clash g
 
 /-! ## Structural properties
 
@@ -1557,6 +1586,15 @@ theorem Clash.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | caxDw hd h1 h2 => exact Clash.caxDw (hsub _ hd) (hsub _ h1) (hsub _ h2)
   | caxAdc a b h1 h2 hne t1 t2 =>
       exact Clash.caxAdc (hsub _ a) (hsub _ b) (h1.mono hsub) (h2.mono hsub)
+        hne (hsub _ t1) (hsub _ t2)
+  | eqDiff2 a b h1 h2 hne t =>
+      exact Clash.eqDiff2 (hsub _ a) (hsub _ b) (h1.mono hsub) (h2.mono hsub)
+        hne (hsub _ t)
+  | eqDiff3 a b h1 h2 hne t =>
+      exact Clash.eqDiff3 (hsub _ a) (hsub _ b) (h1.mono hsub) (h2.mono hsub)
+        hne (hsub _ t)
+  | prpAdp a b h1 h2 hne t1 t2 =>
+      exact Clash.prpAdp (hsub _ a) (hsub _ b) (h1.mono hsub) (h2.mono hsub)
         hne (hsub _ t1) (hsub _ t2)
 
 end L4Factoidal.OWL.RL

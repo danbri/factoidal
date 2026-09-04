@@ -1273,6 +1273,37 @@ def RlNCondCaxAdc : Prop :=
        i.iext (i.iIri uListMem) l (i.iIri c2) ∧
        icext i z (i.iIri c1) ∧ icext i z (i.iIri c2))
 
+/-- **eq-diff2**, through `uListMem`, member pair restricted to
+distinct IRIs — the same narrowing `RlNCondCaxAdc` records, for the
+same reason (the schema family is indexed by IRI pairs). -/
+def RlNCondEqDiff2 : Prop :=
+  ∀ (z1 z2 : WfIri), z1 ≠ z2 → ∀ y l : i.idom,
+    ¬ (icext i y (i.iIri owlAllDifferent) ∧
+       i.iext (i.iIri owlMembers) y l ∧
+       i.iext (i.iIri uListMem) l (i.iIri z1) ∧
+       i.iext (i.iIri uListMem) l (i.iIri z2) ∧
+       i.iext (i.iIri owlSameAs) (i.iIri z1) (i.iIri z2))
+
+/-- **eq-diff3** — eq-diff2 through `owl:distinctMembers`. -/
+def RlNCondEqDiff3 : Prop :=
+  ∀ (z1 z2 : WfIri), z1 ≠ z2 → ∀ y l : i.idom,
+    ¬ (icext i y (i.iIri owlAllDifferent) ∧
+       i.iext (i.iIri owlDistinctMembers) y l ∧
+       i.iext (i.iIri uListMem) l (i.iIri z1) ∧
+       i.iext (i.iIri uListMem) l (i.iIri z2) ∧
+       i.iext (i.iIri owlSameAs) (i.iIri z1) (i.iIri z2))
+
+/-- **prp-adp**, through `uListMem`. The member pair is a pair of
+IRIs with no extra narrowing: the members occupy PREDICATE position,
+where only an IRI can stand. -/
+def RlNCondPrpAdp : Prop :=
+  ∀ (p1 p2 : WfIri), p1 ≠ p2 → ∀ y l u v : i.idom,
+    ¬ (icext i y (i.iIri owlAllDisjointProperties) ∧
+       i.iext (i.iIri owlMembers) y l ∧
+       i.iext (i.iIri uListMem) l (i.iIri p1) ∧
+       i.iext (i.iIri uListMem) l (i.iIri p2) ∧
+       i.iext (i.iIri p1) u v ∧ i.iext (i.iIri p2) u v)
+
 end ClashConditions
 
 /-- **The clash-condition bundle**: one field per `Clash` row. -/
@@ -1290,6 +1321,9 @@ structure RlClashConditions (i : Interp) : Prop where
   clsMaxqc2 : RlNCondClsMaxqc2 i
   caxDw : RlNCondCaxDw i
   caxAdc : RlNCondCaxAdc i
+  eqDiff2 : RlNCondEqDiff2 i
+  eqDiff3 : RlNCondEqDiff3 i
+  prpAdp : RlNCondPrpAdp i
 
 /-! ## Truth of the collection premises under the conditions -/
 
@@ -1864,13 +1898,30 @@ def AdcMembersIri (g : Graph) : Prop :=
     (⟨y, owlMembers, lst⟩ : Triple) ∈ g → ListMember g lst ci →
     ∃ w : WfIri, ci = .iri w
 
+/-- The same narrowing for the eq-diff2 / eq-diff3 rows: the members of
+an `owl:AllDifferent` collection are IRIs. Both rows read their member
+pair through the IRI-indexed schema family, exactly as cax-adc does. -/
+def DiffMembersIri (g : Graph) : Prop :=
+  ∀ (y : Subject) (lst ci : Term),
+    (⟨y, rdfType, Term.iri owlAllDifferent⟩ : Triple) ∈ g →
+    ((⟨y, owlMembers, lst⟩ : Triple) ∈ g ∨
+     (⟨y, owlDistinctMembers, lst⟩ : Triple) ∈ g) →
+    ListMember g lst ci → ∃ w : WfIri, ci = .iri w
+
+theorem subj_toTerm_iri {s : Subject} {w : WfIri}
+    (h : s.toTerm = Term.iri w) : s = Subject.iri w := by
+  cases s with
+  | iri v => simp only [Subject.toTerm, Term.iri.injEq] at h; rw [h]
+  | bnode b => simp [Subject.toTerm] at h
+
 /-- **Clash truth-refutation**: a graph carrying a `Clash`
 configuration is false under every assignment in every interpretation
 meeting the clash conditions (plus the two list axioms, which the
 cax-adc row reads its member premises through). -/
 theorem rl_clash_holds_false {i : Interp} (hcc : RlClashConditions i)
     (hlmB : RlCondListMemBase i) (hlmS : RlCondListMemStep i) {g : Graph}
-    (hadc : AdcMembersIri g) {A : BnodeAssignment i.idom}
+    (hadc : AdcMembersIri g) (hdiff : DiffMembersIri g)
+    {A : BnodeAssignment i.idom}
     (hA : HoldsAll i A g) (h : Clash g) : False := by
   cases h with
   | eqDiff1 h1 h2 =>
@@ -1957,5 +2008,42 @@ theorem rl_clash_holds_false {i : Interp} (hcc : RlClashConditions i)
       have hlm2 := holds_listMember hlmB hlmS hA h2
       simp only [TripleHolds] at u1 u2 u3 u4
       exact hcc.caxAdc w1 w2 hwne _ _ _ ⟨u1, u2, hlm1, hlm2, u3, u4⟩
+  | @eqDiff2 y zi lst zj hty hmem h1 h2 hne hsame =>
+      obtain ⟨w1, hw1⟩ := hdiff _ _ _ hty (Or.inl hmem) h1
+      obtain ⟨w2, rfl⟩ := hdiff _ _ _ hty (Or.inl hmem) h2
+      obtain rfl : zi = Subject.iri w1 := subj_toTerm_iri hw1
+      have hwne : w1 ≠ w2 := by
+        intro he
+        exact hne (by rw [he]; rfl)
+      have u1 := hA _ hty
+      have u2 := hA _ hmem
+      have u3 := hA _ hsame
+      have hlm1 := holds_listMember hlmB hlmS hA h1
+      have hlm2 := holds_listMember hlmB hlmS hA h2
+      simp only [TripleHolds] at u1 u2 u3
+      exact hcc.eqDiff2 w1 w2 hwne _ _ ⟨u1, u2, hlm1, hlm2, u3⟩
+  | @eqDiff3 y zi lst zj hty hmem h1 h2 hne hsame =>
+      obtain ⟨w1, hw1⟩ := hdiff _ _ _ hty (Or.inr hmem) h1
+      obtain ⟨w2, rfl⟩ := hdiff _ _ _ hty (Or.inr hmem) h2
+      obtain rfl : zi = Subject.iri w1 := subj_toTerm_iri hw1
+      have hwne : w1 ≠ w2 := by
+        intro he
+        exact hne (by rw [he]; rfl)
+      have u1 := hA _ hty
+      have u2 := hA _ hmem
+      have u3 := hA _ hsame
+      have hlm1 := holds_listMember hlmB hlmS hA h1
+      have hlm2 := holds_listMember hlmB hlmS hA h2
+      simp only [TripleHolds] at u1 u2 u3
+      exact hcc.eqDiff3 w1 w2 hwne _ _ ⟨u1, u2, hlm1, hlm2, u3⟩
+  | @prpAdp y u lst v p1 p2 hty hmem h1 h2 hne t1 t2 =>
+      have u1 := hA _ hty
+      have u2 := hA _ hmem
+      have u3 := hA _ t1
+      have u4 := hA _ t2
+      have hlm1 := holds_listMember hlmB hlmS hA h1
+      have hlm2 := holds_listMember hlmB hlmS hA h2
+      simp only [TripleHolds] at u1 u2 u3 u4
+      exact hcc.prpAdp p1 p2 hne _ _ _ _ ⟨u1, u2, hlm1, hlm2, u3, u4⟩
 
 end L4Factoidal.OWL.RL

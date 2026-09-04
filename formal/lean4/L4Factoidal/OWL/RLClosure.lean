@@ -175,6 +175,18 @@ def listElems (g : Graph) : Term → Nat → List Term
         (withSubjPred g node rdfFirst).map (fun u => u.o) ++
         (withSubjPred g node rdfRest).flatMap (fun r => listElems g r.o n))
 
+/-- Every CELL of the collection headed by `head`, within the fuel:
+the head itself, then every cell reachable through `rdf:rest`. The
+rows that must read the table's `1 <= i < j <= n` side condition as
+two distinct POSITIONS use this instead of `listElems`, because two
+`rdf:first` values on ONE cell are one position, not two. -/
+def listCells (g : Graph) : Term → Nat → List Subject
+  | _,    0     => []
+  | head, n + 1 =>
+      (asSubject head).flatMap (fun node =>
+        node :: (withSubjPred g node rdfRest).flatMap
+          (fun r => listCells g r.o n))
+
 /-- EVERY sequence the collection headed by `head` denotes, within the
 fuel: the empty sequence for `rdf:nil`, and otherwise one answer per
 `rdf:first`/`rdf:rest` reading of the head cell. A well-formed
@@ -1031,12 +1043,77 @@ def caxAdcAt (g : Graph) (d : Triple) : Bool :=
             memB g ⟨u.s, rdfType, cj⟩))))
   else false
 
-/-- The thirteen clash-row verdicts for one driving triple. -/
+/-! ### The three collection clash rows, and why they walk CELLS
+
+`eqDiff2At`, `eqDiff3At` and `prpAdpAt` take their member pair from two
+DISTINCT CELLS of the collection, and additionally require the two
+members to be distinct terms. The `Clash` constructors they discharge
+ask only for the distinct TERMS — the same distinct-term reading of
+`1 <= i < j <= n` that `caxAdc` carries — so each engine row is
+STRICTLY WEAKER than its `Clash` row. Soundness is what is proved;
+completeness of the decision is not claimed here, exactly as for
+`caxAdcAt`.
+
+The cell walk is not decoration. eq-rep-o copies an `rdf:first` value
+across an `owl:sameAs` edge, so after closure ONE cell of a well-formed
+list can carry two co-referring `rdf:first` values. A member pair taken
+from that one cell is one POSITION of the table's `LIST[?y, ?z1, ...,
+?zn]` premise, not two, and firing on it reports an inconsistency the
+corpus asserts consistent: measured 2026-09-04 on WebOnt-miscellaneous-
+001/002/011 (the Wine ontology, which imports the Food ontology and
+identifies `vin:Red` with `food:Red`). -/
+
+/-- **eq-diff2**. -/
+def eqDiff2At (g : Graph) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDifferent then
+    (withSubjPred g d.s owlMembers).any (fun mem =>
+      (listCells g mem.o (listFuel g)).any (fun ci =>
+        (listCells g mem.o (listFuel g)).any (fun cj =>
+          !(ci == cj) &&
+          (withSubjPred g ci rdfFirst).any (fun fi =>
+            (withSubjPred g cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (asSubject fi.o).any (fun zs =>
+                memB g ⟨zs, owlSameAs, fj.o⟩))))))
+  else false
+
+/-- **eq-diff3** — eq-diff2 through `owl:distinctMembers`. -/
+def eqDiff3At (g : Graph) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDifferent then
+    (withSubjPred g d.s owlDistinctMembers).any (fun mem =>
+      (listCells g mem.o (listFuel g)).any (fun ci =>
+        (listCells g mem.o (listFuel g)).any (fun cj =>
+          !(ci == cj) &&
+          (withSubjPred g ci rdfFirst).any (fun fi =>
+            (withSubjPred g cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (asSubject fi.o).any (fun zs =>
+                memB g ⟨zs, owlSameAs, fj.o⟩))))))
+  else false
+
+/-- **prp-adp**. -/
+def prpAdpAt (g : Graph) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointProperties then
+    (withSubjPred g d.s owlMembers).any (fun mem =>
+      (listCells g mem.o (listFuel g)).any (fun ci =>
+        (listCells g mem.o (listFuel g)).any (fun cj =>
+          !(ci == cj) &&
+          (withSubjPred g ci rdfFirst).any (fun fi =>
+            (withSubjPred g cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (asIri fi.o).any (fun p1 =>
+                (asIri fj.o).any (fun p2 =>
+                  (withPred g p1).any (fun u =>
+                    memB g ⟨u.s, p2, u.o⟩))))))))
+  else false
+
+/-- The sixteen clash-row verdicts for one driving triple. -/
 def clashRows (g : Graph) (d : Triple) : List Bool :=
   [ eqDiff1At g d, prpIrpAt g d, prpAsypAt g d, prpPdwAt g d,
     prpNpa1At g d, prpNpa2At g d, clsNothing2At g d, clsComAt g d,
     clsMaxc1At g d, clsMaxqc1At g d, clsMaxqc2At g d,
-    caxDwAt g d, caxAdcAt g d ]
+    caxDwAt g d, caxAdcAt g d,
+    eqDiff2At g d, eqDiff3At g d, prpAdpAt g d ]
 
 /-- Every clash row, driven by one triple. -/
 def clashFrom (g : Graph) (d : Triple) : Bool :=

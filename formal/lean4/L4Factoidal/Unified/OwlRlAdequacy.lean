@@ -109,22 +109,24 @@ theorem unified_owlRl_sound {g : RDF.Graph} {t : RDF.Triple}
 `AdcMembersIri` hypothesis is the cax-adc row's IRI-member narrowing
 (`RLSemantics.lean`'s `RlNCondCaxAdc`). -/
 theorem unified_owlRl_clash_unsat {g : RDF.Graph} (hadc : AdcMembersIri g)
-    (h : OWL.RL.Clash g) {i : CL.Interp} (hc : OwlRlInterpCond i)
+    (hdiff : DiffMembersIri g) (h : OWL.RL.Clash g) {i : CL.Interp} (hc : OwlRlInterpCond i)
     (hS : SatisfiesSchema i owlRlSchema) :
     ¬ CL.Satisfies i (rdfToTheory g) := by
   intro hsat
   obtain ⟨hcond, hclash⟩ := owlRlSchema_conditions hS hc
   obtain ⟨A, hA⟩ := (satisfies_rdfToTheory_restrict i g).mp hsat
   exact rl_clash_holds_false hclash hcond.listMemBase hcond.listMemStep
-    hadc hA h
+    hadc hdiff hA h
 
 /-- Consequence: a clashing graph's translation entails every
 sentence. -/
 theorem unified_owlRl_clash_entails_all {g : RDF.Graph}
-    (hadc : AdcMembersIri g) (h : OWL.RL.Clash g) (s : CL.Sentence) :
+    (hadc : AdcMembersIri g) (hdiff : DiffMembersIri g)
+    (h : OWL.RL.Clash g) (s : CL.Sentence) :
     EntailsSchema OwlRlInterpCond owlRlSchema [rdfToTheory g] s := by
   intro i hc hS hsat
-  exact absurd (hsat _ (by simp)) (unified_owlRl_clash_unsat hadc h hc hS)
+  exact absurd (hsat _ (by simp))
+    (unified_owlRl_clash_unsat hadc hdiff h hc hS)
 
 /-! ## Ground completeness against the condition bundle
 
@@ -300,7 +302,8 @@ theorem exists_mem_of_ne_nil {α : Type} : ∀ {l : List α}, l ≠ [] → ∃ a
 
 theorem allFalse_satisfies_clash :
     SatisfiesSchema allFalseInterp owlRlClashSchema := by
-  rintro s (⟨row, rfl⟩ | ⟨c1, c2, -, rfl⟩)
+  rintro s (⟨row, rfl⟩ | ⟨c1, c2, -, rfl⟩ | ⟨c1, c2, -, rfl⟩ |
+    ⟨c1, c2, -, rfl⟩ | ⟨c1, c2, -, rfl⟩)
   · rw [satisfies_negSentence_iff _ (rlNegRowRule_wf row)]
     intro f hb
     have hne : (rlNegRowRule row).atoms ≠ [] := by
@@ -310,6 +313,21 @@ theorem allFalse_satisfies_clash :
   · rw [satisfies_negSentence_iff _ (negCaxAdc_wf c1 c2)]
     intro f hb
     have hne : (negCaxAdc c1 c2).atoms ≠ [] := by simp [negCaxAdc]
+    obtain ⟨a, ha⟩ := exists_mem_of_ne_nil hne
+    exact allFalse_no_atom f a (hb a ha)
+  · rw [satisfies_negSentence_iff _ (negEqDiff2_wf c1 c2)]
+    intro f hb
+    have hne : (negEqDiff2 c1 c2).atoms ≠ [] := by simp [negEqDiff2]
+    obtain ⟨a, ha⟩ := exists_mem_of_ne_nil hne
+    exact allFalse_no_atom f a (hb a ha)
+  · rw [satisfies_negSentence_iff _ (negEqDiff3_wf c1 c2)]
+    intro f hb
+    have hne : (negEqDiff3 c1 c2).atoms ≠ [] := by simp [negEqDiff3]
+    obtain ⟨a, ha⟩ := exists_mem_of_ne_nil hne
+    exact allFalse_no_atom f a (hb a ha)
+  · rw [satisfies_negSentence_iff _ (negPrpAdp_wf c1 c2)]
+    intro f hb
+    have hne : (negPrpAdp c1 c2).atoms ≠ [] := by simp [negPrpAdp]
     obtain ⟨a, ha⟩ := exists_mem_of_ne_nil hne
     exact allFalse_no_atom f a (hb a ha)
 

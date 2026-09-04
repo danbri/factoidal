@@ -1775,10 +1775,68 @@ theorem negCaxAdc_wf (c1 c2 : RDF.WfIri) : (negCaxAdc c1 c2).wfB = true :=
       dtyp_wf (dv_wf "z" (by decide)) (dk_wf c1),
       dtyp_wf (dv_wf "z" (by decide)) (dk_wf c2), Bool.and_true])
 
+/-- **eq-diff2**, at a distinct pair of member IRIs. -/
+def negEqDiff2 (z1 z2 : RDF.WfIri) : DNeg :=
+  ⟨[dtyp (.v "y") (dk owlAllDifferent),
+    dbin (dk owlMembers) (.v "y") (.v "l"),
+    dbin (dk uListMem) (.v "l") (dk z1),
+    dbin (dk uListMem) (.v "l") (dk z2),
+    dbin (dk owlSameAs) (dk z1) (dk z2)]⟩
+
+theorem negEqDiff2_wf (z1 z2 : RDF.WfIri) : (negEqDiff2 z1 z2).wfB = true :=
+  dneg_wf_of (by
+    simp only [negEqDiff2, List.all_cons, List.all_nil,
+      dtyp_wf (dv_wf "y" (by decide)) (dk_wf owlAllDifferent),
+      dbin_wf (dk_wf owlMembers) (dv_wf "y" (by decide)) (dv_wf "l" (by decide)),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf z1),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf z2),
+      dbin_wf (dk_wf owlSameAs) (dk_wf z1) (dk_wf z2), Bool.and_true])
+
+/-- **eq-diff3**, at a distinct pair of member IRIs. -/
+def negEqDiff3 (z1 z2 : RDF.WfIri) : DNeg :=
+  ⟨[dtyp (.v "y") (dk owlAllDifferent),
+    dbin (dk owlDistinctMembers) (.v "y") (.v "l"),
+    dbin (dk uListMem) (.v "l") (dk z1),
+    dbin (dk uListMem) (.v "l") (dk z2),
+    dbin (dk owlSameAs) (dk z1) (dk z2)]⟩
+
+theorem negEqDiff3_wf (z1 z2 : RDF.WfIri) : (negEqDiff3 z1 z2).wfB = true :=
+  dneg_wf_of (by
+    simp only [negEqDiff3, List.all_cons, List.all_nil,
+      dtyp_wf (dv_wf "y" (by decide)) (dk_wf owlAllDifferent),
+      dbin_wf (dk_wf owlDistinctMembers) (dv_wf "y" (by decide))
+        (dv_wf "l" (by decide)),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf z1),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf z2),
+      dbin_wf (dk_wf owlSameAs) (dk_wf z1) (dk_wf z2), Bool.and_true])
+
+/-- **prp-adp**, at a distinct pair of member property IRIs. -/
+def negPrpAdp (p1 p2 : RDF.WfIri) : DNeg :=
+  ⟨[dtyp (.v "y") (dk owlAllDisjointProperties),
+    dbin (dk owlMembers) (.v "y") (.v "l"),
+    dbin (dk uListMem) (.v "l") (dk p1),
+    dbin (dk uListMem) (.v "l") (dk p2),
+    dbin (dk p1) (.v "u") (.v "v"),
+    dbin (dk p2) (.v "u") (.v "v")]⟩
+
+theorem negPrpAdp_wf (p1 p2 : RDF.WfIri) : (negPrpAdp p1 p2).wfB = true :=
+  dneg_wf_of (by
+    simp only [negPrpAdp, List.all_cons, List.all_nil,
+      dtyp_wf (dv_wf "y" (by decide)) (dk_wf owlAllDisjointProperties),
+      dbin_wf (dk_wf owlMembers) (dv_wf "y" (by decide)) (dv_wf "l" (by decide)),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf p1),
+      dbin_wf (dk_wf uListMem) (dv_wf "l" (by decide)) (dk_wf p2),
+      dbin_wf (dk_wf p1) (dv_wf "u" (by decide)) (dv_wf "v" (by decide)),
+      dbin_wf (dk_wf p2) (dv_wf "u" (by decide)) (dv_wf "v" (by decide)),
+      Bool.and_true])
+
 /-- The clash part of the schema. -/
 def owlRlClashSchema : Schema := fun s =>
   (∃ row : RlNegRowId, s = (rlNegRowRule row).sentence) ∨
-  (∃ c1 c2 : RDF.WfIri, c1 ≠ c2 ∧ s = (negCaxAdc c1 c2).sentence)
+  (∃ c1 c2 : RDF.WfIri, c1 ≠ c2 ∧ s = (negCaxAdc c1 c2).sentence) ∨
+  (∃ z1 z2 : RDF.WfIri, z1 ≠ z2 ∧ s = (negEqDiff2 z1 z2).sentence) ∨
+  (∃ z1 z2 : RDF.WfIri, z1 ≠ z2 ∧ s = (negEqDiff3 z1 z2).sentence) ∨
+  (∃ p1 p2 : RDF.WfIri, p1 ≠ p2 ∧ s = (negPrpAdp p1 p2).sentence)
 
 section ClashConditions
 
@@ -1935,10 +1993,50 @@ theorem ncond_caxDw : RlNCondCaxDw (restrictInterp i) := by
 
 theorem ncond_caxAdc : RlNCondCaxAdc (restrictInterp i) := by
   rintro c1 c2 hne y l z ⟨h1, h2, h3, h4, h5, h6⟩
-  refine negRowFires hN (Or.inr ⟨c1, c2, hne, rfl⟩) (negCaxAdc_wf c1 c2)
+  refine negRowFires hN (Or.inr (Or.inl ⟨c1, c2, hne, rfl⟩)) (negCaxAdc_wf c1 c2)
     (vals i [("y", y), ("l", l), ("z", z)]) ?_
   intro a ha
   simp only [negCaxAdc, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+  · exact h6
+
+theorem ncond_eqDiff2 : RlNCondEqDiff2 (restrictInterp i) := by
+  rintro z1 z2 hne y l ⟨h1, h2, h3, h4, h5⟩
+  refine negRowFires hN (Or.inr (Or.inr (Or.inl ⟨z1, z2, hne, rfl⟩)))
+    (negEqDiff2_wf z1 z2) (vals i [("y", y), ("l", l)]) ?_
+  intro a ha
+  simp only [negEqDiff2, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem ncond_eqDiff3 : RlNCondEqDiff3 (restrictInterp i) := by
+  rintro z1 z2 hne y l ⟨h1, h2, h3, h4, h5⟩
+  refine negRowFires hN (Or.inr (Or.inr (Or.inr (Or.inl ⟨z1, z2, hne, rfl⟩))))
+    (negEqDiff3_wf z1 z2) (vals i [("y", y), ("l", l)]) ?_
+  intro a ha
+  simp only [negEqDiff3, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem ncond_prpAdp : RlNCondPrpAdp (restrictInterp i) := by
+  rintro p1 p2 hne y l u v ⟨h1, h2, h3, h4, h5, h6⟩
+  refine negRowFires hN (Or.inr (Or.inr (Or.inr (Or.inr ⟨p1, p2, hne, rfl⟩))))
+    (negPrpAdp_wf p1 p2) (vals i [("y", y), ("l", l), ("u", u), ("v", v)]) ?_
+  intro a ha
+  simp only [negPrpAdp, List.mem_cons, List.not_mem_nil, or_false] at ha
   rcases ha with rfl | rfl | rfl | rfl | rfl | rfl
   · exact h1
   · exact h2
@@ -2151,6 +2249,9 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       clsMaxqc1 := ncond_clsMaxqc1 hN
       clsMaxqc2 := ncond_clsMaxqc2 hN
       caxDw := ncond_caxDw hN
-      caxAdc := ncond_caxAdc hN }
+      caxAdc := ncond_caxAdc hN
+      eqDiff2 := ncond_eqDiff2 hN
+      eqDiff3 := ncond_eqDiff3 hN
+      prpAdp := ncond_prpAdp hN }
 
 end L4Factoidal.Unified

@@ -183,6 +183,18 @@ def owlAllDisjointClasses : WfIri :=
 def owlMembers : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#members", rfl⟩
 
+/-- `owl:AllDifferent`, the eq-diff2 / eq-diff3 declaration. -/
+def owlAllDifferent : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#AllDifferent", rfl⟩
+
+/-- `owl:distinctMembers`, the eq-diff3 collection property. -/
+def owlDistinctMembers : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#distinctMembers", rfl⟩
+
+/-- `owl:AllDisjointProperties`, the prp-adp declaration. -/
+def owlAllDisjointProperties : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#AllDisjointProperties", rfl⟩
+
 /-! ## Cardinality literals
 
 Table 5's cls-maxc1/cls-maxc2/cls-maxqc1..4 rows quote

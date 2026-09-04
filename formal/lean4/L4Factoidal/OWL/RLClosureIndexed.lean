@@ -189,6 +189,13 @@ def listElemsS (s : Store) : Term → Nat → List Term
         (s.withSubjPred node rdfFirst).map (fun u => u.o) ++
         (s.withSubjPred node rdfRest).flatMap (fun r => listElemsS s r.o n))
 
+def listCellsS (s : Store) : Term → Nat → List Subject
+  | _,    0     => []
+  | head, n + 1 =>
+      (asSubject head).flatMap (fun node =>
+        node :: (s.withSubjPred node rdfRest).flatMap
+          (fun r => listCellsS s r.o n))
+
 def listSeqsS (s : Store) : Term → Nat → List (List Term)
   | _,    0     => []
   | head, n + 1 =>
@@ -829,11 +836,53 @@ def caxAdcAtS (s : Store) (d : Triple) : Bool :=
             s.memB ⟨u.s, rdfType, cj⟩))))
   else false
 
+def eqDiff2AtS (s : Store) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDifferent then
+    (s.withSubjPred d.s owlMembers).any (fun mem =>
+      (listCellsS s mem.o (listFuel s.graph)).any (fun ci =>
+        (listCellsS s mem.o (listFuel s.graph)).any (fun cj =>
+          !(ci == cj) &&
+          (s.withSubjPred ci rdfFirst).any (fun fi =>
+            (s.withSubjPred cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (asSubject fi.o).any (fun zs =>
+                s.memB ⟨zs, owlSameAs, fj.o⟩))))))
+  else false
+
+def eqDiff3AtS (s : Store) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDifferent then
+    (s.withSubjPred d.s owlDistinctMembers).any (fun mem =>
+      (listCellsS s mem.o (listFuel s.graph)).any (fun ci =>
+        (listCellsS s mem.o (listFuel s.graph)).any (fun cj =>
+          !(ci == cj) &&
+          (s.withSubjPred ci rdfFirst).any (fun fi =>
+            (s.withSubjPred cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (asSubject fi.o).any (fun zs =>
+                s.memB ⟨zs, owlSameAs, fj.o⟩))))))
+  else false
+
+def prpAdpAtS (s : Store) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointProperties then
+    (s.withSubjPred d.s owlMembers).any (fun mem =>
+      (listCellsS s mem.o (listFuel s.graph)).any (fun ci =>
+        (listCellsS s mem.o (listFuel s.graph)).any (fun cj =>
+          !(ci == cj) &&
+          (s.withSubjPred ci rdfFirst).any (fun fi =>
+            (s.withSubjPred cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (asIri fi.o).any (fun p1 =>
+                (asIri fj.o).any (fun p2 =>
+                  (s.withPred p1).any (fun u =>
+                    s.memB ⟨u.s, p2, u.o⟩))))))))
+  else false
+
 def clashRowsS (s : Store) (d : Triple) : List Bool :=
   [ eqDiff1AtS s d, prpIrpAtS s d, prpAsypAtS s d, prpPdwAtS s d,
     prpNpa1AtS s d, prpNpa2AtS s d, clsNothing2AtS s d, clsComAtS s d,
     clsMaxc1AtS s d, clsMaxqc1AtS s d, clsMaxqc2AtS s d,
-    caxDwAtS s d, caxAdcAtS s d ]
+    caxDwAtS s d, caxAdcAtS s d,
+    eqDiff2AtS s d, eqDiff3AtS s d, prpAdpAtS s d ]
 
 def clashFromS (s : Store) (d : Triple) : Bool :=
   (clashRowsS s d).any (fun b => b)
@@ -857,6 +906,14 @@ theorem listElemsS_ofGraph (g : Graph) : listElemsS (Store.ofGraph g) = listElem
   | zero => rfl
   | succ n ih =>
     simp only [listElemsS, listElems, ih]
+    rfl
+
+theorem listCellsS_ofGraph (g : Graph) : listCellsS (Store.ofGraph g) = listCells g := by
+  funext head n
+  induction n generalizing head with
+  | zero => rfl
+  | succ n ih =>
+    simp only [listCellsS, listCells, ih]
     rfl
 
 theorem listSeqsS_ofGraph (g : Graph) : listSeqsS (Store.ofGraph g) = listSeqs g := by
@@ -1048,9 +1105,31 @@ theorem caxAdcAtS_ofGraph (g : Graph) : caxAdcAtS (Store.ofGraph g) = caxAdcAt g
   rw [listElemsS_ofGraph]
   rfl
 
+theorem eqDiff2AtS_ofGraph (g : Graph) :
+    eqDiff2AtS (Store.ofGraph g) = eqDiff2At g := by
+  funext d
+  unfold eqDiff2AtS eqDiff2At
+  rw [listCellsS_ofGraph]
+  rfl
+
+theorem eqDiff3AtS_ofGraph (g : Graph) :
+    eqDiff3AtS (Store.ofGraph g) = eqDiff3At g := by
+  funext d
+  unfold eqDiff3AtS eqDiff3At
+  rw [listCellsS_ofGraph]
+  rfl
+
+theorem prpAdpAtS_ofGraph (g : Graph) :
+    prpAdpAtS (Store.ofGraph g) = prpAdpAt g := by
+  funext d
+  unfold prpAdpAtS prpAdpAt
+  rw [listCellsS_ofGraph]
+  rfl
+
 theorem clashFromS_ofGraph (g : Graph) : clashFromS (Store.ofGraph g) = clashFrom g := by
   funext d
-  simp only [clashFromS, clashFrom, clashRowsS, clashRows, caxAdcAtS_ofGraph]
+  simp only [clashFromS, clashFrom, clashRowsS, clashRows, caxAdcAtS_ofGraph,
+    eqDiff2AtS_ofGraph, eqDiff3AtS_ofGraph, prpAdpAtS_ofGraph]
   rfl
 
 theorem detectClashS_ofGraph (g : Graph) : detectClashS (Store.ofGraph g) = detectClash g := by

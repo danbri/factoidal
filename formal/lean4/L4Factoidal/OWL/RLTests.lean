@@ -44,6 +44,8 @@ private def iX : WfIri := ⟨"http://ex/x", rfl⟩
 private def iY : WfIri := ⟨"http://ex/y", rfl⟩
 private def iZ : WfIri := ⟨"http://ex/z", rfl⟩
 private def iW : WfIri := ⟨"http://ex/w", rfl⟩
+private def lc1 : WfIri := ⟨"http://ex/l1", rfl⟩
+private def lc2 : WfIri := ⟨"http://ex/l2", rfl⟩
 
 /-- A subject in IRI form. -/
 private def S (i : WfIri) : Subject := Subject.iri i
@@ -368,6 +370,69 @@ private def gDw : Graph :=
 #guard detectClash
   [⟨S cA, owlComplementOf, O cB⟩,
    ⟨S iX, rdfType, O cA⟩, ⟨S iX, rdfType, O cB⟩]
+
+-- eq-diff2: an owl:AllDifferent members list with two of its members
+-- related by owl:sameAs. The list is spelled out cell by cell, because
+-- the row reads it through the same fuel-bounded walk cax-adc uses.
+private def gDiff2 : Graph :=
+  [⟨S iW, rdfType, O owlAllDifferent⟩, ⟨S iW, owlMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O iX⟩, ⟨S lc1, rdfRest, O lc2⟩,
+   ⟨S lc2, rdfFirst, O iY⟩, ⟨S lc2, rdfRest, O rdfNil⟩,
+   ⟨S iX, owlSameAs, O iY⟩]
+
+#guard detectClash gDiff2
+-- The same list without the owl:sameAs edge is not a clash, and stays
+-- consistent through the closure (eq-ref's reflexive owl:sameAs
+-- triples do not fire the row: its member pair must be DISTINCT).
+private def gDiff2Ok : Graph :=
+  [⟨S iW, rdfType, O owlAllDifferent⟩, ⟨S iW, owlMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O iX⟩, ⟨S lc1, rdfRest, O lc2⟩,
+   ⟨S lc2, rdfFirst, O iY⟩, ⟨S lc2, rdfRest, O rdfNil⟩]
+
+#guard !detectClash gDiff2Ok
+#guard !inconsistent gDiff2Ok 2
+
+-- Two co-referring rdf:first values on ONE cell are one position of
+-- the table's LIST premise, not two, so the row does not fire. This is
+-- the shape eq-rep-o produces after closure, and firing on it reported
+-- the Wine ontology (WebOnt-miscellaneous-001/002/011) inconsistent.
+#guard !detectClash
+  [⟨S iW, rdfType, O owlAllDifferent⟩, ⟨S iW, owlMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O iX⟩, ⟨S lc1, rdfFirst, O iY⟩,
+   ⟨S lc1, rdfRest, O rdfNil⟩,
+   ⟨S iX, owlSameAs, O iY⟩]
+
+-- eq-diff3: the same through owl:distinctMembers.
+private def gDiff3 : Graph :=
+  [⟨S iW, rdfType, O owlAllDifferent⟩, ⟨S iW, owlDistinctMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O iX⟩, ⟨S lc1, rdfRest, O lc2⟩,
+   ⟨S lc2, rdfFirst, O iY⟩, ⟨S lc2, rdfRest, O rdfNil⟩,
+   ⟨S iX, owlSameAs, O iY⟩]
+
+#guard detectClash gDiff3
+-- owl:members and owl:distinctMembers are not interchangeable: the
+-- eq-diff2 collection property does not satisfy eq-diff3's premise,
+-- and the sameAs pair here is not in the owl:members list at all.
+#guard !detectClash
+  [⟨S iW, rdfType, O owlAllDifferent⟩, ⟨S iW, owlDistinctMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O iX⟩, ⟨S lc1, rdfRest, O rdfNil⟩,
+   ⟨S iY, owlSameAs, O iZ⟩]
+
+-- prp-adp: two members of an owl:AllDisjointProperties list sharing a
+-- subject-object pair.
+private def gAdp : Graph :=
+  [⟨S iW, rdfType, O owlAllDisjointProperties⟩, ⟨S iW, owlMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O pP⟩, ⟨S lc1, rdfRest, O lc2⟩,
+   ⟨S lc2, rdfFirst, O pQ⟩, ⟨S lc2, rdfRest, O rdfNil⟩,
+   ⟨S iX, pP, O iY⟩, ⟨S iX, pQ, O iY⟩]
+
+#guard detectClash gAdp
+-- Different objects: the two properties are disjoint but share no pair.
+#guard !detectClash
+  [⟨S iW, rdfType, O owlAllDisjointProperties⟩, ⟨S iW, owlMembers, O lc1⟩,
+   ⟨S lc1, rdfFirst, O pP⟩, ⟨S lc1, rdfRest, O lc2⟩,
+   ⟨S lc2, rdfFirst, O pQ⟩, ⟨S lc2, rdfRest, O rdfNil⟩,
+   ⟨S iX, pP, O iY⟩, ⟨S iX, pQ, O iZ⟩]
 
 -- A graph with no clash row satisfied is consistent, closure and all.
 #guard !inconsistent gSco 3
