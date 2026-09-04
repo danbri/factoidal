@@ -211,3 +211,41 @@ and 6 `--dl` units on `owl:hasSelf`. The rows closed 4 RL units and 3
   expression — and no rule row closes it.
 
 No test regressed in either regime.
+
+### `a3eb7bd11` — eq-diff2, eq-diff3, prp-adp
+
+| Rows added | RL before → after | `--dl` before → after |
+|---|---|---|
+| eq-diff2, eq-diff3, prp-adp | 1135 pass, 312 fail → 1138 pass, 309 fail | 1211 pass, 236 fail → 1211 pass, 236 fail |
+
+**The marker over-counted again, and further.** It put 16 RL units on
+eq-diff2/3 and 1 on prp-adp. The rows closed 3 RL units and 0 `--dl` units:
+`rdfbased-sem-ndis-alldifferent-fw`,
+`rdfbased-sem-ndis-alldifferent-fw-distinctmembers` and
+`rdfbased-sem-ndis-alldisjointproperties-fw`, all `[InconsistencyTest]`.
+The `--dl` column does not move because the tableau refuter already decided
+all three. Most of the remaining marked units are B1: their conclusion asks
+for the `owl:AllDifferent` triple itself, which no clash row produces. No
+test regressed in either regime; cap hits were 0 on both sides.
+
+**A soundness finding from this landing.** The engine rows take their pair
+from two distinct list CELLS, not only from two distinct terms. The
+distinct-term reading alone — which is what `caxAdcAt` uses — fires on
+`WebOnt-miscellaneous-001`, `-002` and `-011`, which the corpus asserts
+consistent: eq-rep-o copies an `rdf:first` value across
+`vin:Red owl:sameAs food:Red`, so one list cell then carries two
+co-referring members, and a term-distinct pair drawn from ONE cell is one
+position of `LIST[?y, ?z1, ..., ?zn]`, not two. **`caxAdcAt` carries the
+same exposure and was not changed.** It does not misfire on this corpus
+today, and it should be narrowed the same way.
+
+### What the two landings say about the marker
+
+The marker predicted 24 RL units across the three constructs and delivered
+7. Treat every remaining number in the category-A table as an upper bound
+of the same kind: a construct-occurrence count, not a count of tests the
+row will close. A marked unit whose CONCLUSION contains the construct is
+usually B1, because a conclusion that names a class expression or an
+`owl:AllDifferent` axiom asks the engine to produce structure, and no rule
+row produces structure. A future ranking should count only units whose
+PREMISE carries the construct.
