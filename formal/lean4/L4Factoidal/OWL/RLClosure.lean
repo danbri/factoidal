@@ -241,11 +241,12 @@ Table 5's cls-thing and cls-nothing1 have no premises, so they are not
 driven by any triple. -/
 
 /-- **cls-thing** and **cls-nothing1**, plus the two premise-free
-`rdfs:Datatype` typings of the `dtType1Builtin` `[ext]` row. -/
+`rdfs:Datatype` typings and the Table 5.3 annotation-property typings
+of the `premiseFreeAxiom` `[ext]` row. -/
 def axiomTriples : List Triple :=
   [⟨Subject.iri owlThing, rdfType, Term.iri owlClass⟩,
    ⟨Subject.iri owlNothing, rdfType, Term.iri owlClass⟩] ++
-  builtinDatatypeAxioms
+  premiseFreeAxioms
 
 /-! ## Section 5 — one function per row
 

@@ -1572,7 +1572,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact inverseOfDomRngFlipFor_sound hd ht
 
 /-- **cls-thing** and **cls-nothing1** are premise-free rows, and so is
-the `dtType1Builtin` `[ext]` row, so the axiom triples are derivable
+the `premiseFreeAxiom` `[ext]` row, so the axiom triples are derivable
 from any graph. -/
 theorem axiomTriples_sound {g : Graph} {t : Triple} (h : t ∈ axiomTriples) :
     Derives g t := by
@@ -1581,7 +1581,7 @@ theorem axiomTriples_sound {g : Graph} {t : Triple} (h : t ∈ axiomTriples) :
   rcases h with rfl | rfl | h'
   · exact Derives.clsThing
   · exact Derives.clsNothing1
-  · exact Derives.dtType1Builtin h'
+  · exact Derives.premiseFreeAxiom h'
 
 /-- Every conclusion a round emits is derivable from the round's
 input. -/
@@ -2710,7 +2710,7 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
       simp only [List.mem_map]
       exact ⟨d3, by simpa [List.contains_iff_mem] using hcon, rfl⟩
     exact R ih1 hc (by simp [conclusionsList])
-  | @dtType1Builtin t' hax =>
+  | @premiseFreeAxiom t' hax =>
     refine axm ?_
     simp only [axiomTriples, List.cons_append, List.nil_append, List.mem_cons]
     exact Or.inr (Or.inr hax)

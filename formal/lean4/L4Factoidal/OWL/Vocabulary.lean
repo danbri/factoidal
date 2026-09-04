@@ -312,4 +312,34 @@ def xsdNamespace : String := "http://www.w3.org/2001/XMLSchema#"
 /-- Is this IRI in the XSD namespace? -/
 def iriInXsdNs (i : WfIri) : Bool := i.val.startsWith xsdNamespace
 
+/-! ### The annotation-property IRIs of OWL 2 RDF-Based Semantics
+Table 5.3
+
+`owl:AnnotationProperty` and the nine property IRIs that Table 5.3
+"Semantic Conditions for the Vocabulary Properties" puts in the part
+IOAP. Table 5.2 "Semantic Conditions for the Vocabulary Classes" gives
+`ICEXT(I(owl:AnnotationProperty)) = IOAP`, so each of the nine has the
+type `owl:AnnotationProperty` in every OWL 2 RDF-Based interpretation.
+The table rows are transcribed in `vocabAnnotationPropertyAxioms`
+(`RLRules.lean`). -/
+
+def owlAnnotationProperty : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#AnnotationProperty", rfl⟩
+
+def owlVersionInfo : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#versionInfo", rfl⟩
+def owlDeprecated : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#deprecated", rfl⟩
+def owlPriorVersion : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#priorVersion", rfl⟩
+def owlBackwardCompatibleWith : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#backwardCompatibleWith", rfl⟩
+def owlIncompatibleWith : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#incompatibleWith", rfl⟩
+
+abbrev rdfsComment : WfIri := L4Factoidal.RDFS.rdfsComment
+abbrev rdfsLabel : WfIri := L4Factoidal.RDFS.rdfsLabel
+abbrev rdfsSeeAlso : WfIri := L4Factoidal.RDFS.rdfsSeeAlso
+abbrev rdfsIsDefinedBy : WfIri := L4Factoidal.RDFS.rdfsIsDefinedBy
+
 end L4Factoidal.OWL.RL

@@ -1129,7 +1129,7 @@ def owlRlFamilySchema : Schema := fun s =>
   (∃ p : RDF.WfIri, rlReservedIri p = false ∧ s = (ruleEqRefP p).sentence) ∨
   (∃ ci cj : RDF.WfIri, ci ≠ cj ∧ s = (ruleCaxAdcToDw ci cj).sentence) ∨
   (∃ a pr b : RDF.WfIri,
-      (⟨Subject.iri a, pr, Term.iri b⟩ : Triple) ∈ builtinDatatypeAxioms ∧
+      (⟨Subject.iri a, pr, Term.iri b⟩ : Triple) ∈ premiseFreeAxioms ∧
       s = (ruleDtType1 a pr b).sentence) ∨
   (∃ d1 d2 d3 : RDF.WfIri, rangeIntersectLicenses d1 d2 d3 = true ∧
       s = (ruleDtRangeIntersect d1 d2 d3).sentence) ∨
@@ -1164,7 +1164,7 @@ theorem cond_caxAdcToDw : RlCondCaxAdcToDw (restrictInterp i) := by
   · exact h3
   · exact h4
 
-theorem cond_dtType1Builtin : RlCondDtType1Builtin (restrictInterp i) := by
+theorem cond_premiseFreeAxiom : RlCondPremiseFreeAxiom (restrictInterp i) := by
   intro a pr b hm
   refine rlRowFires hF (Or.inr (Or.inr (Or.inl ⟨a, pr, b, hm, rfl⟩)))
     (ruleDtType1_wf a pr b) (vals i []) ?_
@@ -2227,7 +2227,7 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       prpRflO := cond_prpRflO hH
       xsdAxioms := cond_xsdAxioms hF
       dtRangeIntersect := cond_dtRangeIntersect hF
-      dtType1Builtin := cond_dtType1Builtin hF
+      premiseFreeAxiom := cond_premiseFreeAxiom hF
       caxAdcToDw := cond_caxAdcToDw hF
       invFlipDomRng := cond_invFlipDomRng hH
       invFlipRngDom := cond_invFlipRngDom hH

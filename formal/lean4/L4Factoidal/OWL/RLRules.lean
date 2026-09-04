@@ -87,8 +87,12 @@ rule it ports:
   `fpDiffToDiff`, `ifpDiffToDiff`.
 * `chainToTrans` — a self-chain axiom is transitivity.
 * `prpRfl` — `owl:ReflexiveProperty` over the graph's IRIs.
-* `xsdAxioms`, `dtRangeIntersect`, `dtType1Builtin` — Table 7's
-  datatype rows over the XSD datatype map.
+* `xsdAxioms`, `dtRangeIntersect` — Table 7's datatype rows over the
+  XSD datatype map.
+* `premiseFreeAxiom` — the triples that hold with no premise at all:
+  Table 7's dt-type1 over the two builtin datatypes, and the
+  annotation-property axiomatic triples of OWL 2 RDF-Based Semantics
+  Section 6 (Tables 6.2 and 6.5).
 
 Two of them carry an ASSUMPTION beyond the graph: `xsdAxioms` and
 `dtRangeIntersect` assume the interpretation's datatype map recognises
@@ -364,6 +368,62 @@ def builtinDatatypeAxioms : List Triple :=
   [ ⟨Subject.iri xsdInteger, rdfType, Term.iri rdfsDatatype⟩,
     ⟨Subject.iri xsdString, rdfType, Term.iri rdfsDatatype⟩ ]
 
+/-- **The annotation-property axiomatic triples of OWL 2 RDF-Based
+Semantics Section 6**, transcribed.
+
+Section 6 "Axiomatic Triples" states triples that are true in every
+OWL 2 RDF-Based interpretation, so a graph entails each of them with no
+premise. Five come from Table 6.2 "Axiomatic Triples for the Properties
+of the OWL 2 RDF-Based Vocabulary":
+
+    owl:versionInfo rdf:type owl:AnnotationProperty .
+    owl:deprecated rdf:type owl:AnnotationProperty .
+    owl:priorVersion rdf:type owl:AnnotationProperty .
+    owl:backwardCompatibleWith rdf:type owl:AnnotationProperty .
+    owl:incompatibleWith rdf:type owl:AnnotationProperty .
+
+and four from Table 6.5 "Additional Axiomatic Triples for Classes and
+Properties of the RDFS Vocabulary":
+
+    rdfs:comment rdf:type owl:AnnotationProperty .
+    rdfs:label rdf:type owl:AnnotationProperty .
+    rdfs:seeAlso rdf:type owl:AnnotationProperty .
+    rdfs:isDefinedBy rdf:type owl:AnnotationProperty .
+
+The model-theoretic ground is Table 5.3 "Semantic Conditions for the
+Vocabulary Properties", which puts each of the nine IRIs in the part
+IOAP, together with Table 5.2 "Semantic Conditions for the Vocabulary
+Classes", which gives `ICEXT(I(owl:AnnotationProperty)) = IOAP`.
+
+The nine `rdfbased-sem-prop-*-type` conformance cases ask exactly this:
+their premise ontology is empty and their conclusion is one of these
+triples.
+
+Only the `owl:AnnotationProperty` typings are transcribed here. The
+domain, range and `rdf:Property` rows of the same tables are a separate
+landing, because every unconditional triple is also an eq-ref seed and
+the cost of that feedback is measured per landing (see the
+`drivesXsdAxioms` doc comment for the case that paid for the rule). -/
+def vocabAnnotationPropertyAxioms : List Triple :=
+  [ ⟨Subject.iri rdfsComment, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri rdfsLabel, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri rdfsSeeAlso, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri rdfsIsDefinedBy, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri owlVersionInfo, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri owlDeprecated, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri owlPriorVersion, rdfType, Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri owlBackwardCompatibleWith, rdfType,
+     Term.iri owlAnnotationProperty⟩,
+    ⟨Subject.iri owlIncompatibleWith, rdfType,
+     Term.iri owlAnnotationProperty⟩ ]
+
+/-- **The premise-free axiom triples.** Everything the `premiseFreeAxiom`
+row asserts with no premise at all: the two builtin `rdfs:Datatype`
+typings of Table 7's dt-type1, and the nine annotation-property typings
+of OWL 2 RDF-Based Semantics Table 5.3. -/
+def premiseFreeAxioms : List Triple :=
+  builtinDatatypeAxioms ++ vocabAnnotationPropertyAxioms
+
 /-- The predicates under which an XSD IRI in the OBJECT slot is being
 used as a datatype rather than merely named. The `xsdAxioms` guard
 reads this list. -/
@@ -378,7 +438,7 @@ above.
 
 This is NARROWER than the F* `graph_mentions_xsd_iri`, which fires on
 any XSD IRI in any position, and the narrowing is deliberate.
-`dtType1Builtin` puts `xsd:integer rdf:type rdfs:Datatype` into EVERY
+`premiseFreeAxiom` puts `xsd:integer rdf:type rdfs:Datatype` into EVERY
 closure with no premise; eq-ref then derives `xsd:integer owl:sameAs
 xsd:integer` from it, and under the "mentions" guard THAT triple drives
 the whole XSD tower plus its `scm-sco` transitive closure into every
@@ -1055,10 +1115,12 @@ inductive Derives (g : Graph) : Triple → Prop where
       (hlic : rangeIntersectLicenses d1 d2 d3 = true) :
       Derives g ⟨pd, rdfsRange, Term.iri d3⟩
 
-  /-- **dt-type1** `[ext]`, unconditional half (F*
-  `builtin_vocabulary_axioms`) — `T(xsd:integer, rdf:type,
-  rdfs:Datatype)` and `T(xsd:string, rdf:type, rdfs:Datatype)`, with no
-  premise at all.
+  /-- **The premise-free axiom triples** `[ext]` (F*
+  `builtin_vocabulary_axioms`) — every triple of `premiseFreeAxioms`,
+  with no premise at all. Two groups.
+
+  Group 1, **dt-type1**, unconditional half: `T(xsd:integer, rdf:type,
+  rdfs:Datatype)` and `T(xsd:string, rdf:type, rdfs:Datatype)`.
 
   RDF 1.1 Semantics §7: EVERY D-interpretation recognises `xsd:string`,
   and Table 7's dt-type1 asserts `rdf:type rdfs:Datatype` for each
@@ -1066,8 +1128,13 @@ inductive Derives (g : Graph) : Triple → Prop where
   it is in the RDF-compatible XSD types of RDF 1.1 Concepts §5.1 that
   every OWL 2 datatype map must recognise (OWL 2 Syntax §4.1). The
   empty graph therefore entails both, which is what WebOnt-I5.8-011
-  asks. -/
-  | dtType1Builtin {t : Triple} (h : t ∈ builtinDatatypeAxioms) :
+  asks.
+
+  Group 2, the nine `owl:AnnotationProperty` typings of OWL 2 RDF-Based
+  Semantics Section 6, Tables 6.2 and 6.5 — see
+  `vocabAnnotationPropertyAxioms` for the transcription and the
+  model-theoretic ground. -/
+  | premiseFreeAxiom {t : Triple} (h : t ∈ premiseFreeAxioms) :
       Derives g t
 
   /-- **cax-dw-comp** `[ext]`, a COMPREHENSION row —
@@ -1445,7 +1512,7 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | xsdAxioms _ hx hax ih => exact Derives.xsdAxioms ih hx hax
   | dtRangeIntersect _ _ hlic ih1 ih2 =>
       exact Derives.dtRangeIntersect ih1 ih2 hlic
-  | dtType1Builtin hax => exact Derives.dtType1Builtin hax
+  | premiseFreeAxiom hax => exact Derives.premiseFreeAxiom hax
   | caxDwToComplement _ hax ih => exact Derives.caxDwToComplement ih hax
   | clsMaxqc1ToComplement _ _ _ _ _ _ _ _ hax ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
       exact Derives.clsMaxqc1ToComplement ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 hax
@@ -1548,7 +1615,7 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | xsdAxioms _ hx hax ih => exact Derives.xsdAxioms ih hx hax
   | dtRangeIntersect _ _ hlic ih1 ih2 =>
       exact Derives.dtRangeIntersect ih1 ih2 hlic
-  | dtType1Builtin hax => exact Derives.dtType1Builtin hax
+  | premiseFreeAxiom hax => exact Derives.premiseFreeAxiom hax
   | caxDwToComplement _ hax ih => exact Derives.caxDwToComplement ih hax
   | clsMaxqc1ToComplement _ _ _ _ _ _ _ _ hax ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 =>
       exact Derives.clsMaxqc1ToComplement ih1 ih2 ih3 ih4 ih5 ih6 ih7 ih8 hax

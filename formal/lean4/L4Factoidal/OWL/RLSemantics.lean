@@ -356,6 +356,9 @@ theorem xsdAxiomTriples_nonres :
 theorem builtinDatatypeAxioms_nonres :
     ∀ t ∈ builtinDatatypeAxioms, tripleIrisNonReserved t = true := by decide
 
+theorem premiseFreeAxioms_nonres :
+    ∀ t ∈ premiseFreeAxioms, tripleIrisNonReserved t = true := by decide
+
 theorem rangeIntersect_nonres {d1 d2 d3 : WfIri}
     (h : rangeIntersectLicenses d1 d2 d3 = true) :
     rlReservedIri d3 = false := by
@@ -495,7 +498,7 @@ theorem derives_irisNonReserved {g : Graph} (hg : RlReservedFree g)
   | xsdAxioms _ hx hax ih => exact xsdAxiomTriples_nonres _ hax
   | dtRangeIntersect _ _ hlic ih1 ih2 =>
       exact tin_mk (tin_s ih1) (by decide) (oin_iri (rangeIntersect_nonres hlic))
-  | dtType1Builtin hax => exact builtinDatatypeAxioms_nonres _ hax
+  | premiseFreeAxiom hax => exact premiseFreeAxioms_nonres _ hax
   | caxDwToComplement _ hax ih =>
       simp only [complementWitnessTriples, complementWitnessPair,
                  List.mem_append, List.mem_cons, List.not_mem_nil,
@@ -999,11 +1002,11 @@ def RlCondDtRangeIntersect : Prop :=
       i.iext (i.iIri rdfsRange) pd (i.iIri d2) →
       i.iext (i.iIri rdfsRange) pd (i.iIri d3)
 
-/-- **dt-type1** `[ext]` (`dtType1Builtin`): the premise-free builtin
-datatype typings. -/
-def RlCondDtType1Builtin : Prop :=
+/-- **dt-type1** and the Table 5.3 annotation-property typings `[ext]`
+(`premiseFreeAxiom`): the axiom triples that hold with no premise. -/
+def RlCondPremiseFreeAxiom : Prop :=
   ∀ (a pr b : WfIri),
-    (⟨Subject.iri a, pr, Term.iri b⟩ : Triple) ∈ builtinDatatypeAxioms →
+    (⟨Subject.iri a, pr, Term.iri b⟩ : Triple) ∈ premiseFreeAxioms →
     i.iext (i.iIri pr) (i.iIri a) (i.iIri b)
 
 /-- **cax-adc-dw** `[ext]` (`caxAdcToDw`), through `uListMem`; the
@@ -1171,7 +1174,7 @@ structure RlConditions (i : Interp) : Prop where
   prpRflO : RlCondPrpRflO i
   xsdAxioms : RlCondXsdAxioms i
   dtRangeIntersect : RlCondDtRangeIntersect i
-  dtType1Builtin : RlCondDtType1Builtin i
+  premiseFreeAxiom : RlCondPremiseFreeAxiom i
   caxAdcToDw : RlCondCaxAdcToDw i
   invFlipDomRng : RlCondInvFlipDomRng i
   invFlipRngDom : RlCondInvFlipRngDom i
@@ -1425,6 +1428,16 @@ theorem builtinDatatypeAxioms_shape :
   · rcases List.mem_cons.mp ht with rfl | ht
     · exact ⟨xsdString, rdfType, rdfsDatatype, rfl⟩
     · simp at ht
+
+theorem premiseFreeAxioms_shape :
+    ∀ t ∈ premiseFreeAxioms, ∃ (a pr b : WfIri),
+      t = ⟨Subject.iri a, pr, Term.iri b⟩ := by
+  intro t ht
+  simp only [premiseFreeAxioms, builtinDatatypeAxioms,
+    vocabAnnotationPropertyAxioms, List.cons_append, List.nil_append,
+    List.mem_cons, List.not_mem_nil, or_false] at ht
+  rcases ht with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+    exact ⟨_, _, _, rfl⟩
 
 /-! ## The comprehension witnesses and the extended assignment -/
 
@@ -1798,9 +1811,9 @@ theorem rl_derives_holds {i : Interp} (hc : RlConditions i) {g : Graph}
   | dtRangeIntersect _ _ hlic ih1 ih2 =>
       simp only [TripleHolds] at ih1 ih2 ⊢
       exact hc.dtRangeIntersect _ _ _ hlic _ ih1 ih2
-  | dtType1Builtin hax =>
-      obtain ⟨a, pr, b, rfl⟩ := builtinDatatypeAxioms_shape _ hax
-      exact hc.dtType1Builtin _ _ _ hax
+  | premiseFreeAxiom hax =>
+      obtain ⟨a, pr, b, rfl⟩ := premiseFreeAxioms_shape _ hax
+      exact hc.premiseFreeAxiom _ _ _ hax
   | @caxDwToComplement c1 c2 t hdecl hax ih =>
       simp only [TripleHolds] at ih
       have hz2 := compWitness_props (hc.compDw c2 ⟨i.iIri c1, Or.inl ih⟩)

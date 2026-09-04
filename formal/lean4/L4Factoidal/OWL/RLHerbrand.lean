@@ -1450,9 +1450,9 @@ theorem rlHerb_conditions (hcons : ¬ Clash c) :
     subst ho2
     exact herb_encode (hcut (Derives.dtRangeIntersect (Derives.base hm1)
       (Derives.base hm2) hlic))
-  dtType1Builtin := by
+  premiseFreeAxiom := by
     intro a pr b hax
-    exact herb_encode (hcut (Derives.dtType1Builtin hax))
+    exact herb_encode (hcut (Derives.premiseFreeAxiom hax))
   caxAdcToDw := by
     intro ci cj hne y l hty hmem hlm1 hlm2
     obtain ⟨sy, oadc, hm1, rfl, hoadc⟩ := herb_decode (by decide) hty
