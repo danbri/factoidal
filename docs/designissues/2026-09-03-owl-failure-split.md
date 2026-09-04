@@ -666,3 +666,82 @@ WITH EACH OTHER … Combining two `∃p.Dᵢ` would assume they share one
 filler, which is false for a non-functional property." The fix belongs
 in `L4Factoidal/OWL/Materialise.lean`: one witness per obligation, or
 withhold the membership.
+
+## The B4 soundness fix and two refuter rules, 2026-09-04
+
+Baseline reproduced exactly at `0f0ad2b7d`: RL 1158 pass, 289 fail;
+`--dl` 1294 pass, 153 fail (out of 1457 each); `cap_hits` 0.
+
+| Commit | Change | RL before → after | `--dl` before → after |
+|---|---|---|---|
+| `c3d5d7a57` | one existential witness per OBLIGATION in `Materialise.lean`, not per `(individual, property)` | 1158 pass, 289 fail — unchanged | 1294 pass, 153 fail → 1295 pass, 152 fail |
+| `21ebe2be9` | the counting clash: pairwise-disjoint existentials against an at-most bound | unchanged | 1295 pass, 152 fail → 1297 pass, 150 fail |
+| `b4394b608` | the `owl:hasKey` graph-level violation | unchanged | 1297 pass, 150 fail → 1299 pass, 148 fail |
+
+`ConsistencyTest` under `--dl`: 758 pass, 4 fail → **761 pass, 1 fail**
+(out of 762). `NegativeEntailmentTest` 38 pass, 0 fail throughout.
+`InconsistencyTest` 131 pass, 29 fail → 133 pass, 27 fail (out of 160).
+`cap_hits` 0 in every run. No cap was raised: `maxWitnessDepth` is
+still 3 and `maxGeneratedWitnesses` is still 6.
+
+### B4 closed
+
+`witnessBNodeId` keyed the minted blank node on `(individual,
+property)`, so `p1 ⊑ ∃r.A` and `p2 ⊑ ∃r.B` were discharged by ONE
+filler carrying both `A` and `B`. That is the assumption `Refute.lean`
+forbids beside `existsUnsatisfiableWitness`, and OWL 2 Direct
+Semantics §2.2 reads `ObjectSomeValuesFrom(r C)` as one successor in
+`C`, never as one successor in the intersection of every such `C`. The
+identifier now carries the class expression that raised the
+obligation, and `witnessBreachesBound` counts the witnesses the pass
+has already minted for the pair so several obligations cannot each
+slip past one at-most bound.
+
+`WebOnt-description-logic-018`, `-020` and `-021` [ConsistencyTest] —
+the whole of B4 — are closed. `-019` and `-022` [InconsistencyTest]
+were lost by the same commit: both had been passing ONLY through the
+shared filler, so those passes were accidental. `21ebe2be9` recovers
+both by an argument that holds.
+
+### The 29 B3 units, re-read
+
+The split says the 23 OilEd units "are one expansion family, not 23
+separate gaps". The test descriptions do not support that. They are
+`t4.1` dynamic blocking, `t6.1`/`t6f.1` DOUBLE blocking, two 3-SAT
+encodings (`-502`, `-504`), two integer-multiplication encodings
+(`-909`, `-910`), a `owl:oneOf`-plus-inverse spy point (`-035`) and
+the `t3.x`/`t7.x`/heinsohn counting cases. Only the last group is one
+family, and `21ebe2be9` closes the two of them that the corpus asserts
+inconsistent and the merge search cannot reach. The blocking and
+propositional-encoding cases need a complete `SHOIQ` calculus with
+blocking, which is not an expansion rule.
+
+### ⚠️ The `scm-svf`/`scm-avf`/`scm-hv` memory blow-up is NOT in the refuter
+
+Measured 2026-09-04 on this worktree with the category-A agent's
+`scm-guarded.patch` applied, `type-positive-entailment.rdf` only:
+
+| Regime | Wall | Peak RSS | Finished |
+|---|---|---|---|
+| RL closure only | 8.6 s | 141 MB | yes, 331 pass, 77 fail (out of 412) |
+| `--dl` | 433 s | 5.94 GB | no, SIGKILL |
+| `--dl --refute-budget 1` | 344 s | 9.14 GB | no |
+| `--dl`, `countingClash` removed | 334 s | 9.48 GB | no |
+| `--dl`, `tableauConsistent` stubbed to `none` | 414 s | 10.08 GB | no |
+
+The last row disables the tableau refuter completely and the run still
+takes 10 GB and dies. The only other thing `--dl` adds is
+`OWL.Mat.materialise`, so the blow-up is in the MATERIALISATION PASS,
+not in the refuter's branching. The refuter's budget makes no
+difference to it, and the new counting clash is not implicated.
+
+A global node cap in `ensureWitnesses` (`maxSearchNodes`, tried at
+200) does not bound it either, which is the same evidence read a
+second way. It was measured and NOT landed.
+
+Where to look next: `materialiseWithBudget` budgets (individual, class
+expression) PAIRS at 400 000 and each pair costs one `isMember` at
+fuel 64 over the class-expression graph. The `scm` rows add
+`rdfs:subClassOf` edges BETWEEN restrictions, which is what makes that
+graph deep, so the per-pair cost is what grew — the pair budget cannot
+see it.
