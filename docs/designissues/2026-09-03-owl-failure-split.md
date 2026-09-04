@@ -582,6 +582,74 @@ one: `ClassExpr` has no `Hashable` instance, and the equality the fold
 tests is `ceEq`, which is `ceDefinite a && ClassExpr.beq a b` and is
 not reflexive on indefinite expressions. It is not attempted here.
 
+## Counting the refuter's work instead of timing it (`--tbox-census`)
+
+Date 2026-09-04. A wall clock on this laptop was worthless — load
+average moved between 5 and 51 on 8 cores while several agents held the
+machine. An OPERATION COUNT does not move with load, so
+`l4owl-probe --tbox-census` was added: for every case it computes the
+`--dl` premise closure, then prints the closure size, the number of
+TBox-bearing triples, the TBox size, how many of its axioms are
+STRUCTURALLY DISTINCT, the node and label counts of the initial tableau
+state, and the axiom-test count of ONE `onePass`.
+
+`onePass` folds over the whole TBox four times per node: once in
+`injectGlobalAxioms`, once per LABEL in `applyAxioms`, once in
+`applyAxiomsEdges` and once in `applyAxiomsConj`. So
+
+    tests_per_pass = tbox * (3 * nodes + labels)
+
+and `search` runs up to `--refute-budget` (default 64) passes per goal.
+
+### The result, whole corpus, 923 cases
+
+| Quantity | Value |
+|---|---|
+| Sum of `tests_per_pass` | 176,696,806 |
+| Share carried by the 12 heaviest cases | 77.6 per cent |
+| Cases whose TBox contains duplicate axioms | 923 of 923 |
+| TBox axioms, all cases | 122,253 |
+| Structurally distinct among them | 64,958 |
+
+The four `WebOnt-miscellaneous-001/-002/-011` scorings alone carry
+86.5 million of the 176.7 million, which is 49 per cent. Their closure
+is 24,093 triples, their TBox 3,872 axioms, and their initial state has
+814 nodes and 3,145 labels, so ONE pass tests 21.6 million axioms and a
+single refutation at budget 64 tests up to 1.4 billion.
+
+### What this confirms, and what it corrects
+
+It CONFIRMS that `applyAxioms` re-tests every axiom against every node
+every round with no absorption and no lazy unfolding, and that
+`injectGlobalAxioms` contributes a full TBox scan per node
+independently of that node's labels — one of the three `nodes` terms
+above. Absorption and lazy unfolding (Horrocks and Tobies, KR 2000) are
+the published remedy for exactly this shape.
+
+It CORRECTS the ordering. Until the store defect recorded in the
+section above was repaired, `applyAxioms` was NOT the dominant cost:
+92 per cent of the run was inside `collectAxioms`'s list scan, and the
+axiom folds were invisible under it. A recommendation to add absorption
+first would have bought nothing measurable. The fold cost is the
+residue AFTER the store fix, not the original defect.
+
+### 47 per cent of every TBox is duplicate axioms
+
+`collectAxioms` emits one axiom per triple, so two restriction nodes
+with the same `owl:onProperty` and the same filler produce the SAME
+class-expression pair, and the schema rows of Table 9 produce many such
+pairs. Across the corpus 122,253 axioms reduce to 64,958 distinct ones.
+
+Duplicates are INERT: `addLabel` returns unchanged when the label is
+already present, so a repeated axiom in `applyAxioms` and in
+`injectGlobalAxioms` adds nothing, and `applyAxiomsEdges` and
+`applyAxiomsConj` guard on `memCe a ls` before firing. Deduplicating
+the TBox therefore removes about 47 per cent of `tests_per_pass` with
+no change in what the refuter derives. It is NOT landed here: the
+argument above is an argument, not a Lean proof, and gating it needs
+its own whole-corpus `--dl` pair. It is the cheapest remaining lever
+and it is measured, so the next session does not have to guess.
+
 ## B5 enumerated: how, and what the method cannot see
 
 Done 2026-09-04 against `l4owl-probe` at commit `8029b7c1c`. The
