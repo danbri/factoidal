@@ -829,11 +829,14 @@ def caxDwAtS (s : Store) (d : Triple) : Bool :=
 def caxAdcAtS (s : Store) (d : Triple) : Bool :=
   if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
     (s.withSubjPred d.s owlMembers).any (fun mem =>
-      (listElemsS s mem.o (listFuel s.graph)).any (fun ci =>
-        (listElemsS s mem.o (listFuel s.graph)).any (fun cj =>
+      (listCellsS s mem.o (listFuel s.graph)).any (fun ci =>
+        (listCellsS s mem.o (listFuel s.graph)).any (fun cj =>
           !(ci == cj) &&
-          (s.withPredObj rdfType ci).any (fun u =>
-            s.memB ⟨u.s, rdfType, cj⟩))))
+          (s.withSubjPred ci rdfFirst).any (fun fi =>
+            (s.withSubjPred cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (s.withPredObj rdfType fi.o).any (fun u =>
+                s.memB ⟨u.s, rdfType, fj.o⟩))))))
   else false
 
 def eqDiff2AtS (s : Store) (d : Triple) : Bool :=
@@ -1102,7 +1105,7 @@ theorem stepConclusionsS_ofGraph (g : Graph) :
 theorem caxAdcAtS_ofGraph (g : Graph) : caxAdcAtS (Store.ofGraph g) = caxAdcAt g := by
   funext d
   unfold caxAdcAtS caxAdcAt
-  rw [listElemsS_ofGraph]
+  rw [listCellsS_ofGraph]
   rfl
 
 theorem eqDiff2AtS_ofGraph (g : Graph) :

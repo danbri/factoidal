@@ -1845,28 +1845,6 @@ theorem caxDwAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
       (mem_of_parts hug rfl hup huo) (mem_of_memB hm)
   · simp at h
 
-/-- **cax-adc**. -/
-theorem caxAdcAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
-    (h : caxAdcAt g d = true) : Clash g := by
-  unfold caxAdcAt at h
-  split at h
-  · rename_i hp
-    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
-    obtain ⟨hp1, hp2⟩ := hp
-    simp only [List.any_eq_true, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
-      Bool.not_true, beq_eq_false_iff_ne, ne_eq] at h
-    obtain ⟨mem, hmem, ci, hci, cj, hcj, hne, u, hu, hm⟩ := h
-    obtain ⟨hmg, hms, hmp⟩ := mem_withSubjPred hmem
-    obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
-    exact Clash.caxAdc (mem_of_parts hd rfl hp1 hp2)
-      (mem_of_parts hmg hms hmp rfl)
-      (listElems_sound g (listFuel g) mem.o hci)
-      (listElems_sound g (listFuel g) mem.o hcj)
-      hne
-      (mem_of_parts hug rfl hup huo)
-      (mem_of_memB hm)
-  · simp at h
-
 /-- The cell walk is sound: a cell it returns really is a cell of the
 collection, so that cell's `rdf:first` value really is a member. -/
 theorem listCells_sound (g : Graph) :
@@ -1889,6 +1867,36 @@ theorem listCells_sound (g : Graph) :
       obtain ⟨r, hr, h⟩ := h
       obtain ⟨hrg, hrs, hrp⟩ := mem_withSubjPred hr
       exact ListMember.there (mem_of_parts hrg hrs hrp rfl) (ih r.o h hf)
+
+/-- **cax-adc**, in the cell form. The `Clash.caxAdc` constructor asks
+only for two DISTINCT TERMS that are `ListMember`s; this row asks in
+addition that they sit in two distinct CELLS, so it is strictly weaker
+than the constructor. See the note above `eqDiff2At` in `RLClosure` for
+the `eq-rep-o` unsoundness the term-only reading carried. -/
+theorem caxAdcAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : caxAdcAt g d = true) : Clash g := by
+  unfold caxAdcAt at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true, beq_eq_false_iff_ne, ne_eq] at h
+    obtain ⟨mem, hmem, ci, hci, cj, hcj, -, fi, hfi, fj, hfj, hne, u, hu, hm⟩ := h
+    obtain ⟨hmg, hms, hmp⟩ := mem_withSubjPred hmem
+    obtain ⟨hfig, hfis, hfip⟩ := mem_withSubjPred hfi
+    obtain ⟨hfjg, hfjs, hfjp⟩ := mem_withSubjPred hfj
+    obtain ⟨hug, hup, huo⟩ := mem_withPredObj hu
+    exact Clash.caxAdc (mem_of_parts hd rfl hp1 hp2)
+      (mem_of_parts hmg hms hmp rfl)
+      (listCells_sound g (listFuel g) mem.o hci
+        (mem_of_parts hfig hfis hfip rfl))
+      (listCells_sound g (listFuel g) mem.o hcj
+        (mem_of_parts hfjg hfjs hfjp rfl))
+      hne
+      (mem_of_parts hug rfl hup huo)
+      (mem_of_memB hm)
+  · simp at h
 
 /-- **eq-diff2**. -/
 theorem eqDiff2At_sound {g : Graph} {d : Triple} (hd : d ∈ g)
@@ -2011,8 +2019,10 @@ theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
 /-- **Clash soundness.** Every `true` verdict of the decision procedure
 is a real `Clash` — the graph really does satisfy the premises of a
 no-consequent row of the tables. (The converse, completeness of the
-decision, is not claimed: `caxAdcAt` reads its member list through the
-same fuel-bounded walk the list-valued rows use.) -/
+decision, is not claimed: the four collection rows read their member
+lists through the same fuel-bounded walk the list-valued rows use, and
+each asks a distinct-CELL pair where its `Clash` constructor asks only
+for a distinct-TERM pair.) -/
 theorem detectClash_sound {g : Graph} (h : detectClash g = true) : Clash g := by
   simp only [detectClash, List.any_eq_true] at h
   obtain ⟨d, hd, hc⟩ := h

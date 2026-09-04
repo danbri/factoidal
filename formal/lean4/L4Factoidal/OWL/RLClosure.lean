@@ -1033,27 +1033,15 @@ def caxDwAt (g : Graph) (d : Triple) : Bool :=
       memB g ⟨u.s, rdfType, d.o⟩)
   else false
 
-/-- **cax-adc**. -/
-def caxAdcAt (g : Graph) (d : Triple) : Bool :=
-  if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
-    (withSubjPred g d.s owlMembers).any (fun mem =>
-      (listElems g mem.o (listFuel g)).any (fun ci =>
-        (listElems g mem.o (listFuel g)).any (fun cj =>
-          !(ci == cj) &&
-          (withPredObj g rdfType ci).any (fun u =>
-            memB g ⟨u.s, rdfType, cj⟩))))
-  else false
+/-! ### The four collection clash rows, and why they walk CELLS
 
-/-! ### The three collection clash rows, and why they walk CELLS
-
-`eqDiff2At`, `eqDiff3At` and `prpAdpAt` take their member pair from two
-DISTINCT CELLS of the collection, and additionally require the two
-members to be distinct terms. The `Clash` constructors they discharge
-ask only for the distinct TERMS — the same distinct-term reading of
-`1 <= i < j <= n` that `caxAdc` carries — so each engine row is
-STRICTLY WEAKER than its `Clash` row. Soundness is what is proved;
-completeness of the decision is not claimed here, exactly as for
-`caxAdcAt`.
+`caxAdcAt`, `eqDiff2At`, `eqDiff3At` and `prpAdpAt` take their member
+pair from two DISTINCT CELLS of the collection, and additionally
+require the two members to be distinct terms. The `Clash` constructors
+they discharge ask only for the distinct TERMS — the distinct-term
+reading of `1 <= i < j <= n` — so each engine row is STRICTLY WEAKER
+than its `Clash` row. Soundness is what is proved; completeness of the
+decision is not claimed here.
 
 The cell walk is not decoration. eq-rep-o copies an `rdf:first` value
 across an `owl:sameAs` edge, so after closure ONE cell of a well-formed
@@ -1063,6 +1051,20 @@ from that one cell is one POSITION of the table's `LIST[?y, ?z1, ...,
 corpus asserts consistent: measured 2026-09-04 on WebOnt-miscellaneous-
 001/002/011 (the Wine ontology, which imports the Food ontology and
 identifies `vin:Red` with `food:Red`). -/
+
+/-- **cax-adc**, in the cell form. -/
+def caxAdcAt (g : Graph) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlAllDisjointClasses then
+    (withSubjPred g d.s owlMembers).any (fun mem =>
+      (listCells g mem.o (listFuel g)).any (fun ci =>
+        (listCells g mem.o (listFuel g)).any (fun cj =>
+          !(ci == cj) &&
+          (withSubjPred g ci rdfFirst).any (fun fi =>
+            (withSubjPred g cj rdfFirst).any (fun fj =>
+              !(fi.o == fj.o) &&
+              (withPredObj g rdfType fi.o).any (fun u =>
+                memB g ⟨u.s, rdfType, fj.o⟩))))))
+  else false
 
 /-- **eq-diff2**. -/
 def eqDiff2At (g : Graph) (d : Triple) : Bool :=
