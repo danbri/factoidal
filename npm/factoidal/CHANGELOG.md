@@ -1,7 +1,55 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-04
 
+The package builds a store of its own. `pack` and `activate` join
+`inspect` and `query`, so `npm install @factoidal/core` gives a complete
+RDF store — import, activate, query — with no native binary on the
+machine. https://github.com/danbri/factoidal/issues/641
+
+- **`factoidal pack INPUT OUTPUT`** builds one immutable Shardborough
+  generation from a Turtle, TriG, N-Triples or N-Quads file, streaming
+  it in 65,536-byte chunks through the Lean engine's WebAssembly module.
+  The generation is BYTE-IDENTICAL to what the native
+  `l4block-shard-pack` writes: `diff -r` is empty for the `ibk3` triple
+  layout and for the `ibk4` quad layout, on inputs up to 888,949
+  triples. `--layout ibk3|ibk4`, `--syntax`, `--base`.
+- **`factoidal activate STORE GENERATION`** verifies every artifact
+  against the SHA-256 the manifest commits, and every cross-artifact
+  relation, then replaces `CURRENT` atomically. A generation that fails
+  verification never becomes current.
+- **`factoidal sample-store`** prints the path of a store this package
+  now carries, so a fresh install answers a SPARQL query with nothing
+  else to download: 4,434 triples in 13 predicate blocks, five IPTC
+  NewsCodes vocabularies under CC BY 4.0. Also exported as
+  `@factoidal/core/sample-store`. See NOTICE.
+- The engine gained a raw byte path out of the module
+  (`l4_call_blob_io`), so artifact bytes cross the boundary with no
+  encoding. Hexadecimal doubled them; base64 was refused. Measured on
+  the read path: 242,416 bytes and 96 ms hexadecimal against 4,893 bytes
+  and 70 ms raw.
+- The pack hashes with HACL* SHA-256, the same primitive the native
+  packer uses. It hashed with the pure Lean SHA-256 in development,
+  which cost 3.3 times: 104 s against 31 s on 888,949 triples. Now at
+  parity, 29.24 s against the native packer's 29.38 s.
+- `packBegin` takes a base IRI, defaulted by the command to
+  `file://<input>` so relative IRIs resolve exactly as the native packer
+  resolves them. `--base ''` asks for no base, which makes a relative
+  IRI a parse error rather than a silently different term.
+- `pack` on a syntax the streaming fold cannot read now says so by name
+  rather than raising an unhandled error.
+- `store-host` gained `readChunk` (a short read means end of file, not
+  an error), `writeNew` (create and fsync, refusing an existing file so
+  a name collision in a generation is reported) and `makeDirectory`, on
+  Node and on Deno both.
+- `factoidal activate` runs on the raised stack too. Verification decodes
+  the same blocks the pack encoded, so it recurses as deep; the worker was
+  given to `pack` alone at first, and a 112,742-row generation packed
+  successfully and then failed to activate with `Maximum call stack size
+  exceeded`, leaving a store that could be built and not opened. Found by
+  installing the tarball and running the command, which is why that step
+  is in the release procedure. `tests/store-host/cli.mjs` now gates
+  pack-then-activate on both runtimes.
 - `factoidal pack` no longer needs a runtime flag. The pack fold recurses
   deeper than either runtime's default call stack allows, so an input
   above roughly 0.5 MB ended with `Maximum call stack size exceeded`
@@ -16,6 +64,20 @@
   frame budget and the flag that raises it rather than crashing. A
   browser tab has a fixed frame budget and no flag, so this does not
   make an in-page packer possible.
+
+Known limits, measured:
+
+- `update` and `compact` still exit 3. The delta-log operations are
+  stage 4 of https://github.com/danbri/factoidal/issues/641.
+- The `ibk4` quad layout reads the whole source rather than streaming,
+  because a quad block commits a graph-set summary over the entire
+  input. The wasm packer refuses a quad file above 128 MiB.
+  https://github.com/danbri/factoidal/issues/650
+- A query plan is refused above 64 artifacts, 8,388,608 blob bytes or
+  100,000 rows. https://github.com/danbri/factoidal/issues/648
+- Packing in a browser tab is limited to about 7,800 distinct terms in
+  one block, whatever the file size, and no host flag raises it.
+  https://github.com/danbri/factoidal/issues/647
 
 ## 0.3.0 — 2026-09-03
 

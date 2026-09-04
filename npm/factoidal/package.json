@@ -1,6 +1,6 @@
 {
   "name": "@factoidal/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Factoidal: a linked information system with graph data and the Web at its heart - RDF parsing, SPARQL 1.1 query, canonicalization and entailment for Node and the browser (JS + Wasm), grounded in F* and Lean 4. Parser and algebra spec verified in F*; on-disk backend has unverified OCaml-side optimization layers being migrated back to F*.",
   "keywords": [
     "sparql",

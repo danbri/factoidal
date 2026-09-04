@@ -706,7 +706,7 @@ async function commandPack (positional, options) {
   let answer
   try {
     answer = await runPack(
-      { input, output, syntax, layout, base: packBase(input, options) },
+      { kind: 'pack', input, output, syntax, layout, base: packBase(input, options) },
       quiet
         ? undefined
         : (progress) => {
@@ -754,27 +754,38 @@ async function commandPack (positional, options) {
 async function commandActivate (positional, options) {
   if (positional.length !== 2) throw new UsageError('activate needs STORE and GENERATION')
   const [root, generation] = positional
-  const store = openStore(root, generation)
-  const engine = await loadEngine()
-  if (!packSupported(engine)) {
+  // Verification decodes the same blocks the pack encoded, so it recurses
+  // as deep and needs the same raised stack. Measured 2026-09-04: a
+  // 112,742-row generation packed successfully and then failed to
+  // activate with `Maximum call stack size exceeded`, leaving a store
+  // that could be built and not opened
+  // (https://github.com/danbri/factoidal/issues/649).
+  const host = { worker: options['no-worker'] !== true }
+  const reexec = await denoReexec(host)
+  if (reexec !== null) return reexec
+  let answer
+  try {
+    answer = await runPack({ kind: 'activate', root, generation }, undefined, host)
+  } catch (error) {
+    if (error instanceof PackError || error instanceof StoreHostError) {
+      err(`factoidal activate: ${error.code ? error.code + ': ' : ''}${error.message}`)
+      return EXIT_FAILURE
+    }
+    if (error instanceof Error && typeof error.message === 'string') {
+      err(`factoidal activate: ${error.message.replace(/^l4factoidal:\s*/, '')}`)
+      if (isStackOverflow(error)) {
+        for (const line of stackLimitAdvice(STACK_REMEDY.pack)) err(line)
+      }
+      return EXIT_FAILURE
+    }
+    throw error
+  }
+  if (answer.notWired === true) {
     return notWired('activate',
       'This install carries an engine built before the activation ' +
       'verification operation. Update @factoidal/core.')
   }
-  const files = listGeneration(store.generationDir)
-  const artifacts = files
-    .filter((file) => file.name !== store.manifestName)
-    .map((file) => ({
-      key: file.name,
-      bytes: readWhole(joinPath(store.generationDir, file.name))
-    }))
-  let verdict
-  try {
-    verdict = verifyGeneration(engine, store.manifestHex, artifacts)
-  } catch (error) {
-    err(`factoidal activate: ${error.message}`)
-    return EXIT_FAILURE
-  }
+  const verdict = answer.report
   if (verdict.ok !== true) {
     err(`factoidal activate: ${verdict.error}`)
     err('The generation is NOT activated; CURRENT is unchanged.')

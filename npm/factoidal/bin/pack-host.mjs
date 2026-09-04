@@ -42,10 +42,11 @@
 // route rescues an in-page packer. See the closing section of
 // `docs/designissues/2026-09-03-npm-pack-in-wasm.md`.
 
-import { StoreHostError } from '../store-host/index.mjs'
-import { fileUrlToPath } from '../store-host/paths.mjs'
+import { StoreHostError, listGeneration, readWhole } from '../store-host/index.mjs'
+import { fileUrlToPath, joinPath } from '../store-host/paths.mjs'
 import { loadEngine } from './engine.mjs'
-import { PackError, packFile, packSupported } from './pack.mjs'
+import { PackError, packFile, packSupported, verifyGeneration } from './pack.mjs'
+import { openStore } from './store.mjs'
 
 const isDeno = typeof globalThis.Deno !== 'undefined'
 
@@ -172,16 +173,26 @@ export function isStackOverflow (error) {
 // ------------------------------------------------------ the pack itself
 
 /**
- * Load the engine and pack one file, on whatever stack the caller has.
+ * Load the engine and run one deep task, on whatever stack the caller has.
  *
  * This is the body both routes run: the worker calls it on its own big
  * stack, and `--no-worker` calls it in the process it was started in.
+ *
+ * `task.kind` selects the work. Both kinds recurse once per distinct term
+ * in a block's local term index, so both need the raised stack -- the
+ * verification `activate` runs decodes the same blocks the pack encoded.
+ * `activate` overflowed on a 112,742-row generation that `pack` had just
+ * written successfully, which is how the two came to share this path
+ * (measured 2026-09-04, https://github.com/danbri/factoidal/issues/649).
  *
  * @returns {{notWired: true}|{report: object}}
  */
 export async function packHere (task, onProgress) {
   const engine = await loadEngine()
   if (!packSupported(engine)) return { notWired: true }
+  if (task.kind === 'activate') {
+    return { report: activateHere(engine, task) }
+  }
   const report = packFile(engine, task.input, task.output, {
     syntax: task.syntax,
     layout: task.layout,
@@ -189,6 +200,27 @@ export async function packHere (task, onProgress) {
     onProgress
   })
   return { report }
+}
+
+/**
+ * Verify one generation and answer the engine's verdict.
+ *
+ * The host reads the manifest and every artifact and hands them over; the
+ * engine checks each against the digest the manifest commits. Replacing
+ * CURRENT is NOT done here -- it is the caller's step, and it happens on
+ * the main thread only after this returns ok, so a worker that dies
+ * mid-verification can never leave a half-moved pointer.
+ */
+function activateHere (engine, task) {
+  const store = openStore(task.root, task.generation)
+  const files = listGeneration(store.generationDir)
+  const artifacts = files
+    .filter((file) => file.name !== store.manifestName)
+    .map((file) => ({
+      key: file.name,
+      bytes: readWhole(joinPath(store.generationDir, file.name))
+    }))
+  return verifyGeneration(engine, store.manifestHex, artifacts)
 }
 
 /**
@@ -242,12 +274,14 @@ async function packInWorker (task, onProgress) {
 }
 
 /**
- * Run one pack, on the biggest stack this runtime will give it.
+ * Run one deep task, on the biggest stack this runtime will give it.
  *
  * On Node the worker route is the default. On Deno the caller has
  * already re-executed (see `denoReexec`), so this runs in process.
  *
- * @param {object} task {input, output, syntax, layout, base}
+ * @param {object} task {kind, ...}: a pack takes
+ *   {input, output, syntax, layout, base}, an activate takes
+ *   {root, generation}
  * @param {(progress: object) => void} [onProgress]
  * @param {object} [options] {worker: false} forces the in-process path
  */

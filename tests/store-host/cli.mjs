@@ -408,6 +408,38 @@ await check('the bundled store answers a COUNT with no native binary', () => {
     `COUNT answered ${srj.results.bindings[0].n.value}, expected 4434`)
 })
 
+// A generation the command packed must also be one the command can
+// ACTIVATE. Verification decodes the same blocks the pack encoded, so it
+// recurses as deep; before 2026-09-04 the worker stack was given to pack
+// alone and a 112,742-row generation packed and then failed to activate,
+// leaving a store that could be built and not opened
+// (https://github.com/danbri/factoidal/issues/649).
+await check('a generation the command packed is one the command can activate', () => {
+  const source = joinPath(repoRoot,
+    'examples/wikidata/subsets/lifesci-kgx/data/anatomical_structure.ttl')
+  if (!shim.exists(source)) {
+    skipped += 1
+    console.log('  skip pack-then-activate - the fixture is absent')
+    return
+  }
+  const root = joinPath(workDirectory, 'packed-then-activated')
+  shim.mkdir(joinPath(root, 'gen-1'))
+  const packed = runCliWrite(['pack', source, joinPath(root, 'gen-1'), '--layout', 'ibk3', '--quiet'])
+  assert(packed.code === 0, `pack exited ${packed.code}: ${packed.stderr.trim()}`)
+  const activated = runCliWrite(['activate', root, 'gen-1'])
+  assert(activated.code === 0,
+    `activate exited ${activated.code}: ${activated.stderr.trim()}`)
+  assert(activated.stdout.indexOf('artifacts verified') >= 0,
+    `activate printed:\n${activated.stdout}`)
+  assert(shim.exists(joinPath(root, 'CURRENT')),
+    'activate did not write CURRENT')
+  const inspected = runCli(['inspect', root, '--json'])
+  assert(inspected.code === 0, `inspect exited ${inspected.code}`)
+  const envelope = JSON.parse(inspected.stdout)
+  assert(envelope.totalRows === 112742,
+    `the activated generation commits ${envelope.totalRows} rows, expected 112742`)
+})
+
 await check('the bundled store answers the join the README prints', () => {
   const root = runCli(['sample-store']).stdout.trim()
   const result = runCli(['query', root, '--query',
