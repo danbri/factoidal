@@ -417,12 +417,111 @@ def vocabAnnotationPropertyAxioms : List Triple :=
     ⟨Subject.iri owlIncompatibleWith, rdfType,
      Term.iri owlAnnotationProperty⟩ ]
 
+/-- **The RDFS-vocabulary axiomatic triples of OWL 2 RDF-Based
+Semantics Table 6.5**, transcribed, less the four
+`owl:AnnotationProperty` typings already in
+`vocabAnnotationPropertyAxioms`.
+
+Section 6 "Axiomatic Triples", Table 6.5 "Additional Axiomatic Triples
+for Classes and Properties of the RDFS Vocabulary". These are the
+triples the OWL 2 RDF-Based Semantics adds to the RDF Semantics
+axiomatic triples, and they are what relate the RDFS class and property
+vocabulary to the OWL 2 one:
+
+    rdfs:Class rdfs:subClassOf owl:Class .
+    rdfs:comment rdfs:domain rdfs:Resource .
+    rdfs:comment rdfs:range rdfs:Literal .
+    rdfs:Datatype rdfs:subClassOf owl:DataRange .
+    rdfs:isDefinedBy rdfs:domain rdfs:Resource .
+    rdfs:isDefinedBy rdfs:range rdfs:Resource .
+    rdfs:label rdfs:domain rdfs:Resource .
+    rdfs:label rdfs:range rdfs:Literal .
+    rdfs:Literal rdf:type rdfs:Datatype .
+    rdf:Property rdfs:subClassOf owl:ObjectProperty .
+    rdfs:Resource rdfs:subClassOf owl:Thing .
+    rdfs:seeAlso rdfs:domain rdfs:Resource .
+    rdfs:seeAlso rdfs:range rdfs:Resource .
+
+`rdfs:Class rdfs:subClassOf owl:Class` is the row WebOnt-Class-002
+needs: with cax-sco it turns `?x rdf:type rdfs:Class` into `?x rdf:type
+owl:Class`.
+
+Table 6.1 "Axiomatic Triples for the Classes of the OWL 2 RDF-Based
+Vocabulary" is NOT here, and the reason is measured, not a preference.
+Its 51 triples put a cyclic `rdfs:subClassOf` lattice over the whole
+OWL 2 class vocabulary (`owl:Class rdfs:subClassOf rdfs:Class` from
+Table 6.1 against `rdfs:Class rdfs:subClassOf owl:Class` from Table 6.5,
+and `owl:ObjectProperty rdfs:subClassOf rdf:Property` against
+`rdf:Property rdfs:subClassOf owl:ObjectProperty`) into EVERY closure.
+Measured on 2026-09-04: scm-sco then saturates that lattice in every
+closure, six `RLTests` saturation guards go red, and `RLSemantics`
+elaboration goes from 26 s to 189 s. The same feedback the
+`drivesXsdAxioms` doc comment records. Landing Table 6.1 needs the
+guarded-axiom treatment that comment describes, not a longer list. -/
+def rdfsVocabAxioms : List Triple :=
+  [ -- rdfs:Class rdfs:subClassOf owl:Class .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Class", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#subClassOf", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2002/07/owl#Class", rfl⟩⟩
+  , -- rdfs:comment rdfs:domain rdfs:Resource .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#comment", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#domain", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩⟩
+  , -- rdfs:comment rdfs:range rdfs:Literal .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#comment", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#range", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Literal", rfl⟩⟩
+  , -- rdfs:Datatype rdfs:subClassOf owl:DataRange .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Datatype", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#subClassOf", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2002/07/owl#DataRange", rfl⟩⟩
+  , -- rdfs:isDefinedBy rdfs:domain rdfs:Resource .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#isDefinedBy", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#domain", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩⟩
+  , -- rdfs:isDefinedBy rdfs:range rdfs:Resource .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#isDefinedBy", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#range", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩⟩
+  , -- rdfs:label rdfs:domain rdfs:Resource .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#label", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#domain", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩⟩
+  , -- rdfs:label rdfs:range rdfs:Literal .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#label", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#range", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Literal", rfl⟩⟩
+  , -- rdfs:Literal rdf:type rdfs:Datatype .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Literal", rfl⟩,
+     ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#type", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Datatype", rfl⟩⟩
+  , -- rdf:Property rdfs:subClassOf owl:ObjectProperty .
+    ⟨Subject.iri ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#Property", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#subClassOf", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2002/07/owl#ObjectProperty", rfl⟩⟩
+  , -- rdfs:Resource rdfs:subClassOf owl:Thing .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#subClassOf", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2002/07/owl#Thing", rfl⟩⟩
+  , -- rdfs:seeAlso rdfs:domain rdfs:Resource .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#seeAlso", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#domain", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩⟩
+  , -- rdfs:seeAlso rdfs:range rdfs:Resource .
+    ⟨Subject.iri ⟨"http://www.w3.org/2000/01/rdf-schema#seeAlso", rfl⟩,
+     ⟨"http://www.w3.org/2000/01/rdf-schema#range", rfl⟩,
+     Term.iri ⟨"http://www.w3.org/2000/01/rdf-schema#Resource", rfl⟩⟩
+  ]
+
+
 /-- **The premise-free axiom triples.** Everything the `premiseFreeAxiom`
 row asserts with no premise at all: the two builtin `rdfs:Datatype`
-typings of Table 7's dt-type1, and the nine annotation-property typings
-of OWL 2 RDF-Based Semantics Table 5.3. -/
+typings of Table 7's dt-type1, and the axiomatic triples of OWL 2
+RDF-Based Semantics Section 6 that this tree carries: the
+annotation-property rows of Tables 6.2 and 6.5, and the rest of
+Table 6.5. -/
 def premiseFreeAxioms : List Triple :=
-  builtinDatatypeAxioms ++ vocabAnnotationPropertyAxioms
+  builtinDatatypeAxioms ++ vocabAnnotationPropertyAxioms ++ rdfsVocabAxioms
 
 /-- The predicates under which an XSD IRI in the OBJECT slot is being
 used as a datatype rather than merely named. The `xsdAxioms` guard

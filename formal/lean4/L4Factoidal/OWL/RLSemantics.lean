@@ -1434,10 +1434,10 @@ theorem premiseFreeAxioms_shape :
       t = ⟨Subject.iri a, pr, Term.iri b⟩ := by
   intro t ht
   simp only [premiseFreeAxioms, builtinDatatypeAxioms,
-    vocabAnnotationPropertyAxioms, List.cons_append, List.nil_append,
-    List.mem_cons, List.not_mem_nil, or_false] at ht
-  rcases ht with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
-    exact ⟨_, _, _, rfl⟩
+    vocabAnnotationPropertyAxioms, rdfsVocabAxioms, List.cons_append,
+    List.nil_append, List.mem_cons, List.not_mem_nil, or_false] at ht
+  repeat' (rcases ht with rfl | ht)
+  all_goals exact ⟨_, _, _, rfl⟩
 
 /-! ## The comprehension witnesses and the extended assignment -/
 
