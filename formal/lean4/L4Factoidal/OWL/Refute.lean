@@ -295,6 +295,12 @@ structure RState where
       every successor that came from there, which is most of them on
       the real path. Pooling at read time covers both. -/
   ident      : List (Term × Term) := []
+  /-- The TBox `collectAxioms` read, as (antecedent, consequent)
+      pairs. `search` carries it as an argument; the clash rules need
+      it too, and a clash rule cannot take one more argument without
+      threading it through `clashNodes`, so it is carried here as
+      well. Written once, by `tableauConsistent`. -/
+  tbox       : List (ClassExpr × ClassExpr) := []
 
 def maxWitnessDepth : Nat := 3
 def maxGeneratedWitnesses : Nat := 6
@@ -833,12 +839,110 @@ def datatypeCardinalityClash (st : RState) (ls : List ClassExpr) : Bool :=
      | some m => k > m
      | none   => false))
 
+/-! ## The counting clash: pairwise-disjoint existentials against `≤ k`
+
+The ≤-rule below closes a `≤ k p` by MERGING successors and asking
+every merge to clash. That search is a partition enumeration —
+`WebOnt-description-logic-019` records 301 partitions for its
+unsatisfiable case and `-022` records 42,525 for its satisfiable one —
+so on the OilEd fixtures it does not finish inside any budget worth
+giving it.
+
+The rule here decides the same clash analytically, and it is the
+standard ≥/≤ counting argument of the `SHIQ` calculus (Horrocks,
+Sattler and Tobies, "Practical Reasoning for Very Expressive
+Description Logics", LJ IGPL 8(3), 2000, §3, the `≥`/`≤` clash
+condition; the same argument the `choose`-free counting optimisation
+of FaCT and RACER uses).
+
+    If `x` carries `∃p.C₁ … ∃p.Cₘ` with the `Cᵢ` PAIRWISE DISJOINT,
+    then in every model `x` has `m` p-successors that are pairwise
+    distinct, because a shared successor would lie in two disjoint
+    classes. A `≤ k p` on `x` with `k < m` therefore has no model.
+
+Under OWL 2 Direct Semantics §2.2 that reads
+`ObjectSomeValuesFrom(p Cᵢ) ⊆ {x | ∃y. ⟨x,y⟩ ∈ p ∧ y ∈ Cᵢ}` and
+`ObjectMaxCardinality(k p) ⊆ {x | #{y | ⟨x,y⟩ ∈ p} ≤ k}`, so the
+argument is a counting one over `p`'s extension at `x` and needs no
+choice of witnesses.
+
+Both directions of approximation withhold the clash rather than
+invent one: `ceDisjoint` proves disjointness structurally and answers
+`false` where it cannot, and `disjointClique` takes a GREEDY
+pairwise-disjoint subset, which is a lower bound on the largest one. -/
+
+/-- `ls` with `news` appended, skipping what is already there. -/
+def addCes (ls : List ClassExpr) (news : List ClassExpr) : List ClassExpr :=
+  news.foldl (fun acc c => if memCe c acc then acc else acc ++ [c]) ls
+
+/-- The labels a node must carry if it carries every member of `ls`:
+    the conjuncts of each intersection, and the consequent of each
+    TBox axiom whose antecedent is present, to a fixpoint under
+    `fuel`. Running out of fuel DROPS labels, which can only lose a
+    clash. -/
+def ceLabelClosure (tb : List (ClassExpr × ClassExpr))
+    : Nat → List ClassExpr → List ClassExpr
+  | 0,     ls => ls
+  | n + 1, ls =>
+    let ls' := addCes ls
+      ((ls.flatMap (fun l => match l with
+                             | .intersection cs => cs
+                             | _                => [])) ++
+       tb.filterMap (fun q => if memCe q.1 ls then some q.2 else none))
+    if ls'.length == ls.length then ls else ceLabelClosure tb n ls'
+
+/-- A label set that no node can carry: a complement pair, or
+    `owl:Nothing`. The structural core of `clashForLabel`, without the
+    parts that read the graph. -/
+def cesClash (ls : List ClassExpr) : Bool :=
+  ls.any (fun l => match l with
+                   | .complement c => memCe c ls
+                   | .named x      => x == owlNothing
+                   | _             => false)
+
+/-- Are `a` and `b` disjoint — is `a ⊓ b` unsatisfiable? Proved by
+    closing the pair's label set under the TBox and finding a
+    structural clash in it. `false` where no proof is found. -/
+def ceDisjoint (tb : List (ClassExpr × ClassExpr)) (a b : ClassExpr) : Bool :=
+  ceDefinite a && ceDefinite b &&
+  cesClash (ceLabelClosure tb 8 (addCes [a] [b]))
+
+/-- The fillers of the existential obligations on `p`. A
+    `minQualCard k p C` with `k ≥ 1` obliges one filler in `C` the
+    same way `∃p.C` does; the extra `k - 1` are not used here. -/
+def existentialFillersOn (p : WfIri) (ls : List ClassExpr) : List ClassExpr :=
+  ls.filterMap (fun l => match l with
+    | .someOf q c        => if q == p then some c else none
+    | .minQualCard k q c => if q == p && k ≥ 1 then some c else none
+    | _                  => none)
+
+/-- A pairwise-disjoint subset of `cs`, taken greedily in list order.
+    Any pairwise-disjoint subset is a valid lower bound on the number
+    of successors the obligations force apart, so a greedy one is
+    sound; a maximum one would only find more clashes. -/
+def disjointClique (tb : List (ClassExpr × ClassExpr)) (cs : List ClassExpr)
+    : List ClassExpr :=
+  cs.foldl (fun acc c =>
+    if acc.all (fun d => ceDisjoint tb c d) then acc ++ [c] else acc) []
+
+/-- `≤ k p` (or `= k p`) against the existential obligations on `p`.
+    The cheap length test runs first: with `m ≤ k` obligations no
+    clique can exceed `k`, so no disjointness is computed at all. -/
+def countingClash (st : RState) (ls : List ClassExpr) : Bool :=
+  ls.any (fun l =>
+    match l with
+    | .maxCard k p | .exactCard k p =>
+        let cs := existentialFillersOn p ls
+        cs.length > k && (disjointClique st.tbox cs).length > k
+    | _ => false)
+
 def clashNodes (g : Graph) (st : RState) : Bool :=
   st.nodes.any (fun n =>
     let ls := labelsOf st n.id
     ls.any (clashForLabel g st n.id ls)
     || datatypeRangeClash st ls
-    || datatypeCardinalityClash st ls)
+    || datatypeCardinalityClash st ls
+    || countingClash st ls)
 
 /-! ## Graph-level violations
 
@@ -1546,7 +1650,8 @@ def initState (g : Graph) : RState :=
 def tableauConsistent (g : Graph) (budget : Nat) : Option Bool :=
   if immediateInconsistency g then some false
   else
-    match (search (collectAxioms g) g (initState g) budget).1 with
+    let tb := collectAxioms g
+    match (search tb g { initState g with tbox := tb } budget).1 with
     | .clash => some false
     | .open' => some true
     | .out   => none
