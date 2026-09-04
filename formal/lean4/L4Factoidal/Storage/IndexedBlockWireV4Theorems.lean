@@ -379,9 +379,9 @@ predicate, object and graph IDs resolve — from the
 reconstruction step run on the encoder's own inputs. The graph-set summary
 needs no separate condition: the encoder writes `distinctGraphs` of the rows
 and the decoder recomputes `distinctGraphs` of the rows it decoded. -/
-theorem decode_encode? (block : QuadBlock)
+theorem decodeSpec_encode? (block : QuadBlock)
     (bytes : ByteArray) (h : encode? block = some bytes) :
-    ∃ decoded, decode bytes = some decoded ∧
+    ∃ decoded, decodeSpec bytes = some decoded ∧
       decoded.dict = block.dict ∧ decoded.rows = block.rows := by
   rw [encode?] at h
   split at h
@@ -574,7 +574,7 @@ theorem decode_encode? (block : QuadBlock)
           fromParts?_ok block.dict block.rows hpartsSome
         refine ⟨decoded, ?_, hddict, hdrows⟩
         -- assemble
-        rw [decode, listOfByteArray_byteArrayOfList]
+        rw [decodeSpec, listOfByteArray_byteArrayOfList]
         simp only [hheader, bind, Option.bind]
         rw [if_neg (by
           rw [hinpLen]; simp only [prefixBytes, graphEntryBytes, rowBytes]; omega),
@@ -598,6 +598,55 @@ theorem decode_encode? (block : QuadBlock)
         simp only [Bool.false_eq_true, if_false, hptddec]
         exact hparts
 
+/-! ## The byte-array decoder equals the specification
+
+`decodeSpec` states IBK4 admission over the byte LIST: it converts the whole
+artifact with `listOfByteArray`, slices the payload with `List.drop`/
+`List.take`, and folds `crc32c` over that slice. `decode` reads the same
+length, the same stored checksum and the same payload from the byte array
+itself, so a five-megabyte artifact costs no cons cell. This equation is the
+only place where the two meet; `decode_encode?` below is derived through it.
+
+The three bridging lemmas are `IndexedBlockWireV3Theorems`'s and are reused,
+not restated. Only the payload-slice lemma is repeated here, because IBK4
+carries its own `magicVersionBytes` and `crcBytes` definitions. -/
+
+/-- The CRC32C the specification folds over the payload byte list is the CRC32C
+    the decoder accumulates over the payload byte range in place. -/
+theorem crc32c_payload_slice_v4 (bytes : ByteArray) :
+    crc32c (((listOfByteArray bytes).drop magicVersionBytes).take
+        (bytes.size - magicVersionBytes - crcBytes))
+      = crc32cAppendArray 0xFFFFFFFF
+          (bytes.extract magicVersionBytes (bytes.size - crcBytes)) ^^^ 0xFFFFFFFF := by
+  have hsub : bytes.size - crcBytes - magicVersionBytes
+      = bytes.size - magicVersionBytes - crcBytes := by
+    simp only [magicVersionBytes, crcBytes]; omega
+  have hx := IndexedBlockWireV3.listOfByteArray_extract bytes
+    magicVersionBytes (bytes.size - crcBytes)
+  rw [hsub] at hx
+  have hcrc : crc32cAppendArray 0xFFFFFFFF
+      (bytes.extract magicVersionBytes (bytes.size - crcBytes))
+      = (listOfByteArray (bytes.extract magicVersionBytes (bytes.size - crcBytes))).foldl
+        crc32cByte 0xFFFFFFFF := crc32cAppendArray_eq _ _
+  rw [hcrc, hx, crc32c]
+
+/-- The in-place decoder admits exactly the bytes the specification admits, and
+    returns exactly the block it returns. -/
+theorem decode_eq_spec (bytes : ByteArray) : decode bytes = decodeSpec bytes := by
+  simp only [decode, decodeSpec,
+    IndexedBlockWireV3.length_listOfByteArray,
+    IndexedBlockWireV3.readU32LE_listOfByteArray,
+    crc32c_payload_slice_v4]
+
+/-- Whatever `encode?` accepts, `decode` restores with the same dictionary
+    array and the same ID quad row array. -/
+theorem decode_encode? (block : QuadBlock)
+    (bytes : ByteArray) (h : encode? block = some bytes) :
+    ∃ decoded, decode bytes = some decoded ∧
+      decoded.dict = block.dict ∧ decoded.rows = block.rows := by
+  rw [decode_eq_spec]
+  exact decodeSpec_encode? block bytes h
+
 /-- The quads an IBK4 artifact denotes are the quads its source block denotes.
     `QuadBlock.denotes` reads only the dictionary array and the row array,
     which `decode_encode?` restores unchanged. -/
@@ -611,6 +660,8 @@ theorem denotes_decode_encode? (block : QuadBlock)
 #print axioms decodeGraphsGo_ok
 #print axioms decodeRowsGo_ok
 #print axioms fromParts?_ok
+#print axioms decodeSpec_encode?
+#print axioms decode_eq_spec
 #print axioms decode_encode?
 #print axioms denotes_decode_encode?
 

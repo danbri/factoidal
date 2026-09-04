@@ -406,11 +406,34 @@ def decodeGraphSet? (headerBytes summaryBytes : ByteArray) :
   let summary ← decodeGraphSummary header.graphCount summaryBytes
   some (header, summary)
 
-/-- Complete admission decoder. PTD1 validates its own page layout and CRC;
-    IBK4 validates its framing, row count and order, predicate locality, the
-    graph-set summary against the decoded rows, and its CRC, before rebuilding
-    the quad-block denotation. -/
-def decode (bytes : ByteArray) : Option QuadBlock := do
+/-! ## The admission decoder
+
+An IBK4 artifact is the largest object a quad query reads: one predicate block
+of the SKOS store measured for
+<https://github.com/danbri/factoidal/issues/653> is 5,571,302 bytes. Reading it
+through `listOfByteArray` converts every byte to a cons cell, the payload is
+copied again by `List.drop`/`List.take`, `crc32c` folds over that copy, and the
+stored-checksum read drops the list once more — four data-sized allocations per
+artifact. `PagedTermDictionary` and `IndexedBlockWireV3` were both moved off
+that shape; IBK4, the quad codec, was not, and it is what the WebAssembly query
+path spends most of its time in.
+
+`decodeSpec` keeps the list decoder as the SPECIFICATION of what IBK4 admits.
+`decode` reads the same fields by byte-array index and checksums the payload in
+place with `Bytes.crc32cAppendArray`.
+`IndexedBlockWireV4Theorems.decode_eq_spec` proves
+
+    decode bytes = decodeSpec bytes
+
+for every `bytes`, so the format and the admission decision are unchanged. -/
+
+/-- Complete admission decoder, stated over the byte list. This is the
+    SPECIFICATION; `decode` is proved equal to it.
+
+    PTD1 validates its own page layout and CRC; IBK4 validates its framing, row
+    count and order, predicate locality, the graph-set summary against the
+    decoded rows, and its CRC, before rebuilding the quad-block denotation. -/
+def decodeSpec (bytes : ByteArray) : Option QuadBlock := do
   let input := listOfByteArray bytes
   let header ← decodePrefix (bytes.extract 0 prefixBytes)
   if input.length < prefixBytes + header.graphCount * graphEntryBytes +
@@ -423,6 +446,34 @@ def decode (bytes : ByteArray) : Option QuadBlock := do
   let rowEnd := graphEnd + header.rowCount * rowBytes
   let dictionaryEnd := rowEnd + header.dictionaryBytes
   if dictionaryEnd + 4 != input.length then none else do
+  let dictionaryBytes := bytes.extract rowEnd dictionaryEnd
+  let ptd ← PagedTermDictionary.decodePrefix (dictionaryBytes.extract 0 PagedTermDictionary.prefixBytes)
+  if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
+  let summary ← decodeGraphSummary header.graphCount (bytes.extract graphStart graphEnd)
+  let positioned ← decodeRows header.rowCount (bytes.extract graphEnd rowEnd)
+  let rows ← orderedRows? header.rowCount positioned
+  if !predicateLocal rows then none else do
+  if summary != distinctGraphs rows.toList then none else do
+  let dictionary ← PagedTermDictionary.decode? dictionaryBytes
+  fromParts? dictionary rows
+
+/-- Complete admission decoder, reading the artifact by byte-array index.
+
+    The bytes admitted, and the quad block returned, are exactly
+    `decodeSpec`'s; `IndexedBlockWireV4Theorems.decode_eq_spec` is that
+    proof. -/
+def decode (bytes : ByteArray) : Option QuadBlock := do
+  let header ← decodePrefix (bytes.extract 0 prefixBytes)
+  if bytes.size < prefixBytes + header.graphCount * graphEntryBytes +
+      header.rowCount * rowBytes + header.dictionaryBytes + 4 then none else do
+  let storedCrc ← readU32At? bytes (bytes.size - crcBytes)
+  if storedCrc != (crc32cAppendArray 0xFFFFFFFF
+      (bytes.extract magicVersionBytes (bytes.size - crcBytes)) ^^^ 0xFFFFFFFF) then none else do
+  let graphStart := prefixBytes
+  let graphEnd := graphStart + header.graphCount * graphEntryBytes
+  let rowEnd := graphEnd + header.rowCount * rowBytes
+  let dictionaryEnd := rowEnd + header.dictionaryBytes
+  if dictionaryEnd + 4 != bytes.size then none else do
   let dictionaryBytes := bytes.extract rowEnd dictionaryEnd
   let ptd ← PagedTermDictionary.decodePrefix (dictionaryBytes.extract 0 PagedTermDictionary.prefixBytes)
   if ptd.pageTerms != PagedTermDictionary.defaultPageTerms then none else do
