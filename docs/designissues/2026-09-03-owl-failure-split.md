@@ -239,6 +239,140 @@ position of `LIST[?y, ?z1, ..., ?zn]`, not two. **`caxAdcAt` carries the
 same exposure and was not changed.** It does not misfire on this corpus
 today, and it should be narrowed the same way.
 
+### `d980a444d` — the nine annotation-property axiomatic triples
+
+| Rows added | RL before → after | `--dl` before → after |
+|---|---|---|
+| OWL 2 RDF-Based Semantics Tables 6.2 and 6.5, `owl:AnnotationProperty` typings | 1138 pass, 309 fail → 1156 pass, 291 fail | 1211 pass, 236 fail → 1229 pass, 218 fail |
+
+Sub-bucket B5. Nine triples, transcribed from Section 6 "Axiomatic
+Triples": `owl:versionInfo`, `owl:deprecated`, `owl:priorVersion`,
+`owl:backwardCompatibleWith` and `owl:incompatibleWith` from Table 6.2,
+and `rdfs:comment`, `rdfs:label`, `rdfs:seeAlso` and `rdfs:isDefinedBy`
+from Table 6.5, each `rdf:type owl:AnnotationProperty`. The nine
+`rdfbased-sem-prop-*-type` cases have an EMPTY premise ontology, so no
+premise-driven row can reach them.
+
+18 units closed in each regime, and they are the same 18: the nine
+cases, each scored as a `PositiveEntailmentTest` in both the
+`type-positive-entailment` and the `profile-RL` catalog. No test
+regressed; `cap_hits` 0 before and after; `closure_rounds` unchanged.
+**The prediction and the realised delta agree exactly** — the first
+landing in this document where they do, and the reason is that the
+prediction was made from the failing units' MISSING CONCLUSION TRIPLE,
+not from a construct-occurrence marker.
+
+Implementation note: the premise-free row `dtType1Builtin` was renamed
+`premiseFreeAxiom` and its membership list widened from
+`builtinDatatypeAxioms` to `premiseFreeAxioms`. The row already had a
+`Derives` constructor, an `RlConditions` field, a Herbrand instance and
+an object-language schema row, so widening the list reuses all four.
+Any further axiomatic-triple table lands the same way, as a list
+extension.
+
+### `cc4049738` — the rest of Table 6.5
+
+| Rows added | RL before → after | `--dl` before → after |
+|---|---|---|
+| OWL 2 RDF-Based Semantics Table 6.5, the other thirteen triples | 1156 pass, 291 fail → 1158 pass, 289 fail | 1229 pass, 218 fail → 1231 pass, 216 fail |
+
+2 units in each regime, both `WebOnt-Class-002
+[PositiveEntailmentTest]`: `rdfs:Class rdfs:subClassOf owl:Class` plus
+cax-sco turns the premise `ex rdf:type rdfs:Class` into the conclusion
+`ex rdf:type owl:Class`. No test regressed; `cap_hits` 0; closure rounds
+5512 → 5572 (RL) and 6099 → 6159 (`--dl`).
+
+**Table 6.1 was written, built and removed, and the measurement is the
+reason.** Table 6.1 "Axiomatic Triples for the Classes of the OWL 2
+RDF-Based Vocabulary" is 51 triples, and they put a CYCLIC
+`rdfs:subClassOf` lattice over the whole OWL 2 class vocabulary into
+every closure — `owl:Class rdfs:subClassOf rdfs:Class` from Table 6.1
+against `rdfs:Class rdfs:subClassOf owl:Class` from Table 6.5, and
+`owl:ObjectProperty rdfs:subClassOf rdf:Property` against
+`rdf:Property rdfs:subClassOf owl:ObjectProperty`. scm-sco saturates
+that lattice in every closure: six `RLTests` saturation guards went red
+and `RLSemantics` elaboration went from 26 s to 189 s. This is the same
+feedback the `drivesXsdAxioms` doc comment records for the XSD tower.
+Table 6.1 needs a guarded form, not a longer unconditional list. Its
+cost, unpaid, is `WebOnt-Class-003` (2 RL units), whose conclusion asks
+the converse direction.
+
+## B5 enumerated: how, and what the method cannot see
+
+Done 2026-09-04 against `l4owl-probe` at commit `8029b7c1c`. The
+baseline reproduced the split's figures exactly: RL 1138 pass, 309 fail
+(out of 1457); `--dl` 1211 pass, 236 fail (out of 1457); `cap_hits` 0
+in both.
+
+**Method.** Of the 309 RL FAIL lines, 308 carry the `closure-gap:` tag
+and 1 carries `parser:`. The 308 split into 201 that name a MISSING
+CONCLUSION TRIPLE and 107 that say "no clash row fired on a premise
+asserted inconsistent" (B3). A unit is B5 when its missing triple's
+predicate is `rdf:type`, `owl:sameAs`, `owl:differentFrom`, or an
+ontology's own property IRI. That is 104 of the 201 by predicate: 85
+`rdf:type`, 7 `owl:sameAs`, 6 `owl:differentFrom`, 12 an ontology
+property. The split's figure of 107 was produced by a slightly wider
+reading; the difference is 3 units and does not move any cluster.
+
+**What the method cannot see.** It is the FIRST missing triple of each
+conclusion, so a conclusion missing several triples for several reasons
+is classified on the first. It also cannot tell a missing rule row from
+a rule that fires and whose premise was never derived — that
+distinction came only from reading each cluster's premise documents.
+
+## B5, clustered by the missing rule
+
+Ranked by RL units, counting PREMISE occurrences as the marker
+correction requires. Units are the pre-landing figures.
+
+| Cluster | RL units | What is missing | Status |
+|---|---|---|---|
+| Vocabulary axiomatic triples, annotation properties | 18 | Section 6 Tables 6.2, 6.5 | **landed `d980a444d`** |
+| Description-logic `2xx` cases (`WebOnt-description-logic-201`, `-202`, `-205`, `-206`, `-208`) | 10 | a class-expression instance check the RL closure cannot do | belongs to the refuter, not to B5 |
+| Property-characteristic transfer (`WebOnt-FunctionalProperty-003`/`-004`/`-005`, `-InverseFunctionalProperty-003`/`-004`, `-SymmetricProperty-002`/`-003`, `-TransitiveProperty-002`) | 16 | mixed: `-FunctionalProperty-003` and `-InverseFunctionalProperty-003` are one schema row (`P owl:inverseOf Q`, `P` functional ⊢ `Q` inverse-functional); the rest need a `owl:oneOf` singleton-range argument | 4 units are a rule row, 12 are refuter work |
+| `owl:AllDifferent` ⊢ pairwise `owl:differentFrom` (`WebOnt-AllDifferent-001`, `-differentFrom-002`, `-distinctMembers-001`) | 6 | Table 5.10 "Semantic Conditions for N-ary Disjointness", rows 1 and 3 | open, see below |
+| `rdfs:Class` / `owl:Class` interchange (`WebOnt-Class-002`, `-003`) | 4 | Section 6 Tables 6.5 and 6.1 | 2 landed `cc4049738`, 2 blocked on Table 6.1's cost |
+| `x rdf:type owl:Thing` for an individual (`WebOnt-I5.8-004`, `-010`, `-AnnotationProperty-002`) | 6 | `ICEXT(I(owl:Thing)) = IR` (Table 5.2) as a comprehension over every term of the graph | open; unconditional and expensive, same hazard as Table 6.1 |
+| `owl:hasKey` ⊢ `owl:sameAs` (`New-Feature-Keys-001`) | 3 | prp-key IS implemented; the row does not fire on this premise | open, a rule bug not a missing row |
+| Existential witnesses (`WebOnt-someValuesFrom-001`/`-003`, `somevaluesfrom2bnode`, `WebOnt-oneOf-004`, `-I5.8-017`) | 12 | a witness individual for `owl:someValuesFrom` / a value choice for `owl:oneOf` | belongs to the refuter, not to B5 |
+| `_:b1 rdf:type owl:AllDifferent` and `Peter rdf:type _:b1` (`New-Feature-DisjointObjectProperties-002`, `-DisjointDataProperties-002`, `-SelfRestriction-002`, `-ObjectQCR-001`, `-DataQCR-001`) | 18 | the CONCLUSION asks for the axiom or the class expression itself | **B1, not B5** |
+
+### Units this agent moved out of B5
+
+- 18 units (the five `New-Feature-*` cases above) are **B1**: their
+  conclusion restates a class expression or an `owl:AllDifferent`
+  axiom. No rule row produces structure.
+- 22 units (the description-logic `2xx` cases, the existential-witness
+  cases, and the `owl:oneOf` singleton-range half of the
+  property-characteristic cluster) need the tableau. They are **B3
+  work in a positive-entailment costume**: the entailment is decided by
+  refuting the premise plus the negated conclusion, not by a closure
+  row.
+
+### `owl:AllDifferent` ⊢ `owl:differentFrom`, scoped but not landed
+
+The rule is OWL 2 RDF-Based Semantics Table 5.10, rows 1 and 3: a
+sequence `a1, …, an` that is the `owl:members` (row 1) or
+`owl:distinctMembers` (row 3) of a `z ∈ ICEXT(I(owl:AllDifferent))`
+has `aj ≠ ak` for every `j ≠ k`. Three cases need it and no other row
+reaches them.
+
+It is a DRIVEN row, not an axiom list, so it costs a `Derives`
+constructor, an `RlConditions` field with its Herbrand instance, an
+object-language schema disjunct, the executable row in both
+`RLClosure.lean` and `RLClosureIndexed.lean` with their equality
+theorem, and soundness plus completeness arms — about fourteen sites,
+against `caxAdcToDwFor` as the template.
+
+**It must use the distinct-CELL guard**, not the distinct-TERM guard.
+Table 5.10 indexes `j` and `k` over POSITIONS in the sequence. Two
+distinct terms drawn from ONE cell — which `eq-rep-o` produces by
+copying an `rdf:first` across an `owl:sameAs`, as recorded above for
+`caxAdcAt` — are one position, and a row that fires on them derives a
+`owl:differentFrom` that the premise does not entail. `ListMember` is
+not enough for this; the spec side needs a cell-indexed membership
+relation beside it.
+
 ### What the two landings say about the marker
 
 The marker predicted 24 RL units across the three constructs and delivered
