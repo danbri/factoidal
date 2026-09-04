@@ -214,39 +214,69 @@ closure, scm-sco saturates it, six `RLTests` guards go red and
 
 **Peak resident memory in the `--dl` regime.** On 2026-09-04 the five
 Table 9 restriction rows (scm-svf1, scm-svf2, scm-avf1, scm-avf2,
-scm-hv) were transcribed, built and measured. RL: 1158 pass, 289 fail
-to 1169 pass, 278 fail — 11 units closed, no regressions, `cap_hits` 0,
-`RLSemantics` elaboration 37 s to 44 s. Every gate green. The `--dl`
-regime then could not finish: three full runs were killed by the
-operating system at the same case. The RL closure of that case,
-`WebOnt-TransitiveProperty-002`, is 103 triples in 3 rounds BEFORE and
-AFTER, so nothing in the closure grew; the refuter reads the new
-`rdfs:subClassOf` edges between restriction nodes as general class
-inclusions and branches on each one.
+scm-hv) were transcribed, built and measured. RL: 11 units closed, no
+regressions, `cap_hits` 0, `RLSemantics` elaboration 37 s to 44 s.
+Every gate green. The `--dl` regime then could not finish: three full
+runs were killed by the operating system at the same case.
 
 **The gate, and run it before landing any rule row.** One catalog,
 under two minutes, and it sees what a green `lake build` and a green RL
 run do not:
 
 ```
-cp third_party/testing/owl/type-positive-entailment.rdf $SCRATCH/owl1/
-cd formal/lean4 && /usr/bin/time -l \
-  ./.lake/build/bin/l4owl-probe --dl $SCRATCH/owl1
+cd formal/lean4 && /usr/bin/time -l ./.lake/build/bin/l4owl-probe \
+  --dl --dir ../../third_party/testing/owl type-positive-entailment.rdf
 ```
 
-Read `maximum resident set size`, not only the score. Measured
-figures on that catalog (412 units): 109 s and 141 MB without the five
-rows; 130 s and 141 MB with scm-op and scm-dp, which landed; 430 s and
-**7.47 GB** and a kill with the five restriction rows, which did not.
+Read `maximum resident set size`, not only the score.
 
-A guard that is sound on the ENGINE row (`c1 != c2`, the relation the
-collection clash rows already have to their `Clash` constructors) does
-not by itself rescue such a row: `RLTheorems` T4 is a COMPLETENESS
-theorem over `Derives`, so a side condition the printed table does not
-carry has to go into the `Derives` constructor as well, or the
-reflexive case has to be derived another way. Decide that before
-writing the row, not after measuring it. Full record:
-`docs/designissues/2026-09-03-owl-failure-split.md`.
+## 11. A budget that counts UNITS OF INPUT cannot see a change in the
+cost per unit
+
+The correction to section 10, and it cost two agents.
+
+The first diagnosis of that memory kill — written into the design
+document and into this skill — was that the refuter branches on the new
+`rdfs:subClassOf` edges between restriction nodes. **Measurement
+overturned it.** With the refuter's `tableauConsistent` stubbed to
+`none` the case still died, at 414 s and 10.08 GB; with
+`--refute-budget 1`, at 344 s and 9.14 GB. The refuter was not the
+cause. Neither was the closure: the case's first closure is 1 869
+triples in 6 rounds in 39 ms with the rows in place.
+
+The cause was `OWL.Mat.materialiseWithBudget`, and the reason it was
+not caught is the shape of its budget. It capped the membership pass at
+400 000 (individual, class expression) PAIRS. The pass that exhausted
+9.1 GB presented **12 596 pairs**. The rows had raised the cost of one
+pair — `namedSuperCEs` walked `rdfs:subClassOf` to depth 8 with no
+visited set, so a class with 18 outgoing edges cost of the order of
+`18 ^ 8` — and left the pair count alone.
+
+Rules that follow.
+
+- **A resource budget must count the resource.** A count of inputs
+  is a cost model with an unstated constant factor in it, and a rule
+  row is exactly the kind of change that moves that factor. Thread a
+  counter through the recursion (`StateM`, one counter for the whole
+  pass) and spend from it at every step.
+- **Set the number from a measurement and write the measurement into
+  the comment next to it.** The replacement budget is 4 000 000 units,
+  ten times the most expensive pass measured over the whole OWL corpus.
+  Changing 400 000 to a smaller number would have been a guess.
+- **A cap that never fires has never been tested.** `cap_hits` was 0
+  before and after, which is the gate — and it is also why the pair
+  budget's blindness went unnoticed for as long as it did.
+- **Time the PARTS before naming a cause.** The localisation that
+  settled this took four timing probes: closure, witnesses, subject
+  collection, membership pass; then one class expression; then one
+  pair. Every step of that was cheap. The two wrong diagnoses before it
+  were free-hand.
+- **When forcing a value to time it in Lean, make the forcing
+  observable.** A first attempt at the per-class-expression timing put
+  `bm.length` inside an `if` that did not fire, so the `let` was never
+  evaluated and the loop measured nothing — 94 class expressions in 8
+  ms, against a batch over the same 94 that did not return. Print the
+  value, or the measurement is of a thunk.
 
 ## The standing discipline
 
@@ -257,7 +287,8 @@ writing the row, not after measuring it. Full record:
 5. Re-run the vacuity checker; a change with no vacuity movement and no
    score movement may have changed nothing.
 6. Before landing a rule row, run the `--dl` cost gate of section 10
-   and read peak resident memory, not only the score.
+   and read peak resident memory, not only the score. Check that every
+   budget on the path counts work rather than inputs (section 11).
 7. Let the number rewrite the plan. It did, twice, on 2026-07-31 —
    `docs/designissues/2026-07-31-rdfs-performance-scalability.md` §0.5 is
    the reprioritisation that measurement forced.

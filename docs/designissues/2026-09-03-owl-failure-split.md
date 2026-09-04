@@ -345,67 +345,118 @@ specification row it discharges. `caxAdcAt_sound` is rewritten through
 identical before and after. The narrower guard costs nothing on this
 corpus; what it removes is the exposure, not a test.
 
-### scm-svf1, scm-svf2, scm-avf1, scm-avf2, scm-hv — written, measured, NOT landed
+### scm-svf1, scm-svf2, scm-avf1, scm-avf2, scm-hv — landed, with the
+materialiser budget repaired first
 
-Rank 2 of the category-A table. The five rows were transcribed verbatim
-from OWL 2 Profiles (2nd Edition) 4.3 Table 9, built, and measured.
-They close 11 RL units with 0 regressions:
+Rank 2 of the category-A table. The five rows are transcribed verbatim
+from OWL 2 Profiles (2nd Edition) 4.3 Table 9. They were written and
+measured on 2026-09-04, could not be landed that day because the `--dl`
+regime ran out of memory, and are landed now with the defect that
+caused it repaired.
 
-| Rows | RL before → after | `--dl` before → after |
-|---|---|---|
-| scm-svf1, scm-svf2, scm-avf1, scm-avf2, scm-hv | 1158 pass, 289 fail → 1169 pass, 278 fail | NOT MEASURABLE — see below |
+| Regime | before → after (out of 1457) |
+|---|---|
+| RL closure only | 1162 pass, 285 fail → 1173 pass, 274 fail |
+| `--dl` | 1316 pass, 131 fail → 1326 pass, 121 fail |
 
-Ten of the eleven are the five cases the ranking predicted, each scored
-in two catalogs: `rdfbased-sem-restrict-somevalues-cmp-class`,
-`-somevalues-cmp-prop`, `-allvalues-cmp-class`, `-allvalues-cmp-prop`
-and `-hasvalue-cmp-prop`, all `PositiveEntailmentTest`. The eleventh
-was not predicted: `WebOnt-description-logic-002 [InconsistencyTest]`,
-where the new `rdfs:subClassOf` conclusions let an
-already-implemented clash row fire (clashes 53 → 54). The prediction
-came from the MISSING CONCLUSION TRIPLE of each failing unit and was
-right to within that one extra unit.
+Both baselines were re-measured on `2a382b853`; `cap_hits` is 0 before
+and after in both regimes.
 
-**The `--dl` regime cannot complete with these rows, and the cost gate
-that caught it is peak resident memory, not elaboration time.** Three
-full `--dl` runs were killed by the operating system at the same case.
-Measured on the `type-positive-entailment` catalog alone, 412 units,
-`/usr/bin/time -l`:
+#### The blow-up was NOT in the refuter, and not in the closure
 
-| Tree | wall | peak resident | result |
+Three agents worked this case and the first two were each partly
+wrong, so the evidence is recorded with the method that produced it.
+
+- The first reading, written into this document and into
+  `skills/measuring-inference` section 10, was that "the refuter reads
+  the extra `rdfs:subClassOf` edges between restriction nodes as
+  general class inclusions and branches on each one". **That is
+  false.** With `tableauConsistent` stubbed to `none` the case still
+  died, at 414 s and 10.08 GB; with `--refute-budget 1`, 344 s and
+  9.14 GB.
+- The RL closure does not grow enough to matter either. The case the
+  run dies on is `WebOnt-description-logic-202
+  [PositiveEntailmentTest]`, whose first closure is 500 premise triples
+  to 1 869 triples in 6 rounds, in 39 ms, with the five rows in place.
+
+The blow-up is inside `OWL.Mat.materialiseWithBudget`, and it was
+localised by timing its parts: witnesses 0 ms, subject collection 36
+ms, `eqcExpansion` 0 ms, `directBooleanSubclasses` 14 ms, and
+`membershipsForBNodeCes` never returned. Narrowing further, ONE
+(individual, class expression) pair did not return: the individual
+`test#V8472` against the blank node `_:b3`, which parses as
+`∃ R1 . C10`.
+
+#### The mechanism: an un-memoised depth-8 branching walk
+
+`isMember` on `∃ p . c` that finds no witness edge falls back to
+`typeCEsOf`, which expands each named type of the individual through
+`namedSuperCEs` — the class expressions provably above it, followed
+through further named classes to a depth of 8. That walk had **no
+visited set**: it re-descended into every named superclass along every
+path. A named class with `k` outgoing `rdfs:subClassOf` /
+`owl:equivalentClass` edges therefore cost of the order of `k ^ 8`.
+
+The five `scm` rows add `rdfs:subClassOf` edges between restrictions,
+scm-sco closes them transitively, and named classes inherit them. In
+the closure of `WebOnt-description-logic-202` there are 818
+`rdfs:subClassOf` triples and one class, `test#C76`, carries 18 of
+them. `18 ^ 8` is about `1.1 × 10^10`.
+
+The repair is a breadth-first walk with a visited set
+(`namedSuperCEsGo`). The RESULT SET is unchanged — a named class
+contributes the same expansion however it is reached, breadth-first
+reaches each class at its shortest distance, and every consumer reads
+the list with `List.any` — so this is a speed change, not a semantic
+one. With it, the pair that did not return in eight minutes is part of
+an 11 ms materialisation pass.
+
+#### The budget counted pairs, and a pair count is not a cost
+
+`materialiseWithBudget` capped the pass at 400 000 (individual, class
+expression) PAIRS. The pass that exhausted 9.1 GB and was killed
+presented **12 596 pairs** — thirty-two times under the cap. A budget
+in pairs cannot see a change that raises the cost of every pair while
+moving the pair count not at all, which is exactly what a rule row
+that adds `rdfs:subClassOf` edges does.
+
+The budget now counts the WORK. One counter (`Mat.Work`, a
+`StateM`) runs across the whole pass — witnesses and both membership
+passes. Every `isMember` entry spends one unit, and every class
+expression a superclass walk hands back spends one unit. Running out
+answers `none`, the same answer an unreadable expression gets, and
+raises `hit` so the caller reports a cap hit instead of reading a
+truncated pass as a complete one.
+
+📊 The new default, 4 000 000 units, comes from a measurement. On the
+whole OWL corpus under `--dl` the most expensive single
+materialisation pass spends about 400 000 units; the budget is ten
+times that, so no case on this corpus trips it (`cap_hits` 0) and a
+premise an order of magnitude harder than anything in the corpus still
+gets a reported cap rather than an unbounded run.
+
+#### The measured cost of the landing
+
+`/usr/bin/time -l`, `type-positive-entailment.rdf` alone (412 units)
+and the whole corpus (1457 units), on `2a382b853` and after:
+
+| Run | wall | peak resident | score |
 |---|---|---|---|
-| without the five rows | 109 s | 141 MB | 329 pass, 79 fail (out of 412) |
-| with the five rows | 430 s | **7.47 GB** | killed |
+| catalog, `--dl`, before | 269 s | 136 MB | 356 pass, 52 fail (out of 412) |
+| catalog, `--dl`, after | 571 s | 138 MB | 361 pass, 47 fail (out of 412) |
+| corpus, `--dl`, before | 653 s | 237 MB | 1316 pass, 131 fail (out of 1457) |
+| corpus, `--dl`, after | 2173 s | 212 MB | 1326 pass, 121 fail (out of 1457) |
+| corpus, RL, before | 122 s | 203 MB | 1162 pass, 285 fail (out of 1457) |
+| corpus, RL, after | 26 s | 223 MB | 1173 pass, 274 fail (out of 1457) |
 
-The RL closure of the case where it dies,
-`WebOnt-TransitiveProperty-002`, is 103 triples in 3 rounds BEFORE and
-AFTER the rows — the closure does not grow at all. The blow-up is on
-the `--dl` side, where the refuter reads the extra `rdfs:subClassOf`
-edges between restriction nodes as general class inclusions and
-branches on each one.
+Peak resident memory does not move. Wall clock does: the five rows
+make the closure larger and the refuter has more class inclusions to
+work with. That is a cost to watch, not a blow-up.
 
-**The guarded form that was tried, and why it was not enough.** Adding
-`c1 ≠ c2` to the EXECUTABLE row removes the reflexive
-`R rdfs:subClassOf R` edges that a tableau expands for nothing. It is
-sound, because a guarded engine row is strictly weaker than its
-`Derives` constructor — the same relation the four collection clash
-rows have to their `Clash` constructors. It cannot be landed on its
-own, because `RLTheorems`'s T4 (every `Derives`-derivable triple is in
-the saturated closure) is a COMPLETENESS theorem, and Table 9 permits
-`c1 = c2`. Landing the guard needs either the side condition in the
-`Derives` constructor as well — which stops the constructor being the
-printed table row — or a T4 arm that derives the reflexive case
-another way. That is the design decision this leaves open.
-
-This is the second cost gate this workstream has hit. Table 6.1 was
-caught by `RLSemantics` elaboration time (26 s → 189 s); these five
-rows are caught by `--dl` peak memory (141 MB → 7.47 GB). **Run the
-`type-positive-entailment` catalog alone under `/usr/bin/time -l`
-before landing any rule row: it takes under two minutes and it sees
-what a green `lake build` and a green RL run do not.**
-
-For the record, `RLSemantics` elaboration with the five rows is 44 s
-against 37 s without, measured on the same machine with a forced
-rebuild. That gate passes; the memory one does not.
+The guarded form (`c1 ≠ c2` on the executable row) that the earlier
+agent proposed is NOT needed and was not taken: the rows are landed
+verbatim, so `RLTheorems` T4 stays a completeness theorem over the
+printed table row.
 
 ### `cb1883e0f` — scm-op and scm-dp
 
