@@ -407,13 +407,34 @@ def existentialObligation : ClassExpr → Option (WfIri × ClassExpr)
   | .minQualCard k p c => if k == 1 then some (p, c) else none
   | _                  => none
 
-/-- The witness blank node for `(i, p)`. Deterministic, so re-running
-    the pass mints the same node rather than a second one. -/
-def witnessBNodeId (i : Subject) (p : WfIri) : BNodeId :=
-  let iStr := match i with
-    | .iri s   => s.val
-    | .bnode b => b
-  "_:bw_" ++ iStr ++ "__" ++ p.val
+/-- The printed name of a subject, for use inside a minted blank-node
+    identifier. -/
+def subjectKey : Subject -> String
+  | .iri s   => s.val
+  | .bnode b => b
+
+/-- The witness blank node for the obligation `ceS` puts on `(i, p)`.
+
+    The identifier carries `ceS`, the class expression that RAISED the
+    obligation, and not only the pair `(i, p)`. Two different
+    existence obligations on ONE property must not be discharged by
+    one filler: `p1 ⊑ ∃r.A` and `p2 ⊑ ∃r.B` oblige an `r`-successor in
+    `A` and an `r`-successor in `B`, and nothing obliges those two
+    successors to be the same individual unless `r` is functional.
+    `Refute.lean` states the same rule for the tableau beside
+    `existsUnsatisfiableWitness`; this pass writes into the graph, so
+    it must obey it too. Keying on `(i, p)` alone made ONE node carry
+    every filler class of every `r`-obligation, which is the ⊓ of
+    them, and on `WebOnt-description-logic-018` / `-020` / `-021` —
+    all three asserted CONSISTENT — that intersection met a
+    `owl:complementOf` pair and cls-com reported a clash that the
+    premise does not have (OWL 2 Direct Semantics §2.2, the
+    interpretation of `ObjectSomeValuesFrom`).
+
+    Deterministic, so re-running the pass mints the same node rather
+    than a second one. -/
+def witnessBNodeId (i : Subject) (p : WfIri) (ceS : Subject) : BNodeId :=
+  "_:bw_" ++ subjectKey i ++ "__" ++ p.val ++ "__" ++ subjectKey ceS
 
 /-- Does `i` already have a `p`-successor that discharges the
     obligation? An UNQUALIFIED obligation (`ClassExpr.unknown` as the
@@ -452,31 +473,50 @@ def maxBoundOn (p : WfIri) : ClassExpr → Option Nat
     WORSE: it cost ten `type-inconsistency` passes and five across
     the profile catalogs to save these three, because the closure's
     clash detection does real work on the witnesses it can count
-    soundly. -/
-def witnessBreachesBound (st : Store) (i : Subject) (p : WfIri) : Bool :=
-  let have' := (successors st i p).length
+    soundly.
+
+    `mintedHere` is the number of `p`-witnesses THIS pass has already
+    minted for `i` and which are therefore not yet in `st`. One
+    witness per obligation means several obligations on one property
+    mint several successors, and the bound must count them all; a
+    check that reads only `st` would let three obligations each pass
+    a max-1 bound. -/
+def witnessBreachesBound (st : Store) (i : Subject) (p : WfIri)
+    (mintedHere : Nat) : Bool :=
+  let have' := (successors st i p).length + mintedHere
   let functional :=
     (st.withSubjPred (.iri p) rdfType).any (fun t => t.o == Term.iri owlFunctionalProperty)
   let bounds := (st.withSubjPred i rdfType).filterMap (fun t =>
     maxBoundOn p (parseClassExpr st t.o 32))
   (functional && have' ≥ 1) || bounds.any (fun k => have' ≥ k)
 
+/-- How many `(i, p)`-witnesses this pass has minted already. -/
+def mintedCount (minted : List (Subject × WfIri)) (i : Subject) (p : WfIri)
+    : Nat :=
+  (minted.filter (fun q => q.1 == i && q.2 == p)).length
+
 /-- The witness triples one existential class expression demands, over
-    every individual the graph types with it. -/
-def witnessesForCe (st : Store) (ceS : Subject) (ce : ClassExpr) : List Triple :=
+    every individual the graph types with it. `minted` carries the
+    `(individual, property)` pairs this pass has already witnessed, so
+    a later obligation on the same property counts them against the
+    at-most bounds. -/
+def witnessesForCe (st : Store) (minted : List (Subject × WfIri))
+    (ceS : Subject) (ce : ClassExpr) : List Triple × List (Subject × WfIri) :=
   match existentialObligation ce with
-  | none        => []
+  | none        => ([], minted)
   | some (p, c) =>
     let typed := (st.withPredObj rdfType ceS.toTerm).map (·.s)
-    typed.foldl (fun acc i =>
-      if alreadyHasWitness st i p c || witnessBreachesBound st i p then acc
+    typed.foldl (fun (acc : List Triple × List (Subject × WfIri)) i =>
+      let (ts, m) := acc
+      if alreadyHasWitness st i p c
+         || witnessBreachesBound st i p (mintedCount m i p) then acc
       else
-        let bw := witnessBNodeId i p
+        let bw := witnessBNodeId i p ceS
         let edge : Triple := { s := i, p := p, o := .bnode bw }
-        match c with
-        | .named ci =>
-            acc ++ [edge, { s := .bnode bw, p := rdfType, o := .iri ci }]
-        | _ => acc ++ [edge]) []
+        let ts' := match c with
+          | .named ci => ts ++ [edge, { s := .bnode bw, p := rdfType, o := .iri ci }]
+          | _         => ts ++ [edge]
+        (ts', (i, p) :: m)) ([], minted)
 
 /-! ## Collecting the subjects the pass ranges over -/
 
@@ -670,10 +710,14 @@ def directBooleanSubclasses (st : Store) : List Triple :=
 /-- Add the existential witnesses the graph demands. -/
 def introduceWitnesses (g : Graph) : Graph :=
   let st := Store.ofIndex (Index.ofGraph g)
-  let extras := (collectCeBNodes st).flatMap (fun ceS =>
-    match parseClassExpr st ceS.toTerm 32 with
-    | .unknown => []
-    | ce       => witnessesForCe st ceS ce)
+  let extras := ((collectCeBNodes st).foldl
+    (fun (acc : List Triple × List (Subject × WfIri)) ceS =>
+      let (ts, m) := acc
+      match parseClassExpr st ceS.toTerm 32 with
+      | .unknown => acc
+      | ce       =>
+        let (ts', m') := witnessesForCe st m ceS ce
+        (ts ++ ts', m')) ([], [])).1
   RL.addAll g extras
 
 /-- One materialisation pass, in the order the F* module fixed:
