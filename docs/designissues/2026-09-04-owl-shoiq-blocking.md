@@ -137,40 +137,69 @@ point.
 
 Decides: `WebOnt-description-logic-030` (DL test t7.3).
 
-### Rule 3 — pairwise blocking, replacing the depth fuel
+### Rule 3 — pairwise blocking: stated, and MEASURED AS NOT THE LEVER
 
-With rules 1 and 2 the remaining OilEd cases are the ones whose
-expansion is genuinely unbounded or genuinely large:
+Rules 1 and 2 took the `--dl` corpus from 1296 to 1312 pass (out of
+1457) and left these OilEd inconsistency cases failing:
 
-* `-035` — `owl:oneOf` plus an inverse role, the SPY POINT: everything
-  is `p`-related to the spy and the spy has `≤2 invP` successors, so
-  the domain has at most two elements. This needs the nominal
-  treatment of Horrocks/Sattler 2007, not blocking alone, and is named
-  here as out of reach of this landing.
-* `-040`, `-108` — number restrictions interacting with a role
-  hierarchy (Heinsohn 3.2). Expansion, not termination.
-* `-502`, `-504` — the classic 3-SAT encoding, and a second encoding
-  of the same. These are DELIBERATELY hard instances: a complete
-  calculus decides them, but the search is exponential in the number
-  of propositional variables and is expected to be dominated by the
-  branch budget rather than by blocking.
-* `-909`, `-910` — integer multiplication encoded in OWL DL. Same
-  remark, with a larger constant.
+    -035  owl:oneOf plus an inverse role, the SPY POINT
+    -040  a 10-way conjunction of binary unions
+    -108  number restrictions under a role hierarchy (Heinsohn 3.2)
+    -502  the classic 3-SAT encoding
+    -504  a second encoding of the same
+    -909  integer multiplication, N*K = 2K, M*K = 3K, NMK != 5K
+    -910  integer multiplication, N = 20, M = 30, NM != 601
 
 Pairwise blocking replaces `maxWitnessDepth` as follows. A witness
 node `y` with expansion predecessor `y'` is BLOCKED when the branch
 holds a witness `x` with predecessor `x'` such that `x` is an ancestor
 of `y` in the expansion tree, `labelsOf x = labelsOf y`,
 `labelsOf x' = labelsOf y'`, and the role sets of the two edges agree.
-`ensureWitnesses` mints nothing at a blocked node. Everything else is
-unchanged.
+`ensureWitnesses` mints nothing at a blocked node, and the depth cap
+goes.
 
-Cost: the condition is checked per node per round against the node's
-ancestors, so a set comparison proportional to depth times label count
-in the inner loop. Benefit: the expansion stops because the calculus
-says so, and the `some true` verdict acquires a completeness argument
-on the `SHIQ` fragment for the first time. The depth cap can then go,
-and `search`'s termination becomes provable rather than budgeted.
+**Blocking would close none of the seven.** Blocking's only effect on
+what the search REACHES is that it makes a deeper expansion safe. So
+the question "would blocking close a case" is answered by raising the
+cap the blocking would retire. Measured, 2026-09-04:
+`maxWitnessDepth` 3 to 8, everything else unchanged, gives
+`type-inconsistency.rdf` 116 pass, 11 fail, 1 skip (out of 128) —
+byte-identical to the depth-3 result, the same seven OilEd cases and
+the same four datatype cases. The depth fuel is NOT what withholds
+these refutations.
+
+What each of the seven actually needs:
+
+* `-035` needs the NOMINAL rules of Horrocks/Sattler 2007 (the
+  `NN`-rule and the `o`-rule), so that the `≤2 invP` bound on the spy
+  point can force the domain down to two elements. `isMergeableTerm`
+  refuses to identify named individuals, so the rule cannot fire at
+  all. This is a different rule from blocking.
+* `-108` is bound by the `≤`-rule's BRANCHING, not by the budget: it
+  still fails at `--refute-budget 4096`, sixty-four times the default.
+  The merged node accumulates nine `tt`-successors, and the rule
+  branches over every mergeable pair at every level.
+* `-040`, `-502`, `-909`, `-910` also still fail at
+  `--refute-budget 4096`. They are the deliberately hard instances —
+  a complete calculus decides them, and the search is exponential.
+* `-504` DOES close at `--refute-budget 4096`. That is a budget
+  change, not a rule, and it was NOT landed. The default budget stays
+  64.
+
+One efficiency observation, measured and NOT landed because it moved
+nothing: `witnessPairs` offers both `(a, b)` and `(b, a)`, and
+`mergeInto` writes the same identification either way, so the two are
+one branch. Enumerating each unordered pair once halves the branching
+factor at every level. It changes no verdict at budget 64 (116 pass,
+11 fail out of 128) and no verdict at budget 4096 (117 pass, 10 fail),
+so the `≤`-rule's cost here is dominated by the successor count, not
+by the pair ordering.
+
+Blocking therefore stays worth doing, for two reasons that are not
+conformance: it retires a fuel counter for a theorem, and it is what
+lets a `some true` verdict mean SATISFIABLE on the `SHIQ` fragment.
+It is not the lever for the remaining OilEd cases, and a session that
+implements it should not expect the score to move.
 
 ## What a `some true` verdict may claim, before and after
 
