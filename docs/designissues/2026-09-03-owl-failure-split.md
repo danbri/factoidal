@@ -492,6 +492,96 @@ A CORRECTION, not a regression: the two units and the three units were
 passes that no computed entailment supported. See the banner above and
 [`2026-09-04-owl-conclusion-matching.md`](2026-09-04-owl-conclusion-matching.md).
 
+## The `--dl` cost of the five restriction rows: profiled, not guessed
+
+Date 2026-09-04. The five `scm-svf1/svf2/avf1/avf2/hv` rows landed in
+`9ce7191ab` and bought 11 RL and 10 `--dl` units. They also took the
+whole-corpus `--dl` run from about 653 s to over 3000 s. The section
+above recorded the first cost gate (peak resident memory, repaired in
+`e970afc51`) and left the time cost unexplained. This section explains
+it.
+
+### Method
+
+`/usr/bin/sample <pid> 20 1` against a running `l4owl-probe --dl` over
+the whole corpus, at commit `f6a2960ff` — a call-tree attribution of
+14,419 samples on the working thread, not a guess from reading the
+code. The same method was run again against the repaired binary on one
+catalog, and a third time against the unrepaired binary on that same
+catalog, so the before and the after are the same measurement.
+
+### What dominated, before
+
+| Frame | Samples of 14,419 |
+|---|---|
+| `Refute.tableauConsistent` | 13,272 |
+| `Refute.collectAxioms` under it | 13,267 |
+| `RL.withSubjPred`'s `List.filter` loop, at the leaf | 7,661 |
+| `Subject` decidable equality under that filter | 5,517 |
+
+92 per cent of the run was inside `collectAxioms`, and the leaf was a
+LIST SCAN. On the `type-positive-entailment` catalog alone the same
+shape was 95 per cent of 12,157 samples.
+
+### Why
+
+`collectAxioms` built its store with `Store.ofGraph`, whose
+`withSubjPred` is `g.filter`. It parses a class expression for BOTH
+sides of every `rdfs:subClassOf`, `owl:equivalentClass`,
+`owl:disjointWith` and `owl:complementOf` triple of the closure, and
+each parse makes several subject-plus-predicate lookups. Cost is
+therefore (number of such triples) times (lookups per parse) times
+(graph length): quadratic in the closure. The five rows add
+`rdfs:subClassOf` edges between restriction nodes, so they multiply the
+first factor, and the refuter pays the whole pass once per goal.
+
+`Store.ofIndex (Index.ofGraph g)` gives the same store with hash
+lookups. `Materialise.lean` and `Refute.initState` already used it;
+`collectAxioms` did not. That is the whole defect.
+
+### The repair, and what it is worth
+
+`collectAxioms` now reads through the index. The list-scan definition
+is kept as `collectAxiomsS (Store.ofGraph g)` and
+`Refute.collectAxioms_eq` proves the two equal through
+`Store.ofIndex_eq (Index.Wf.ofGraph g)` — the change is the same
+function, by proof, not by inspection.
+
+Measured on `type-positive-entailment.rdf` alone, 412 units, `--dl`,
+`/usr/bin/time -l`, refuter budget 64:
+
+| Tree | user CPU | peak resident | score |
+|---|---|---|---|
+| list-scan store | 628.40 s | 138 MB | 356 pass, 52 fail, 4 unsupported (out of 412) |
+| index store | 174.73 s | 140 MB | 356 pass, 52 fail, 4 unsupported (out of 412) |
+
+3.6 times less processor time, not one unit moved.
+
+⚠️ **Wall clock was not usable on the machine these ran on.** Load
+average moved between 5 and 27 on 8 cores while other agents held the
+box, and the two runs above show 1485 s and 1680 s of wall clock at 42
+and 10 per cent of one core. USER CPU TIME is the contention-robust
+figure and is what the table reports. Any wall-clock figure from
+2026-09-04 in this document carries the same caveat.
+
+### What dominates after the repair, and whether it is intrinsic
+
+The same sampling method against the repaired binary puts the time in
+`Refute.search.tryAll`, with `Refute.ceDefinite`, `ClassExpr.beq`,
+`applyAxioms` and `applyAxiomsEdges` at the leaves. `collectAxioms` is
+gone from the profile. That residue is the tableau branch search
+itself: `search` runs `onePass` up to its budget per branch, and
+`onePass` folds over the WHOLE TBox for every label of every node, so
+its cost is linear in the number of axioms. The five rows enlarge the
+TBox, so part of the residue is work the rows genuinely require.
+
+The next lever, if the residue has to come down further, is an index
+from an axiom's antecedent to its consequents, so `applyAxioms` stops
+scanning the TBox once per label. That is a bigger change than this
+one: `ClassExpr` has no `Hashable` instance, and the equality the fold
+tests is `ceEq`, which is `ceDefinite a && ClassExpr.beq a b` and is
+not reflexive on indefinite expressions. It is not attempted here.
+
 ## B5 enumerated: how, and what the method cannot see
 
 Done 2026-09-04 against `l4owl-probe` at commit `8029b7c1c`. The
