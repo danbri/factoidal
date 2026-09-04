@@ -1101,11 +1101,14 @@ structure Opts where
   dl : Bool := false
   /-- `--refute-budget N`: the refuter's per-premise budget. -/
   refuteBudget : Nat := defaultRefuteBudget
-  /-- `--strict-match`: decide conclusion containment by ONE
-  blank-node mapping over the whole conclusion graph (the RDF 1.1
-  Semantics interpolation lemma) instead of a per-triple wildcard.
-  A flag so both numbers come from the same binary. -/
-  strictMatch : Bool := false
+  /-- Decide conclusion containment by ONE blank-node mapping over the
+  whole conclusion graph (the RDF 1.1 Semantics interpolation lemma).
+  This is the default since 2026-09-04. `--wildcard-match` restores the
+  superseded per-triple rule, which let each conclusion triple pick its
+  own witness and so reported an UPPER BOUND on every OWL score; it is
+  kept only so the two numbers come from the same binary
+  (`docs/designissues/2026-09-04-owl-conclusion-matching.md`). -/
+  strictMatch : Bool := true
 
 def parseArgs : List String → Opts → Opts
   | [], o => o
@@ -1118,6 +1121,7 @@ def parseArgs : List String → Opts → Opts
   | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
   | "--dl" :: rest, o => parseArgs rest { o with dl := true }
   | "--strict-match" :: rest, o => parseArgs rest { o with strictMatch := true }
+  | "--wildcard-match" :: rest, o => parseArgs rest { o with strictMatch := false }
   | "--refute-budget" :: n :: rest, o =>
       parseArgs rest { o with refuteBudget := n.toNat!.max 1 }
   | a :: rest, o =>
@@ -1214,7 +1218,7 @@ def main (args : List String) : IO UInt32 := do
   else "regime: RL closure only")
   IO.println (if o.strictMatch then
     "conclusion matching: single blank-node mapping (interpolation lemma)"
-  else "conclusion matching: per-triple blank-node wildcard")
+  else "conclusion matching: per-triple blank-node wildcard (SUPERSEDED — this over-reports; see 2026-09-04-owl-conclusion-matching.md)")
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
 unrelated triple absent = {!unrelatedAbsent}"

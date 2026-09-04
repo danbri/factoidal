@@ -11,7 +11,15 @@ this document, and to
 Everything below is measured with
 `formal/lean4/.lake/build/bin/l4owl-probe` against
 `third_party/testing/owl`, per-closure cap 30000 ms, `cap_hits=0` in
-every run quoted.
+every run quoted. Engine commit: `f2988f1e6`, which carries the
+`cax-adc` distinct-cell narrowing (`06872bac0`) and the `scm-op` /
+`scm-dp` rows (`e64411185`/`cb1883e0f`).
+
+The same four runs were made twice: once on `0f0ad2b7d`, once after a
+rebase onto `f2988f1e6`. The RL pair moved from 1158/1156 to 1160/1158
+(the two `scm-op`/`scm-dp` units); the `--dl` pair did not move. The
+exposure was 2 RL units and 3 `--dl` units in both, and the same two
+cases.
 
 ## 1. The defect
 
@@ -99,8 +107,11 @@ below**, so no number here is affected by it.
 
 | Regime | Per-triple wildcard | One mapping | Delta |
 |---|---|---|---|
-| RL closure only | 1158 pass, 289 fail, 2 skip, 8 unsupported (out of 1457) | 1156 pass, 291 fail, 2 skip, 8 unsupported (out of 1457) | −2 units |
+| RL closure only | 1160 pass, 287 fail, 2 skip, 8 unsupported (out of 1457) | 1158 pass, 289 fail, 2 skip, 8 unsupported (out of 1457) | −2 units |
 | `--dl` | 1294 pass, 153 fail, 2 skip, 8 unsupported (out of 1457) | 1291 pass, 156 fail, 2 skip, 8 unsupported (out of 1457) | −3 units |
+
+The wildcard column is reproduced with `--wildcard-match` on the same
+binary, so the delta is the matcher and nothing else.
 
 `cap_hits=0` and `match-budget` hits 0 in all four runs, so no part of
 either delta is budget or cap variance. The fail-identifier set after
@@ -220,3 +231,12 @@ per-triple wildcard and is therefore an UPPER BOUND. In this corpus the
 bound was loose by 2 units in RL and 3 units in `--dl`. The corrected
 figures in section 4 are the ones to quote. A score that falls when the
 check is corrected is the correction, not a regression.
+
+⚠️ **A `--dl` figure of 1233 pass, 214 fail was in circulation on
+2026-09-04** as the `claude/main` baseline. Measured here on
+`f2988f1e6` with `--wildcard-match`, `claude/main` is 1294 pass, 153
+fail (out of 1457). The 1233 line predates the merge of the
+PE-via-refutation fallback (`c5890f512`) with the Table 6.5 axiomatic
+triples; it was measured in a worktree that carried one and not the
+other. The RL line of that report, 1160 pass, 287 fail, is reproduced
+exactly.

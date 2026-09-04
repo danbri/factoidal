@@ -185,6 +185,30 @@ OWL 32 must not be picked up in the same landing.
 3. Leave B3 to the refuter.
 4. Do not treat the OWL `partial def` count as conformance work.
 
+## ⚠️ Every score above and below this line, until the conclusion-matcher row, was measured with a permissive conclusion matcher
+
+Until 2026-09-04 the probe decided a PositiveEntailmentTest by letting
+each conclusion triple choose its OWN witness for a blank node, so a
+conclusion `_:x a C . _:x a D .` held on a closure with `a a C` and
+`b a D`. RDF 1.1 Semantics asks for one functional mapping over the
+whole conclusion graph. Every figure in this document that predates
+the landing below is therefore an UPPER BOUND.
+
+Measured cost of the correction, `f2988f1e6`, `cap_hits=0`:
+
+| Regime | Permissive matcher | Corrected (one mapping) |
+|---|---|---|
+| RL closure only | 1160 pass, 287 fail, 2 skip, 8 unsupported (out of 1457) | 1158 pass, 289 fail, 2 skip, 8 unsupported (out of 1457) |
+| `--dl` | 1294 pass, 153 fail, 2 skip, 8 unsupported (out of 1457) | 1291 pass, 156 fail, 2 skip, 8 unsupported (out of 1457) |
+
+2 RL units and 3 `--dl` units, on two disjoint cases
+(`WebOnt-I5.26-009` in RL, `WebOnt-someValuesFrom-003` in `--dl`).
+NegativeEntailmentTest 38 pass, 0 fail (out of 38) in all four runs.
+Reasoning, specification quotes and per-case detail:
+[`2026-09-04-owl-conclusion-matching.md`](2026-09-04-owl-conclusion-matching.md).
+`--wildcard-match` on `l4owl-probe` reproduces the superseded rule, so
+any row above can be re-measured on its own terms.
+
 ## Fix landings measured against this split
 
 | Commit | Rows added | RL before → after | `--dl` before → after |
@@ -406,6 +430,16 @@ its conclusion asks for `owl:equivalentProperty` on each.
 The `--dl` cost gate above was run first: 130 s and 141 MB peak on the
 `type-positive-entailment` catalog, against 109 s and 141 MB without
 the rows. Peak memory does not move.
+
+### The conclusion matcher: one blank-node mapping, not a per-triple wildcard
+
+| Change | RL before → after | `--dl` before → after |
+|---|---|---|
+| `graphInClosure?` replaces per-triple `inClosure` as the default | 1160 pass, 287 fail → 1158 pass, 289 fail | 1294 pass, 153 fail → 1291 pass, 156 fail |
+
+A CORRECTION, not a regression: the two units and the three units were
+passes that no computed entailment supported. See the banner above and
+[`2026-09-04-owl-conclusion-matching.md`](2026-09-04-owl-conclusion-matching.md).
 
 ## B5 enumerated: how, and what the method cannot see
 
