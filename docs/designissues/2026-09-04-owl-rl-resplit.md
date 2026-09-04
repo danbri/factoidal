@@ -37,8 +37,13 @@ realised landings: the construct-occurrence marker predicted 24 units
 and delivered 7; the first-missing-triple method predicted 18 and
 delivered 18, and predicted 2 and delivered 2.
 
-Classifier: `scratchpad/classify.py` of this session, a pure function of
-the probe's FAIL lines. Predicate sets used:
+Classifier: [`tools/owl-rl-failure-split.py`](../../tools/owl-rl-failure-split.py),
+a pure function of the probe run given on its command line. Reproduce with
+
+    formal/lean4/.lake/build/bin/l4owl-probe --dir third_party/testing/owl > run.txt
+    python3 tools/owl-rl-failure-split.py run.txt
+
+Predicate sets used:
 
 - **structure**: `owl:unionOf`, `owl:intersectionOf`, `owl:complementOf`,
   `owl:oneOf`, `owl:someValuesFrom`, `owl:allValuesFrom`, `owl:hasValue`,
@@ -75,6 +80,9 @@ the probe's FAIL lines. Predicate sets used:
 | **C** | not about the engine (an RDF/XML parse failure) | 1 | 1 |
 | **B4** | a consistent premise produced a clash, or a cap trip | 0 | 0 |
 | | **total** | **289** | |
+
+After the `inv-fp` landing recorded below the same tool reports B7 at
+50 and every other bucket unchanged, which is the whole of the delta.
 
 B7 is new in this split. The 2026-09-03 document had no schema bucket:
 its B5 mixed assertional and schema-level conclusions, and its counts
