@@ -34,6 +34,7 @@ filter accepts is in the candidate list.
 
 No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
+import Std.Data.HashMap
 import L4Factoidal.SPARQL.Expr
 
 namespace L4Factoidal.Storage.LiteralGramIndex
@@ -345,31 +346,25 @@ def lessGram : List Char → List Char → Bool
   | a :: as, b :: bs =>
       if a.val < b.val then true else if a == b then lessGram as bs else false
 
-private def beforePair (left right : List Char × Nat) : Bool :=
-  if lessGram left.1 right.1 then true
-  else if left.1 == right.1 then left.2 < right.2 else false
-
-private def pairsOf (dict : Array Term) : List (List Char × Nat) :=
-  (withIds 0 dict.toList).flatMap
-    (fun p => p.2.eraseDups.map (fun g => (g, p.1)))
-
-private def groupPairs : List (List Char × Nat) → List Posting
-  | [] => []
-  | (g, i) :: rest =>
-      match groupPairs rest with
-      | [] => [{ gram := g, ids := [i] }]
-      | head :: tail =>
-          if head.gram == g then { head with ids := i :: head.ids } :: tail
-          else { gram := g, ids := [i] } :: head :: tail
+private def pairsOf (dict : Array Term) : Std.HashMap (List Char) (Array Nat) := Id.run do
+  let mut buckets : Std.HashMap (List Char) (Array Nat) := ∅
+  for h : i in [0 : dict.size] do
+    for gram in (gramsOfTerm dict[i]).eraseDups do
+      buckets := buckets.insert gram ((buckets.getD gram #[]).push i)
+  pure buckets
 
 private def literalCountOf (dict : Array Term) : Nat :=
   dict.toList.countP (fun t => match t with | .literal _ => true | _ => false)
 
-/-- Build the index of one block dictionary. -/
+/-- Build the index of one block dictionary. Terms are visited in dictionary
+order, so every posting list is ascending; only the gram directory is sorted,
+and it is much smaller than the posting area. -/
 def build (dict : Array Term) : Index :=
+  let entries : List Posting :=
+    (pairsOf dict).toList.map (fun bucket => { gram := bucket.1, ids := bucket.2.toList })
   { gramLength := gramLength
     literalCount := literalCountOf dict
-    postings := (groupPairs ((pairsOf dict).mergeSort beforePair)).toArray }
+    postings := (entries.mergeSort (fun a b => lessGram a.gram b.gram)).toArray }
 
 private def lowerBoundGo (postings : Array Posting) (gram : List Char)
     (low high : Nat) : Nat → Nat
@@ -393,14 +388,32 @@ def postingsFor (idx : Index) (gram : List Char) : List Nat :=
   | some posting => if posting.gram == gram then posting.ids else []
   | none => []
 
+/-- Intersect two ascending ID lists in one pass. `fuel` is one more than the
+combined length, so the exhausted case is unreachable. -/
+private def intersectGo : Nat → List Nat → List Nat → List Nat → List Nat
+  | 0, _, _, acc => acc.reverse
+  | _ + 1, [], _, acc => acc.reverse
+  | _ + 1, _, [], acc => acc.reverse
+  | fuel + 1, a :: as, b :: bs, acc =>
+      if a == b then intersectGo fuel as bs (a :: acc)
+      else if a < b then intersectGo fuel as (b :: bs) acc
+      else intersectGo fuel (a :: as) bs acc
+
+def intersectSorted (xs ys : List Nat) : List Nat :=
+  intersectGo (xs.length + ys.length + 1) xs ys []
+
 /-- The candidate local IDs for a needle, or `none` when the index cannot
-serve it. Mirrors `candidatesSpec` over the stored posting lists. -/
+serve it. The rarest gram seeds the intersection, so a needle carrying one
+absent or rare gram costs almost nothing. This is the runtime form of
+`candidatesSpec`; `agreesWithSpec` is the contract between them. -/
 def candidates? (idx : Index) (needle : String) : Option (List Nat) :=
   match gramsOfNeedle needle with
   | [] => none
-  | first :: rest =>
-      some (rest.foldl (fun acc g => acc.filter (fun i => i ∈ postingsFor idx g))
-              (postingsFor idx first))
+  | grams =>
+      let lists := grams.eraseDups.map (postingsFor idx)
+      match lists.mergeSort (fun a b => decide (a.length ≤ b.length)) with
+      | [] => some []
+      | first :: rest => some (rest.foldl intersectSorted first)
 
 /-- The contract between the stored index and the specification. -/
 def agreesWithSpec (dict : Array Term) (needle : String) : Bool :=
