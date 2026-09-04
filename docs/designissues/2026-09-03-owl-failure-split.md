@@ -297,6 +297,116 @@ Table 6.1 needs a guarded form, not a longer unconditional list. Its
 cost, unpaid, is `WebOnt-Class-003` (2 RL units), whose conclusion asks
 the converse direction.
 
+### `a32c3275a` — cax-adc takes its class pair from two distinct CELLS
+
+| Rows changed | RL before → after | `--dl` before → after |
+|---|---|---|
+| cax-adc, narrowed to the cell walk | 1158 pass, 289 fail → 1158 pass, 289 fail | 1231 pass, 216 fail → 1231 pass, 216 fail |
+
+The soundness exposure the `a3eb7bd11` landing recorded and did not
+close. `caxAdcAt` read its member pair through `listElems` — two
+distinct TERMS of the member list, with no requirement that they sit
+in different positions of it — while eq-diff2, eq-diff3 and prp-adp
+had already been given the distinct-CELL guard. It now walks
+`listCells` and reads each cell's own `rdf:first`, matching
+`eqDiff2At` exactly.
+
+`Clash.caxAdc` is unchanged and still asks only for two distinct-TERM
+`ListMember`s, so the engine row stays strictly weaker than the
+specification row it discharges. `caxAdcAt_sound` is rewritten through
+`listCells_sound`.
+
+**Nothing moves in either regime.** Not one unit, and `clashes`
+(53 RL, 124 `--dl`), `closure_rounds` and `cap_hits` (0 in both) are
+identical before and after. The narrower guard costs nothing on this
+corpus; what it removes is the exposure, not a test.
+
+### scm-svf1, scm-svf2, scm-avf1, scm-avf2, scm-hv — written, measured, NOT landed
+
+Rank 2 of the category-A table. The five rows were transcribed verbatim
+from OWL 2 Profiles (2nd Edition) 4.3 Table 9, built, and measured.
+They close 11 RL units with 0 regressions:
+
+| Rows | RL before → after | `--dl` before → after |
+|---|---|---|
+| scm-svf1, scm-svf2, scm-avf1, scm-avf2, scm-hv | 1158 pass, 289 fail → 1169 pass, 278 fail | NOT MEASURABLE — see below |
+
+Ten of the eleven are the five cases the ranking predicted, each scored
+in two catalogs: `rdfbased-sem-restrict-somevalues-cmp-class`,
+`-somevalues-cmp-prop`, `-allvalues-cmp-class`, `-allvalues-cmp-prop`
+and `-hasvalue-cmp-prop`, all `PositiveEntailmentTest`. The eleventh
+was not predicted: `WebOnt-description-logic-002 [InconsistencyTest]`,
+where the new `rdfs:subClassOf` conclusions let an
+already-implemented clash row fire (clashes 53 → 54). The prediction
+came from the MISSING CONCLUSION TRIPLE of each failing unit and was
+right to within that one extra unit.
+
+**The `--dl` regime cannot complete with these rows, and the cost gate
+that caught it is peak resident memory, not elaboration time.** Three
+full `--dl` runs were killed by the operating system at the same case.
+Measured on the `type-positive-entailment` catalog alone, 412 units,
+`/usr/bin/time -l`:
+
+| Tree | wall | peak resident | result |
+|---|---|---|---|
+| without the five rows | 109 s | 141 MB | 329 pass, 79 fail (out of 412) |
+| with the five rows | 430 s | **7.47 GB** | killed |
+
+The RL closure of the case where it dies,
+`WebOnt-TransitiveProperty-002`, is 103 triples in 3 rounds BEFORE and
+AFTER the rows — the closure does not grow at all. The blow-up is on
+the `--dl` side, where the refuter reads the extra `rdfs:subClassOf`
+edges between restriction nodes as general class inclusions and
+branches on each one.
+
+**The guarded form that was tried, and why it was not enough.** Adding
+`c1 ≠ c2` to the EXECUTABLE row removes the reflexive
+`R rdfs:subClassOf R` edges that a tableau expands for nothing. It is
+sound, because a guarded engine row is strictly weaker than its
+`Derives` constructor — the same relation the four collection clash
+rows have to their `Clash` constructors. It cannot be landed on its
+own, because `RLTheorems`'s T4 (every `Derives`-derivable triple is in
+the saturated closure) is a COMPLETENESS theorem, and Table 9 permits
+`c1 = c2`. Landing the guard needs either the side condition in the
+`Derives` constructor as well — which stops the constructor being the
+printed table row — or a T4 arm that derives the reflexive case
+another way. That is the design decision this leaves open.
+
+This is the second cost gate this workstream has hit. Table 6.1 was
+caught by `RLSemantics` elaboration time (26 s → 189 s); these five
+rows are caught by `--dl` peak memory (141 MB → 7.47 GB). **Run the
+`type-positive-entailment` catalog alone under `/usr/bin/time -l`
+before landing any rule row: it takes under two minutes and it sees
+what a green `lake build` and a green RL run do not.**
+
+For the record, `RLSemantics` elaboration with the five rows is 44 s
+against 37 s without, measured on the same machine with a forced
+rebuild. That gate passes; the memory one does not.
+
+### `cb1883e0f` — scm-op and scm-dp
+
+| Rows added | RL before → after | `--dl` before → after |
+|---|---|---|
+| scm-op, scm-dp | 1158 pass, 289 fail → 1160 pass, 287 fail | 1231 pass, 216 fail → 1233 pass, 214 fail |
+
+OWL 2 Profiles (2nd Edition) 4.3 Table 9, verbatim:
+`T(?p, rdf:type, owl:ObjectProperty) | T(?p, rdfs:subPropertyOf, ?p)
+T(?p, owl:equivalentProperty, ?p)`, and the same two conclusions from
+`owl:DatatypeProperty`.
+
+2 units in each regime, and they are the same 2: both
+`rdfbased-sem-eqdis-eqprop-rflxv [PositiveEntailmentTest]`, scored in
+the `type-positive-entailment` and the `type-consistency` catalog.
+**Predicted 2, realised 2 in RL and 2 in `--dl`**, no regressions in
+either regime; `cap_hits` 0, `clashes` 53 (RL) and 124 (`--dl`) and
+`closure_rounds` 5572 (RL) and 6159 (`--dl`) all unchanged. The case needs BOTH rows: its premise
+declares one `owl:ObjectProperty` and one `owl:DatatypeProperty` and
+its conclusion asks for `owl:equivalentProperty` on each.
+
+The `--dl` cost gate above was run first: 130 s and 141 MB peak on the
+`type-positive-entailment` catalog, against 109 s and 141 MB without
+the rows. Peak memory does not move.
+
 ## B5 enumerated: how, and what the method cannot see
 
 Done 2026-09-04 against `l4owl-probe` at commit `8029b7c1c`. The
