@@ -1377,6 +1377,47 @@ inductive Derives (g : Graph) : Triple → Prop where
       (hrng : Derives g ⟨Subject.iri q, rdfsRange, Term.iri c⟩) :
       Derives g ⟨Subject.iri p, rdfsDomain, Term.iri c⟩
 
+  /-- **inv-fp** `[ext]` — the property characteristic travels across
+  `owl:inverseOf`: an inverse of a functional property is
+  inverse-functional, and an inverse of an inverse-functional property
+  is functional.
+
+  NOT a row of OWL 2 RL/RDF Table 9, and not a transcription of any
+  table. It is a CONSEQUENCE of three published semantic conditions of
+  the OWL 2 RDF-Based Semantics (2nd Edition), each already transcribed
+  in `OWL/Semantics.lean`: `CondInverseOf` (Table 5.13 — IEXT(q) is the
+  transposition of IEXT(p)), `CondFunctional` and the
+  inverse-functional condition (Table 5.14). The derivation is
+  `RLSemantics.rlCondInvFpIfp_of_semantics` and its three companions;
+  read those before treating this as a table row.
+
+  Four rows, one per reading direction of the `owl:inverseOf` triple —
+  the closure has no `owl:inverseOf` symmetry row, so the reverse pair
+  is not redundant. W3C: `WebOnt-FunctionalProperty-003`,
+  `WebOnt-InverseFunctionalProperty-003`. -/
+  | invFpIfp {p q : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hfp : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlFunctionalProperty⟩) :
+      Derives g ⟨Subject.iri q, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩
+  | invIfpFp {p q : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hifp : Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩) :
+      Derives g ⟨Subject.iri q, rdfType, Term.iri owlFunctionalProperty⟩
+  | invFpIfpRev {p q : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hfp : Derives g ⟨Subject.iri q, rdfType,
+        Term.iri owlFunctionalProperty⟩) :
+      Derives g ⟨Subject.iri p, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩
+  | invIfpFpRev {p q : WfIri}
+      (hinv : Derives g ⟨Subject.iri p, owlInverseOf, Term.iri q⟩)
+      (hifp : Derives g ⟨Subject.iri q, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩) :
+      Derives g ⟨Subject.iri p, rdfType, Term.iri owlFunctionalProperty⟩
+
 /-! ## The no-consequent (clash) rows
 
 Rows whose conclusion is `false`: their premises being satisfiable in
@@ -1645,6 +1686,10 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | invFlipRngDom _ _ ih1 ih2 => exact Derives.invFlipRngDom ih1 ih2
   | invFlipDomRngRev _ _ ih1 ih2 => exact Derives.invFlipDomRngRev ih1 ih2
   | invFlipRngDomRev _ _ ih1 ih2 => exact Derives.invFlipRngDomRev ih1 ih2
+  | invFpIfp _ _ ih1 ih2 => exact Derives.invFpIfp ih1 ih2
+  | invIfpFp _ _ ih1 ih2 => exact Derives.invIfpFp ih1 ih2
+  | invFpIfpRev _ _ ih1 ih2 => exact Derives.invFpIfpRev ih1 ih2
+  | invIfpFpRev _ _ ih1 ih2 => exact Derives.invIfpFpRev ih1 ih2
 
 /-- Cut: if every triple of `g'` is derivable from `g`, then everything
 derivable from `g'` is derivable from `g`. This is what makes the
@@ -1752,6 +1797,10 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | invFlipRngDom _ _ ih1 ih2 => exact Derives.invFlipRngDom ih1 ih2
   | invFlipDomRngRev _ _ ih1 ih2 => exact Derives.invFlipDomRngRev ih1 ih2
   | invFlipRngDomRev _ _ ih1 ih2 => exact Derives.invFlipRngDomRev ih1 ih2
+  | invFpIfp _ _ ih1 ih2 => exact Derives.invFpIfp ih1 ih2
+  | invIfpFp _ _ ih1 ih2 => exact Derives.invIfpFp ih1 ih2
+  | invFpIfpRev _ _ ih1 ih2 => exact Derives.invFpIfpRev ih1 ih2
+  | invIfpFpRev _ _ ih1 ih2 => exact Derives.invIfpFpRev ih1 ih2
 
 /-- Clash detection is monotone too: a bigger graph clashes at least as
 often. -/

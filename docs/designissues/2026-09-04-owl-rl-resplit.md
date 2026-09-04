@@ -380,6 +380,67 @@ Each line is a case with its unit count. A case scores one unit per
 - `rdfbased-sem-restrict-somevalues-cmp-class [PositiveEntailmentTest]` — 2
 - `rdfbased-sem-restrict-somevalues-cmp-prop [PositiveEntailmentTest]` — 2
 
+## Fix landings measured against this split
+
+### `inv-fp` — the property characteristic travels across `owl:inverseOf`
+
+| Rows added | RL before → after | `--dl` before → after |
+|---|---|---|
+| invFpIfp, invIfpFp, invFpIfpRev, invIfpFpRev | 1158 pass, 289 fail → 1162 pass, 285 fail (out of 1457) | 1296 pass, 151 fail → 1300 pass, 147 fail (out of 1457) |
+
+Bucket B7. **Predicted 4 RL units, realised 4 RL units and 4 `--dl`
+units**, and the four are the same two cases scored in two catalogs
+each: `WebOnt-FunctionalProperty-003` and
+`WebOnt-InverseFunctionalProperty-003`, both
+`PositiveEntailmentTest`. No test regressed in either regime — the RL
+failing sets differ by exactly those four lines and nothing else.
+`cap_hits` 0, `clashes` 53, `closure_rounds` 5572 in RL, all unchanged.
+NegativeEntailmentTest 38 pass, 0 fail (out of 38) and ConsistencyTest
+1 fail in both regimes, unchanged.
+
+**These four rows are NOT a table transcription, and the file says so.**
+OWL 2 RL/RDF Table 9 has no row for the characteristic travelling
+across `owl:inverseOf`. The rows are a consequence of three published
+conditions of the OWL 2 RDF-Based Semantics (2nd Edition):
+`CondInverseOf` (Table 5.13 — IEXT(q) is the transposition of IEXT(p))
+and the Table 5.14 conditions for `owl:FunctionalProperty` and
+`owl:InverseFunctionalProperty`. Table 5.14 states each characteristic
+as an `iff`; `OWL/Semantics.lean`'s `CondFunctional` carries only the
+half that READS a membership, so the half that CONCLUDES one is stated
+in `RLSemantics.lean` under its table name (`T514FunctionalIntro`,
+`T514InverseFunctionalIntro`) and taken as a HYPOTHESIS of the
+derivation rather than added to any bundle. The derivation is
+`rlCondInvFpIfp_of_semantics` and its three companions. Anyone reading
+these rows as table rows should read that derivation first.
+
+Four rows, not two: the closure has no `owl:inverseOf` symmetry row,
+so reading the declaration from its object is a separate rule. Only
+the two forward rows are exercised by the corpus.
+
+**Cost gates.** Peak resident on the `type-positive-entailment`
+catalog under `--dl`, `/usr/bin/time -l`: 138 MB, 277 s wall, 356 pass,
+52 fail (out of 412). The whole `--dl` corpus: 242 MB peak, 734 s. The
+2026-09-03 split records 141 MB for the same catalog before any of
+this, so peak memory does not move — unlike the five `scm-svf*` rows,
+which took it to 7.47 GB. `RLSemantics` elaborated in 58 s in the full
+rebuild that carries these rows. That is an absolute figure, not a
+delta: no before-figure was taken on this machine, which was running
+two other agents throughout, so the wall-clock numbers here are not
+comparable with the 2026-09-03 document's.
+
+Touch points, for the next row that lands the same way: a `Derives`
+constructor and its two `mono` arms in `RLRules.lean`; an
+`RlCond` definition, a bundle field, a `tripleIrisNonReserved` arm and
+a `TripleHolds` arm in `RLSemantics.lean`; a bundle field in
+`RLHerbrand.lean`; the executable row and its `conclusionsList` entry
+in `RLClosure.lean`; the indexed row, its `ofGraph` theorem and its
+list entry in `RLClosureIndexed.lean`; a soundness theorem, a
+`conclusionsFrom_sound` bullet, ONE MORE `rfl` in that proof's `rcases`
+pattern, and a T4 arm in `RLTheorems.lean`; and a `RlRowId`
+constructor, a `rlRowRule` row, a `cond_*` theorem and a bundle field
+in `Unified/OwlRlSchema.lean`. The `rcases` pattern is the one that
+fails with an error pointing at a line far from the edit.
+
 ## Judgement: should RL get a refutation fallback like `--dl`?
 
 Yes, and it should be a separate REGIME rather than a change to the RL

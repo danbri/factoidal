@@ -547,6 +547,14 @@ theorem derives_irisNonReserved {g : Graph} (hg : RlReservedFree g)
       exact tin_mk (tin_s ih1) (by decide) (tin_o ih2)
   | invFlipRngDomRev _ _ ih1 ih2 =>
       exact tin_mk (tin_s ih1) (by decide) (tin_o ih2)
+  | invFpIfp _ _ ih1 _ =>
+      exact tin_mk (sin_iri (irw_of_termIri (tin_o ih1))) (by decide) (by decide)
+  | invIfpFp _ _ ih1 _ =>
+      exact tin_mk (sin_iri (irw_of_termIri (tin_o ih1))) (by decide) (by decide)
+  | invFpIfpRev _ _ ih1 _ =>
+      exact tin_mk (tin_s ih1) (by decide) (by decide)
+  | invIfpFpRev _ _ ih1 _ =>
+      exact tin_mk (tin_s ih1) (by decide) (by decide)
 
 /-! ## Semantic chain relations for the `ListDenotes`-shaped rows
 
@@ -1065,6 +1073,30 @@ def RlCondInvFlipRngDomRev : Prop :=
     i.iext (i.iIri rdfsRange) (i.iIri q) (i.iIri c) →
     i.iext (i.iIri rdfsDomain) (i.iIri p) (i.iIri c)
 
+/-- **inv-fp** `[ext]`, the four directions. Each is a consequence of
+`OWL.CondInverseOf` (Table 5.13) with `OWL.CondFunctional` and the
+inverse-functional condition (Table 5.14); see
+`rlCondInvFpIfp_of_semantics` below. -/
+def RlCondInvFpIfp : Prop :=
+  ∀ (p q : WfIri), i.iext (i.iIri owlInverseOf) (i.iIri p) (i.iIri q) →
+    icext i (i.iIri p) (i.iIri owlFunctionalProperty) →
+    icext i (i.iIri q) (i.iIri owlInverseFunctionalProperty)
+
+def RlCondInvIfpFp : Prop :=
+  ∀ (p q : WfIri), i.iext (i.iIri owlInverseOf) (i.iIri p) (i.iIri q) →
+    icext i (i.iIri p) (i.iIri owlInverseFunctionalProperty) →
+    icext i (i.iIri q) (i.iIri owlFunctionalProperty)
+
+def RlCondInvFpIfpRev : Prop :=
+  ∀ (p q : WfIri), i.iext (i.iIri owlInverseOf) (i.iIri p) (i.iIri q) →
+    icext i (i.iIri q) (i.iIri owlFunctionalProperty) →
+    icext i (i.iIri p) (i.iIri owlInverseFunctionalProperty)
+
+def RlCondInvIfpFpRev : Prop :=
+  ∀ (p q : WfIri), i.iext (i.iIri owlInverseOf) (i.iIri p) (i.iIri q) →
+    icext i (i.iIri q) (i.iIri owlInverseFunctionalProperty) →
+    icext i (i.iIri p) (i.iIri owlFunctionalProperty)
+
 /-! ### The comprehension conditions (`caxDwToComplement`,
 `clsMaxqc1ToComplement`, `minCard1Comprehension`)
 
@@ -1121,6 +1153,75 @@ def Minc1Props (p : WfIri) (z : i.idom) : Prop :=
 def RlCondMinc1 : Prop :=
   ∀ (p : WfIri), icext i (i.iIri p) (i.iIri owlObjectProperty) →
     ∃ z : i.idom, Minc1Props i p z
+
+/-! ### The four `inv-fp` conditions are consequences, not table rows
+
+`RlCondInvFpIfp` and its three companions are the only conditions in
+this file that do not mirror a published table row. They follow from
+three conditions that ARE published: `CondInverseOf` (OWL 2 RDF-Based
+Semantics, 2nd Edition, Table 5.13) and the Table 5.14 conditions for
+`owl:FunctionalProperty` and `owl:InverseFunctionalProperty`. Table 5.14
+states each characteristic as an `iff`; `OWL.CondFunctional` carries
+only the half that READS a membership, so the half that CONCLUDES one
+is stated here under its table name and taken as a hypothesis of the
+derivation, not added to any bundle. -/
+
+/-- Table 5.14, `owl:FunctionalProperty`, the half that reads a
+membership. The same statement as `OWL.CondFunctional`. -/
+def T514FunctionalElim : Prop :=
+  ∀ p x y z : i.idom, icext i p (i.iIri owlFunctionalProperty) →
+    i.iext p x y → i.iext p x z → y = z
+
+/-- Table 5.14, `owl:FunctionalProperty`, the half that concludes a
+membership. -/
+def T514FunctionalIntro : Prop :=
+  ∀ p : i.idom, (∀ x y z : i.idom, i.iext p x y → i.iext p x z → y = z) →
+    icext i p (i.iIri owlFunctionalProperty)
+
+/-- Table 5.14, `owl:InverseFunctionalProperty`, the half that reads a
+membership. -/
+def T514InverseFunctionalElim : Prop :=
+  ∀ p x1 x2 y : i.idom, icext i p (i.iIri owlInverseFunctionalProperty) →
+    i.iext p x1 y → i.iext p x2 y → x1 = x2
+
+/-- Table 5.14, `owl:InverseFunctionalProperty`, the half that concludes
+a membership. -/
+def T514InverseFunctionalIntro : Prop :=
+  ∀ p : i.idom,
+    (∀ x1 x2 y : i.idom, i.iext p x1 y → i.iext p x2 y → x1 = x2) →
+    icext i p (i.iIri owlInverseFunctionalProperty)
+
+theorem rlCondInvFpIfp_of_semantics (hinv : CondInverseOf i)
+    (hfe : T514FunctionalElim i) (hii : T514InverseFunctionalIntro i) :
+    RlCondInvFpIfp i := by
+  intro p q hpq hfp
+  refine hii _ (fun x1 x2 y h1 h2 => ?_)
+  exact hfe _ y x1 x2 hfp ((hinv _ _ y x1 hpq).mpr h1)
+    ((hinv _ _ y x2 hpq).mpr h2)
+
+theorem rlCondInvIfpFp_of_semantics (hinv : CondInverseOf i)
+    (hie : T514InverseFunctionalElim i) (hfi : T514FunctionalIntro i) :
+    RlCondInvIfpFp i := by
+  intro p q hpq hifp
+  refine hfi _ (fun x y z h1 h2 => ?_)
+  exact hie _ y z x hifp ((hinv _ _ y x hpq).mpr h1)
+    ((hinv _ _ z x hpq).mpr h2)
+
+theorem rlCondInvFpIfpRev_of_semantics (hinv : CondInverseOf i)
+    (hfe : T514FunctionalElim i) (hii : T514InverseFunctionalIntro i) :
+    RlCondInvFpIfpRev i := by
+  intro p q hpq hfp
+  refine hii _ (fun x1 x2 y h1 h2 => ?_)
+  exact hfe _ y x1 x2 hfp ((hinv _ _ x1 y hpq).mp h1)
+    ((hinv _ _ x2 y hpq).mp h2)
+
+theorem rlCondInvIfpFpRev_of_semantics (hinv : CondInverseOf i)
+    (hie : T514InverseFunctionalElim i) (hfi : T514FunctionalIntro i) :
+    RlCondInvIfpFpRev i := by
+  intro p q hpq hifp
+  refine hfi _ (fun x y z h1 h2 => ?_)
+  exact hie _ y z x hifp ((hinv _ _ x y hpq).mp h1)
+    ((hinv _ _ x z hpq).mp h2)
 
 end Conditions
 
@@ -1208,6 +1309,10 @@ structure RlConditions (i : Interp) : Prop where
   invFlipRngDom : RlCondInvFlipRngDom i
   invFlipDomRngRev : RlCondInvFlipDomRngRev i
   invFlipRngDomRev : RlCondInvFlipRngDomRev i
+  invFpIfp : RlCondInvFpIfp i
+  invIfpFp : RlCondInvIfpFp i
+  invFpIfpRev : RlCondInvFpIfpRev i
+  invIfpFpRev : RlCondInvIfpFpRev i
   compDw : RlCondCompDw i
   compMqc : RlCondCompMqc i
   minc1 : RlCondMinc1 i
@@ -1938,6 +2043,18 @@ theorem rl_derives_holds {i : Interp} (hc : RlConditions i) {g : Graph}
   | invFlipRngDomRev _ _ ih1 ih2 =>
       simp only [TripleHolds] at ih1 ih2 ⊢
       exact hc.invFlipRngDomRev _ _ _ ih1 ih2
+  | invFpIfp _ _ ih1 ih2 =>
+      simp only [TripleHolds] at ih1 ih2 ⊢
+      exact hc.invFpIfp _ _ ih1 ih2
+  | invIfpFp _ _ ih1 ih2 =>
+      simp only [TripleHolds] at ih1 ih2 ⊢
+      exact hc.invIfpFp _ _ ih1 ih2
+  | invFpIfpRev _ _ ih1 ih2 =>
+      simp only [TripleHolds] at ih1 ih2 ⊢
+      exact hc.invFpIfpRev _ _ ih1 ih2
+  | invIfpFpRev _ _ ih1 ih2 =>
+      simp only [TripleHolds] at ih1 ih2 ⊢
+      exact hc.invIfpFpRev _ _ ih1 ih2
 
 /-! ## The clash rows are unsatisfiable configurations -/
 

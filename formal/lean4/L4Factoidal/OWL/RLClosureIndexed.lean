@@ -343,6 +343,48 @@ def prpInv1ForS (s : Store) (d : Triple) : List Triple :=
             (asSubject u.o).map (fun ys => ⟨ys, p2, u.s.toTerm⟩))))
   else []
 
+def invFpIfpForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if s.memB ⟨Subject.iri p1, rdfType, Term.iri owlFunctionalProperty⟩
+        then [(⟨Subject.iri p2, rdfType,
+                Term.iri owlInverseFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
+def invIfpFpForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if s.memB ⟨Subject.iri p1, rdfType,
+                   Term.iri owlInverseFunctionalProperty⟩
+        then [(⟨Subject.iri p2, rdfType,
+                Term.iri owlFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
+def invFpIfpRevForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if s.memB ⟨Subject.iri p2, rdfType, Term.iri owlFunctionalProperty⟩
+        then [(⟨Subject.iri p1, rdfType,
+                Term.iri owlInverseFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
+def invIfpFpRevForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if s.memB ⟨Subject.iri p2, rdfType,
+                   Term.iri owlInverseFunctionalProperty⟩
+        then [(⟨Subject.iri p1, rdfType,
+                Term.iri owlFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
 def prpInv2ForS (s : Store) (d : Triple) : List Triple :=
   if d.p == owlInverseOf then
     (subjIri d.s).flatMap (fun p1 =>
@@ -710,6 +752,8 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       prpDomForS s d, prpRngForS s d, prpFpForS s d, prpIfpForS s d,
       prpSympForS s d, prpTrpForS s d, prpSpo1ForS s d, prpSpo2ForS s d,
       prpEqp1ForS s d, prpEqp2ForS s d, prpInv1ForS s d, prpInv2ForS s d,
+      invFpIfpForS s d, invIfpFpForS s d, invFpIfpRevForS s d,
+      invIfpFpRevForS s d,
       prpKeyForS s d,
       clsInt1ForS s d, clsInt2ForS s d, clsUniForS s d,
       clsSvf1ForS s d, clsSvf2ForS s d, clsAvfForS s d,
@@ -981,6 +1025,14 @@ theorem prpEqp1ForS_ofGraph (g : Graph) : prpEqp1ForS (Store.ofGraph g) = prpEqp
 theorem prpEqp2ForS_ofGraph (g : Graph) : prpEqp2ForS (Store.ofGraph g) = prpEqp2For g := rfl
 theorem prpInv1ForS_ofGraph (g : Graph) : prpInv1ForS (Store.ofGraph g) = prpInv1For g := rfl
 theorem prpInv2ForS_ofGraph (g : Graph) : prpInv2ForS (Store.ofGraph g) = prpInv2For g := rfl
+theorem invFpIfpForS_ofGraph (g : Graph) :
+    invFpIfpForS (Store.ofGraph g) = invFpIfpFor g := rfl
+theorem invIfpFpForS_ofGraph (g : Graph) :
+    invIfpFpForS (Store.ofGraph g) = invIfpFpFor g := rfl
+theorem invFpIfpRevForS_ofGraph (g : Graph) :
+    invFpIfpRevForS (Store.ofGraph g) = invFpIfpRevFor g := rfl
+theorem invIfpFpRevForS_ofGraph (g : Graph) :
+    invIfpFpRevForS (Store.ofGraph g) = invIfpFpRevFor g := rfl
 theorem prpKeyForS_ofGraph (g : Graph) : prpKeyForS (Store.ofGraph g) = prpKeyFor g := by
   funext d
   unfold prpKeyForS prpKeyFor
@@ -1103,6 +1155,8 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     prpDomForS_ofGraph, prpRngForS_ofGraph, prpFpForS_ofGraph, prpIfpForS_ofGraph,
     prpSympForS_ofGraph, prpTrpForS_ofGraph, prpSpo1ForS_ofGraph, prpSpo2ForS_ofGraph,
     prpEqp1ForS_ofGraph, prpEqp2ForS_ofGraph, prpInv1ForS_ofGraph, prpInv2ForS_ofGraph,
+    invFpIfpForS_ofGraph, invIfpFpForS_ofGraph, invFpIfpRevForS_ofGraph,
+    invIfpFpRevForS_ofGraph,
     prpKeyForS_ofGraph,
     clsInt1ForS_ofGraph, clsInt2ForS_ofGraph, clsUniForS_ofGraph,
     clsSvf1ForS_ofGraph, clsSvf2ForS_ofGraph, clsAvfForS_ofGraph,

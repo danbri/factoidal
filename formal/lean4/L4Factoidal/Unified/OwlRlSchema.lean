@@ -137,6 +137,7 @@ inductive RlRowId where
   | eqDiffSym | pdwToDiff | caxDwToDiff | fpDiffToDiff | ifpDiffToDiff
   | chainToTrans | prpRflS | prpRflO
   | invFlipDomRng | invFlipRngDom | invFlipDomRngRev | invFlipRngDomRev
+  | invFpIfp | invIfpFp | invFpIfpRev | invIfpFpRev
   deriving DecidableEq, Repr
 
 /-- The `DRule` of each plain row. Variable names are colon-free and
@@ -356,6 +357,18 @@ def rlRowRule : RlRowId → DRule
   | .invFlipRngDomRev => ⟨dbin (dk rdfsDomain) (.v "p") (.v "c"),
       [dbin (dk owlInverseOf) (.v "p") (.v "q"),
        dbin (dk rdfsRange) (.v "q") (.v "c")]⟩
+  | .invFpIfp => ⟨dtyp (.v "q") (dk owlInverseFunctionalProperty),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dtyp (.v "p") (dk owlFunctionalProperty)]⟩
+  | .invIfpFp => ⟨dtyp (.v "q") (dk owlFunctionalProperty),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dtyp (.v "p") (dk owlInverseFunctionalProperty)]⟩
+  | .invFpIfpRev => ⟨dtyp (.v "p") (dk owlInverseFunctionalProperty),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dtyp (.v "q") (dk owlFunctionalProperty)]⟩
+  | .invIfpFpRev => ⟨dtyp (.v "p") (dk owlFunctionalProperty),
+      [dbin (dk owlInverseOf) (.v "p") (.v "q"),
+       dtyp (.v "q") (dk owlInverseFunctionalProperty)]⟩
 
   | .clsHs1 => ⟨dbin (.v "p") (.v "u") (.v "u"),
       [dbin (dk owlHasSelf) (.v "x") (dlit litTrueBoolean),
@@ -1067,6 +1080,42 @@ theorem cond_invFlipDomRngRev : RlCondInvFlipDomRngRev (restrictInterp i) := by
 theorem cond_invFlipRngDomRev : RlCondInvFlipRngDomRev (restrictInterp i) := by
   intro p q cc h1 h2
   refine rlRowAt hS .invFlipRngDomRev (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q), ("c", (restrictInterp i).iIri cc)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invFpIfp : RlCondInvFpIfp (restrictInterp i) := by
+  intro p q h1 h2
+  refine rlRowAt hS .invFpIfp (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invIfpFp : RlCondInvIfpFp (restrictInterp i) := by
+  intro p q h1 h2
+  refine rlRowAt hS .invIfpFp (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invFpIfpRev : RlCondInvFpIfpRev (restrictInterp i) := by
+  intro p q h1 h2
+  refine rlRowAt hS .invFpIfpRev (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl
+  · exact h1
+  · exact h2
+
+theorem cond_invIfpFpRev : RlCondInvIfpFpRev (restrictInterp i) := by
+  intro p q h1 h2
+  refine rlRowAt hS .invIfpFpRev (vals i [("p", (restrictInterp i).iIri p), ("q", (restrictInterp i).iIri q)]) ?_
   intro a ha
   simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
   rcases ha with rfl | rfl
@@ -2279,6 +2328,10 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       invFlipRngDom := cond_invFlipRngDom hH
       invFlipDomRngRev := cond_invFlipDomRngRev hH
       invFlipRngDomRev := cond_invFlipRngDomRev hH
+      invFpIfp := cond_invFpIfp hH
+      invIfpFp := cond_invIfpFp hH
+      invFpIfpRev := cond_invFpIfpRev hH
+      invIfpFpRev := cond_invIfpFpRev hH
       compDw := kCompDw
       compMqc := kCompMqc
       minc1 := kMinc1 }

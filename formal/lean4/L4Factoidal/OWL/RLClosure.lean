@@ -433,6 +433,59 @@ def inverseOfDomRngFlipFor (g : Graph) (d : Triple) : List Triple :=
           | _, _ => [])))
   else []
 
+/-- **inv-fp** `[ext]` — the property characteristic travels across
+`owl:inverseOf`. NOT an OWL 2 RL/RDF Table 9 row: a consequence of
+`OWL.CondInverseOf` (OWL 2 RDF-Based Semantics Table 5.13) with the
+Table 5.14 functional and inverse-functional conditions, derived in
+`RLSemantics.rlCondInvFpIfp_of_semantics`. Driven by the
+`owl:inverseOf` declaration, like prp-inv1 and prp-inv2. -/
+def invFpIfpFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if memB g ⟨Subject.iri p1, rdfType, Term.iri owlFunctionalProperty⟩
+        then [(⟨Subject.iri p2, rdfType,
+                Term.iri owlInverseFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
+/-- **inv-ifp** `[ext]` — the converse direction of `invFpIfpFor`. -/
+def invIfpFpFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if memB g ⟨Subject.iri p1, rdfType,
+                   Term.iri owlInverseFunctionalProperty⟩
+        then [(⟨Subject.iri p2, rdfType,
+                Term.iri owlFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
+/-- **inv-fp reverse** `[ext]` — the same row read from the OBJECT of
+the `owl:inverseOf` triple. The closure has no `owl:inverseOf` symmetry
+row, so this is not redundant. -/
+def invFpIfpRevFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if memB g ⟨Subject.iri p2, rdfType, Term.iri owlFunctionalProperty⟩
+        then [(⟨Subject.iri p1, rdfType,
+                Term.iri owlInverseFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
+/-- **inv-ifp reverse** `[ext]`. -/
+def invIfpFpRevFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlInverseOf then
+    (subjIri d.s).flatMap (fun p1 =>
+      (asIri d.o).flatMap (fun p2 =>
+        if memB g ⟨Subject.iri p2, rdfType,
+                   Term.iri owlInverseFunctionalProperty⟩
+        then [(⟨Subject.iri p1, rdfType,
+                Term.iri owlFunctionalProperty⟩ : Triple)]
+        else []))
+  else []
+
 /-- **prp-inv2**. -/
 def prpInv2For (g : Graph) (d : Triple) : List Triple :=
   if d.p == owlInverseOf then
@@ -868,6 +921,8 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       prpDomFor g d, prpRngFor g d, prpFpFor g d, prpIfpFor g d,
       prpSympFor g d, prpTrpFor g d, prpSpo1For g d, prpSpo2For g d,
       prpEqp1For g d, prpEqp2For g d, prpInv1For g d, prpInv2For g d,
+      invFpIfpFor g d, invIfpFpFor g d, invFpIfpRevFor g d,
+      invIfpFpRevFor g d,
       prpKeyFor g d,
       clsInt1For g d, clsInt2For g d, clsUniFor g d,
       clsSvf1For g d, clsSvf2For g d, clsAvfFor g d,

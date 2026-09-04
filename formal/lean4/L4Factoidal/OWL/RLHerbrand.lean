@@ -1554,6 +1554,62 @@ theorem rlHerb_conditions (hcons : ¬ Clash c) :
     subst ho2
     exact herb_encode (hcut (Derives.invFlipRngDomRev (Derives.base hm1)
       (Derives.base hm2)))
+  invFpIfp := by
+    intro p q h1 h2
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    have hs1 : s1 = Subject.iri p := subjTerm_iri hx1.symm
+    subst hs1
+    have ho1 : o1 = Term.iri q := hy1.symm
+    subst ho1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    have hs2 : s2 = Subject.iri p := subjTerm_iri hx2.symm
+    subst hs2
+    have ho2 : o2 = Term.iri owlFunctionalProperty := hy2.symm
+    subst ho2
+    exact herb_encode (hcut (Derives.invFpIfp (Derives.base hm1)
+      (Derives.base hm2)))
+  invIfpFp := by
+    intro p q h1 h2
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    have hs1 : s1 = Subject.iri p := subjTerm_iri hx1.symm
+    subst hs1
+    have ho1 : o1 = Term.iri q := hy1.symm
+    subst ho1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    have hs2 : s2 = Subject.iri p := subjTerm_iri hx2.symm
+    subst hs2
+    have ho2 : o2 = Term.iri owlInverseFunctionalProperty := hy2.symm
+    subst ho2
+    exact herb_encode (hcut (Derives.invIfpFp (Derives.base hm1)
+      (Derives.base hm2)))
+  invFpIfpRev := by
+    intro p q h1 h2
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    have hs1 : s1 = Subject.iri p := subjTerm_iri hx1.symm
+    subst hs1
+    have ho1 : o1 = Term.iri q := hy1.symm
+    subst ho1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    have hs2 : s2 = Subject.iri q := subjTerm_iri hx2.symm
+    subst hs2
+    have ho2 : o2 = Term.iri owlFunctionalProperty := hy2.symm
+    subst ho2
+    exact herb_encode (hcut (Derives.invFpIfpRev (Derives.base hm1)
+      (Derives.base hm2)))
+  invIfpFpRev := by
+    intro p q h1 h2
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    have hs1 : s1 = Subject.iri p := subjTerm_iri hx1.symm
+    subst hs1
+    have ho1 : o1 = Term.iri q := hy1.symm
+    subst ho1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    have hs2 : s2 = Subject.iri q := subjTerm_iri hx2.symm
+    subst hs2
+    have ho2 : o2 = Term.iri owlInverseFunctionalProperty := hy2.symm
+    subst ho2
+    exact herb_encode (hcut (Derives.invIfpFpRev (Derives.base hm1)
+      (Derives.base hm2)))
   compDw := by
     intro c0 hguard
     obtain ⟨a, ha⟩ := hguard

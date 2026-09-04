@@ -695,6 +695,71 @@ theorem prpInv1For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
       (derives_of_parts hug rfl hup (mem_asSubject hys))
   · simp at h
 
+/-- **inv-fp** `[ext]`, the four directions. -/
+theorem invFpIfpFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ invFpIfpFor g d) : Derives g t := by
+  unfold invFpIfpFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p1, hp1i, p2, hp2i, hmem⟩ := h
+    split at hmem
+    · rename_i hfp
+      simp only [List.mem_singleton] at hmem; subst hmem
+      exact Derives.invFpIfp
+        (derives_of_parts hd (mem_subjIri hp1i) hp (mem_asIri hp2i))
+        (Derives.base (mem_of_memB hfp))
+    · simp at hmem
+  · simp at h
+
+theorem invIfpFpFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ invIfpFpFor g d) : Derives g t := by
+  unfold invIfpFpFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p1, hp1i, p2, hp2i, hmem⟩ := h
+    split at hmem
+    · rename_i hfp
+      simp only [List.mem_singleton] at hmem; subst hmem
+      exact Derives.invIfpFp
+        (derives_of_parts hd (mem_subjIri hp1i) hp (mem_asIri hp2i))
+        (Derives.base (mem_of_memB hfp))
+    · simp at hmem
+  · simp at h
+
+theorem invFpIfpRevFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ invFpIfpRevFor g d) : Derives g t := by
+  unfold invFpIfpRevFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p1, hp1i, p2, hp2i, hmem⟩ := h
+    split at hmem
+    · rename_i hfp
+      simp only [List.mem_singleton] at hmem; subst hmem
+      exact Derives.invFpIfpRev
+        (derives_of_parts hd (mem_subjIri hp1i) hp (mem_asIri hp2i))
+        (Derives.base (mem_of_memB hfp))
+    · simp at hmem
+  · simp at h
+
+theorem invIfpFpRevFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ invIfpFpRevFor g d) : Derives g t := by
+  unfold invIfpFpRevFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨p1, hp1i, p2, hp2i, hmem⟩ := h
+    split at hmem
+    · rename_i hfp
+      simp only [List.mem_singleton] at hmem; subst hmem
+      exact Derives.invIfpFpRev
+        (derives_of_parts hd (mem_subjIri hp1i) hp (mem_asIri hp2i))
+        (Derives.base (mem_of_memB hfp))
+    · simp at hmem
+  · simp at h
+
 /-- **prp-inv2**. -/
 theorem prpInv2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     (h : t ∈ prpInv2For g d) : Derives g t := by
@@ -1534,7 +1599,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqRefSFor_sound hd ht
   · exact eqRefPFor_sound hd ht
   · exact eqRefOFor_sound hd ht
@@ -1555,6 +1620,10 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact prpEqp2For_sound hd ht
   · exact prpInv1For_sound hd ht
   · exact prpInv2For_sound hd ht
+  · exact invFpIfpFor_sound hd ht
+  · exact invIfpFpFor_sound hd ht
+  · exact invFpIfpRevFor_sound hd ht
+  · exact invIfpFpRevFor_sound hd ht
   · exact prpKeyFor_sound hd ht
   · exact clsInt1For_sound hd ht
   · exact clsInt2For_sound hd ht
@@ -2870,6 +2939,38 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
       · have hb : (q == p) = false := by
           simp only [beq_eq_false_iff_ne, ne_eq]; exact hqp
         simp [hb, hdr]
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invFpIfp p q _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri q, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩ : Triple) ∈
+        invFpIfpFor sat ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [invFpIfpFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q, ?_⟩
+      rw [if_pos (memB_of_mem ih2)]; simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invIfpFp p q _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri q, rdfType,
+        Term.iri owlFunctionalProperty⟩ : Triple) ∈
+        invIfpFpFor sat ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [invIfpFpFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q, ?_⟩
+      rw [if_pos (memB_of_mem ih2)]; simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invFpIfpRev p q _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri p, rdfType,
+        Term.iri owlInverseFunctionalProperty⟩ : Triple) ∈
+        invFpIfpRevFor sat ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [invFpIfpRevFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q, ?_⟩
+      rw [if_pos (memB_of_mem ih2)]; simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @invIfpFpRev p q _ _ ih1 ih2 =>
+    have hc : (⟨Subject.iri p, rdfType,
+        Term.iri owlFunctionalProperty⟩ : Triple) ∈
+        invIfpFpRevFor sat ⟨Subject.iri p, owlInverseOf, Term.iri q⟩ := by
+      simp only [invIfpFpRevFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨p, mem_subjIri_self p, q, mem_asIri_self q, ?_⟩
+      rw [if_pos (memB_of_mem ih2)]; simp
     exact R ih1 hc (by simp [conclusionsList])
 
 /-- **T4.** Everything derivable from `g` is in `g`'s closure, provided
