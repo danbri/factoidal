@@ -1488,6 +1488,37 @@ def applyAxiomsConj (tb : List (ClassExpr × ClassExpr)) (st : RState) (i : Subj
     | _ => acc) (st, false, labelsOf st i)
   (st', ch)
 
+/-- A TBox axiom whose antecedent is `owl:Thing` is a GLOBAL
+    constraint, not one keyed on a label. `owl:Thing` is interpreted
+    as the whole domain in every interpretation, so `owl:Thing ⊑ C`
+    puts `C` on EVERY individual.
+
+    `applyAxioms` fires an axiom only when a node's label
+    structurally matches the antecedent, and no node carries
+    `owl:Thing` as an asserted label, so such an axiom never fired at
+    all. `owl:Thing ⊑ ≤1 f` is how the OilEd t7.3 fixture
+    (`WebOnt-description-logic-030`) makes `f` functional; without it
+    nothing bounds `f`, the two `f`-successors of the inner witness
+    are never merged, and `p1` never meets `¬p1`.
+
+    An empty intersection is `owl:Thing` too (`ClassExpr`), so both
+    spellings fire. Sound for the same reason `injectFunctional` is:
+    the consequent holds of every element, so writing it on every
+    node adds a label the model already satisfies. -/
+def isTopAntecedent : ClassExpr → Bool
+  | .named c         => c == owlThing
+  | .intersection [] => true
+  | _                => false
+
+def injectGlobalAxioms (tb : List (ClassExpr × ClassExpr)) (st : RState)
+    : RState × Bool :=
+  st.nodes.foldl (fun (acc : RState × Bool) n =>
+    tb.foldl (fun (a2 : RState × Bool) (a, d) =>
+      if isTopAntecedent a then
+        let (s, ch) := addLabel a2.1 n.id d
+        (s, a2.2 || ch)
+      else a2) acc) (st, false)
+
 /-- `owl:FunctionalProperty p` is a global `≤ 1 p` on every node,
     which folds the functionality constraint into the existing
     max-cardinality clash rule with no new machinery. -/
@@ -1500,7 +1531,9 @@ def injectFunctional (st : RState) : RState × Bool :=
 /-- One saturation pass over every node and every label it carries. -/
 def onePass (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RState)
     : RState × Bool :=
-  let (st1, ch1) := injectFunctional st
+  let (st0, ch0) := injectFunctional st
+  let (st1, chG) := injectGlobalAxioms tb st0
+  let ch1 := ch0 || chG
   st1.nodes.foldl (fun (acc : RState × Bool) n =>
     let byLabel := (labelsOf acc.1 n.id).foldl (fun (a2 : RState × Bool) l =>
       let (s1, c1) := applyLabelRules g a2.1 n.id l
