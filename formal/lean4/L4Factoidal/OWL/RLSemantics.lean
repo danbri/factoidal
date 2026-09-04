@@ -475,6 +475,10 @@ theorem derives_irisNonReserved {g : Graph} (hg : RlReservedFree g)
   | scmDom2 _ _ ih1 ih2 => exact tin_mk (tin_s ih2) (by decide) (tin_o ih1)
   | scmRng1 _ _ ih1 ih2 => exact tin_mk (tin_s ih1) (by decide) (tin_o ih2)
   | scmRng2 _ _ ih1 ih2 => exact tin_mk (tin_s ih2) (by decide) (tin_o ih1)
+  | scmOpSub _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
+  | scmOpEqp _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
+  | scmDpSub _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
+  | scmDpEqp _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
   | scmInt _ _ hm ihgc ih =>
       exact tin_mk (tin_s ih) (by decide) (listMember_termIris ihgc hm)
   | scmUni _ _ hm ihgc ih =>
@@ -909,6 +913,26 @@ def RlCondScmRng2 : Prop :=
   ∀ p1 p2 c : i.idom, i.iext (i.iIri rdfsRange) p2 c →
     i.iext (i.iIri rdfsSubPropertyOf) p1 p2 → i.iext (i.iIri rdfsRange) p1 c
 
+/-- **scm-op** (conclusion 1 of 2). -/
+def RlCondScmOpSub : Prop :=
+  ∀ p : i.idom, icext i p (i.iIri owlObjectProperty) →
+    i.iext (i.iIri rdfsSubPropertyOf) p p
+
+/-- **scm-op** (conclusion 2 of 2). -/
+def RlCondScmOpEqp : Prop :=
+  ∀ p : i.idom, icext i p (i.iIri owlObjectProperty) →
+    i.iext (i.iIri owlEquivalentProperty) p p
+
+/-- **scm-dp** (conclusion 1 of 2). -/
+def RlCondScmDpSub : Prop :=
+  ∀ p : i.idom, icext i p (i.iIri owlDatatypeProperty) →
+    i.iext (i.iIri rdfsSubPropertyOf) p p
+
+/-- **scm-dp** (conclusion 2 of 2). -/
+def RlCondScmDpEqp : Prop :=
+  ∀ p : i.idom, icext i p (i.iIri owlDatatypeProperty) →
+    i.iext (i.iIri owlEquivalentProperty) p p
+
 /-- **scm-int**, through `uListMem`. -/
 def RlCondScmInt : Prop :=
   ∀ c l ci : i.idom, i.iext (i.iIri owlIntersectionOf) c l →
@@ -1162,6 +1186,10 @@ structure RlConditions (i : Interp) : Prop where
   scmDom2 : RlCondScmDom2 i
   scmRng1 : RlCondScmRng1 i
   scmRng2 : RlCondScmRng2 i
+  scmOpSub : RlCondScmOpSub i
+  scmOpEqp : RlCondScmOpEqp i
+  scmDpSub : RlCondScmDpSub i
+  scmDpEqp : RlCondScmDpEqp i
   scmInt : RlCondScmInt i
   scmUni : RlCondScmUni i
   eqDiffSym : RlCondEqDiffSym i
@@ -1735,6 +1763,18 @@ theorem rl_derives_holds {i : Interp} (hc : RlConditions i) {g : Graph}
   | scmRng2 _ _ ih1 ih2 =>
       simp only [TripleHolds, denot_toTerm] at ih1 ih2 ⊢
       exact hc.scmRng2 _ _ _ ih1 ih2
+  | scmOpSub _ ih =>
+      simp only [TripleHolds, denot_toTerm] at ih ⊢
+      exact hc.scmOpSub _ ih
+  | scmOpEqp _ ih =>
+      simp only [TripleHolds, denot_toTerm] at ih ⊢
+      exact hc.scmOpEqp _ ih
+  | scmDpSub _ ih =>
+      simp only [TripleHolds, denot_toTerm] at ih ⊢
+      exact hc.scmDpSub _ ih
+  | scmDpEqp _ ih =>
+      simp only [TripleHolds, denot_toTerm] at ih ⊢
+      exact hc.scmDpEqp _ ih
   | scmInt _ _ hm ihgc ih =>
       have hlm := holds_listMember hc.listMemBase hc.listMemStep ihgc hm
       simp only [TripleHolds] at ih ⊢

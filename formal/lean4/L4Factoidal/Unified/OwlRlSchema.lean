@@ -131,7 +131,9 @@ inductive RlRowId where
   | scmClsSelf | scmClsEqc | scmClsThing | scmClsNothing
   | scmSco | scmEqc1a | scmEqc1b | scmEqc2
   | scmSpo | scmEqp1a | scmEqp1b | scmEqp2
-  | scmDom1 | scmDom2 | scmRng1 | scmRng2 | scmInt | scmUni
+  | scmDom1 | scmDom2 | scmRng1 | scmRng2
+  | scmOpSub | scmOpEqp | scmDpSub | scmDpEqp
+  | scmInt | scmUni
   | eqDiffSym | pdwToDiff | caxDwToDiff | fpDiffToDiff | ifpDiffToDiff
   | chainToTrans | prpRflS | prpRflO
   | invFlipDomRng | invFlipRngDom | invFlipDomRngRev | invFlipRngDomRev
@@ -296,6 +298,14 @@ def rlRowRule : RlRowId → DRule
   | .scmRng2 => ⟨dbin (dk rdfsRange) (.v "p") (.v "c"),
       [dbin (dk rdfsRange) (.v "q") (.v "c"),
        dbin (dk rdfsSubPropertyOf) (.v "p") (.v "q")]⟩
+  | .scmOpSub => ⟨dbin (dk rdfsSubPropertyOf) (.v "p") (.v "p"),
+      [dtyp (.v "p") (dk owlObjectProperty)]⟩
+  | .scmOpEqp => ⟨dbin (dk owlEquivalentProperty) (.v "p") (.v "p"),
+      [dtyp (.v "p") (dk owlObjectProperty)]⟩
+  | .scmDpSub => ⟨dbin (dk rdfsSubPropertyOf) (.v "p") (.v "p"),
+      [dtyp (.v "p") (dk owlDatatypeProperty)]⟩
+  | .scmDpEqp => ⟨dbin (dk owlEquivalentProperty) (.v "p") (.v "p"),
+      [dtyp (.v "p") (dk owlDatatypeProperty)]⟩
   | .scmInt => ⟨dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
       [dbin (dk owlIntersectionOf) (.v "c") (.v "l"),
        dbin (dk uListMem) (.v "l") (.v "d")]⟩
@@ -896,6 +906,38 @@ theorem cond_scmRng2 : RlCondScmRng2 (restrictInterp i) := by
   rcases ha with rfl | rfl
   · exact h1
   · exact h2
+
+theorem cond_scmOpSub : RlCondScmOpSub (restrictInterp i) := by
+  intro pel h1
+  refine rlRowAt hS .scmOpSub (vals i [("p", pel)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmOpEqp : RlCondScmOpEqp (restrictInterp i) := by
+  intro pel h1
+  refine rlRowAt hS .scmOpEqp (vals i [("p", pel)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmDpSub : RlCondScmDpSub (restrictInterp i) := by
+  intro pel h1
+  refine rlRowAt hS .scmDpSub (vals i [("p", pel)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
+
+theorem cond_scmDpEqp : RlCondScmDpEqp (restrictInterp i) := by
+  intro pel h1
+  refine rlRowAt hS .scmDpEqp (vals i [("p", pel)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl
+  exact h1
 
 theorem cond_scmInt : RlCondScmInt (restrictInterp i) := by
   intro cc l ci h1 h2
@@ -2215,6 +2257,10 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       scmDom2 := cond_scmDom2 hH
       scmRng1 := cond_scmRng1 hH
       scmRng2 := cond_scmRng2 hH
+      scmOpSub := cond_scmOpSub hH
+      scmOpEqp := cond_scmOpEqp hH
+      scmDpSub := cond_scmDpSub hH
+      scmDpEqp := cond_scmDpEqp hH
       scmInt := cond_scmInt hH
       scmUni := cond_scmUni hH
       eqDiffSym := cond_eqDiffSym hH

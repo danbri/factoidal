@@ -1040,6 +1040,25 @@ inductive Derives (g : Graph) : Triple → Prop where
       (hrng : Derives g ⟨p2, rdfsRange, c⟩)
       (hsub : Derives g ⟨p1, rdfsSubPropertyOf, p2.toTerm⟩) :
       Derives g ⟨p1, rdfsRange, c⟩
+  /-- **scm-op** (conclusion 1 of 2), Table 9, verbatim:
+  `T(?p, rdf:type, owl:ObjectProperty) | T(?p, rdfs:subPropertyOf, ?p)
+  T(?p, owl:equivalentProperty, ?p)`. -/
+  | scmOpSub {p : Subject}
+      (h : Derives g ⟨p, rdfType, Term.iri owlObjectProperty⟩) :
+      Derives g ⟨p, rdfsSubPropertyOf, p.toTerm⟩
+  /-- **scm-op** (conclusion 2 of 2). -/
+  | scmOpEqp {p : Subject}
+      (h : Derives g ⟨p, rdfType, Term.iri owlObjectProperty⟩) :
+      Derives g ⟨p, owlEquivalentProperty, p.toTerm⟩
+  /-- **scm-dp** (conclusion 1 of 2), Table 9, verbatim:
+  `T(?p, rdf:type, owl:DatatypeProperty) | (the same two)`. -/
+  | scmDpSub {p : Subject}
+      (h : Derives g ⟨p, rdfType, Term.iri owlDatatypeProperty⟩) :
+      Derives g ⟨p, rdfsSubPropertyOf, p.toTerm⟩
+  /-- **scm-dp** (conclusion 2 of 2). -/
+  | scmDpEqp {p : Subject}
+      (h : Derives g ⟨p, rdfType, Term.iri owlDatatypeProperty⟩) :
+      Derives g ⟨p, owlEquivalentProperty, p.toTerm⟩
   /-- **scm-int** — `T(?c, owl:intersectionOf, ?x)
   LIST[?x, ?c1, ..., ?cn] | T(?c, rdfs:subClassOf, ?c1) ...`. -/
   | scmInt {c : Subject} {lst ci : Term} {gc : Graph}
@@ -1596,6 +1615,10 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | scmRng1 _ _ ih1 ih2 => exact Derives.scmRng1 ih1 ih2
   | scmRng2 _ _ ih1 ih2 => exact Derives.scmRng2 ih1 ih2
   | scmInt _ _ hm ihgc ih => exact Derives.scmInt ihgc ih hm
+  | scmOpSub _ ih => exact Derives.scmOpSub ih
+  | scmOpEqp _ ih => exact Derives.scmOpEqp ih
+  | scmDpSub _ ih => exact Derives.scmDpSub ih
+  | scmDpEqp _ ih => exact Derives.scmDpEqp ih
   | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
   -- `[ext]` rows
   | eqDiffSym _ ih => exact Derives.eqDiffSym ih
@@ -1699,6 +1722,10 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | scmRng1 _ _ ih1 ih2 => exact Derives.scmRng1 ih1 ih2
   | scmRng2 _ _ ih1 ih2 => exact Derives.scmRng2 ih1 ih2
   | scmInt _ _ hm ihgc ih => exact Derives.scmInt ihgc ih hm
+  | scmOpSub _ ih => exact Derives.scmOpSub ih
+  | scmOpEqp _ ih => exact Derives.scmOpEqp ih
+  | scmDpSub _ ih => exact Derives.scmDpSub ih
+  | scmDpEqp _ ih => exact Derives.scmDpEqp ih
   | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
   -- `[ext]` rows
   | eqDiffSym _ ih => exact Derives.eqDiffSym ih

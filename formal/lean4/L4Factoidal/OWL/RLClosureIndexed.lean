@@ -543,6 +543,18 @@ def scmRng2ForS (s : Store) (d : Triple) : List Triple :=
       ⟨u.s, rdfsRange, d.o⟩)
   else []
 
+def scmOpForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlObjectProperty then
+    [⟨d.s, rdfsSubPropertyOf, d.s.toTerm⟩,
+     ⟨d.s, owlEquivalentProperty, d.s.toTerm⟩]
+  else []
+
+def scmDpForS (_s : Store) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlDatatypeProperty then
+    [⟨d.s, rdfsSubPropertyOf, d.s.toTerm⟩,
+     ⟨d.s, owlEquivalentProperty, d.s.toTerm⟩]
+  else []
+
 def scmIntForS (s : Store) (d : Triple) : List Triple :=
   if d.p == owlIntersectionOf then
     (listElemsS s d.o (listFuel s.graph)).map (fun ci =>
@@ -707,6 +719,7 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       scmClsForS s d, scmScoForS s d, scmEqc1ForS s d, scmEqc2ForS s d,
       scmSpoForS s d, scmEqp1ForS s d, scmEqp2ForS s d,
       scmDom1ForS s d, scmDom2ForS s d, scmRng1ForS s d, scmRng2ForS s d,
+      scmOpForS s d, scmDpForS s d,
       scmIntForS s d, scmUniForS s d,
       eqDiffSymForS s d, pdwToDiffForS s d, caxDwToDiffForS s d,
       fpDiffToDiffForS s d, ifpDiffToDiffForS s d,
@@ -1015,6 +1028,18 @@ theorem scmDom1ForS_ofGraph (g : Graph) : scmDom1ForS (Store.ofGraph g) = scmDom
 theorem scmDom2ForS_ofGraph (g : Graph) : scmDom2ForS (Store.ofGraph g) = scmDom2For g := rfl
 theorem scmRng1ForS_ofGraph (g : Graph) : scmRng1ForS (Store.ofGraph g) = scmRng1For g := rfl
 theorem scmRng2ForS_ofGraph (g : Graph) : scmRng2ForS (Store.ofGraph g) = scmRng2For g := rfl
+theorem scmOpForS_ofGraph (g : Graph) :
+    scmOpForS (Store.ofGraph g) = scmOpFor g := by
+  funext d
+  unfold scmOpForS scmOpFor
+  rfl
+
+theorem scmDpForS_ofGraph (g : Graph) :
+    scmDpForS (Store.ofGraph g) = scmDpFor g := by
+  funext d
+  unfold scmDpForS scmDpFor
+  rfl
+
 theorem scmIntForS_ofGraph (g : Graph) : scmIntForS (Store.ofGraph g) = scmIntFor g := by
   funext d
   unfold scmIntForS scmIntFor
@@ -1087,6 +1112,7 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     scmClsForS_ofGraph, scmScoForS_ofGraph, scmEqc1ForS_ofGraph, scmEqc2ForS_ofGraph,
     scmSpoForS_ofGraph, scmEqp1ForS_ofGraph, scmEqp2ForS_ofGraph,
     scmDom1ForS_ofGraph, scmDom2ForS_ofGraph, scmRng1ForS_ofGraph, scmRng2ForS_ofGraph,
+    scmOpForS_ofGraph, scmDpForS_ofGraph,
     scmIntForS_ofGraph, scmUniForS_ofGraph,
     eqDiffSymForS_ofGraph, pdwToDiffForS_ofGraph, caxDwToDiffForS_ofGraph,
     fpDiffToDiffForS_ofGraph, ifpDiffToDiffForS_ofGraph,

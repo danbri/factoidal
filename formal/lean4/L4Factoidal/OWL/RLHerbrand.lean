@@ -1221,6 +1221,38 @@ theorem rlHerb_conditions (hcons : ¬ Clash c) :
       exact hm2
     exact herb_encode (hcut (Derives.scmRng2 (Derives.base hm1)
       (Derives.base hm2')))
+  scmOpSub := by
+    intro pel h
+    obtain ⟨s1, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) h
+    have ho1 : o1 = Term.iri owlObjectProperty := hy1.symm
+    subst ho1
+    have he := herb_encode (hcut (Derives.scmOpSub (Derives.base hm1)))
+    rw [toTerm_subjTerm] at he
+    exact he
+  scmOpEqp := by
+    intro pel h
+    obtain ⟨s1, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) h
+    have ho1 : o1 = Term.iri owlObjectProperty := hy1.symm
+    subst ho1
+    have he := herb_encode (hcut (Derives.scmOpEqp (Derives.base hm1)))
+    rw [toTerm_subjTerm] at he
+    exact he
+  scmDpSub := by
+    intro pel h
+    obtain ⟨s1, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) h
+    have ho1 : o1 = Term.iri owlDatatypeProperty := hy1.symm
+    subst ho1
+    have he := herb_encode (hcut (Derives.scmDpSub (Derives.base hm1)))
+    rw [toTerm_subjTerm] at he
+    exact he
+  scmDpEqp := by
+    intro pel h
+    obtain ⟨s1, o1, hm1, rfl, hy1⟩ := herb_decode (by decide) h
+    have ho1 : o1 = Term.iri owlDatatypeProperty := hy1.symm
+    subst ho1
+    have he := herb_encode (hcut (Derives.scmDpEqp (Derives.base hm1)))
+    rw [toTerm_subjTerm] at he
+    exact he
   scmInt := by
     intro cel l ci h1 hlm
     obtain ⟨s0, o0, hm0, rfl, rfl⟩ := herb_decode (by decide) h1

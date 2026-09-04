@@ -1150,6 +1150,34 @@ theorem scmRng2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
       (derives_of_parts hug rfl hup huo)
   · simp at h
 
+/-- **scm-op** — both conclusions. -/
+theorem scmOpFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmOpFor g d) : Derives g t := by
+  unfold scmOpFor at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with rfl | rfl
+    · exact Derives.scmOpSub (derives_of_parts hd rfl hp1 hp2)
+    · exact Derives.scmOpEqp (derives_of_parts hd rfl hp1 hp2)
+  · simp at h
+
+/-- **scm-dp** — both conclusions. -/
+theorem scmDpFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmDpFor g d) : Derives g t := by
+  unfold scmDpFor at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+    rcases h with rfl | rfl
+    · exact Derives.scmDpSub (derives_of_parts hd rfl hp1 hp2)
+    · exact Derives.scmDpEqp (derives_of_parts hd rfl hp1 hp2)
+  · simp at h
+
 /-- **scm-int**. -/
 theorem scmIntFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     (h : t ∈ scmIntFor g d) : Derives g t := by
@@ -1503,7 +1531,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   obtain ⟨l, hl, ht⟩ := h
   rcases hl with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl
@@ -1554,6 +1582,8 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact scmDom2For_sound hd ht
   · exact scmRng1For_sound hd ht
   · exact scmRng2For_sound hd ht
+  · exact scmOpFor_sound hd ht
+  · exact scmDpFor_sound hd ht
   · exact scmIntFor_sound hd ht
   · exact scmUniFor_sound hd ht
   · exact eqDiffSymFor_sound hd ht
@@ -2620,6 +2650,26 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
       exact ⟨⟨p1, rdfsSubPropertyOf, p2.toTerm⟩,
         mem_withPredObj_of ih2 rfl rfl, rfl⟩
     exact R ih1 hc (by simp [conclusionsList])
+  | @scmOpSub pp _ ih =>
+    have hc : (⟨pp, rdfsSubPropertyOf, pp.toTerm⟩ : Triple) ∈
+        scmOpFor sat ⟨pp, rdfType, Term.iri owlObjectProperty⟩ := by
+      simp [scmOpFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmOpEqp pp _ ih =>
+    have hc : (⟨pp, owlEquivalentProperty, pp.toTerm⟩ : Triple) ∈
+        scmOpFor sat ⟨pp, rdfType, Term.iri owlObjectProperty⟩ := by
+      simp [scmOpFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmDpSub pp _ ih =>
+    have hc : (⟨pp, rdfsSubPropertyOf, pp.toTerm⟩ : Triple) ∈
+        scmDpFor sat ⟨pp, rdfType, Term.iri owlDatatypeProperty⟩ := by
+      simp [scmDpFor]
+    exact R ih hc (by simp [conclusionsList])
+  | @scmDpEqp pp _ ih =>
+    have hc : (⟨pp, owlEquivalentProperty, pp.toTerm⟩ : Triple) ∈
+        scmDpFor sat ⟨pp, rdfType, Term.iri owlDatatypeProperty⟩ := by
+      simp [scmDpFor]
+    exact R ih hc (by simp [conclusionsList])
   | @scmInt cls lst ci gc _ _ hmem ihgc ih =>
     have hc : (⟨cls, rdfsSubClassOf, ci⟩ : Triple) ∈
         scmIntFor sat ⟨cls, owlIntersectionOf, lst⟩ := by

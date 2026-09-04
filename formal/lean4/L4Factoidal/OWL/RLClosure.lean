@@ -673,6 +673,20 @@ def scmRng2For (g : Graph) (d : Triple) : List Triple :=
       ⟨u.s, rdfsRange, d.o⟩)
   else []
 
+/-- **scm-op** — both conclusions of the row. -/
+def scmOpFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlObjectProperty then
+    [⟨d.s, rdfsSubPropertyOf, d.s.toTerm⟩,
+     ⟨d.s, owlEquivalentProperty, d.s.toTerm⟩]
+  else []
+
+/-- **scm-dp** — both conclusions of the row. -/
+def scmDpFor (_g : Graph) (d : Triple) : List Triple :=
+  if d.p == rdfType && d.o == Term.iri owlDatatypeProperty then
+    [⟨d.s, rdfsSubPropertyOf, d.s.toTerm⟩,
+     ⟨d.s, owlEquivalentProperty, d.s.toTerm⟩]
+  else []
+
 /-- **scm-int**. -/
 def scmIntFor (g : Graph) (d : Triple) : List Triple :=
   if d.p == owlIntersectionOf then
@@ -863,6 +877,7 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       scmClsFor g d, scmScoFor g d, scmEqc1For g d, scmEqc2For g d,
       scmSpoFor g d, scmEqp1For g d, scmEqp2For g d,
       scmDom1For g d, scmDom2For g d, scmRng1For g d, scmRng2For g d,
+      scmOpFor g d, scmDpFor g d,
       scmIntFor g d, scmUniFor g d,
       eqDiffSymFor g d, pdwToDiffFor g d, caxDwToDiffFor g d,
       fpDiffToDiffFor g d, ifpDiffToDiffFor g d,

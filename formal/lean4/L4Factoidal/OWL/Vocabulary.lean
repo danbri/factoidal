@@ -249,6 +249,10 @@ comprehension row. -/
 def owlObjectProperty : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#ObjectProperty", rfl⟩
 
+/-- `owl:DatatypeProperty` — the driving premise of scm-dp. -/
+def owlDatatypeProperty : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#DatatypeProperty", rfl⟩
+
 /-- `owl:Restriction` — the class of restriction class expressions. -/
 def owlRestriction : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#Restriction", rfl⟩
