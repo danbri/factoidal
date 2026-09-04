@@ -1092,13 +1092,65 @@ def irreflexivityViolation (g : Graph) : Bool :=
   (collectTypedIris g owlIrreflexiveProperty).any (fun p =>
     g.any (fun u => u.p == p && u.o == u.s.toTerm))
 
+/-- G10: an `owl:hasKey` violation.
+
+    OWL 2 Direct Semantics §2.3.5 gives
+    `HasKey(CE (p1 … pm) (d1 … dn))` the condition: if `x` and `y` are
+    both in `CE`, and for every key property `pi` there is a value `v`
+    with `⟨x,v⟩` and `⟨y,v⟩` in `pi`, then `x = y`. Two individuals
+    the graph forces apart therefore contradict the key.
+
+    OWL 2 Syntax §9.5 restricts the condition to NAMED individuals —
+    "the key is applied only to individuals that are explicitly named
+    in the ontology" — which is why only IRI subjects are paired here.
+    That restriction is also what makes a graph-level test the right
+    shape: no witness needs to be built.
+
+    `owl:Thing` as the class expression is every individual, so the
+    membership test is skipped for it. For any other named class the
+    membership must be IN THE GRAPH, which after the RL closure is
+    where an entailed `rdf:type` is. A membership the closure did not
+    derive withholds the violation. -/
+def hasKeyViolation (g : Graph) : Bool :=
+  let st := Store.ofGraph g
+  g.any (fun t =>
+    t.p == owlHasKey &&
+    (match t.s with
+     | .bnode _ => false
+     | .iri c =>
+       let keys := (walkRdfList st t.o 64).filterMap (fun u =>
+         match u with
+         | .iri k => some k
+         | _      => none)
+       if keys.isEmpty then false
+       else
+         -- Only individuals that carry EVERY key property can share a
+         -- value on every one of them, so the pair loop runs over
+         -- those alone.
+         let named : List Term :=
+           (g.filterMap (fun u =>
+             match u.s with
+             | .iri a => if keys.contains u.p then some (Term.iri a) else none
+             | _      => none)).eraseDups
+         let cands := named.filter (fun a =>
+           (c == owlThing ||
+            g.any (fun u => u.p == rdfType && u.o == Term.iri c &&
+                            u.s.toTerm == a)) &&
+           keys.all (fun k => g.any (fun u => u.p == k && u.s.toTerm == a)))
+         cands.any (fun a => cands.any (fun b =>
+           provablyDistinct g a b &&
+           keys.all (fun k =>
+             g.any (fun u => u.p == k && u.s.toTerm == a &&
+               g.any (fun v => v.p == k && v.s.toTerm == b && v.o == u.o))))))) 
+
 def immediateInconsistency (g : Graph) : Bool :=
   allDifferentViolation g || bottomPropertyAssertion g ||
   selfDisjointPropertyInUse g ||
   nilStructureViolation g || hasSelfDisjointViolation g ||
   thingIsNothing g || disjointPropertiesShareAPair g ||
   allDisjointPropertiesViolation g ||
-  asymmetryViolation g || irreflexivityViolation g
+  asymmetryViolation g || irreflexivityViolation g ||
+  hasKeyViolation g
 
 /-! ## The TBox
 
