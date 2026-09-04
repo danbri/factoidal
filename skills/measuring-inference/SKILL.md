@@ -199,6 +199,55 @@ an instrument that did not run. The same applies to `decide`/`rfl`
 over results: keep measurement in `IO`, force it, and cross-check the
 sum.
 
+## 10. A new rule row has TWO cost gates, and a green suite sees neither
+
+Adding a rule row to a closure is measured by its score delta. Two
+costs sit outside that number, and each has stopped a correct,
+verbatim transcription of a W3C table in this repository.
+
+**Elaboration time.** OWL 2 RDF-Based Semantics Table 6.1 is 51
+axiomatic triples. Transcribed correctly, they put a cyclic
+`rdfs:subClassOf` lattice over the OWL 2 class vocabulary into every
+closure, scm-sco saturates it, six `RLTests` guards go red and
+`RLSemantics` elaboration goes from 26 s to 189 s. Caught by
+`lake build` wall-clock on the module.
+
+**Peak resident memory in the `--dl` regime.** On 2026-09-04 the five
+Table 9 restriction rows (scm-svf1, scm-svf2, scm-avf1, scm-avf2,
+scm-hv) were transcribed, built and measured. RL: 1158 pass, 289 fail
+to 1169 pass, 278 fail — 11 units closed, no regressions, `cap_hits` 0,
+`RLSemantics` elaboration 37 s to 44 s. Every gate green. The `--dl`
+regime then could not finish: three full runs were killed by the
+operating system at the same case. The RL closure of that case,
+`WebOnt-TransitiveProperty-002`, is 103 triples in 3 rounds BEFORE and
+AFTER, so nothing in the closure grew; the refuter reads the new
+`rdfs:subClassOf` edges between restriction nodes as general class
+inclusions and branches on each one.
+
+**The gate, and run it before landing any rule row.** One catalog,
+under two minutes, and it sees what a green `lake build` and a green RL
+run do not:
+
+```
+cp third_party/testing/owl/type-positive-entailment.rdf $SCRATCH/owl1/
+cd formal/lean4 && /usr/bin/time -l \
+  ./.lake/build/bin/l4owl-probe --dl $SCRATCH/owl1
+```
+
+Read `maximum resident set size`, not only the score. Measured
+figures on that catalog (412 units): 109 s and 141 MB without the five
+rows; 130 s and 141 MB with scm-op and scm-dp, which landed; 430 s and
+**7.47 GB** and a kill with the five restriction rows, which did not.
+
+A guard that is sound on the ENGINE row (`c1 != c2`, the relation the
+collection clash rows already have to their `Clash` constructors) does
+not by itself rescue such a row: `RLTheorems` T4 is a COMPLETENESS
+theorem over `Derives`, so a side condition the printed table does not
+carry has to go into the `Derives` constructor as well, or the
+reflexive case has to be derived another way. Decide that before
+writing the row, not after measuring it. Full record:
+`docs/designissues/2026-09-03-owl-failure-split.md`.
+
 ## The standing discipline
 
 1. State the acceptance criterion **as a number**, before the work.
@@ -207,7 +256,9 @@ sum.
 4. Verify output identity byte-for-byte.
 5. Re-run the vacuity checker; a change with no vacuity movement and no
    score movement may have changed nothing.
-6. Let the number rewrite the plan. It did, twice, on 2026-07-31 —
+6. Before landing a rule row, run the `--dl` cost gate of section 10
+   and read peak resident memory, not only the score.
+7. Let the number rewrite the plan. It did, twice, on 2026-07-31 —
    `docs/designissues/2026-07-31-rdfs-performance-scalability.md` §0.5 is
    the reprioritisation that measurement forced.
 
