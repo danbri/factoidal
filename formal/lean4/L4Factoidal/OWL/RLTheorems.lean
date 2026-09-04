@@ -1243,6 +1243,121 @@ theorem scmDpFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     · exact Derives.scmDpEqp (derives_of_parts hd rfl hp1 hp2)
   · simp at h
 
+/-- **scm-svf1**. -/
+theorem scmSvf1For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmSvf1For g d) : Derives g t := by
+  unfold scmSvf1For at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨y1, hy1, up, hup, uc2, huc2, uy2, huy2, hmem⟩ := h
+    split at hmem
+    · rename_i hsub
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      subst hmem
+      obtain ⟨hupg, hups, hupp⟩ := mem_withSubjPred hup
+      obtain ⟨huc2g, huc2p, huc2o⟩ := mem_withPredObj huc2
+      obtain ⟨huy2g, huy2s, huy2p⟩ := mem_withSubjPred huy2
+      exact Derives.scmSvf1 (derives_of_parts hd rfl hp (mem_asSubject hy1))
+        (derives_of_parts hupg hups hupp rfl)
+        (derives_of_parts huy2g huy2s huy2p rfl)
+        (derives_of_parts huc2g rfl huc2p (huc2o.trans rfl))
+        (Derives.base (mem_of_memB hsub))
+    · simp at hmem
+  · simp at h
+
+/-- **scm-svf2**. -/
+theorem scmSvf2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmSvf2For g d) : Derives g t := by
+  unfold scmSvf2For at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨up1, hup1, p1, hp1, usp, husp, uc2, huc2, hmem⟩ := h
+    split at hmem
+    · rename_i hsvf
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      subst hmem
+      obtain ⟨hup1g, hup1s, hup1p⟩ := mem_withSubjPred hup1
+      obtain ⟨huspg, husps, huspp⟩ := mem_withSubjPred husp
+      obtain ⟨huc2g, huc2p, huc2o⟩ := mem_withPredObj huc2
+      exact Derives.scmSvf2 (derives_of_parts hd rfl hp rfl)
+        (derives_of_parts hup1g hup1s hup1p (mem_asSubject hp1))
+        (Derives.base (mem_of_memB hsvf))
+        (derives_of_parts huc2g rfl huc2p huc2o)
+        (derives_of_parts huspg husps huspp rfl)
+    · simp at hmem
+  · simp at h
+
+/-- **scm-avf1**. -/
+theorem scmAvf1For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmAvf1For g d) : Derives g t := by
+  unfold scmAvf1For at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨y1, hy1, up, hup, uc2, huc2, uy2, huy2, hmem⟩ := h
+    split at hmem
+    · rename_i hsub
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      subst hmem
+      obtain ⟨hupg, hups, hupp⟩ := mem_withSubjPred hup
+      obtain ⟨huc2g, huc2p, huc2o⟩ := mem_withPredObj huc2
+      obtain ⟨huy2g, huy2s, huy2p⟩ := mem_withSubjPred huy2
+      exact Derives.scmAvf1 (derives_of_parts hd rfl hp (mem_asSubject hy1))
+        (derives_of_parts hupg hups hupp rfl)
+        (derives_of_parts huy2g huy2s huy2p rfl)
+        (derives_of_parts huc2g rfl huc2p (huc2o.trans rfl))
+        (Derives.base (mem_of_memB hsub))
+    · simp at hmem
+  · simp at h
+
+/-- **scm-avf2**. -/
+theorem scmAvf2For_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmAvf2For g d) : Derives g t := by
+  unfold scmAvf2For at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨up1, hup1, p1, hp1, usp, husp, uc2, huc2, hmem⟩ := h
+    split at hmem
+    · rename_i havf
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      subst hmem
+      obtain ⟨hup1g, hup1s, hup1p⟩ := mem_withSubjPred hup1
+      obtain ⟨huspg, husps, huspp⟩ := mem_withSubjPred husp
+      obtain ⟨huc2g, huc2p, huc2o⟩ := mem_withPredObj huc2
+      exact Derives.scmAvf2 (derives_of_parts hd rfl hp rfl)
+        (derives_of_parts hup1g hup1s hup1p (mem_asSubject hp1))
+        (Derives.base (mem_of_memB havf))
+        (derives_of_parts huc2g rfl huc2p huc2o)
+        (derives_of_parts huspg husps huspp rfl)
+    · simp at hmem
+  · simp at h
+
+/-- **scm-hv**. -/
+theorem scmHvFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
+    (h : t ∈ scmHvFor g d) : Derives g t := by
+  unfold scmHvFor at h
+  split at h
+  · rename_i hp; rw [beq_iff_eq] at hp
+    simp only [List.mem_flatMap] at h
+    obtain ⟨up1, hup1, p1, hp1, usp, husp, uc2, huc2, hmem⟩ := h
+    split at hmem
+    · rename_i hhv
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+      subst hmem
+      obtain ⟨hup1g, hup1s, hup1p⟩ := mem_withSubjPred hup1
+      obtain ⟨huspg, husps, huspp⟩ := mem_withSubjPred husp
+      obtain ⟨huc2g, huc2p, huc2o⟩ := mem_withPredObj huc2
+      exact Derives.scmHv (derives_of_parts hd rfl hp rfl)
+        (derives_of_parts hup1g hup1s hup1p (mem_asSubject hp1))
+        (Derives.base (mem_of_memB hhv))
+        (derives_of_parts huc2g rfl huc2p huc2o)
+        (derives_of_parts huspg husps huspp rfl)
+    · simp at hmem
+  · simp at h
+
 /-- **scm-int**. -/
 theorem scmIntFor_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     (h : t ∈ scmIntFor g d) : Derives g t := by
@@ -1599,7 +1714,7 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqRefSFor_sound hd ht
   · exact eqRefPFor_sound hd ht
   · exact eqRefOFor_sound hd ht
@@ -1653,6 +1768,11 @@ theorem conclusionsFrom_sound {g : Graph} {d t : Triple} (hd : d ∈ g)
   · exact scmRng2For_sound hd ht
   · exact scmOpFor_sound hd ht
   · exact scmDpFor_sound hd ht
+  · exact scmSvf1For_sound hd ht
+  · exact scmSvf2For_sound hd ht
+  · exact scmAvf1For_sound hd ht
+  · exact scmAvf2For_sound hd ht
+  · exact scmHvFor_sound hd ht
   · exact scmIntFor_sound hd ht
   · exact scmUniFor_sound hd ht
   · exact eqDiffSymFor_sound hd ht
@@ -2739,6 +2859,61 @@ theorem complete_of_saturated {sat : Graph} (hsat : step sat = sat)
         scmDpFor sat ⟨pp, rdfType, Term.iri owlDatatypeProperty⟩ := by
       simp [scmDpFor]
     exact R ih hc (by simp [conclusionsList])
+  | @scmSvf1 c1 c2s y1s y2 pt _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+    have hc : (⟨c1, rdfsSubClassOf, c2s.toTerm⟩ : Triple) ∈
+        scmSvf1For sat ⟨c1, owlSomeValuesFrom, y1s.toTerm⟩ := by
+      simp only [scmSvf1For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨y1s, mem_asSubject_toTerm y1s,
+        ⟨c1, owlOnProperty, pt⟩, mem_withSubjPred_of ih2 rfl rfl,
+        ⟨c2s, owlOnProperty, pt⟩, mem_withPredObj_of ih4 rfl rfl,
+        ⟨c2s, owlSomeValuesFrom, y2⟩, mem_withSubjPred_of ih3 rfl rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih5)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmSvf2 c1 c2s p1s y p2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+    have hc : (⟨c1, rdfsSubClassOf, c2s.toTerm⟩ : Triple) ∈
+        scmSvf2For sat ⟨c1, owlSomeValuesFrom, y⟩ := by
+      simp only [scmSvf2For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨⟨c1, owlOnProperty, p1s.toTerm⟩, mem_withSubjPred_of ih2 rfl rfl,
+        p1s, mem_asSubject_toTerm p1s,
+        ⟨p1s, rdfsSubPropertyOf, p2⟩, mem_withSubjPred_of ih5 rfl rfl,
+        ⟨c2s, owlOnProperty, p2⟩, mem_withPredObj_of ih4 rfl rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih3)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmAvf1 c1 c2s y1s y2 pt _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+    have hc : (⟨c1, rdfsSubClassOf, c2s.toTerm⟩ : Triple) ∈
+        scmAvf1For sat ⟨c1, owlAllValuesFrom, y1s.toTerm⟩ := by
+      simp only [scmAvf1For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨y1s, mem_asSubject_toTerm y1s,
+        ⟨c1, owlOnProperty, pt⟩, mem_withSubjPred_of ih2 rfl rfl,
+        ⟨c2s, owlOnProperty, pt⟩, mem_withPredObj_of ih4 rfl rfl,
+        ⟨c2s, owlAllValuesFrom, y2⟩, mem_withSubjPred_of ih3 rfl rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih5)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmAvf2 c1 c2s p1s y p2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+    have hc : (⟨c2s, rdfsSubClassOf, c1.toTerm⟩ : Triple) ∈
+        scmAvf2For sat ⟨c1, owlAllValuesFrom, y⟩ := by
+      simp only [scmAvf2For, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨⟨c1, owlOnProperty, p1s.toTerm⟩, mem_withSubjPred_of ih2 rfl rfl,
+        p1s, mem_asSubject_toTerm p1s,
+        ⟨p1s, rdfsSubPropertyOf, p2⟩, mem_withSubjPred_of ih5 rfl rfl,
+        ⟨c2s, owlOnProperty, p2⟩, mem_withPredObj_of ih4 rfl rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih3)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
+  | @scmHv c1 c2s p1s iv p2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+    have hc : (⟨c1, rdfsSubClassOf, c2s.toTerm⟩ : Triple) ∈
+        scmHvFor sat ⟨c1, owlHasValue, iv⟩ := by
+      simp only [scmHvFor, beq_self_eq_true, if_true, List.mem_flatMap]
+      refine ⟨⟨c1, owlOnProperty, p1s.toTerm⟩, mem_withSubjPred_of ih2 rfl rfl,
+        p1s, mem_asSubject_toTerm p1s,
+        ⟨p1s, rdfsSubPropertyOf, p2⟩, mem_withSubjPred_of ih5 rfl rfl,
+        ⟨c2s, owlOnProperty, p2⟩, mem_withPredObj_of ih4 rfl rfl, ?_⟩
+      rw [if_pos (memB_of_mem ih3)]
+      simp
+    exact R ih1 hc (by simp [conclusionsList])
   | @scmInt cls lst ci gc _ _ hmem ihgc ih =>
     have hc : (⟨cls, rdfsSubClassOf, ci⟩ : Triple) ∈
         scmIntFor sat ⟨cls, owlIntersectionOf, lst⟩ := by

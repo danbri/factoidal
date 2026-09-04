@@ -597,6 +597,63 @@ def scmDpForS (_s : Store) (d : Triple) : List Triple :=
      ⟨d.s, owlEquivalentProperty, d.s.toTerm⟩]
   else []
 
+/-- **scm-svf1** — Table 9, driven by `?c1 owl:someValuesFrom ?y1`. -/
+def scmSvf1ForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlSomeValuesFrom then
+    (asSubject d.o).flatMap (fun y1 =>
+      (s.withSubjPred d.s owlOnProperty).flatMap (fun up =>
+        (s.withPredObj owlOnProperty up.o).flatMap (fun uc2 =>
+          (s.withSubjPred uc2.s owlSomeValuesFrom).flatMap (fun uy2 =>
+            if s.memB ⟨y1, rdfsSubClassOf, uy2.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-svf2** — Table 9, driven by `?c1 owl:someValuesFrom ?y`. -/
+def scmSvf2ForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlSomeValuesFrom then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun up1 =>
+      (asSubject up1.o).flatMap (fun p1 =>
+        (s.withSubjPred p1 rdfsSubPropertyOf).flatMap (fun usp =>
+          (s.withPredObj owlOnProperty usp.o).flatMap (fun uc2 =>
+            if s.memB ⟨uc2.s, owlSomeValuesFrom, d.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-avf1** — Table 9, driven by `?c1 owl:allValuesFrom ?y1`. -/
+def scmAvf1ForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlAllValuesFrom then
+    (asSubject d.o).flatMap (fun y1 =>
+      (s.withSubjPred d.s owlOnProperty).flatMap (fun up =>
+        (s.withPredObj owlOnProperty up.o).flatMap (fun uc2 =>
+          (s.withSubjPred uc2.s owlAllValuesFrom).flatMap (fun uy2 =>
+            if s.memB ⟨y1, rdfsSubClassOf, uy2.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-avf2** — Table 9, driven by `?c1 owl:allValuesFrom ?y`.
+    The conclusion runs the other way: `∀p2.y ⊑ ∀p1.y` when
+    `p1 ⊑ p2`. -/
+def scmAvf2ForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlAllValuesFrom then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun up1 =>
+      (asSubject up1.o).flatMap (fun p1 =>
+        (s.withSubjPred p1 rdfsSubPropertyOf).flatMap (fun usp =>
+          (s.withPredObj owlOnProperty usp.o).flatMap (fun uc2 =>
+            if s.memB ⟨uc2.s, owlAllValuesFrom, d.o⟩
+            then [⟨uc2.s, rdfsSubClassOf, d.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-hv** — Table 9, driven by `?c1 owl:hasValue ?i`. -/
+def scmHvForS (s : Store) (d : Triple) : List Triple :=
+  if d.p == owlHasValue then
+    (s.withSubjPred d.s owlOnProperty).flatMap (fun up1 =>
+      (asSubject up1.o).flatMap (fun p1 =>
+        (s.withSubjPred p1 rdfsSubPropertyOf).flatMap (fun usp =>
+          (s.withPredObj owlOnProperty usp.o).flatMap (fun uc2 =>
+            if s.memB ⟨uc2.s, owlHasValue, d.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
 def scmIntForS (s : Store) (d : Triple) : List Triple :=
   if d.p == owlIntersectionOf then
     (listElemsS s d.o (listFuel s.graph)).map (fun ci =>
@@ -764,6 +821,8 @@ def conclusionsListS (s : Store) (d : Triple) : List (List Triple) :=
       scmSpoForS s d, scmEqp1ForS s d, scmEqp2ForS s d,
       scmDom1ForS s d, scmDom2ForS s d, scmRng1ForS s d, scmRng2ForS s d,
       scmOpForS s d, scmDpForS s d,
+      scmSvf1ForS s d, scmSvf2ForS s d, scmAvf1ForS s d, scmAvf2ForS s d,
+      scmHvForS s d,
       scmIntForS s d, scmUniForS s d,
       eqDiffSymForS s d, pdwToDiffForS s d, caxDwToDiffForS s d,
       fpDiffToDiffForS s d, ifpDiffToDiffForS s d,
@@ -1092,6 +1151,16 @@ theorem scmDpForS_ofGraph (g : Graph) :
   unfold scmDpForS scmDpFor
   rfl
 
+theorem scmSvf1ForS_ofGraph (g : Graph) :
+    scmSvf1ForS (Store.ofGraph g) = scmSvf1For g := rfl
+theorem scmSvf2ForS_ofGraph (g : Graph) :
+    scmSvf2ForS (Store.ofGraph g) = scmSvf2For g := rfl
+theorem scmAvf1ForS_ofGraph (g : Graph) :
+    scmAvf1ForS (Store.ofGraph g) = scmAvf1For g := rfl
+theorem scmAvf2ForS_ofGraph (g : Graph) :
+    scmAvf2ForS (Store.ofGraph g) = scmAvf2For g := rfl
+theorem scmHvForS_ofGraph (g : Graph) :
+    scmHvForS (Store.ofGraph g) = scmHvFor g := rfl
 theorem scmIntForS_ofGraph (g : Graph) : scmIntForS (Store.ofGraph g) = scmIntFor g := by
   funext d
   unfold scmIntForS scmIntFor
@@ -1167,6 +1236,8 @@ theorem conclusionsFromS_ofGraph (g : Graph) :
     scmSpoForS_ofGraph, scmEqp1ForS_ofGraph, scmEqp2ForS_ofGraph,
     scmDom1ForS_ofGraph, scmDom2ForS_ofGraph, scmRng1ForS_ofGraph, scmRng2ForS_ofGraph,
     scmOpForS_ofGraph, scmDpForS_ofGraph,
+    scmSvf1ForS_ofGraph, scmSvf2ForS_ofGraph, scmAvf1ForS_ofGraph,
+    scmAvf2ForS_ofGraph, scmHvForS_ofGraph,
     scmIntForS_ofGraph, scmUniForS_ofGraph,
     eqDiffSymForS_ofGraph, pdwToDiffForS_ofGraph, caxDwToDiffForS_ofGraph,
     fpDiffToDiffForS_ofGraph, ifpDiffToDiffForS_ofGraph,

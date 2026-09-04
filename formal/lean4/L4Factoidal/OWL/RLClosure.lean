@@ -740,6 +740,79 @@ def scmDpFor (_g : Graph) (d : Triple) : List Triple :=
      ⟨d.s, owlEquivalentProperty, d.s.toTerm⟩]
   else []
 
+/-- **scm-svf1** — OWL 2 Profiles (2nd Ed.) 4.3 Table 9, verbatim:
+`T(?c1, owl:someValuesFrom, ?y1) T(?c1, owl:onProperty, ?p)
+T(?c2, owl:someValuesFrom, ?y2) T(?c2, owl:onProperty, ?p)
+T(?y1, rdfs:subClassOf, ?y2) | T(?c1, rdfs:subClassOf, ?c2)`.
+Driven by the `?c1 owl:someValuesFrom ?y1` premise. -/
+def scmSvf1For (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlSomeValuesFrom then
+    (asSubject d.o).flatMap (fun y1 =>
+      (withSubjPred g d.s owlOnProperty).flatMap (fun up =>
+        (withPredObj g owlOnProperty up.o).flatMap (fun uc2 =>
+          (withSubjPred g uc2.s owlSomeValuesFrom).flatMap (fun uy2 =>
+            if memB g ⟨y1, rdfsSubClassOf, uy2.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-svf2** — Table 9:
+`T(?c1, owl:someValuesFrom, ?y) T(?c1, owl:onProperty, ?p1)
+T(?c2, owl:someValuesFrom, ?y) T(?c2, owl:onProperty, ?p2)
+T(?p1, rdfs:subPropertyOf, ?p2) | T(?c1, rdfs:subClassOf, ?c2)`. -/
+def scmSvf2For (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlSomeValuesFrom then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun up1 =>
+      (asSubject up1.o).flatMap (fun p1 =>
+        (withSubjPred g p1 rdfsSubPropertyOf).flatMap (fun usp =>
+          (withPredObj g owlOnProperty usp.o).flatMap (fun uc2 =>
+            if memB g ⟨uc2.s, owlSomeValuesFrom, d.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-avf1** — Table 9:
+`T(?c1, owl:allValuesFrom, ?y1) T(?c1, owl:onProperty, ?p)
+T(?c2, owl:allValuesFrom, ?y2) T(?c2, owl:onProperty, ?p)
+T(?y1, rdfs:subClassOf, ?y2) | T(?c1, rdfs:subClassOf, ?c2)`. -/
+def scmAvf1For (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlAllValuesFrom then
+    (asSubject d.o).flatMap (fun y1 =>
+      (withSubjPred g d.s owlOnProperty).flatMap (fun up =>
+        (withPredObj g owlOnProperty up.o).flatMap (fun uc2 =>
+          (withSubjPred g uc2.s owlAllValuesFrom).flatMap (fun uy2 =>
+            if memB g ⟨y1, rdfsSubClassOf, uy2.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-avf2** — Table 9:
+`T(?c1, owl:allValuesFrom, ?y) T(?c1, owl:onProperty, ?p1)
+T(?c2, owl:allValuesFrom, ?y) T(?c2, owl:onProperty, ?p2)
+T(?p1, rdfs:subPropertyOf, ?p2) | T(?c2, rdfs:subClassOf, ?c1)`.
+The conclusion runs the other way from scm-svf2: a universal
+restriction over a SUPER-property is the stronger class. -/
+def scmAvf2For (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlAllValuesFrom then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun up1 =>
+      (asSubject up1.o).flatMap (fun p1 =>
+        (withSubjPred g p1 rdfsSubPropertyOf).flatMap (fun usp =>
+          (withPredObj g owlOnProperty usp.o).flatMap (fun uc2 =>
+            if memB g ⟨uc2.s, owlAllValuesFrom, d.o⟩
+            then [⟨uc2.s, rdfsSubClassOf, d.s.toTerm⟩] else []))))
+  else []
+
+/-- **scm-hv** — Table 9:
+`T(?c1, owl:hasValue, ?i) T(?c1, owl:onProperty, ?p1)
+T(?c2, owl:hasValue, ?i) T(?c2, owl:onProperty, ?p2)
+T(?p1, rdfs:subPropertyOf, ?p2) | T(?c1, rdfs:subClassOf, ?c2)`. -/
+def scmHvFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlHasValue then
+    (withSubjPred g d.s owlOnProperty).flatMap (fun up1 =>
+      (asSubject up1.o).flatMap (fun p1 =>
+        (withSubjPred g p1 rdfsSubPropertyOf).flatMap (fun usp =>
+          (withPredObj g owlOnProperty usp.o).flatMap (fun uc2 =>
+            if memB g ⟨uc2.s, owlHasValue, d.o⟩
+            then [⟨d.s, rdfsSubClassOf, uc2.s.toTerm⟩] else []))))
+  else []
+
 /-- **scm-int**. -/
 def scmIntFor (g : Graph) (d : Triple) : List Triple :=
   if d.p == owlIntersectionOf then
@@ -933,6 +1006,8 @@ def conclusionsList (g : Graph) (d : Triple) : List (List Triple) :=
       scmSpoFor g d, scmEqp1For g d, scmEqp2For g d,
       scmDom1For g d, scmDom2For g d, scmRng1For g d, scmRng2For g d,
       scmOpFor g d, scmDpFor g d,
+      scmSvf1For g d, scmSvf2For g d, scmAvf1For g d, scmAvf2For g d,
+      scmHvFor g d,
       scmIntFor g d, scmUniFor g d,
       eqDiffSymFor g d, pdwToDiffFor g d, caxDwToDiffFor g d,
       fpDiffToDiffFor g d, ifpDiffToDiffFor g d,

@@ -1253,6 +1253,130 @@ theorem rlHerb_conditions (hcons : ¬ Clash c) :
     have he := herb_encode (hcut (Derives.scmDpEqp (Derives.base hm1)))
     rw [toTerm_subjTerm] at he
     exact he
+  scmSvf1 := by
+    intro c1 c2 y1 y2 p h1 h2 h3 h4 h5
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    obtain ⟨s3, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) h3
+    obtain ⟨s4, o4, hm4, hx4, hy4⟩ := herb_decode (by decide) h4
+    obtain ⟨s5, o5, hm5, hx5, hy5⟩ := herb_decode (by decide) h5
+    have e12 : s2 = s1 := subjTerm_injective (hx2.symm.trans hx1)
+    have e34 : s4 = s3 := subjTerm_injective (hx4.symm.trans hx3)
+    have eo : o4 = o2 := hy4.symm.trans hy2
+    have e15 : o1 = subjTerm s5 := hy1.symm.trans hx5
+    have e35 : o3 = o5 := hy3.symm.trans hy5
+    have hm1' : (⟨s1, owlSomeValuesFrom, s5.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, ← e15]; exact hm1
+    have hm2' : (⟨s1, owlOnProperty, o2⟩ : Triple) ∈ c := by
+      rw [← e12]; exact hm2
+    have hm3' : (⟨s3, owlSomeValuesFrom, o5⟩ : Triple) ∈ c := by
+      rw [← e35]; exact hm3
+    have hm4' : (⟨s3, owlOnProperty, o2⟩ : Triple) ∈ c := by
+      rw [← e34, ← eo]; exact hm4
+    have he := herb_encode (hcut (Derives.scmSvf1 (Derives.base hm1')
+      (Derives.base hm2') (Derives.base hm3') (Derives.base hm4')
+      (Derives.base hm5)))
+    rw [toTerm_subjTerm] at he
+    rw [hx1, hx3]
+    exact he
+  scmSvf2 := by
+    intro c1 c2 y p1 p2 h1 h2 h3 h4 h5
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    obtain ⟨s3, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) h3
+    obtain ⟨s4, o4, hm4, hx4, hy4⟩ := herb_decode (by decide) h4
+    obtain ⟨s5, o5, hm5, hx5, hy5⟩ := herb_decode (by decide) h5
+    have e12 : s2 = s1 := subjTerm_injective (hx2.symm.trans hx1)
+    have e34 : s4 = s3 := subjTerm_injective (hx4.symm.trans hx3)
+    have e25 : o2 = subjTerm s5 := hy2.symm.trans hx5
+    have e13 : o1 = o3 := hy1.symm.trans hy3
+    have e45 : o4 = o5 := hy4.symm.trans hy5
+    have hm2' : (⟨s1, owlOnProperty, s5.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, ← e25, ← e12]; exact hm2
+    have hm3' : (⟨s3, owlSomeValuesFrom, o1⟩ : Triple) ∈ c := by
+      rw [e13]; exact hm3
+    have hm4' : (⟨s3, owlOnProperty, o5⟩ : Triple) ∈ c := by
+      rw [← e34, ← e45]; exact hm4
+    have he := herb_encode (hcut (Derives.scmSvf2 (Derives.base hm1)
+      (Derives.base hm2') (Derives.base hm3') (Derives.base hm4')
+      (Derives.base hm5)))
+    rw [toTerm_subjTerm] at he
+    rw [hx1, hx3]
+    exact he
+  scmAvf1 := by
+    intro c1 c2 y1 y2 p h1 h2 h3 h4 h5
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    obtain ⟨s3, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) h3
+    obtain ⟨s4, o4, hm4, hx4, hy4⟩ := herb_decode (by decide) h4
+    obtain ⟨s5, o5, hm5, hx5, hy5⟩ := herb_decode (by decide) h5
+    have e12 : s2 = s1 := subjTerm_injective (hx2.symm.trans hx1)
+    have e34 : s4 = s3 := subjTerm_injective (hx4.symm.trans hx3)
+    have eo : o4 = o2 := hy4.symm.trans hy2
+    have e15 : o1 = subjTerm s5 := hy1.symm.trans hx5
+    have e35 : o3 = o5 := hy3.symm.trans hy5
+    have hm1' : (⟨s1, owlAllValuesFrom, s5.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, ← e15]; exact hm1
+    have hm2' : (⟨s1, owlOnProperty, o2⟩ : Triple) ∈ c := by
+      rw [← e12]; exact hm2
+    have hm3' : (⟨s3, owlAllValuesFrom, o5⟩ : Triple) ∈ c := by
+      rw [← e35]; exact hm3
+    have hm4' : (⟨s3, owlOnProperty, o2⟩ : Triple) ∈ c := by
+      rw [← e34, ← eo]; exact hm4
+    have he := herb_encode (hcut (Derives.scmAvf1 (Derives.base hm1')
+      (Derives.base hm2') (Derives.base hm3') (Derives.base hm4')
+      (Derives.base hm5)))
+    rw [toTerm_subjTerm] at he
+    rw [hx1, hx3]
+    exact he
+  scmAvf2 := by
+    intro c1 c2 y p1 p2 h1 h2 h3 h4 h5
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    obtain ⟨s3, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) h3
+    obtain ⟨s4, o4, hm4, hx4, hy4⟩ := herb_decode (by decide) h4
+    obtain ⟨s5, o5, hm5, hx5, hy5⟩ := herb_decode (by decide) h5
+    have e12 : s2 = s1 := subjTerm_injective (hx2.symm.trans hx1)
+    have e34 : s4 = s3 := subjTerm_injective (hx4.symm.trans hx3)
+    have e25 : o2 = subjTerm s5 := hy2.symm.trans hx5
+    have e13 : o1 = o3 := hy1.symm.trans hy3
+    have e45 : o4 = o5 := hy4.symm.trans hy5
+    have hm2' : (⟨s1, owlOnProperty, s5.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, ← e25, ← e12]; exact hm2
+    have hm3' : (⟨s3, owlAllValuesFrom, o1⟩ : Triple) ∈ c := by
+      rw [e13]; exact hm3
+    have hm4' : (⟨s3, owlOnProperty, o5⟩ : Triple) ∈ c := by
+      rw [← e34, ← e45]; exact hm4
+    have he := herb_encode (hcut (Derives.scmAvf2 (Derives.base hm1)
+      (Derives.base hm2') (Derives.base hm3') (Derives.base hm4')
+      (Derives.base hm5)))
+    rw [toTerm_subjTerm] at he
+    rw [hx3, hx1]
+    exact he
+  scmHv := by
+    intro c1 c2 iv p1 p2 h1 h2 h3 h4 h5
+    obtain ⟨s1, o1, hm1, hx1, hy1⟩ := herb_decode (by decide) h1
+    obtain ⟨s2, o2, hm2, hx2, hy2⟩ := herb_decode (by decide) h2
+    obtain ⟨s3, o3, hm3, hx3, hy3⟩ := herb_decode (by decide) h3
+    obtain ⟨s4, o4, hm4, hx4, hy4⟩ := herb_decode (by decide) h4
+    obtain ⟨s5, o5, hm5, hx5, hy5⟩ := herb_decode (by decide) h5
+    have e12 : s2 = s1 := subjTerm_injective (hx2.symm.trans hx1)
+    have e34 : s4 = s3 := subjTerm_injective (hx4.symm.trans hx3)
+    have e25 : o2 = subjTerm s5 := hy2.symm.trans hx5
+    have e13 : o1 = o3 := hy1.symm.trans hy3
+    have e45 : o4 = o5 := hy4.symm.trans hy5
+    have hm2' : (⟨s1, owlOnProperty, s5.toTerm⟩ : Triple) ∈ c := by
+      rw [toTerm_subjTerm, ← e25, ← e12]; exact hm2
+    have hm3' : (⟨s3, owlHasValue, o1⟩ : Triple) ∈ c := by
+      rw [e13]; exact hm3
+    have hm4' : (⟨s3, owlOnProperty, o5⟩ : Triple) ∈ c := by
+      rw [← e34, ← e45]; exact hm4
+    have he := herb_encode (hcut (Derives.scmHv (Derives.base hm1)
+      (Derives.base hm2') (Derives.base hm3') (Derives.base hm4')
+      (Derives.base hm5)))
+    rw [toTerm_subjTerm] at he
+    rw [hx1, hx3]
+    exact he
   scmInt := by
     intro cel l ci h1 hlm
     obtain ⟨s0, o0, hm0, rfl, rfl⟩ := herb_decode (by decide) h1

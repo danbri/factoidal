@@ -479,6 +479,16 @@ theorem derives_irisNonReserved {g : Graph} (hg : RlReservedFree g)
   | scmOpEqp _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
   | scmDpSub _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
   | scmDpEqp _ ih => exact tin_mk (tin_s ih) (by decide) (sin_toTerm (tin_s ih))
+  | scmSvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact tin_mk (tin_s ih1) (by decide) (sin_toTerm (tin_s ih3))
+  | scmSvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact tin_mk (tin_s ih1) (by decide) (sin_toTerm (tin_s ih3))
+  | scmAvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact tin_mk (tin_s ih1) (by decide) (sin_toTerm (tin_s ih3))
+  | scmAvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact tin_mk (tin_s ih3) (by decide) (sin_toTerm (tin_s ih1))
+  | scmHv _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact tin_mk (tin_s ih1) (by decide) (sin_toTerm (tin_s ih3))
   | scmInt _ _ hm ihgc ih =>
       exact tin_mk (tin_s ih) (by decide) (listMember_termIris ihgc hm)
   | scmUni _ _ hm ihgc ih =>
@@ -931,6 +941,58 @@ def RlCondScmOpEqp : Prop :=
   ∀ p : i.idom, icext i p (i.iIri owlObjectProperty) →
     i.iext (i.iIri owlEquivalentProperty) p p
 
+/-- **scm-svf1** — two existential restrictions on the SAME property
+whose fillers are ordered are themselves ordered. -/
+def RlCondScmSvf1 : Prop :=
+  ∀ c1 c2 y1 y2 p : i.idom,
+    i.iext (i.iIri owlSomeValuesFrom) c1 y1 →
+    i.iext (i.iIri owlOnProperty) c1 p →
+    i.iext (i.iIri owlSomeValuesFrom) c2 y2 →
+    i.iext (i.iIri owlOnProperty) c2 p →
+    i.iext (i.iIri rdfsSubClassOf) y1 y2 →
+    i.iext (i.iIri rdfsSubClassOf) c1 c2
+
+/-- **scm-svf2** — the same filler over ordered properties. -/
+def RlCondScmSvf2 : Prop :=
+  ∀ c1 c2 y p1 p2 : i.idom,
+    i.iext (i.iIri owlSomeValuesFrom) c1 y →
+    i.iext (i.iIri owlOnProperty) c1 p1 →
+    i.iext (i.iIri owlSomeValuesFrom) c2 y →
+    i.iext (i.iIri owlOnProperty) c2 p2 →
+    i.iext (i.iIri rdfsSubPropertyOf) p1 p2 →
+    i.iext (i.iIri rdfsSubClassOf) c1 c2
+
+/-- **scm-avf1** — the universal mirror of scm-svf1. -/
+def RlCondScmAvf1 : Prop :=
+  ∀ c1 c2 y1 y2 p : i.idom,
+    i.iext (i.iIri owlAllValuesFrom) c1 y1 →
+    i.iext (i.iIri owlOnProperty) c1 p →
+    i.iext (i.iIri owlAllValuesFrom) c2 y2 →
+    i.iext (i.iIri owlOnProperty) c2 p →
+    i.iext (i.iIri rdfsSubClassOf) y1 y2 →
+    i.iext (i.iIri rdfsSubClassOf) c1 c2
+
+/-- **scm-avf2** — the same filler over ordered properties, with the
+conclusion the other way round. -/
+def RlCondScmAvf2 : Prop :=
+  ∀ c1 c2 y p1 p2 : i.idom,
+    i.iext (i.iIri owlAllValuesFrom) c1 y →
+    i.iext (i.iIri owlOnProperty) c1 p1 →
+    i.iext (i.iIri owlAllValuesFrom) c2 y →
+    i.iext (i.iIri owlOnProperty) c2 p2 →
+    i.iext (i.iIri rdfsSubPropertyOf) p1 p2 →
+    i.iext (i.iIri rdfsSubClassOf) c2 c1
+
+/-- **scm-hv** — the same value over ordered properties. -/
+def RlCondScmHv : Prop :=
+  ∀ c1 c2 iv p1 p2 : i.idom,
+    i.iext (i.iIri owlHasValue) c1 iv →
+    i.iext (i.iIri owlOnProperty) c1 p1 →
+    i.iext (i.iIri owlHasValue) c2 iv →
+    i.iext (i.iIri owlOnProperty) c2 p2 →
+    i.iext (i.iIri rdfsSubPropertyOf) p1 p2 →
+    i.iext (i.iIri rdfsSubClassOf) c1 c2
+
 /-- **scm-dp** (conclusion 1 of 2). -/
 def RlCondScmDpSub : Prop :=
   ∀ p : i.idom, icext i p (i.iIri owlDatatypeProperty) →
@@ -1291,6 +1353,11 @@ structure RlConditions (i : Interp) : Prop where
   scmOpEqp : RlCondScmOpEqp i
   scmDpSub : RlCondScmDpSub i
   scmDpEqp : RlCondScmDpEqp i
+  scmSvf1 : RlCondScmSvf1 i
+  scmSvf2 : RlCondScmSvf2 i
+  scmAvf1 : RlCondScmAvf1 i
+  scmAvf2 : RlCondScmAvf2 i
+  scmHv : RlCondScmHv i
   scmInt : RlCondScmInt i
   scmUni : RlCondScmUni i
   eqDiffSym : RlCondEqDiffSym i
@@ -1880,6 +1947,21 @@ theorem rl_derives_holds {i : Interp} (hc : RlConditions i) {g : Graph}
   | scmDpEqp _ ih =>
       simp only [TripleHolds, denot_toTerm] at ih ⊢
       exact hc.scmDpEqp _ ih
+  | scmSvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ih4 ih5 ⊢
+      exact hc.scmSvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5
+  | scmSvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ih4 ih5 ⊢
+      exact hc.scmSvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5
+  | scmAvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ih4 ih5 ⊢
+      exact hc.scmAvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5
+  | scmAvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ih4 ih5 ⊢
+      exact hc.scmAvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5
+  | scmHv _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      simp only [TripleHolds, denot_toTerm] at ih1 ih2 ih3 ih4 ih5 ⊢
+      exact hc.scmHv _ _ _ _ _ ih1 ih2 ih3 ih4 ih5
   | scmInt _ _ hm ihgc ih =>
       have hlm := holds_listMember hc.listMemBase hc.listMemStep ihgc hm
       simp only [TripleHolds] at ih ⊢

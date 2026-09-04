@@ -1059,6 +1059,63 @@ inductive Derives (g : Graph) : Triple → Prop where
   | scmDpEqp {p : Subject}
       (h : Derives g ⟨p, rdfType, Term.iri owlDatatypeProperty⟩) :
       Derives g ⟨p, owlEquivalentProperty, p.toTerm⟩
+  /-- **scm-svf1** — `T(?c1, owl:someValuesFrom, ?y1)
+  T(?c1, owl:onProperty, ?p) T(?c2, owl:someValuesFrom, ?y2)
+  T(?c2, owl:onProperty, ?p) T(?y1, rdfs:subClassOf, ?y2) |
+  T(?c1, rdfs:subClassOf, ?c2)`. -/
+  | scmSvf1 {c1 c2s y1s : Subject} {y2 pt : Term}
+      (h1 : Derives g ⟨c1, owlSomeValuesFrom, y1s.toTerm⟩)
+      (h2 : Derives g ⟨c1, owlOnProperty, pt⟩)
+      (h3 : Derives g ⟨c2s, owlSomeValuesFrom, y2⟩)
+      (h4 : Derives g ⟨c2s, owlOnProperty, pt⟩)
+      (h5 : Derives g ⟨y1s, rdfsSubClassOf, y2⟩) :
+      Derives g ⟨c1, rdfsSubClassOf, c2s.toTerm⟩
+  /-- **scm-svf2** — `T(?c1, owl:someValuesFrom, ?y)
+  T(?c1, owl:onProperty, ?p1) T(?c2, owl:someValuesFrom, ?y)
+  T(?c2, owl:onProperty, ?p2) T(?p1, rdfs:subPropertyOf, ?p2) |
+  T(?c1, rdfs:subClassOf, ?c2)`. -/
+  | scmSvf2 {c1 c2s p1s : Subject} {y p2 : Term}
+      (h1 : Derives g ⟨c1, owlSomeValuesFrom, y⟩)
+      (h2 : Derives g ⟨c1, owlOnProperty, p1s.toTerm⟩)
+      (h3 : Derives g ⟨c2s, owlSomeValuesFrom, y⟩)
+      (h4 : Derives g ⟨c2s, owlOnProperty, p2⟩)
+      (h5 : Derives g ⟨p1s, rdfsSubPropertyOf, p2⟩) :
+      Derives g ⟨c1, rdfsSubClassOf, c2s.toTerm⟩
+  /-- **scm-avf1** — `T(?c1, owl:allValuesFrom, ?y1)
+  T(?c1, owl:onProperty, ?p) T(?c2, owl:allValuesFrom, ?y2)
+  T(?c2, owl:onProperty, ?p) T(?y1, rdfs:subClassOf, ?y2) |
+  T(?c1, rdfs:subClassOf, ?c2)`. -/
+  | scmAvf1 {c1 c2s y1s : Subject} {y2 pt : Term}
+      (h1 : Derives g ⟨c1, owlAllValuesFrom, y1s.toTerm⟩)
+      (h2 : Derives g ⟨c1, owlOnProperty, pt⟩)
+      (h3 : Derives g ⟨c2s, owlAllValuesFrom, y2⟩)
+      (h4 : Derives g ⟨c2s, owlOnProperty, pt⟩)
+      (h5 : Derives g ⟨y1s, rdfsSubClassOf, y2⟩) :
+      Derives g ⟨c1, rdfsSubClassOf, c2s.toTerm⟩
+  /-- **scm-avf2** — `T(?c1, owl:allValuesFrom, ?y)
+  T(?c1, owl:onProperty, ?p1) T(?c2, owl:allValuesFrom, ?y)
+  T(?c2, owl:onProperty, ?p2) T(?p1, rdfs:subPropertyOf, ?p2) |
+  T(?c2, rdfs:subClassOf, ?c1)`. The conclusion runs the other way
+  from scm-svf2: over a super-property the universal restriction is
+  the stronger class. -/
+  | scmAvf2 {c1 c2s p1s : Subject} {y p2 : Term}
+      (h1 : Derives g ⟨c1, owlAllValuesFrom, y⟩)
+      (h2 : Derives g ⟨c1, owlOnProperty, p1s.toTerm⟩)
+      (h3 : Derives g ⟨c2s, owlAllValuesFrom, y⟩)
+      (h4 : Derives g ⟨c2s, owlOnProperty, p2⟩)
+      (h5 : Derives g ⟨p1s, rdfsSubPropertyOf, p2⟩) :
+      Derives g ⟨c2s, rdfsSubClassOf, c1.toTerm⟩
+  /-- **scm-hv** — `T(?c1, owl:hasValue, ?i)
+  T(?c1, owl:onProperty, ?p1) T(?c2, owl:hasValue, ?i)
+  T(?c2, owl:onProperty, ?p2) T(?p1, rdfs:subPropertyOf, ?p2) |
+  T(?c1, rdfs:subClassOf, ?c2)`. -/
+  | scmHv {c1 c2s p1s : Subject} {iv p2 : Term}
+      (h1 : Derives g ⟨c1, owlHasValue, iv⟩)
+      (h2 : Derives g ⟨c1, owlOnProperty, p1s.toTerm⟩)
+      (h3 : Derives g ⟨c2s, owlHasValue, iv⟩)
+      (h4 : Derives g ⟨c2s, owlOnProperty, p2⟩)
+      (h5 : Derives g ⟨p1s, rdfsSubPropertyOf, p2⟩) :
+      Derives g ⟨c1, rdfsSubClassOf, c2s.toTerm⟩
   /-- **scm-int** — `T(?c, owl:intersectionOf, ?x)
   LIST[?x, ?c1, ..., ?cn] | T(?c, rdfs:subClassOf, ?c1) ...`. -/
   | scmInt {c : Subject} {lst ci : Term} {gc : Graph}
@@ -1660,6 +1717,16 @@ theorem Derives.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | scmOpEqp _ ih => exact Derives.scmOpEqp ih
   | scmDpSub _ ih => exact Derives.scmDpSub ih
   | scmDpEqp _ ih => exact Derives.scmDpEqp ih
+  | scmSvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmSvf1 ih1 ih2 ih3 ih4 ih5
+  | scmSvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmSvf2 ih1 ih2 ih3 ih4 ih5
+  | scmAvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmAvf1 ih1 ih2 ih3 ih4 ih5
+  | scmAvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmAvf2 ih1 ih2 ih3 ih4 ih5
+  | scmHv _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmHv ih1 ih2 ih3 ih4 ih5
   | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
   -- `[ext]` rows
   | eqDiffSym _ ih => exact Derives.eqDiffSym ih
@@ -1771,6 +1838,16 @@ theorem Derives.cut {g g' : Graph} (hall : ∀ u, u ∈ g' → Derives g u)
   | scmOpEqp _ ih => exact Derives.scmOpEqp ih
   | scmDpSub _ ih => exact Derives.scmDpSub ih
   | scmDpEqp _ ih => exact Derives.scmDpEqp ih
+  | scmSvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmSvf1 ih1 ih2 ih3 ih4 ih5
+  | scmSvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmSvf2 ih1 ih2 ih3 ih4 ih5
+  | scmAvf1 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmAvf1 ih1 ih2 ih3 ih4 ih5
+  | scmAvf2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmAvf2 ih1 ih2 ih3 ih4 ih5
+  | scmHv _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
+      exact Derives.scmHv ih1 ih2 ih3 ih4 ih5
   | scmUni _ _ hm ihgc ih => exact Derives.scmUni ihgc ih hm
   -- `[ext]` rows
   | eqDiffSym _ ih => exact Derives.eqDiffSym ih

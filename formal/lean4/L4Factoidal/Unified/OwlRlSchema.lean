@@ -133,6 +133,7 @@ inductive RlRowId where
   | scmSpo | scmEqp1a | scmEqp1b | scmEqp2
   | scmDom1 | scmDom2 | scmRng1 | scmRng2
   | scmOpSub | scmOpEqp | scmDpSub | scmDpEqp
+  | scmSvf1 | scmSvf2 | scmAvf1 | scmAvf2 | scmHv
   | scmInt | scmUni
   | eqDiffSym | pdwToDiff | caxDwToDiff | fpDiffToDiff | ifpDiffToDiff
   | chainToTrans | prpRflS | prpRflO
@@ -307,6 +308,36 @@ def rlRowRule : RlRowId → DRule
       [dtyp (.v "p") (dk owlDatatypeProperty)]⟩
   | .scmDpEqp => ⟨dbin (dk owlEquivalentProperty) (.v "p") (.v "p"),
       [dtyp (.v "p") (dk owlDatatypeProperty)]⟩
+  | .scmSvf1 => ⟨dbin (dk rdfsSubClassOf) (.v "c1") (.v "c2"),
+      [dbin (dk owlSomeValuesFrom) (.v "c1") (.v "y1"),
+       dbin (dk owlOnProperty) (.v "c1") (.v "p"),
+       dbin (dk owlSomeValuesFrom) (.v "c2") (.v "y2"),
+       dbin (dk owlOnProperty) (.v "c2") (.v "p"),
+       dbin (dk rdfsSubClassOf) (.v "y1") (.v "y2")]⟩
+  | .scmSvf2 => ⟨dbin (dk rdfsSubClassOf) (.v "c1") (.v "c2"),
+      [dbin (dk owlSomeValuesFrom) (.v "c1") (.v "y"),
+       dbin (dk owlOnProperty) (.v "c1") (.v "p1"),
+       dbin (dk owlSomeValuesFrom) (.v "c2") (.v "y"),
+       dbin (dk owlOnProperty) (.v "c2") (.v "p2"),
+       dbin (dk rdfsSubPropertyOf) (.v "p1") (.v "p2")]⟩
+  | .scmAvf1 => ⟨dbin (dk rdfsSubClassOf) (.v "c1") (.v "c2"),
+      [dbin (dk owlAllValuesFrom) (.v "c1") (.v "y1"),
+       dbin (dk owlOnProperty) (.v "c1") (.v "p"),
+       dbin (dk owlAllValuesFrom) (.v "c2") (.v "y2"),
+       dbin (dk owlOnProperty) (.v "c2") (.v "p"),
+       dbin (dk rdfsSubClassOf) (.v "y1") (.v "y2")]⟩
+  | .scmAvf2 => ⟨dbin (dk rdfsSubClassOf) (.v "c2") (.v "c1"),
+      [dbin (dk owlAllValuesFrom) (.v "c1") (.v "y"),
+       dbin (dk owlOnProperty) (.v "c1") (.v "p1"),
+       dbin (dk owlAllValuesFrom) (.v "c2") (.v "y"),
+       dbin (dk owlOnProperty) (.v "c2") (.v "p2"),
+       dbin (dk rdfsSubPropertyOf) (.v "p1") (.v "p2")]⟩
+  | .scmHv => ⟨dbin (dk rdfsSubClassOf) (.v "c1") (.v "c2"),
+      [dbin (dk owlHasValue) (.v "c1") (.v "iv"),
+       dbin (dk owlOnProperty) (.v "c1") (.v "p1"),
+       dbin (dk owlHasValue) (.v "c2") (.v "iv"),
+       dbin (dk owlOnProperty) (.v "c2") (.v "p2"),
+       dbin (dk rdfsSubPropertyOf) (.v "p1") (.v "p2")]⟩
   | .scmInt => ⟨dbin (dk rdfsSubClassOf) (.v "c") (.v "d"),
       [dbin (dk owlIntersectionOf) (.v "c") (.v "l"),
        dbin (dk uListMem) (.v "l") (.v "d")]⟩
@@ -951,6 +982,72 @@ theorem cond_scmDpEqp : RlCondScmDpEqp (restrictInterp i) := by
   simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
   rcases ha with rfl
   exact h1
+
+
+theorem cond_scmSvf1 : RlCondScmSvf1 (restrictInterp i) := by
+  intro c1 c2 y1 y2 p h1 h2 h3 h4 h5
+  refine rlRowAt hS .scmSvf1 (vals i [("c1", c1), ("c2", c2), ("y1", y1),
+    ("y2", y2), ("p", p)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem cond_scmSvf2 : RlCondScmSvf2 (restrictInterp i) := by
+  intro c1 c2 y p1 p2 h1 h2 h3 h4 h5
+  refine rlRowAt hS .scmSvf2 (vals i [("c1", c1), ("c2", c2), ("y", y),
+    ("p1", p1), ("p2", p2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem cond_scmAvf1 : RlCondScmAvf1 (restrictInterp i) := by
+  intro c1 c2 y1 y2 p h1 h2 h3 h4 h5
+  refine rlRowAt hS .scmAvf1 (vals i [("c1", c1), ("c2", c2), ("y1", y1),
+    ("y2", y2), ("p", p)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem cond_scmAvf2 : RlCondScmAvf2 (restrictInterp i) := by
+  intro c1 c2 y p1 p2 h1 h2 h3 h4 h5
+  refine rlRowAt hS .scmAvf2 (vals i [("c1", c1), ("c2", c2), ("y", y),
+    ("p1", p1), ("p2", p2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
+
+theorem cond_scmHv : RlCondScmHv (restrictInterp i) := by
+  intro c1 c2 iv p1 p2 h1 h2 h3 h4 h5
+  refine rlRowAt hS .scmHv (vals i [("c1", c1), ("c2", c2), ("iv", iv),
+    ("p1", p1), ("p2", p2)]) ?_
+  intro a ha
+  simp only [rlRowRule, List.mem_cons, List.not_mem_nil, or_false] at ha
+  rcases ha with rfl | rfl | rfl | rfl | rfl
+  · exact h1
+  · exact h2
+  · exact h3
+  · exact h4
+  · exact h5
 
 theorem cond_scmInt : RlCondScmInt (restrictInterp i) := by
   intro cc l ci h1 h2
@@ -2310,6 +2407,11 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       scmOpEqp := cond_scmOpEqp hH
       scmDpSub := cond_scmDpSub hH
       scmDpEqp := cond_scmDpEqp hH
+      scmSvf1 := cond_scmSvf1 hH
+      scmSvf2 := cond_scmSvf2 hH
+      scmAvf1 := cond_scmAvf1 hH
+      scmAvf2 := cond_scmAvf2 hH
+      scmHv := cond_scmHv hH
       scmInt := cond_scmInt hH
       scmUni := cond_scmUni hH
       eqDiffSym := cond_eqDiffSym hH
