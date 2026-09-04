@@ -645,6 +645,78 @@ well: `closure_rounds` 1750, `clashes` 26, `cap_hits` 0,
   `injectGlobalAxioms` still scans the whole TBox per node regardless
   of that node's labels.
 
+### Confirmed against the branch tip
+
+Re-measured after rebasing onto `claude/main` at `8198f205c`, so the
+baseline is the tip and not the branch point. The tip's census
+reproduces 537,586,682 exactly.
+
+Whole corpus, `--dl`, on a quiet machine (load average 5.2 falling to
+4.4), `/usr/bin/time -l`:
+
+| Tree | wall | user CPU | CPU | peak resident | score |
+|---|---|---|---|---|---|
+| tip + both repairs | 555.37 s | 523.04 s | 95.5 per cent | 222 MB | 1326 pass, 121 fail, 2 skip, 8 unsupported (out of 1457) |
+
+`cap_hits` 0. That `--dl` figure is exactly the one `9ce7191ab`
+recorded for the five rows, so no unit moved.
+
+⚠️ **The baseline half of that pair was NOT run to completion.** The
+machine was needed for the storage work and a whole-corpus baseline run
+costs about forty minutes. The baseline figure quoted here is the SUM
+OF THE SIX PER-CATALOG RUNS, taken with the two binaries running
+CONCURRENTLY so both carry the same contention:
+
+| Catalog | tip baseline | tip + both repairs |
+|---|---|---|
+| profile-QL | 0 s | 1 s |
+| profile-EL | 1 s | 0 s |
+| profile-RL | 0 s | 0 s |
+| type-inconsistency | 5 s | 3 s |
+| type-consistency | 1482 s | 214 s |
+| type-positive-entailment | 870 s | 124 s |
+| **total** | **2358 s** | **342 s** |
+
+Both score lines are identical in all six catalogs, and they sum
+exactly to the whole-corpus figures — 1195 pass closure-alone and
+1326 pass closure-or-refutation on each side:
+
+    profile-QL                82 / 83 pass  (out of 87)
+    profile-EL               108 / 114 pass (out of 121)
+    profile-RL               120 / 121 pass (out of 126)
+    type-inconsistency        45 / 116 pass (out of 128)
+    type-consistency         505 / 531 pass (out of 583)
+    type-positive-entailment 335 / 361 pass (out of 412)
+
+ConsistencyTest 761 pass, 1 fail and NegativeEntailmentTest 38 pass,
+0 fail (out of 38) on both sides.
+
+**The whole-corpus `--dl` run is now 555 s, against about 653 s before
+the five rows ever landed.** With the two repairs the rows cost nothing
+against that earlier figure; they buy their units for free.
+
+### Where the cost still sits, if someone takes this further
+
+Per catalog, by `tests_per_pass`, after both repairs:
+
+| Catalog | cases | sum `tests_per_pass` | share | top 1 case | top 5 cases |
+|---|---|---|---|---|---|
+| type-consistency | 351 | 76,276,127 | 64.2 per cent | 21.7 per cent | 78.1 per cent |
+| type-positive-entailment | 204 | 40,423,657 | 34.0 per cent | 41.0 per cent | 79.1 per cent |
+| type-inconsistency | 128 | 1,708,004 | 1.4 per cent | 24.2 per cent | 51.5 per cent |
+| profile-RL | 90 | 198,115 | 0.2 per cent | | |
+| profile-EL | 86 | 143,291 | 0.1 per cent | | |
+| profile-QL | 64 | 121,076 | 0.1 per cent | | |
+
+**The cost is CONCENTRATED, not spread.** Five cases of 351 carry
+78 per cent of `type-consistency`, and five of 204 carry 79 per cent of
+`type-positive-entailment`, one of them 41 per cent on its own. So the
+loop for further work is `--case` on a handful of named cases, and a
+targeted fix is the right shape. It is not an argument for a broad
+rewrite — though absorption and lazy unfolding would be aimed at the
+same handful, and `injectGlobalAxioms` still scans the whole TBox per
+node regardless of that node's labels.
+
 ### The measurement rule this paid for
 
 **Run `l4owl-probe --tbox-census` before and after any rule row, and
