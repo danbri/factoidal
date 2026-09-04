@@ -413,3 +413,112 @@ FALLBACK after containment fails.
 53 `--dl` units closed, 0 RL (the fallback is `--dl` only), no
 regression, `cap_hits=0` in every run. NegativeEntailmentTest stayed at
 38 pass, 0 fail (out of 38).
+### `084a59ac6` — literal distinctness decided on VALUES (refuter)
+
+| Change | RL before → after | `--dl` before → after |
+|---|---|---|
+| `Refute.provablyDistinct` compares data values, not lexical forms | 1138 pass, 309 fail → 1138 pass, 309 fail | 1211 pass, 236 fail → 1218 pass, 229 fail |
+
+Sub-counts, `--dl`: ConsistencyTest 758 pass, 4 fail — unchanged.
+NegativeEntailmentTest 38 pass, 0 fail — unchanged. InconsistencyTest
+121 pass, 39 fail → 128 pass, 32 fail. RL sub-counts all unchanged.
+
+Closed: `functionality-clash` (two catalogs), `Plus and Minus Zero are
+Distinct` (three catalogs), `WebOnt-miscellaneous-203` and `-204`.
+`WebOnt-miscellaneous-202`, the consistent premise whose two
+`rdf:XMLLiteral` fillers differ only in insignificant whitespace, still
+passes and is now pinned by a `#guard`.
+
+Wall clock, `--dl` over the six catalogs: 5 min 02 s → 5 min 38 s, both
+runs at 94 to 97 per cent CPU utilisation. Stronger and about 12 per
+cent longer.
+
+### `fceeff81d` — the existence clash reads asserted `rdfs:range` (refuter)
+
+| Change | RL before → after | `--dl` before → after |
+|---|---|---|
+| `Refute.datatypeRangeClash` meets the ∀-intersection with `st.ranges` | 1138 pass, 309 fail → 1138 pass, 309 fail | 1218 pass, 229 fail → 1221 pass, 226 fail |
+
+Sub-counts, `--dl`: ConsistencyTest 758 pass, 4 fail — unchanged.
+NegativeEntailmentTest 38 pass, 0 fail — unchanged. InconsistencyTest
+128 pass, 32 fail → 131 pass, 29 fail.
+
+Closed: `string-integer-clash` in profile-RL, profile-EL and
+type-inconsistency. Wall clock, `--dl`: 5 min 38 s → 4 min 18 s — the
+rule decides before the search branches.
+
+## B3 under `--dl`, worked through: the 39, and what is left
+
+Method. The 39 units are the `FAIL … [InconsistencyTest]` lines of
+`l4owl-probe --dl` over the six catalogs, each tagged
+`closure-gap: no clash row fired on a premise asserted inconsistent`.
+They are 33 distinct test cases; six of them are typed in two or three
+catalogs and score once per catalog. What the method cannot see: a
+premise the engine judges inconsistent for a WRONG reason still counts
+as a pass here, and this list says nothing about those.
+
+**The budget is not a cause of any of them.** `--refute-budget 512`,
+eight times the default 64, scores 1221 pass, 226 fail (out of 1457) —
+identical to budget 64 — and leaves exactly the same 29 B3 failures.
+`cap_hits` is 0 in every catalog in both runs. The split's earlier text
+called a budget trip rare; on B3 it is absent.
+
+| Cause | Units of the 39 |
+|---|---|
+| A clash condition missing or too weak | 10 — all closed by the two landings above |
+| An expansion rule missing | 29 |
+| The budget stops the search early | 0 (measured, see above) |
+
+The 29 that remain, by the expansion each needs:
+
+- **23 units, the OilEd `WebOnt-description-logic-*` cases.** Each
+  asserts an anonymous individual into a named class whose
+  `owl:equivalentClass` is an intersection over `owl:someValuesFrom`,
+  `owl:maxCardinality` and an INVERSE object property, with
+  `owl:complementOf`/`owl:unionOf` branching underneath. The refuter
+  mints witnesses to `maxWitnessDepth` 3 and `maxGeneratedWitnesses` 6
+  and does not propagate an inverse role onto a minted witness, so the
+  clash node is never built. This is one expansion family, not 23
+  separate gaps.
+- **2 units, `New-Feature-Keys-002`.** `owl:hasKey`. The RL row
+  `prp-key` is documented in `RLRules.lean` and implemented nowhere,
+  and the refuter has no key rule. OWL 2 Syntax §9.5: a key applies to
+  NAMED individuals only, which is what makes a graph-level violation
+  the right shape for it.
+- **2 units, `Inconsistent Disjoint Dataproperties` and `Inconsistent
+  String Pattern with Disjoint Dataproperties`.** The
+  disjoint-data-property pattern collision, which `Refute.lean`'s own
+  header already names as absent.
+- **1 unit, `Minus Infinity is not in owl:real`.**
+  `NegativeDataPropertyAssertion` must remove a member from the
+  `owl:oneOf` filler set; the refuter does not read negative property
+  assertions into the datatype layer.
+- **1 unit, `one=two`.** A 1:1 role chain over an `owl:oneOf` of three
+  individuals. `OWL/CountingOracle.lean` exists with a proved Farkas
+  validator and is still not consulted from the search.
+
+## ⚠️ A located soundness defect: the materialiser mints a shared witness
+
+`WebOnt-description-logic-018`, `-020` and `-021` are asserted
+CONSISTENT and fail under `--dl` only. They are the whole of B4. The
+row and the mechanism are now isolated (2026-09-04), and neither
+landing above changes them.
+
+`detectClash` is FALSE on the RL closure of each premise and TRUE after
+`OWL.Mat.materialise`, and the row that fires is **cls-com**. On
+`-018`: the materialiser mints one witness
+`_:bw_b40__…#r` for the `owl:someValuesFrom` obligation on `r` at node
+`b40`, then writes that ONE witness into `p1`, `p2`, `p3` and two
+anonymous classes. The premise says `p1 ⊑ ¬(p2 ⊔ p3 ⊔ p4 ⊔ p5)`, so
+`p1` and `p2` on one node is already a contradiction; reclosure lifts
+it to `b24` and `b25` with `b24 owl:complementOf b25`, and cls-com
+fires.
+
+The defect is that several existence obligations on one property are
+satisfied by ONE minted filler. `Refute.lean` states the rule the
+materialiser breaks, in its own words beside `existsUnsatisfiableWitness`:
+"two DIFFERENT existence obligations on one property are NEVER combined
+WITH EACH OTHER … Combining two `∃p.Dᵢ` would assume they share one
+filler, which is false for a non-functional property." The fix belongs
+in `L4Factoidal/OWL/Materialise.lean`: one witness per obligation, or
+withhold the membership.
