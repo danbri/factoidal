@@ -140,6 +140,15 @@ l4block-shard-activate /tmp/store gen-1
 l4block-quad-query /tmp/store --query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
 ```
 
+Memory. The N-Quads route streams the source in 65,536-byte chunks
+(`PackStream.quadIngestFeed`), so peak memory is about ten times the input,
+measured 2026-09-04. TriG and Turtle still read the whole file. Peak memory
+stays PROPORTIONAL to the data on every route, because one IBK4 block holds a
+predicate across the whole source: several blocks per predicate would bound
+it and is a wire-version decision, not a refactor
+(`docs/designissues/2026-09-04-ibk4-named-graph-packing-scale.md`,
+<https://github.com/danbri/factoidal/issues/650>).
+
 What works:
 
 - Pack from TriG, N-Quads and Turtle. The same quads in the same order from

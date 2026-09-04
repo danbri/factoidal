@@ -92,7 +92,7 @@ it; nothing is ever truncated silently (anti-pattern 25).
 |---|---|---|
 | `maxPackFeedBytes` | 4194304 (4 MiB) | one `packFeed` region |
 | `maxPackQueuedBytes` | 134217728 (128 MiB) | artifacts waiting for `packNext` |
-| `maxPackSourceBytes` | 134217728 (128 MiB) | the IBK4 buffered source |
+| `maxPackSourceBytes` | 134217728 (128 MiB) | the IBK4 buffered source, TriG/Turtle/N-Triples only |
 | `maxPackHandles` | 8 | open pack handles |
 | `maxActivateBytes` | 134217728 (128 MiB) | one `activateVerify` region |
 
@@ -101,11 +101,14 @@ The two 128 MiB figures are chosen for a few hundred thousand triples on a
 skosdex corpus: an IBK3 generation runs about 100 bytes per triple, so
 128 MiB of queued artifacts is above a million triples, and the IBK3 path
 never queues more than one publication batch anyway because the host drains
-after every feed. The IBK4 path is the binding one: it holds the whole
-source text as well as the whole generation, so 128 MiB of source is the
-real limit there — roughly 1.3 million N-Quads lines. A larger corpus takes
-the native packer, which streams from a file and is not addressed by 32
-bits.
+after every feed. The IBK4 path used to be the binding one: it held the whole
+source text as well as the whole generation, so 128 MiB of source was the
+real limit there — roughly 1.3 million N-Quads lines. The N-Quads grammar no
+longer buffers a source at all (`PackStream.quadIngestFeed`), so
+`maxPackSourceBytes` now bounds only the TriG, Turtle and N-Triples IBK4
+routes, which still buffer. The ceiling for an IBK4 N-Quads pack is the
+128 MiB of queued generation plus the module's 32-bit address space, not the
+size of the input.
 
 `maxPackFeedBytes` is 64 times the 65,536-byte chunk the native packer reads
 and the JavaScript host feeds, so an ordinary host never approaches it; it is
@@ -135,7 +138,9 @@ def maxPackFeedBytes : Nat := 4 * 1024 * 1024
 def maxPackQueuedBytes : Nat := 128 * 1024 * 1024
 
 /-- The largest source an IBK4 pack may buffer: 134,217,728 bytes. The IBK3
-    path buffers no source at all. -/
+    path buffers no source at all, and neither does the IBK4 N-Quads route,
+    which streams through `PackStream.quadIngestFeed`. This cap therefore
+    binds only IBK4 over TriG, Turtle and N-Triples. -/
 def maxPackSourceBytes : Nat := 128 * 1024 * 1024
 
 /-- The largest number of pack handles which may be open at once. -/
@@ -161,9 +166,10 @@ def passName : PackPass → String
   | .done => "done"
 
 /-- One open pack. `ingest` is the streaming fold of the IBK2 and IBK3
-    layouts; `source` is the buffered text of the IBK4 layout, which commits
-    a graph-set summary over the whole source and so cannot stream. Exactly
-    one of the two is used, decided by `format`. -/
+    layouts; `quads` is the streaming fold of the IBK4 layout over the
+    N-Quads grammar; `source` is the buffered text of the IBK4 layout over
+    the TriG, Turtle and N-Triples grammars, which have no chunk fold yet.
+    Exactly one of the three is used, decided by `format` and `grammar`. -/
 structure OpenPack where
   format : PackFormat
   grammar : PackSyntax
@@ -175,6 +181,7 @@ structure OpenPack where
   pre : PrepassState
   prepass : Option SourcePrepass
   ingest : Option IngestState
+  quads : Option QuadIngestState
   source : ByteArray
   packed : PackState
   queue : List Artifact
@@ -259,7 +266,7 @@ def packBegin (syntaxTag layoutTag baseIri : String) : IO String := do
           packTable.modify (·.insert h
             { format, grammar, base := if baseIri.isEmpty then none else some baseIri,
               pass := .prepass, pre := prepassInit, prepass := none,
-              ingest := none, source := ByteArray.empty, packed := {},
+              ingest := none, quads := none, source := ByteArray.empty, packed := {},
               queue := [], queueBytes := 0, manifestPublished := false })
           pure (okWith [("handle", .string h), ("pass", .string (passName PackPass.prepass))])
 
@@ -289,6 +296,14 @@ def packFeed (h : String) (blob : ByteArray) : IO String :=
                     packTable.modify (·.insert h pack')
                     pure (passEnvelope .ingest pack'.queue.length)
         | none =>
+          match pack.quads with
+          | some state =>
+              match quadIngestFeed state blob with
+              | .error e => pure (errJson e)
+              | .ok next => do
+                  packTable.modify (·.insert h { pack with quads := some next })
+                  pure (passEnvelope .ingest pack.queue.length)
+          | none =>
             if pack.source.size + blob.size > maxPackSourceBytes then
               pure (errJson s!"packFeed: this pack has buffered {pack.source.size + blob.size} source bytes, the cap is {maxPackSourceBytes}")
             else do
@@ -324,26 +339,31 @@ def packEndPass (h : String) : IO String :=
         match prepassFinish pack.pre with
         | .error e => pure (errJson e)
         | .ok prepass => do
+            let streamsQuads := pack.format == .ibk4 && quadStreams pack.grammar
             let ingest :=
               if pack.format == .ibk4 then none
               else some (ingestInit packHasher pack.format prepass pack.base)
+            let quads :=
+              if streamsQuads then some (quadIngestInit packHasher prepass) else none
             packTable.modify (·.insert h
-              { pack with pass := .ingest, prepass := some prepass, ingest })
+              { pack with pass := .ingest, prepass := some prepass, ingest, quads })
             pure (passEnvelope .ingest 0)
     | .ingest =>
         match pack.prepass with
         | none => pure (errJson "packEndPass: this pack has no first-pass result")
         | some prepass =>
             let outcome :=
-              match pack.ingest with
-              | some state => ingestFinish state
-              | none => finishQuadPass pack prepass
+              match pack.ingest, pack.quads with
+              | some state, _ => ingestFinish state
+              | none, some state => (quadIngestFinish state).map
+                  fun (result : QuadPack) => (result.packed, result.artifacts)
+              | none, none => finishQuadPass pack prepass
             match outcome with
             | .error e => pure (errJson e)
             | .ok (packed, made) =>
                 let finished : OpenPack :=
                   { pack with pass := .done, packed := packed, ingest := none,
-                              source := ByteArray.empty }
+                              quads := none, source := ByteArray.empty }
                 match enqueue "packEndPass" finished made with
                 | .error e => pure (errJson e)
                 | .ok pack' => do

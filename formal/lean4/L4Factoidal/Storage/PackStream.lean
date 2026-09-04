@@ -35,6 +35,7 @@ import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.NQuadsFast
+import L4Factoidal.Syntax.NQuadsFold
 import L4Factoidal.Syntax.Utf8Stream
 import L4Factoidal.Syntax.TurtleChunkFold
 import L4Factoidal.Crypto.SHA2
@@ -468,6 +469,94 @@ def quadArtifacts (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
     publishQuadBlocks h (bytesToHex prepass.sourceIdentity) {}
       [] (L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset)
   .ok { graphs := dataset.named.length + 1, packed, artifacts }
+
+/-! ### The streaming N-Quads route to IBK4
+
+`quadArtifacts` above takes the WHOLE source as a `String`, and
+`parseNQuadsFast` starts with `s.toList`. A `List Char` cons cell is three
+machine words, so that one list is about twenty-four times the input size and
+it is live at the same time as the dataset it produces. Measured on a
+104,017,780-byte N-Quads source over 50 named graphs: 2,531,999,744 bytes of
+peak memory footprint, of which the character list is the largest part. A
+553,021,327-byte source was killed by the operating system after 1 h 57 min
+with an empty output directory
+(<https://github.com/danbri/factoidal/issues/650>).
+
+The fold below removes both. `Syntax/NQuadsFold.lean` proves
+`streamConsume11_eq_batch`: for EVERY consumer, the chunked fold and the
+whole-document fold reach the same accumulator. Instantiated at the
+`FastDataset` accumulator which `parseNQuadsFast` itself uses, the dataset a
+chunked run builds IS the dataset `parseSource .nquads` builds, so every
+committed byte is unchanged. Only 65,536 bytes of source, plus at most one
+partial line, are decoded at a time.
+
+What this does NOT make bounded: an IBK4 block holds one predicate across all
+graphs, so the dataset, the blocks and their encoded bytes are all live when
+the last block is published. Peak memory is still proportional to the DATA,
+just no longer to a character list twenty-four times the source. A memory
+footprint independent of the input needs several blocks per predicate, which
+changes the emitted block set and is therefore a wire-format decision, not a
+refactor. The other three grammars keep the buffered route: TriG has no
+chunk fold yet, and Turtle would need its own agreement theorem against
+`parseTurtle`. -/
+
+/-- The state of a streaming IBK4 pass over an N-Quads source. Every field is
+    bounded except the `FastDataset` accumulator. -/
+structure QuadIngestState where
+  hasher : Hasher
+  scope : String
+  expected : ByteArray
+  utf8 : Utf8Stream
+  stream : L4Factoidal.Syntax.NQuadsStreaming.StreamStateC L4Factoidal.Syntax.FastDataset
+  digest : Sha256Stream
+
+def quadIngestInit (h : Hasher) (prepass : SourcePrepass) : QuadIngestState :=
+  { hasher := h
+    scope := bytesToHex prepass.sourceIdentity
+    expected := prepass.sourceIdentity
+    utf8 := Utf8Stream.init
+    stream := L4Factoidal.Syntax.NQuadsStreaming.initialStateC {}
+    digest := Sha256Stream.init }
+
+/-- Feed one input chunk. A parse error is sticky in `StreamStateC` and is
+    reported by `quadIngestFinish`, which is where the batch route reports it
+    too. -/
+def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
+    Except String QuadIngestState :=
+  match state.utf8.feed bytes with
+  | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
+  | .ok (text, nextUtf8) =>
+      .ok { state with
+              utf8 := nextUtf8
+              stream := L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
+                          L4Factoidal.Syntax.addQuadFast state.stream text.toList
+              digest := state.digest.update bytes }
+
+/-- End of input: the streamed source digest must equal the first-pass
+    commitment, as `ingestFinish` requires on the IBK3 path. The buffered
+    IBK4 route had no such check on the native packer. -/
+def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
+  match state.utf8.finish with
+  | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
+  | .ok _ =>
+      if state.digest.finish != state.expected then
+        .error "l4block-shard-pack input changed between pre-pass and parse pass"
+      else
+        match L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11
+                L4Factoidal.Syntax.addQuadFast state.stream with
+        | .error e => .error s!"l4block-shard-pack N-Quads parse error at {e.pos}: {e.msg}"
+        | .ok fast =>
+            let dataset := fast.toDataset
+            let graphs := dataset.named.length + 1
+            match publishQuadBlocks state.hasher state.scope {} []
+                (L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset) with
+            | .error message => .error message
+            | .ok (packed, artifacts) => .ok { graphs, packed, artifacts }
+
+/-- Which grammars the streaming IBK4 route reads. -/
+def quadStreams : PackSyntax → Bool
+  | .nquads => true
+  | .turtle | .trig | .ntriples => false
 
 def quadManifestTsvHeader : String :=
   "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\n"

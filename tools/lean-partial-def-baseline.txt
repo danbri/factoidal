@@ -14,4 +14,7 @@
 #
 # 2026-09-03: 217, the count measured in
 # docs/designissues/2026-09-03-fstar-lean-coverage-gap.md.
-173
+# 2026-09-04: 172. Harness/PredicateShardPack.lean's three host read
+# loops (pre-pass, IBK2/IBK3 ingest, IBK4 N-Quads ingest) became one
+# `foldHandle` taking the per-pass `feed`.
+172

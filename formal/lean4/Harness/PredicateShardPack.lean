@@ -8,11 +8,12 @@
    same fold runs unchanged inside the WebAssembly module, which has no file
    I/O.
 
-   The IBK4 path below still reads the whole input with `IO.FS.readFile`,
-   because an IBK4 block commits a graph-set summary over the whole source;
-   lifting it needs the streaming TriG fold and is separate work. Its blocks,
-   sidecars and manifest are decided by `PackStream.quadArtifacts` and
-   `PackStream.quadManifestArtifacts` like everything else here. -/
+   The IBK4 path below streams the N-Quads grammar through
+   `PackStream.quadIngestFeed` and reads the whole input with `IO.FS.readFile`
+   only for TriG, Turtle and N-Triples, which have no chunk fold yet. Its
+   blocks, sidecars and manifest are decided by `PackStream.quadArtifacts`,
+   `PackStream.quadIngestFinish` and `PackStream.quadManifestArtifacts` like
+   everything else here. -/
 import L4Factoidal.Storage.PackStream
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.IndexedBlockWireV4
@@ -46,35 +47,36 @@ private def writeArtifacts (output : String) (artifacts : List Artifact) : IO Un
   artifacts.forM fun artifact =>
     IO.FS.writeBinFile (output ++ "/" ++ artifact.name) artifact.bytes
 
-/-- Host I/O is deliberately tail-recursive/`partial`; it is not semantic
-    parser recursion. Every decision is in `PackStream.prepass*`. -/
-private partial def prepassHandle (handle : IO.FS.Handle) (state : PrepassState) :
-    IO SourcePrepass := do
+/-- Read the input in `inputChunkBytes` chunks and fold. Host I/O is
+    deliberately tail-recursive/`partial`; it is not semantic parser
+    recursion. Every decision is in `PackStream`, whose folds this drives:
+    the pre-pass, the IBK2/IBK3 ingest and the IBK4 N-Quads ingest all read
+    the file the same way and differ only in `feed`. -/
+private partial def foldHandle {α : Type} (handle : IO.FS.Handle)
+    (feed : α → ByteArray → IO α) (state : α) : IO α := do
   let bytes ← handle.read inputChunkBytes
-  if bytes.isEmpty then ofExcept (prepassFinish state)
-  else prepassHandle handle (← ofExcept (prepassFeed state bytes))
+  if bytes.isEmpty then pure state
+  else foldHandle handle feed (← feed state bytes)
 
 private def prepassFile (input : System.FilePath) : IO SourcePrepass :=
-  IO.FS.withFile input .read fun handle => prepassHandle handle prepassInit
+  IO.FS.withFile input .read fun handle => do
+    let state ← foldHandle handle (fun state bytes => ofExcept (prepassFeed state bytes))
+      prepassInit
+    ofExcept (prepassFinish state)
 
 /-- The second pass: read a chunk, feed it, write whatever completed. -/
-private partial def ingestHandle (handle : IO.FS.Handle) (output : String)
-    (state : IngestState) : IO PackState := do
-  let bytes ← handle.read inputChunkBytes
-  if bytes.isEmpty then do
-    let (packed, artifacts) ← ofExcept (ingestFinish state)
-    writeArtifacts output artifacts
-    pure packed
-  else do
-    let (next, artifacts) ← ofExcept (ingestFeed state bytes)
-    writeArtifacts output artifacts
-    ingestHandle handle output next
-
 private def ingestFile (format : PackFormat) (input output : System.FilePath)
     (prepass : SourcePrepass) : IO PackState :=
-  IO.FS.withFile input .read fun handle =>
-    ingestHandle handle output.toString
+  IO.FS.withFile input .read fun handle => do
+    let state ← foldHandle handle
+      (fun state bytes => do
+        let (next, artifacts) ← ofExcept (ingestFeed state bytes)
+        writeArtifacts output.toString artifacts
+        pure next)
       (ingestInit hasher format prepass (some ("file://" ++ input.toString)))
+    let (packed, artifacts) ← ofExcept (ingestFinish state)
+    writeArtifacts output.toString artifacts
+    pure packed
 
 private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
   try
@@ -99,15 +101,28 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
 
 /-! ## The IBK4 path
 
-The IBK4 packer parses the WHOLE input file before it writes a block. The
-streaming Turtle fold of the IBK3 path publishes bounded batches, which works
-because an IBK3 block holds one predicate of one graph and a later batch can
-open a new block for the same predicate (SBM2 permits several blocks per
-predicate). An IBK4 block holds one predicate across ALL graphs and commits its
-graph-set summary in the header, so a batch boundary would either split a
-predicate across blocks with partial graph sets or need a second pass to
-recompute them. The streaming TriG path is the next step; until it lands the
-IBK4 packer is bounded by the input size.
+The IBK4 packer publishes every block at the end of the input. The streaming
+Turtle fold of the IBK3 path publishes bounded BATCHES, which works because an
+IBK3 block holds one predicate of one graph and a later batch can open a new
+block for the same predicate (SBM2 permits several blocks per predicate). An
+IBK4 block holds one predicate across ALL graphs and commits its graph-set
+summary in the header, so a batch boundary would either split a predicate
+across blocks with partial graph sets or need a further pass to recompute
+them. Several blocks per predicate would change the emitted block set, which
+is a wire-format decision (specification section 10), so the IBK4 publication
+point is still the end of the source and peak memory is still proportional to
+the data.
+
+What the input no longer decides is the CHARACTER LIST. For the N-Quads
+grammar `quadIngestFile` below feeds 65,536-byte chunks to
+`PackStream.quadIngestFeed`, so neither the source `String` nor its
+`String.toList` — about twenty-four bytes per source byte — is ever built.
+Measured on 104,017,780 bytes of N-Quads over 50 named graphs: peak memory
+footprint 2,531,999,744 bytes before, 1,127,907,328 bytes after, with a
+byte-identical generation
+(<https://github.com/danbri/factoidal/issues/650>). TriG, Turtle and
+N-Triples still buffer, because neither has a chunk fold with an agreement
+theorem against its whole-document parser.
 
 Every block, sidecar and manifest byte is decided by
 `PackStream.quadArtifacts` and `PackStream.quadManifestArtifacts`, which are
@@ -124,6 +139,14 @@ private def syntaxOf (input : String) : PackSyntax :=
   else if input.endsWith ".nt" then .ntriples
   else .turtle
 
+/-- The streaming IBK4 second pass. The source `String` and its `List Char`
+    never exist; only one 65,536-byte chunk is decoded at a time. -/
+private def quadIngestFile (input : System.FilePath) (prepass : SourcePrepass) : IO QuadPack :=
+  IO.FS.withFile input .read fun handle => do
+    let state ← foldHandle handle (fun state bytes => ofExcept (quadIngestFeed state bytes))
+      (quadIngestInit hasher prepass)
+    ofExcept (quadIngestFinish state)
+
 private def packQuads (input output : String) : IO UInt32 := do
   try
     let prepass ← prepassFile input
@@ -131,10 +154,13 @@ private def packQuads (input output : String) : IO UInt32 := do
     if ← (outputPath / "manifest.sbm2").pathExists then
       throw <| IO.userError s!"refusing to replace committed collection at {output}; choose a fresh output directory"
     IO.FS.createDirAll outputPath
-    let text ← IO.FS.readFile input
     let grammar := syntaxOf input
-    let result ← ofExcept
-      (quadArtifacts hasher grammar prepass text (some ("file://" ++ input)))
+    let result ←
+      if quadStreams grammar then
+        quadIngestFile input prepass
+      else do
+        let text ← IO.FS.readFile input
+        ofExcept (quadArtifacts hasher grammar prepass text (some ("file://" ++ input)))
     writeArtifacts output result.artifacts
     let manifest ← ofExcept (quadManifestArtifacts prepass result.packed)
     writeArtifacts output manifest
