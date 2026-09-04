@@ -131,8 +131,10 @@ Stated beside the result, per anti-pattern 28.
    verdict, and the correction is the MEASURED delta after a fix.
 3. **B3 is one string.** "No clash row fired" carries no information
    about WHICH inconsistency was missed, so B3's 107 are not ranked at
-   all here. Ranking them needs a probe change that reports the premise
-   axioms, which this session did not make.
+   all *by this classifier*. They are ranked below, in
+   [B3 ranked, by the clash that should fire](#b3-ranked-by-the-clash-that-should-fire),
+   by reading each case's PREMISE off the catalog rather than by
+   changing the probe.
 4. **The classifier cannot distinguish an absent rule row from a
    present row whose premise was never derived.** `New-Feature-Keys-001`
    is in B5 with a missing `owl:sameAs`; prp-key IS implemented and does
@@ -608,3 +610,100 @@ It is nineteen times the default regime's wall clock and that is the
 refuter, not the closure — the closure half is the same 28 s of work.
 Peak memory is BELOW the default regime's, because no materialisation
 pass runs.
+
+## B3 ranked, by the clash that should fire
+
+Measured 2026-09-04 at commit `cecee9476`, RL regime, from the same
+probe run the counts above come from. B3 there is **106 units across 92
+cases** — one unit less than the table, because the five `scm` rows
+(`9ce7191ab`) closed `WebOnt-description-logic-002`.
+
+"No clash row fired" says nothing about WHICH inconsistency was missed,
+which is why item 3 of *What the method cannot see* recorded B3 as
+unranked. The rank below reads each case's PREMISE off the catalog and
+asks one question: could a Horn closure decide this inconsistency at
+all? An OWL 2 RL clash row is a table row from Profiles §4.3 — all
+premises positive, no case split, no invented individual. A premise
+whose only proof of inconsistency needs a witness or a case split is
+not RL closure work whatever row is added.
+
+Reproduce with `tools/owl-b3-premise-rank.py`.
+
+| Tier | Group | Units | Cases |
+|---|---|---|---|
+| A | prp-fp then literal distinctness (`dt-diff` + `eq-diff1`) | 7 | 4 |
+| A | prp-key then eq-diff1 | 5 | 2 |
+| A | dt-not-type (Table 8) | 4 | 2 |
+| A | `ICEXT(I(owl:Thing)) = IR` then cls-nothing2 | 3 | 1 |
+| — | `rdf:nil` has no `rdf:rest` — no Profiles row | 2 | 2 |
+| B | an existential witness is required | 81 | 77 |
+| B | a disjunction must be case-split | 3 | 3 |
+| B | max-cardinality N>0 — counting distinct fillers | 1 | 1 |
+| | **total** | **106** | **92** |
+
+**Tier A is 19 units of 106.** Everything else is the refuter's, and
+the earlier reading that `--rl-refute` closes 92 of the 107 is
+consistent with that: refutation searches, and 85 of these need search.
+
+### What the tiers mean
+
+**Tier B, 85 units.** 77 cases carry `ObjectSomeValuesFrom`,
+`DataSomeValuesFrom`, `owl:someValuesFrom`, `owl:minCardinality` or an
+exact cardinality. The inconsistency is only visible at an individual
+the premise does not name, and a Horn closure never mints one. The 68
+`WebOnt-description-logic-*` cases are the OilEd satisfiability suite
+and are all of this kind or the disjunctive kind: `inconsistent001`
+equates a class with a `owl:unionOf` of `owl:intersectionOf` pairs, and
+deciding it needs the case split. Adding a clash row for any of these
+would be adding a search to the closure.
+
+**Tier A, 19 units.** Four groups, each a real Profiles §4.3 row or a
+short composition of two:
+
+1. **prp-fp then literal distinctness — 7 units, 4 cases.** A
+   functional property with two fillers whose data values differ.
+   `functionality-clash` has `"18"^^xsd:integer` and `"19"^^xsd:integer`;
+   `Plus and Minus Zero are Distinct` has `"+0.0"^^xsd:float` and
+   `"-0.0"^^xsd:float`, two values of the float space by XSD 1.1
+   §3.3.5; `WebOnt-miscellaneous-203`/`204` compare two
+   `rdf:XMLLiteral` fillers.
+   `New-Feature-Keys-006`, counted under prp-key below, is also this
+   shape — it declares `FunctionalDataProperty(:hasName)` with the
+   fillers `"Peter"` and `"Kichwa-Tembo"`.
+2. **prp-key then eq-diff1 — 5 units, 2 cases.** `New-Feature-Keys-002`
+   needs prp-key to give `owl:sameAs` between two individuals declared
+   `DifferentIndividuals`. prp-key IS implemented, so the gap is in a
+   premise it does not derive, not in the row.
+3. **dt-not-type — 4 units, 2 cases.** The one Profiles §4.3
+   no-consequent row the engine does not implement, and its reach in B3
+   is two cases. `string-integer-clash` is the clean shape: a data
+   property with `xsd:integer` range and an `xsd:string` filler.
+   `Contradicting-dateTime-restrictions` needs the row over a
+   `DatatypeRestriction`, using the facet interval.
+4. **`ICEXT(I(owl:Thing)) = IR` — 3 units, 1 case.**
+   `WebOnt-Thing-003` asserts `owl:Thing owl:equivalentClass
+   owl:Nothing` and names no individual. It is the same missing fact
+   the six B5 units named in *Where each bucket's work belongs* need.
+
+The two `rdf:nil`/`rdf:rest` units (`WebOnt-I5.5-003`, `-004`) are an
+RDF-based-semantics fact — `rdf:nil` is not a list cell — with no row
+in any Profiles table. Listed apart so nobody looks for one.
+
+### What this ranking cannot see
+
+Stated beside the result, per anti-pattern 28.
+
+1. **It reads the premise, not the closure.** A case in Tier A is one
+   where a Horn row COULD decide the inconsistency. Whether the row
+   fires also depends on the closure deriving its other premises, which
+   this method does not check — `New-Feature-Keys-002` is exactly that
+   case. The correction is the measured delta after a landing.
+2. **The tier gate is syntactic.** A premise mentioning
+   `owl:someValuesFrom` is put in Tier B even if some other part of it
+   is separately inconsistent by a Horn row. That direction is safe for
+   a work order (it under-promises), and it is why the prp-fp landing
+   below closed a case the table counts under prp-key.
+3. **`fsPremiseOntology` is preferred over `rdfXmlPremiseOntology`**
+   when a case carries both, so the construct names read are Functional
+   Syntax where available. A case whose two serialisations differ in
+   constructs would be classified on the Functional one.
