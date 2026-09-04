@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.5.1 — 2026-09-04
+
+**A store can be opened once and queried many times.** `storeQuery` is
+stateless: it re-reads, re-verifies and re-decodes the block on every
+call, so a chat bot or a server paid the full cost for every question.
+The new handle pays it once.
+
+Measured on a 141-graph store, `skos:prefLabel` block of 5,571,302 bytes
+and 45,806 rows, a DIFFERENT search string every query, load 10:
+
+| | stateless | handle |
+|---|---|---|
+| first query (open + query) | 1,376 ms | 1,363 ms |
+| second query, different string | 1,376 ms | **95 ms** |
+| tenth query, all different | 1,382 ms | 103 ms |
+| ten queries, total | 13,962 ms | **2,277 ms** |
+
+```js
+import { openStoreHandle } from '@factoidal/core/store'
+import { loadEngine } from '@factoidal/core/engine'
+const engine = await loadEngine()
+const store  = await openStoreHandle(engine, '/path/to/store')
+const a = store.query('PREFIX skos: … SELECT … ')   //  95 ms
+const b = store.query('PREFIX skos: … SELECT … ')   //  95 ms
+store.close()
+```
+
+**What it buys**: the per-query SHA-256 verification, block decode,
+dataset build and index build all happen once. **What it does not buy**:
+`CONTAINS` still scans every retained row, so cost stays proportional to
+row count. This is not a search fix. There is still no inverted index.
+
+⚠️ **Memory.** A held-open handle is about 170 MiB resident, of which
+roughly 94 MiB is the decoded form of that 5.5 MB packed block — about
+17 times the packed size. Query evaluation peaks at 346 MiB. A process
+holding several stores should watch this; `storeHandleList` reports each
+handle's retained bytes and rows.
+
+**For a long-lived process**: several stores may be open at once, keyed
+independently. `storeOpen` REFUSES at its cap and never evicts another
+caller's handle — an eviction policy is a host decision and is not
+implemented. The WebAssembly module is single-threaded, so a host must
+queue overlapping calls; use one module instance per worker thread for
+concurrency. A server would still need a re-open path when a generation
+is replaced on disk, and delta-log overlay support: this path serves the
+manifest's committed artifacts only.
+
+Handle answers are gated against the stateless path by comparing ROWS,
+not row counts, in `tools/wasm-store-query-smoke.sh` and
+`Wasm/native-smoke.sh` (85 pass, 0 fail, out of 85; was 79).
+
 ## 0.5.0 — 2026-09-04
 
 **Queries against a persisted store are about six times faster.** Measured
