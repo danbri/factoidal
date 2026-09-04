@@ -128,7 +128,7 @@ def canonTriples (g : Graph) (qts : List Triple) (k : BNodeId) : List Triple :=
   | _ =>
       let st := RL.Store.ofGraph g
       let proved (i : Subject) : Bool :=
-        Mat.isMember st i ce (g.length + 64) == some true
+        Mat.runWork (Mat.isMember st i ce (g.length + 64)) == some true
       -- `∃ p. F` with a NESTED filler is rewritten into the edge
       -- pattern `subj p ?v` conjoined with `F` expanded at `?v`
       -- (`QueryRewriteExpand`, someValuesFrom arm), so membership
@@ -148,7 +148,7 @@ def canonTriples (g : Graph) (qts : List Triple) (k : BNodeId) : List Triple :=
         | .someOf p c =>
             let fuel := g.length + 64
             (subjectsOf g).flatMap (fun i =>
-              if Mat.anyIsMember st (Mat.successors st i p) c fuel
+              if Mat.runWork (Mat.anyIsMember st (Mat.successors st i p) c fuel)
                    == some true
               then []
               else

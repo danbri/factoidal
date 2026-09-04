@@ -131,23 +131,48 @@ partial def ceEntailsCe (st : Store) (c1 c2 : ClassExpr) : Bool :=
 /-- The class expressions PROVABLY above a named class `c`: the
 objects of its `rdfs:subClassOf` and `owl:equivalentClass` triples
 (and the subjects of reverse `owl:equivalentClass` triples), read
-back through `parseClassExpr`, followed recursively through further
-NAMED classes. Sound because `i ∈ C` with `C ⊑ D` or `C ≡ D` gives
-`i ∈ D`. Fuel bounds the recursion. -/
-partial def namedSuperCEs (st : Store) (c : WfIri) (fuel : Nat)
-    : List ClassExpr :=
+back through `parseClassExpr`, followed through further NAMED
+classes. Sound because `i ∈ C` with `C ⊑ D` or `C ≡ D` gives
+`i ∈ D`. Fuel bounds the number of LEVELS walked.
+
+**A breadth-first walk with a visited set, not a depth-first
+re-descent.** The earlier form recursed into every named superclass
+of every level with no record of where it had been, so a named class
+with `k` outgoing `rdfs:subClassOf` / `owl:equivalentClass` edges cost
+`k ^ fuel` calls. On `WebOnt-description-logic-202` the closure holds
+818 `rdfs:subClassOf` triples and one class (`test#C76`) carries 18 of
+them, so at the default `fuel = 8` the old walk was of the order of
+`18 ^ 8` — one `isMember` call did not return in eight minutes and the
+process was killed at 9.1 GB. The visited set makes each reachable
+named class cost one expansion.
+
+The RESULT SET is unchanged. A named class contributes the same `ups`
+expansion however it is reached, and a breadth-first walk reaches
+every class within `fuel` edges at its SHORTEST distance — which is
+the largest parse fuel any depth-first path could have given it. What
+the visited set removes is repetition, and every consumer of this
+list reads it with `List.any`. -/
+partial def namedSuperCEsGo (st : Store) (frontier : List WfIri)
+    (seen : List WfIri) (fuel : Nat) : List ClassExpr :=
   match fuel with
   | 0 => []
   | n + 1 =>
-    let ups : List Term :=
+    if frontier.isEmpty then [] else
+    let ups : List Term := frontier.flatMap (fun c =>
       (st.withSubjPred (.iri c) rdfsSubClassOf).map (·.o) ++
       (st.withSubjPred (.iri c) owlEquivalentClass).map (·.o) ++
-      (st.withPredObj owlEquivalentClass (Term.iri c)).map (·.s.toTerm)
-    ups.flatMap (fun u =>
-      let ce := parseClassExpr st u n
-      ce :: (match ce with
-             | .named c2 => if c2 == c then [] else namedSuperCEs st c2 n
-             | _ => []))
+      (st.withPredObj owlEquivalentClass (Term.iri c)).map (·.s.toTerm))
+    let here : List ClassExpr := ups.map (fun u => parseClassExpr st u n)
+    let next : List WfIri := (here.filterMap (fun ce =>
+      match ce with
+      | .named c2 => if seen.contains c2 then none else some c2
+      | _         => none)).eraseDups
+    here ++ namedSuperCEsGo st next (seen ++ next) n
+
+/-- The entry point: `c` itself is already visited. -/
+partial def namedSuperCEs (st : Store) (c : WfIri) (fuel : Nat)
+    : List ClassExpr :=
+  namedSuperCEsGo st [c] [c] fuel
 
 /-- The class expressions of `i`'s asserted (or closure-derived)
 types, read back through `parseClassExpr` — each named type expanded
@@ -160,37 +185,117 @@ def typeCEsOf (st : Store) (i : Subject) (fuel : Nat) : List ClassExpr :=
            | .named c => namedSuperCEs st c (min fuel 8)
            | _ => []))
 
+/-! ## The work counter
+
+The membership pass used to be capped by a count of (individual,
+class expression) PAIRS. A pair count is not a cost. The cost of one
+pair is one `isMember` call, and an `isMember` call costs whatever
+the graph makes it cost, so a rule row that adds `rdfs:subClassOf`
+edges raises the cost of every pair and moves the pair count not at
+all. The cap then sits unarmed while the pass runs out of memory,
+which is what the five `scm` restriction rows of OWL 2 Profiles
+(2nd Ed.) 4.3 Table 9 did on `WebOnt-description-logic-202`:
+12 596 pairs against a budget of 400 000, and 9.1 GB before the
+operating system killed the process.
+
+What is counted now is the work itself. Every `isMember` entry, and
+every class expression a superclass walk hands back, spends one unit
+out of ONE counter that runs across the whole pass. Running out
+answers `none` — the same answer an unreadable expression gets — and
+raises `hit`, so the caller learns the pass was truncated instead of
+reading a short answer as a complete one. -/
+
+/-- What is left of the pass's budget, and whether it ran out. -/
+structure Work where
+  left : Nat
+  hit  : Bool
+  deriving Repr, Inhabited
+
+abbrev WorkM := StateM Work
+
+/-- Take `k` units. `false` once the counter cannot pay. -/
+def spend (k : Nat) : WorkM Bool := fun w =>
+  if w.hit || w.left < k then (false, { left := 0, hit := true })
+  else (true, { w with left := w.left - k })
+
+/-- The default budget: 4 000 000 units of membership work, where one
+    unit is one `isMember` entry or one class expression handed back
+    by a superclass walk.
+
+    📊 The number comes from a measurement, not from a principle. On
+    the whole OWL corpus (`third_party/testing/owl`, six catalogs,
+    1 457 units) under `--dl`, the most expensive single
+    materialisation pass spends 400 878 units
+    (`WebOnt-description-logic-205`), and the next four are 400 878,
+    252 093, 224 401 and 224 401. The budget is ten times the measured
+    maximum, so no case on this corpus trips it (`cap_hits=0`) and a
+    premise an order of magnitude harder than anything in the corpus
+    still gets a reported cap rather than an unbounded run.
+
+    The previous budget counted (individual, class expression) PAIRS
+    at 400 000. That number could not see its own cost: the pass that
+    exhausted 9.1 GB of memory and was killed by the operating system
+    presented 12 596 pairs. -/
+def defaultBudget : Nat := 4000000
+
+/-- Run a membership query on a counter of its own, at the default
+    budget. For callers outside the materialisation pass, which have
+    no pass counter to spend from. -/
+def runWork {α : Type} (m : WorkM α) : α :=
+  m.run' { left := defaultBudget, hit := false }
+
+/-- Is there a proof that `i` has AT MOST `k` distinct `p`-fillers?
+
+    One sound source, and the only one this module reads: `i` is in a
+    universal restriction `∀ p. {a₁ … a_m}` with `m ≤ k`. Every
+    `p`-filler of `i` is then one of the `m` listed individuals, and a
+    set of `m` things cannot hold more than `m` distinct things. The
+    conclusion needs no distinctness reasoning and holds however many
+    `p`-edges the graph asserts — including none.
+
+    `false` means "not proved here", never "false". It does not call
+    `isMember`, so it sits outside the mutual block and outside the
+    work counter. -/
+def fillerBoundAtMost (st : Store) (i : Subject) (p : WfIri) (k : Nat)
+    (fuel : Nat) : Bool :=
+  (successors st i rdfType).any (fun t =>
+    match parseClassExpr st t fuel with
+    | .allOf q (.oneOf members) => q == p && members.length ≤ k
+    | _ => false)
 
 mutual
 
 partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
-    : Option Bool :=
+    : WorkM (Option Bool) := do
+  if !(← spend 1) then return none
   match fuel with
-  | 0 => none
+  | 0 => return none
   | n + 1 =>
     match ce with
-    | .unknown => none
+    | .unknown => return none
 
     -- A named class: an open-world lookup. The graph asserting it
     -- settles the question; the graph NOT asserting it settles
     -- nothing.
-    | .named c => if hasType st i c then some true else none
+    | .named c => return (if hasType st i c then some true else none)
 
     -- `∃ p. {v}`: the assertion `i p v` is the witness.
     | .hasValue p v =>
-        if (successors st i p).any (fun t => t == v) then some true else none
+        return (if (successors st i p).any (fun t => t == v) then some true else none)
 
     -- `∃ p. c`: a known successor in `c` is a witness. No known
     -- successor is not a refutation — an unseen one may exist — so
     -- this never answers `some false`.
-    | .someOf p c =>
-        match anyIsMember st (successors st i p) c n with
-        | some true => some true
+    | .someOf p c => do
+        match ← anyIsMember st (successors st i p) c n with
+        | some true => return (some true)
         | r =>
             -- A type of `i` that is itself `∃ p. c'` with `c' ⊑ c`
             -- proves membership with no witness edge: the existential
             -- is inherited through the filler subsumption.
-            if (typeCEsOf st i n).any (fun tce =>
+            let tces := typeCEsOf st i n
+            if !(← spend tces.length) then return none
+            if tces.any (fun tce =>
                  match tce with
                  | .someOf q c' => q == p && ceEntailsCe st c' c
                  | .hasValue q _ =>
@@ -200,7 +305,7 @@ partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
                                 | .named cn => cn == owlThing
                                 | _ => false)
                  | _ => false)
-            then some true else r
+            then return (some true) else return r
 
     -- `∀ p. c`: `some true` only when every KNOWN successor is
     -- provably in `c`; `some false` as soon as one provably is not.
@@ -213,25 +318,29 @@ partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
     -- is not classical negation — it cannot prove "i is not a c"
     -- without an explicit disproof of `c`. The disjointWith bridge
     -- above supplies one common case of that disproof.
-    | .complement c =>
-        (match c with
-         | .named ci =>
-             if hasDisjointWitness st i ci then some true
-             else (isMember st i c n).map (fun b => !b)
-         | _ => (isMember st i c n).map (fun b => !b))
+    | .complement c => do
+        match c with
+        | .named ci =>
+            if hasDisjointWitness st i ci then return (some true)
+            else return ((← isMember st i c n).map (fun b => !b))
+        | _ => return ((← isMember st i c n).map (fun b => !b))
 
     -- `≥ k p`: the count of known successors is a conservative floor,
     -- because two distinct names may denote one individual. Reaching
     -- `k` proves membership; falling short proves nothing.
-    | .minCard k p =>
-        if (successors st i p).length ≥ k then some true
+    | .minCard k p => do
+        if (successors st i p).length ≥ k then return (some true)
         -- `∃ p. c` and `∋ p. v` each entail at least one `p`-filler.
-        else if k ≤ 1 && (typeCEsOf st i n).any (fun tce =>
-               match tce with
-               | .someOf q _ => q == p
-               | .hasValue q _ => q == p
-               | _ => false)
-        then some true else none
+        else if k > 1 then return none
+        else
+          let tces := typeCEsOf st i n
+          if !(← spend tces.length) then return none
+          return (if tces.any (fun tce =>
+                    match tce with
+                    | .someOf q _ => q == p
+                    | .hasValue q _ => q == p
+                    | _ => false)
+                  then some true else none)
 
     -- `≤ k p` and `= k p`. Two ways to prove one, and no others:
     -- `k = 0` with no known successor, or a FILLER BOUND — `i` is in
@@ -240,128 +349,112 @@ partial def isMember (st : Store) (i : Subject) (ce : ClassExpr) (fuel : Nat)
     -- Anything else needs the provable-distinctness machinery of the
     -- refutation calculus.
     | .maxCard k p =>
-        if k == 0 && (successors st i p).isEmpty then some true
-        else if fillerBoundAtMost st i p k n then some true else none
+        if k == 0 && (successors st i p).isEmpty then return (some true)
+        else return (if fillerBoundAtMost st i p k n then some true else none)
     | .exactCard k p =>
-        if k == 0 && (successors st i p).isEmpty then some true else none
+        return (if k == 0 && (successors st i p).isEmpty then some true else none)
 
-    | .minQualCard k p c =>
-        if countQualSuccessors st (successors st i p) c n ≥ k then some true else none
+    | .minQualCard k p c => do
+        let cnt ← countQualSuccessors st (successors st i p) c n
+        return (if cnt ≥ k then some true else none)
     -- A filler bound carries to the qualified form: at most `k`
     -- `p`-fillers in total is at most `k` of them in `c`, for any `c`.
-    | .maxQualCard k p c =>
-        if k == 0 && countQualSuccessors st (successors st i p) c n == 0
-        then some true
-        else if fillerBoundAtMost st i p k n then some true else none
-    | .exactQualCard k p c =>
-        if k == 0 && countQualSuccessors st (successors st i p) c n == 0
-        then some true else none
+    | .maxQualCard k p c => do
+        let cnt ← countQualSuccessors st (successors st i p) c n
+        if k == 0 && cnt == 0 then return (some true)
+        else return (if fillerBoundAtMost st i p k n then some true else none)
+    | .exactQualCard k p c => do
+        let cnt ← countQualSuccessors st (successors st i p) c n
+        return (if k == 0 && cnt == 0 then some true else none)
 
     -- `{a₁ … aₘ}`: provable only on a SYNTACTIC match. `i` could be
     -- `owl:sameAs` a member without being spelled like one, so a
     -- miss is `none` rather than `some false`.
     | .oneOf members =>
-        if members.any (fun t => t == i.toTerm) then some true else none
+        return (if members.any (fun t => t == i.toTerm) then some true else none)
 
     -- A facet-restricted datatype. This module never evaluates a
     -- literal against facets; facet satisfiability belongs to the
     -- refutation calculus.
-    | .dataRestriction _ _ => none
+    | .dataRestriction _ _ => return none
 
 /-- `∃`: stop at the first successor provably in `c`. -/
 partial def anyIsMember (st : Store) (ys : List Term) (c : ClassExpr) (fuel : Nat)
-    : Option Bool :=
+    : WorkM (Option Bool) := do
   match ys with
-  | []      => none
+  | []      => return none
   | y :: tl =>
     match termAsSubject y with
     | none   => anyIsMember st tl c fuel
     | some s =>
-      match isMember st s c fuel with
-      | some true => some true
+      match ← isMember st s c fuel with
+      | some true => return (some true)
       | _         => anyIsMember st tl c fuel
 
 /-- `∀`: stop at the first successor provably NOT in `c`. An empty
     successor list is vacuously true. One unknown successor makes the
     whole answer unknown — "all" cannot be proved past a gap. -/
 partial def allIsMember (st : Store) (ys : List Term) (c : ClassExpr) (fuel : Nat)
-    : Option Bool :=
+    : WorkM (Option Bool) := do
   match ys with
-  | []      => some true
+  | []      => return (some true)
   | y :: tl =>
     match termAsSubject y with
     -- A literal successor is in no class, so the restriction fails.
-    | none   => some false
+    | none   => return (some false)
     | some s =>
-      match isMember st s c fuel with
-      | some false => some false
+      match ← isMember st s c fuel with
+      | some false => return (some false)
       | some true  => allIsMember st tl c fuel
-      | none       => none
+      | none       => return none
 
 /-- `⊓`: every conjunct must be `some true`. One unknown conjunct does
     NOT end the search — a later conjunct that is provably false
     still refutes the whole intersection. -/
 partial def intersectionMember (st : Store) (i : Subject) (cs : List ClassExpr)
-    (fuel : Nat) : Option Bool :=
+    (fuel : Nat) : WorkM (Option Bool) := do
   match cs with
-  | []      => some true          -- the empty intersection is owl:Thing
+  | []      => return (some true)          -- the empty intersection is owl:Thing
   | c :: tl =>
-    match isMember st i c fuel with
-    | some false => some false
+    match ← isMember st i c fuel with
+    | some false => return (some false)
     | some true  => intersectionMember st i tl fuel
     | none       =>
-      match intersectionMember st i tl fuel with
-      | some false => some false
-      | _          => none
+      match ← intersectionMember st i tl fuel with
+      | some false => return (some false)
+      | _          => return none
 
 /-- `⊔`: one disjunct proved true settles it; all proved false
     refutes it. An unknown disjunct still lets a later true one
     decide. -/
 partial def unionMember (st : Store) (i : Subject) (cs : List ClassExpr)
-    (fuel : Nat) : Option Bool :=
+    (fuel : Nat) : WorkM (Option Bool) := do
   match cs with
-  | []      => some false         -- the empty union is owl:Nothing
+  | []      => return (some false)         -- the empty union is owl:Nothing
   | c :: tl =>
-    match isMember st i c fuel with
-    | some true  => some true
+    match ← isMember st i c fuel with
+    | some true  => return (some true)
     | some false => unionMember st i tl fuel
     | none       =>
-      match unionMember st i tl fuel with
-      | some true => some true
-      | _         => none
-
-/-- Is there a proof that `i` has AT MOST `k` distinct `p`-fillers?
-
-    One sound source, and the only one this module reads: `i` is in a
-    universal restriction `∀ p. {a₁ … a_m}` with `m ≤ k`. Every
-    `p`-filler of `i` is then one of the `m` listed individuals, and a
-    set of `m` things cannot hold more than `m` distinct things. The
-    conclusion needs no distinctness reasoning and holds however many
-    `p`-edges the graph asserts — including none.
-
-    `false` means "not proved here", never "false". -/
-partial def fillerBoundAtMost (st : Store) (i : Subject) (p : WfIri) (k : Nat)
-    (fuel : Nat) : Bool :=
-  (successors st i rdfType).any (fun t =>
-    match parseClassExpr st t fuel with
-    | .allOf q (.oneOf members) => q == p && members.length ≤ k
-    | _ => false)
+      match ← unionMember st i tl fuel with
+      | some true => return (some true)
+      | _         => return none
 
 /-- How many of `ys` are PROVABLY in `c`. A successor whose
     membership is unknown does not count, so this under-counts — the
     direction that makes `minQualCard` sound and `maxQualCard`
     unprovable. -/
 partial def countQualSuccessors (st : Store) (ys : List Term) (c : ClassExpr)
-    (fuel : Nat) : Nat :=
+    (fuel : Nat) : WorkM Nat := do
   match ys with
-  | []      => 0
+  | []      => return 0
   | y :: tl =>
-    let rest := countQualSuccessors st tl c fuel
+    let rest ← countQualSuccessors st tl c fuel
     match termAsSubject y with
-    | none   => rest
-    | some s => match isMember st s c fuel with
-                | some true => rest + 1
-                | _         => rest
+    | none   => return rest
+    | some s => match ← isMember st s c fuel with
+                | some true => return (rest + 1)
+                | _         => return rest
 
 end
 
@@ -440,11 +533,11 @@ def witnessBNodeId (i : Subject) (p : WfIri) (ceS : Subject) : BNodeId :=
     obligation? An UNQUALIFIED obligation (`ClassExpr.unknown` as the
     filler) is discharged by any successor at all. -/
 def alreadyHasWitness (st : Store) (i : Subject) (p : WfIri) (c : ClassExpr)
-    : Bool :=
+    : WorkM Bool := do
   let succs := successors st i p
   match c with
-  | .unknown => !succs.isEmpty
-  | _        => anyIsMember st succs c 32 == some true
+  | .unknown => return !succs.isEmpty
+  | _        => return ((← anyIsMember st succs c 32) == some true)
 
 /-- The at-most bound this class expression puts on `p`, if any. -/
 def maxBoundOn (p : WfIri) : ClassExpr → Option Nat
@@ -501,22 +594,25 @@ def mintedCount (minted : List (Subject × WfIri)) (i : Subject) (p : WfIri)
     a later obligation on the same property counts them against the
     at-most bounds. -/
 def witnessesForCe (st : Store) (minted : List (Subject × WfIri))
-    (ceS : Subject) (ce : ClassExpr) : List Triple × List (Subject × WfIri) :=
+    (ceS : Subject) (ce : ClassExpr)
+    : WorkM (List Triple × List (Subject × WfIri)) := do
   match existentialObligation ce with
-  | none        => ([], minted)
+  | none        => return ([], minted)
   | some (p, c) =>
     let typed := (st.withPredObj rdfType ceS.toTerm).map (·.s)
-    typed.foldl (fun (acc : List Triple × List (Subject × WfIri)) i =>
-      let (ts, m) := acc
-      if alreadyHasWitness st i p c
-         || witnessBreachesBound st i p (mintedCount m i p) then acc
+    let mut ts : List Triple := []
+    let mut m := minted
+    for i in typed do
+      if (← alreadyHasWitness st i p c)
+         || witnessBreachesBound st i p (mintedCount m i p) then pure ()
       else
         let bw := witnessBNodeId i p ceS
         let edge : Triple := { s := i, p := p, o := .bnode bw }
-        let ts' := match c with
+        ts := match c with
           | .named ci => ts ++ [edge, { s := .bnode bw, p := rdfType, o := .iri ci }]
           | _         => ts ++ [edge]
-        (ts', (i, p) :: m)) ([], minted)
+        m := (i, p) :: m
+    return (ts, m)
 
 /-! ## Collecting the subjects the pass ranges over -/
 
@@ -574,19 +670,24 @@ def collectIndividuals (st : Store) : List Subject :=
 /-! ## Writing memberships -/
 
 /-- `i rdf:type ceS`, when `isMember` proves it and the graph does not
-    already say it. -/
+    already say it. Spends from the pass's work counter. -/
 def membershipForPair (st : Store) (i : Subject) (ceS : Subject) (ce : ClassExpr)
-    : List Triple :=
+    : WorkM (List Triple) := do
   let obj := ceS.toTerm
   let existing := (st.withSubjPred i rdfType).any (fun t => t.o == obj)
-  if existing then []
-  else match isMember st i ce 64 with
-       | some true => [{ s := i, p := rdfType, o := obj }]
-       | _         => []
+  if existing then return []
+  else match ← isMember st i ce 64 with
+       | some true => return [{ s := i, p := rdfType, o := obj }]
+       | _         => return []
 
 def membershipsForCe (st : Store) (individuals : List Subject) (ceS : Subject)
-    (ce : ClassExpr) : List Triple :=
-  individuals.flatMap (fun i => membershipForPair st i ceS ce)
+    (ce : ClassExpr) : WorkM (List Triple) := do
+  -- Chunks are collected and flattened once. Appending to a growing
+  -- list inside the loop is quadratic in the output.
+  let mut acc : List (List Triple) := []
+  for i in individuals do
+    acc := (← membershipForPair st i ceS ce) :: acc
+  return acc.reverse.flatten
 
 /-- The individuals that could possibly satisfy `ce`, from the index
     rather than by trying them all.
@@ -635,27 +736,31 @@ partial def candidatesFor (st : Store) (ce : ClassExpr) (individuals : List Subj
     gating both is the stricter reading, and it is the one that keeps
     `materialise`'s output entailed by its input. -/
 def membershipsForBNodeCes (st : Store) (individuals : List Subject)
-    (ces : List Subject) : List Triple :=
-  ces.flatMap (fun ceS =>
+    (ces : List Subject) : WorkM (List Triple) := do
+  let mut acc : List (List Triple) := []
+  for ceS in ces do
     match parseClassExpr st ceS.toTerm 32 with
-    | .unknown => []
-    | ce       => if cePositiveSound ce
-                  then membershipsForCe st (candidatesFor st ce individuals) ceS ce
-                  else [])
+    | .unknown => pure ()
+    | ce       => if cePositiveSound ce then
+                    acc := (← membershipsForCe st
+                             (candidatesFor st ce individuals) ceS ce) :: acc
+  return acc.reverse.flatten
 
 /-- Over the NAMED class expressions, behind the positive-soundness
     gate. `parseCeOfSubject` is used rather than `parseClassExpr`
     because the latter maps every IRI straight to `named`, so it would
     never look at the subject's own restriction markers. -/
 def membershipsForNamedCes (st : Store) (individuals : List Subject)
-    (ces : List Subject) : List Triple :=
-  ces.flatMap (fun ceS =>
+    (ces : List Subject) : WorkM (List Triple) := do
+  let mut acc : List (List Triple) := []
+  for ceS in ces do
     match parseCeOfSubject st ceS with
-    | .named _   => []
-    | .unknown   => []
-    | ce         => if cePositiveSound ce
-                    then membershipsForCe st (candidatesFor st ce individuals) ceS ce
-                    else [])
+    | .named _   => pure ()
+    | .unknown   => pure ()
+    | ce         => if cePositiveSound ce then
+                      acc := (← membershipsForCe st
+                               (candidatesFor st ce individuals) ceS ce) :: acc
+  return acc.reverse.flatten
 
 /-! ## Structural subclass axioms
 
@@ -708,17 +813,23 @@ def directBooleanSubclasses (st : Store) : List Triple :=
 /-! ## The entry points -/
 
 /-- Add the existential witnesses the graph demands. -/
-def introduceWitnesses (g : Graph) : Graph :=
+def introduceWitnessesW (g : Graph) : WorkM Graph := do
   let st := Store.ofIndex (Index.ofGraph g)
-  let extras := ((collectCeBNodes st).foldl
-    (fun (acc : List Triple × List (Subject × WfIri)) ceS =>
-      let (ts, m) := acc
-      match parseClassExpr st ceS.toTerm 32 with
-      | .unknown => acc
-      | ce       =>
-        let (ts', m') := witnessesForCe st m ceS ce
-        (ts ++ ts', m')) ([], [])).1
-  RL.addAll g extras
+  let mut ts : List Triple := []
+  let mut m : List (Subject × WfIri) := []
+  for ceS in collectCeBNodes st do
+    match parseClassExpr st ceS.toTerm 32 with
+    | .unknown => pure ()
+    | ce       =>
+      let (ts', m') ← witnessesForCe st m ceS ce
+      ts := ts ++ ts'
+      m := m'
+  return RL.addAll g ts
+
+/-- The witness pass on its own counter, for callers outside the
+    materialisation pass. -/
+def introduceWitnesses (g : Graph) : Graph :=
+  runWork (introduceWitnessesW g)
 
 /-- One materialisation pass, in the order the F* module fixed:
     witnesses first, so a newly minted successor can discharge a
@@ -729,32 +840,29 @@ def introduceWitnesses (g : Graph) : Graph :=
     caller runs the closure afterwards to propagate the new
     `rdf:type` triples through `rdfs:subClassOf`; running the pair to
     saturation is a separate decision with its own cost. -/
-def materialiseWithBudget (g : Graph) (budget : Nat) : Graph × Bool :=
-  let g1 := introduceWitnesses g
-  let st := Store.ofIndex (Index.ofGraph g1)
-  let individuals := collectIndividuals st
-  let bnodeCes    := collectCeBNodes st
-  let namedCes    := collectNamedCeSubjects st
-  let structural  := eqcExpansion st
-  let booleans    := directBooleanSubclasses st
-  let pairs := individuals.length * (bnodeCes.length + namedCes.length)
-  if pairs > budget then
-    -- The membership pass is one `isMember` per (individual, class
-    -- expression) PAIR, so its cost is the product. Over budget, the
-    -- structural axioms still land and the memberships do not, and
-    -- the caller is TOLD — a cap that reports itself is a known gap;
-    -- a silent one is a wrong answer wearing a right one's clothes.
-    (RL.addAll (RL.addAll g1 structural) booleans, true)
-  else
-    let bnodeMems := membershipsForBNodeCes st individuals bnodeCes
-    let namedMems := membershipsForNamedCes st individuals namedCes
-    (RL.addAll (RL.addAll (RL.addAll (RL.addAll g1 structural) booleans) bnodeMems)
-       namedMems, false)
+def materialiseWithBudgetWork (g : Graph) (budget : Nat) : Graph × Bool × Nat :=
+  -- ONE counter over the whole pass — witnesses and both membership
+  -- passes. Running out leaves the structural axioms in place and
+  -- truncates the memberships, and the caller is TOLD: a cap that
+  -- reports itself is a known gap; a silent one is a wrong answer
+  -- wearing a right one's clothes.
+  let act : WorkM Graph := do
+    let g1 ← introduceWitnessesW g
+    let st := Store.ofIndex (Index.ofGraph g1)
+    let individuals := collectIndividuals st
+    let bnodeCes    := collectCeBNodes st
+    let namedCes    := collectNamedCeSubjects st
+    let structural  := eqcExpansion st
+    let booleans    := directBooleanSubclasses st
+    let a ← membershipsForBNodeCes st individuals bnodeCes
+    let b ← membershipsForNamedCes st individuals namedCes
+    return RL.addAll (RL.addAll (RL.addAll g1 structural) booleans) (a ++ b)
+  let (gOut, w) := act.run { left := budget, hit := false }
+  (gOut, w.hit, budget - w.left)
 
-/-- The default budget: 400 000 (individual, class expression) pairs.
-    Chosen from the corpus — the largest OWL premise that finishes
-    the pass sits well under it — not from a principle. -/
-def defaultBudget : Nat := 400000
+def materialiseWithBudget (g : Graph) (budget : Nat) : Graph × Bool :=
+  let (g', hit, _) := materialiseWithBudgetWork g budget
+  (g', hit)
 
 def materialise (g : Graph) : Graph := (materialiseWithBudget g defaultBudget).1
 
@@ -769,7 +877,7 @@ def entails (g : Graph) (goal : Triple) : Option Bool :=
     match parseClassExpr st goal.o 32 with
     | .unknown => none
     | .named _ => none
-    | ce       => isMember st goal.s ce 64
+    | ce       => runWork (isMember st goal.s ce 64)
   else none
 
 end L4Factoidal.OWL.Mat

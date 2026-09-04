@@ -32,7 +32,7 @@ private def bnT (b : String) : Term := .bnode b
 private def st (g : Graph) : Store := Store.ofGraph g
 
 private def ask (g : Graph) (ce : ClassExpr) : Option Bool :=
-  isMember (st g) indI ce 64
+  runWork (isMember (st g) indI ce 64)
 
 /-! ## A named class is an open-world lookup
 
@@ -95,8 +95,8 @@ private def strLit (v : String) : Term :=
 private def gIntersect : Graph :=
   [ ⟨indI, exP, strLit "v"⟩ ]
 
-#guard isMember (st gIntersect) indI
-         (.intersection [.named exC, .allOf exP (.named exD)]) 64 == some false
+#guard runWork (isMember (st gIntersect) indI
+         (.intersection [.named exC, .allOf exP (.named exD)]) 64) == some false
 
 /-! The empty intersection is `owl:Thing`; the empty union is
     `owl:Nothing`. -/
@@ -106,8 +106,8 @@ private def gIntersect : Graph :=
 
 /-! ## `⊔` does not stop at an unknown disjunct either -/
 
-#guard isMember (st [⟨indI, rdfType, .iri exD⟩]) indI
-         (.union [.named exC, .named exD]) 64 == some true
+#guard runWork (isMember (st [⟨indI, rdfType, .iri exD⟩]) indI
+         (.union [.named exC, .named exD]) 64) == some true
 
 /-! ## Cardinality without a unique-name assumption
 
