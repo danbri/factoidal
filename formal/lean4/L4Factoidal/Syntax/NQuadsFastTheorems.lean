@@ -156,27 +156,29 @@ theorem FastDataset.add_inv {ds : FastDataset} {t : Triple} {gopt : Option Subje
       simp only [addQuadFast]
       cases hlk : ds.named[name]? with
       | some g =>
+          rw [if_pos (by rw [Std.HashMap.contains_eq_isSome_getElem?, hlk]; rfl)]
           refine ⟨hd, ?_, ?_⟩
           · intro n
-            simp only [Std.HashMap.getElem?_insert]
+            simp only [Std.HashMap.getElem?_modify]
             by_cases hb : (name == n) = true
             · have hb' : name = n := eq_of_beq hb
               subst hb'
-              simp only [hb, if_pos, Option.isSome_some, true_iff]
+              simp only [hb, if_pos, hlk, Option.map_some, Option.isSome_some, true_iff]
               exact (hnames name).mp (by rw [hlk]; rfl)
             · simp only [Bool.not_eq_true] at hb
               simp only [hb, Bool.false_eq_true, if_false]
               exact hnames n
           · intro n g' hg'
-            simp only [Std.HashMap.getElem?_insert] at hg'
+            simp only [Std.HashMap.getElem?_modify] at hg'
             by_cases hb : (name == n) = true
-            · simp only [hb, if_pos] at hg'
+            · simp only [hb, if_pos, hlk, Option.map_some] at hg'
               cases hg'
               exact FastGraph.add_inv (hgraphs name g hlk)
             · simp only [Bool.not_eq_true] at hb
               simp only [hb, Bool.false_eq_true, if_false] at hg'
               exact hgraphs n g' hg'
       | none =>
+          rw [if_neg (by rw [Std.HashMap.contains_eq_isSome_getElem?, hlk]; simp)]
           refine ⟨hd, ?_, ?_⟩
           · intro n
             simp only [Std.HashMap.getElem?_insert]
@@ -216,6 +218,7 @@ theorem addQuadFast_toDataset {ds : FastDataset} (t : Triple) (gopt : Option Sub
       simp only [addQuadFast]
       cases hlk : ds.named[name]? with
       | some g =>
+          rw [if_pos (by rw [Std.HashMap.contains_eq_isSome_getElem?, hlk]; rfl)]
           have hmem : name ∈ ds.namesRev := (hnames name).mp (by rw [hlk]; rfl)
           have hgetD : ds.named.getD name {} = g := by
             rw [Std.HashMap.getD_eq_getD_getElem?, hlk]; rfl
@@ -227,15 +230,17 @@ theorem addQuadFast_toDataset {ds : FastDataset} (t : Triple) (gopt : Option Sub
           congr 1
           apply List.map_congr_left
           intro n _
-          simp only [Function.comp_apply, Std.HashMap.getD_insert]
+          simp only [Function.comp_apply, Std.HashMap.getD_modify]
           by_cases hb : name = n
           · subst hb
-            simp only [beq_self_eq_true, if_true, hgetD]
+            simp only [beq_self_eq_true, if_true, hlk, Option.map_some, Option.getD_some]
+            rw [hgetD]
             rw [FastGraph.add_toGraph t hginv]
           · have hbn : (name == n) = false := by simp [hb]
             have hbn' : (n == name) = false := by simp [Ne.symm hb]
             simp only [hbn, hbn', Bool.false_eq_true, if_false]
       | none =>
+          rw [if_neg (by rw [Std.HashMap.contains_eq_isSome_getElem?, hlk]; simp)]
           have hmem : name ∉ ds.namesRev := by
             intro hc
             have := (hnames name).mpr hc

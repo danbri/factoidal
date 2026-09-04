@@ -72,16 +72,30 @@ structure FastDataset where
   namesRev : List Subject := []
   named : Std.HashMap Subject FastGraph := ∅
 
-/-- The fast twin of `addQuad`. -/
+/-- The fast twin of `addQuad`.
+
+    The named-graph case uses `Std.HashMap.modify`, NOT a `getElem?` followed
+    by an `insert`. The two compute the same map, but `ds.named[name]?` hands
+    out a SECOND reference to the graph while `ds.named` still holds the
+    first, so the `Std.HashMap.insert` inside `FastGraph.add` cannot update in
+    place and copies the whole bucket map of that graph. The copy is
+    proportional to the size of the graph, so the old shape cost
+    O(quads * graph size) — quadratic per named graph, while the default-graph
+    case, whose `{ ds with default := ds.default.add t }` consumes the field,
+    stayed linear. That is the measured reason named graphs did not scale and
+    triples did (<https://github.com/danbri/factoidal/issues/650>):
+    800,000 quads over 50 named graphs took 268.73 s, the same 800,000 quads
+    in the default graph took 84.53 s. `contains` returns a `Bool` and keeps
+    no reference, so `modify` receives a uniquely referenced map. -/
 def addQuadFast (ds : FastDataset) (t : Triple) (gopt : Option Subject) : FastDataset :=
   match gopt with
   | none => { ds with default := ds.default.add t }
   | some name =>
-      match ds.named[name]? with
-      | some g => { ds with named := ds.named.insert name (g.add t) }
-      | none =>
-          { ds with namesRev := name :: ds.namesRev,
-                    named := ds.named.insert name (FastGraph.add t {}) }
+      if ds.named.contains name then
+        { ds with named := ds.named.modify name (FastGraph.add t) }
+      else
+        { ds with namesRev := name :: ds.namesRev,
+                  named := ds.named.insert name (FastGraph.add t {}) }
 
 def FastDataset.toDataset (ds : FastDataset) : Dataset :=
   { default := ds.default.toGraph
