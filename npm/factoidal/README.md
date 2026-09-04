@@ -653,14 +653,42 @@ value transforms:
   API; the `_*` functions (e.g. `_deltaLogCorruptLastForTest`) are
   test-only and intentionally left untyped.
 
-### GeoSPARQL
+### GeoSPARQL — six topological functions
 
-There is no separate GeoSPARQL function: the `geof:` functions
-(`geof:sfWithin`, `geof:sfDisjoint`, `geof:distance`, `geof:envelope`,
-…) are built into the SPARQL engine and work through ordinary
-`query()` / `fn.query()` — e.g.
-`query(data, 'PREFIX geof: <http://www.opengis.net/def/function/geosparql/> SELECT ?a ?b WHERE { … FILTER(geof:sfWithin(?a, ?b)) }')`.
-Nothing to import; nothing "missing".
+The `geof:` functions below are built into the SPARQL engine and need no
+import. They work through `query()` / `fn.query()` AND against a
+persisted store through `factoidal query`, because both paths evaluate
+in the same environment.
+
+    geof:sfEquals   geof:sfDisjoint   geof:sfIntersects
+    geof:sfTouches  geof:sfWithin     geof:sfContains
+
+```sparql
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+PREFIX geo:  <http://www.opengis.net/ont/geosparql#>
+SELECT ?a WHERE {
+  ?a :footprint ?w
+  FILTER(geof:sfWithin(?w, "POLYGON((0 0,0 2,2 2,2 0,0 0))"^^geo:wktLiteral))
+}
+```
+
+**What is NOT there**, stated so nobody plans around it: no
+`geof:distance`, `geof:buffer`, `geof:envelope`, `geof:boundary`,
+`geof:convexHull` or any other non-topological measure; no
+`geof:relate` with a DE-9IM matrix; no coordinate reference system
+handling beyond what the WKT literal carries; no GML literals. Geometry
+comes from a WKT parser, so a shapefile, GeoJSON or GML source must be
+converted to `geo:wktLiteral` before it is loaded.
+
+### Full text: SPARQL's own functions, no index
+
+`CONTAINS`, `STRSTARTS`, `STRENDS` and `REGEX` (SPARQL 1.1 §17.4.3) are
+implemented and are the way to search text. They are evaluated per row
+after a block is decoded — **there is no inverted index and no
+`text:query`-style extension**. Measured 2026-09-04: a `CONTAINS` over
+45,806 `skos:prefLabel` values in one block answers in about 6 seconds.
+That is fine for a vocabulary and will not scale to a large literal
+corpus.
 
 ## Limits (deliberate, documented)
 

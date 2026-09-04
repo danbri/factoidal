@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.5.0 — 2026-09-04
+
+**Queries against a persisted store are about six times faster.** Measured
+end to end the way a caller runs them — process start, engine load,
+digest verification, block decode and scan — on a 141-graph store with a
+5,571,302-byte `skos:prefLabel` block of 45,806 rows, at the same machine
+load:
+
+| query | 0.4.0 | 0.5.0 |
+|---|---|---|
+| `CONTAINS` over labels, `LIMIT 8` | 12.03 s | **2.06 s** |
+| the same for a second word | 12.18 s | **2.04 s** |
+| the same for a third | 11.96 s | **2.02 s** |
+
+Two causes, both fixed.
+
+- **A quadratic byte copy in SHA-256.** `Crypto.processBlocks256` copied
+  the whole remaining message once per 64-byte block, so verifying an
+  artifact was quadratic in its size. Fitting `t = c*n^k` to the
+  admission step gave k = 2.08 before and **k = 0.98 after**. On the
+  three blocks of that store, admission went 1,179 / 2,150 / 11,069 ms to
+  303 / 413 / 872 ms. Decode and evaluation were linear throughout.
+- **`LIMIT` was not pushed down through `GRAPH`.** A `LIMIT 8` cost what
+  a full count cost, because `GRAPH ?g { ... }` fell through to the
+  reference evaluator over the whole materialised dataset. The push-down
+  now takes one `GRAPH` layer with a constant IRI or a variable.
+  `ORDER BY`, `OFFSET`, `DISTINCT`, `REDUCED`, `GROUP BY`, `HAVING`,
+  `VALUES` and aggregates still reject, two of them pinned by theorems.
+- A `RangeError: Maximum call stack size exceeded` on `SELECT ... LIMIT 8`
+  is gone with it, because the query no longer materialises 45,806 rows
+  to return eight.
+
+**A correctness fix found while measuring.** The pre-existing bare-BGP
+`LIMIT` push-down could answer SHORT: a repeated variable (`?x ?p ?x`) or
+an RDF-star triple term let the backend stop early on rows the match then
+rejected. It now refuses both shapes.
+
+**New exports.** `@factoidal/core/store`, `/pack` and `/engine`. A caller
+can drive the store in process instead of spawning the command:
+
+```js
+import { openStore, queryStore } from '@factoidal/core/store'
+import { loadEngine } from '@factoidal/core/engine'
+const engine = await loadEngine()
+const store  = openStore('/path/to/store', null)
+const { result } = queryStore(engine, store, 'PREFIX skos: ... SELECT ...')
+```
+
+**The engine carries a day of OWL work**: OWL RL 1,181 pass, 266 fail
+(out of 1,457) and OWL DL about 1,326 pass, 121 fail (out of 1,457), both
+against a conclusion check corrected to require one functional blank-node
+mapping (RDF 1.1 Semantics §1.5 and the interpolation lemma). A false
+clash was removed — the materialiser had minted one existential witness
+for several obligations, so the engine denied three consistent
+ontologies; ConsistencyTest went 758 pass, 4 fail to 761 pass, 1 fail.
+
+**Named graphs now pack at scale.** The IBK4 quad path read the whole
+source file and a 553 MB, 194-graph corpus could not be packed at all. It
+streams now, and a quadratic term that only named graphs paid — a hash
+map copied per quad in `addQuadFast` — is gone. Peak memory per source
+byte fell from 37 and 20 to between 7.4 and 11.4; a 316,816,934-byte,
+194-graph input that used to fail now packs in 750 s at 2.34 GB. Byte
+identity with the previous packer holds by theorem, not only by diff.
+
+**Documentation corrected.** The GeoSPARQL section named functions that
+do not exist. Six topological functions are implemented — `geof:sfEquals`,
+`sfDisjoint`, `sfIntersects`, `sfTouches`, `sfWithin`, `sfContains` — and
+they work against a persisted store, verified. There is no
+`geof:distance`, `buffer`, `envelope`, `boundary`, `convexHull`, no
+`relate` with a DE-9IM matrix, no CRS handling beyond the WKT literal and
+no GML. Full text is SPARQL 1.1's own `CONTAINS` / `STRSTARTS` / `REGEX`,
+evaluated per row after a block decodes: **there is no inverted index**.
+
+Known limits, measured:
+
+- A query is still O(rows) per search string, and nothing is retained
+  between queries: `storeQuery` re-reads, re-verifies and re-decodes the
+  block every call. A store handle that decodes once is the next step.
+- `ORDER BY ... LIMIT n` still overflows the call stack above about
+  14,576 materialised rows.
+  https://github.com/danbri/factoidal/issues/653
+- `update` and `compact` still exit 3.
+  https://github.com/danbri/factoidal/issues/641
+- A query plan is refused above 64 artifacts, 8,388,608 blob bytes or
+  100,000 rows. https://github.com/danbri/factoidal/issues/648
+- The two SHA-256 folds are checked equal by the FIPS 180-4 build-time
+  guards and the HACL* differential, not proved.
+
 ## 0.4.0 — 2026-09-04
 
 The package builds a store of its own. `pack` and `activate` join
