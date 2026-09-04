@@ -492,163 +492,167 @@ A CORRECTION, not a regression: the two units and the three units were
 passes that no computed entailment supported. See the banner above and
 [`2026-09-04-owl-conclusion-matching.md`](2026-09-04-owl-conclusion-matching.md).
 
-## The `--dl` cost of the five restriction rows: profiled, not guessed
+## The `--dl` cost of the five restriction rows: NOT intrinsic
 
 Date 2026-09-04. The five `scm-svf1/svf2/avf1/avf2/hv` rows landed in
-`9ce7191ab` and bought 11 RL and 10 `--dl` units. They also took the
+`9ce7191ab`, bought 11 RL and 10 `--dl` units, and took the
 whole-corpus `--dl` run from about 653 s to over 3000 s. The section
-above recorded the first cost gate (peak resident memory, repaired in
-`e970afc51`) and left the time cost unexplained. This section explains
-it.
+above recorded the FIRST cost gate — peak resident memory, repaired in
+`e970afc51` — and left the time cost unexplained, with the reasonable
+suspicion that the tableau simply branches on the extra
+`rdfs:subClassOf` edges and the cost is real.
 
-### Method
+**It is not real.** The time was two accidental blow-ups, one in the
+store the TBox pass reads and one in the TBox it builds. With both
+repaired the corpus tests FEWER axioms per tableau pass WITH the five
+rows than it did without them.
 
-`/usr/bin/sample <pid> 20 1` against a running `l4owl-probe --dl` over
-the whole corpus, at commit `f6a2960ff` — a call-tree attribution of
-14,419 samples on the working thread, not a guess from reading the
-code. The same method was run again against the repaired binary on one
-catalog, and a third time against the unrepaired binary on that same
-catalog, so the before and the after are the same measurement.
+### Method, stated beside the result
 
-### What dominated, before
+1. `/usr/bin/sample <pid> 20 1` against a running `l4owl-probe --dl` —
+   a call-tree attribution over 14,419 samples of the working thread,
+   not a guess from reading the code. Repeated against the repaired
+   binary, and against the unrepaired binary on the same catalog.
+2. `l4owl-probe --tbox-census`, added for this work: for every case it
+   computes the `--dl` premise closure, then prints the closure size,
+   the TBox size, how many of its axioms are STRUCTURALLY DISTINCT, the
+   node and label counts of the initial tableau state, and the
+   axiom-test count of one `onePass`. `onePass` folds over the whole
+   TBox once per node in `injectGlobalAxioms`, once per LABEL in
+   `applyAxioms`, once in `applyAxiomsEdges` and once in
+   `applyAxiomsConj`, so
 
-| Frame | Samples of 14,419 |
-|---|---|
-| `Refute.tableauConsistent` | 13,272 |
-| `Refute.collectAxioms` under it | 13,267 |
-| `RL.withSubjPred`'s `List.filter` loop, at the leaf | 7,661 |
-| `Subject` decidable equality under that filter | 5,517 |
+       tests_per_pass = tbox * (3 * nodes + labels)
 
-92 per cent of the run was inside `collectAxioms`, and the leaf was a
-LIST SCAN. On the `type-positive-entailment` catalog alone the same
-shape was 95 per cent of 12,157 samples.
+   and `search` runs it up to `--refute-budget` (default 64) passes per
+   goal. **A count does not move when the machine is loaded.** That
+   mattered: load average on this laptop moved between 2 and 51 on 8
+   cores across the day, and every wall clock taken on it is worth less
+   than the count.
 
-### Why
+### Defect one: the TBox pass read the graph by list scan
 
-`collectAxioms` built its store with `Store.ofGraph`, whose
+`Refute.collectAxioms` built its store with `Store.ofGraph`, whose
 `withSubjPred` is `g.filter`. It parses a class expression for BOTH
 sides of every `rdfs:subClassOf`, `owl:equivalentClass`,
-`owl:disjointWith` and `owl:complementOf` triple of the closure, and
-each parse makes several subject-plus-predicate lookups. Cost is
-therefore (number of such triples) times (lookups per parse) times
-(graph length): quadratic in the closure. The five rows add
-`rdfs:subClassOf` edges between restriction nodes, so they multiply the
-first factor, and the refuter pays the whole pass once per goal.
+`owl:disjointWith` and `owl:complementOf` triple, and each parse makes
+several subject-plus-predicate lookups, so the pass is quadratic in the
+closure — and the refuter pays it once per goal.
 
-`Store.ofIndex (Index.ofGraph g)` gives the same store with hash
-lookups. `Materialise.lean` and `Refute.initState` already used it;
-`collectAxioms` did not. That is the whole defect.
+The sample was unambiguous: of 14,419 samples, 13,272 were inside
+`tableauConsistent`, 13,267 of those inside `collectAxioms`, and the
+leaf was `RL.withSubjPred`'s `List.filter` loop (7,661) with `Subject`
+decidable equality under it (5,517). 92 per cent of the run.
 
-### The repair, and what it is worth
+`Materialise.lean` and `Refute.initState` already read through
+`Store.ofIndex (Index.ofGraph g)`, whose lookups are hash lookups.
+`collectAxioms` did not. The list-scan definition is kept as
+`collectAxiomsS (Store.ofGraph g)` and `collectAxiomsRaw_eq` proves the
+two equal through `Store.ofIndex_eq (Index.Wf.ofGraph g)`, so the
+change is the same function by proof.
 
-`collectAxioms` now reads through the index. The list-scan definition
-is kept as `collectAxiomsS (Store.ofGraph g)` and
-`Refute.collectAxioms_eq` proves the two equal through
-`Store.ofIndex_eq (Index.Wf.ofGraph g)` — the change is the same
-function, by proof, not by inspection.
+Measured on the tree WITHOUT the five rows, whole corpus, `--dl`, both
+halves at about 92 per cent of one core:
 
-Measured on `type-positive-entailment.rdf` alone, 412 units, `--dl`,
-`/usr/bin/time -l`, refuter budget 64:
+| Store | user CPU | wall | peak resident | score |
+|---|---|---|---|---|
+| list scan | 1215.98 s | 2072 s | 244 MB | 1316 pass, 131 fail, 2 skip, 8 unsupported (out of 1457) |
+| hash index | 804.48 s | 1651 s | 246 MB | 1316 pass, 131 fail, 2 skip, 8 unsupported (out of 1457) |
 
-| Tree | user CPU | peak resident | score |
+`cap_hits` 0 in both. On `type-positive-entailment` alone the same pair
+is 628.40 s and 174.73 s of user CPU, 3.6 times.
+
+### Defect two: two thirds of every TBox was duplicate axioms
+
+With the store fixed, the sample moves to `Refute.search.tryAll` with
+`ceDefinite`, `ClassExpr.beq`, `applyAxioms` and `applyAxiomsEdges` at
+the leaves — the axiom folds. `--tbox-census` then says why, whole
+corpus, 923 cases:
+
+| Quantity | without the rows | with the rows | with the rows, deduplicated |
 |---|---|---|---|
-| list-scan store | 628.40 s | 138 MB | 356 pass, 52 fail, 4 unsupported (out of 412) |
-| index store | 174.73 s | 140 MB | 356 pass, 52 fail, 4 unsupported (out of 412) |
+| Sum of `tests_per_pass` | 176,696,806 | 537,586,682 | **118,870,270** |
+| TBox axioms, all cases | 122,253 | 214,466 | 73,653 |
+| Structurally distinct | 64,958 | 73,653 | 73,653 |
+| Cases with duplicate axioms | 923 of 923 | 923 of 923 | 0 of 923 |
 
-3.6 times less processor time, not one unit moved.
+The rows tripled the axiom tests and **almost everything they added was
+a duplicate**. On the heaviest case, `WebOnt-miscellaneous-011`, the
+TBox goes 3,872 → 18,099 axioms while the DISTINCT count goes
+2,552 → 2,964: 97 per cent of what the rows add is structurally equal
+to an axiom already there. The node and label counts do not move at all
+(814 nodes, 3,145 labels before and after), so the rows do not change
+the tableau's shape — they only lengthen the list it folds over.
 
-⚠️ **Wall clock was not usable on the machine these ran on.** Load
-average moved between 5 and 27 on 8 cores while other agents held the
-box, and the two runs above show 1485 s and 1680 s of wall clock at 42
-and 10 per cent of one core. USER CPU TIME is the contention-robust
-figure and is what the table reports. Any wall-clock figure from
-2026-09-04 in this document carries the same caveat.
+`collectAxioms` emits one axiom per triple, and two restriction nodes
+with the same `owl:onProperty` and the same filler parse to the SAME
+class-expression pair. Table 9's schema rows create exactly that.
 
-### What dominates after the repair, and whether it is intrinsic
+A repeated axiom changes nothing: `applyAxioms` and
+`injectGlobalAxioms` fold with `addLabel`, which returns unchanged when
+the label is present, and `applyAxiomsEdges` and `applyAxiomsConj`
+guard on `memCe a ls` before firing. Nothing else reads the TBox —
+`pendingUnion`, `pendingMerge` and `clashNodes` read labels and nodes.
+And the failure direction is safe: if that argument were wrong,
+dropping a copy could only give a node FEWER labels, hence fewer
+clashes, hence a WITHHELD refutation, never a manufactured one. A wrong
+deduplication loses conformance units, which the corpus score sees; it
+cannot invent an entailment.
 
-The same sampling method against the repaired binary puts the time in
-`Refute.search.tryAll`, with `Refute.ceDefinite`, `ClassExpr.beq`,
-`applyAxioms` and `applyAxiomsEdges` at the leaves. `collectAxioms` is
-gone from the profile. That residue is the tableau branch search
-itself: `search` runs `onePass` up to its budget per branch, and
-`onePass` folds over the WHOLE TBox for every label of every node, so
-its cost is linear in the number of axioms. The five rows enlarge the
-TBox, so part of the residue is work the rows genuinely require.
+### The gate
 
-The next lever, if the residue has to come down further, is an index
-from an axiom's antecedent to its consequents, so `applyAxioms` stops
-scanning the TBox once per label. That is a bigger change than this
-one: `ClassExpr` has no `Hashable` instance, and the equality the fold
-tests is `ceEq`, which is `ceDefinite a && ClassExpr.beq a b` and is
-not reflexive on indefinite expressions. It is not attempted here.
+Per catalog, `--dl`, on the tree WITH the five rows, the two binaries
+run CONCURRENTLY so they carry the same contention:
 
-## Counting the refuter's work instead of timing it (`--tbox-census`)
+| Catalog | index store | index store + dedup |
+|---|---|---|
+| profile-QL | 0 s | 0 s |
+| profile-EL | 1 s | 0 s |
+| profile-RL | 0 s | 1 s |
+| type-inconsistency | 9 s | 4 s |
+| type-consistency | 1571 s | 529 s |
+| type-positive-entailment | 630 s | 234 s |
+| **total** | **2211 s** | **768 s** |
 
-Date 2026-09-04. A wall clock on this laptop was worthless — load
-average moved between 5 and 51 on 8 cores while several agents held the
-machine. An OPERATION COUNT does not move with load, so
-`l4owl-probe --tbox-census` was added: for every case it computes the
-`--dl` premise closure, then prints the closure size, the number of
-TBox-bearing triples, the TBox size, how many of its axioms are
-STRUCTURALLY DISTINCT, the node and label counts of the initial tableau
-state, and the axiom-test count of ONE `onePass`.
+Every catalog reports the SAME two score lines in both runs, and on
+`type-positive-entailment` every diagnostic counter is identical as
+well: `closure_rounds` 1750, `clashes` 26, `cap_hits` 0,
+`refuter_passes` 26, `refuter_flips_to_fail` 0, `pe_countermodel` 19.
 
-`onePass` folds over the whole TBox four times per node: once in
-`injectGlobalAxioms`, once per LABEL in `applyAxioms`, once in
-`applyAxiomsEdges` and once in `applyAxiomsConj`. So
+    profile-QL                82 / 83 pass  (out of 87)
+    profile-EL               108 / 114 pass (out of 121)
+    profile-RL               120 / 121 pass (out of 126)
+    type-inconsistency        45 / 116 pass (out of 128)
+    type-consistency         505 / 531 pass (out of 583)
+    type-positive-entailment 335 / 361 pass (out of 412)
 
-    tests_per_pass = tbox * (3 * nodes + labels)
+(closure alone / closure or refutation.)
 
-and `search` runs up to `--refute-budget` (default 64) passes per goal.
+### What this corrects
 
-### The result, whole corpus, 923 cases
+- **The rows are not expensive.** The `--dl` blow-up they appeared to
+  cause was a pre-existing quadratic in `collectAxioms` that they
+  multiplied, plus a duplicate-axiom list they lengthened. Both were
+  already present without the rows.
+- **The ordering of the two defects matters.** Until the store defect
+  was repaired, `applyAxioms` was NOT the dominant cost — 92 per cent
+  of the run was inside `collectAxioms`'s list scan and the axiom folds
+  were invisible under it. A recommendation to add absorption or lazy
+  unfolding FIRST would have bought nothing measurable.
+- **Absorption and lazy unfolding are still the right next lever**, and
+  the census is the way to decide it: `tests_per_pass` is still
+  118.9 million corpus-wide, 81.7 per cent of it in twelve cases, and
+  `injectGlobalAxioms` still scans the whole TBox per node regardless
+  of that node's labels.
 
-| Quantity | Value |
-|---|---|
-| Sum of `tests_per_pass` | 176,696,806 |
-| Share carried by the 12 heaviest cases | 77.6 per cent |
-| Cases whose TBox contains duplicate axioms | 923 of 923 |
-| TBox axioms, all cases | 122,253 |
-| Structurally distinct among them | 64,958 |
+### The measurement rule this paid for
 
-The four `WebOnt-miscellaneous-001/-002/-011` scorings alone carry
-86.5 million of the 176.7 million, which is 49 per cent. Their closure
-is 24,093 triples, their TBox 3,872 axioms, and their initial state has
-814 nodes and 3,145 labels, so ONE pass tests 21.6 million axioms and a
-single refutation at budget 64 tests up to 1.4 billion.
-
-### What this confirms, and what it corrects
-
-It CONFIRMS that `applyAxioms` re-tests every axiom against every node
-every round with no absorption and no lazy unfolding, and that
-`injectGlobalAxioms` contributes a full TBox scan per node
-independently of that node's labels — one of the three `nodes` terms
-above. Absorption and lazy unfolding (Horrocks and Tobies, KR 2000) are
-the published remedy for exactly this shape.
-
-It CORRECTS the ordering. Until the store defect recorded in the
-section above was repaired, `applyAxioms` was NOT the dominant cost:
-92 per cent of the run was inside `collectAxioms`'s list scan, and the
-axiom folds were invisible under it. A recommendation to add absorption
-first would have bought nothing measurable. The fold cost is the
-residue AFTER the store fix, not the original defect.
-
-### 47 per cent of every TBox is duplicate axioms
-
-`collectAxioms` emits one axiom per triple, so two restriction nodes
-with the same `owl:onProperty` and the same filler produce the SAME
-class-expression pair, and the schema rows of Table 9 produce many such
-pairs. Across the corpus 122,253 axioms reduce to 64,958 distinct ones.
-
-Duplicates are INERT: `addLabel` returns unchanged when the label is
-already present, so a repeated axiom in `applyAxioms` and in
-`injectGlobalAxioms` adds nothing, and `applyAxiomsEdges` and
-`applyAxiomsConj` guard on `memCe a ls` before firing. Deduplicating
-the TBox therefore removes about 47 per cent of `tests_per_pass` with
-no change in what the refuter derives. It is NOT landed here: the
-argument above is an argument, not a Lean proof, and gating it needs
-its own whole-corpus `--dl` pair. It is the cheapest remaining lever
-and it is measured, so the next session does not have to guess.
+**Run `l4owl-probe --tbox-census` before and after any rule row, and
+put a catalog directory per catalog rather than timing the whole
+corpus.** Four of the six catalogs finish in under 15 seconds
+together; the other two are the fifty minutes. A count is immune to a
+loaded machine and a stopwatch is not, and this laptop was never quiet
+for long enough to trust one.
 
 ## B5 enumerated: how, and what the method cannot see
 
