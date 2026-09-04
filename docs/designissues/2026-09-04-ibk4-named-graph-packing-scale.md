@@ -154,3 +154,9 @@ that cap no longer applies to it. `maxPackSourceBytes` now bounds only IBK4
 over TriG, Turtle and N-Triples. The ceiling for an IBK4 N-Quads pack in the
 module is `maxPackQueuedBytes` (134,217,728 bytes of generation waiting for
 `packNext`) plus the module's 32-bit address space.
+
+`Wasm/native-smoke.sh` gains one check for this: it packs the same N-Quads
+file through the CLI and through the pack ops and compares the two
+generations with `diff -r`. A routing change that made only one surface
+stream would pass every other check in that script. The suite is now 80 pass,
+0 fail (out of 80).

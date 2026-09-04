@@ -248,6 +248,29 @@ EOF
 
 "$PACK" "$REPO_ROOT/tests/local/data/quad_sample.trig" "$TMP/store-ibk4" ibk4 >/dev/null
 
+# The IBK4 N-Quads pack streams (PackStream.quadIngestFeed) on BOTH surfaces:
+# the native CLI reads the file in chunks, the pack ops take the chunks from
+# the host. Neither buffers the source. A routing change that made only one of
+# them stream would still pass every other check here, so the gate is a byte
+# comparison of the two generations, not a count.
+printf '%s\n' \
+  '<http://e/a> <http://e/p> "x" .' \
+  '<http://e/a> <http://e/p> "y" <http://e/g1> .' \
+  '<http://e/b> <http://e/q> "z"@en <http://e/g2> .' \
+  '<http://e/c> <http://e/p> "w" <http://e/g1> .' \
+  '_:b1 <http://e/q> <http://e/d> <http://e/g2> .' > "$TMP/quads.nq"
+"$PACK" "$TMP/quads.nq" "$TMP/store-nq-cli" ibk4 >/dev/null
+"$CLI" pack "$TMP/quads.nq" "$TMP/store-nq-ops" nquads ibk4 >/dev/null
+if diff -r "$TMP/store-nq-cli" "$TMP/store-nq-ops" >/dev/null; then
+  echo "ok   pack ops and the CLI commit the same IBK4 N-Quads generation"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL pack ops and the CLI commit the same IBK4 N-Quads generation"
+  DIFF_RC=0; diff -r "$TMP/store-nq-cli" "$TMP/store-nq-ops" || DIFF_RC=$?
+  printf '     diff exit %s\n' "$DIFF_RC"
+  FAIL=$((FAIL + 1))
+fi
+
 # storeargs <out> <manifest-file> [extra json string]... — the manifest is
 # hex, so only the host's file read crosses the boundary.
 storeargs() {
