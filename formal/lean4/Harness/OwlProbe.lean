@@ -1285,6 +1285,12 @@ structure Opts where
   regime : Regime := Regime.rl
   /-- `--refute-budget N`: the refuter's per-premise budget. -/
   refuteBudget : Nat := defaultRefuteBudget
+  /-- `--tbox-census`: count the refuter's work per case instead of
+  timing it. Prints, for every case, the TBox size, how many of its
+  axioms are structurally distinct, the node and label counts of the
+  initial tableau state, and the resulting axiom-test count of ONE
+  `onePass`. A count is immune to machine load; a stopwatch is not. -/
+  tboxCensus : Bool := false
   /-- Decide conclusion containment by ONE blank-node mapping over the
   whole conclusion graph (the RDF 1.1 Semantics interpolation lemma).
   This is the default since 2026-09-04. `--wildcard-match` restores the
@@ -1305,6 +1311,8 @@ def parseArgs : List String → Opts → Opts
   | "--indexed-only" :: rest, o => parseArgs rest { o with indexedOnly := true }
   | "--dl" :: rest, o => parseArgs rest { o with regime := Regime.dl }
   | "--rl-refute" :: rest, o => parseArgs rest { o with regime := Regime.rlRefute }
+  | "--tbox-census" :: rest, o =>
+      parseArgs rest { o with tboxCensus := true, regime := Regime.dl }
   | "--strict-match" :: rest, o => parseArgs rest { o with strictMatch := true }
   | "--wildcard-match" :: rest, o => parseArgs rest { o with strictMatch := false }
   | "--refute-budget" :: n :: rest, o =>
@@ -1392,6 +1400,62 @@ def profileMain (o : Opts) : IO UInt32 := do
             else profileCase name cat c o.rounds
   return 0
 
+/-! ## `--tbox-census` — counting the refuter's work, not timing it
+
+`onePass` folds over the WHOLE TBox four times for a node: once in
+`injectGlobalAxioms`, once per LABEL in `applyAxioms`, once in
+`applyAxiomsEdges` and once in `applyAxiomsConj`. So one pass tests
+each axiom `3 * nodes + labels` times, and `search` runs up to
+`--refute-budget` passes per goal. These counts do not move when the
+machine is loaded, which a wall clock does. -/
+
+/-- Structural equality of TBox axiom pairs. -/
+abbrev TAx := L4Factoidal.OWL.ClassExpr × L4Factoidal.OWL.ClassExpr
+
+def axiomBeq (x y : TAx) : Bool :=
+  L4Factoidal.OWL.ClassExpr.beq x.1 y.1 && L4Factoidal.OWL.ClassExpr.beq x.2 y.2
+
+def distinctAxioms : List TAx → List TAx
+  | []      => []
+  | a :: tl =>
+      let rest := distinctAxioms tl
+      if rest.any (axiomBeq a) then rest else a :: rest
+
+def tboxPredicates : List WfIri :=
+  [rdfsSubClassOf, owlEquivalentClass, owlDisjointWith, owlComplementOf]
+
+def censusCase (name : String) (cat : Catalog) (c : Case) (capMs : Nat) : IO Unit := do
+  let (res, _) ← premiseClosure cat c capMs Regime.dl
+  match res with
+  | .error _ => pure ()
+  | .ok r =>
+    let g := r.graph
+    let tbTriples := (g.filter (fun t => tboxPredicates.contains t.p)).length
+    let tb := L4Factoidal.OWL.Refute.collectAxioms g
+    let tbd := (distinctAxioms tb).length
+    let st := L4Factoidal.OWL.Refute.initState g
+    let nodes := st.nodes.length
+    let labels := st.nodes.foldl (fun a n => a + n.labels.length) 0
+    let perPass := tb.length * (3 * nodes + labels)
+    IO.println s!"TBOX-CENSUS {name} {c.id} closure={g.length} \
+tbox_triples={tbTriples} tbox={tb.length} tbox_distinct={tbd} \
+nodes={nodes} labels={labels} tests_per_pass={perPass}"
+
+def censusMain (o : Opts) : IO UInt32 := do
+  let dir : System.FilePath := o.dir
+  let names := if o.only.isEmpty then catalogs else o.only
+  for name in names do
+    let p := dir / name
+    if !(← p.pathExists) then IO.println s!"  MISSING {name}"
+    else
+      match ← readCatalog p with
+      | none => pure ()
+      | some cat =>
+        for c in cat.cases do
+          if o.cases.isEmpty || o.cases.contains c.id then
+            censusCase name cat c o.capMs
+  return 0
+
 def main (args : List String) : IO UInt32 := do
   let o := parseArgs args {}
   let dir : System.FilePath := o.dir
@@ -1424,6 +1488,7 @@ def main (args : List String) : IO UInt32 := do
   let (scoOk, unrelatedAbsent) := engineSelfCheck
   IO.println s!"engine self-check: cax-sco fires = {scoOk}, \
 unrelated triple absent = {!unrelatedAbsent}"
+  if o.tboxCensus then return (← censusMain o)
   if o.profile then return (← profileMain o)
   let names := if o.only.isEmpty then catalogs else o.only
   let mut total : Harness.Score := {}
