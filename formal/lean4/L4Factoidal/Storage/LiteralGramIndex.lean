@@ -332,6 +332,11 @@ structure Posting where
 
 structure Index where
   gramLength : Nat
+  /-- The block dictionary size. Every posting is a position below it, so this
+  is the bound a decoder checks; it is NOT the literal count, because a
+  dictionary holds IRIs and blank nodes between its literals. -/
+  dictCount : Nat
+  /-- How many dictionary terms are literals. Informational. -/
   literalCount : Nat
   postings : Array Posting
   deriving DecidableEq, Repr
@@ -363,6 +368,7 @@ def build (dict : Array Term) : Index :=
   let entries : List Posting :=
     (pairsOf dict).toList.map (fun bucket => { gram := bucket.1, ids := bucket.2.toList })
   { gramLength := gramLength
+    dictCount := dict.size
     literalCount := literalCountOf dict
     postings := (entries.mergeSort (fun a b => lessGram a.gram b.gram)).toArray }
 

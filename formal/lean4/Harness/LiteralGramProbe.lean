@@ -80,7 +80,7 @@ def postingCount (idx : Index) : Nat :=
 def encodedBytes (idx : Index) : Nat :=
   let directory := idx.postings.foldl
     (fun total posting => total + 4 + (String.mk posting.gram).utf8ByteSize + 12) 0
-  61 + directory + 4 * postingCount idx + 4
+  65 + directory + 4 * postingCount idx + 4
 
 /-- Force a `Nat` to weak head normal form inside `IO`. Lean is lazy: a timing
 that does not force its result measures the allocation of a thunk. The first
