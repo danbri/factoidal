@@ -218,4 +218,68 @@ under a reserved prefix before `negationGoals` sees them.
 
 ## 7. Landings measured against this decision
 
-Filled in per commit, RL and `--dl`, labelled.
+### The PE-via-refutation fallback in `Harness/OwlProbe.lean`
+
+| Regime | Before | After |
+|---|---|---|
+| RL closure only | 1138 pass, 309 fail, 2 skip, 8 unsupported (out of 1457) | 1138 pass, 309 fail, 2 skip, 8 unsupported (out of 1457) |
+| `--dl` | 1211 pass, 236 fail, 2 skip, 8 unsupported (out of 1457) | 1264 pass, 183 fail, 2 skip, 8 unsupported (out of 1457) |
+
+53 units closed in `--dl`, 0 in RL (the fallback is `--dl` only). No
+test regressed: the set of FAIL case identifiers after the change is a
+strict subset of the set before it. `cap_hits=0` in both runs, so no
+part of the delta is cap variance.
+
+NegativeEntailmentTest: 38 pass, 0 fail (out of 38) before and after
+(6 profile-RL + 6 profile-EL + 3 profile-QL + 23 type-consistency).
+
+The 26 distinct cases closed, each scoring in two catalogs except
+`bnode2somevaluesfrom` which scores in three:
+`bnode2somevaluesfrom`, `New-Feature-DataQCR-001`,
+`New-Feature-ObjectQCR-001`, `rdfbased-sem-eqdis-eqprop-rflxv`,
+`WebOnt-cardinality-001` / `-002` / `-003` / `-004`,
+`WebOnt-Class-005-direct`, `WebOnt-Class-006`,
+`WebOnt-description-logic-201` / `-202` / `-205` / `-206` / `-208`,
+`WebOnt-equivalentClass-004` / `-006` / `-007`,
+`WebOnt-FunctionalProperty-005`, `WebOnt-I5.2-002` / `-004` / `-006`,
+`WebOnt-Restriction-005-direct`, `WebOnt-Restriction-006`,
+`WebOnt-SymmetricProperty-003`, `WebOnt-TransitiveProperty-002`.
+
+Two of the three worked examples of section 1 are in that list
+(`WebOnt-Class-006`, `WebOnt-Restriction-006` for the union family).
+`WebOnt-unionOf-003` and `New-Feature-SelfRestriction-002` still fail:
+`negationGoals` returns `none` for their conclusion shapes, so the
+fallback withholds and the containment verdict stands.
+
+### The falsification tests, run
+
+1. **NegativeEntailmentTest count.** 38 pass, 0 fail (out of 38) before
+   and after. Not falsified.
+2. **Vacuous passes.** The probe now prints one `PE-BY-REFUTATION`
+   line per fallback pass, carrying `premise_alone_refuted`, the
+   refuter's verdict on the premise closure with NO goal attached. 53
+   lines, 0 with `premise_alone_refuted=true`. No pass is vacuous.
+   Not falsified.
+3. **Blank-node renaming artifacts.** The run was repeated with the
+   reserved prefix changed from `__factoidal_pe_concl_` to
+   `__factoidal_pe_concl_ALT9_`: 1264 pass, 183 fail (out of 1457) and
+   the same 53 fallback passes. No pass depends on the choice of
+   label. Not falsified.
+
+### Cost
+
+The `--dl` wall time rises because the refuter now runs on every
+positive-entailment case the containment check misses. The refuter's
+own budget (`--refute-budget`, default 64) bounds each goal, and the
+`HARNESS-DIAG-OWL` line reports `cap_hits=0`, so no closure lost time
+to the fallback.
+
+### What is still open in B1
+
+The split measured B1 at 58 `--dl` units. 53 closed. The residue is
+conclusions `negationGoals` classifies as an unsupported shape — a
+named-subject `owl:unionOf` axiom over `owl:oneOf` classes
+(`WebOnt-unionOf-003`) and an `owl:hasSelf` restriction assertion
+(`New-Feature-SelfRestriction-002`). Extending `negationGoals` to
+those shapes is the next step and it stays inside the same decision:
+no comprehension rule, no weaker matcher.

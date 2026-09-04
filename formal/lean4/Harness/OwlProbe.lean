@@ -49,11 +49,17 @@ F* runner does (`let base = info.iri`).
   c14n on literals). `RDF/Isomorphism.lean` is NOT used here on
   purpose: entailment of a conclusion is subgraph containment modulo
   blank nodes, not graph equality, and the F* runner's rule is the one
-  its scores were produced with. Two F* refinements are NOT ported and
-  are named as gaps when they bite: datatype VALUE equality on literals
+  its scores were produced with. One F* refinement is NOT ported and
+  is named as a gap when it bites: datatype VALUE equality on literals
   (`XSD_Facets.term_provably_equal`, so `"1"^^xsd:int` vs
-  `"1"^^xsd:integer` differ here) and the PE-via-refutation fallback
-  through the DL tableau. DIRECT-only cases (test:semantics DIRECT
+  `"1"^^xsd:integer` differ here). The PE-via-refutation fallback
+  through the DL tableau IS ported (2026-09-04): under `--dl` a
+  conclusion the containment check misses is then tried against the
+  conformance relation itself, `Ont(d1) union not-Ont(d2)`
+  unsatisfiable, through `OWL.Refute.negationGoals` and
+  `tableauConsistent` — see `refuteEntails` below and
+  `docs/designissues/2026-09-04-owl-b1-class-expression-structure.md`.
+  DIRECT-only cases (test:semantics DIRECT
   without RDF-BASED) drop conclusion triples whose predicate the
   conclusion graph itself declares an `owl:AnnotationProperty` /
   `owl:OntologyProperty` (port of `OWL_DirectMapping_Filter`).
@@ -124,6 +130,7 @@ import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.OWL.Materialise
 import L4Factoidal.OWL.Refute
+import L4Factoidal.OWL.NegationGoals
 import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.Syntax.RdfXml
 import Harness.Common
@@ -644,7 +651,74 @@ ms={t6 - t5}  same set as the list round: {sameSet}  same list as step g: {sameL
         break
       g := g'
 
-def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
+/-! ## Positive entailment by refutation (`--dl` only)
+
+The W3C definition of a positive entailment test is model-theoretic
+over ONTOLOGIES: "a premise ontology document d1 and a conclusion
+ontology document d2 where Ont(d1) entails Ont(d2) with respect to the
+specified semantics" (OWL 2 Conformance, test types). Under the Direct
+Semantics `Ont(d1) ⊨ Ont(d2)` iff `Ont(d1) ∪ ¬Ont(d2)` is
+unsatisfiable, and an unsatisfiability verdict is what the tableau
+refuter already returns for the InconsistencyTest line. Triple
+containment in the RL closure is a SOUND BUT INCOMPLETE approximation
+of that relation: it cannot see a conclusion whose class expression is
+structure inside an axiom rather than a triple the closure must hold
+(sub-bucket B1 of `docs/designissues/2026-09-03-owl-failure-split.md`).
+
+So the refutation check runs as a FALLBACK after containment fails,
+never instead of it, and only under `--dl`. It is strictly additive:
+no case that passes on containment can fail because of it.
+
+Decision and the specification citations:
+`docs/designissues/2026-09-04-owl-b1-class-expression-structure.md`. -/
+
+/-- Every document is parsed on its own, so a conclusion blank node
+`_:b0` and a closure blank node `_:b0` are unrelated but EQUAL as
+labels. Combining them without renaming would conflate two distinct
+resources and could yield a clash for the wrong reason — a false pass.
+The conclusion's blank nodes are moved under a reserved prefix that no
+parser produces and that `NegationGoals`'s own `__factoidal_pe_*`
+labels do not collide with. -/
+def peConclusionBNodePrefix : String := "__factoidal_pe_concl_"
+
+def renameSubjectBNode (s : Subject) : Subject :=
+  match s with
+  | .bnode b => .bnode (peConclusionBNodePrefix ++ b)
+  | other    => other
+
+def renameTermBNode : Term → Term
+  | .bnode b            => .bnode (peConclusionBNodePrefix ++ b)
+  | .tripleTerm s p o   => .tripleTerm (renameSubjectBNode s) p (renameTermBNode o)
+  | other               => other
+
+def renameConclusionBNodes (g : Graph) : Graph :=
+  g.map (fun t => { t with s := renameSubjectBNode t.s, o := renameTermBNode t.o })
+
+/-- `some true` when the premise closure REFUTES the negation of every
+content assertion of the conclusion — the entailment is proven. `some
+false` when a goal produced a countermodel. `none` when the conclusion
+has no supported negation, or a goal's budget ran out: indeterminate,
+and the caller keeps its containment verdict.
+
+The goals are ANDed because a conclusion graph is the conjunction of
+its content assertions, and each is negated SEPARATELY
+(`NegationGoals`'s soundness contract: assuming an unproven conjunct
+while proving another is the unsound direction). -/
+def refuteEntails (closure : Graph) (gc : Graph) (rb : Nat) : Option Bool :=
+  match L4Factoidal.OWL.Refute.negationGoals (renameConclusionBNodes gc) with
+  | none       => none
+  | some goals =>
+    let step (acc : Option Bool) (goal : Graph) : Option Bool :=
+      match acc with
+      | some true =>
+        match L4Factoidal.OWL.Refute.tableauConsistent (closure ++ goal) rb with
+        | some false => some true      -- this conjunct is entailed
+        | some true  => some false     -- countermodel: not entailed
+        | none       => none           -- budget out: indeterminate
+      | other => other
+    goals.foldl step (some true)
+
+def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
     : IO (Harness.Outcome × Measure) := do
   if isFunctionalUnread c then return (.unsupported "functional-syntax", {})
   match (match c.conclusion with
@@ -664,7 +738,22 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool)
         match gc.find? (fun t => !inClosure r.graph t) with
         | none => return (.pass, m)
         | some t =>
-          if r.capped then
+          -- The containment check did not find it. Under `--dl` the
+          -- conformance relation itself is tried: entailment by
+          -- refutation. Only `some true` overrides; anything else
+          -- leaves the containment verdict in place.
+          if dl && refuteEntails r.graph gc rb == some true then
+            -- Evidence line, one per fallback pass. `premise_alone` is
+            -- falsification test 2 of the decision document: a premise
+            -- closure that is ITSELF refuted entails everything, so a
+            -- pass on such a case proves nothing about the conclusion.
+            -- `premise_alone=false` is the reading that keeps the pass
+            -- meaningful.
+            let alone := L4Factoidal.OWL.Refute.refute r.graph rb == some false
+            IO.println s!"PE-BY-REFUTATION {c.id}: premise_alone_refuted={alone} \
+(closure {r.graph.length} triples)"
+            return (.pass, { m with clashes := m.clashes + 1 })
+          else if r.capped then
             return (.fail s!"cap: closure budget hit after {r.rounds} rounds ({r.graph.length} triples); missing {showTriple t}", m)
           else
             return (.fail s!"closure-gap: missing {showTriple t} (closure {r.graph.length} triples, {r.rounds} rounds)", m)
@@ -735,7 +824,7 @@ def testTypes : List String :=
 
 def judge (cat : Catalog) (c : Case) (capMs : Nat) (dl : Bool) (rb : Nat)
     : String → IO (Harness.Outcome × Measure)
-  | "PositiveEntailmentTest" => judgePositive cat c capMs dl
+  | "PositiveEntailmentTest" => judgePositive cat c capMs dl rb
   | "NegativeEntailmentTest" => judgeNegative cat c capMs dl
   | "ConsistencyTest"        => judgeConsistency cat c capMs dl rb
   | "InconsistencyTest"      => judgeInconsistency cat c capMs dl rb

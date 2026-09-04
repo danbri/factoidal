@@ -383,3 +383,33 @@ usually B1, because a conclusion that names a class expression or an
 `owl:AllDifferent` axiom asks the engine to produce structure, and no rule
 row produces structure. A future ranking should count only units whose
 PREMISE carries the construct.
+
+### B1 — decided, and 53 of its 58 `--dl` units closed
+
+The decision, with the specification quotations that settle it, is in
+[`2026-09-04-owl-b1-class-expression-structure.md`](2026-09-04-owl-b1-class-expression-structure.md).
+The paragraph above that offers "either the comprehension principles of
+the OWL 2 RDF-Based Semantics or a conclusion matcher that works modulo
+blank-node structure" names two routes and NEITHER is the one taken.
+
+- The comprehension conditions are informative in the OWL 2 RDF-Based
+  Semantics 2nd Edition, not normative.
+- The probe's present matcher already treats a conclusion blank node as
+  matching any term per triple, so a single-mapping check is STRICTER
+  than what runs today and closes nothing here.
+- The W3C definition of an entailment test is model-theoretic over
+  ontologies. Under the Direct Semantics `Ont(d1) ⊨ Ont(d2)` iff
+  `Ont(d1) ∪ ¬Ont(d2)` is unsatisfiable, which the landed tableau
+  refuter decides. `OWL/NegationGoals.lean` held that half of the port
+  with no caller.
+
+Landing: the `--dl` positive-entailment judgement gains a refutation
+FALLBACK after containment fails.
+
+| Rows / change | RL before → after | `--dl` before → after |
+|---|---|---|
+| PE-via-refutation fallback in `Harness/OwlProbe.lean` | 1138 pass, 309 fail → 1138 pass, 309 fail | 1211 pass, 236 fail → 1264 pass, 183 fail |
+
+53 `--dl` units closed, 0 RL (the fallback is `--dl` only), no
+regression, `cap_hits=0` in every run. NegativeEntailmentTest stayed at
+38 pass, 0 fail (out of 38).
