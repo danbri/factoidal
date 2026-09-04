@@ -14,9 +14,17 @@
 // into that buffer, and Lean bounds-checks every window.
 //
 //   node tools/wasm-store-query-smoke.mjs <generation-dir> <sparql> [--tamper]
+//   node tools/wasm-store-query-smoke.mjs <generation-dir> <sparql> --handle
 //
 // Prints one JSON line on success. With `--tamper` it flips one byte of the
 // first artifact and expects `storeQuery` to refuse.
+//
+// With `--handle` it answers the SAME query twice in one module instance —
+// once through the stateless `storeQuery`, once through a `storeOpen` handle
+// — and compares the ROWS THEMSELVES, not the row count (anti-pattern 34).
+// The handle is opened on EVERY artifact the manifest declares, so it
+// normally retains more than the plan selects and the comparison covers the
+// case where the two paths could disagree.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -26,6 +34,7 @@ if (!directory || !query) {
   process.exit(2);
 }
 const tamper = flags.includes('--tamper');
+const handleMode = flags.includes('--handle');
 
 const loaderUrl = new URL('../docs/web/hub/assets/l4/l4factoidal.js', import.meta.url);
 const { loadL4 } = await import(loaderUrl.href);
@@ -66,6 +75,51 @@ if (tamper) {
 
 const result = l4.callBlob('storeQuery',
   [manifestHex, query, JSON.stringify(artifacts)], blob);
+
+if (handleMode) {
+  // Open on every artifact the manifest declares, which is a superset of the
+  // plan whenever the query names a constant predicate.
+  const allKeys = inspect.entries.map((entry) => entry.key);
+  const allChunks = allKeys.map((key) => readFileSync(join(directory, key)));
+  const allBlob = Buffer.concat(allChunks);
+  let at = 0;
+  const allArtifacts = allKeys.map((key, i) => {
+    const descriptor = { key, offset: at, len: allChunks[i].length };
+    at += allChunks[i].length;
+    return descriptor;
+  });
+  const opened = l4.callBlobIO('storeOpen',
+    [manifestHex, JSON.stringify(allArtifacts)], allBlob).envelope;
+  const viaHandle = l4.call('storeHandleQuery', [opened.handle, query]);
+  const listed = l4.call('storeHandleList', []);
+  l4.call('storeHandleClose', [opened.handle]);
+  const rowsOf = (envelope) => JSON.stringify(
+    envelope.kind === 'select' ? envelope.srj.results.bindings
+      : envelope.kind === 'ask' ? envelope.boolean
+        : envelope.nquads);
+  const same = rowsOf(result) === rowsOf(viaHandle);
+  if (!same) {
+    console.error('the handle and the stateless path answered different rows');
+    console.error('  stateless: ' + rowsOf(result));
+    console.error('  handle   : ' + rowsOf(viaHandle));
+    process.exit(1);
+  }
+  console.log(JSON.stringify({
+    handle: opened.handle,
+    openedArtifacts: opened.artifacts,
+    openedBytes: opened.bytes,
+    openedRows: opened.rows,
+    planShards: plan.shards,
+    handleShards: viaHandle.shards,
+    handleMode: viaHandle.mode,
+    modesAgree: viaHandle.mode === result.mode,
+    listedBytes: listed.bytes,
+    handleCap: listed.handleCap,
+    bytesCap: listed.bytesCap,
+    rowsIdentical: same,
+  }));
+  process.exit(0);
+}
 
 let rows;
 if (result.kind === 'select') rows = result.srj.results.bindings.length;

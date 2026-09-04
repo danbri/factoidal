@@ -454,6 +454,139 @@ args "$TMP/store-arity.json" "00"
 check "storeQuery wrong arity -> error" storeQuery "$TMP/store-arity.json" \
   'r["ok"] is False and "expects 3 arguments" in r["error"]'
 
+# --- Store handles (issue 641, the stateful half) ---------------------
+# Handle state lives in the process, so the dependent sequence runs through
+# `callseq`. It uses the diagnostic hexadecimal descriptor form, which is what
+# `callseq` can carry; the blob form is the same admission and is exercised
+# above and by tools/wasm-store-query-smoke.sh.
+#
+# WHAT THIS GATES: the handle and the stateless path must answer the SAME
+# ROWS, not the same row count (anti-pattern 34). The sequence asks one query
+# both ways and the assertion compares the binding lists themselves.
+python3 - "$TMP/store-handle-seq.json" "$TMP/store-ibk3/manifest.sbm2" \
+    "$TMP/store-ibk3" <<'EOF'
+import json, pathlib, sys
+out, manifest, directory = sys.argv[1:4]
+manifest_hex = pathlib.Path(manifest).read_bytes().hex()
+def payload(names):
+    return json.dumps([{"key": key,
+                        "bytes": (pathlib.Path(directory) / key).read_bytes().hex()}
+                       for key in names])
+Q = "SELECT ?s ?o WHERE { ?s <http://e/p> ?o } ORDER BY ?s ?o"
+seq = [
+  # Open on BOTH artifacts, so the handle retains more than one query needs.
+  ["storeOpen",         [manifest_hex, payload(["predicate-0.ibk3", "predicate-1.ibk3"])]],
+  ["storeHandleQuery",  ["s1", Q]],
+  # The same query through the stateless op, for the row comparison.
+  ["storeQuery",        [manifest_hex, Q, payload(["predicate-0.ibk3"])]],
+  # A query that needs every retained block: the cached-index path.
+  ["storeHandleQuery",  ["s1", "SELECT ?s WHERE { ?s ?p ?o }"]],
+  # FILTER NOT EXISTS is decided by the reference evaluator (anti-pattern 34).
+  ["storeHandleQuery",  ["s1",
+      "ASK { ?s <http://e/p> ?o FILTER NOT EXISTS { ?s <http://e/q> ?v } }"]],
+  ["storeHandleList",   []],
+  ["storeHandleClose",  ["s1"]],
+  ["storeHandleQuery",  ["s1", "ASK { ?s ?p ?o }"]],
+  # A handle opened with ONE block refuses a query whose plan needs both.
+  ["storeOpen",         [manifest_hex, payload(["predicate-0.ibk3"])]],
+  ["storeHandleQuery",  ["s2", "SELECT ?s WHERE { ?s ?p ?o }"]],
+  ["storeHandleClose",  ["s2"]],
+]
+json.dump(seq, open(out, "w"))
+EOF
+checkseq "store handle: open once, answer many, same rows as storeQuery" \
+  "$TMP/store-handle-seq.json" \
+  'rs[0]["ok"] is True and rs[0]["handle"] == "s1" and rs[0]["artifacts"] == 2
+   and rs[0]["bytes"] > 0 and rs[0]["rows"] == 3
+   and rs[1]["ok"] is True and rs[1]["kind"] == "select"
+   and rs[1]["shards"] == 1 and rs[1]["mode"] == "ibk3-paged-merkle(1)"
+   and rs[2]["ok"] is True
+   and rs[1]["srj"]["results"]["bindings"] == rs[2]["srj"]["results"]["bindings"]
+   and rs[1]["shards"] == rs[2]["shards"] and rs[1]["mode"] == rs[2]["mode"]
+   and rs[3]["ok"] is True and rs[3]["shards"] == 2
+   and rs[3]["mode"] == "ibk3-paged-merkle-full-manifest(2)"
+   and len(rs[3]["srj"]["results"]["bindings"]) == 3
+   and rs[4]["ok"] is True and rs[4]["kind"] == "ask"
+   and rs[5]["ok"] is True and len(rs[5]["handles"]) == 1
+   and rs[5]["handles"][0]["handle"] == "s1" and rs[5]["bytes"] == rs[0]["bytes"]
+   and rs[5]["handleCap"] == 8 and rs[5]["bytesCap"] == 67108864
+   and rs[6] == {"ok": True}
+   and rs[7]["ok"] is False and rs[7]["error"] == "unknown store handle: s1"
+   and rs[8]["ok"] is True and rs[8]["handle"] == "s2" and rs[8]["artifacts"] == 1
+   and rs[9]["ok"] is False and "does not retain" in rs[9]["error"]
+   and rs[10] == {"ok": True}'
+
+# Two stores open at once, each answering from its own generation: the shape a
+# long-lived server holds. The second store is the IBK4 generation.
+python3 - "$TMP/store-handle-two.json" "$TMP/store-ibk3/manifest.sbm2" \
+    "$TMP/store-ibk3" "$TMP/store-ibk4/manifest.sbm2" "$TMP/store-ibk4" <<'EOF'
+import json, pathlib, sys
+out, m3, d3, m4, d4 = sys.argv[1:6]
+def hexof(path):
+    return pathlib.Path(path).read_bytes().hex()
+def payload(directory, names):
+    return json.dumps([{"key": key,
+                        "bytes": (pathlib.Path(directory) / key).read_bytes().hex()}
+                       for key in names])
+ibk4_keys = sorted(entry.name for entry in pathlib.Path(d4).iterdir()
+                   if entry.name.endswith(".ibk4"))
+seq = [
+  ["storeOpen",        [hexof(m3), payload(d3, ["predicate-0.ibk3"])]],
+  ["storeOpen",        [hexof(m4), payload(d4, ibk4_keys)]],
+  ["storeHandleList",  []],
+  ["storeHandleQuery", ["s1", "SELECT ?s WHERE { ?s <http://e/p> ?o }"]],
+  ["storeHandleQuery", ["s2",
+      "SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }"]],
+  ["storeHandleClose", ["s1"]],
+  ["storeHandleClose", ["s2"]],
+  ["storeOpen",        [hexof(m3), "[]"]],
+  ["storeOpen",        [hexof(m3), json.dumps([{"key": "no-such.ibk3", "bytes": "00"}])]],
+]
+json.dump(seq, open(out, "w"))
+EOF
+checkseq "two store handles are independent; each open refusal names its reason" \
+  "$TMP/store-handle-two.json" \
+  'rs[0]["handle"] == "s1" and rs[1]["handle"] == "s2"
+   and rs[2]["ok"] is True and len(rs[2]["handles"]) == 2
+   and rs[2]["bytes"] == rs[0]["bytes"] + rs[1]["bytes"]
+   and rs[3]["ok"] is True and rs[3]["kind"] == "select"
+   and len(rs[3]["srj"]["results"]["bindings"]) == 2
+   and rs[4]["ok"] is True and rs[4]["kind"] == "select"
+   and len(rs[4]["srj"]["results"]["bindings"]) == 2
+   and rs[5] == {"ok": True} and rs[6] == {"ok": True}
+   and rs[7]["ok"] is False and "no artifact bytes were supplied" in rs[7]["error"]
+   and rs[8]["ok"] is False and "is not declared by this manifest" in rs[8]["error"]'
+
+# A tampered artifact is refused at OPEN, so no handle can answer from bytes
+# it did not verify. The trust argument moves; it does not weaken.
+python3 - "$TMP/store-handle-tamper.json" "$TMP/store-ibk3/manifest.sbm2" \
+    "$TMP/store-ibk3" <<'EOF'
+import json, pathlib, sys
+out, manifest, directory = sys.argv[1:4]
+raw = bytearray((pathlib.Path(directory) / "predicate-0.ibk3").read_bytes())
+raw[-1] ^= 0xFF
+seq = [
+  ["storeOpen", [pathlib.Path(manifest).read_bytes().hex(),
+                 json.dumps([{"key": "predicate-0.ibk3", "bytes": bytes(raw).hex()}])]],
+  ["storeHandleList", []],
+]
+json.dump(seq, open(out, "w"))
+EOF
+checkseq "storeOpen refuses an artifact whose SHA-256 differs; no handle is issued" \
+  "$TMP/store-handle-tamper.json" \
+  'rs[0]["ok"] is False and "predicate-0.ibk3" in rs[0]["error"]
+   and "SHA-256" in rs[0]["error"]
+   and rs[1]["ok"] is True and rs[1]["handles"] == []'
+
+args "$TMP/store-open-arity.json" "00"
+check "storeOpen wrong arity -> error" storeOpen "$TMP/store-open-arity.json" \
+  'r["ok"] is False and "expects 2 arguments" in r["error"]'
+
+args "$TMP/store-handle-unknown.json" "s999" 'ASK { ?s ?p ?o }'
+check "storeHandleQuery unknown handle -> error" storeHandleQuery \
+  "$TMP/store-handle-unknown.json" \
+  'r["ok"] is False and r["error"] == "unknown store handle: s999"'
+
 # --- Canon family -----------------------------------------------------
 args "$TMP/canon.json" '_:b0 <http://e/p> "v" .
 '

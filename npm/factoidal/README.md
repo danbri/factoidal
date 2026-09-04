@@ -488,6 +488,94 @@ store, `SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`, whole process
 including start-up: 220 ms through this command, 33 ms through the
 native `l4block-id-v3-query`.
 
+### Holding a store open: verify once, answer many
+
+`queryStore` is stateless. Every call transfers the artifacts again, and
+the engine hashes, decodes and indexes them again. A process that answers
+many questions against one generation — a chat bot, an MCP server, a
+SPARQL endpoint — pays all of that for every question, and none of it
+depends on the question.
+
+A **store handle** holds that work. `openStoreHandle` verifies each
+artifact against the SHA-256 the manifest commits, decodes each block and
+indexes the rows, once. `handle.query()` then answers from what it
+retained. Several stores can be open at the same time.
+
+```js
+import { loadEngine } from '@factoidal/core/bin/engine.mjs'
+import { openStore, openStoreHandle, listStoreHandles } from '@factoidal/core/store'
+
+const engine = await loadEngine()
+
+// Two stores, open at once, held for the life of the process.
+const skos = openStoreHandle(engine, openStore('./skos-store'))
+const docs = openStoreHandle(engine, openStore('./docs-store'))
+
+console.log(listStoreHandles(engine))
+// { ok: true, handles: [ {handle:'s1', bytes:…, rows:…}, {handle:'s2', …} ],
+//   bytes: …, rows: …, handleCap: 8, bytesCap: 67108864 }
+
+const PREFIX = 'PREFIX skos: <http://www.w3.org/2004/02/skos/core#>'
+
+function labelsMatching (handle, needle) {
+  const answer = handle.query(`${PREFIX}
+    SELECT ?c ?l WHERE {
+      GRAPH ?g { ?c skos:prefLabel ?l }
+      FILTER(CONTAINS(LCASE(STR(?l)), "${needle.toLowerCase()}"))
+    } LIMIT 10`)
+  return answer.srj.results.bindings
+}
+
+// Many questions, each a new search string. None of them re-reads a block.
+for (const needle of ['water', 'forest', 'railway', 'volcano']) {
+  console.log(needle, labelsMatching(skos, needle).length)
+}
+console.log(docs.query(`${PREFIX} SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`))
+
+skos.close()
+docs.close()
+```
+
+`openStoreHandle(engine, store, options)` takes:
+
+| option | effect |
+|---|---|
+| (none) | open every artifact the manifest declares |
+| `{ sparql }` | open only the artifacts that query's plan names |
+| `{ keys }` | open exactly these artifact keys |
+
+`queryStoreHandle(engine, handle, sparql)`, `closeStoreHandle(engine,
+handle)` and `listStoreHandles(engine)` are the same operations for a
+caller that holds only the handle id.
+
+**Measured 2026-09-04**, macOS arm64, Node 22, the 141-graph SKOS store,
+`skos:prefLabel` block of 5,571,302 bytes and 45,806 rows, one
+`CONTAINS` query per row, a DIFFERENT search string every time:
+
+| | stateless `queryStore` | handle |
+|---|---|---|
+| first query (open + query) | 1376 ms | 1363 ms |
+| second query, different search string | 1376 ms | 95 ms |
+| tenth query, all different | 1382 ms | 103 ms |
+| ten queries, total | 13962 ms | 2277 ms |
+
+**What a handle buys and what it does not.** It removes the per-query
+digest check, block decode and index build. It does NOT make search
+sub-linear: `CONTAINS` still scans every retained row, so a query still
+costs time proportional to the row count. A text index is separate work.
+
+**Residency.** Retaining a decoded block costs memory. Measured on the
+same store: 76 MiB resident with the engine loaded and no handle, 170 MiB
+with the handle open — about 94 MiB for a 5.5 MB packed block, and
+evaluation peaks higher again (346 MiB during the queries above). The
+caps are on ARTIFACT bytes, which is what the manifest declares: 8 open
+handles, and 67108864 retained artifact bytes across all of them. A cap
+is a refusal naming the cap; no handle is ever evicted to make room for
+another. `listStoreHandles` is how a server sees its own residency.
+
+**One call at a time.** The WebAssembly module is single-threaded. Two
+`query()` calls cannot overlap; a server queues them.
+
 ## API (draft)
 
 The `factoidal` CLI (`bin/factoidal-cli/factoidal_cli.ml`, built to

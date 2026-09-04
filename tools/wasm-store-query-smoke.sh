@@ -120,4 +120,25 @@ printf '%s' "$refusal" | grep -q 'SHA-256' || {
   echo 'FAIL: the refusal did not name the SHA-256 commitment'; exit 1; }
 echo 'ok   digest mismatch refused'
 
+echo '=== a store handle answers the same ROWS as the stateless path'
+# Not the same row count: the same bindings (anti-pattern 34). The handle is
+# opened on every artifact the manifest declares, so it retains more than the
+# plan selects and the comparison covers the case that could disagree.
+handle_check() {
+  local label="$1" gen="$2" query="$3" out
+  out=$(node "$repo_root/tools/wasm-store-query-smoke.mjs" "$gen" "$query" --handle)
+  echo "    $out"
+  printf '%s' "$out" | grep -q '"rowsIdentical":true' || {
+    echo "FAIL $label: the handle and the stateless path differ"; exit 1; }
+  printf '%s' "$out" | grep -q '"modesAgree":true' || {
+    echo "FAIL $label: the plan mode differs between the two paths"; exit 1; }
+  echo "ok   $label"
+}
+handle_check 'IBK3 handle bound predicate' "$gen3" \
+  "SELECT ?s ?o WHERE { ?s <$predicate> ?o } ORDER BY ?s ?o"
+handle_check 'IBK3 handle FILTER NOT EXISTS' "$gen3" \
+  "SELECT ?s WHERE { ?s <$predicate> ?o FILTER NOT EXISTS { ?s <$other> ?x } } ORDER BY ?s"
+handle_check 'IBK4 handle GRAPH clause' "$gen4" \
+  'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } } ORDER BY ?s ?p ?o'
+
 echo 'wasm-store-query-smoke=pass'

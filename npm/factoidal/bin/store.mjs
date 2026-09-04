@@ -236,3 +236,160 @@ export function turtleOfNQuads (engine, nquads) {
     throw asStoreError(error)
   }
 }
+
+// ---------------------------------------------------------------- handles
+//
+// `queryStore` above is stateless: every call transfers the artifacts again,
+// and the engine hashes, decodes and indexes them again. A process that
+// answers many questions against one generation — a chat bot, an MCP server,
+// a SPARQL endpoint — pays that per question, and none of it depends on the
+// question.
+//
+// A handle holds the verified, decoded, indexed form inside the engine.
+// `storeOpen` verifies every artifact against the SHA-256 the manifest
+// commits, once; `storeHandleQuery` then answers from what it retained. The
+// engine refuses a query whose plan needs a block the handle does not retain,
+// so a handle answer is never a partial generation.
+//
+// What a handle does NOT change: a query still scans every retained row, so
+// its cost is still proportional to the row count. A handle removes the
+// per-query decode; it is not a text index.
+//
+// The stateless path above stays exactly as it was. A one-shot CLI query
+// should not pay to build a handle it will drop.
+
+/** The artifact keys a manifest declares, in manifest order. */
+function manifestKeys (engine, store) {
+  return inspectManifest(engine, store).entries.map((entry) => entry.key)
+}
+
+/** Read the named artifacts and concatenate them into one region. */
+function regionOf (store, keys) {
+  const chunks = keys.map((key) => readWhole(joinPath(store.generationDir, key)))
+  let total = 0
+  for (const chunk of chunks) total += chunk.length
+  const blob = new Uint8Array(total)
+  const artifacts = []
+  let offset = 0
+  for (let index = 0; index < chunks.length; index += 1) {
+    blob.set(chunks[index], offset)
+    artifacts.push({ key: keys[index], offset, len: chunks[index].length })
+    offset += chunks[index].length
+  }
+  return { blob, artifacts }
+}
+
+/**
+ * An open store held inside the engine. Hold this object for as long as the
+ * process answers questions about the generation, then `close()` it.
+ *
+ * The wasm module is single-threaded: two `query()` calls cannot overlap. A
+ * server awaits one before it starts the next.
+ */
+export class StoreHandle {
+  constructor (engine, store, envelope) {
+    this.engine = engine
+    this.store = store
+    this.handle = envelope.handle
+    this.identity = envelope.identity
+    this.layout = envelope.layout
+    this.wireVersion = envelope.wireVersion
+    this.artifacts = envelope.artifacts
+    this.bytes = envelope.bytes
+    this.rows = envelope.rows
+    this.closed = false
+  }
+
+  /**
+   * One SPARQL query against the retained blocks. The envelope is the one
+   * `queryStore` answers with — `kind`, `srj`/`boolean`/`nquads`, plus
+   * `shards` and `mode` — so a caller handles both paths alike.
+   */
+  query (sparql) {
+    if (this.closed) {
+      throw new StoreOperationError(`store handle ${this.handle} is closed`)
+    }
+    try {
+      return this.engine.call('storeHandleQuery', [this.handle, sparql])
+    } catch (error) {
+      throw asStoreError(error)
+    }
+  }
+
+  /** Drop the handle and everything it retained. Idempotent on this object. */
+  close () {
+    if (this.closed) return
+    this.closed = true
+    try {
+      this.engine.call('storeHandleClose', [this.handle])
+    } catch (error) {
+      throw asStoreError(error)
+    }
+  }
+}
+
+/**
+ * `storeOpen` — verify, decode and index a generation once.
+ *
+ * With no options every artifact the manifest declares is opened, so any
+ * query the generation can answer works. With `sparql` only the artifacts
+ * that query's plan names are opened, which is what a process asking one
+ * query shape wants. With `keys` exactly those artifacts are opened.
+ *
+ * @param {object} engine the loaded engine (bin/engine.mjs)
+ * @param {object} store  the result of `openStore`
+ * @param {{keys?: string[], sparql?: string}} options
+ * @returns {StoreHandle}
+ */
+export function openStoreHandle (engine, store, options = {}) {
+  let keys
+  if (Array.isArray(options.keys)) {
+    keys = options.keys
+  } else if (typeof options.sparql === 'string') {
+    keys = planQuery(engine, store, options.sparql).keys
+  } else {
+    keys = manifestKeys(engine, store)
+  }
+  const { blob, artifacts } = regionOf(store, keys)
+  let envelope
+  try {
+    envelope = engine.callBlobIO('storeOpen',
+      [store.manifestHex, JSON.stringify(artifacts)], blob).envelope
+  } catch (error) {
+    throw asStoreError(error)
+  }
+  return new StoreHandle(engine, store, envelope)
+}
+
+/** `storeHandleQuery` — the loose form, for a caller holding only the id. */
+export function queryStoreHandle (engine, handle, sparql) {
+  const id = typeof handle === 'string' ? handle : handle.handle
+  try {
+    return engine.call('storeHandleQuery', [id, sparql])
+  } catch (error) {
+    throw asStoreError(error)
+  }
+}
+
+/** `storeHandleClose` — the loose form. */
+export function closeStoreHandle (engine, handle) {
+  if (handle instanceof StoreHandle) return handle.close()
+  try {
+    return engine.call('storeHandleClose', [handle])
+  } catch (error) {
+    throw asStoreError(error)
+  }
+}
+
+/**
+ * `storeHandleList` — what this process holds open, with the retained bytes
+ * and rows and the two residency caps. A server that cannot see its own
+ * residency cannot be operated.
+ */
+export function listStoreHandles (engine) {
+  try {
+    return engine.call('storeHandleList', [])
+  } catch (error) {
+    throw asStoreError(error)
+  }
+}
