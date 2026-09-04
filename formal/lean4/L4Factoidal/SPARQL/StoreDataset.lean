@@ -185,6 +185,26 @@ def evalPatternBackend (env : EvalEnv) (dsb : DatasetBackend) :
       match lookupNamedBackend i.val dsb.named with
       | some g => evalPatternBackend env dsb p g
       | none => []
+  -- GRAPH with a VARIABLE evaluates the inner pattern against every
+  -- named backend and binds the variable to that graph's name, which is
+  -- §18.6's `ds.named.flatMap … bindIfCompatible` over the SAME list:
+  -- `materialiseDatasetBackend` builds `ds.named` from `dsb.named` in
+  -- order and drops exactly the names that are not well-formed IRIs, so
+  -- the same `wfIriOf?` test is applied here.
+  --
+  -- Without this arm the shape fell to the materialise-and-delegate
+  -- case below, which rebuilds the WHOLE dataset as lists for every
+  -- such query. That is what made `GRAPH ?g { ?c skos:prefLabel ?l }`
+  -- cost the same as reading the generation twice, and what overflowed
+  -- the wasm stack on a 45,806-row block
+  -- (https://github.com/danbri/factoidal/issues/653).
+  | .graph (.var v) p, _ =>
+      dsb.named.flatMap (fun ngb =>
+        match wfIriOf? ngb.name with
+        | none => []
+        | some i =>
+            (evalPatternBackend env dsb p ngb.backend).filterMap (fun mu =>
+              mu.bindIfCompatible v (.iri i)))
   | .empty, _ => [Binding.empty]
   | p, gb =>
       -- Materialise and delegate. The active graph is this backend's
@@ -230,6 +250,73 @@ def predicateGroupByAcc (predVar countAlias : VarName) (gb : GraphBackend) :
 def predicateGroupBySolutions (predVar countAlias : VarName) (gb : GraphBackend)
     (preds : List WfIri) : SolutionSeq :=
   predicateGroupByAcc predVar countAlias gb [] preds
+
+/-! ### LIMIT push-down under `GRAPH ?v`
+
+`detectLimitSingleTpScoped` has already refused every shape whose match
+can reject a candidate the bound admits, and every shape where `?v`
+occurs inside the triple pattern. So each named graph contributes
+exactly the rows the backend returns, in backend order, and the answer
+is the first `k` of the concatenation §18.6 builds. -/
+
+def limitGraphVarAcc (v : VarName) (tp : TriplePattern) (limit : Nat) :
+    List NamedGraphBackend → SolutionSeq → SolutionSeq
+  | [], acc => acc.reverse
+  | ngb :: rest, acc =>
+      if limit <= acc.length then acc.reverse
+      else
+        match wfIriOf? ngb.name with
+        | none => limitGraphVarAcc v tp limit rest acc
+        | some i =>
+            -- `capsTakeN` again, for the same reason `evalLimitSingleTp`
+            -- truncates after the match: `solveLimited` is a backend
+            -- capability, so nothing here proves it honoured the limit.
+            let rows :=
+              capsTakeN (limit - acc.length)
+                ((backendSearchLimited ngb.backend (patternBoundFor tp Binding.empty)
+                    (limit - acc.length)).filterMap (fun t =>
+                  match tpMatch tp t Binding.empty with
+                  | none => none
+                  | some mu => mu.bindIfCompatible v (.iri i)))
+            limitGraphVarAcc v tp limit rest (rows.reverseAux acc)
+
+/-- The three scopes of the LIMIT push-down. `.active` is the existing
+one-graph path; `.named` routes to that graph's own backend and answers
+nothing for a graph the dataset does not name, exactly as §18.6's GRAPH
+arm does; `.everyNamed` walks the named backends. -/
+def evalLimitSingleTpScoped (sel : SelectClause) (tp : TriplePattern)
+    (scope : LimitScope) (k : Nat) (gb : GraphBackend) (dsb : DatasetBackend) :
+    SolutionSeq :=
+  match scope with
+  | .active => evalLimitSingleTp sel tp gb k
+  | .named g =>
+      match lookupNamedBackend g.val dsb.named with
+      | some target => evalLimitSingleTp sel tp target k
+      | none => []
+  | .everyNamed v =>
+      let omega := limitGraphVarAcc v tp k dsb.named []
+      match sel with
+      | .vars items => projectSolutions (selectItemVars items) omega
+      | .all => omega
+
+/-- The push-down never returns more rows than the limit, in every
+scope. -/
+theorem limitGraphVarAcc_bounded (v : VarName) (tp : TriplePattern) (limit : Nat)
+    (named : List NamedGraphBackend) (acc : SolutionSeq) (hacc : acc.length <= limit) :
+    (limitGraphVarAcc v tp limit named acc).length <= limit := by
+  induction named generalizing acc with
+  | nil => simpa [limitGraphVarAcc] using hacc
+  | cons ngb rest ih =>
+      simp only [limitGraphVarAcc]
+      split
+      · simpa using hacc
+      · rename_i hlt
+        split
+        · exact ih acc hacc
+        · refine ih _ ?_
+          simp only [List.reverseAux_eq, List.length_append, List.length_reverse,
+                     capsTakeN, List.length_take]
+          omega
 
 /-- Shape detection plus capability availability. The fast path runs
 only when the target backend actually offers cheap predicate
@@ -378,10 +465,10 @@ def evalSelectBackendOnGraph (env : EvalEnv) (q : Query) (gb : GraphBackend)
             | some o => sortSolutionsFast (compareOnConditions env env.activeGraph o) omega
           some (sliceSolutions q.modifier.offset q.modifier.limit ordered)
       | none =>
-          match detectLimitSingleTp q with
-          | some (tp, k) =>
+          match detectLimitSingleTpScoped q with
+          | some (tp, scope, k) =>
               match q.form with
-              | .select sel => some (evalLimitSingleTp sel tp gb k)
+              | .select sel => some (evalLimitSingleTpScoped sel tp scope k gb dsb)
               | _ => none
           | none =>
               match q.form with
@@ -1020,5 +1107,6 @@ plus the default. -/
 #print axioms evalBgpBackend_allVars_list
 #print axioms countGroupByGraph_length
 #print axioms evalAskBackend_none_on_decode_failure
+#print axioms limitGraphVarAcc_bounded
 
 end L4Factoidal.SPARQL.StoreDataset

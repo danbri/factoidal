@@ -11,7 +11,9 @@ and post-processing them:
    millions of rows and taking the length.
 2. **LIMIT pushdown.** `SELECT ?vars WHERE { tp } LIMIT k` with no
    DISTINCT, ORDER BY, aggregate or offset. Ask the backend for `k`
-   rows so the on-disk walker stops early.
+   rows so the on-disk walker stops early. The pattern may carry one
+   `GRAPH` layer, whose name may be a constant IRI or a VARIABLE
+   (`detectLimitSingleTpScoped`, section 2a).
 
 ## The detectors are conservative, and that is the whole safety argument
 
@@ -30,12 +32,15 @@ tempted to drop:
 * `COUNT(DISTINCT *)` is rejected. It needs the dedup pass, so the
   count is not the row count.
 * DISTINCT, REDUCED, ORDER BY, GROUP BY, HAVING and VALUES each reject.
-* `GRAPH ?g { tp }` with a VARIABLE graph is rejected, and the F* source
-  explains why at length: an unbound `?g` ranges over EVERY named
-  graph, so a non-grouped `COUNT(*)` over that shape must SUM the count
-  across every named graph. That is one sum over N backends, a
-  different evaluation shape, not a mechanical widening. Only
-  `GRAPH <constant> { tp }` matches.
+* `GRAPH ?g { tp }` with a VARIABLE graph is rejected BY THE COUNT
+  detector, and the F* source explains why at length: an unbound `?g`
+  ranges over EVERY named graph, so a non-grouped `COUNT(*)` over that
+  shape must SUM the count across every named graph. That is one sum
+  over N backends, a different evaluation shape, not a mechanical
+  widening. Only `GRAPH <constant> { tp }` matches there. The LIMIT
+  detector DOES admit the variable form, because a limit is a prefix
+  of the same concatenation §18.6 builds — section 2a states the
+  argument and the two extra guards it needs.
 
 ## One representation difference, stated
 
@@ -110,8 +115,86 @@ def detectStreamingCountStar (q : Query) :
             | some (tp, scope) => some (v, tp, scope)
   | _ => none
 
-/-- The LIMIT-pushdown shape. -/
-def detectLimitSingleTp (q : Query) : Option (TriplePattern × Nat) :=
+/-! ## 2a. The LIMIT push-down: scope and the pattern it may claim
+
+`evalLimitSingleTp` asks the backend for `limit` CANDIDATES and then
+applies the full pattern match to them. The bound is a filter, not the
+whole test, so a pattern whose match can REJECT a candidate the bound
+admits would answer with fewer rows than the materialise path — the
+push-down would stop early on rows it then throws away.
+
+Two shapes do that. A repeated variable (`?x ?p ?x`, `GRAPH ?g { ?g ?p
+?o }`) carries an implicit equality the bound does not express; the
+GROUP BY detectors of section 3 refuse it for the same reason. An
+RDF-star triple term in a position grounds to `none` whenever any of
+its own positions is a variable, and its match is structural. Both are
+refused here, so the candidates the backend returns are exactly the
+rows the match keeps. -/
+
+/-- Every variable of a pattern term, in position order. A pattern
+blank node counts: §18.1.6 gives it the same role as a variable, and
+two occurrences of one label constrain the match the same way. -/
+def patternTermVars : PatternTerm → List VarName
+  | .var v => [v]
+  | .bnode b => [b]
+  | .iri _ => []
+  | .literal _ => []
+  | .tripleTerm s p o => patternTermVars s ++ patternTermVars p ++ patternTermVars o
+
+def patternSubjectVars : PatternSubject → List VarName
+  | .var v => [v]
+  | .bnode b => [b]
+  | .iri _ => []
+  | .tripleTerm s p o => patternTermVars s ++ patternTermVars p ++ patternTermVars o
+
+def triplePatternVars (tp : TriplePattern) : List VarName :=
+  patternSubjectVars tp.s ++ patternTermVars tp.p ++ patternTermVars tp.o
+
+/-- No triple term in any position: those match structurally, and a
+partly-ground one is not expressed by the bound. -/
+def triplePatternFlat (tp : TriplePattern) : Bool :=
+  (match tp.s with | .tripleTerm _ _ _ => false | _ => true) &&
+  (match tp.p with | .tripleTerm _ _ _ => false | _ => true) &&
+  (match tp.o with | .tripleTerm _ _ _ => false | _ => true)
+
+/-- The candidates the bound admits are exactly the rows the match
+keeps: flat positions, and no variable used twice. -/
+def limitPushdownSafe (tp : TriplePattern) : Bool :=
+  triplePatternFlat tp &&
+  (triplePatternVars tp).eraseDups.length == (triplePatternVars tp).length
+
+/-- Where a one-triple LIMIT push-down evaluates. -/
+inductive LimitScope where
+  /-- A bare BGP: the active graph. -/
+  | active
+  /-- `GRAPH <iri> { tp }`: that named graph alone. -/
+  | named (g : WfIri)
+  /-- `GRAPH ?v { tp }`: every named graph in dataset order, with `?v`
+  bound to each graph's name. -/
+  | everyNamed (v : VarName)
+  deriving Repr, DecidableEq
+
+/-- A one-triple BGP, bare or under one `GRAPH` layer whose name is a
+constant IRI or a variable.
+
+The variable case is admitted here and refused by
+`extractSingleTpBgpScoped` (section 1) because the two fast paths need
+different things from it. A non-grouped `COUNT(*)` over `GRAPH ?g` is a
+SUM across every named graph — a different evaluation shape. A LIMIT is
+a PREFIX of the same concatenation the materialise path builds, so
+walking the named graphs in dataset order and stopping at `k` rows
+gives that prefix. -/
+def extractSingleTpBgpLimitScope : QueryPattern → Option (TriplePattern × LimitScope)
+  | .bgp [tp] => some (tp, .active)
+  | .graph (.iri g) (.bgp [tp]) => some (tp, .named g)
+  | .graph (.var v) (.bgp [tp]) => some (tp, .everyNamed v)
+  | _ => none
+
+/-- The LIMIT-pushdown shape, scoped. `GRAPH ?v { tp }` is refused when
+`?v` also occurs in `tp`: `bindIfCompatible` would then drop rows the
+backend already counted against the limit. -/
+def detectLimitSingleTpScoped (q : Query) :
+    Option (TriplePattern × LimitScope × Nat) :=
   match q.form with
   | .select sel =>
       if selectHasAggregates sel then none
@@ -126,9 +209,24 @@ def detectLimitSingleTp (q : Query) : Option (TriplePattern × Nat) :=
         match q.modifier.limit with
         | none => none
         | some k =>
-            match extractSingleTpBgp q.pattern with
+            match extractSingleTpBgpLimitScope q.pattern with
             | none => none
-            | some tp => some (tp, k)
+            | some (tp, scope) =>
+                if !limitPushdownSafe tp then none
+                else
+                  match scope with
+                  | .everyNamed v =>
+                      if (triplePatternVars tp).contains v then none
+                      else some (tp, scope, k)
+                  | _ => some (tp, scope, k)
+  | _ => none
+
+/-- The bare LIMIT-pushdown shape. Kept for the callers that have one
+graph and no dataset: `detectLimitSingleTpScoped` is the same detector
+with the two `GRAPH` layers added. -/
+def detectLimitSingleTp (q : Query) : Option (TriplePattern × Nat) :=
+  match detectLimitSingleTpScoped q with
+  | some (tp, .active, k) => some (tp, k)
   | _ => none
 
 /-! ## 3. The two GROUP BY streaming detectors
@@ -309,9 +407,85 @@ theorem detectStreamingCountStar_rejects_ask (q : Query) (h : q.form = .ask) :
     detectStreamingCountStar q = none := by
   simp only [detectStreamingCountStar, h]
 
+theorem detectLimitSingleTpScoped_rejects_ask (q : Query) (h : q.form = .ask) :
+    detectLimitSingleTpScoped q = none := by
+  simp only [detectLimitSingleTpScoped, h]
+
 theorem detectLimitSingleTp_rejects_ask (q : Query) (h : q.form = .ask) :
     detectLimitSingleTp q = none := by
-  simp only [detectLimitSingleTp, h]
+  simp only [detectLimitSingleTp, detectLimitSingleTpScoped_rejects_ask q h]
+
+/-- ORDER BY refuses the push-down. A LIMIT under ORDER BY is a prefix
+of the SORTED sequence, so it needs every row; stopping the backend at
+`k` would answer with the first `k` rows in storage order instead.
+
+Checked NOT to be trivial (hazard #29): with the hypothesis removed the
+same script fails on the un-reduced `if q.modifier.orderBy.isSome …`,
+and the `#guard` below shows the detector is not constantly `none`. -/
+theorem detectLimitSingleTpScoped_rejects_orderBy (q : Query)
+    (h : q.modifier.orderBy.isSome = true) : detectLimitSingleTpScoped q = none := by
+  simp only [detectLimitSingleTpScoped]
+  split
+  · split
+    · rfl
+    · split
+      · rfl
+      · split
+        · rfl
+        · split
+          · rfl
+          · split
+            · rfl
+            · split
+              · rfl
+              · simp only [h, if_true]
+  · rfl
+
+/-- OFFSET refuses the push-down: `LIMIT k OFFSET n` needs `n + k` rows
+from the backend, not `k`. -/
+theorem detectLimitSingleTpScoped_rejects_offset (q : Query)
+    (h : q.modifier.offset.isSome = true) : detectLimitSingleTpScoped q = none := by
+  simp only [detectLimitSingleTpScoped]
+  split
+  · split
+    · rfl
+    · split
+      · rfl
+      · split
+        · rfl
+        · split
+          · rfl
+          · split
+            · rfl
+            · split
+              · rfl
+              · split
+                · rfl
+                · simp only [h, if_true]
+  · rfl
+
+/-- A repeated variable refuses the push-down: the bound does not carry
+the equality, so the backend would count candidates the match rejects. -/
+theorem limitPushdownSafe_rejects_repeated_var (p : WfIri) :
+    limitPushdownSafe { s := .var "x", p := .iri p, o := .var "x" } = false := rfl
+
+/-- The ordinary shape is admitted, so the guard above is not constantly
+`false` (hazard #29). -/
+theorem limitPushdownSafe_admits_distinct_vars (p : WfIri) :
+    limitPushdownSafe { s := .var "s", p := .iri p, o := .var "o" } = true := rfl
+
+/-- `GRAPH ?g { ?g ?p ?o }` refuses: `bindIfCompatible` drops rows the
+backend already counted against the limit. -/
+theorem detectLimitSingleTpScoped_rejects_graph_var_in_pattern (q : Query)
+    (g : VarName) (tp : TriplePattern)
+    (hp : q.pattern = .graph (.var g) (.bgp [tp]))
+    (hv : (triplePatternVars tp).contains g = true) :
+    detectLimitSingleTpScoped q = none := by
+  simp only [detectLimitSingleTpScoped, hp, extractSingleTpBgpLimitScope]
+  split
+  · repeat (first | rfl | split)
+    all_goals simp_all
+  · rfl
 
 /-- The LIMIT path never returns more rows than the limit. This is the
 property a caller relies on, and it holds however the backend behaves,
@@ -401,5 +575,9 @@ private def countQuery : Query := mkQuery (.select countStarSel) (.bgp [tp1])
 #print axioms extractSingleTpBgpScoped_rejects_graph_var
 #print axioms detectStreamingCountStar_rejects_distinct
 #print axioms evalLimitSingleTp_bounded
+#print axioms detectLimitSingleTpScoped_rejects_orderBy
+#print axioms detectLimitSingleTpScoped_rejects_offset
+#print axioms limitPushdownSafe_rejects_repeated_var
+#print axioms detectLimitSingleTpScoped_rejects_graph_var_in_pattern
 
 end L4Factoidal.SPARQL.StoreFastPath
