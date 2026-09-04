@@ -442,7 +442,19 @@ def successorsOf (_g : Graph) (st : RState) (i : Subject) (p : WfIri)
   let fromExtra := st.extra.filterMap (fun e =>
     if selves.contains e.s && roles.contains e.p && (!counted || e.counts)
     then some e.o else none)
-  let raw := (fromGraph ++ viaInverse ++ fromExtra).eraseDups
+  -- The inverse direction of an EXPANSION edge. `viaInverse` above
+  -- reads it off the input graph only, so a witness minted on `invR`
+  -- was invisible when the witness's own `r`-successors were asked
+  -- for. That is the shape of the OilEd inverse-role fixtures:
+  -- `x invR y` mints `y`, and `y`'s `r`-successors must include `x`.
+  -- `Inv(r') = r` holds in every model, so the edge `(a, r', b)`
+  -- entails `(b, r, a)` and reading it back is sound.
+  let inverseRoles := roles.flatMap (fun r => inversesOf st.inv r)
+  let fromExtraInverse := st.extra.filterMap (fun e =>
+    if inverseRoles.contains e.p && selves.any (fun j => e.o == j.toTerm)
+       && (!counted || e.counts)
+    then some e.s.toTerm else none)
+  let raw := (fromGraph ++ viaInverse ++ fromExtra ++ fromExtraInverse).eraseDups
   -- Identified successors collapse to ONE term, which is what makes a
   -- merge REDUCE the count a `≤ k` bound is measured against.
   if st.ident.isEmpty then raw else (raw.map (repOf st)).eraseDups
