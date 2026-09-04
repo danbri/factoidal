@@ -35,7 +35,7 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`, no solver.
 
 * **Clash soundness** — `detectClash_sound`: every `true` verdict of
   the decision procedure is a real `Clash`, again one lemma per clash
-  row (13 of them).
+  row (14 of them).
 
 ## What is NOT proved, named rather than hidden
 
@@ -283,6 +283,10 @@ theorem mem_asIri {t : Term} {i : WfIri} (h : i ∈ asIri t) : t = Term.iri i :=
 
 theorem mem_asIri_self (i : WfIri) : i ∈ asIri (Term.iri i) := by
   simp [asIri]
+
+theorem mem_asLit {t : Term} {l : WfLiteral} (h : l ∈ asLit t) :
+    t = Term.literal l := by
+  cases t <;> simp [asLit] at h <;> (subst h; rfl)
 
 /-! ## Section 3 — rebuilding a triple from the slots a lookup fixed
 
@@ -2210,6 +2214,26 @@ theorem prpAdpAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
       (mem_of_memB hm)
   · simp at h
 
+/-- **prp-fp** over fillers of provably different data values. The
+structural premises are proved; the `valuesProvablyDistinct` side
+condition is carried through unchanged, because the `Clash.prpFpLit`
+constructor takes the decision itself (see `RLRules`). -/
+theorem prpFpLitAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : prpFpLitAt g d = true) : Clash g := by
+  unfold prpFpLitAt at h
+  split at h
+  · rename_i hp
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hp
+    obtain ⟨hp1, hp2⟩ := hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨p, hpi, u1, hu1, l1, hl1, u2, hu2, l2, hl2, hne⟩ := h
+    obtain ⟨hu1g, hu1p⟩ := mem_withPred hu1
+    obtain ⟨hu2g, hu2s, hu2p⟩ := mem_withSubjPred hu2
+    exact Clash.prpFpLit (mem_of_parts hd (mem_subjIri hpi) hp1 hp2)
+      (mem_of_parts hu1g rfl hu1p (mem_asLit hl1))
+      (mem_of_parts hu2g hu2s hu2p (mem_asLit hl2)) hne
+  · simp at h
+
 /-- Every clash-row verdict for one driving triple is a real clash. -/
 theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
     (h : clashFrom g d = true) : Clash g := by
@@ -2217,7 +2241,7 @@ theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
     List.not_mem_nil, or_false] at h
   obtain ⟨b, hb, hv⟩ := h
   rcases hb with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact eqDiff1At_sound hd hv
   · exact prpIrpAt_sound hd hv
   · exact prpAsypAt_sound hd hv
@@ -2234,6 +2258,7 @@ theorem clashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
   · exact eqDiff2At_sound hd hv
   · exact eqDiff3At_sound hd hv
   · exact prpAdpAt_sound hd hv
+  · exact prpFpLitAt_sound hd hv
 
 /-- **Clash soundness.** Every `true` verdict of the decision procedure
 is a real `Clash` — the graph really does satisfy the premises of a

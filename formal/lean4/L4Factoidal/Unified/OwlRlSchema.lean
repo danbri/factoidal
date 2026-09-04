@@ -2296,12 +2296,20 @@ def owlRlSchema : Schema :=
     (schemaUnion owlRlFamilySchema
       (schemaUnion owlRlSeqSchema owlRlClashSchema))
 
-/-- The nine rows the schema does not carry, as an interpretation-class
-condition (see the section header for why each one is here). -/
+/-- The rows the schema does not carry, as an interpretation-class
+condition (see the section header for why each one is here).
+
+`RlNCondPrpFpLit` is here and not in the schema because its side
+condition is SYNTACTIC — the decision `RLRules.valuesProvablyDistinct`
+on two literals — and `rlNegRowRule` builds first-order sentences from
+term variables only. Carrying it as a hypothesis keeps the boundary
+visible in `unified_owlRl_sound`'s statement, which is where the other
+three sit for their own reasons. -/
 def OwlRlInterpCond (i : CL.Interp) : Prop :=
   RlCondCompDw (restrictInterp i) ∧
   RlCondCompMqc (restrictInterp i) ∧
-  RlCondMinc1 (restrictInterp i)
+  RlCondMinc1 (restrictInterp i) ∧
+  RlNCondPrpFpLit (restrictInterp i)
 
 theorem satisfiesSchema_owlRl_parts {i : CL.Interp}
     (hS : SatisfiesSchema i owlRlSchema) :
@@ -2342,7 +2350,7 @@ theorem owlRlSchema_conditions {i : CL.Interp}
     (hS : SatisfiesSchema i owlRlSchema) (hc : OwlRlInterpCond i) :
     RlConditions (restrictInterp i) ∧ RlClashConditions (restrictInterp i) := by
   obtain ⟨hH, hF, hQ, hN⟩ := satisfiesSchema_owlRl_parts hS
-  obtain ⟨kCompDw, kCompMqc, kMinc1⟩ := hc
+  obtain ⟨kCompDw, kCompMqc, kMinc1, kPrpFpLit⟩ := hc
   refine ⟨?_, ?_⟩
   · exact
     { eqRefS := cond_eqRefS hH
@@ -2453,6 +2461,7 @@ theorem owlRlSchema_conditions {i : CL.Interp}
       caxAdc := ncond_caxAdc hN
       eqDiff2 := ncond_eqDiff2 hN
       eqDiff3 := ncond_eqDiff3 hN
-      prpAdp := ncond_prpAdp hN }
+      prpAdp := ncond_prpAdp hN
+      prpFpLit := kPrpFpLit }
 
 end L4Factoidal.Unified

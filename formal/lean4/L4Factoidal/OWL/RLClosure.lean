@@ -150,6 +150,13 @@ def asIri : Term → List WfIri
   | .iri i => [i]
   | _      => []
 
+/-- The literal a term is, as a zero-or-one list. Same shape as
+`asIri` and `asSubject`: a row that reads a literal position walks
+this instead of matching, so the row stays a fold. -/
+def asLit : Term → List WfLiteral
+  | .literal l => [l]
+  | _          => []
+
 /-- A subject that is an IRI, as a 0-or-1 element list. Blank nodes
 cannot occupy a predicate position, so the rows whose driving premise
 names a property (`T(?p, rdf:type, owl:TransitiveProperty)`, ...) drop
@@ -1178,6 +1185,25 @@ def caxDwAt (g : Graph) (d : Triple) : Bool :=
       memB g ⟨u.s, rdfType, d.o⟩)
   else false
 
+/-- **prp-fp** over fillers of provably different data values.
+
+Profiles §4.3 Table 5 `prp-fp` concludes `T(?y1, owl:sameAs, ?y2)`;
+Table 8 `dt-diff` makes two literals of different data values
+`owl:differentFrom`; `eq-diff1` clashes the pair. Neither intermediate
+triple is representable here (a literal is never a `Subject`), so the
+three rows are composed into one verdict on prp-fp's own premises.
+`RLRules.valuesProvablyDistinct` carries the side condition and the
+obligation it does not discharge. -/
+def prpFpLitAt (g : Graph) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlFunctionalProperty then
+    (subjIri d.s).any (fun p =>
+      (withPred g p).any (fun u1 =>
+        (asLit u1.o).any (fun l1 =>
+          (withSubjPred g u1.s p).any (fun u2 =>
+            (asLit u2.o).any (fun l2 =>
+              valuesProvablyDistinct (Term.literal l1) (Term.literal l2))))))
+  else false
+
 /-! ### The four collection clash rows, and why they walk CELLS
 
 `caxAdcAt`, `eqDiff2At`, `eqDiff3At` and `prpAdpAt` take their member
@@ -1255,13 +1281,14 @@ def prpAdpAt (g : Graph) (d : Triple) : Bool :=
                     memB g ⟨u.s, p2, u.o⟩))))))))
   else false
 
-/-- The sixteen clash-row verdicts for one driving triple. -/
+/-- The seventeen clash-row verdicts for one driving triple. -/
 def clashRows (g : Graph) (d : Triple) : List Bool :=
   [ eqDiff1At g d, prpIrpAt g d, prpAsypAt g d, prpPdwAt g d,
     prpNpa1At g d, prpNpa2At g d, clsNothing2At g d, clsComAt g d,
     clsMaxc1At g d, clsMaxqc1At g d, clsMaxqc2At g d,
     caxDwAt g d, caxAdcAt g d,
-    eqDiff2At g d, eqDiff3At g d, prpAdpAt g d ]
+    eqDiff2At g d, eqDiff3At g d, prpAdpAt g d,
+    prpFpLitAt g d ]
 
 /-- Every clash row, driven by one triple. -/
 def clashFrom (g : Graph) (d : Triple) : Bool :=

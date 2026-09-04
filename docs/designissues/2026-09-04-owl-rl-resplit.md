@@ -707,3 +707,111 @@ Stated beside the result, per anti-pattern 28.
    when a case carries both, so the construct names read are Functional
    Syntax where available. A case whose two serialisations differ in
    constructs would be classified on the Functional one.
+
+### Landing 1 against this ranking — `prp-fp` over literal fillers
+
+Profiles §4.3 Table 5 `prp-fp`, composed with Table 8 `dt-diff` and
+`eq-diff1`. Tier A group 1.
+
+| | RL |
+|---|---|
+| before | 1173 pass, 274 fail, 2 skip, 8 unsupported (out of 1457) |
+| after | 1181 pass, 266 fail, 2 skip, 8 unsupported (out of 1457) |
+
+**Predicted 5 to 8 units, realised 8**, and the failing sets differ by
+exactly those eight lines with nothing newly failing:
+`functionality-clash` (2 units), `New-Feature-Keys-006` (3) and
+`Plus and Minus Zero are Distinct` (3). The two
+`WebOnt-miscellaneous-203`/`204` units in the same group did NOT close,
+as the prediction said: they compare two `rdf:XMLLiteral` fillers, and
+`XSD.termProvablyDistinct` does not reach the `rdf:XMLLiteral` value
+space.
+
+`New-Feature-Keys-006` is scored under prp-key in the ranking table and
+closed by the prp-fp row. That is method note 2 of the ranking working
+as stated: the tier gate reads constructs, and a premise can be
+inconsistent for a reason other than the one its most prominent
+construct suggests.
+
+Diagnostics: `clashes` 54 → 62, `closure_rounds` 5682 → 5684,
+`cap_hits` 0, `parse_failures` 1 — all unchanged apart from the eight
+new clashes.
+
+#### Gates
+
+| Gate | Before | After |
+|---|---|---|
+| `lake build` | green | green, 942 jobs |
+| ConsistencyTest, RL | 761 pass, 1 fail (out of 762) | 761 pass, 1 fail (out of 762) |
+| InconsistencyTest, RL | 54 pass, 106 fail (out of 160) | 62 pass, 98 fail (out of 160) |
+| NegativeEntailmentTest, RL | 38 pass, 0 fail (out of 38) | 38 pass, 0 fail (out of 38) |
+| RDF 1.1 | 1031 pass, 0 fail (out of 1031) | 1031 pass, 0 fail (out of 1031) |
+| SPARQL 1.1 | 631 pass, 0 fail (out of 631) | 631 pass, 0 fail (out of 631) |
+| `--dl`, `profile-RL.rdf`, closure alone | 117 pass, 9 fail (out of 126) | 120 pass, 6 fail (out of 126) |
+| `--dl`, `profile-RL.rdf`, closure or refutation | — | 121 pass, 5 fail (out of 126) |
+
+ConsistencyTest unchanged is the soundness gate: a clash row that fires
+on a consistent premise makes the engine deny a satisfiable ontology,
+which is worse than a missing row. 762 consistent premises, no new
+clash on any of them.
+
+#### The two cost gates
+
+| | Before | After |
+|---|---|---|
+| `lake build L4Factoidal.OWL.RLSemantics`, user time | 86.9 s | 124.2 s |
+| RL corpus, peak resident (`/usr/bin/time -l`) | 216 MB | 238 MB |
+| RL corpus, user time | 40.1 s | 72.2 s |
+| `--dl`, `profile-RL.rdf`, peak resident | — | 28 MB |
+
+Wall clock is not reported: another agent's `--dl` corpus run held the
+machine at 9 to 50 percent CPU for this session, so every wall figure
+here is contention, not work. User time and peak resident are the
+comparable numbers.
+
+The elaboration cost is +37 s user on `RLSemantics`, and it is the
+`RlClashConditions` structure gaining a seventeenth field, not the row
+body. That is well under the 26 s to 189 s regression that reverted a
+row family earlier, and it is recorded so the next row can be compared
+against it.
+
+#### What a new RL clash row actually costs
+
+Recorded because the ranking's Tier A is 19 units and each of its four
+groups pays this same bill. Adding one row to `RLClosure.clashRows`
+touched six files, not two:
+
+1. `OWL/RLClosure.lean` — the row, plus the `asLit` reader.
+2. `OWL/RLClosureIndexed.lean` — the store mirror, so
+   `clashFromS_ofGraph` still closes by `rfl`.
+3. `OWL/RLRules.lean` — a `Clash` constructor, and a case in
+   `Clash.mono`.
+4. `OWL/RLTheorems.lean` — a soundness lemma and a case in
+   `clashFrom_sound`.
+5. `OWL/RLSemantics.lean` — an `RlNCond*` interpretation condition, a
+   field on `RlClashConditions`, and a case in `rl_clash_holds_false`.
+6. `OWL/RLHerbrand.lean` and `Unified/OwlRlSchema.lean` — the
+   discharge of that condition in the completeness model and in the
+   schema bridge.
+
+Step 6 is where a row can fail outright. The Herbrand model's fragment
+clause (a) forbids a literal object, so a row whose premises put a
+literal in object position holds VACUOUSLY there — the same boundary
+the three cardinality rows sit on. Three new lemmas make that argument
+at a QUANTIFIED property (`listMember_no_literal`,
+`listDenotes_no_literal`, `no_literal_object_any`); the existing
+`no_literal_object` needs the property to be a known non-reserved IRI,
+which a row with a variable property does not have.
+
+The schema bridge cannot carry the row at all: `rlNegRowRule` builds
+first-order sentences over term variables, and this row's side
+condition is the SYNTACTIC decision
+`RLRules.valuesProvablyDistinct`. It joins `OwlRlInterpCond`, the
+bundle of rows carried as a hypothesis on the interpretation.
+
+Consequence for the ranking's other three Tier A groups: dt-not-type
+also puts a literal where the Herbrand fragment forbids one, so it can
+follow the same route. `ICEXT(I(owl:Thing)) = IR` cannot — it is about
+an interpretation's domain being non-empty, which is a condition the
+Herbrand model does meet, so its discharge is real work rather than a
+vacuity.

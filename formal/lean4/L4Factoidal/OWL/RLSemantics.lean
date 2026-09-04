@@ -1507,6 +1507,25 @@ def RlNCondPrpAdp : Prop :=
        i.iext (i.iIri uListMem) l (i.iIri p2) ∧
        i.iext (i.iIri p1) u v ∧ i.iext (i.iIri p2) u v)
 
+/-- **prp-fp** with two LITERAL fillers of provably different data
+values: Table 5 `prp-fp` gives `owl:sameAs` between the fillers,
+Table 8 `dt-diff` makes them `owl:differentFrom`, and `eq-diff1`
+closes the graph.
+
+The `valuesProvablyDistinct` premise stays SYNTACTIC here. Turning it
+into a domain-level inequality `i.iLit l1 ≠ i.iLit l2` is the job of
+the interpretation's datatype map, which `Interp` does not carry, so
+the condition quantifies over the two literals and takes the decision
+as a premise. That is the semantic form of the obligation named in
+`RLRules.valuesProvablyDistinct`, and it is a CONDITION on the
+interpretation, not a theorem about it. -/
+def RlNCondPrpFpLit : Prop :=
+  ∀ (p : WfIri) (x : i.idom) (l1 l2 : WfLiteral),
+    valuesProvablyDistinct (Term.literal l1) (Term.literal l2) = true →
+    ¬ (icext i (i.iIri p) (i.iIri owlFunctionalProperty) ∧
+       i.iext (i.iIri p) x (i.iLit l1) ∧
+       i.iext (i.iIri p) x (i.iLit l2))
+
 end ClashConditions
 
 /-- **The clash-condition bundle**: one field per `Clash` row. -/
@@ -1527,6 +1546,7 @@ structure RlClashConditions (i : Interp) : Prop where
   eqDiff2 : RlNCondEqDiff2 i
   eqDiff3 : RlNCondEqDiff3 i
   prpAdp : RlNCondPrpAdp i
+  prpFpLit : RlNCondPrpFpLit i
 
 /-! ## Truth of the collection premises under the conditions -/
 
@@ -2297,5 +2317,11 @@ theorem rl_clash_holds_false {i : Interp} (hcc : RlClashConditions i)
       have hlm2 := holds_listMember hlmB hlmS hA h2
       simp only [TripleHolds] at u1 u2 u3 u4
       exact hcc.prpAdp p1 p2 hne _ _ _ _ ⟨u1, u2, hlm1, hlm2, u3, u4⟩
+  | @prpFpLit p x l1 l2 hdecl h1 h2 hne =>
+      have u1 := hA _ hdecl
+      have u2 := hA _ h1
+      have u3 := hA _ h2
+      simp only [TripleHolds, denotTerm] at u1 u2 u3
+      exact hcc.prpFpLit p _ l1 l2 hne ⟨u1, u2, u3⟩
 
 end L4Factoidal.OWL.RL

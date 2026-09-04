@@ -996,12 +996,24 @@ def prpAdpAtS (s : Store) (d : Triple) : Bool :=
                     s.memB ⟨u.s, p2, u.o⟩))))))))
   else false
 
+/-- **prp-fp** over fillers of provably different data values. -/
+def prpFpLitAtS (s : Store) (d : Triple) : Bool :=
+  if d.p == rdfType && d.o == Term.iri owlFunctionalProperty then
+    (subjIri d.s).any (fun p =>
+      (s.withPred p).any (fun u1 =>
+        (asLit u1.o).any (fun l1 =>
+          (s.withSubjPred u1.s p).any (fun u2 =>
+            (asLit u2.o).any (fun l2 =>
+              valuesProvablyDistinct (Term.literal l1) (Term.literal l2))))))
+  else false
+
 def clashRowsS (s : Store) (d : Triple) : List Bool :=
   [ eqDiff1AtS s d, prpIrpAtS s d, prpAsypAtS s d, prpPdwAtS s d,
     prpNpa1AtS s d, prpNpa2AtS s d, clsNothing2AtS s d, clsComAtS s d,
     clsMaxc1AtS s d, clsMaxqc1AtS s d, clsMaxqc2AtS s d,
     caxDwAtS s d, caxAdcAtS s d,
-    eqDiff2AtS s d, eqDiff3AtS s d, prpAdpAtS s d ]
+    eqDiff2AtS s d, eqDiff3AtS s d, prpAdpAtS s d,
+    prpFpLitAtS s d ]
 
 def clashFromS (s : Store) (d : Triple) : Bool :=
   (clashRowsS s d).any (fun b => b)

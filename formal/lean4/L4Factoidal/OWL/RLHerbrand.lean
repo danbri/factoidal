@@ -236,6 +236,47 @@ theorem typedAll_decode (hfrag : RlHerbFrag c) {x y : Term}
     exact absurd h' (by decide)
   · exact hm
 
+/-- A `ListMember` walk never reaches a LITERAL under the fragment:
+the `here` step reads an `rdf:first` triple, whose object clause (a)
+forbids from being a literal, and the `there` step recurses. -/
+theorem listMember_no_literal (hfrag : RlHerbFrag c) {x e : Term}
+    (h : ListMember c x e) : ∀ l : WfLiteral, e ≠ .literal l := by
+  induction h with
+  | here hf =>
+      intro l he
+      subst he
+      obtain ⟨os, hos⟩ := frag_obj_subject hfrag hf
+      cases os <;> simp [Subject.toTerm] at hos
+  | there _ _ ih => exact ih
+
+/-- A `ListDenotes` head is never a LITERAL: `nil` puts `rdf:nil`
+there and `cons` puts a subject term there. -/
+theorem listDenotes_no_literal {x : Term} {cs : List Term}
+    (h : ListDenotes c x cs) : ∀ l : WfLiteral, x ≠ .literal l := by
+  cases h with
+  | nil => intro l hc; simp at hc
+  | @cons node _ _ _ _ _ _ _ =>
+      intro l hc; cases node <;> simp [Subject.toTerm] at hc
+
+/-- `TypedAllSem` never reads a LITERAL as its list head. -/
+theorem typedAllSem_no_literal {x : Term} {l : WfLiteral}
+    (h : TypedAllSem c x (.literal l)) : False := by
+  obtain ⟨_, _, _, _, hl, _⟩ := h
+  exact listDenotes_no_literal hl l rfl
+
+/-- No property relates anything to a LITERAL in `rlHerb c`: the
+syntactic arm is clause (a) of the fragment, and the two helper arms
+are the two lemmas above. Unlike `no_literal_object` this takes no
+non-reserved hypothesis, so it applies at a quantified property. -/
+theorem no_literal_object_any (hfrag : RlHerbFrag c) {q x : Term}
+    {l : WfLiteral} : ¬ rlHerbIext c q x (.literal l) := by
+  rintro (⟨t, ht, _, _, hy⟩ | ⟨_, hlm⟩ | ⟨_, hta⟩)
+  · obtain ⟨os, hos⟩ := frag_obj_subject hfrag ht
+    rw [← hy] at hos
+    cases os <;> simp [Subject.toTerm] at hos
+  · exact listMember_no_literal hfrag hlm l rfl
+  · exact typedAllSem_no_literal hta
+
 /-- No non-reserved atom relates anything to a literal, on the
 fragment (clause (a)) — the vacuity engine for the cardinality rows. -/
 theorem no_literal_object (hfrag : RlHerbFrag c) {q : WfIri}
@@ -2020,6 +2061,13 @@ theorem rlHerb_clash_conditions : RlClashConditions (rlHerb c) where
     subst hoo
     exact hcons (Clash.prpAdp (p1 := p1) (p2 := p2)
       hm1 hm2 hlm1 hlm2 hne hm3 hm4)
+  prpFpLit := by
+    -- A boundary row, like the three cardinality rows above: its
+    -- filler premises relate a term to a LITERAL, which fragment
+    -- clause (a) forbids, so the condition holds vacuously in
+    -- `rlHerb c`. The completeness direction does not reach it.
+    rintro p x l1 l2 - ⟨-, he1, -⟩
+    exact absurd he1 (no_literal_object_any hfrag)
 
 end HerbClashConditions
 

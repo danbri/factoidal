@@ -154,6 +154,7 @@ shape and what is and is not claimed.
 import L4Factoidal.RDF.Graph
 import L4Factoidal.RDF.Datatypes
 import L4Factoidal.OWL.Vocabulary
+import L4Factoidal.XSD.Facets
 
 namespace L4Factoidal.OWL.RL
 
@@ -1482,6 +1483,55 @@ the graph is an inconsistency, not a derivation. `RLClosure.detectClash`
 is the decision procedure, and `RLTheorems.detectClash_sound` proves
 every `true` verdict is one of these. -/
 
+/-! ## Two literals with different data values
+
+Profiles §4.3 Table 8 `dt-diff` asserts `T(?lt1, owl:differentFrom,
+?lt2)` for two literals whose data values differ, and `eq-diff1` then
+clashes that against an `owl:sameAs` between the same two literals.
+Neither intermediate triple can be written in this engine: `Triple.s`
+is a `Subject`, and a `Subject` is never a literal. The two rows are
+therefore composed into one side condition, decided by the function
+below and used by the `Clash.prpFpLit` row.
+
+`XSD.termProvablyDistinct` is ONE-SIDED: it answers `true` only on a
+proof of difference, never on a failure to prove sameness. So
+`"1"^^xsd:int` and `"1"^^xsd:integer` are one value here and never
+clash, and a language-tagged literal, an `rdf:XMLLiteral` and an
+`xsd:dateTime` are all outside its reach and never clash either.
+
+The signed-zero arm is XSD 1.1 §3.3.5 and §3.3.6: the `xsd:float` and
+`xsd:double` value spaces hold positive zero and negative zero as TWO
+values. No exact-rational comparison separates them — `parseDecimalRat`
+sends both to `0/1` — so the sign is read off the lexical form, which
+is the only place it survives.
+
+NAMED OBLIGATION, not discharged here: that
+`valuesProvablyDistinct a b = true` implies the XSD lexical-to-value
+map sends `a` and `b` to different values. Discharging it needs a value
+semantics for the datatype map, which this tree does not carry. The
+`Clash.prpFpLit` constructor below takes the DECISION as its side
+condition, so `RLTheorems.detectClash_sound` proves the structural
+premises of the row and nothing about the side condition. -/
+
+/-- `some true` for negative zero, `some false` for positive zero, on
+the `xsd:float` and `xsd:double` lines only. `none` everywhere else. -/
+def floatSignedZero : Term → Option Bool
+  | .literal l =>
+      if XSD.isFloatingPointDatatype l.val.datatype then
+        match XSD.parseDecimalRat l.val.lexicalForm with
+        | some r => if r.num == 0 then some (l.val.lexicalForm.startsWith "-")
+                    else none
+        | none   => none
+      else none
+  | _ => none
+
+/-- Two terms that PROVABLY denote different data values. -/
+def valuesProvablyDistinct (a b : Term) : Bool :=
+  XSD.termProvablyDistinct a b
+  || (match floatSignedZero a, floatSignedZero b with
+      | some x, some y => x != y
+      | _,      _      => false)
+
 inductive Clash (g : Graph) : Prop where
   /-- **eq-diff1** — `T(?x, owl:sameAs, ?y)
   T(?x, owl:differentFrom, ?y) | false`. -/
@@ -1605,6 +1655,18 @@ inductive Clash (g : Graph) : Prop where
       (hne : p1 ≠ p2)
       (t1 : (⟨u, p1, v⟩ : Triple) ∈ g)
       (t2 : (⟨u, p2, v⟩ : Triple) ∈ g) : Clash g
+  /-- **prp-fp** with two fillers of provably different data values,
+  closed by Table 8's `dt-diff` and then `eq-diff1`. The side condition
+  is the DECISION, not an independent semantic characterisation; see
+  `valuesProvablyDistinct` above for the obligation that is named and
+  not discharged. -/
+  | prpFpLit {p : WfIri} {x : Subject} {l1 l2 : WfLiteral}
+      (hdecl : (⟨Subject.iri p, rdfType,
+        Term.iri owlFunctionalProperty⟩ : Triple) ∈ g)
+      (h1 : (⟨x, p, Term.literal l1⟩ : Triple) ∈ g)
+      (h2 : (⟨x, p, Term.literal l2⟩ : Triple) ∈ g)
+      (hne : valuesProvablyDistinct (Term.literal l1)
+        (Term.literal l2) = true) : Clash g
 
 /-! ## Structural properties
 
@@ -1915,5 +1977,7 @@ theorem Clash.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | prpAdp a b h1 h2 hne t1 t2 =>
       exact Clash.prpAdp (hsub _ a) (hsub _ b) (h1.mono hsub) (h2.mono hsub)
         hne (hsub _ t1) (hsub _ t2)
+  | prpFpLit hd h1 h2 hne =>
+      exact Clash.prpFpLit (hsub _ hd) (hsub _ h1) (hsub _ h2) hne
 
 end L4Factoidal.OWL.RL
