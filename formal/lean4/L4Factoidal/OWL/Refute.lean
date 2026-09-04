@@ -1305,6 +1305,34 @@ def collectAxiomsS (st : Store) : List (ClassExpr × ClassExpr) :=
       [(a, nnfNeg b), (b, nnfNeg a)]
     else [])
 
+/-- Structural equality of TBox axiom pairs. `ClassExpr.beq` and not
+    `ceEq`: `ceEq a b` is `ceDefinite a && ClassExpr.beq a b`, which is
+    not reflexive on an indefinite expression, and an axiom must count
+    as a duplicate of ITSELF. -/
+def axiomBeq (x y : ClassExpr × ClassExpr) : Bool :=
+  ClassExpr.beq x.1 y.1 && ClassExpr.beq x.2 y.2
+
+/-- The structurally distinct axioms, FIRST occurrence kept, so the
+    order of the distinct axioms is the order `collectAxiomsS` emitted
+    them.
+
+    **Why a repeated axiom changes nothing.** `applyAxioms` and
+    `injectGlobalAxioms` fold over the TBox calling `addLabel`, and
+    `addLabel` returns the state unchanged when the label is already
+    present, so the second copy of an axiom adds nothing and reports no
+    change. `applyAxiomsEdges` and `applyAxiomsConj` guard on
+    `memCe a ls` before firing, so the second copy is skipped there
+    too. Nothing else reads the TBox: `pendingUnion`, `pendingMerge`
+    and `clashNodes` read labels and nodes.
+
+    **Why the failure direction is safe.** If that argument were wrong,
+    dropping a copy could only give a node FEWER labels, hence fewer
+    clashes, hence a WITHHELD refutation — never a manufactured one.
+    A wrong deduplication loses conformance units, which the corpus
+    score sees; it cannot invent an entailment. -/
+def dedupAxioms (tb : List (ClassExpr × ClassExpr)) : List (ClassExpr × ClassExpr) :=
+  (tb.foldl (fun acc a => if acc.any (axiomBeq a) then acc else a :: acc) []).reverse
+
 /-- The TBox of a graph, read through the HASH INDEX.
 
     `collectAxiomsS` parses a class expression for BOTH sides of every
@@ -1314,14 +1342,29 @@ def collectAxiomsS (st : Store) : List (ClassExpr × ClassExpr) :=
     of the whole graph per lookup, so the pass is quadratic in the
     graph and the tableau refuter pays it once per goal. Over the index
     each lookup is O(1). -/
-def collectAxioms (g : Graph) : List (ClassExpr × ClassExpr) :=
+def collectAxiomsRaw (g : Graph) : List (ClassExpr × ClassExpr) :=
   collectAxiomsS (Store.ofIndex (Index.ofGraph g))
 
 /-- The index store and the list store give `collectAxiomsS` the same
-    value, so `collectAxioms` is the list-scan definition it replaced. -/
-theorem collectAxioms_eq (g : Graph) :
-    collectAxioms g = collectAxiomsS (Store.ofGraph g) := by
-  rw [collectAxioms, Store.ofIndex_eq (Index.Wf.ofGraph g)]
+    value, so `collectAxiomsRaw` is the list-scan definition it
+    replaced. -/
+theorem collectAxiomsRaw_eq (g : Graph) :
+    collectAxiomsRaw g = collectAxiomsS (Store.ofGraph g) := by
+  rw [collectAxiomsRaw, Store.ofIndex_eq (Index.Wf.ofGraph g)]
+
+/-- The TBox the tableau runs against: one entry per STRUCTURALLY
+    DISTINCT axiom.
+
+    `collectAxiomsS` emits one axiom per triple, so two restriction
+    nodes with the same `owl:onProperty` and the same filler produce
+    the SAME class-expression pair. Measured over the whole OWL corpus
+    with `l4owl-probe --tbox-census`, 214,466 axioms reduce to 73,653
+    distinct ones, and on the heaviest case 18,099 reduce to 2,964.
+    `onePass` folds over the WHOLE TBox once per node and once per
+    label, and `search` runs it up to its budget per goal, so a
+    duplicate is paid thousands of times. -/
+def collectAxioms (g : Graph) : List (ClassExpr × ClassExpr) :=
+  dedupAxioms (collectAxiomsRaw g)
 
 /-! ## Expansion -/
 
