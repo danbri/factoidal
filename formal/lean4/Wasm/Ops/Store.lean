@@ -188,10 +188,10 @@ private def entryJson (manifest : Manifest) (entry : Entry) : Json :=
      , ("graphs", .array (entry.graphSet.map graphNameJson))
      , ("sidecars", .object (sidecarMembers entry)) ])
 
-private def totalBytesOf (entries : List Entry) : Nat :=
+def totalBytesOf (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.artifact.bytes) 0
 
-private def totalRowsOf (entries : List Entry) : Nat :=
+def totalRowsOf (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.rows) 0
 
 def decodeManifest? (op manifestHex : String) : Except String Manifest :=
@@ -243,7 +243,7 @@ structure StorePlan where
   ibk4 : Bool
   deriving Inhabited
 
-private def planFor (op : String) (manifest : Manifest) (query : Query) :
+def planFor (op : String) (manifest : Manifest) (query : Query) :
     Except String StorePlan :=
   if !rangeCommitted manifest then
     .error s!"{op}: this manifest carries no fixed-chunk Merkle commitment"
@@ -263,7 +263,7 @@ private def planFor (op : String) (manifest : Manifest) (query : Query) :
   else
     .error s!"{op}: layout '{manifest.layout}' is neither an IBK3 nor an IBK4 generation"
 
-private def parseQuery (op sparql : String) : Except String Query :=
+def parseQuery (op sparql : String) : Except String Query :=
   match parseSparql sparql with
   | .error e => .error s!"{op}: SPARQL parse error: {fmtParseError e}"
   | .ok query => .ok query
@@ -360,61 +360,61 @@ def resolveSources (op : String) (sources : List (String × ArtifactSource))
     let bytes ← sourceBytes op pair.1 pair.2 blob
     pure (pair.1, bytes)
 
-private def supplied? (sources : List (String × ArtifactSource)) (key : String) :
+def supplied? (sources : List (String × ArtifactSource)) (key : String) :
     Option ArtifactSource :=
   (sources.find? fun pair => pair.1 == key).map Prod.snd
 
 /-- Admit one supplied artifact against its manifest entry: the bytes are
 where the descriptor says they are, their length is the declared extent, and
 their SHA-256 is the declared digest. -/
-private def admitArtifact (entry : Entry) (sources : List (String × ArtifactSource))
+def admitArtifact (op : String) (entry : Entry) (sources : List (String × ArtifactSource))
     (blob : ByteArray) : Except String ByteArray := do
   let key := entry.artifact.key.value
   let source ← match supplied? sources key with
-    | none => throw s!"storeQuery: no bytes were supplied for artifact '{key}'"
+    | none => throw s!"{op}: no bytes were supplied for artifact '{key}'"
     | some source => pure source
   match source with
     | .window _ len =>
         if len != entry.artifact.bytes then
-          throw s!"storeQuery: artifact '{key}' is {len} bytes, the manifest declares {entry.artifact.bytes}"
+          throw s!"{op}: artifact '{key}' is {len} bytes, the manifest declares {entry.artifact.bytes}"
     | .hex text =>
         if text.length / 2 != entry.artifact.bytes then
-          throw s!"storeQuery: artifact '{key}' is {text.length / 2} bytes, the manifest declares {entry.artifact.bytes}"
-  let bytes ← sourceBytes "storeQuery" key source blob
+          throw s!"{op}: artifact '{key}' is {text.length / 2} bytes, the manifest declares {entry.artifact.bytes}"
+  let bytes ← sourceBytes op key source blob
   if bytes.size != entry.artifact.bytes then
-    throw s!"storeQuery: artifact '{key}' is {bytes.size} bytes, the manifest declares {entry.artifact.bytes}"
+    throw s!"{op}: artifact '{key}' is {bytes.size} bytes, the manifest declares {entry.artifact.bytes}"
   if !L4Factoidal.Storage.BlockArtifact.verify entry.artifact.sha256 bytes then
-    throw s!"storeQuery: artifact '{key}' does not match the SHA-256 the manifest commits"
+    throw s!"{op}: artifact '{key}' does not match the SHA-256 the manifest commits"
   pure bytes
 
-private def ibk3TriplesOf (entry : Entry) (bytes : ByteArray) :
+def ibk3TriplesOf (op : String) (entry : Entry) (bytes : ByteArray) :
     Except String (List Triple) := do
   let key := entry.artifact.key.value
   let block ← match L4Factoidal.Storage.IndexedBlockWireV3.decode bytes with
-    | none => throw s!"storeQuery: artifact '{key}' is not a decodable IBK3 block"
+    | none => throw s!"{op}: artifact '{key}' is not a decodable IBK3 block"
     | some block => pure block
   let triples := L4Factoidal.Storage.IndexedBlock.scanBound
     { p := some entry.predicate } block
   if triples.length != entry.rows then
-    throw s!"storeQuery: artifact '{key}' holds {triples.length} rows for its predicate, the manifest declares {entry.rows}"
+    throw s!"{op}: artifact '{key}' holds {triples.length} rows for its predicate, the manifest declares {entry.rows}"
   pure triples
 
-private def ibk4QuadsOf (entry : Entry) (bytes : ByteArray) :
+def ibk4QuadsOf (op : String) (entry : Entry) (bytes : ByteArray) :
     Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
   let key := entry.artifact.key.value
   let block ← match L4Factoidal.Storage.IndexedBlockWireV4.decode bytes with
-    | none => throw s!"storeQuery: artifact '{key}' is not a decodable IBK4 block"
+    | none => throw s!"{op}: artifact '{key}' is not a decodable IBK4 block"
     | some block => pure block
   if block.rows.size != entry.rows then
-    throw s!"storeQuery: artifact '{key}' holds {block.rows.size} rows, the manifest declares {entry.rows}"
+    throw s!"{op}: artifact '{key}' holds {block.rows.size} rows, the manifest declares {entry.rows}"
   pure block.denotes
 
 private def readIbk3 (sources : List (String × ArtifactSource)) (blob : ByteArray) :
     List Entry → List Triple → Except String (List Triple)
   | [], acc => pure acc
   | entry :: rest, acc => do
-      let bytes ← admitArtifact entry sources blob
-      let triples ← ibk3TriplesOf entry bytes
+      let bytes ← admitArtifact "storeQuery" entry sources blob
+      let triples ← ibk3TriplesOf "storeQuery" entry bytes
       readIbk3 sources blob rest (acc ++ triples)
 
 private def readIbk4 (sources : List (String × ArtifactSource)) (blob : ByteArray) :
@@ -422,21 +422,27 @@ private def readIbk4 (sources : List (String × ArtifactSource)) (blob : ByteArr
     Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
   | [], acc => pure acc
   | entry :: rest, acc => do
-      let bytes ← admitArtifact entry sources blob
-      let quads ← ibk4QuadsOf entry bytes
+      let bytes ← admitArtifact "storeQuery" entry sources blob
+      let quads ← ibk4QuadsOf "storeQuery" entry bytes
       readIbk4 sources blob rest (acc ++ quads)
 
-/-- Every cap, checked against the manifest's own declarations before a single
-byte is hashed. -/
-private def checkCaps (plan : StorePlan) : Except String Unit := do
-  if plan.entries.length > maxStoreArtifacts then
-    throw s!"storeQuery: the plan selects {plan.entries.length} artifacts, the cap is {maxStoreArtifacts}"
-  let bytes := totalBytesOf plan.entries
+/-- Every read cap, checked against the manifest's own declarations before a
+single byte is hashed.
+
+`subject` is the sentence opener, so the same three caps read correctly for
+the operation that trips one: `storeQuery` selects a plan, `storeOpen`
+(Wasm/Ops/StoreHandles.lean) is handed a set of artifacts. The values are the
+same in both, so a handle can never retain an artifact set that `storeQuery`
+would refuse to read. -/
+def checkEntryCaps (subject : String) (entries : List Entry) : Except String Unit := do
+  if entries.length > maxStoreArtifacts then
+    throw s!"{subject} {entries.length} artifacts, the cap is {maxStoreArtifacts}"
+  let bytes := totalBytesOf entries
   if bytes > maxStoreBytes then
-    throw s!"storeQuery: the plan selects {bytes} artifact bytes, the cap is {maxStoreBytes}"
-  let rows := totalRowsOf plan.entries
+    throw s!"{subject} {bytes} artifact bytes, the cap is {maxStoreBytes}"
+  let rows := totalRowsOf entries
   if rows > maxStoreRows then
-    throw s!"storeQuery: the plan selects {rows} rows, the cap is {maxStoreRows}"
+    throw s!"{subject} {rows} rows, the cap is {maxStoreRows}"
   pure ()
 
 /-- `storeQuery(manifestHex, sparql, artifactsJson)` over one blob region —
@@ -462,7 +468,7 @@ def storeQuery (manifestHex sparql artifactsJson : String) (blob : ByteArray) : 
     let manifest ← decodeManifest? "storeQuery" manifestHex
     let query ← parseQuery "storeQuery" sparql
     let plan ← planFor "storeQuery" manifest query
-    checkCaps plan
+    checkEntryCaps "storeQuery: the plan selects" plan.entries
     let sources ← artifactSources "storeQuery" artifactsJson
     let extra : List (String × Json) :=
       [ ("shards", .number (toString plan.entries.length))

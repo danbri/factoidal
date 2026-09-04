@@ -39,6 +39,7 @@ import Wasm.Ops.Reason
 import Wasm.Ops.Canon
 import Wasm.Ops.Block
 import Wasm.Ops.Store
+import Wasm.Ops.StoreHandles
 import Wasm.Ops.CL
 import Wasm.Ops.Proof
 import Wasm.Ops.Handles
@@ -179,6 +180,18 @@ def handleOpNames : List String :=
   , "datasetSerialize"
   , "datasetClose" ]
 
+/-- The store-handle op names (`Wasm/Ops/StoreHandles.lean`), served ONLY by
+`callIO` and `callBlobIO` — the pure `call` cannot reach the store-handle
+table. `storeOpen` also carries a byte region IN; through `callIO`, which
+carries none, it still answers, with an empty region, so the diagnostic
+`{"key","bytes":"<hex>"}` descriptor form works through the plain entry and
+through `Wasm/Main.lean`'s `callseq`. -/
+def storeHandleOpNames : List String :=
+  [ "storeOpen"
+  , "storeHandleQuery"
+  , "storeHandleList"
+  , "storeHandleClose" ]
+
 /-- The pack op names (`Wasm/Ops/Pack.lean`), served ONLY by `callIO` and
 `callBlobIO` — the pure `call` cannot reach the pack table. `packFeed` and
 `packNext` also need a byte region and are listed in `blobIoOpNames`; through
@@ -299,7 +312,16 @@ def callIO (op : String) (argsJson : String) : IO String :=
   | "packClose"        => withArgs (arityIO1 op Ops.packClose)
   | "packFeed" | "packNext" =>
       pure (errJson s!"{op} carries a byte region; call it through l4_call_blob_io")
-  | "ops"              => pure (opsReflectionFor (opNames ++ handleOpNames ++ packOpNames))
+  | "storeOpen"        => withArgs (arityIO2 op (fun a b => Ops.storeOpen a b ByteArray.empty))
+  | "storeHandleQuery" => withArgs (arityIO2 op Ops.storeHandleQuery)
+  | "storeHandleClose" => withArgs (arityIO1 op Ops.storeHandleClose)
+  | "storeHandleList" =>
+      withArgs (fun args =>
+        match args with
+        | [] => Ops.storeHandleList
+        | args => pure (errJson s!"storeHandleList expects 0 arguments, got {args.length}"))
+  | "ops"              => pure (opsReflectionFor
+                                 (opNames ++ handleOpNames ++ storeHandleOpNames ++ packOpNames))
   | _                  => pure (call op argsJson)
 
 /-- The dispatch entry the `l4_call_blob_io` C export serves: the string
@@ -331,6 +353,15 @@ def callBlobIO (op : String) (argsJson : String) (blob : ByteArray) :
       | .ok [a]   => Ops.packNext a
       | .ok args  => pure (errJson s!"packNext expects 1 argument, got {args.length}",
                            ByteArray.empty)
+  -- `storeOpen` is the one op that needs BOTH the incoming region and the
+  -- handle table, so neither `callBlob` (pure) nor `callIO` (no region) can
+  -- serve it. It builds no out region.
+  | "storeOpen" =>
+      match decodeArgs argsJson with
+      | .error e   => pure (errJson e, ByteArray.empty)
+      | .ok [a, b] => do pure (← Ops.storeOpen a b blob, ByteArray.empty)
+      | .ok args   => pure (errJson s!"storeOpen expects 2 arguments, got {args.length}",
+                            ByteArray.empty)
   | _ =>
       if blobOpNames.contains op then
         pure (callBlob op argsJson blob, ByteArray.empty)
