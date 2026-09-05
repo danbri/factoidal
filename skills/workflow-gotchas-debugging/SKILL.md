@@ -1846,3 +1846,28 @@ value the caller passes, and evaluate each of its sub-tests beside it in
 ONE `#eval`. The line `(some (…sfWithin, (false, (true, sfWithin))))`
 says the guard passed, the tail is right, and the function still answers
 `none` — which can only be the dispatch.
+
+## Hazard #39 — `git rebase` flattens an octopus landing and replays its sides against each other (2026-09-05)
+
+### Symptom
+
+`git push` refused (origin had two CI artifact commits). `git rebase
+origin/claude/main` stopped at the FIRST local commit with conflicts in
+`Storage/PackStream.lean` and `Harness/PredicateShardPack.lean` — files
+the CI commits never touched.
+
+### Root cause
+
+The local history held a three-parent merge (`1d3a090c5`, two agent
+branches landed by hand). A plain rebase linearises merges: it replays
+each side's commits one after the other onto the new base, and the second
+side conflicts with the first exactly where the hand merge had resolved
+them.
+
+### The rules
+
+1. On `claude/main`, bring origin in with `git merge origin/claude/main`,
+   never `git rebase`. CI commits touch generated files only, so the merge
+   is clean; the merge commit is the accepted cost.
+2. If a rebase must be used, pass `--rebase-merges`.
+3. `git rebase --abort` restores the pre-rebase tip; nothing is lost.
