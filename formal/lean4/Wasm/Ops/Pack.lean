@@ -477,7 +477,16 @@ private def noLegacySubject : Entry → ArtifactRef → Id Bool := fun _ _ => pu
 
 /-- `activateVerify(manifestHex, windowsJson)` over one IN region — the
     verdict `Harness/ShardActivate.lean` reaches on the same bytes, minus the
-    positioned-read pass which needs a file system. -/
+    positioned-read pass which needs a file system.
+
+    An SBM10 generation goes through the SAME `GenerationVerify` functions the
+    native activation calls, in the same order: `verifyFullEntries`,
+    `verifyBlobArtifacts` over the manifest blob table,
+    `verifyIndexSidecars` (which leaves LGI2 and GBI1 to the entry check at
+    version 10, so the block is decoded once), and `verifyQuadV5Entries`,
+    which recomputes each entry's zone maps, blob reference list and two index
+    sidecars from one decode of its IBK5 block. The region must therefore
+    carry the blob artifacts as well as the blocks and sidecars. -/
 def activateVerify (manifestHex windowsJson : String) (blob : ByteArray) : String :=
   let outcome : Except String String := do
     if blob.size > maxActivateBytes then
@@ -492,12 +501,21 @@ def activateVerify (manifestHex windowsJson : String) (blob : ByteArray) : Strin
     let read := activateReader resolved
     if !Id.run (L4Factoidal.Storage.GenerationVerify.verifyFullEntries packHasher read manifest.entries) then
       throw "candidate child artifact fails its declared SHA-256 commitment"
+    -- The SBM10 blob table. Each `blob-<hex>.lit` satisfies the same two
+    -- commitments every other child satisfies and its key names its own
+    -- digest. The list is empty below version 10, so this is a no-op there.
+    if !Id.run (L4Factoidal.Storage.GenerationVerify.verifyBlobArtifacts packHasher read
+        manifest.blobs) then
+      throw L4Factoidal.Storage.GenerationVerify.blobFailure
     match Id.run (L4Factoidal.Storage.GenerationVerify.verifyIndexSidecars read manifest.version
         noLegacySubject manifest.entries) with
     | some failure => throw failure
     | none => pure ()
     let readable : Option Nat :=
-      if isIbk4Layout manifest.layout then
+      if isIbk5Layout manifest.layout then
+        Id.run (L4Factoidal.Storage.GenerationVerify.verifyQuadV5Entries packHasher read manifest
+          manifest.entries 0)
+      else if isIbk4Layout manifest.layout then
         Id.run (L4Factoidal.Storage.GenerationVerify.verifyQuadEntries read manifest.entries 0)
       else if isIbk3Layout manifest.layout then
         Id.run (L4Factoidal.Storage.GenerationVerify.verifyIbk3Entries read manifest.entries 0)
@@ -505,11 +523,13 @@ def activateVerify (manifestHex windowsJson : String) (blob : ByteArray) : Strin
         none
     match readable with
     | none =>
-        if isIbk4Layout manifest.layout then throw L4Factoidal.Storage.GenerationVerify.quadEntryFailure
+        if isIbk5Layout manifest.layout then
+          throw L4Factoidal.Storage.GenerationVerify.quadV5EntryFailure
+        else if isIbk4Layout manifest.layout then throw L4Factoidal.Storage.GenerationVerify.quadEntryFailure
         else if isIbk3Layout manifest.layout then
           throw "candidate child artifact is missing, changed, or malformed"
         else
-          throw s!"activateVerify: layout '{manifest.layout}' is neither an IBK3 nor an IBK4 generation"
+          throw s!"activateVerify: layout '{manifest.layout}' is not an IBK3, IBK4 or IBK5 generation"
     | some _ =>
         pure (okWith [("artifacts", .number (toString resolved.length)),
                       ("bytes", .number (toString (resolved.foldl
