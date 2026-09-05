@@ -248,6 +248,39 @@ sub-pattern per solution, which is a planner cost unrelated to this change.
 It was replaced by the same shape inside one small `GRAPH <iri>`, which
 answers 18 rows.
 
+### 6.1 Gate 2 re-run for the (predicate, graph) buckets, 2026-09-05
+
+The same 209,715,187-byte prefix, packed at `ibk5` by the packer at
+`claude/main` and by the bucket change, both activated, the ten shapes run
+with ONE binary, header line stripped.
+
+| | `claude/main` | (predicate, graph) buckets |
+|---|---|---|
+| quads | 942,869 | 942,869 |
+| blocks | 1,252 | 1,252 |
+| graphs | 153 | 153 |
+| pack wall clock | 80.86 s | 89.28 s |
+| pack peak footprint | 241,270,784 bytes | 408,158,208 bytes |
+| activation | 58.80 s | 55.45 s |
+| verified logical bytes | 97,578,312 | 97,578,312 |
+
+The BLOCK SET is byte-identical, not merely equal in count: the multiset of
+(predicate, rows, SHA-256, graph set) over the 1,252 manifest entries agrees
+exactly, and so does the per-predicate block count over all 100 predicates.
+Only the ORDER differs, and with it the ordinals and the artifact names —
+`claude/main` emits a predicate's blocks together, the bucket change emits
+each block when its run closes.
+
+Answers: 17,648 rows, 0, 2,634, 1,392, 4,887, `true`, `false`, 0, 17,426 and
+1. **The two outputs are identical over 186 lines. GATE 2 PASSES.**
+
+The pack costs more memory: 408,158,208 bytes against 241,270,784. There are
+more open runs, one per (predicate, graph) pair instead of one per predicate,
+and this source has 153 graphs. The peak is still bounded by `maxCarriedRows`
+and one batch, not by the source, so the ladder of section 5 keeps its shape;
+the constant is larger. The wall clock rose from 80.86 s to 89.28 s on the
+same machine, both runs measured here rather than quoted from section 6.
+
 ## 7. Where the code is
 
 | Piece | File |
