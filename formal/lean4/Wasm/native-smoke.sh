@@ -474,6 +474,203 @@ checkblob "storeQuery answers a GRAPH clause over a supplied IBK4 block region" 
    and r["mode"] == "ibk4-full-manifest(1)"
    and len(r["srj"]["results"]["bindings"]) == 2'
 
+# --- The same operations over an SBM10 generation of IBK5 quad blocks ---
+#
+# Wire version 10 (docs/designissues/2026-09-05-wire-version-10-scale.md).
+# The fixture holds the four term shapes version 9 cannot store: an RDF 1.2
+# triple term, a directional literal, a 70,000-byte literal and a
+# 68,226-byte geometry. The last two are above maxInlineLexicalBytes, so they
+# are OUT OF LINE: one `blob-<sha256 hex>.lit` artifact each, named in the
+# manifest blob table, and the block holds only their extent and digest.
+"$PACK" "$REPO_ROOT/tests/local/data/rdf12_sample.trig" "$TMP/store-ibk5" ibk5 >/dev/null
+
+# The blob file names are content addresses, so they are read from the
+# generation rather than written here.
+IBK5_BLOBS=$(cd "$TMP/store-ibk5" && ls blob-*.lit)
+# shellcheck disable=SC2086
+set -- $IBK5_BLOBS
+BLOB_GEO="$1"
+BLOB_BIG="$2"
+
+storeargs "$TMP/store-inspect-ibk5.json" "$TMP/store-ibk5/manifest.sbm2"
+check "storeManifestInspect reports an IBK5 generation, its zone maps and its blob table" \
+  storeManifestInspect "$TMP/store-inspect-ibk5.json" \
+  'r["ok"] is True and r["wireVersion"] == 10
+   and r["layout"] == "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0"
+   and len(r["entries"]) == 5
+   and all(e["blockKind"] == "IBK5" for e in r["entries"])
+   and all(e["sidecars"]["literalIndex"] == e["key"] + ".lgi2" for e in r["entries"])
+   and all(len(e["subjectZone"]["min"]) % 2 == 0 for e in r["entries"])
+   and all(e["subjectZone"]["min"] <= e["subjectZone"]["max"] for e in r["entries"])
+   and all(e["objectZone"]["min"] <= e["objectZone"]["max"] for e in r["entries"])
+   and len(r["blobs"]) == 2
+   and all(b["key"].startswith("blob-") and b["key"].endswith(".lit") for b in r["blobs"])
+   and all(b["key"] == "blob-" + b["sha256"] + ".lit" for b in r["blobs"])
+   and sorted(b["bytes"] for b in r["blobs"]) == [68226, 70000]
+   and [e["blobRefs"] for e in r["entries"] if "blobRefs" in e]
+       == [[r["blobs"][1]["key"]], [r["blobs"][0]["key"]]]'
+
+# The plan names the blob artifacts the selected entries refer to, AFTER the
+# block keys and the sidecar keys, so a host fetches everything one query can
+# touch without decoding a block.
+storeargs "$TMP/store-plan-ibk5.json" "$TMP/store-ibk5/manifest.sbm2" \
+  'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } BIND(STRLEN(?o) AS ?n) }'
+check "storeQueryPlan lists the blob keys an IBK5 plan reaches" storeQueryPlan \
+  "$TMP/store-plan-ibk5.json" \
+  'r["ok"] is True and r["mode"] == "ibk5-full-manifest(1)" and r["shards"] == 1
+   and r["keys"] == ["predicate-3.ibk5"]
+   and r["sidecarKeys"] == ["predicate-3.ibk5.lgi2", "predicate-3.ibk5.gbi1"]
+   and len(r["blobKeys"]) == 1
+   and r["blobKeys"][0].startswith("blob-") and r["blobKeys"][0].endswith(".lit")
+   and r["bytes"] > 70000
+   and r["zoneExcluded"] == 0'
+
+# The zone maps. A constant subject outside every block's subject range is
+# dropped by the manifest alone, with no block read at all.
+storeargs "$TMP/store-plan-ibk5-zone.json" "$TMP/store-ibk5/manifest.sbm2" \
+  'SELECT ?o WHERE { GRAPH ?g { <http://example.org/zzzz> <http://example.org/label> ?o } }'
+check "storeQueryPlan drops IBK5 entries by their zone maps" storeQueryPlan \
+  "$TMP/store-plan-ibk5-zone.json" \
+  'r["ok"] is True and r["shards"] == 0 and r["keys"] == []
+   and r["zoneExcluded"] == 2'
+
+# A subject the corpus HAS is kept, and the zone maps drop the other entry of
+# the same predicate.
+storeargs "$TMP/store-plan-ibk5-hit.json" "$TMP/store-ibk5/manifest.sbm2" \
+  'SELECT ?o WHERE { GRAPH ?g { <http://example.org/s5> <http://example.org/label> ?o } }'
+check "storeQueryPlan keeps the IBK5 entry whose zone map holds the subject" storeQueryPlan \
+  "$TMP/store-plan-ibk5-hit.json" \
+  'r["ok"] is True and r["shards"] == 1 and r["zoneExcluded"] == 1'
+
+# The 70,000-byte literal, read through its blob artifact. STRLEN is over the
+# RESOLVED lexical form, so a wrong or absent blob cannot answer it.
+blobargs "$TMP/store-query-ibk5.json" "$TMP/store-query-ibk5.blob" \
+  "$TMP/store-ibk5/manifest.sbm2" \
+  'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } BIND(STRLEN(?o) AS ?n) }' \
+  "$TMP/store-ibk5" predicate-3.ibk5 "$BLOB_BIG"
+checkblob "storeQuery resolves an out-of-line literal the host supplied" storeQuery \
+  "$TMP/store-query-ibk5.json" "$TMP/store-query-ibk5.blob" \
+  'r["ok"] is True and r["kind"] == "select" and r["shards"] == 1
+   and r["mode"] == "ibk5-full-manifest(1)"
+   and r["srj"]["results"]["bindings"][0]["n"]["value"] == "70000"'
+
+# Without the blob the query is REFUSED by name; it is never answered with a
+# fabricated or truncated literal.
+blobargs "$TMP/store-query-ibk5-noblob.json" "$TMP/store-query-ibk5-noblob.blob" \
+  "$TMP/store-ibk5/manifest.sbm2" \
+  'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } BIND(STRLEN(?o) AS ?n) }' \
+  "$TMP/store-ibk5" predicate-3.ibk5
+checkblob "storeQuery refuses an IBK5 block whose blob was not supplied" storeQuery \
+  "$TMP/store-query-ibk5-noblob.json" "$TMP/store-query-ibk5-noblob.blob" \
+  'r["ok"] is False and "no bytes were supplied for artifact" in r["error"]
+   and ".lit" in r["error"]'
+
+# The RDF 1.2 triple term survives the round trip through the block.
+blobargs "$TMP/store-query-ibk5-tt.json" "$TMP/store-query-ibk5-tt.blob" \
+  "$TMP/store-ibk5/manifest.sbm2" \
+  'SELECT ?o WHERE { <http://example.org/s1> <http://example.org/says> ?o }' \
+  "$TMP/store-ibk5" predicate-0.ibk5
+checkblob "storeQuery answers a triple term from an IBK5 block" storeQuery \
+  "$TMP/store-query-ibk5-tt.json" "$TMP/store-query-ibk5-tt.blob" \
+  'r["ok"] is True and r["srj"]["results"]["bindings"][0]["o"]["type"] == "triple"
+   and r["srj"]["results"]["bindings"][0]["o"]["value"]["object"]["value"]
+       == "http://example.org/b"'
+
+# activateVerify over the whole SBM10 generation: the blob table as well as
+# the blocks and their two sidecars, through the same GenerationVerify path
+# l4block-shard-activate takes.
+python3 - "$TMP/store-ibk5" "$TMP/activate-ibk5.json" "$TMP/activate-ibk5.blob" <<'EOF'
+import json, pathlib, sys
+directory = pathlib.Path(sys.argv[1])
+# Every child except the manifest itself: activation checks the `.merkle`
+# leaf sidecars beside the artifacts they commit.
+names = sorted(p.name for p in directory.iterdir()
+               if not p.name.startswith('manifest.'))
+blob = bytearray()
+descriptors = []
+for name in names:
+    data = (directory / name).read_bytes()
+    descriptors.append({"key": name, "offset": len(blob), "len": len(data)})
+    blob += data
+pathlib.Path(sys.argv[3]).write_bytes(bytes(blob))
+pathlib.Path(sys.argv[2]).write_text(json.dumps(
+    [(directory / 'manifest.sbm2').read_bytes().hex(), json.dumps(descriptors)]))
+EOF
+checkblob "activateVerify admits an SBM10 generation with its blob table" activateVerify \
+  "$TMP/activate-ibk5.json" "$TMP/activate-ibk5.blob" \
+  'r["ok"] is True and r["artifacts"] == 34 and r["bytes"] > 138000'
+
+# The same region without the blob artifacts is refused: a generation whose
+# out-of-line literals are absent is not activated.
+python3 - "$TMP/activate-ibk5.json" "$TMP/activate-ibk5-noblob.json" <<'EOF'
+import json, pathlib, sys
+argv = json.loads(pathlib.Path(sys.argv[1]).read_text())
+kept = [d for d in json.loads(argv[1]) if not d["key"].startswith("blob-")]
+argv[1] = json.dumps(kept)
+pathlib.Path(sys.argv[2]).write_text(json.dumps(argv))
+EOF
+checkblob "activateVerify refuses an SBM10 generation whose blobs are absent" activateVerify \
+  "$TMP/activate-ibk5-noblob.json" "$TMP/activate-ibk5.blob" \
+  'r["ok"] is False and "blob artifact" in r["error"]'
+
+# A handle over the whole SBM10 generation: the blobs are resolved ONCE at
+# storeOpen, and both candidate-filter paths must keep an out-of-line literal
+# in their candidate set. A CONTAINS needle inside the 70,000-byte literal has
+# no gram in the block, and the 68,226-byte polygon has no bounding box in
+# GBI1; without BlockV5Plan's opaque union each of these answers zero rows.
+python3 - "$TMP/store-ibk5" "$TMP/store-ibk5-seq.json" <<'EOF'
+import json, pathlib, sys
+directory = pathlib.Path(sys.argv[1])
+names = sorted(p.name for p in directory.iterdir()
+               if not p.name.startswith('manifest.') and not p.name.endswith('.merkle'))
+payload = json.dumps([{"key": name, "bytes": (directory / name).read_bytes().hex()}
+                      for name in names])
+manifest = (directory / 'manifest.sbm2').read_bytes().hex()
+needle = ('SELECT ?s WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } '
+          'FILTER(CONTAINS(?o, "needle")) }')
+geo = ('SELECT ?s WHERE { GRAPH ?g { ?s '
+       '<http://www.opengis.net/ont/geosparql#asWKT> ?o } FILTER('
+       '<http://www.opengis.net/def/function/geosparql/sfIntersects>(?o, '
+       '"POINT(5 5)"^^<http://www.opengis.net/ont/geosparql#wktLiteral>)) }')
+length = ('SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } '
+          'BIND(STRLEN(?o) AS ?n) }')
+pathlib.Path(sys.argv[2]).write_text(json.dumps([
+    ["storeOpen", [manifest, payload]],
+    ["storeHandleQuery", ["s1", needle]],
+    ["storeHandleQuery", ["s1", geo]],
+    ["storeHandleQuery", ["s1", length]],
+    ["storeHandleClose", ["s1"]]]))
+EOF
+checkseq "store handle: an IBK5 generation, its blobs resolved once at open" \
+  "$TMP/store-ibk5-seq.json" \
+  'rs[0]["ok"] is True and rs[0]["wireVersion"] == 10 and rs[0]["blobs"] == 2
+   and rs[0]["artifacts"] == 5
+   and rs[1]["ok"] is True
+   and [b["s"]["value"] for b in rs[1]["srj"]["results"]["bindings"]]
+       == ["http://example.org/s3"]
+   and rs[2]["ok"] is True
+   and [b["s"]["value"] for b in rs[2]["srj"]["results"]["bindings"]]
+       == ["http://example.org/s4"]
+   and rs[3]["srj"]["results"]["bindings"][0]["n"]["value"] == "70000"
+   and rs[4]["ok"] is True'
+
+# An open that leaves a blob out is refused, by name, before any query.
+python3 - "$TMP/store-ibk5" "$TMP/store-ibk5-noblob-seq.json" <<'EOF'
+import json, pathlib, sys
+directory = pathlib.Path(sys.argv[1])
+names = sorted(p.name for p in directory.iterdir()
+               if not p.name.startswith('manifest.') and not p.name.endswith('.merkle')
+               and not p.name.startswith('blob-'))
+payload = json.dumps([{"key": name, "bytes": (directory / name).read_bytes().hex()}
+                      for name in names])
+pathlib.Path(sys.argv[2]).write_text(json.dumps([
+    ["storeOpen", [(directory / 'manifest.sbm2').read_bytes().hex(), payload]]]))
+EOF
+checkseq "storeOpen refuses an IBK5 generation whose blobs were not supplied" \
+  "$TMP/store-ibk5-noblob-seq.json" \
+  'rs[0]["ok"] is False and "no bytes were supplied for artifact" in rs[0]["error"]
+   and ".lit" in rs[0]["error"]'
+
 args "$TMP/store-arity.json" "00"
 check "storeQuery wrong arity -> error" storeQuery "$TMP/store-arity.json" \
   'r["ok"] is False and "expects 3 arguments" in r["error"]'
