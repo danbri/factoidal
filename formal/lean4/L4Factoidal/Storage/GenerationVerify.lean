@@ -37,6 +37,8 @@ import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.BlockArtifact
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.IndexedBlockWireV5
+import L4Factoidal.Storage.BlockV5Plan
 import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.TermLocalIndex
@@ -300,13 +302,17 @@ def verifyEntryIndexes [Monad m] (read : Reader m) (version : Nat)
     | none => pure true
     | some index => objectIndexAgrees read version entry index block?
   if !objectOk then return some objectIndexFailure
+  /- At version 10 the two candidate-filter sidecars are LGI2 and GBI1 over an
+     IBK5 block, and both are checked by `verifyQuadV5Entry` against ONE decode
+     of that block. Checking them here as well would decode it twice. -/
   let literalOk ← match entry.literalIndex with
     | none => pure true
-    | some index => literalIndexAgrees read version entry index
+    | some index =>
+        if version == 10 then pure true else literalIndexAgrees read version entry index
   if !literalOk then return some literalIndexFailure
   let geoOk ← match entry.geoIndex with
     | none => pure true
-    | some index => geoIndexAgrees read version entry index
+    | some index => if version == 10 then pure true else geoIndexAgrees read version entry index
   if !geoOk then return some geoIndexFailure
   pure none
 
@@ -355,6 +361,128 @@ def verifyQuadEntries [Monad m] (read : Reader m) : List Entry → Nat → m (Op
       match ← verifyQuadEntry read entry with
       | none => pure none
       | some bytes => verifyQuadEntries read rest (total + bytes)
+
+/-! ## IBK5 entries and the SBM10 blob table
+
+An SBM10 generation is checked by ONE decode of each block, against which every
+manifest claim about that block is re-run: the three IBK4-era claims (row
+count, predicate, graph set), the two candidate-filter sidecars, the two zone
+maps and the blob reference list. Encoder admission equals decoder admission,
+so activation recomputes what the packer computed and compares rather than
+trusting the sidecar's self-consistency.
+
+The LGI2 and GBI1 postings ARE recomputed here, unlike LGI1 and GBI1 at SBM8
+and SBM9, where the note in `literalIndexAgrees` explains what recomputing
+would have cost when one block held a whole predicate. Blocks are now cut at
+16,384 rows and 2,097,152 estimated bytes
+(`docs/designissues/2026-09-04-blocks-per-predicate.md`), so rebuilding one
+block's index costs what packing that block cost, and a packer fault that
+wrote a self-consistent index of the wrong content is caught rather than
+bounded. -/
+
+def blobFailure : String :=
+  "candidate blob artifact is missing, changed, misnamed, or of a byte extent no version-2 term states"
+def quadV5EntryFailure : String :=
+  "candidate IBK5 artifact is missing, changed, malformed, mislabelled by predicate, or its graph set, zone maps, blob references or index sidecars differ from the manifest entry"
+
+/-- Every blob artifact of the manifest: the full-file SHA-256 and the
+    fixed-chunk Merkle commitment `verifyFullArtifact` checks for every other
+    child, plus the SBM10 naming rule that the hexadecimal in the key is the
+    artifact's own digest. -/
+def verifyBlobArtifacts [Monad m] (h : Hasher) (read : Reader m) : List ArtifactRef → m Bool
+  | [] => pure true
+  | blob :: rest => do
+      if blob.key.value != blobKeyOf blob.sha256 then return false
+      if !(← verifyFullArtifact h read blob) then return false
+      verifyBlobArtifacts h read rest
+
+/-- The blob-table members one entry names, in the entry's own order. -/
+def resolvedBlobRefs (manifest : Manifest) (entry : Entry) : Option (List ArtifactRef) :=
+  entry.blobRefs.mapM fun index => manifest.blobs[index]?
+
+/-- Every out-of-line literal of a decoded dictionary states a byte extent.
+    It must equal the extent of the artifact its digest names, so a reader
+    that fetches the blob by digest gets the bytes the term describes. -/
+def blobExtentsAgree (refs : List ArtifactRef)
+    (dict : Array L4Factoidal.Storage.TermWireV2.WireTerm) : Bool :=
+  dict.toList.all fun term =>
+    match term with
+    | .inline _ => true
+    | .blob b =>
+        match refs.find? (fun ref => ref.sha256.toList == b.sha256.toList) with
+        | none => false
+        | some ref => ref.bytes == b.byteLength
+
+/-- One SBM10 entry, against one decode of its IBK5 block. -/
+def verifyQuadV5Entry [Monad m] (h : Hasher) (read : Reader m) (manifest : Manifest)
+    (entry : Entry) : m (Option Nat) := do
+  if !safeLeafKey entry.artifact.key then return none
+  match ← read entry.artifact.key.value with
+  | none => return none
+  | some bytes =>
+      match L4Factoidal.Storage.IndexedBlockWireV5.decode bytes with
+      | none => return none
+      | some block =>
+          if block.rows.size != entry.rows then return none
+          let predicateOk := block.rows.toList.all fun row =>
+            match block.dict[row.p]? with
+            | some (.inline (.iri value)) => value == entry.predicate
+            | _ => false
+          if !predicateOk then return none
+          match L4Factoidal.Storage.IndexedBlockWireV5.graphNames? block with
+          | none => return none
+          | some names =>
+              if names.map GraphName.ofGraphRef != entry.graphSet then return none
+              -- The zone maps: recomputed from the block, compared to the entry.
+              if L4Factoidal.Storage.BlockV5Plan.subjectZone? block != entry.subjectZone then
+                return none
+              if L4Factoidal.Storage.BlockV5Plan.objectZone? block != entry.objectZone then
+                return none
+              -- The blob reference list: exactly the digests the dictionary names.
+              match resolvedBlobRefs manifest entry with
+              | none => return none
+              | some refs =>
+                  if refs.map (fun ref => ref.sha256.toList) !=
+                      (L4Factoidal.Storage.IndexedBlockWireV5.blobDigests block).map
+                        ByteArray.toList then return none
+                  if !blobExtentsAgree refs block.dict then return none
+                  -- LGI2 and GBI1, rebuilt from this dictionary.
+                  match entry.literalIndex, entry.geoIndex with
+                  | some literalRef, some geoRef =>
+                      if !safeLeafKey literalRef.key || !safeLeafKey geoRef.key then
+                        return none
+                      match ← read literalRef.key.value with
+                      | none => return none
+                      | some literalBytes =>
+                          match L4Factoidal.Storage.LiteralGramIndexWire.decode2? literalBytes with
+                          | none => return none
+                          | some literal =>
+                              if literal.targetIBKSha256 != entry.artifact.sha256 then
+                                return none
+                              if literal.index !=
+                                  L4Factoidal.Storage.BlockV5Plan.literalIndexOf block then
+                                return none
+                              match ← read geoRef.key.value with
+                              | none => return none
+                              | some geoBytes =>
+                                  match L4Factoidal.Storage.GeoBBoxIndexWire.decode? geoBytes with
+                                  | none => return none
+                                  | some geo =>
+                                      if geo.targetIBKSha256 != entry.artifact.sha256 then
+                                        return none
+                                      if geo.index !=
+                                          L4Factoidal.Storage.BlockV5Plan.geoIndexOf block then
+                                        return none
+                                      return some bytes.size
+                  | _, _ => return none
+
+def verifyQuadV5Entries [Monad m] (h : Hasher) (read : Reader m) (manifest : Manifest) :
+    List Entry → Nat → m (Option Nat)
+  | [], total => pure (some total)
+  | entry :: rest, total => do
+      match ← verifyQuadV5Entry h read manifest entry with
+      | none => pure none
+      | some bytes => verifyQuadV5Entries h read manifest rest (total + bytes)
 
 /-! ## IBK3 entries, without positioned reads
 
