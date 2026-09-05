@@ -430,8 +430,8 @@ check "storeQueryPlan reports a plan the query cap would refuse" storeQueryPlan 
 # `l4block-literal-gate` cover an SBM7 store that declares no sidecar.
 storeargs "$TMP/store-inspect-ibk4.json" "$TMP/store-ibk4/manifest.sbm2"
 check "storeManifestInspect reports an IBK4 generation and its graph set" storeManifestInspect "$TMP/store-inspect-ibk4.json" \
-  'r["ok"] is True and r["wireVersion"] == 8
-   and r["layout"] == "quad-ibk4-ptd1-lgi1-merkle-v0"
+  'r["ok"] is True and r["wireVersion"] == 9
+   and r["layout"] == "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0"
    and r["blankNodeProfile"] == "content-digest-shared"
    and len(r["entries"]) == 4
    and r["entries"][0]["blockKind"] == "IBK4"
@@ -439,6 +439,7 @@ check "storeManifestInspect reports an IBK4 generation and its graph set" storeM
    and len(r["entries"][0]["blankNodeScope"]) > 0
    and all(len(e["graphs"]) == 1 for e in r["entries"])
    and all(e["sidecars"]["literalIndex"] == e["key"] + ".lgi1" for e in r["entries"])
+   and all(e["sidecars"]["geoIndex"] == e["key"] + ".gbi1" for e in r["entries"])
    and [g["kind"] for g in r["entries"][0]["graphs"]][0] == "default"
    and [g["value"] for g in r["entries"][1]["graphs"]] == ["http://example.org/g1"]'
 
@@ -447,7 +448,7 @@ storeargs "$TMP/store-plan-ibk4.json" "$TMP/store-ibk4/manifest.sbm2" \
 check "storeQueryPlan selects IBK4 entries by graph set" storeQueryPlan "$TMP/store-plan-ibk4.json" \
   'r["ok"] is True and r["mode"] == "ibk4-full-manifest(1)" and r["shards"] == 1
    and r["keys"] == ["predicate-1.ibk4"]
-   and r["sidecarKeys"] == ["predicate-1.ibk4.lgi1"]'
+   and r["sidecarKeys"] == ["predicate-1.ibk4.lgi1", "predicate-1.ibk4.gbi1"]'
 
 blobargs "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
   "$TMP/store-ibk4/manifest.sbm2" \

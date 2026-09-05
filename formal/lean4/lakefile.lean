@@ -228,6 +228,12 @@ extern_lib libl4exthost pkg := do
 @[default_target] lean_exe «l4block-literal-gate» where
   srcDir := "."
   root := `Harness.LiteralGate
+
+-- The row-identity gate for the GBI1 geometry bounding-box index, through the
+-- same operation and with the same with-and-without handle pair.
+@[default_target] lean_exe «l4block-geo-gate» where
+  srcDir := "."
+  root := `Harness.GeoGate
 @[default_target] lean_exe «l4block-shard-query» where root := `Harness.ShardManifestQuery
 @[default_target] lean_exe «l4block-shard-session» where root := `Harness.ShardManifestSession
 

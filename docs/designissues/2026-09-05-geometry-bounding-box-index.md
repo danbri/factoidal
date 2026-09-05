@@ -281,17 +281,152 @@ landed here.
 The 30% is the price of exact decimals at a fixed width. A `Scaled` costs 9
 bytes whatever its magnitude, and a box costs four of them.
 
-## 8. Manifest, packer, planner — all open
+## 8. Manifest, packer, planner — landed 2026-09-05
 
-GBI1 is a fifth sidecar role and needs the same manifest work LGI1 needs: a
-role in the manifest wire version, the sidecar's SHA-256, its own Merkle
-commitment, and the rule that a generation WITHOUT it still activates and
-answers. The packer writing `.gbi1` and the planner detecting the shapes of
-section 4 are both open and deliberately not landed here, because the same
-four files carry LGI1's packer and planner work.
+GBI1 is a fifth sidecar role. It reached the shipped query path the way LGI1
+did, in the same four files.
 
-Until they land, the shipped query path still scans and the section 7 numbers
-are the mechanism measured through the probe, not through `storeHandleQuery`.
+### 8.1 SBM9
+
+Manifest wire version 9, layout label `quad-ibk4-ptd1-lgi1-gbi1-merkle-v0`.
+The entry gains `geoIndex : Option ArtifactRef`, carrying the sidecar's key,
+extent, SHA-256 and its own Merkle chunk commitment, written immediately
+after the LGI1 sidecar and before the quad tail.
+
+The version bump was unavoidable for the reason SBM8's was: a new per-entry
+field changes the byte sequence whether it is mandatory or optional, so
+encoder admission equals decoder admission only at a new version. The role is
+MANDATORY at 9 and ABSENT below it. A block whose dictionary holds no
+geometry carries a GBI1 with no entry rather than no sidecar, so an SBM9
+reader never asks whether the role is present; it asks whether the manifest
+is SBM9.
+
+`ShardManifestTheorems.decodeEntry_encodeEntry_quadGeo` proves the SBM9 entry
+round trip and `decode?_encode?` covers version 9, with the same statement and
+the same three axioms: `propext`, `Classical.choice`, `Quot.sound`.
+
+One structural note for whoever adds a sixth role. The literal and geometry
+sidecars are ONE conjunct of `entryValid` and of `encodableEntry`, not two.
+Every proof in `ShardManifestTheorems` reaches a conjunct through a chain of
+`andL`/`andR`, so a new conjunct renumbers every proof that reads an earlier
+one. Pairing the two roles kept those proofs unchanged.
+
+### 8.2 The packer and activation
+
+`l4block-shard-pack` writes `.gbi1` beside every IBK4 block and commits its
+SHA-256 and Merkle root. The IBK4 block bytes are unchanged: the five blocks
+of the section 8.4 fixture compare equal with `cmp` against the same corpus
+packed as SBM8.
+
+`GenerationVerify.geoIndexAgrees` checks the sidecar's own framing and CRC,
+that it names THIS block by `targetIBKSha256`, and that its `dictCount` is
+this block's dictionary size. It does NOT recompute the boxes, for the reason
+`literalIndexAgrees` does not recompute the postings: rebuilding parses every
+`geo:wktLiteral` again, which is the whole cost the index removes. What that
+leaves uncaught is a PACKER fault that wrote a self-consistent index of the
+wrong content; tampering after the pack is caught by the digest, and the
+consequence of such a fault is bounded because the index is a candidate
+filter and the planner re-evaluates the original expression, so a wrong index
+can only DROP rows, never add them. Recomputing the boxes is open work.
+
+### 8.3 The planner
+
+`Storage/GeoIndexPlan.lean` decides which shapes the index may serve. It is
+`LiteralIndexPlan` with a geometry in place of a needle, and it admits the
+section 4 shape and nothing else.
+
+Two decisions the literal planner did not have to make.
+
+* **The argument order is read, not assumed.** `geof:sfWithin(?geo, Q)` and
+  `geof:sfWithin(Q, ?geo)` are different predicates. The index judges a term
+  by `evalTerm op t query`, which is `op.fn t Q` with the ROW geometry first,
+  so a query that writes the constant first is served by the CONVERSE
+  operation: `sfWithin` and `sfContains` swap, the other three are symmetric
+  in Simple Features. The converse table is pinned against `Geo.extFns` on
+  six pairs rather than asserted.
+* **A wrapped object argument is refused.** `LiteralIndexPlan` admits `STR`
+  and `LCASE` around the object variable; `GeoIndexPlan` admits neither.
+  `Geo.wktArg` accepts only a `geo:wktLiteral` TERM, so a wrapped argument is
+  a §17.6 type error and the row is excluded either way.
+
+`Wasm/Ops/StoreHandles.lean` uses the answer. `storeOpen` retains the decoded
+sidecar; `RetainedLiteralIndex` became `RetainedIndexes` with both roles
+optional, so the two indexes share one copy of the row array, the
+object-ID-to-row map and the non-literal row list — they index the SAME local
+dictionary IDs. `storeHandleQuery` tries the literal plan and then the
+geometry plan, materialises the candidate rows, and evaluates the ORIGINAL
+query text over them. The geometry path keeps no non-literal row, because the
+type error above already excludes it.
+
+### 8.4 Measured through the shipped path
+
+`l4block-geo-gate` (`Harness/GeoGate.lean`) opens one generation twice — one
+handle with the sidecars, one without — answers the same query text on both,
+and compares the two envelopes byte for byte.
+
+The fixture is 40,000 `geo:asWKT` quads in one named graph, alternating
+points and 0.5 by 0.5 squares over a 1000 by 1000 square, packed as SBM9:
+5 blocks, 6,165,390 block bytes. The fixture and its generator are deleted
+after the measurement.
+
+    SELECT ?g ?s ?o WHERE { GRAPH ?g { ?s geo:asWKT ?o
+      FILTER(geof:sfX(?o, "<query>"^^geo:wktLiteral)) } } ORDER BY ?g ?s ?o
+
+Best of five, through `storeHandleQuery`.
+
+| query | rows | scan | index | ratio |
+|---|---|---|---|---|
+| `sfWithin` a 20x20 polygon | 5 | 1,088,925 us | 14,811 us | 74x |
+| **`sfWithin` a polygon over empty space (MISS)** | **0** | **1,129,317 us** | **13,791 us** | **82x** |
+| `sfIntersects` the same 20x20 polygon | 5 | 1,116,485 us | 11,911 us | 94x |
+| `sfDisjoint` the same polygon | 19,995 | 6,612,149 us | 6,726,590 us | 1x, falls back |
+| `sfWithin` a LINESTRING query | 0 | 824,067 us | 765,988 us | 1x, falls back |
+
+Row identity: 5 pass, 0 fail (out of 5), compared as whole answer envelopes.
+
+`sfDisjoint` answers 19,995 rows through the scan on both handles, which is
+the section 4.1 refusal working: the index declines and the answer is
+unchanged.
+
+Old generations are unaffected. `factoidal-skoscross` and
+`factoidal-skosgraphs` are SBM7 generations that declare no sidecar at all;
+both answer through `storeHandleQuery` with the index path falling back
+silently, 5 pass, 0 fail (out of 5) between them.
+
+### 8.5 Pack time and generation size
+
+Same 40,000-quad input, same 5 blocks, packed twice.
+
+| | SBM8 (before) | SBM9 (after) |
+|---|---|---|
+| pack time | 15.6 s | 17.5 s |
+| block bytes | 6,165,390 | 6,165,390 |
+| LGI1 bytes | 3,948,582 | 3,948,582 |
+| GBI1 bytes | 0 | 1,760,281 |
+| GBI1 Merkle bytes | 0 | 992 |
+| generation on disk | 9,944 KiB | 11,696 KiB |
+
+The GBI1 sidecar is 28.6% of the block bytes and the generation grows by
+17.6%. The 44-byte fixed-width entry of section 6 is the whole cost.
+
+### 8.6 The planner widening that limits this today
+
+A `geof:` FILTER selects EVERY block of a generation, not the block of the
+bound predicate. `Expr.backendLocal` excludes every `functionCall`, so
+`ShardManifest.quadNativeConstantPredicates?` answers `none` for such a
+filter and `quadEntriesForQuery` then keeps every entry. Measured on the
+`factoidal-skosgraphs` manifest, 119 entries: a `geof:sfWithin` FILTER over
+`skos:prefLabel` selects **119 blocks**; the same query with a `CONTAINS`
+FILTER selects **1**. This is
+<https://github.com/danbri/factoidal/issues/656>.
+
+The consequence for GBI1 is exact. `storeHandleQuery` restricts rows only
+when EVERY planned block carries the plan's predicate, so on a
+multi-predicate generation the widening makes the geometry path fall back to
+the scan every time. The section 8.4 numbers are real because that fixture
+holds ONE predicate, so the widened selection is still that predicate's five
+blocks. GBI1 needs issue 656 fixed before it can help a mixed store. Nothing
+here works around it.
 
 ## 9. What this is NOT
 

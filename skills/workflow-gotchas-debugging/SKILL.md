@@ -1805,3 +1805,44 @@ those are prose — this project writes "no `sorry`, no `axiom`, no
 `native_decide`, no `partial`" as a header comment on nearly every
 file. Strip comments and string literals before counting anything in
 Lean source.
+
+## Hazard #38 — `String.drop` answers a `String.Slice`, so a `match` on string literals matches nothing (2026-09-05)
+
+**Symptom.** A dispatcher written as
+
+    def opOfIri (iri : WfIri) : Option GeoOp :=
+      if !(iri.val.startsWith geofNs) then none
+      else
+        match iri.val.drop geofNs.length with
+        | "sfWithin" => some .within
+        | ...
+        | _ => none
+
+compiled clean, and every one of its thirty `#guard`s failed. The
+diagnostic evals said the guard passed (`startsWith` true), the tail was
+exactly `"sfWithin"`, and `tail == "sfWithin"` was `true` — and the
+`match` still fell through to `_ => none`.
+
+**Cause.** In this toolchain `String.drop` answers a `String.Slice`, not
+a `String`. A slice coerces for `==`, which is why the equality test was
+true, but a string-LITERAL pattern in a `match` never matches a slice, so
+every arm fails and the catch-all wins. There is no error and no warning:
+the code is well-typed and returns the wrong answer.
+
+**Rule.** After `String.drop`, `String.take`, or any other operation the
+build warns about with `String → String.Slice`, compare with `==` in an
+`if` chain, or bind the result at an explicit `: String` type. Do not
+`match` on string literals. `L4Factoidal.Geo.extFns` already dispatched
+its six names through an `if` chain for this reason; copying its SHAPE
+rather than only its behaviour would have avoided the hour.
+
+**Cost.** About an hour on 2026-09-05 while wiring the GBI1 geometry
+index planner: the planner admitted no query at all, and the failure
+looked like a parser or an AST mismatch because the string tests all
+answered correctly in isolation.
+
+**Diagnostic that found it.** Evaluate the failing function on the exact
+value the caller passes, and evaluate each of its sub-tests beside it in
+ONE `#eval`. The line `(some (…sfWithin, (false, (true, sfWithin))))`
+says the guard passed, the tail is right, and the function still answers
+`none` — which can only be the dispatch.
