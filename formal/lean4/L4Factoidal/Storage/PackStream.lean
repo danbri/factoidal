@@ -625,12 +625,12 @@ def publishQuadBlocks (h : Hasher) (format : PackFormat) (scope : String) :
             let (ref, made) ← sidecar h (name ++ ".gbi1") indexBytes
               s!"could not commit GBI1 chunks for {predicate.val}"
             pure (some ref, made.reverse ++ outRev)
-      let subjectZone ← match L4Factoidal.Storage.BlockV5Plan.subjectZone? block with
-        | none => .error s!"could not compute the subject zone map for {predicate.val}"
-        | some zone => pure zone
-      let objectZone ← match L4Factoidal.Storage.BlockV5Plan.objectZone? block with
-        | none => .error s!"could not compute the object zone map for {predicate.val}"
-        | some zone => pure zone
+      /- Both zone maps over ONE pass of the dictionary: a key depends only on
+         the term, so the key prefixes are computed per dictionary slot rather
+         than per row. -/
+      let (subjectZone, objectZone) ← match L4Factoidal.Storage.BlockV5Plan.zones? block with
+        | none => .error s!"could not compute the zone maps for {predicate.val}"
+        | some zones => pure zones
       let entry : Entry :=
         { predicate
           artifact

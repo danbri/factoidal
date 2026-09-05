@@ -38,6 +38,23 @@ namespace L4Factoidal.Storage.TermWireV2
 open L4Factoidal.RDF
 open L4Factoidal.Storage
 
+/-! ## The inline ceiling is asked of the string, not of an encoding
+
+`String.utf8ByteSize` and `(bytesOfString s).length` are the same number.
+They are not the same cost: a `String` carries its byte size, while
+`bytesOfString` encodes the string and builds a cons cell per byte.
+`lexicalFitsInline` is on the packer's PER-ROW path — `toWire` asks it of
+every object term — so it asks the string, and every proof below that reasons
+about the encoded length converts with this lemma. Measured on the
+52,428,626-byte skosdex prefix, 2026-09-05: 53.96 s of pack before and
+52.48 s after, for byte-identical output. That is a small part of wire
+version 10's pack cost, not the whole of it; the measurement is recorded
+because it rules the per-row encode OUT as the explanation. -/
+theorem utf8ByteSize_eq_length (s : String) :
+    s.utf8ByteSize = (bytesOfString s).length := by
+  rw [bytesOfString, byteArray_toList_eq, Array.length_toList]
+  rfl
+
 /-! ## The language-tag and direction field -/
 
 theorem parseLangField_serializeLangField? (langTag : Option String)
@@ -222,7 +239,7 @@ theorem parseInlineGo_serializeInline? : ∀ (t : Term) (fuel : Nat)
         rw [if_neg (by decide), if_neg (by decide), if_pos (by decide)]
         have hnot : ¬ (maxInlineLexicalBytes < (bytesOfString l.val.lexicalForm).length) := by
           have := hfit
-          rw [lexicalFitsInline, decide_eq_true_eq] at this
+          rw [lexicalFitsInline, decide_eq_true_eq, utf8ByteSize_eq_length] at this
           omega
         simp only [hnot, if_false]
         have hmk := mkLiteralLocal_self l
@@ -446,11 +463,11 @@ theorem toWire_inline_iff (h : ByteArray → ByteArray) (l : WfLiteral) :
   by_cases hfit : lexicalFitsInline l
   · rw [if_pos hfit]
     have : (bytesOfString l.val.lexicalForm).length ≤ maxInlineLexicalBytes := by
-      rw [lexicalFitsInline, decide_eq_true_eq] at hfit; exact hfit
+      rw [lexicalFitsInline, decide_eq_true_eq, utf8ByteSize_eq_length] at hfit; exact hfit
     simp [this]
   · rw [if_neg hfit]
     have : ¬ ((bytesOfString l.val.lexicalForm).length ≤ maxInlineLexicalBytes) := by
-      rw [lexicalFitsInline] at hfit; simpa using hfit
+      rw [lexicalFitsInline, utf8ByteSize_eq_length] at hfit; simpa using hfit
     simp [this]
 
 /-- Section 4.1, the other direction: a literal above the inline ceiling
@@ -462,13 +479,13 @@ theorem toWire_blob_iff (h : ByteArray → ByteArray) (l : WfLiteral) :
   by_cases hfit : lexicalFitsInline l
   · rw [if_pos hfit]
     have : (bytesOfString l.val.lexicalForm).length ≤ maxInlineLexicalBytes := by
-      rw [lexicalFitsInline, decide_eq_true_eq] at hfit; exact hfit
+      rw [lexicalFitsInline, decide_eq_true_eq, utf8ByteSize_eq_length] at hfit; exact hfit
     constructor
     · rintro ⟨b, hb⟩; exact absurd hb (by simp)
     · intro hlt; omega
   · rw [if_neg hfit]
     have : ¬ ((bytesOfString l.val.lexicalForm).length ≤ maxInlineLexicalBytes) := by
-      rw [lexicalFitsInline] at hfit; simpa using hfit
+      rw [lexicalFitsInline, utf8ByteSize_eq_length] at hfit; simpa using hfit
     constructor
     · intro _; omega
     · intro _; exact ⟨_, rfl⟩

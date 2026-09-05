@@ -83,16 +83,31 @@ def literalIndexOf (block : QuadBlock) : LiteralGramIndex.Index :=
 def geoIndexOf (block : QuadBlock) : GeoBBoxIndex.Index :=
   GeoBBoxIndex.build (inlineDictView block.dict)
 
-/-! ## Zone maps -/
+/-! ## Zone maps
 
-private def zoneGo (dict : Array WireTerm) :
+The bounds are computed over the DICTIONARY, not over the rows: a key depends
+only on the term, the dictionary holds each term once, and a block has far
+fewer distinct terms than rows. Computing one key per row instead would
+serialise every subject and every object again, which on the 209,715,187-byte
+skosdex prefix is about 1.9 million extra term serialisations against the
+dictionary's few hundred thousand.
+
+Only the first `zoneBytes` bytes of a key are ever compared, so the prefix is
+taken once, when the key is computed, and the accumulator never holds a whole
+key. -/
+
+/-- The `zoneBytes`-byte key prefix of every dictionary slot, in dictionary
+    order. `none` when a term has no version-2 encoding, which
+    `IndexedBlockWireV5.supported` refuses. -/
+def keyPrefixes (dict : Array WireTerm) : Option (Array (List UInt8)) :=
+  dict.mapM fun term => (keyBytes term).map (List.take zoneBytes)
+
+private def zoneGo (prefixes : Array (List UInt8)) :
     List Nat → List UInt8 → List UInt8 → Option (List UInt8 × List UInt8)
   | [], lo, hi => some (lo, hi)
   | id :: rest, lo, hi => do
-      let term ← dict[id]?
-      let key ← keyBytes term
-      let bound := key.take zoneBytes
-      zoneGo dict rest (if lexLe bound lo then bound else lo)
+      let bound ← prefixes[id]?
+      zoneGo prefixes rest (if lexLe bound lo then bound else lo)
         (if lexLe hi bound then bound else hi)
 
 /-- The zone bounds over a list of dictionary positions: the smallest and the
@@ -102,13 +117,30 @@ private def zoneGo (dict : Array WireTerm) :
     position whose key cannot be computed, which `IndexedBlockWireV5.supported`
     refuses. The caller reports either as a refusal rather than writing a zone
     map that excludes rows the block holds. -/
-def zoneOfIds (dict : Array WireTerm) : List Nat → Option (List UInt8 × List UInt8)
+def zoneOfIds (dict : Array WireTerm) (ids : List Nat) :
+    Option (List UInt8 × List UInt8) := do
+  let prefixes ← keyPrefixes dict
+  match ids with
   | [] => none
   | id :: rest => do
-      let term ← dict[id]?
-      let key ← keyBytes term
-      let bound := key.take zoneBytes
-      zoneGo dict rest bound bound
+      let bound ← prefixes[id]?
+      zoneGo prefixes rest bound bound
+
+/-- Both zone maps of a block, over ONE pass of the dictionary. The packer and
+    the activation check take this, so neither computes the key prefixes
+    twice. -/
+def zones? (block : QuadBlock) :
+    Option ((List UInt8 × List UInt8) × (List UInt8 × List UInt8)) := do
+  let prefixes ← keyPrefixes block.dict
+  let bounds := fun (ids : List Nat) =>
+    match ids with
+    | [] => none
+    | id :: rest => do
+        let bound ← prefixes[id]?
+        zoneGo prefixes rest bound bound
+  let subject ← bounds (block.rows.toList.map IdQuad.s)
+  let object ← bounds (block.rows.toList.map IdQuad.o)
+  some (subject, object)
 
 /-- The SBM10 subject zone map of a block. -/
 def subjectZone? (block : QuadBlock) : Option (List UInt8 × List UInt8) :=
@@ -182,6 +214,8 @@ private def sample : QuadBlock := fromRdfQuads specHash sampleQuads
 -- Both zone maps exist, are ordered, and are inside the bound.
 #guard (subjectZone? sample).isSome
 #guard (objectZone? sample).isSome
+#guard (zones? sample).map Prod.fst == subjectZone? sample
+#guard (zones? sample).map Prod.snd == objectZone? sample
 #guard ((subjectZone? sample).map ShardManifest.zoneAdmitted) == some true
 #guard ((objectZone? sample).map ShardManifest.zoneAdmitted) == some true
 

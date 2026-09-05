@@ -158,7 +158,7 @@ def parseLangField (bs : List UInt8) :
 /-- A literal is inline exactly when its UTF-8 lexical form is at most
 `maxInlineLexicalBytes` bytes. -/
 def lexicalFitsInline (l : WfLiteral) : Bool :=
-  (bytesOfString l.val.lexicalForm).length ≤ maxInlineLexicalBytes
+  l.val.lexicalForm.utf8ByteSize ≤ maxInlineLexicalBytes
 
 /-- Encoding of the four inline tags. Recursion is on the object slot of
 a triple term, which is the only recursive position of `RDF.Term`. -/

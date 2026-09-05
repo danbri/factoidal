@@ -434,10 +434,11 @@ def verifyQuadV5Entry [Monad m] (h : Hasher) (read : Reader m) (manifest : Manif
           | some names =>
               if names.map GraphName.ofGraphRef != entry.graphSet then return none
               -- The zone maps: recomputed from the block, compared to the entry.
-              if L4Factoidal.Storage.BlockV5Plan.subjectZone? block != entry.subjectZone then
-                return none
-              if L4Factoidal.Storage.BlockV5Plan.objectZone? block != entry.objectZone then
-                return none
+              match L4Factoidal.Storage.BlockV5Plan.zones? block with
+              | none => return none
+              | some (subjectZone, objectZone) =>
+              if entry.subjectZone != some subjectZone then return none
+              if entry.objectZone != some objectZone then return none
               -- The blob reference list: exactly the digests the dictionary names.
               match resolvedBlobRefs manifest entry with
               | none => return none
