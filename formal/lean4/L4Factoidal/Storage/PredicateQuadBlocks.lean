@@ -3,16 +3,25 @@ L4Factoidal.Storage.PredicateQuadBlocks — one IBK4 quad block per predicate.
 
 The quad twin of `PredicateBlocks`. That module partitions a graph of triples
 into one `IndexedBlock.Block` per predicate; this one partitions the quads of a
-DATASET into one `IndexedBlockWireV4.QuadBlock` per predicate, so a predicate's
-rows for every graph live in the same artifact and `GRAPH <iri> { ... }` is a
-filter inside the block (`docs/designissues/2026-09-02-quad-aware-block-layout.md`,
-option B).
+DATASET into `IndexedBlockWireV4.QuadBlock`s keyed by the pair (predicate,
+graph), so every block holds one predicate in ONE graph, its manifest
+`graphSet` has exactly one member, and `GRAPH <iri> { ... }` selects whole
+blocks (`docs/designissues/2026-09-02-quad-aware-block-layout.md`, option B).
 
-Publication order is the first-occurrence order of the predicate in the
-flattened quad list, and row order inside a block is the flattened quad order
-restricted to that predicate. Both are the orders `PredicateBlocks` already
-uses, so an IBK4 generation of a default-graph-only source has the same block
-sequence as the IBK3 generation of the same source.
+The bucket key was the predicate alone until 2026-09-05, and a bucket's rows
+were cut at every graph change. An N-Quads source whose graphs interleave line
+by line then produced one block per graph RUN: a 10,485,723-byte shuffled
+prefix of skosdex gave 25,813 blocks against 483 for the same statements in
+graph-major order. Keying the bucket by (predicate, graph) removes the graph
+cut rule, so interleaving never closes a run
+(`docs/designissues/2026-09-05-wire-version-10-scale.md`, section 9).
+
+Publication order for the buffered route is the FIRST-OCCURRENCE ORDER OF THE
+KEY in the flattened quad list, and row order inside a block is the flattened
+quad order restricted to that key. `quadsOfDataset` is graph-major, so for a
+default-graph-only source the key order is the predicate order `PredicateBlocks`
+uses and an IBK4 generation has the same block sequence as the IBK3 generation
+of the same source.
 
 No `partial`, no `unsafe`, no `sorry`.
 -/
@@ -36,39 +45,46 @@ def quadsOfDataset (ds : Dataset) : List QuadRow :=
   ds.default.map (fun t => ((none : Option GraphRef), t)) ++
     ds.named.flatMap (fun ng => ng.graph.map (fun t => ((some ng.name : Option GraphRef), t)))
 
+/-- What a bucket is keyed by: a predicate and the graph its rows are in. -/
+abbrev BucketKey := WfIri × Option GraphRef
+
+/-- The bucket one quad belongs to. -/
+def keyOf (quad : QuadRow) : BucketKey := (quad.2.p, quad.1)
+
 /-- Packer-facing construction state. `rows` gives expected constant-time
-    predicate lookup; `orderRev` records first-seen predicates in reverse so
+    bucket lookup; `orderRev` records first-seen keys in reverse so
     construction stays constant-time per quad. Rows are held in reverse source
     order until `blocksOfBuckets`. -/
 structure Buckets where
-  rows : Std.HashMap WfIri (List QuadRow) := ∅
-  orderRev : List WfIri := []
+  rows : Std.HashMap BucketKey (List QuadRow) := ∅
+  orderRev : List BucketKey := []
 
 def addQuad (buckets : Buckets) (quad : QuadRow) : Buckets :=
-  let predicate := quad.2.p
-  let known := buckets.rows.contains predicate
-  { rows := buckets.rows.insert predicate (quad :: buckets.rows.getD predicate [])
-  , orderRev := if known then buckets.orderRev else predicate :: buckets.orderRev }
+  let key := keyOf quad
+  let known := buckets.rows.contains key
+  { rows := buckets.rows.insert key (quad :: buckets.rows.getD key [])
+  , orderRev := if known then buckets.orderRev else key :: buckets.orderRev }
 
 def addQuads (buckets : Buckets) (quads : List QuadRow) : Buckets :=
   quads.foldl addQuad buckets
 
 /-! ## Bounded blocks
 
-A predicate's rows are cut into consecutive runs, and each run becomes its own
+A bucket's rows are cut into consecutive runs, and each run becomes its own
 block. `docs/designissues/2026-09-04-blocks-per-predicate.md` records the
-decision; the rules are:
+decision; since 2026-09-05 the rules are the two size targets only:
 
-1. the graph changes — always, so a block holds one predicate in ONE graph and
-   its manifest `graphSet` has exactly one member;
-2. `maxBlockRows` rows;
-3. `maxBlockWireBytes` of estimated wire size.
+1. `maxBlockRows` rows;
+2. `maxBlockWireBytes` of estimated wire size.
 
-Cutting NEVER reorders: `quadsOfDataset` is graph-major, so a predicate's rows
-already arrive with their graph runs consecutive, and a cut is a partition of
-the existing order into consecutive pieces. `PredicateQuadBlocksTheorems`
-proves the concatenation of the runs is the row list itself, so the emitted
-block set denotes exactly the quads the single-block set denoted.
+A bucket's rows are all in one graph by construction, so the graph never
+changes inside a run and no graph rule is needed. `bucket_one_graph` in
+`PredicateQuadBlocksTheorems` states that.
+
+Cutting NEVER reorders: a cut is a partition of the existing order into
+consecutive pieces. `PredicateQuadBlocksTheorems` proves the concatenation of
+the runs is the row list itself, so the emitted block set denotes exactly the
+quads the single-block set denoted.
 
 The two numbers come from the read caps of `Wasm/Ops/Store.lean`, which are
 TOTALS over the entries one `storeQuery` selects rather than per-block limits:
@@ -136,46 +152,47 @@ def quadWireBytes (quad : QuadRow) : Nat :=
 
 /-- Cut one predicate's rows into consecutive runs. Structural on the input
     list; the accumulator is reversed and flipped back at each cut. -/
-def chunkGo : List QuadRow → List QuadRow → Nat → Nat → Option GraphRef →
+def chunkGo : List QuadRow → List QuadRow → Nat → Nat →
     List (List QuadRow)
-  | [], accRev, _, _, _ => if accRev.isEmpty then [] else [accRev.reverse]
-  | quad :: rest, accRev, rows, bytes, graph =>
+  | [], accRev, _, _ => if accRev.isEmpty then [] else [accRev.reverse]
+  | quad :: rest, accRev, rows, bytes =>
       let weight := quadWireBytes quad
-      if accRev.isEmpty then chunkGo rest [quad] 1 weight quad.1
-      else if quad.1 == graph && rows < maxBlockRows &&
-          bytes + weight <= maxBlockWireBytes then
-        chunkGo rest (quad :: accRev) (rows + 1) (bytes + weight) graph
-      else accRev.reverse :: chunkGo rest [quad] 1 weight quad.1
+      if accRev.isEmpty then chunkGo rest [quad] 1 weight
+      else if rows < maxBlockRows && bytes + weight <= maxBlockWireBytes then
+        chunkGo rest (quad :: accRev) (rows + 1) (bytes + weight)
+      else accRev.reverse :: chunkGo rest [quad] 1 weight
 
-/-- The runs of one predicate's rows, in row order. -/
+/-- The runs of one bucket's rows, in row order. -/
 def chunkQuadRows (quads : List QuadRow) : List (List QuadRow) :=
-  chunkGo quads [] 0 0 none
+  chunkGo quads [] 0 0
 
-/-- The rows of one predicate's blocks, before they are encoded. Separating
-    the ROW partition from the block construction lets the packer build one
-    `QuadBlock` at a time instead of holding the whole block set. -/
-def runsOfBuckets (buckets : Buckets) : List (WfIri × List QuadRow) :=
-  buckets.orderRev.reverse.flatMap fun predicate =>
-    (chunkQuadRows (buckets.rows.getD predicate []).reverse).map fun rows =>
-      (predicate, rows)
+/-- The rows of one bucket's blocks, before they are encoded, in first-seen
+    key order. Separating the ROW partition from the block construction lets
+    the packer build one `QuadBlock` at a time instead of holding the whole
+    block set. -/
+def runsOfBuckets (buckets : Buckets) : List (BucketKey × List QuadRow) :=
+  buckets.orderRev.reverse.flatMap fun key =>
+    (chunkQuadRows (buckets.rows.getD key []).reverse).map fun rows =>
+      (key, rows)
 
-def runsOfQuads (quads : List QuadRow) : List (WfIri × List QuadRow) :=
+def runsOfQuads (quads : List QuadRow) : List (BucketKey × List QuadRow) :=
   runsOfBuckets (addQuads {} quads)
 
-def runsOfDataset (ds : Dataset) : List (WfIri × List QuadRow) :=
+def runsOfDataset (ds : Dataset) : List (BucketKey × List QuadRow) :=
   runsOfQuads (quadsOfDataset ds)
 
-def blocksOfBuckets (buckets : Buckets) : List (WfIri × QuadBlock) :=
-  buckets.orderRev.reverse.flatMap fun predicate =>
-    (chunkQuadRows (buckets.rows.getD predicate []).reverse).map fun rows =>
-      (predicate, fromQuads rows)
+def blocksOfBuckets (buckets : Buckets) : List (BucketKey × QuadBlock) :=
+  buckets.orderRev.reverse.flatMap fun key =>
+    (chunkQuadRows (buckets.rows.getD key []).reverse).map fun rows =>
+      (key, fromQuads rows)
 
-/-- The IBK4 blocks of a quad list: one or more per predicate, each holding
-    that predicate's rows for ONE graph, bounded by the two targets above. -/
-def blocksOfQuads (quads : List QuadRow) : List (WfIri × QuadBlock) :=
+/-- The IBK4 blocks of a quad list: one or more per (predicate, graph) key,
+    each holding that predicate's rows for ONE graph, bounded by the two
+    targets above. The order is the first-occurrence order of the key. -/
+def blocksOfQuads (quads : List QuadRow) : List (BucketKey × QuadBlock) :=
   blocksOfBuckets (addQuads {} quads)
 
-def blocksOfDataset (ds : Dataset) : List (WfIri × QuadBlock) :=
+def blocksOfDataset (ds : Dataset) : List (BucketKey × QuadBlock) :=
   blocksOfQuads (quadsOfDataset ds)
 
 /-! ## Publication every batch
@@ -186,12 +203,12 @@ policy; section 5 of
 packer publishes blocks DURING the ingest pass, so its peak memory is bounded
 by two operator numbers instead of by the source.
 
-`Buckets` above holds every row of every predicate until the end of the
-source. `Pub` below holds, per predicate, only the OPEN RUN — the rows of the
+`Buckets` above holds every row of every bucket until the end of the
+source. `Pub` below holds, per bucket key, only the OPEN RUN — the rows of the
 block currently being built — with the running cut state `chunkGo` carries in
 its arguments. The five rules:
 
-1. quads accumulate into the per-predicate open runs;
+1. quads accumulate into the per-key open runs;
 2. a run the per-block cut rule closes is published at once and its rows are
    released (`pubAdd`);
 3. after `batchSourceBytes` of source, every run holding at least
@@ -202,10 +219,10 @@ its arguments. The five rules:
 5. at end of source every run is published (`pubFlush st 0`).
 
 With no flush between (a source below one batch), rules 2 and 5 cut each
-predicate's rows at the same places `runsOfBuckets` does; what differs is the
+bucket's rows at the same places `runsOfBuckets` does; what differs is the
 ORDER the runs are published in, which is completion order rather than
-predicate-major order, so the block ORDINALS differ. Rules 3 and 4 are what
-cut memory, and they change the block SET as well: a predicate whose rows
+key-major order, so the block ORDINALS differ. Rules 3 and 4 are what
+cut memory, and they change the block SET as well: a bucket whose rows
 straddle a batch boundary gets a block ending at that boundary. Every manifest
 since SBM2 admits both — a reader takes the union of the entries for a
 predicate.
@@ -215,7 +232,7 @@ predicate.
 def batchSourceBytesDefault : Nat := 268435456
 
 /-- A run below this many rows carries over a batch end rather than becoming
-    a block of its own. Without it a source with a few hundred predicates and
+    a block of its own. Without it a source with a few hundred buckets and
     hundreds of batches produces tens of thousands of near-empty entries. -/
 def minBatchRows : Nat := 4096
 
@@ -224,100 +241,100 @@ def minBatchRows : Nat := 4096
     thousands of predicates. -/
 def maxCarriedRows : Nat := 1048576
 
-/-- The open run of one predicate: the rows of the block being built, in
-    reverse order, and the cut state `chunkGo` carries as arguments. -/
+/-- The open run of one bucket: the rows of the block being built, in
+    reverse order, and the cut state `chunkGo` carries as arguments. The
+    graph is the key's, so the run does not carry it. -/
 structure Run where
   accRev : List QuadRow := []
   rows : Nat := 0
   bytes : Nat := 0
-  graph : Option GraphRef := none
 
 /-- The publication state. `orderRev` is the reverse first-occurrence order of
-    the predicates, which fixes the order runs are published in at a flush;
+    the bucket keys, which fixes the order runs are published in at a flush;
     `carried` is the total rows the open runs hold. -/
 structure Pub where
-  runs : Std.HashMap WfIri Run := ∅
-  orderRev : List WfIri := []
+  runs : Std.HashMap BucketKey Run := ∅
+  orderRev : List BucketKey := []
   carried : Nat := 0
 
 /-- Publish every open run holding at least `minRows` rows, in first-occurrence
-    predicate order. `minRows = 0` publishes every non-empty run. -/
-def flushStep (minRows : Nat) (acc : Pub × List (WfIri × List QuadRow))
-    (predicate : WfIri) : Pub × List (WfIri × List QuadRow) :=
-  match acc.1.runs[predicate]? with
+    key order. `minRows = 0` publishes every non-empty run. -/
+def flushStep (minRows : Nat) (acc : Pub × List (BucketKey × List QuadRow))
+    (key : BucketKey) : Pub × List (BucketKey × List QuadRow) :=
+  match acc.1.runs[key]? with
   | none => acc
   | some run =>
       if run.accRev.isEmpty || run.rows < minRows then acc
       else
-        ({ acc.1 with runs := acc.1.runs.insert predicate ({} : Run),
+        ({ acc.1 with runs := acc.1.runs.insert key ({} : Run),
                       carried := acc.1.carried - run.rows },
-         (predicate, run.accRev.reverse) :: acc.2)
+         (key, run.accRev.reverse) :: acc.2)
 
-def pubFlush (st : Pub) (minRows : Nat) : Pub × List (WfIri × List QuadRow) :=
+def pubFlush (st : Pub) (minRows : Nat) : Pub × List (BucketKey × List QuadRow) :=
   let result := st.orderRev.reverse.foldl (flushStep minRows) (st, [])
   (result.1, result.2.reverse)
 
 /-- The open run one quad starts. -/
 def freshRun (quad : QuadRow) : Run :=
-  { accRev := [quad], rows := 1, bytes := quadWireBytes quad, graph := quad.1 }
+  { accRev := [quad], rows := 1, bytes := quadWireBytes quad }
 
-/-- Add one quad to its predicate's open run, publishing the run the
+/-- Add one quad to its bucket's open run, publishing the run the
     per-block cut rule closes (rule 2). This is `chunkGo`'s step with the cut
-    state held per predicate instead of in the arguments. -/
-def pubAddRun (st : Pub) (quad : QuadRow) : Pub × List (WfIri × List QuadRow) :=
-  let predicate := quad.2.p
+    state held per key instead of in the arguments. -/
+def pubAddRun (st : Pub) (quad : QuadRow) : Pub × List (BucketKey × List QuadRow) :=
+  let key := keyOf quad
   let weight := quadWireBytes quad
   let fresh : Run := freshRun quad
-  match st.runs[predicate]? with
+  match st.runs[key]? with
   | none =>
-      ({ runs := st.runs.insert predicate fresh
-       , orderRev := predicate :: st.orderRev
+      ({ runs := st.runs.insert key fresh
+       , orderRev := key :: st.orderRev
        , carried := st.carried + 1 }, [])
   | some run =>
       if run.accRev.isEmpty then
-        ({ st with runs := st.runs.insert predicate fresh
+        ({ st with runs := st.runs.insert key fresh
                  , carried := st.carried + 1 }, [])
-      else if quad.1 == run.graph && run.rows < maxBlockRows &&
+      else if run.rows < maxBlockRows &&
           run.bytes + weight <= maxBlockWireBytes then
         ({ st with
-             runs := st.runs.insert predicate
+             runs := st.runs.insert key
                { accRev := quad :: run.accRev, rows := run.rows + 1
-               , bytes := run.bytes + weight, graph := run.graph }
+               , bytes := run.bytes + weight }
              carried := st.carried + 1 }, [])
       else
-        ({ st with runs := st.runs.insert predicate fresh
+        ({ st with runs := st.runs.insert key fresh
                  , carried := st.carried + 1 - run.rows },
-         [(predicate, run.accRev.reverse)])
+         [(key, run.accRev.reverse)])
 
 /-- `pubAddRun` with its `let` bindings substituted, so a proof can rewrite
     the match scrutinee. Definitional; the definition above is the executable
     one and evaluates each binding once. -/
 theorem pubAddRun_eq (st : Pub) (quad : QuadRow) :
     pubAddRun st quad =
-      (match st.runs[quad.2.p]? with
+      (match st.runs[keyOf quad]? with
        | none =>
-           ({ runs := st.runs.insert quad.2.p (freshRun quad)
-            , orderRev := quad.2.p :: st.orderRev
+           ({ runs := st.runs.insert (keyOf quad) (freshRun quad)
+            , orderRev := keyOf quad :: st.orderRev
             , carried := st.carried + 1 }, [])
        | some run =>
            if run.accRev.isEmpty then
-             ({ st with runs := st.runs.insert quad.2.p (freshRun quad)
+             ({ st with runs := st.runs.insert (keyOf quad) (freshRun quad)
                       , carried := st.carried + 1 }, [])
-           else if quad.1 == run.graph && run.rows < maxBlockRows &&
+           else if run.rows < maxBlockRows &&
                run.bytes + quadWireBytes quad <= maxBlockWireBytes then
              ({ st with
-                  runs := st.runs.insert quad.2.p
+                  runs := st.runs.insert (keyOf quad)
                     ({ accRev := quad :: run.accRev, rows := run.rows + 1
-                     , bytes := run.bytes + quadWireBytes quad, graph := run.graph } : Run)
+                     , bytes := run.bytes + quadWireBytes quad } : Run)
                   carried := st.carried + 1 }, [])
            else
-             ({ st with runs := st.runs.insert quad.2.p (freshRun quad)
+             ({ st with runs := st.runs.insert (keyOf quad) (freshRun quad)
                       , carried := st.carried + 1 - run.rows },
-              [(quad.2.p, run.accRev.reverse)])) := rfl
+              [(keyOf quad, run.accRev.reverse)])) := rfl
 
 /-- `pubAddRun` plus rule 4: when the carried rows pass `maxCarriedRows`
     every open run is published, whatever its size. -/
-def pubAdd (st : Pub) (quad : QuadRow) : Pub × List (WfIri × List QuadRow) :=
+def pubAdd (st : Pub) (quad : QuadRow) : Pub × List (BucketKey × List QuadRow) :=
   let stepped := pubAddRun st quad
   if stepped.1.carried > maxCarriedRows then
     ((pubFlush stepped.1 0).1, stepped.2 ++ (pubFlush stepped.1 0).2)
@@ -354,9 +371,12 @@ private def sample : Dataset :=
 private def sampleBlocks := blocksOfDataset sample
 
 -- The default graph is flattened first, so publication order is the
--- first-occurrence order of the predicate over the whole dataset. `name` has
--- rows in two graphs, so it now publishes two blocks.
-#guard sampleBlocks.map Prod.fst == [pName, pName, pKind]
+-- first-occurrence order of the (predicate, graph) KEY over the whole
+-- dataset. `name` has rows in two graphs, so it fills two buckets and
+-- publishes two blocks — and the second of them now comes after `kind`,
+-- because its key is first seen later.
+#guard sampleBlocks.map Prod.fst
+  == [(pName, (none : Option GraphRef)), (pKind, none), (pName, some g1)]
 #guard (quadsOfDataset sample).head?.map Prod.fst == some none
 #guard (quadsOfDataset sample).length == 3
 
@@ -367,18 +387,22 @@ private def sampleBlocks := blocksOfDataset sample
 #guard sampleBlocks.all fun entry =>
   (graphNames? entry.2).map List.length == some 1
 #guard sampleBlocks.map (fun entry => graphNames? entry.2) ==
-  [some [none], some [some g1], some [none]]
+  [some [none], some [none], some [some g1]]
+-- Every block's single graph is its key's graph.
+#guard sampleBlocks.all fun entry => graphNames? entry.2 == some [entry.1.2]
 
 -- Cutting is a partition of the row order: no reordering, nothing lost.
+-- With no graph rule, a mixed-graph row list is now ONE run.
 #guard (chunkQuadRows (quadsOfDataset sample)).flatten == quadsOfDataset sample
+#guard (chunkQuadRows (quadsOfDataset sample)).length == 1
 
 -- Every quad of the dataset is denoted by exactly one block, in source order.
 #guard (sampleBlocks.flatMap fun entry => entry.2.denotes).length == 3
 
 -- The streamed publication of a source below one batch is the buffered
 -- partition: rules 2 and 5 alone, with no flush in between.
-private def pubRunsAll (quads : List QuadRow) : List (WfIri × List QuadRow) :=
-  let step := fun (acc : Pub × List (WfIri × List QuadRow)) (quad : QuadRow) =>
+private def pubRunsAll (quads : List QuadRow) : List (BucketKey × List QuadRow) :=
+  let step := fun (acc : Pub × List (BucketKey × List QuadRow)) (quad : QuadRow) =>
     let (state, out) := acc
     let (state, made) := pubAdd state quad
     (state, out ++ made)

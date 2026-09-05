@@ -796,10 +796,12 @@ def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
 An SBM7 generation holds one or more IBK4 blocks per predicate, and those
 blocks together carry that predicate's rows for EVERY graph of the dataset.
 `valid` admits several entries for one predicate at every version from SBM2
-on, and `L4Factoidal/Storage/PredicateQuadBlocks.lean` cuts a predicate's rows
-at graph changes and at two size targets
-(`docs/designissues/2026-09-04-blocks-per-predicate.md`), so a block written
-today holds ONE graph and its `graphSet` has one member. A generation packed
+on, and `L4Factoidal/Storage/PredicateQuadBlocks.lean` buckets quads by the
+pair (predicate, graph) and cuts a bucket's rows at two size targets
+(`docs/designissues/2026-09-04-blocks-per-predicate.md` and the 2026-09-05
+amendment in `docs/designissues/2026-09-05-wire-version-10-scale.md`
+section 5), so a block written today holds ONE graph and its `graphSet` has
+one member. A generation packed
 before that change holds one block per predicate carrying every graph, and
 both read through the same rules below. Two independent facts about a query
 let a planner drop an entry without reading a row:

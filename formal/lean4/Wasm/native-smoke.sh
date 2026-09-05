@@ -264,9 +264,10 @@ EOF
 # fixture above 64 MiB would need --batch-bytes on the CLI and the fourth
 # packBegin argument in the module, set to the same number.
 #
-# The block set of this fixture is unchanged by that landing: <http://e/p> is
-# cut at its graph change either way, and the two blocks publish in the same
-# order.
+# The block set of this fixture is unchanged by that landing, and by the
+# 2026-09-05 change to (predicate, graph) buckets: <http://e/p> has rows in
+# the default graph and in g1, which is two blocks under either rule, and the
+# first-seen key order is the order the old predicate-major route used here.
 printf '%s\n' \
   '<http://e/a> <http://e/p> "x" .' \
   '<http://e/a> <http://e/p> "y" <http://e/g1> .' \
@@ -442,6 +443,11 @@ check "storeQueryPlan reports a plan the query cap would refuse" storeQueryPlan 
 # which is what `l4block-shard-pack ... ibk4` now writes. SBM7 generations
 # still decode and still answer; `tests/store-host/conformance.mjs` and
 # `l4block-literal-gate` cover an SBM7 store that declares no sidecar.
+# The g1 block is entry 2, not entry 1: since 2026-09-05 the packer buckets by
+# the pair (predicate, graph) and publishes in first-seen KEY order, so the
+# default-graph `knows` bucket takes ordinal 1 and the g1 `name` bucket takes
+# ordinal 2. The four blocks and their rows are unchanged — this fixture's
+# graphs are not interleaved — only the order.
 storeargs "$TMP/store-inspect-ibk4.json" "$TMP/store-ibk4/manifest.sbm2"
 check "storeManifestInspect reports an IBK4 generation and its graph set" storeManifestInspect "$TMP/store-inspect-ibk4.json" \
   'r["ok"] is True and r["wireVersion"] == 9
@@ -455,19 +461,19 @@ check "storeManifestInspect reports an IBK4 generation and its graph set" storeM
    and all(e["sidecars"]["literalIndex"] == e["key"] + ".lgi1" for e in r["entries"])
    and all(e["sidecars"]["geoIndex"] == e["key"] + ".gbi1" for e in r["entries"])
    and [g["kind"] for g in r["entries"][0]["graphs"]][0] == "default"
-   and [g["value"] for g in r["entries"][1]["graphs"]] == ["http://example.org/g1"]'
+   and [g["value"] for g in r["entries"][2]["graphs"]] == ["http://example.org/g1"]'
 
 storeargs "$TMP/store-plan-ibk4.json" "$TMP/store-ibk4/manifest.sbm2" \
   'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }'
 check "storeQueryPlan selects IBK4 entries by graph set" storeQueryPlan "$TMP/store-plan-ibk4.json" \
   'r["ok"] is True and r["mode"] == "ibk4-full-manifest(1)" and r["shards"] == 1
-   and r["keys"] == ["predicate-1.ibk4"]
-   and r["sidecarKeys"] == ["predicate-1.ibk4.lgi1", "predicate-1.ibk4.gbi1"]'
+   and r["keys"] == ["predicate-2.ibk4"]
+   and r["sidecarKeys"] == ["predicate-2.ibk4.lgi1", "predicate-2.ibk4.gbi1"]'
 
 blobargs "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
   "$TMP/store-ibk4/manifest.sbm2" \
   'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }' \
-  "$TMP/store-ibk4" predicate-1.ibk4
+  "$TMP/store-ibk4" predicate-2.ibk4
 checkblob "storeQuery answers a GRAPH clause over a supplied IBK4 block region" storeQuery \
   "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
   'r["ok"] is True and r["kind"] == "select" and r["shards"] == 1

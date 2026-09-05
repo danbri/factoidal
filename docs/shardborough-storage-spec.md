@@ -454,10 +454,12 @@ generation MAY instead carry several artifacts for one predicate whose graph
 sets are disjoint. Both are admitted, at every manifest version from SBM2 on,
 which does not require one entry per predicate. A reader MUST take the union
 of the entries for a predicate and MUST NOT assume there is one.
-`l4block-shard-pack` cuts a predicate's rows at every graph change and at two
-size targets, so a block it writes today holds ONE graph
-(`docs/designissues/2026-09-04-blocks-per-predicate.md`); generations packed
-before 2026-09-04 hold one block per predicate over every graph.
+`l4block-shard-pack` buckets quads by the pair (predicate, graph) and cuts a
+bucket's rows at two size targets, so a block it writes today holds ONE graph
+(`docs/designissues/2026-09-04-blocks-per-predicate.md`, amended 2026-09-05 in
+`docs/designissues/2026-09-05-wire-version-10-scale.md` section 5);
+generations packed before 2026-09-04 hold one block per predicate over every
+graph.
 
 Every integer field is unsigned little-endian. Every offset is a byte offset
 from the start of the artifact. Let `G` be `graphCount`, `R` be `rowCount` and

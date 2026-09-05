@@ -29,17 +29,22 @@ their encoded bytes were all live together at the end.
 
 Deterministic in the input and two operator numbers.
 
+**Amended 2026-09-05:** a bucket is keyed by the PAIR (predicate, graph),
+not by the predicate alone, and rule 2 has no graph clause. See
+[`2026-09-05-wire-version-10-scale.md`](2026-09-05-wire-version-10-scale.md)
+section 5 and its subsection "The repair, measured 2026-09-05".
+
 | Rule | What | Constant |
 |---|---|---|
-| 1 | quads accumulate into per-predicate OPEN RUNS | — |
-| 2 | a run the per-block cut rule closes is published at once, its rows released | `maxBlockRows` 16,384, `maxBlockWireBytes` 2,097,152, graph change |
+| 1 | quads accumulate into per-(predicate, graph) OPEN RUNS | — |
+| 2 | a run the per-block cut rule closes is published at once, its rows released | `maxBlockRows` 16,384, `maxBlockWireBytes` 2,097,152 |
 | 3 | at each batch of source, every run of at least `minBatchRows` rows is published; smaller runs carry over | `batchSourceBytes` 268,435,456 (`--batch-bytes`), `minBatchRows` 4,096 |
 | 4 | when the carried rows pass the bound, every run is published | `maxCarriedRows` 1,048,576 |
 | 5 | at end of source every run is published | — |
 
-Rule 3 keeps a rare predicate from producing one tiny block per batch. Rule 4
+Rule 3 keeps a rare bucket from producing one tiny block per batch. Rule 4
 bounds what rule 3 retains, for a source with hundreds of thousands of
-predicates.
+buckets.
 
 What rule 3 costs, measured on a 3,999,912-byte skosdex N-Quads prefix over
 three graphs, 19,320 quads: at the default batch it runs in one batch and
@@ -47,9 +52,9 @@ writes 39 blocks; at `--batch-bytes 262144` it runs in 16 batches and writes
 40. One extra block for fifteen extra batch ends, because `minBatchRows`
 carries every run below 4,096 rows across the boundary.
 
-`Buckets` held every row of every predicate. `Pub` holds, per predicate, only
+`Buckets` held every row of every bucket. `Pub` holds, per bucket key, only
 the open run — the rows of the block being built — with the cut state
-`chunkGo` carries in its arguments. So the per-predicate memory is bounded by
+`chunkGo` carries in its arguments. So the per-bucket memory is bounded by
 the per-block targets, and the whole is bounded by `maxCarriedRows` plus one
 batch of parser state.
 
@@ -79,33 +84,35 @@ different place. Above that, rows are compared, as gate 2 below does.
 
 ## 4. What is proved
 
-`L4Factoidal/Storage/PackStreamTheorems.lean`, stated PER PREDICATE over an
+`L4Factoidal/Storage/PackStreamTheorems.lean`, stated PER BUCKET KEY — a
+(predicate, graph) pair since 2026-09-05 — over an
 event list — one read of the source: each quad the grammar completed, in
 order, with a `flush` wherever a publication rule fired.
 
 | Theorem | Statement |
 |---|---|
-| `pubRun_rows` | `rowsFor p published ++ heldFor p state = fedFor p quads`, for every predicate and every prefix of a pass |
-| `pubRun_published_eq_fed` | after rule 5 (`flush 0`), `rowsFor p published = fedFor p quads` |
-| `streamed_eq_buffered` | that equals `(chunkQuadRows ((addQuads {} quads).rows.getD p []).reverse).flatten`, the buffered route's rows for `p` |
+| `pubRun_rows` | `rowsFor k published ++ heldFor k state = fedFor k quads`, for every key and every prefix of a pass |
+| `pubRun_published_eq_fed` | after rule 5 (`flush 0`), `rowsFor k published = fedFor k quads` |
+| `streamed_eq_buffered` | that equals `(chunkQuadRows ((addQuads {} quads).rows.getD k []).reverse).flatten`, the buffered route's rows for `k` |
 | `mem_graphTriples_of_perm` | a permutation of the rows keeps every graph's triples |
+| `bucket_one_graph` | every row of a bucket's block has the bucket's predicate and the bucket's graph (`PredicateQuadBlocksTheorems`) |
 
-`#print axioms` on all four: `[propext, Classical.choice, Quot.sound]`.
+`#print axioms` on all five: `[propext, Classical.choice, Quot.sound]`.
 
-`pubRun_published_eq_fed` rests on `PubOrdered` — every predicate holding an
+`pubRun_published_eq_fed` rests on `PubOrdered` — every key holding an
 open run is named by `orderRev`, which `pubFlush` walks — proved preserved by
 `pubAddRun`, `pubAdd`, `pubFlush` and a whole pass. `streamed_eq_buffered`
 adds `addQuad_rows` and `addQuads_rows` to the landed
 `chunkQuadRows_flatten`.
 
-Together: the streamed route publishes the same rows for the same predicate
+Together: the streamed route publishes the same rows for the same bucket key
 in the same order as the buffered route. The block boundaries and the block
 order differ.
 
 **What is NOT proved**, and is measured by gate 2 instead:
 
-* the assembly of the per-predicate statements into ONE permutation over all
-  predicates, which needs `orderRev` to have no duplicate entry;
+* the assembly of the per-key statements into ONE permutation over all
+  keys, which needs `orderRev` to have no duplicate entry;
 * that a `QuadBlock` built by `IndexedBlockWireV4.fromQuads` denotes its rows
   — `IndexedBlockWireV4Theorems` has no such theorem today, only
   `denotes_decode_encode?`, which is about the wire round trip;
@@ -240,6 +247,39 @@ the first store. It selects every block of both predicates and evaluates the
 sub-pattern per solution, which is a planner cost unrelated to this change.
 It was replaced by the same shape inside one small `GRAPH <iri>`, which
 answers 18 rows.
+
+### 6.1 Gate 2 re-run for the (predicate, graph) buckets, 2026-09-05
+
+The same 209,715,187-byte prefix, packed at `ibk5` by the packer at
+`claude/main` and by the bucket change, both activated, the ten shapes run
+with ONE binary, header line stripped.
+
+| | `claude/main` | (predicate, graph) buckets |
+|---|---|---|
+| quads | 942,869 | 942,869 |
+| blocks | 1,252 | 1,252 |
+| graphs | 153 | 153 |
+| pack wall clock | 80.86 s | 89.28 s |
+| pack peak footprint | 241,270,784 bytes | 408,158,208 bytes |
+| activation | 58.80 s | 55.45 s |
+| verified logical bytes | 97,578,312 | 97,578,312 |
+
+The BLOCK SET is byte-identical, not merely equal in count: the multiset of
+(predicate, rows, SHA-256, graph set) over the 1,252 manifest entries agrees
+exactly, and so does the per-predicate block count over all 100 predicates.
+Only the ORDER differs, and with it the ordinals and the artifact names —
+`claude/main` emits a predicate's blocks together, the bucket change emits
+each block when its run closes.
+
+Answers: 17,648 rows, 0, 2,634, 1,392, 4,887, `true`, `false`, 0, 17,426 and
+1. **The two outputs are identical over 186 lines. GATE 2 PASSES.**
+
+The pack costs more memory: 408,158,208 bytes against 241,270,784. There are
+more open runs, one per (predicate, graph) pair instead of one per predicate,
+and this source has 153 graphs. The peak is still bounded by `maxCarriedRows`
+and one batch, not by the source, so the ladder of section 5 keeps its shape;
+the constant is larger. The wall clock rose from 80.86 s to 89.28 s on the
+same machine, both runs measured here rather than quoted from section 6.
 
 ## 7. Where the code is
 
