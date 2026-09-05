@@ -156,6 +156,86 @@ PYEOF
     'True' "$(python3 -c "import json,sys;b=json.loads(sys.stdin.readline())['srj']['results']['bindings'];print(len(b)==5 and all('v' not in r for r in b))" < <(line 6 "$WORK/out2.txt"))"
 fi
 
+# --------------------------------- a FILTER must never WIDEN the block plan
+# https://github.com/danbri/factoidal/issues/656. `Expr.backendLocal` excludes
+# REGEX and every section 17.6 extension call, and the manifest collectors
+# used it, so such a FILTER made the planner take EVERY block and a handle
+# scoped by the plain pattern refused the filtered query. The collectors now
+# test `Expr.existsFree`: only an EXISTS reads triples the pattern never
+# names, so only an EXISTS may widen the plan.
+echo 'block plan width under a FILTER (issue 656)'
+if [ ! -x "$PACK" ]; then
+  echo '  skip  plan width checks - no l4block-shard-pack'
+else
+  cat > "$WORK/wide.ttl" <<TTLEOF
+@prefix skos: <${SKOS}> .
+@prefix : <http://example.org/c/> .
+:1 skos:prefLabel "quartz" . :1 skos:altLabel "a1" . :1 skos:notation "n1" . :1 <http://example.org/p/x> "x1" .
+:2 skos:prefLabel "topaz"  . :2 skos:altLabel "a2" . :2 skos:notation "n2" . :2 <http://example.org/p/x> "x2" .
+:3 skos:prefLabel "gneiss" . :3 skos:altLabel "a3" . :3 skos:notation "n3" . :3 <http://example.org/p/x> "x3" .
+TTLEOF
+  "$PACK" "$WORK/wide.ttl" "$WORK/wgen" ibk4 > "$WORK/wpack.log" 2>&1
+  cat > "$WORK/mk3.py" <<PYEOF
+import json, os
+gen = "$WORK/wgen"
+mh = open(os.path.join(gen, 'manifest.sbm2'), 'rb').read().hex()
+P = 'PREFIX skos: <${SKOS}> PREFIX ex: <${EX}> '
+Q = {
+  'plain':  P + 'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l }',
+  'ext':    P + 'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(ex:z(?l)) }',
+  'regex':  P + 'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(REGEX(STR(?l),"z")) }',
+  'ctn':    P + 'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(CONTAINS(STR(?l),"z")) }',
+  'exists': P + 'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER EXISTS { ?c skos:altLabel ?a } }',
+}
+json.dump(Q, open("$WORK/q3.json", "w"))
+seq = [["storeManifestInspect", [mh]]]
+for k in ['plain', 'ext', 'regex', 'ctn', 'exists']:
+    seq.append(["storeQueryPlan", [mh, Q[k]]])
+json.dump(seq, open("$WORK/seq3.json", "w"))
+PYEOF
+  python3 "$WORK/mk3.py"
+  "$CLI" callseq "$WORK/seq3.json" > "$WORK/out3.txt" 2>&1
+  keys () { python3 -c "import json,sys;print(len(json.loads(sys.stdin.readline())['keys']))" < <(line "$1" "$WORK/out3.txt"); }
+  ALL=$(python3 -c "import json,sys;print(len(json.loads(sys.stdin.readline())['entries']))" < <(line 1 "$WORK/out3.txt"))
+  check 'the generation has four predicate blocks' '4' "$ALL"
+  check 'a bound predicate selects one block' '1' "$(keys 2)"
+  check 'a section 17.6 extension FILTER does not widen it' '1' "$(keys 3)"
+  check 'a REGEX FILTER does not widen it' '1' "$(keys 4)"
+  check 'a backendLocal FILTER does not widen it' '1' "$(keys 5)"
+  check 'a FILTER EXISTS still takes every block' "$ALL" "$(keys 6)"
+
+  # The rows the narrow plan answers are the rows the reference filter
+  # answers over the same block. A narrower plan that drops rows is worse
+  # than a wide one, so the check compares ROWS (anti-pattern 34).
+  line 2 "$WORK/out3.txt" > "$WORK/plan.json"
+  cat > "$WORK/mk4.py" <<PYEOF
+import json, os
+gen = "$WORK/wgen"
+mh = open(os.path.join(gen, 'manifest.sbm2'), 'rb').read().hex()
+Q = json.load(open("$WORK/q3.json"))
+want = json.load(open("$WORK/plan.json"))['keys'][0]
+one = [{'key': want, 'bytes': open(os.path.join(gen, want), 'rb').read().hex()}]
+json.dump([
+  ["storeOpen", [mh, json.dumps(one)]],
+  ["storeHandleQuery", ["s1", Q['regex'] + ' ORDER BY ?c']],
+  ["storeHandleQuery", ["s1", Q['ctn'] + ' ORDER BY ?c']],
+  ["storeHandleQuery", ["s1", Q['ext'] + ' ORDER BY ?c']],
+  ["storeHandleClose", ["s1"]],
+], open("$WORK/seq4.json", "w"))
+PYEOF
+  python3 "$WORK/mk4.py"
+  "$CLI" callseq "$WORK/seq4.json" > "$WORK/out4.txt" 2>&1
+  rows () { python3 -c "import json,sys;print(json.dumps(json.loads(sys.stdin.readline())['srj']['results']['bindings']))" < <(line "$1" "$WORK/out4.txt"); }
+  # Named first: two envelopes that BOTH failed would compare equal, so the
+  # row count is checked before the row comparison.
+  check 'the REGEX query answers its two rows off the one retained block' \
+    '2' "$(python3 -c "import json,sys;print(len(json.loads(sys.stdin.readline())['srj']['results']['bindings']))" < <(line 2 "$WORK/out4.txt"))"
+  check 'a handle scoped by the plain pattern serves the REGEX query, with the CONTAINS rows' \
+    "$(rows 3)" "$(rows 2)"
+  check 'and serves the section 17.6 extension query (no host, so no rows)' \
+    '[]' "$(rows 4)"
+fi
+
 TOTAL=$((PASS + FAIL))
 echo
 echo "=== ext-native: $PASS pass, $FAIL fail (out of $TOTAL)"

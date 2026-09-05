@@ -161,9 +161,10 @@ to the `geof:`-only table.
 
 **Landed and checked natively.** `tests/store-host/ext-native.sh` drives
 the dispatch entries through `l4wasm-cli callseq` in one process:
-16 pass, 0 fail (out of 16). It covers the registry ops, the snapshot
+25 pass, 0 fail (out of 25). It covers the registry ops, the snapshot
 threading into the in-memory dataset-handle path and the store-handle
-path, and every §17.6 rule of section 6 above.
+path, every §17.6 rule of section 6 above, and the block-plan width rule
+of section 9.
 
 **Not yet checked: that a JavaScript function answers.** The native build
 compiles `ffi/l4_ext.c`'s no-host arm, so `l4_ext_call` answers the empty
@@ -183,3 +184,49 @@ before anyone puts one on a large scan. `tests/store-host/ext-functions.mjs`
 has the measurement (a 20,000-row FILTER, registered function against a
 built-in of the same selectivity, best of three); the number goes here and
 in `docs/claude-rules/performance.md` when the module is rebuilt.
+
+## 9. An extension function must not widen the block plan
+
+`Expr.backendLocal` and `Expr.existsFree` (`L4Factoidal/SPARQL/Query.lean`)
+answer two different questions, and using the first where the second
+belongs made every query with a registered function read the whole store
+(https://github.com/danbri/factoidal/issues/656).
+
+* `Expr.backendLocal` — may the STORE BACKEND evaluate this expression
+  itself, or must it materialise the dataset and hand the expression to
+  the reference evaluator? It is a small admitted set. `REGEX`, `REPLACE`,
+  `IRI()`, `NOW()`, the digest functions and every §17.6 extension call
+  are outside it, because each reaches a host function or reads
+  `EvalEnv`. It is the right test in
+  `L4Factoidal/SPARQL/StoreDataset.lean`'s `evalPatternBackend`.
+* `Expr.existsFree` — does this expression read any TRIPLE?
+  `Expr.existsPat` and `Expr.notExistsPat` are the only two `Expr`
+  constructors that carry a `QueryPattern`, so an `existsFree` expression
+  reads no triple whatever functions it calls.
+
+Block selection is the second question. The three collectors in
+`L4Factoidal/Storage/ShardManifest.lean` — `nativeConstantPredicates?`,
+`graphsReadFrom` and `quadNativeConstantPredicates?` — used
+`Expr.backendLocal` for the FILTER, OPTIONAL and BIND arms, so a
+`FILTER(ex:z(?l))` made the collector answer `none` and the planner take
+every entry. Measured on a 119-block IBK4 generation through
+`storeQueryPlan`:
+
+| query | keys before | keys after |
+|---|---|---|
+| `GRAPH ?g { ?c skos:prefLabel ?l }` | 1 | 1 |
+| the same, `FILTER(ex:z(?l))` | 119 | 1 |
+| the same, `FILTER(REGEX(STR(?l),"a"))` | 119 | 1 |
+| the same, `FILTER EXISTS { ?c skos:broader ?b }` | 119 | 119 |
+
+Two consequences of the old behaviour, beyond the read cost: a
+full-corpus generation exceeds the 64-artifact and 8,388,608-byte plan
+caps and is refused outright, and a store handle scoped by the plain
+pattern refused the filtered query with `storeHandleQuery: this query
+needs artifact 'predicate-0.ibk4', which handle s1 does not retain`.
+
+**The rule.** A FILTER may narrow a plan or leave it unchanged. It must
+never widen it: a filter can only remove rows the triple pattern
+produced, so it can never require a block the pattern does not. Only an
+`EXISTS` breaks that, because §18.6 evaluates its pattern against the
+active graph, and only an `EXISTS` still widens the plan.
