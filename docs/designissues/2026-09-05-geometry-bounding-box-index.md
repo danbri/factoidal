@@ -239,19 +239,47 @@ claimed: `decodeSpec?` over `List UInt8` states what GBI1 admits, `decode?`
 reads the artifact by byte-array index, and `decode_eq_spec` proves they
 agree on every input.
 
-## 7. Size and speed
+## 7. Size and speed, measured
 
-Measured by `l4block-geo-bbox` (`Harness/GeoBBoxProbe.lean`) on a generated
-IBK4 block of `geo:wktLiteral` objects. The fixture and its generator are
-deleted after the measurement; the numbers are in the landing report and the
-probe reprints them on any regenerated fixture.
+`l4block-geo-bbox` (`Harness/GeoBBoxProbe.lean`) on a generated IBK4 block of
+40,000 `geo:asWKT` triples — points and small square polygons scattered over a
+1000 by 1000 square. The fixture and its generator are deleted after the
+measurement; the probe reprints every number on any regenerated fixture.
 
-The probe reports block bytes and rows, distinct boxed terms, GBI1 bytes and
-the percentage of the block, index build time, and per query the scan time,
-the index time and the ratio — for a `geof:sfWithin` against a small query
-polygon that matches a few rows and for one that matches NOTHING. The MISS is
-the reading that matters: an index that does not make a query over empty
-space fast has not indexed anything.
+| part | measured |
+|---|---|
+| block | 5,871,740 bytes, 40,000 rows |
+| dictionary | 80,001 terms |
+| boxed terms | 40,000 |
+| opaque terms | 0 |
+| GBI1 bytes | 1,760,065, **30% of the block**, 44 bytes per row |
+| index build | 173 ms, at pack time only |
+| GBI1 round trip | the decoded index equals the built one |
+
+Answering the filter through the DECODED artifact, not only through `build`.
+Best of five.
+
+| query | rows | scan | index | ratio |
+|---|---|---|---|---|
+| `sfWithin` a 20x20 polygon | 14 | 304,296 us | 5,903 us | 51x |
+| **`sfWithin` a polygon over empty space (MISS)** | **0** | **311,693 us** | **7,762 us** | **40x** |
+| `sfIntersects` the same 20x20 polygon | 14 | 305,822 us | 5,585 us | 55x |
+| `sfDisjoint` the same polygon | 31,986 | 316,013 us | index not used, falls back | 1x |
+| `sfWithin` a LINESTRING query | 0 | 178,310 us | index not used, falls back | 1x |
+
+The rows returned through the index equal the rows returned by the scan for
+every query, compared as row lists.
+
+The MISS costs 40x less than the scan and NOT more, because the entry array is
+flat: the lookup still compares the query box against all 40,000 entry boxes,
+it only stops paying the WKT parse and the topology test. A single hull box
+over the whole index would make a miss constant-time, and it needs one
+monotonicity lemma (`e.box` inside the hull implies `overlaps e.box q` implies
+`overlaps hull q`) plus a wire field. That is the named next step; it is not
+landed here.
+
+The 30% is the price of exact decimals at a fixed width. A `Scaled` costs 9
+bytes whatever its magnitude, and a box costs four of them.
 
 ## 8. Manifest, packer, planner — all open
 
