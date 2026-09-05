@@ -75,68 +75,82 @@ three times instead of once. That is a CONSTANT FACTOR on linear work, not a
 quadratic. Fusing the length into `splitCompleteLines`, which already walks
 the same list, is the next candidate and is worth roughly 10%.
 
-## 3. The curve: time is linear, memory is not
+## 3. The curve: time is linear, and so is memory
 
-skosdex prefixes, all cut from the same file at a line boundary, packed with
-the repaired binary at load average 5 to 10.
+skosdex prefixes, all cut from the same file at a line boundary, plus the
+whole file. Packed with the repaired binary at load average 4 to 10.
 
 | source bytes | quads | CPU s | quads/s | instructions | peak memory | peak / source |
 |---|---|---|---|---|---|---|
-| 52,428,626 | 259,219 | 52.52 | 4,936 | 192.0 G | 390,318,656 | 7.45x |
+| 52,428,626 | 259,219 | 52.52 | 4,936 | 192.0 G | 390,318,656 | 7.44x |
 | 104,857,577 | 476,293 | 113.02 | 4,214 | 466.5 G | 599,870,336 | 5.72x |
 | 209,715,187 | 941,802 | 214.58 | 4,389 | 775.3 G | 933,809,856 | 4.45x |
+| 1,543,478,120 | 7,315,251 | 1,777.47 | 4,116 | 5,057.4 G | 5,951,730,560 | 3.86x |
 
-Instructions per source byte are 3,662, 4,449 and 3,697 — not monotone, so
-the variation is corpus shape (the later part of the file has longer
-literals), not superlinearity. **Time is linear in the source.**
+**Time is linear in the source.** Instructions per source byte are 3,662,
+4,449, 3,697 and 3,277 — not monotone, so the variation is corpus shape (the
+later part of the file has longer literals), not a slope.
 
 Against the same inputs before the repairs: 243.4 G at 52 MB and 582.2 G at
 105 MB, so instructions fell 21.1% and 19.9%. The two figures agreeing at
 two sizes is what says the win is a constant factor and not a slope change.
 
-**Memory is SUBLINEAR in the source over the measured range.** Peak
-footprint grows about as `n^0.63`: fitting the 52 MB and 210 MB points and
-extrapolating to the full 1,543,478,120-byte corpus predicts 3.21 GB against
-the 3,192,258,560 bytes measured — a 30-fold extrapolation landing within
-1%. The ratio to the source therefore FALLS with size: 7.45x, 5.72x, 4.45x,
-and 2.07x at 1.54 GB.
+**Memory is LINEAR in the source: 3.76 bytes of peak footprint per source
+byte, plus a constant of about 145 MB.** Those two numbers are fitted to the
+210 MB and 1,543 MB points and they reproduce the 105 MB point to 10% and
+the 52 MB point to 14%.
 
-**The mechanism of that sublinearity is NOT identified**, and the obvious
-explanation is wrong: distinct subjects per quad are 0.113, 0.135 and 0.121
-across the three prefixes, so the term vocabulary is not saturating. Until
-the mechanism is named, the exponent is a description of skosdex and not a
-property of the packer, and it must not be carried to another corpus. See
-section 4.
+The ratio to the source FALLS with size — 7.44x, 5.72x, 4.45x, 3.86x — and
+that fall is the 145 MB constant amortising, nothing more. **Reading a trend
+out of the ratio is how this measurement was got wrong once already.** On
+the first three points alone the ratio fits a sublinear power law with
+exponent 0.63, and a draft of this document reported memory as sublinear on
+that basis. The fourth point, ten times larger, gives exponent 0.93 between
+the top two and settles it: the curve is a straight line through an offset,
+and a three-point fit spanning only 4x could not tell the two apart. Do not
+fit a memory curve without a point at least an order of magnitude above the
+others.
 
-**What stays live to the end** is certain, whatever the exponent. An IBK4
-block holds one predicate across all graphs and commits its graph-set
+**A number in the task that set this work off did not reproduce.** It gave
+3,192,258,560 bytes of peak footprint for the full 1,543,478,120-byte
+corpus, a ratio of 2.07x. Measured here: 5,951,730,560 bytes, 3.86x, with
+maximum resident set size 5,585,649,664. The repairs in this landing are
+byte-identical and reduce allocation, so they cannot account for it; the
+earlier figure must come from a different binary, corpus or metric. It is
+recorded as unreproduced rather than averaged in.
+
+**What stays live to the end**, which is why the slope is what it is: an
+IBK4 block holds one predicate across all graphs and commits its graph-set
 summary in its header, so a batch boundary would either split a predicate
 with partial graph sets or need a further pass. The publication point is
 therefore the END of the source, and at that moment all three of these are
 live at once: the `FastDataset` of every quad, the `QuadBlock`s built from
 it, and the encoded bytes of every artifact of the whole generation.
 `PackStream.quadIngestFinish` builds the complete artifact list before the
-host writes any of it.
+host writes any of it. Nothing the pass builds is released before the end,
+so peak memory is a fixed multiple of the data — the measured 3.76.
 
-## 4. What this does and does not say about YAGO 4.5
+## 4. What this says about YAGO 4.5
 
-At 4,400 quads per second, 132 million facts is about 8.3 hours on one core.
-That is a schedule, not a blocker.
+**Time is not the problem.** At 4,116 quads per second measured on 7.3
+million quads, YAGO's 132 million facts is about 8.9 hours on one core.
 
-Memory is the blocker, and the honest position is that WE DO NOT KNOW. The
-`n^0.63` fit is measured on prefixes of ONE thesaurus, whose vocabulary
-repeats. YAGO has 49 million entities and adds new terms all the way
-through, so its dictionary grows where skosdex's may not. Reading 55 GB off
-that fit would be an extrapolation 92 times past the largest measurement, on
-a corpus of a different shape, with no mechanism behind it.
+**Memory is the problem, and it is decisive.** At 3.76 bytes per source
+byte, 142 GB of source needs about **534 GB** of peak footprint. This is
+worse than the 294 GB the task estimated from the 2.07x ratio, because the
+ratio was low and because a ratio is the wrong shape to extrapolate: the
+slope is what extrapolates, and it is 3.76.
 
-What is needed before the import is attempted, in order:
+No amount of tuning closes a 534 GB gap on a laptop. The import needs the
+publication point moved to the graph boundary, so that a block's bytes are
+written and released as soon as its graph ends and peak memory stops
+tracking the source at all. That changes the emitted block set, which is a
+wire-format decision (`docs/designissues/2026-09-04-blocks-per-predicate.md`,
+specification section 10), so it is a new wire version and a separate
+decision — not a tuning change, and deliberately not attempted here.
 
-1. The same curve on a YAGO PREFIX ladder (1, 2, 4, 8 GB), which is the only
-   measurement that speaks about YAGO's shape.
-2. The mechanism behind the sublinearity, so the fit means something.
-3. If the answer is still too large, the flat-memory redesign: move the
-   publication point to the graph boundary. That changes the emitted block
-   set, which is a wire-format decision
-   (`docs/designissues/2026-09-04-blocks-per-predicate.md`), so it is a new
-   wire version and a separate decision, not a tuning change.
+One measurement should precede that work: the same ladder on a YAGO PREFIX
+(1, 2, 4, 8 GB). The slope of 3.76 is skosdex's; YAGO has 49 million
+entities against skosdex's 113,680 distinct subjects at 210 MB, so its
+dictionary is a larger share of what stays live and its slope will be its
+own.

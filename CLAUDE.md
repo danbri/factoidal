@@ -812,9 +812,11 @@ session.
 - [`docs/designissues/2026-09-05-shard-pack-profile-and-memory.md`](docs/designissues/2026-09-05-shard-pack-profile-and-memory.md)
   — where the shard packer's time goes and how its peak memory grows: the
   `/usr/bin/sample` method with its blind spots, the two accidental costs it
-  found and their repairs, the measured curve (time linear, memory sublinear
-  and unexplained), what stays live to the end of a pack, and what must be
-  measured before YAGO 4.5 is attempted.
+  found and their repairs, the measured curve (time AND memory both linear;
+  memory is 3.76 bytes of peak footprint per source byte, which puts YAGO at
+  about 534 GB), what stays live to the end of a pack, and why a memory
+  curve fitted without a point an order of magnitude above the others read
+  as sublinear and was wrong.
 - [`docs/w3c-glossary.md`](docs/w3c-glossary.md) — the cross-spec
   architectural vocabulary: lexical space / value space / lexical
   mapping, entailment and models, open-world and no-unique-name,
