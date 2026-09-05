@@ -20,23 +20,30 @@ nq="$repo_root/tests/local/data/quad_sample.nq"
 "$bin/l4block-shard-pack" "$nq" "$run_dir/nq" ibk4 >"$run_dir/pack-nq.txt"
 cat "$run_dir/pack-trig.txt"
 grep -q 'format=quad-ibk4-ptd1-lgi1-gbi1-merkle-v0 syntax=trig' "$run_dir/pack-trig.txt"
-grep -q 'quads=6 blocks=2 graphs=3' "$run_dir/pack-trig.txt"
-grep -q 'wire-version=8' "$run_dir/pack-trig.txt"
+grep -q 'quads=6 blocks=4 graphs=3' "$run_dir/pack-trig.txt"
+grep -q 'wire-version=9' "$run_dir/pack-trig.txt"
 grep -q 'syntax=nquads' "$run_dir/pack-nq.txt"
-grep -q 'quads=6 blocks=2 graphs=3' "$run_dir/pack-nq.txt"
+grep -q 'quads=6 blocks=4 graphs=3' "$run_dir/pack-nq.txt"
 
-# The manifest table: one row per predicate, with the graph set a planner reads
-# for GRAPH <iri> selection without opening the block.
+# The manifest table. Blocks cut at GRAPH BOUNDARIES, so one predicate takes
+# one row per graph and every row names exactly one graph. That is what makes
+# the planner's GRAPH <iri> selection exact rather than conservative: it reads
+# one block instead of every block the predicate touches.
 cat "$run_dir/trig/manifest.tsv"
-awk -F'\t' '$1=="0" && $2=="http://example.org/name" && $3=="predicate-0.ibk4" && $4=="5" \
-  && $8=="3" && $9=="default,http://example.org/g1,http://example.org/g2" { found=1 } \
-  END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
-awk -F'\t' '$1=="1" && $2=="http://example.org/knows" && $3=="predicate-1.ibk4" && $4=="1" \
+awk -F'\t' '$1=="0" && $2=="http://example.org/name" && $3=="predicate-0.ibk4" && $4=="1" \
   && $8=="1" && $9=="default" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
+awk -F'\t' '$1=="3" && $2=="http://example.org/knows" && $3=="predicate-3.ibk4" && $4=="1" \
+  && $8=="1" && $9=="default" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
+# Every row names exactly one graph, and the three name blocks partition it.
+awk -F'\t' '$1 ~ /^[0-9]+$/ && $8!="1" { bad=1 } END { exit bad?1:0 }' \
+  "$run_dir/trig/manifest.tsv"
+awk -F'\t' '$2=="http://example.org/name" { n+=$4 } END { exit (n==5)?0:1 }' \
+  "$run_dir/trig/manifest.tsv"
 
 # Same quads in the same order from either syntax, so the same block bytes.
-cmp "$run_dir/trig/predicate-0.ibk4" "$run_dir/nq/predicate-0.ibk4"
-cmp "$run_dir/trig/predicate-1.ibk4" "$run_dir/nq/predicate-1.ibk4"
+for b in 0 1 2 3; do
+  cmp "$run_dir/trig/predicate-$b.ibk4" "$run_dir/nq/predicate-$b.ibk4"
+done
 
 # Activation: full SHA-256, Merkle roots, and an IBK4 decode of every artifact.
 mkdir -p "$run_dir/store"
@@ -53,7 +60,11 @@ query_rc=$?
 set -e
 cat "$run_dir/query.txt"
 test "$query_rc" -eq 1
-grep -q 'rejected: this generation is SBM7 with IBK4 quad blocks' "$run_dir/query.txt"
+# The IBK3 reader must REFUSE an IBK4 generation rather than misread its
+# rows. Match the behaviour, not the sentence: the message names every
+# manifest version that carries quad blocks, and that list grows.
+grep -q 'rejected: this generation is SBM' "$run_dir/query.txt"
+grep -q 'with IBK4 quad blocks' "$run_dir/query.txt"
 
 # ---------------------------------------------------------------------------
 # SPARQL over the activated SBM7 generation (l4block-quad-query).
@@ -78,7 +89,11 @@ grep -q '^l4block-quad-query rows=2 ' "$run_dir/q-graph-g1.txt"
 # variable graph establishes no restriction, so both blocks are opened.
 quad_query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }' >"$run_dir/q-graph-var.txt"
 cat "$run_dir/q-graph-var.txt"
-grep -q '^l4block-quad-query shards=2 open-mode=ibk4-full-manifest(2) ' "$run_dir/q-graph-var.txt"
+# A VARIABLE graph establishes no restriction, so every block that carries
+# the predicate opens. With blocks cut at graph boundaries that is one per
+# graph -- 4 here, where before the cut it was 2. Making this selective
+# needs a graph-name index; see the blocks-per-predicate design record.
+grep -q '^l4block-quad-query shards=4 open-mode=ibk4-full-manifest(4) ' "$run_dir/q-graph-var.txt"
 grep -q '^l4block-quad-query rows=4 ' "$run_dir/q-graph-var.txt"
 grep -q 'http://example.org/g1' "$run_dir/q-graph-var.txt"
 grep -q 'http://example.org/g2' "$run_dir/q-graph-var.txt"
@@ -123,7 +138,9 @@ grep -q '^l4block-quad-query rows=1 ' "$run_dir/q-graph-empty.txt"
 quad_query 'SELECT * WHERE { ?s ?p ?o FILTER NOT EXISTS { ?s <http://example.org/knows> ?x } }' \
   >"$run_dir/q-not-exists.txt"
 cat "$run_dir/q-not-exists.txt"
-grep -q '^l4block-quad-query shards=2 ' "$run_dir/q-not-exists.txt"
+# The plan opens one block per graph for each predicate the pattern and the
+# EXISTS name; before blocks were cut at graph boundaries that was 2.
+grep -q '^l4block-quad-query shards=4 ' "$run_dir/q-not-exists.txt"
 grep -q '^l4block-quad-query rows=0 ' "$run_dir/q-not-exists.txt"
 
 # An unnamed graph is not a graph of the dataset.
@@ -135,9 +152,17 @@ grep -q '^l4block-quad-query boolean=false' "$run_dir/q-absent.txt"
 # The block bytes, their digests and their Merkle roots are untouched: only the
 # manifest's copy of the graph name changes.
 mkdir -p "$run_dir/tampered/gen-1"
-cp "$run_dir/trig/predicate-0.ibk4" "$run_dir/trig/predicate-1.ibk4" \
-   "$run_dir/trig/predicate-0.ibk4.merkle" "$run_dir/trig/predicate-1.ibk4.merkle" \
-   "$run_dir/tampered/gen-1/"
+# Copy EVERY artifact except the manifest, which is tampered below. Blocks
+# are cut at graph boundaries and each carries its own sidecars, so naming
+# individual files leaves an incomplete generation that fails for the wrong
+# reason -- a missing-artifact error rather than the graph-set refusal this
+# test is about.
+for f in "$run_dir"/trig/*; do
+  case "$(basename "$f")" in
+    manifest.sbm2|manifest.tsv) ;;
+    *) cp "$f" "$run_dir/tampered/gen-1/" ;;
+  esac
+done
 python3 - "$run_dir/trig/manifest.sbm2" "$run_dir/tampered/gen-1/manifest.sbm2" <<'PY'
 import sys
 source, target = sys.argv[1], sys.argv[2]

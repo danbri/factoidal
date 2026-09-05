@@ -140,9 +140,14 @@ l4block-shard-activate /tmp/store gen-1
 l4block-quad-query /tmp/store --query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
 ```
 
-Memory. The N-Quads route streams the source in 65,536-byte chunks
-(`PackStream.quadIngestFeed`), so peak memory is about ten times the input,
-measured 2026-09-04. TriG and Turtle still read the whole file. Peak memory
+Memory. The N-Quads, Turtle and N-Triples routes stream the source in
+65,536-byte chunks (`PackStream.quadIngestFeed`), so peak memory is about ten
+to twelve times the input, measured 2026-09-04 and 2026-09-05. TriG still
+reads the whole file: it has no chunk fold. Byte identity against the
+buffered route is PROVED for N-Quads
+(`NQuadsFold.streamConsume11_eq_batch`) and only MEASURED for Turtle — the
+Turtle accumulator half is proved (`Syntax.parseTurtle_eq_fold`), the
+chunk-boundary half is not. Peak memory
 stays PROPORTIONAL to the data on every route, because one IBK4 block holds a
 predicate across the whole source: several blocks per predicate would bound
 it and is a wire-version decision, not a refactor

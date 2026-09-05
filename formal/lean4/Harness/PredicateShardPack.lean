@@ -130,9 +130,10 @@ grammar `quadIngestFile` below feeds 65,536-byte chunks to
 Measured on 104,017,780 bytes of N-Quads over 50 named graphs: peak memory
 footprint 2,531,999,744 bytes before, 1,127,907,328 bytes after, with a
 byte-identical generation
-(<https://github.com/danbri/factoidal/issues/650>). TriG, Turtle and
-N-Triples still buffer, because neither has a chunk fold with an agreement
-theorem against its whole-document parser.
+(<https://github.com/danbri/factoidal/issues/650>). Turtle and N-Triples
+take the same route through the Turtle chunk fold; only TriG still buffers,
+because it has no chunk fold. What is proved and what is only measured for
+each route is stated at `PackStream`'s streaming section.
 
 Every block, sidecar and manifest byte is decided by
 `PackStream.quadArtifacts` and `PackStream.quadManifestArtifacts`, which are
@@ -151,10 +152,11 @@ private def syntaxOf (input : String) : PackSyntax :=
 
 /-- The streaming IBK4 second pass. The source `String` and its `List Char`
     never exist; only one 65,536-byte chunk is decoded at a time. -/
-private def quadIngestFile (input : System.FilePath) (prepass : SourcePrepass) : IO QuadPack :=
+private def quadIngestFile (input : System.FilePath) (grammar : PackSyntax)
+    (prepass : SourcePrepass) (baseIri : Option String) : IO QuadPack :=
   IO.FS.withFile input .read fun handle => do
     let state ← foldHandle handle (fun state bytes => ofExcept (quadIngestFeed state bytes))
-      (quadIngestInit hasher prepass blockFold)
+      (quadIngestInit hasher grammar prepass baseIri blockFold)
     ofExcept (quadIngestFinish state)
 
 private def packQuads (input output : String) : IO UInt32 := do
@@ -165,12 +167,13 @@ private def packQuads (input output : String) : IO UInt32 := do
       throw <| IO.userError s!"refusing to replace committed collection at {output}; choose a fresh output directory"
     IO.FS.createDirAll outputPath
     let grammar := syntaxOf input
+    let baseIri := some ("file://" ++ input)
     let result ←
       if quadStreams grammar then
-        quadIngestFile input prepass
+        quadIngestFile input grammar prepass baseIri
       else do
         let text ← IO.FS.readFile input
-        ofExcept (quadArtifacts hasher grammar prepass text (some ("file://" ++ input)))
+        ofExcept (quadArtifacts hasher grammar prepass text baseIri)
     writeArtifacts output result.artifacts
     let manifest ← ofExcept (quadManifestArtifacts prepass result.packed)
     writeArtifacts output manifest
