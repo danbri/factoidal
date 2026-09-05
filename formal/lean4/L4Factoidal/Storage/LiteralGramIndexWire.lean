@@ -140,13 +140,22 @@ def encodeDirectoryEntry (posting : Posting) (offset length : Nat) : List UInt8 
     writeU32LE (UInt32.ofNat posting.ids.length)
 
 /-- The directory and the posting area, built in one pass so the offsets and
-lengths in the directory are the extents of the runs beside them. -/
-def encodeBody : List Posting → Nat → List UInt8 → List UInt8 → (List UInt8 × List UInt8)
-  | [], _, directory, runs => (directory.reverse.reverse, runs.reverse.reverse)
+lengths in the directory are the extents of the runs beside them.
+
+The accumulators hold the per-gram CHUNKS in reverse, reversed and flattened
+once at the end. They held one flat list appended forward until 2026-09-05,
+which is quadratic in the encoded size: packing the SKOS `skos:prefLabel`
+block took 4 seconds before the sidecar existed and 520 seconds after it, for
+21,843 grams and 3,018,145 encoded bytes. The bytes are unchanged — a list of
+chunks reversed and flattened is the same sequence the forward appends
+produced — and the round-trip `#guard`s below pin that. -/
+def encodeBody : List Posting → Nat → List (List UInt8) → List (List UInt8) →
+    (List UInt8 × List UInt8)
+  | [], _, directory, runs => (directory.reverse.flatten, runs.reverse.flatten)
   | posting :: rest, offset, directory, runs =>
       let run := postingRunBytes posting
       encodeBody rest (offset + run.length)
-        (directory ++ encodeDirectoryEntry posting offset run.length) (runs ++ run)
+        (encodeDirectoryEntry posting offset run.length :: directory) (run :: runs)
 
 def encode? (artifact : Artifact) : Option ByteArray := do
   if !supported artifact then none else
