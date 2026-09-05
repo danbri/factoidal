@@ -445,6 +445,7 @@ import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.IndexedBlockWireV4Theorems
 import L4Factoidal.Storage.IndexedBlockWireV5
 import L4Factoidal.Storage.IndexedBlockWireV5Theorems
+import L4Factoidal.Storage.BlockV5Plan
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.PredicateQuadBlocksTheorems

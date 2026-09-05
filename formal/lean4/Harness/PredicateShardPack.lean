@@ -154,7 +154,8 @@ private def syntaxOf (input : String) : PackSyntax :=
     never exist; only one 65,536-byte chunk is decoded at a time, and each
     feed's artifacts are written before the next chunk is read, so the
     generation is never live all at once. -/
-private def quadIngestFile (input : System.FilePath) (output : System.FilePath)
+private def quadIngestFile (format : PackFormat) (input : System.FilePath)
+    (output : System.FilePath)
     (grammar : PackSyntax) (prepass : SourcePrepass) (baseIri : Option String)
     (batchBytes : Nat) : IO QuadPack :=
   IO.FS.withFile input .read fun handle => do
@@ -163,12 +164,13 @@ private def quadIngestFile (input : System.FilePath) (output : System.FilePath)
         let (next, artifacts) ← ofExcept (quadIngestFeed state bytes)
         writeArtifacts output.toString artifacts
         pure next)
-      (quadIngestInit hasher grammar prepass baseIri batchBytes blockFold)
+      (quadIngestInit hasher format grammar prepass baseIri batchBytes blockFold)
     let result ← ofExcept (quadIngestFinish state)
     writeArtifacts output.toString result.artifacts
     pure { result with artifacts := [] }
 
-private def packQuads (input output : String) (batchBytes : Nat) : IO UInt32 := do
+private def packQuads (format : PackFormat) (input output : String) (batchBytes : Nat) :
+    IO UInt32 := do
   try
     let prepass ← prepassFile input
     let outputPath := System.FilePath.mk output
@@ -179,15 +181,15 @@ private def packQuads (input output : String) (batchBytes : Nat) : IO UInt32 := 
     let baseIri := some ("file://" ++ input)
     let result ←
       if quadStreams grammar then
-        quadIngestFile input outputPath grammar prepass baseIri batchBytes
+        quadIngestFile format input outputPath grammar prepass baseIri batchBytes
       else do
         let text ← IO.FS.readFile input
-        let buffered ← ofExcept (quadArtifacts hasher grammar prepass text baseIri)
+        let buffered ← ofExcept (quadArtifacts hasher format grammar prepass text baseIri)
         writeArtifacts output buffered.artifacts
         pure { buffered with artifacts := [] }
-    let manifest ← ofExcept (quadManifestArtifacts prepass result.packed)
+    let manifest ← ofExcept (quadManifestArtifacts format prepass result.packed)
     writeArtifacts output manifest
-    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} batches={result.batches} batch-bytes={batchBytes} output={output} manifest=manifest.sbm2 wire-version={manifestVersion .ibk4} blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
+    IO.println s!"l4block-shard-pack format={layoutName format} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} batches={result.batches} batch-bytes={batchBytes} output={output} manifest=manifest.sbm2 wire-version={manifestVersion format} blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
     return 0
   catch error =>
     IO.eprintln s!"l4block-shard-pack failure: {error}"
@@ -205,15 +207,21 @@ def main (args : List String) : IO UInt32 := do
   match args with
   | [input, output] => try pack .ibk2 input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
   | [input, output, "ibk3"] => try pack .ibk3 input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
-  | input :: output :: "ibk4" :: rest =>
+  | input :: output :: tag :: rest =>
+      match (if tag == "ibk4" then some PackFormat.ibk4
+             else if tag == "ibk5" then some PackFormat.ibk5 else none) with
+      | none =>
+          IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4|ibk5] [--batch-bytes N]  (ibk4 and ibk5 accept .ttl, .trig, .nq, .nt)"
+          return 2
+      | some format =>
       match batchBytesOf rest with
       | none =>
           IO.eprintln "l4block-shard-pack: --batch-bytes needs one positive decimal argument"
           return 2
       | some batchBytes =>
-          try packQuads input output batchBytes
+          try packQuads format input output batchBytes
           catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
-  | _ => IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4] [--batch-bytes N]  (ibk4 accepts .ttl, .trig, .nq, .nt)"; return 2
+  | _ => IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4|ibk5] [--batch-bytes N]  (ibk4 and ibk5 accept .ttl, .trig, .nq, .nt)"; return 2
 
 end Harness.PredicateShardPack
 def main (args : List String) : IO UInt32 := Harness.PredicateShardPack.main args

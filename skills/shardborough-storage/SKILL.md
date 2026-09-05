@@ -87,7 +87,17 @@ predicate-N.ibk3.merkle  32-byte leaf hashes per 65,536-byte chunk
 predicate-N.ibk3.sri2    subject -> row offsets (SRI2 postings codec)
 predicate-N.ibk3.oli2    object  -> row offsets (same codec, object role)
 predicate-N.ibk3.tli1    canonical term bytes -> local ID
-*.merkle                 one per sidecar
+predicate-N.ibk4         a quad generation's block (wire version 7, 8 or 9)
+predicate-N.ibk4.lgi1    literal 3-gram index (SBM8, SBM9)
+predicate-N.ibk4.gbi1    geometry bounding-box index (SBM9)
+predicate-N.ibk5         a wire-version-10 block: IBK4 layout over a PTD2
+                         dictionary of version-2 terms
+predicate-N.ibk5.lgi2    literal 3-gram index plus the opaque-literal list
+predicate-N.ibk5.gbi1    geometry bounding-box index, unchanged from SBM9
+blob-<sha256 hex>.lit    one out-of-line literal's UTF-8 lexical form; the
+                         digest in the name is the artifact's own SHA-256, so
+                         a version-2 tag-4 term names its own file (SBM10)
+*.merkle                 one per sidecar and per blob
 deltas.dlog              appears after the first --update
 compacted.epoch          CEP1 marker, written by compaction
 compacted.source.sha256  identity of the source generation compaction read
@@ -117,7 +127,8 @@ not written yet.
 | Bounded Merkle scan or row range | `l4block-id-v3-merkle-scan SHARD-DIR PREDICATE-IRI LIMIT` / `--range START COUNT` |
 | Convert an IBK2 block to IBK3 | `l4block-id-v3-convert INPUT.ibk2 OUTPUT-DIR PREDICATE-IRI` |
 | Session of many SELECTs over one shard | `l4block-shard-merkle-session SHARD-DIR < queries.rq` |
-| Pack a quad generation (IBK4, SBM7) | `l4block-shard-pack INPUT OUTPUT-DIR ibk4 [--batch-bytes N]` (`.trig`, `.nq`, `.ttl`) |
+| Pack a quad generation (IBK4, wire version 9) | `l4block-shard-pack INPUT OUTPUT-DIR ibk4 [--batch-bytes N]` (`.trig`, `.nq`, `.ttl`) |
+| Pack a quad generation (IBK5, wire version 10) | `l4block-shard-pack INPUT OUTPUT-DIR ibk5 [--batch-bytes N]` — same syntaxes, read as RDF 1.2 |
 | Query an activated quad generation | `l4block-quad-query COLLECTION-ROOT --query SELECT...` |
 | Superseded formats (BLK0, IBK1, IBK2) | `l4block-pack`, `l4block-id-pack`, `l4block-id-v2-pack` and their `*-file-query` / `*-diff` partners |
 
@@ -139,6 +150,25 @@ l4block-shard-pack tests/local/data/quad_sample.trig /tmp/store/gen-1 ibk4
 l4block-shard-activate /tmp/store gen-1
 l4block-quad-query /tmp/store --query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
 ```
+
+Wire version 10 is the same three steps with the tag `ibk5`. It stores what
+version 9 refuses — an RDF 1.2 triple term, a directional literal, and a
+literal above 65,536 bytes, which goes into its own `blob-<hex>.lit` artifact
+— and its manifest carries a subject and an object zone map per entry, so a
+bound-subject query opens fewer blocks. `l4block-quad-query` reports that as
+`zone-excluded=N` and reads a version-10 generation's queries as SPARQL 1.2.
+
+```bash
+l4block-shard-pack tests/local/data/rdf12_sample.trig /tmp/store10/gen-1 ibk5
+# format=quad-ibk5-ptd2-lgi2-gbi1-merkle-v0 syntax=trig quads=5 blocks=5
+# graphs=2 manifest=manifest.sbm2 wire-version=10
+l4block-shard-activate /tmp/store10 gen-1
+l4block-quad-query /tmp/store10 --query \
+  'SELECT ?d WHERE { ?s <http://example.org/label> ?o BIND(LANGDIR(?o) AS ?d) }'
+```
+
+Both tags are kept: version 9 is the differential oracle for version 10
+(`docs/designissues/2026-09-05-wire-version-10-scale.md` gate 4).
 
 Memory. The N-Quads, Turtle and N-Triples routes stream the source in
 65,536-byte chunks (`PackStream.quadIngestFeed`), and since 2026-09-05 they
@@ -172,6 +202,8 @@ What works:
   graph set equals the manifest entry's summary.
 - **SPARQL through `l4block-quad-query`** (landed 2026-09-03; see the next
   subsection).
+- `tools/blockengine-ibk5-quad-smoke.sh` (wire version 10: the RDF 1.2
+  fixture, the blob artifacts, the zone maps, the tamper tests),
 - `tools/blockengine-ibk4-quad-smoke.sh` and
   `tools/blockengine-ibk4-w3c-trig-smoke.sh` (241 pass, 0 fail out of 241
   positive W3C TriG 1.1 tests).

@@ -17,6 +17,7 @@ sequence as the IBK3 generation of the same source.
 No `partial`, no `unsafe`, no `sorry`.
 -/
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.TermWireV2
 import Std.Data.HashMap
 
 namespace L4Factoidal.Storage.PredicateQuadBlocks
@@ -87,18 +88,39 @@ def subjectWireBytes : Subject → Nat
   | .iri i => 1 + lstringWireBytes i.val
   | .bnode b => 1 + lstringWireBytes b
 
-/-- The exact `DeltaLog.serializeTerm` length, which is what PTD1 writes into
-    a block dictionary. A triple term is one tag byte and is refused by
-    `IndexedBlockWireV4.supported` anyway. -/
+/-- The dictionary cost of one object term, for the CUT POLICY only. No wire
+    byte depends on it: it decides where a block ends, not what a block holds.
+
+    It is the version-2 term width (`Storage/TermWireV2.lean`), which is the
+    version-1 width for every term the two codecs share — an IRI, a blank
+    node, and an inline literal are tag-for-tag the same size — and differs in
+    exactly two places:
+
+    * a literal whose UTF-8 lexical form is above
+      `TermWireV2.maxInlineLexicalBytes` is stored OUT OF LINE, so its bytes
+      are in a `blob-<hex>.lit` artifact and not in the block. Counting its
+      lexical length here would cut a block at a cost the block does not
+      carry;
+    * a triple term is recursive, so it costs its parts rather than one byte.
+
+    The policy is shared by both quad formats. For IBK4 that is a widening of
+    the estimate in two cases IBK4 cannot store at all (it refuses a triple
+    term) or has never met in a packed corpus (a literal above 65,536 bytes);
+    the measured skosdex block counts are unchanged. -/
 def termWireBytes : Term → Nat
   | .iri i => 1 + lstringWireBytes i.val
   | .bnode b => 1 + lstringWireBytes b
   | .literal l =>
-      1 + lstringWireBytes l.val.lexicalForm + lstringWireBytes l.val.datatype.val +
-        (match l.val.langTag with
-         | none => 1
-         | some tag => 1 + lstringWireBytes tag)
-  | .tripleTerm _ _ _ => 1
+      let lang := match l.val.langTag with
+        | none => 1
+        | some tag => 1 + lstringWireBytes tag
+      if l.val.lexicalForm.utf8ByteSize ≤ L4Factoidal.Storage.TermWireV2.maxInlineLexicalBytes then
+        1 + lstringWireBytes l.val.lexicalForm + lstringWireBytes l.val.datatype.val + lang
+      else
+        -- tag, datatype IRI, the flag and its tag, a u64 byte length, a
+        -- 32-byte SHA-256.
+        1 + lstringWireBytes l.val.datatype.val + lang + 8 + 32
+  | .tripleTerm s p o => 1 + subjectWireBytes s + lstringWireBytes p.val + termWireBytes o
 
 /-- A conservative UPPER BOUND of the bytes one quad adds to its block: the
     fixed-width row, one graph-summary entry, and the dictionary cost of all

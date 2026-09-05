@@ -24,7 +24,7 @@ pass, and a host feeds the source twice:
 
   packBegin(syntaxTag, layoutTag, baseIri, batchBytes)
     syntaxTag : turtle | trig | nquads | ntriples
-    layoutTag : ibk2 | ibk3 | ibk4
+    layoutTag : ibk2 | ibk3 | ibk4 | ibk5
     -> {"ok":true,"handle":"p1","pass":"prepass"}
 
   packFeed(handle)            -- the input chunk is the IN region
@@ -265,7 +265,7 @@ def packBegin (syntaxTag layoutTag baseIri batchBytes : String) : IO String := d
   | none, _ =>
       pure (errJson s!"packBegin: unknown grammar tag '{syntaxTag}' (turtle | trig | nquads | ntriples)")
   | _, none =>
-      pure (errJson s!"packBegin: unknown layout tag '{layoutTag}' (ibk2 | ibk3 | ibk4)")
+      pure (errJson s!"packBegin: unknown layout tag '{layoutTag}' (ibk2 | ibk3 | ibk4 | ibk5)")
   | some grammar, some format =>
       -- The streaming fold of IBK2 and IBK3 reads with the Turtle grammar,
       -- which is what the native packer does for those layouts. N-Triples is
@@ -273,7 +273,7 @@ def packBegin (syntaxTag layoutTag baseIri batchBytes : String) : IO String := d
       -- carry named graphs, which an IBK3 block cannot hold.
       if (format == .ibk2 || format == .ibk3) &&
           !(grammar == .turtle || grammar == .ntriples) then
-        pure (errJson s!"packBegin: layout {formatName format} reads turtle or ntriples, not {syntaxName grammar}; use layout ibk4 for named graphs")
+        pure (errJson s!"packBegin: layout {formatName format} reads turtle or ntriples, not {syntaxName grammar}; use layout ibk4 or ibk5 for named graphs")
       else match (if batchBytes.isEmpty then some defaultPackBatchBytes
                   else batchBytes.toNat?.filter (· > 0)) with
       | none =>
@@ -348,7 +348,7 @@ private def finishQuadPass (pack : OpenPack) (prepass : SourcePrepass) :
   let text ← match String.fromUTF8? pack.source with
     | none => .error "l4block-shard-pack UTF-8 error: the source is not valid UTF-8"
     | some text => pure text
-  let result ← quadArtifacts packHasher pack.grammar prepass text pack.base
+  let result ← quadArtifacts packHasher pack.format pack.grammar prepass text pack.base
   .ok (result.packed, result.artifacts)
 
 /-- `packEndPass(handle)` — end the pass the handle is in.
@@ -365,13 +365,14 @@ def packEndPass (h : String) : IO String :=
         match prepassFinish pack.pre with
         | .error e => pure (errJson e)
         | .ok prepass => do
-            let streamsQuads := pack.format == .ibk4 && quadStreams pack.grammar
+            let streamsQuads := isQuadFormat pack.format && quadStreams pack.grammar
             let ingest :=
-              if pack.format == .ibk4 then none
+              if isQuadFormat pack.format then none
               else some (ingestInit packHasher pack.format prepass pack.base)
             let quads :=
               if streamsQuads then
-                some (quadIngestInit packHasher pack.grammar prepass pack.base pack.batchBytes)
+                some (quadIngestInit packHasher pack.format pack.grammar prepass pack.base
+                  pack.batchBytes)
               else none
             packTable.modify (·.insert h
               { pack with pass := .ingest, prepass := some prepass, ingest, quads })
@@ -428,7 +429,7 @@ def packFinish (h : String) : IO String :=
     | none => pure (errJson "packFinish: this pack has no first-pass result")
     | some prepass =>
         let made :=
-          if pack.format == .ibk4 then quadManifestArtifacts prepass pack.packed
+          if isQuadFormat pack.format then quadManifestArtifacts pack.format prepass pack.packed
           else manifestArtifacts pack.format prepass pack.packed
         match made with
         | .error e => pure (errJson e)

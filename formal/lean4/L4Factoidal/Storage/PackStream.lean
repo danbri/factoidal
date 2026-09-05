@@ -32,6 +32,8 @@ import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.IndexedBlockWireV5
+import L4Factoidal.Storage.BlockV5Plan
 import L4Factoidal.Storage.LiteralGramIndexWire
 import L4Factoidal.Storage.GeoBBoxIndexWire
 import L4Factoidal.Syntax.Turtle
@@ -69,32 +71,48 @@ inductive PackFormat where
   | ibk2
   | ibk3
   | ibk4
+  /-- Wire version 10: IBK5 blocks over a PTD2 dictionary of version-2 terms,
+      an LGI2 literal index, the GBI1 geometry index unchanged, and an SBM10
+      manifest with a blob table and per-entry zone maps
+      (`docs/designissues/2026-09-05-wire-version-10-scale.md`). -/
+  | ibk5
   deriving Repr, DecidableEq
+
+/-- The two quad formats. They share the whole ingest fold and differ only in
+    the block codec, the sidecar version and the manifest version. -/
+def isQuadFormat : PackFormat → Bool
+  | .ibk4 | .ibk5 => true
+  | .ibk2 | .ibk3 => false
 
 def artifactName : PackFormat → Nat → String
   | .ibk2, ordinal => s!"predicate-{ordinal}.ibk2"
   | .ibk3, ordinal => s!"predicate-{ordinal}.ibk3"
   | .ibk4, ordinal => s!"predicate-{ordinal}.ibk4"
+  | .ibk5, ordinal => s!"predicate-{ordinal}.ibk5"
 
 def layoutName : PackFormat → String
   | .ibk2 => "predicate-ibk2-merkle-v2-streaming"
   | .ibk3 => "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0"
   | .ibk4 => "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0"
+  | .ibk5 => "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0"
 
 def registryVersion : PackFormat → String
   | .ibk2 => "local-ibk2-dict-v0"
   | .ibk3 => "local-ibk3-ptd1-v0"
   | .ibk4 => "local-ibk4-ptd1-v0"
+  | .ibk5 => "local-ibk5-ptd2-v0"
 
 def manifestVersion : PackFormat → Nat
   | .ibk2 => 2
   | .ibk3 => 6
   | .ibk4 => 9
+  | .ibk5 => 10
 
 def encodeBlock? : PackFormat → L4Factoidal.Storage.IndexedBlock.Block → Option ByteArray
   | .ibk2, block => L4Factoidal.Storage.IndexedBlockWireV2.encode? block
   | .ibk3, block => L4Factoidal.Storage.IndexedBlockWireV3.encode? block
   | .ibk4, _ => none
+  | .ibk5, _ => none
 
 /-- The fixed-chunk Merkle leaves of one artifact, as its `.merkle`
     sidecar. This was `writeMerkle`; it returns the bytes instead of
@@ -170,6 +188,17 @@ structure PackState where
   nextOrdinal : Nat := 0
   entriesRev : List Entry := []
   linesRev : List String := []
+  /-- SBM10 only: the manifest blob table under construction, ascending and
+      distinct by SHA-256. Every out-of-line literal the pass has seen is one
+      member, whichever block first named it; content addressing is what makes
+      a literal shared by several blocks one artifact. Empty on every other
+      path. -/
+  blobs : List ArtifactRef := []
+  /-- SBM10 only: the digests of the out-of-line literals of each entry, in
+      the same reverse order as `entriesRev`. They become positions in the
+      final blob table at `quadManifestArtifacts`, which is the first point
+      the table is complete. -/
+  entryBlobsRev : List (List ByteArray) := []
 
 private def sidecar (h : Hasher) (indexName : String) (bytes : ByteArray)
     (commitError : String) : Except String (ArtifactRef × List Artifact) :=
@@ -195,7 +224,7 @@ def publishBlocks (h : Hasher) (format : PackFormat) :
         | none => .error s!"could not commit fixed chunks for {predicate.val}"
       let outRev := merkleArtifact h name bytes :: { name := name, bytes := bytes } :: outRev
       let (subjectIndex, outRev) ← match format with
-        | .ibk2 | .ibk4 => pure (none, outRev)
+        | .ibk2 | .ibk4 | .ibk5 => pure (none, outRev)
         | .ibk3 =>
             let index : L4Factoidal.Storage.SubjectRowIndexWireV2.Index :=
               { targetIBKSha256 := artifact.sha256
@@ -208,7 +237,7 @@ def publishBlocks (h : Hasher) (format : PackFormat) :
                   s!"could not commit SRI2 chunks for {predicate.val}"
                 pure (some ref, made.reverse ++ outRev)
       let (termIndex, outRev) ← match format with
-        | .ibk2 | .ibk4 => pure (none, outRev)
+        | .ibk2 | .ibk4 | .ibk5 => pure (none, outRev)
         | .ibk3 =>
             let index : L4Factoidal.Storage.TermLocalIndexWire.Index :=
               { targetIBKSha256 := artifact.sha256
@@ -223,7 +252,7 @@ def publishBlocks (h : Hasher) (format : PackFormat) :
          framing as SRI2, but is published in SBM6's distinct
          `objectIndex` role and recomputed against row.o at activation. -/
       let (objectIndex, outRev) ← match format with
-        | .ibk2 | .ibk4 => pure (none, outRev)
+        | .ibk2 | .ibk4 | .ibk5 => pure (none, outRev)
         | .ibk3 =>
             let index : L4Factoidal.Storage.SubjectRowIndexWireV2.Index :=
               { targetIBKSha256 := artifact.sha256
@@ -405,28 +434,41 @@ def formatOfTag? (tag : String) : Option PackFormat :=
   | "ibk2" => some .ibk2
   | "ibk3" => some .ibk3
   | "ibk4" => some .ibk4
+  | "ibk5" => some .ibk5
   | _ => none
 
 def formatName : PackFormat → String
   | .ibk2 => "ibk2"
   | .ibk3 => "ibk3"
   | .ibk4 => "ibk4"
+  | .ibk5 => "ibk5"
+
+/-- Which RDF version the source is read as. Wire version 10 is the first
+    format that can STORE an RDF 1.2 triple term or a directional literal, so
+    it is the first that may accept one from a source: an IBK4 block refuses a
+    triple term at encoding, and reading one only to refuse it later would
+    turn a clean parse error into a block-encoding failure. Every earlier
+    format therefore keeps reading RDF 1.1 exactly as before. -/
+def sourceMode : PackFormat → L4Factoidal.Syntax.Mode
+  | .ibk5 => .rdf12
+  | _ => .rdf11
 
 /-- The whole source, as a dataset. `trig` and `nquads` carry named graphs;
     `turtle` and `ntriples` put every triple in the default graph. -/
-def parseSource (grammar : PackSyntax) (text : String) (baseIri : Option String) :
-    Except String L4Factoidal.RDF.Dataset :=
+def parseSource (format : PackFormat) (grammar : PackSyntax) (text : String)
+    (baseIri : Option String) : Except String L4Factoidal.RDF.Dataset :=
+  let mode := sourceMode format
   match grammar with
   | .trig =>
-      match L4Factoidal.Syntax.parseTriG text baseIri with
+      match L4Factoidal.Syntax.parseTriG text baseIri mode with
       | .error e => .error s!"l4block-shard-pack TriG parse error at {e.pos}: {e.msg}"
       | .ok ds => .ok ds
   | .nquads =>
-      match L4Factoidal.Syntax.parseNQuadsFast text with
+      match L4Factoidal.Syntax.parseNQuadsFast text mode with
       | .error e => .error s!"l4block-shard-pack N-Quads parse error at {e.pos}: {e.msg}"
       | .ok ds => .ok ds
   | .turtle | .ntriples =>
-      match L4Factoidal.Syntax.parseTurtle text baseIri with
+      match L4Factoidal.Syntax.parseTurtle text baseIri mode with
       | .error e => .error s!"l4block-shard-pack Turtle parse error at {e.pos}: {e.msg}"
       | .ok graph => .ok { default := graph, named := [] }
 
@@ -437,6 +479,84 @@ private def graphSetText (names : List GraphName) : String :=
     | .iri value => value.val
     | .bnode label => "_:" ++ label)
 
+/-! ## SBM10 blob artifacts
+
+An out-of-line literal's lexical form is one artifact, `blob-<sha256 hex>.lit`,
+holding exactly its UTF-8 bytes. The digest is the artifact identity, so the
+same literal in two blocks or two graphs is one file, and a reader that holds
+a version-2 tag-4 term can name the file from the term alone. -/
+
+/-- Insert one blob reference into the table, keeping it ascending by SHA-256.
+    A digest already present is not inserted twice. -/
+def insertBlobRef : List ArtifactRef → ArtifactRef → List ArtifactRef
+  | [], ref => [ref]
+  | head :: rest, ref =>
+      if head.sha256.toList == ref.sha256.toList then head :: rest
+      else if L4Factoidal.Storage.ShardManifest.lexLt ref.sha256.toList head.sha256.toList then
+        ref :: head :: rest
+      else head :: insertBlobRef rest ref
+
+def blobTableHas (table : List ArtifactRef) (digest : ByteArray) : Bool :=
+  table.any fun ref => ref.sha256.toList == digest.toList
+
+/-- The out-of-line literals one block's rows carry, as digest and bytes. The
+    packer has the lexical form here and nowhere later, so this is where the
+    blob file is made. -/
+def blobLiteralsOfRows (h : Hasher)
+    (rows : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :
+    List (ByteArray × ByteArray) :=
+  rows.filterMap fun quad =>
+    match quad.2.o with
+    | .literal l =>
+        if L4Factoidal.Storage.TermWireV2.lexicalFitsInline l then none
+        else
+          let bytes := l.val.lexicalForm.toUTF8
+          some (h.digest bytes, bytes)
+    | _ => none
+
+/-- The first row whose object literal is above `maxBlobBytes`. Section 2 of
+    the wire-version-10 record: the packer refuses it, naming the literal's
+    subject and predicate. -/
+def oversizeLiteral? (rows : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :
+    Option (L4Factoidal.Storage.IndexedBlockWireV4.QuadRow × Nat) :=
+  rows.findSome? fun quad =>
+    match quad.2.o with
+    | .literal l =>
+        let size := l.val.lexicalForm.utf8ByteSize
+        if size > L4Factoidal.Storage.TermWireV2.maxBlobBytes then some (quad, size) else none
+    | _ => none
+
+private def subjectText (s : L4Factoidal.RDF.Subject) : String :=
+  match s with
+  | .iri value => "<" ++ value.val ++ ">"
+  | .bnode label => "_:" ++ label
+
+/-- The blob artifacts one block adds to the pass, and the table after them.
+    A digest already in the table adds nothing: the bytes are already
+    committed under exactly this name. -/
+def addBlobArtifacts (h : Hasher) (table : List ArtifactRef) (outRev : List Artifact) :
+    List (ByteArray × ByteArray) → Except String (List ArtifactRef × List Artifact)
+  | [] => .ok (table, outRev)
+  | (digest, bytes) :: rest =>
+      if blobTableHas table digest then addBlobArtifacts h table outRev rest
+      else
+        let name := L4Factoidal.Storage.ShardManifest.blobKeyOf digest
+        match artifactRef? h name bytes with
+        | none => .error s!"could not commit fixed chunks for {name}"
+        | some ref =>
+            addBlobArtifacts h (insertBlobRef table ref)
+              (merkleArtifact h name bytes :: { name := name, bytes := bytes } :: outRev) rest
+
+/-- The first eight bytes of one zone bound, as lowercase hexadecimal. The TSV
+    is for a human reading a generation, so it carries the short prefix that
+    tells two blocks apart, not the whole 64-byte bound. -/
+def zoneText (zone : Option (List UInt8 × List UInt8)) : String :=
+  match zone with
+  | none => ""
+  | some (lo, hi) =>
+      bytesToHex (ByteArray.mk (lo.take 8).toArray) ++ ".." ++
+        bytesToHex (ByteArray.mk (hi.take 8).toArray)
+
 /-- One IBK4 block, its Merkle sidecar and its manifest row. The artifact
     order is the block bytes and then the sidecar, which is the order the
     native packer wrote them in.
@@ -444,12 +564,96 @@ private def graphSetText (names : List GraphName) : String :=
     The argument is the ROWS of each block, not the blocks: the `QuadBlock` is
     built here, one at a time, so a caller publishing a batch never holds more
     than one encoded block beside the rows it has not reached yet. -/
-def publishQuadBlocks (h : Hasher) (scope : String) :
+def publishQuadBlocks (h : Hasher) (format : PackFormat) (scope : String) :
     PackState → List Artifact →
     List (L4Factoidal.RDF.WfIri × List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) →
     Except String (PackState × List Artifact)
   | state, outRev, [] => .ok (state, outRev.reverse)
-  | state, outRev, (predicate, rows) :: rest => do
+  | state, outRev, (predicate, rows) :: rest =>
+    if format == .ibk5 then do
+      /- Section 2 of the wire-version-10 record: a literal above
+         `maxBlobBytes` is refused, naming its subject and predicate. -/
+      match oversizeLiteral? rows with
+      | some (quad, size) =>
+          .error s!"l4block-shard-pack refuses a literal of {size} bytes, above maxBlobBytes={L4Factoidal.Storage.TermWireV2.maxBlobBytes}: subject {subjectText quad.2.s} predicate <{quad.2.p.val}>"
+      | none => pure ()
+      let block := L4Factoidal.Storage.IndexedBlockWireV5.fromRdfQuads h.digest rows
+      let bytes ← match L4Factoidal.Storage.IndexedBlockWireV5.encode? block with
+        | none => .error s!"unsupported IBK5 quad block for {predicate.val}"
+        | some bytes => pure bytes
+      let ordinal := state.nextOrdinal
+      let name := artifactName .ibk5 ordinal
+      let artifact ← match artifactRef? h name bytes with
+        | some value => pure value
+        | none => .error s!"could not commit fixed chunks for {predicate.val}"
+      let graphSet ← match L4Factoidal.Storage.IndexedBlockWireV5.graphNames? block with
+        | none => .error s!"unresolvable graph name in block for {predicate.val}"
+        | some names => pure (names.map GraphName.ofGraphRef)
+      let outRev := merkleArtifact h name bytes :: { name := name, bytes := bytes } :: outRev
+      /- The out-of-line literals of this block, as artifacts. Their digests
+         are the entry's blob references; the POSITIONS in the manifest blob
+         table are resolved at `quadManifestArtifacts`, which is where the
+         table is complete and sorted. -/
+      let (blobs, outRev) ← addBlobArtifacts h state.blobs outRev (blobLiteralsOfRows h rows)
+      let entryDigests := L4Factoidal.Storage.IndexedBlockWireV5.blobDigests block
+      /- SBM10's LGI2 literal search index, built over the dictionary's inline
+         literals and carrying the positions of the out-of-line ones as its
+         opaque list. `BlockV5Plan` decides both, and the activation check
+         rebuilds them the same way. -/
+      let literal : L4Factoidal.Storage.LiteralGramIndexWire.Artifact :=
+        { targetIBKSha256 := artifact.sha256
+          index := L4Factoidal.Storage.BlockV5Plan.literalIndexOf block }
+      let (literalIndex, outRev) ←
+        match L4Factoidal.Storage.LiteralGramIndexWire.encode2? literal with
+        | none => .error s!"could not encode LGI2 index for {predicate.val}"
+        | some indexBytes => do
+            let (ref, made) ← sidecar h (name ++ ".lgi2") indexBytes
+              s!"could not commit LGI2 chunks for {predicate.val}"
+            pure (some ref, made.reverse ++ outRev)
+      /- GBI1, unchanged from SBM9. A blob geometry is NOT in it: its WKT is
+         not in the block, so no box can be computed. Every caller that turns
+         a GBI1 candidate set into rows must union the block's opaque
+         positions into the candidates first, which is what keeps the filter a
+         superset (`docs/designissues/2026-09-05-geometry-bounding-box-index.md`). -/
+      let geo : L4Factoidal.Storage.GeoBBoxIndexWire.Artifact :=
+        { targetIBKSha256 := artifact.sha256
+          index := L4Factoidal.Storage.BlockV5Plan.geoIndexOf block }
+      let (geoIndex, outRev) ←
+        match L4Factoidal.Storage.GeoBBoxIndexWire.encode? geo with
+        | none => .error s!"could not encode GBI1 index for {predicate.val}"
+        | some indexBytes => do
+            let (ref, made) ← sidecar h (name ++ ".gbi1") indexBytes
+              s!"could not commit GBI1 chunks for {predicate.val}"
+            pure (some ref, made.reverse ++ outRev)
+      /- Both zone maps over ONE pass of the dictionary: a key depends only on
+         the term, so the key prefixes are computed per dictionary slot rather
+         than per row. -/
+      let (subjectZone, objectZone) ← match L4Factoidal.Storage.BlockV5Plan.zones? block with
+        | none => .error s!"could not compute the zone maps for {predicate.val}"
+        | some zones => pure zones
+      let entry : Entry :=
+        { predicate
+          artifact
+          literalIndex
+          geoIndex
+          blockLayout := some BlockLayout.ibk5
+          blankNodeScope := scope
+          graphSet
+          subjectZone := some subjectZone
+          objectZone := some objectZone
+          rows := block.rows.size
+          ordinal }
+      let literalIndexName := literalIndex.map (fun index => index.key.value) |>.getD ""
+      let geoIndexName := geoIndex.map (fun index => index.key.value) |>.getD ""
+      publishQuadBlocks h format scope
+        { tripleCount := state.tripleCount + block.rows.size
+          nextOrdinal := ordinal + 1
+          entriesRev := entry :: state.entriesRev
+          blobs := blobs
+          entryBlobsRev := entryDigests :: state.entryBlobsRev
+          linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}\t{literalIndexName}\t{geoIndexName}\t{zoneText (some subjectZone)}\t{zoneText (some objectZone)}\t{entryDigests.length}" :: state.linesRev }
+        outRev rest
+    else do
       let block := L4Factoidal.Storage.IndexedBlockWireV4.fromQuads rows
       let bytes ← match L4Factoidal.Storage.IndexedBlockWireV4.encode? block with
         | none => .error s!"unsupported quad block for {predicate.val}"
@@ -507,10 +711,12 @@ def publishQuadBlocks (h : Hasher) (scope : String) :
           ordinal }
       let literalIndexName := literalIndex.map (fun index => index.key.value) |>.getD ""
       let geoIndexName := geoIndex.map (fun index => index.key.value) |>.getD ""
-      publishQuadBlocks h scope
+      publishQuadBlocks h format scope
         { tripleCount := state.tripleCount + block.rows.size
           nextOrdinal := ordinal + 1
           entriesRev := entry :: state.entriesRev
+          blobs := state.blobs
+          entryBlobsRev := state.entryBlobsRev
           linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}\t{literalIndexName}\t{geoIndexName}" :: state.linesRev }
         outRev rest
 
@@ -530,11 +736,12 @@ structure QuadPack where
   packed : PackState
   artifacts : List Artifact
 
-def quadArtifacts (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
-    (text : String) (baseIri : Option String) : Except String QuadPack := do
-  let dataset ← parseSource grammar text baseIri
+def quadArtifacts (h : Hasher) (format : PackFormat) (grammar : PackSyntax)
+    (prepass : SourcePrepass) (text : String) (baseIri : Option String) :
+    Except String QuadPack := do
+  let dataset ← parseSource format grammar text baseIri
   let (packed, artifacts) ←
-    publishQuadBlocks h (bytesToHex prepass.sourceIdentity) {}
+    publishQuadBlocks h format (bytesToHex prepass.sourceIdentity) {}
       [] (L4Factoidal.Storage.PredicateQuadBlocks.runsOfDataset dataset)
   .ok { graphs := dataset.named.length + 1, batches := 1, packed, artifacts }
 
@@ -657,9 +864,10 @@ def quadStreamDrain (stream : QuadStream) (flushMin : Option Nat) :
 /-- The accumulator a finished stream ends with. An N-Quads parse error is
     sticky in `StreamStateC` and surfaces here; the Turtle fold has already
     reported at the chunk that carried the offending statement. -/
-def quadStreamFinish (stream : QuadStream) : Except ParseError QuadPub :=
+def quadStreamFinish (mode : L4Factoidal.Syntax.Mode) (stream : QuadStream) :
+    Except ParseError QuadPub :=
   match stream with
-  | .nquads s => L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11 addQuadPub s
+  | .nquads s => L4Factoidal.Syntax.NQuadsStreaming.finishC mode addQuadPub s
   | .turtle fold => fold.finish quadPubStep
 
 /-- The state of a streaming IBK4 pass. Every field is bounded: the open runs
@@ -667,6 +875,9 @@ def quadStreamFinish (stream : QuadStream) : Except ParseError QuadPub :=
     block count, the rest by construction. -/
 structure QuadIngestState where
   hasher : Hasher
+  /-- Which quad wire version this pass writes: `.ibk4` is version 9 and
+      `.ibk5` version 10. Nothing else about the fold depends on it. -/
+  format : PackFormat
   blocks : Crypto.BlockFold256
   scope : String
   expected : ByteArray
@@ -686,11 +897,12 @@ structure QuadIngestState where
     `.nt`. `blocks` is the SHA-256 block fold: the pure Lean walk is the
     specification and the HACL* one is what a host passes, the two being
     extensionally equal. -/
-def quadIngestInit (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
-    (baseIri : Option String)
+def quadIngestInit (h : Hasher) (format : PackFormat) (grammar : PackSyntax)
+    (prepass : SourcePrepass) (baseIri : Option String)
     (batchBytes : Nat := L4Factoidal.Storage.PredicateQuadBlocks.batchSourceBytesDefault)
     (blocks : Crypto.BlockFold256 := Crypto.pureBlockFold256) : QuadIngestState :=
   { hasher := h
+    format := format
     blocks := blocks
     scope := bytesToHex prepass.sourceIdentity
     expected := prepass.sourceIdentity
@@ -700,7 +912,8 @@ def quadIngestInit (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
       match grammar with
       | .nquads => .nquads (L4Factoidal.Syntax.NQuadsStreaming.initialStateC {})
       | .turtle | .ntriples | .trig =>
-          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix quadPubStep {} baseIri)
+          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix quadPubStep {} baseIri
+            (sourceMode format))
     digest := Sha256Stream.init
     packed := {}
     bytesSinceBatch := 0
@@ -717,7 +930,8 @@ def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
   | .ok (text, nextUtf8) => do
       let fed ← match state.stream with
         | .nquads stream =>
-            .ok (QuadStream.nquads (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
+            .ok (QuadStream.nquads
+              (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC (sourceMode state.format)
                   addQuadPub stream text.toList))
         | .turtle fold =>
             match fold.feed quadPubStep text with
@@ -728,7 +942,8 @@ def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
       let batchEnds := since >= state.batchBytes
       let (stream, runs) := quadStreamDrain fed
         (if batchEnds then some L4Factoidal.Storage.PredicateQuadBlocks.minBatchRows else none)
-      let (packed, made) ← publishQuadBlocks state.hasher state.scope state.packed [] runs
+      let (packed, made) ←
+        publishQuadBlocks state.hasher state.format state.scope state.packed [] runs
       .ok ({ state with
                utf8 := nextUtf8
                stream := stream
@@ -747,12 +962,13 @@ def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
       if state.digest.finishWith state.blocks != state.expected then
         .error "l4block-shard-pack input changed between pre-pass and parse pass"
       else
-        match quadStreamFinish state.stream with
+        match quadStreamFinish (sourceMode state.format) state.stream with
         | .error e => .error s!"l4block-shard-pack parse error at {e.pos}: {e.msg}"
         | .ok acc =>
             let runs := acc.readyRev.reverse ++
               (L4Factoidal.Storage.PredicateQuadBlocks.pubFlush acc.pub 0).2
-            match publishQuadBlocks state.hasher state.scope state.packed [] runs with
+            match publishQuadBlocks state.hasher state.format state.scope state.packed []
+                runs with
             | .error message => .error message
             | .ok (packed, artifacts) =>
                 .ok { graphs := acc.graphs.size + 1
@@ -767,24 +983,68 @@ def quadStreams : PackSyntax → Bool
   | .nquads | .turtle | .ntriples => true
   | .trig => false
 
-def quadManifestTsvHeader : String :=
-  "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\tgeo-index\n"
+/-- The TSV header. SBM10 adds three columns: the first eight bytes of each
+    zone-map bound, and how many out-of-line literals the block names. An SBM9
+    generation keeps exactly the eleven columns it had, so a version-9
+    generation packed after this change is byte-identical to one packed
+    before it. -/
+def quadManifestTsvHeader : PackFormat → String
+  | .ibk5 =>
+      "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\tgeo-index\tsubject-zone\tobject-zone\tblobs\n"
+  | _ =>
+      "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\tgeo-index\n"
 
-/-- The SBM7 manifest and the TSV of a finished IBK4 `PackState`. -/
-def quadManifestArtifacts (prepass : SourcePrepass) (state : PackState) :
+/-! ## Blob references become blob-table positions
+
+An entry holds the DIGESTS of its out-of-line literals while the pass runs,
+because the manifest blob table is not complete until the pass ends and a
+position in it is not defined before then. SBM10 stores positions rather than
+digests so one entry costs four bytes per blob instead of thirty-two. -/
+
+/-- The positions of one entry's digests in the final blob table. `none` when
+    a digest is not in the table, which is a packer fault rather than an
+    admissible generation. The result is ascending because the table is
+    ascending by digest and `blobDigests` is too. -/
+def blobPositions? (table : List ArtifactRef) (digests : List ByteArray) : Option (List Nat) :=
+  digests.mapM fun digest =>
+    table.findIdx? fun ref => ref.sha256.toList == digest.toList
+
+/-- Attach each entry's blob positions. The two lists are parallel: the packer
+    pushes one digest list per entry it pushes. -/
+def withBlobRefs (table : List ArtifactRef) :
+    List Entry → List (List ByteArray) → Option (List Entry)
+  | [], [] => some []
+  | entry :: entries, digests :: rest => do
+      let refs ← blobPositions? table digests
+      let tail ← withBlobRefs table entries rest
+      some ({ entry with blobRefs := refs } :: tail)
+  | _, _ => none
+
+/-- The manifest and the TSV of a finished quad `PackState`: SBM9 for the
+    IBK4 format, SBM10 for IBK5, where the blob table is published and each
+    entry's digest list becomes positions in it. -/
+def quadManifestArtifacts (format : PackFormat) (prepass : SourcePrepass) (state : PackState) :
     Except String (List Artifact) :=
-  let manifest : Manifest :=
-    { version := manifestVersion .ibk4
-      sourceIdentity := prepass.sourceIdentity
-      termRegistryVersion := registryVersion .ibk4
-      layout := layoutName .ibk4
-      blankNodeProfile := "content-digest-shared"
-      entries := state.entriesRev.reverse }
-  match L4Factoidal.Storage.ShardManifest.encode? manifest with
-  | none => .error "could not encode structurally valid SBM8 manifest"
-  | some manifestBytes =>
-      .ok [{ name := "manifest.sbm2", bytes := manifestBytes },
-           { name := "manifest.tsv",
-             bytes := (manifestTsv quadManifestTsvHeader state.linesRev).toUTF8 }]
+  let entries := state.entriesRev.reverse
+  match (if format == .ibk5 then
+           withBlobRefs state.blobs entries state.entryBlobsRev.reverse
+         else some entries) with
+  | none => .error "a block named an out-of-line literal that is not in the blob table"
+  | some entries =>
+      let manifest : Manifest :=
+        { version := manifestVersion format
+          sourceIdentity := prepass.sourceIdentity
+          termRegistryVersion := registryVersion format
+          layout := layoutName format
+          blankNodeProfile := "content-digest-shared"
+          entries := entries
+          blobs := if format == .ibk5 then state.blobs else [] }
+      match L4Factoidal.Storage.ShardManifest.encode? manifest with
+      | none =>
+          .error s!"could not encode structurally valid SBM{manifestVersion format} manifest"
+      | some manifestBytes =>
+          .ok [{ name := "manifest.sbm2", bytes := manifestBytes },
+               { name := "manifest.tsv",
+                 bytes := (manifestTsv (quadManifestTsvHeader format) state.linesRev).toUTF8 }]
 
 end L4Factoidal.Storage.PackStream

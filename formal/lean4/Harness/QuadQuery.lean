@@ -26,8 +26,10 @@ import Harness.NativeHasher
 import L4Factoidal.RDF.DatasetGraphs
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
+import L4Factoidal.Geo.Functions
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.IndexedBlockWireV5
 import L4Factoidal.Storage.QuadDataset
 import L4Factoidal.Storage.ShardManifest
 
@@ -81,6 +83,63 @@ private def readEntry (directory : System.FilePath) (entry : Entry) :
         pure (some (block.denotes, bytes.size))
   catch _ => pure none
 
+/-! ## SBM10 entries and their out-of-line literals
+
+An IBK5 block denotes quads whose object may be a `WireTerm.blob`: the block
+names a byte extent and a SHA-256 digest, and the lexical form is one
+`blob-<hex>.lit` artifact beside it. `IndexedBlockWireV5.resolveBlock` turns
+those into RDF terms through a lookup, and refuses missing bytes, a wrong byte
+count, a wrong digest and invalid UTF-8 — so a blob file that does not match
+its term refuses the query rather than answering with a fabricated literal.
+
+The lookup is backed by a cache held for the whole query, so one blob is read
+once however many blocks name it. That is what content addressing buys: the
+same large literal in twenty blocks is one file and one read. -/
+
+abbrev BlobCache := Std.HashMap (List UInt8) ByteArray
+
+/-- Fetch every blob one block names that the cache does not hold. A blob that
+    cannot be read is left out; `resolve` then refuses the block. -/
+private def fetchBlobs (directory : System.FilePath) (cache : BlobCache) :
+    List ByteArray → IO BlobCache
+  | [] => pure cache
+  | digest :: rest => do
+      if cache.contains digest.toList then fetchBlobs directory cache rest else
+      let name := blobKeyOf digest
+      let next ← try
+          let bytes ← IO.FS.readBinFile (directory / name)
+          pure (cache.insert digest.toList bytes)
+        catch _ => pure cache
+      fetchBlobs directory next rest
+
+private def readEntryV5 (directory : System.FilePath) (cache : BlobCache) (entry : Entry) :
+    IO (Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow × Nat × BlobCache)) := do
+  if !safeLeafKey entry.artifact.key then pure none else
+  try
+    let bytes ← IO.FS.readBinFile (directory / entry.artifact.key.value)
+    if !artifactAdmitted entry bytes then pure none else
+    match L4Factoidal.Storage.IndexedBlockWireV5.decode bytes with
+    | none => pure none
+    | some block =>
+        if block.rows.size != entry.rows then pure none else
+        let cache ← fetchBlobs directory cache
+          (L4Factoidal.Storage.IndexedBlockWireV5.blobDigests block)
+        match L4Factoidal.Storage.IndexedBlockWireV5.resolveBlock Harness.nativeHasher.digest
+            (fun d => cache[d.toList]?) block with
+        | none => pure none
+        | some quads => pure (some (quads, bytes.size, cache))
+  catch _ => pure none
+
+private def readEntriesV5 (directory : System.FilePath) :
+    List Entry → List (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) → Nat →
+    BlobCache → IO (Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow × Nat))
+  | [], chunksRev, bytes, _ => pure (some (chunksRev.reverse.flatten, bytes))
+  | entry :: rest, chunksRev, bytes, cache => do
+      match ← readEntryV5 directory cache entry with
+      | none => pure none
+      | some (current, size, cache) =>
+          readEntriesV5 directory rest (current :: chunksRev) (bytes + size) cache
+
 /-- The selected entries, read in manifest order. Each entry's rows are kept
     as one chunk and the chunks are flattened once at the end: appending the
     running list per entry is quadratic in the entry count, and an SBM7
@@ -124,21 +183,28 @@ private def stripDatasetClauses (query : Query) : Query :=
 private def previewOf (rows : SolutionSeq) : String :=
   toString (repr (rows.take 10))
 
+/-- `zoneExcluded` is how many entries the predicate and graph collectors kept
+    and the SBM10 zone maps then dropped. It is zero for every generation
+    below version 10, which carries no zone map. -/
 private def header (entries : List Entry) (mode : String) (graphs : Nat)
-    (bytes : Nat) : String :=
-  s!"l4block-quad-query shards={entries.length} open-mode={mode}({entries.length}) graphs={graphs} logical-read-bytes={bytes} fetched-bytes={bytes}"
+    (bytes : Nat) (zoneExcluded : Nat) : String :=
+  s!"l4block-quad-query shards={entries.length} open-mode={mode}({entries.length}) graphs={graphs} logical-read-bytes={bytes} fetched-bytes={bytes} zone-excluded={zoneExcluded}"
 
-private def finish (query : Query) (entries : List Entry) (ds : Dataset) (bytes : Nat) :
-    IO UInt32 := do
+private def finish (query : Query) (entries : List Entry) (codec : String) (ds : Dataset)
+    (bytes : Nat) (zoneExcluded : Nat) : IO UInt32 := do
   let (applied, _) := applyDataset query.dataset ds ds.default
   let stripped := stripDatasetClauses query
   -- §18.6: EXISTS / NOT EXISTS evaluate against the query's dataset, which
   -- the backend runners read from `env.dataset`. It is the SAME dataset the
   -- backend answers from, so an EXISTS sub-pattern sees exactly the
   -- materialised generation.
-  let env : EvalEnv := { emptyEnv with dataset := some applied }
+  -- §17.6 extension functions: the GeoSPARQL simple-features predicates, so
+  -- a `geof:sf*` FILTER is evaluated here rather than being a type error.
+  -- `Geo.extFns` refuses every IRI outside the `geof:` namespace, which is
+  -- what §17.6 requires of an unregistered IRI.
+  let env : EvalEnv := { emptyEnv with dataset := some applied, ext := L4Factoidal.Geo.extFns }
   let indexed := namesAreIris applied
-  let mode := if indexed then "ibk4-full-manifest" else "ibk4-full-manifest-reference"
+  let mode := if indexed then codec ++ "-full-manifest" else codec ++ "-full-manifest-reference"
   let graphs := applied.named.length
   match query.form with
   | .select _ =>
@@ -148,7 +214,7 @@ private def finish (query : Query) (entries : List Entry) (ds : Dataset) (bytes 
       match rows? with
       | none => IO.eprintln "l4block-quad-query failed: query was not evaluated as SELECT"; return 1
       | some rows =>
-          IO.println (header entries mode graphs bytes)
+          IO.println (header entries mode graphs bytes zoneExcluded)
           IO.println s!"l4block-quad-query sse={query.toSse}"
           IO.println s!"l4block-quad-query rows={rows.length} preview={previewOf rows}"
           return 0
@@ -159,13 +225,13 @@ private def finish (query : Query) (entries : List Entry) (ds : Dataset) (bytes 
       match answer? with
       | none => IO.eprintln "l4block-quad-query failed: query was not evaluated as ASK"; return 1
       | some answer =>
-          IO.println (header entries mode graphs bytes)
+          IO.println (header entries mode graphs bytes zoneExcluded)
           IO.println s!"l4block-quad-query sse={query.toSse}"
           IO.println s!"l4block-quad-query boolean={answer}"
           return 0
   | .construct _ =>
       let graph := evalConstruct env applied stripped
-      IO.println (header entries mode graphs bytes)
+      IO.println (header entries mode graphs bytes zoneExcluded)
       IO.println s!"l4block-quad-query sse={query.toSse}"
       IO.println s!"l4block-quad-query triples={graph.length} preview={toString (repr (graph.take 10))}"
       return 0
@@ -173,19 +239,38 @@ private def finish (query : Query) (entries : List Entry) (ds : Dataset) (bytes 
       IO.eprintln "l4block-quad-query rejected: DESCRIBE needs an explicit description policy"
       return 1
 
+/-- The zone-map key function: the canonical version-2 wire bytes of a term,
+    which are the bytes the packer compared when it computed an entry's zone
+    bounds (`ShardManifest.quadEntriesForQueryWithKeys`). A key function that
+    disagreed with the packer's would drop entries holding matching rows, so
+    this is `TermWireV2.keyBytes (TermWireV2.toWire h t)` and nothing else. -/
+private def zoneTermKey (t : Term) : Option (List UInt8) :=
+  L4Factoidal.Storage.TermWireV2.keyBytes
+    (L4Factoidal.Storage.TermWireV2.toWire Harness.nativeHasher.digest t)
+
 private def run (directoryText queryText : String) : IO UInt32 := do
   try
     let root := System.FilePath.mk directoryText
     let directory ← resolveStoreDirectory root
     let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm2")
-    match decode? manifestBytes, parseSparql queryText with
-    | none, _ => IO.eprintln "l4block-quad-query rejected: malformed SBM7 manifest"; return 1
-    | _, .error error =>
-        IO.eprintln s!"l4block-quad-query query parse error at {error.pos}: {error.msg}"; return 1
-    | some manifest, .ok query =>
-        if (manifest.version != 7 && manifest.version != 8 && manifest.version != 9) ||
-            !isIbk4Layout manifest.layout then
-          IO.eprintln "l4block-quad-query rejected: not an SBM7, SBM8 or SBM9 generation of IBK4 quad blocks; use l4block-id-v3-query for an IBK3 generation"
+    match decode? manifestBytes with
+    | none => IO.eprintln "l4block-quad-query rejected: malformed SBM7 manifest"; return 1
+    | some manifest =>
+        let ibk5 := manifest.version == 10 && isIbk5Layout manifest.layout
+        let ibk4 := (manifest.version == 7 || manifest.version == 8 || manifest.version == 9) &&
+          isIbk4Layout manifest.layout
+        /- A version-10 generation can hold an RDF 1.2 triple term and a
+           directional literal, so its queries are read as SPARQL 1.2, which
+           is what makes `LANGDIR`, `hasLANGDIR`, `STRLANGDIR` and the triple
+           term syntax available. Every earlier generation keeps SPARQL 1.1,
+           where those spellings are prefixed names. -/
+        match parseSparql queryText none (if ibk5 then .v12 else .v11) with
+        | .error error =>
+            IO.eprintln s!"l4block-quad-query query parse error at {error.pos}: {error.msg}"
+            return 1
+        | .ok query =>
+        if !ibk4 && !ibk5 then
+          IO.eprintln "l4block-quad-query rejected: not an SBM7, SBM8, SBM9 or SBM10 generation of quad blocks; use l4block-id-v3-query for an IBK3 generation"
           return 1
         if !rangeCommitted manifest then
           IO.eprintln "l4block-quad-query rejected: candidate manifest has no Merkle range commitment"
@@ -193,12 +278,21 @@ private def run (directoryText queryText : String) : IO UInt32 := do
         if !(← (root / currentName).pathExists) then
           IO.eprintln "l4block-quad-query rejected: SBM7 requires an activated collection root (CURRENT)"
           return 1
-        let entries := quadEntriesForQuery manifest query
-        match ← readEntries directory entries [] 0 with
+        /- Block selection. The predicate and graph-name collectors run for
+           every version; the zone maps only exclude an entry of a version-10
+           generation, because no earlier entry carries one. -/
+        let withoutZones := quadEntriesForQuery manifest query
+        let entries := quadEntriesForQueryWithKeys zoneTermKey manifest query
+        let zoneExcluded := withoutZones.length - entries.length
+        let read ← if ibk5 then readEntriesV5 directory entries [] 0 ∅
+                   else readEntries directory entries [] 0
+        match read with
         | none =>
-            IO.eprintln "l4block-quad-query rejected: malformed or unavailable committed IBK4 artifact"
+            IO.eprintln "l4block-quad-query rejected: malformed or unavailable committed quad artifact"
             return 1
-        | some (quads, bytes) => finish query entries (datasetOfQuads quads) bytes
+        | some (quads, bytes) =>
+            finish query entries (if ibk5 then "ibk5" else "ibk4") (datasetOfQuads quads)
+              bytes zoneExcluded
   catch error => IO.eprintln s!"l4block-quad-query failure: {error}"; return 1
 
 def main (args : List String) : IO UInt32 := do

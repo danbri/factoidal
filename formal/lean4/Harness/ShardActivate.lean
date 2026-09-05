@@ -12,6 +12,7 @@ import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.IndexedBlockWireV5
 import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.ChunkedArtifact
@@ -74,6 +75,16 @@ private def ibk4Lgi1Gbi1Layout : String :=
 
 private def isIbk4Layout (layout : String) : Bool :=
   layout == ibk4Layout || layout == ibk4Lgi1Layout || layout == ibk4Lgi1Gbi1Layout
+
+/-- The SBM10 layout label: IBK5 blocks over a PTD2 dictionary, an LGI2
+    literal index and the GBI1 geometry index. It is deliberately NOT a member
+    of `isIbk4Layout`: an IBK4 reader over IBK5 bytes misreads terms rather
+    than failing, so a reader selects its block codec by name. -/
+private def ibk5Layout : String :=
+  "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0"
+
+private def isIbk5Layout (layout : String) : Bool :=
+  layout == ibk5Layout
 
 private def isIbk3Layout (layout : String) : Bool :=
   layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||
@@ -177,13 +188,33 @@ private def verifyQuadEntries (directory : System.FilePath) (entries : List Entr
     IO (Option Nat) :=
   L4Factoidal.Storage.GenerationVerify.verifyQuadEntries (directoryReader directory) entries 0
 
+private def quadV5EntryFailure : String :=
+  L4Factoidal.Storage.GenerationVerify.quadV5EntryFailure
+
+private def blobFailure : String :=
+  L4Factoidal.Storage.GenerationVerify.blobFailure
+
+private def verifyQuadV5Entries (directory : System.FilePath) (manifest : Manifest) :
+    IO (Option Nat) :=
+  L4Factoidal.Storage.GenerationVerify.verifyQuadV5Entries nativeHasher
+    (directoryReader directory) manifest manifest.entries 0
+
+/-- The SBM10 blob table. Each `blob-<hex>.lit` satisfies the same two
+    commitments every other child satisfies, and its key names its own
+    digest. -/
+private def verifyBlobArtifacts (directory : System.FilePath) (manifest : Manifest) : IO Bool :=
+  L4Factoidal.Storage.GenerationVerify.verifyBlobArtifacts nativeHasher
+    (directoryReader directory) manifest.blobs
+
 
 /-- Validate the selected physical layout after full-file SHA-256 admission.
     IBK2 uses its existing all-entry materializer; IBK3 uses the paged reader,
     which rechecks every selected byte range against the committed Merkle
     leaves while decoding the same entries. -/
 private def verifyReadableEntries (directory : System.FilePath) (manifest : Manifest) : IO (Option Nat) := do
-  if isIbk4Layout manifest.layout then
+  if isIbk5Layout manifest.layout then
+    verifyQuadV5Entries directory manifest
+  else if isIbk4Layout manifest.layout then
     verifyQuadEntries directory manifest.entries
   else if isIbk3Layout manifest.layout then
     match ← Harness.IndexedBlockV3Materialize.materializeEntries directory manifest.entries with
@@ -210,12 +241,15 @@ private def activate (rootText generation : String) : IO UInt32 := do
           throw <| IO.userError "candidate source changed since compaction; compact again before activation"
         if !(← verifyFullEntries candidate manifest.entries) then
           throw <| IO.userError "candidate child artifact fails its declared SHA-256 commitment"
+        if !(← verifyBlobArtifacts candidate manifest) then
+          throw <| IO.userError blobFailure
         match ← verifyIndexSidecars candidate manifest.version manifest.entries with
         | some failure => throw <| IO.userError failure
         | none => pure ()
         match ← verifyReadableEntries candidate manifest with
         | none =>
-            if isIbk4Layout manifest.layout then throw <| IO.userError quadEntryFailure
+            if isIbk5Layout manifest.layout then throw <| IO.userError quadV5EntryFailure
+            else if isIbk4Layout manifest.layout then throw <| IO.userError quadEntryFailure
             else throw <| IO.userError "candidate child artifact is missing, changed, or malformed"
         | some verifiedBytes =>
             if ← activateGeneration root generation then
