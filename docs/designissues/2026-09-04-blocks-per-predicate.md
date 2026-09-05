@@ -123,16 +123,64 @@ stored twice. Two separate cases:
   on both sides of the cut is stored twice. Subjects mostly appear once per
   predicate, so this is bounded by the terms straddling a cut.
 
-Measured on the corpus below, the generation grew from 268,435,456 bytes to
-the figure recorded in the results section. That number is the price and is
-reported to the owner rather than argued away.
+Measured: 61,033,353 bytes of N-Quads over four skosdex vocabularies
+(335,454 quads), packed twice from the same input, once by the packer before
+this change and once after.
+
+| | blocks | generation (KiB) | peak memory (bytes) | user CPU (s) |
+|---|---|---|---|---|
+| one block per predicate | 144 | 27,856 | 394,543,104 | 65.81 |
+| split at graph boundaries | 200 | 28,572 | 265,994,240 | 74.76 |
+
+The generation is **2.57 per cent larger**. That is the whole price of the
+lost dictionary sharing on this corpus, and it is small because the graph
+boundary is where the terms are already disjoint: two vocabularies share
+almost no IRI and no label. Peak packer memory FELL by 32.6 per cent, because
+the largest block a run has to encode is now bounded. User CPU rose 13.6 per
+cent, which is the extra interning and encoding of the duplicated terms.
+
+Wall-clock times are not compared: the two runs were on a machine with other
+builds on it, and the wall clock of each differed from its user CPU by a
+factor of three.
 
 ## Old generations
 
-Nothing in the decoder changes, so every committed generation reads exactly
-as before. `factoidal-skoscross` and `factoidal-skosgraphs` are checked by
-comparing ROWS, not counts (anti-pattern 34). This is additive: the packer
-emits a different block set for a large source, the reader admits both.
+Nothing in the decoder changes, so every committed generation reads exactly as
+before. Checked by comparing ROWS, not counts (anti-pattern 34).
+
+**Gate 1 — old generations, old reader against new reader.** Ten queries over
+`factoidal-skoscross` and `factoidal-skosgraphs`, both packed one block per
+predicate: a bound-predicate SELECT, a `GRAPH <iri>` SELECT, a `GRAPH ?g`
+SELECT, an ASK, and a `FILTER NOT EXISTS`. Every answer row was printed. The
+two outputs are byte-identical over 146 lines.
+
+**Gate 2 — same input, old packer against new packer.** The 61,033,353-byte
+corpus above was packed by both, both generations were activated, and ten
+queries were run against each with ONE binary — a `GRAPH <iri>` SELECT per
+vocabulary (13,394, 7,102, 14,235 and 73,604 rows), a `GRAPH ?g` SELECT
+(10,143 rows), two ASKs, a `FILTER NOT EXISTS`, a two-triple BGP join and a
+subject-bound SELECT. Every answer row was printed; the shard-count header
+line, which necessarily differs, was stripped. The two outputs are identical
+over 200 lines.
+
+This is additive: the packer emits a different block set for a multi-graph
+source, and the reader admits both.
+
+## The corpus measurement that is still open
+
+The whole skosdex corpus has NOT been packed. The merged N-Quads file is
+1,530,492,522 bytes over 65 named graphs (7,245,390 quads), built from the
+`canonical.nq.gz` files that the large-file store has actually materialised in
+`/Users/danbri/working/skosdex/third_party/skos`; the other 653 vocabularies
+are pointers, and 132 `source.rdf` files (1.8 MB total) are RDF/XML, which
+`l4block-shard-pack` does not read. At the measured 4.4 bytes of peak memory
+per source byte, that run needs about 6.7 GB and its generation is about
+700 MB. It was deferred because the machine was at load 142 with 4.8 GB of
+free disk. It is the headline number, so it belongs on a quiet machine.
+
+An intermediate corpus WAS packed with the new packer: 257,120,468 bytes over
+12 vocabularies, 1,294,576 quads, 476 blocks, 437.6 s wall clock,
+932,167,680 bytes peak memory, 134 MB generation.
 
 ## What this does NOT do
 
