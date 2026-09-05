@@ -20,23 +20,31 @@ nq="$repo_root/tests/local/data/quad_sample.nq"
 "$bin/l4block-shard-pack" "$nq" "$run_dir/nq" ibk4 >"$run_dir/pack-nq.txt"
 cat "$run_dir/pack-trig.txt"
 grep -q 'format=quad-ibk4-ptd1-merkle-v0 syntax=trig' "$run_dir/pack-trig.txt"
-grep -q 'quads=6 blocks=2 graphs=3' "$run_dir/pack-trig.txt"
+grep -q 'quads=6 blocks=4 graphs=3' "$run_dir/pack-trig.txt"
 grep -q 'wire-version=7' "$run_dir/pack-trig.txt"
 grep -q 'syntax=nquads' "$run_dir/pack-nq.txt"
-grep -q 'quads=6 blocks=2 graphs=3' "$run_dir/pack-nq.txt"
+grep -q 'quads=6 blocks=4 graphs=3' "$run_dir/pack-nq.txt"
 
-# The manifest table: one row per predicate, with the graph set a planner reads
-# for GRAPH <iri> selection without opening the block.
+# The manifest table: one row per BLOCK, and a block holds one predicate in one
+# graph (docs/designissues/2026-09-04-blocks-per-predicate.md). `ex:name` has
+# rows in three graphs, so it publishes three blocks, and each carries the
+# single-graph set a planner reads for GRAPH <iri> selection without opening
+# the block.
 cat "$run_dir/trig/manifest.tsv"
-awk -F'\t' '$1=="0" && $2=="http://example.org/name" && $3=="predicate-0.ibk4" && $4=="5" \
-  && $8=="3" && $9=="default,http://example.org/g1,http://example.org/g2" { found=1 } \
-  END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
-awk -F'\t' '$1=="1" && $2=="http://example.org/knows" && $3=="predicate-1.ibk4" && $4=="1" \
+awk -F'\t' '$1=="0" && $2=="http://example.org/name" && $3=="predicate-0.ibk4" && $4=="1" \
+  && $8=="1" && $9=="default" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
+awk -F'\t' '$1=="1" && $2=="http://example.org/name" && $3=="predicate-1.ibk4" && $4=="2" \
+  && $8=="1" && $9=="http://example.org/g1" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
+awk -F'\t' '$1=="2" && $2=="http://example.org/name" && $3=="predicate-2.ibk4" && $4=="2" \
+  && $8=="1" && $9=="http://example.org/g2" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
+awk -F'\t' '$1=="3" && $2=="http://example.org/knows" && $3=="predicate-3.ibk4" && $4=="1" \
   && $8=="1" && $9=="default" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
 
 # Same quads in the same order from either syntax, so the same block bytes.
 cmp "$run_dir/trig/predicate-0.ibk4" "$run_dir/nq/predicate-0.ibk4"
 cmp "$run_dir/trig/predicate-1.ibk4" "$run_dir/nq/predicate-1.ibk4"
+cmp "$run_dir/trig/predicate-2.ibk4" "$run_dir/nq/predicate-2.ibk4"
+cmp "$run_dir/trig/predicate-3.ibk4" "$run_dir/nq/predicate-3.ibk4"
 
 # Activation: full SHA-256, Merkle roots, and an IBK4 decode of every artifact.
 mkdir -p "$run_dir/store"
@@ -75,10 +83,10 @@ grep -q '^l4block-quad-query shards=1 open-mode=ibk4-full-manifest(1) ' "$run_di
 grep -q '^l4block-quad-query rows=2 ' "$run_dir/q-graph-g1.txt"
 
 # GRAPH ?g: four rows over both named graphs, and every row carries ?g. A
-# variable graph establishes no restriction, so both blocks are opened.
+# variable graph establishes no restriction, so every block is opened.
 quad_query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }' >"$run_dir/q-graph-var.txt"
 cat "$run_dir/q-graph-var.txt"
-grep -q '^l4block-quad-query shards=2 open-mode=ibk4-full-manifest(2) ' "$run_dir/q-graph-var.txt"
+grep -q '^l4block-quad-query shards=4 open-mode=ibk4-full-manifest(4) ' "$run_dir/q-graph-var.txt"
 grep -q '^l4block-quad-query rows=4 ' "$run_dir/q-graph-var.txt"
 grep -q 'http://example.org/g1' "$run_dir/q-graph-var.txt"
 grep -q 'http://example.org/g2' "$run_dir/q-graph-var.txt"
@@ -123,7 +131,7 @@ grep -q '^l4block-quad-query rows=1 ' "$run_dir/q-graph-empty.txt"
 quad_query 'SELECT * WHERE { ?s ?p ?o FILTER NOT EXISTS { ?s <http://example.org/knows> ?x } }' \
   >"$run_dir/q-not-exists.txt"
 cat "$run_dir/q-not-exists.txt"
-grep -q '^l4block-quad-query shards=2 ' "$run_dir/q-not-exists.txt"
+grep -q '^l4block-quad-query shards=4 ' "$run_dir/q-not-exists.txt"
 grep -q '^l4block-quad-query rows=0 ' "$run_dir/q-not-exists.txt"
 
 # An unnamed graph is not a graph of the dataset.
@@ -135,8 +143,7 @@ grep -q '^l4block-quad-query boolean=false' "$run_dir/q-absent.txt"
 # The block bytes, their digests and their Merkle roots are untouched: only the
 # manifest's copy of the graph name changes.
 mkdir -p "$run_dir/tampered/gen-1"
-cp "$run_dir/trig/predicate-0.ibk4" "$run_dir/trig/predicate-1.ibk4" \
-   "$run_dir/trig/predicate-0.ibk4.merkle" "$run_dir/trig/predicate-1.ibk4.merkle" \
+cp "$run_dir"/trig/predicate-*.ibk4 "$run_dir"/trig/predicate-*.ibk4.merkle \
    "$run_dir/tampered/gen-1/"
 python3 - "$run_dir/trig/manifest.sbm2" "$run_dir/tampered/gen-1/manifest.sbm2" <<'PY'
 import sys

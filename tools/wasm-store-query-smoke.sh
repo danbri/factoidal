@@ -106,7 +106,7 @@ echo '=== IBK4 generation: the wasm store ops against l4block-quad-query'
 compare 'IBK4 GRAPH clause' l4block-quad-query "$run_dir/store4" "$gen4" \
   'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }' 'ibk4-full-manifest(1)'
 compare 'IBK4 GRAPH variable' l4block-quad-query "$run_dir/store4" "$gen4" \
-  'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }' 'ibk4-full-manifest(2)'
+  'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }' 'ibk4-full-manifest(4)'
 compare 'IBK4 default graph' l4block-quad-query "$run_dir/store4" "$gen4" \
   'SELECT * WHERE { ?s ?p ?o }' ''
 compare 'IBK4 FILTER NOT EXISTS' l4block-quad-query "$run_dir/store4" "$gen4" \

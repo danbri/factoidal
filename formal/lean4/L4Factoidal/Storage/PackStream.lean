@@ -338,11 +338,14 @@ def manifestArtifacts (format : PackFormat) (prepass : SourcePrepass) (state : P
 
 An IBK3 block holds one predicate of one graph, so the streaming fold above
 may open a new block for the same predicate in a later batch. An IBK4 block
-holds one predicate across ALL graphs and commits its graph-set summary in
-its header, so a batch boundary would either split a predicate across blocks
-with partial graph sets or need a further pass to recompute them. The IBK4
-packer is therefore bounded by the input size: it reads the whole source and
-publishes every block at the end.
+now also holds one predicate of one graph: `PredicateQuadBlocks` cuts a
+predicate's rows at every graph change and at two size targets, and the
+manifest carries the union (`docs/designissues/2026-09-04-blocks-per-predicate.md`).
+The IBK4 packer is still bounded by the input size for a different reason: it
+partitions the block set at CONSTRUCTION and publishes every block at the end
+of the pass, so the dataset and the encoded generation are live together.
+Publishing a graph's blocks when the graph closes is the next step and is not
+this change.
 
 This is the shape `Harness/PredicateShardPack.lean` ran natively before
 2026-09-03. It is here, with no `IO` in any signature, so the WebAssembly
@@ -490,13 +493,14 @@ chunked run builds IS the dataset `parseSource .nquads` builds, so every
 committed byte is unchanged. Only 65,536 bytes of source, plus at most one
 partial line, are decoded at a time.
 
-What this does NOT make bounded: an IBK4 block holds one predicate across all
-graphs, so the dataset, the blocks and their encoded bytes are all live when
-the last block is published. Peak memory is still proportional to the DATA,
-just no longer to a character list twenty-four times the source. A memory
-footprint independent of the input needs several blocks per predicate, which
-changes the emitted block set and is therefore a wire-format decision, not a
-refactor. The other three grammars keep the buffered route: TriG has no
+What this does NOT make bounded: the IBK4 block set is partitioned at
+construction but published at the end of the pass, so the dataset, the blocks
+and their encoded bytes are all live when the last block is published. Peak
+memory is still proportional to the DATA, just no longer to a character list
+twenty-four times the source. A memory footprint independent of the input
+needs the publication point to move to the graph boundary, which
+`docs/designissues/2026-09-04-blocks-per-predicate.md` records as the next
+step. The other three grammars keep the buffered route: TriG has no
 chunk fold yet, and Turtle would need its own agreement theorem against
 `parseTurtle`. -/
 

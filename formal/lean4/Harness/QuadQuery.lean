@@ -81,14 +81,19 @@ private def readEntry (directory : System.FilePath) (entry : Entry) :
         pure (some (block.denotes, bytes.size))
   catch _ => pure none
 
+/-- The selected entries, read in manifest order. Each entry's rows are kept
+    as one chunk and the chunks are flattened once at the end: appending the
+    running list per entry is quadratic in the entry count, and an SBM7
+    generation of a large corpus now selects thousands of entries rather than
+    one per predicate (`docs/designissues/2026-09-04-blocks-per-predicate.md`). -/
 private def readEntries (directory : System.FilePath) :
-    List Entry → List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow → Nat →
+    List Entry → List (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) → Nat →
     IO (Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow × Nat))
-  | [], quads, bytes => pure (some (quads, bytes))
-  | entry :: rest, quads, bytes => do
+  | [], chunksRev, bytes => pure (some (chunksRev.reverse.flatten, bytes))
+  | entry :: rest, chunksRev, bytes => do
       match ← readEntry directory entry with
       | none => pure none
-      | some (current, size) => readEntries directory rest (quads ++ current) (bytes + size)
+      | some (current, size) => readEntries directory rest (current :: chunksRev) (bytes + size)
 
 /-! ## Quads to an RDF dataset
 

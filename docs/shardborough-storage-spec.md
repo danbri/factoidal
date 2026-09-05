@@ -393,7 +393,7 @@ host realization: files / mmap / PostgreSQL / TiKV / OPFS / WASM buffers
 | `IBK2` | Predicate-selective segmented ID block | superseded; retained range-soundness results | [IndexedBlockWireV2.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV2.lean) |
 | `IBK3` | Current predicate-local fixed ID rows followed by an embedded pageable dictionary | current primary alpha block | [IndexedBlockWireV3.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3.lean) |
 | `PTD1` | IBK3-local ID to RDF term, split into independently readable pages | current embedded dictionary | [PagedTermDictionary.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionary.lean) |
-| `IBK4` | Quad rows: one predicate across all graphs, a graph column in every row, a header graph-set summary, then the same embedded PTD1 | current quad-aware block; codec and round-trip theorem landed, packer and manifest not yet | [IndexedBlockWireV4.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean) |
+| `IBK4` | Quad rows: one predicate, one or more graphs, a graph column in every row, a header graph-set summary, then the same embedded PTD1 | current quad-aware block; codec, round-trip theorem, packer and SBM7 manifest landed | [IndexedBlockWireV4.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean) |
 
 IBK3 contains triples and requires one predicate per artifact. Its current
 term codec accepts IRIs, blank nodes, and RDF 1.1-style literals, but refuses
@@ -410,10 +410,19 @@ the query planner are not defined yet.
 
 #### 6.1.1 IBK4 — quad rows with an in-block graph column
 
-IBK4 is the quad-aware primary block. One artifact still holds one predicate;
-it now holds that predicate across every graph of a dataset, and each row
-carries a graph column. `GRAPH <iri> { ... }` is therefore a bounded filter
-inside the block rather than a selection between manifest entries.
+IBK4 is the quad-aware primary block. One artifact still holds one predicate,
+and each row carries a graph column, so `GRAPH <iri> { ... }` is a bounded
+filter inside the block as well as a selection between manifest entries.
+
+An artifact MAY hold that predicate across every graph of a dataset, and a
+generation MAY instead carry several artifacts for one predicate whose graph
+sets are disjoint. Both are admitted, at every manifest version from SBM2 on,
+which does not require one entry per predicate. A reader MUST take the union
+of the entries for a predicate and MUST NOT assume there is one.
+`l4block-shard-pack` cuts a predicate's rows at every graph change and at two
+size targets, so a block it writes today holds ONE graph
+(`docs/designissues/2026-09-04-blocks-per-predicate.md`); generations packed
+before 2026-09-04 hold one block per predicate over every graph.
 
 Every integer field is unsigned little-endian. Every offset is a byte offset
 from the start of the artifact. Let `G` be `graphCount`, `R` be `rowCount` and
@@ -633,7 +642,10 @@ an untested reader path.
    nonempty label to every blank-node graph name.
 6. The manifest's `blankNodeProfile` is one of the two defined profiles.
 7. Every SBM0 condition: unique artifact keys, contiguous ordinals, and the
-   per-entry field widths below 2^32.
+   per-entry field widths below 2^32. Predicate uniqueness is NOT among them:
+   `uniquePredicates` binds only versions below SBM2, so an SBM7 generation
+   may carry several entries for one predicate and a reader must take their
+   union (section 6.1.1).
 8. SBM0 through SBM6 must NOT carry the three per-entry fields or the
    publication profile. A pre-SBM7 manifest carrying them would encode to bytes
    that drop them, and the round trip would lose data without saying so.

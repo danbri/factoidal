@@ -555,9 +555,16 @@ def queryNativeConstantPredicates? (query : Query) : Option (List WfIri) :=
 
 /-! ## SBM7 entry selection: which quad blocks a query can skip
 
-An SBM7 generation holds one IBK4 block per predicate, and that block carries
-that predicate's rows for EVERY graph of the dataset. Two independent facts
-about a query therefore let a planner drop an entry without reading a row:
+An SBM7 generation holds one or more IBK4 blocks per predicate, and those
+blocks together carry that predicate's rows for EVERY graph of the dataset.
+`valid` admits several entries for one predicate at every version from SBM2
+on, and `L4Factoidal/Storage/PredicateQuadBlocks.lean` cuts a predicate's rows
+at graph changes and at two size targets
+(`docs/designissues/2026-09-04-blocks-per-predicate.md`), so a block written
+today holds ONE graph and its `graphSet` has one member. A generation packed
+before that change holds one block per predicate carrying every graph, and
+both read through the same rules below. Two independent facts about a query
+let a planner drop an entry without reading a row:
 
 * the predicates the pattern reads, which `nativeConstantPredicates?` above
   already collects for the IBK3 planner, and
@@ -627,9 +634,10 @@ def queryGraphNames? (query : Query) : Option (List GraphName) :=
   else none
 
 /-- `nativeConstantPredicates?` widened for IBK4. It descends through a
-    `GRAPH` clause, constant or variable: an IBK4 block holds one predicate
-    across every graph, so selecting entries by predicate does not restrict
-    WHICH graphs the opened entries carry, and the soundness induction of
+    `GRAPH` clause, constant or variable: the IBK4 blocks of one predicate
+    carry that predicate's rows for every graph, and selecting by predicate
+    keeps ALL of them, so predicate selection does not restrict WHICH graphs
+    the opened entries carry, and the soundness induction of
     `nativeConstantPredicates?` goes through unchanged with the active graph
     as a parameter.
 
