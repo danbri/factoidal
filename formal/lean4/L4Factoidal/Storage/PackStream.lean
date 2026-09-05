@@ -545,9 +545,17 @@ partial line, are decoded at a time.
 
 What this does NOT make bounded: the IBK4 block set is partitioned at
 construction but published at the end of the pass, so the dataset, the blocks
-and their encoded bytes are all live when the last block is published. Peak
-memory is still proportional to the DATA, just no longer to a character list
-twenty-four times the source. A memory footprint independent of the input
+and their encoded bytes are all live when the last block is published, so
+nothing the pass builds is released before the end, and the character list
+twenty-four times the source is no longer among it. What the rest costs was
+MEASURED on skosdex prefixes, 2026-09-05: peak footprint 390,318,656 bytes
+for 52,428,626 of source, 599,870,336 for 104,857,577, 933,809,856 for
+209,715,187 and 3,192,258,560 for 1,543,478,120 — SUBLINEAR in the source
+over that range, about `n^0.63`, for a reason nobody has identified (the
+term vocabulary is not saturating: distinct subjects per quad stay near 0.12
+across the three prefixes). Treat that exponent as a description of that
+corpus, not as a property of this code
+(`docs/designissues/2026-09-05-shard-pack-profile-and-memory.md`). A memory footprint independent of the input
 needs the publication point to move to the graph boundary, which
 `docs/designissues/2026-09-04-blocks-per-predicate.md` records as the next
 step. The other three grammars keep the buffered route: TriG has no

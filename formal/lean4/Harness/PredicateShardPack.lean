@@ -33,9 +33,10 @@ private def inputChunkBytes : USize := 65536
 
 /-- The published leaves and artifact digests are hashed with
     `Harness.nativeHasher` (HACL* C). The committed bytes are identical to
-    the pure Lean specification hasher's output; the source-file identity
-    the pure fold streams still uses the pure incremental `Sha256Stream`,
-    which has no streaming HACL* counterpart bound here. -/
+    the pure Lean specification hasher's output. The source-file identity
+    the pure fold streams runs `Sha256Stream` over `blockFold` below, which
+    is the same HACL* C compression walk; before 2026-09-05 it ran the pure
+    Lean walk and that was the single largest cost in a pack. -/
 private def hasher : L4Factoidal.Storage.BlockMerkle.Hasher := nativeHasher
 
 /-- The SHA-256 compression walk of the source-identity digest. The pure Lean
