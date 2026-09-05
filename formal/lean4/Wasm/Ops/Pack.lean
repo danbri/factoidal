@@ -344,7 +344,7 @@ def packEndPass (h : String) : IO String :=
               if pack.format == .ibk4 then none
               else some (ingestInit packHasher pack.format prepass pack.base)
             let quads :=
-              if streamsQuads then some (quadIngestInit packHasher prepass) else none
+              if streamsQuads then some (quadIngestInit packHasher pack.grammar prepass pack.base) else none
             packTable.modify (·.insert h
               { pack with pass := .ingest, prepass := some prepass, ingest, quads })
             pure (passEnvelope .ingest 0)

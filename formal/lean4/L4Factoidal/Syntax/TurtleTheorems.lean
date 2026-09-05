@@ -326,6 +326,58 @@ theorem maxUnderscoreRun_ge_best (cs : List Char) :
 #guard maxUnderscoreRun "_:a__b".toList 0 0 == 2
 #guard maxUnderscoreRun (freshBnodePrefix "_:a__b").toList 0 0 == 3
 
+/-! ## The packing accumulator agrees with the graph parser
+
+`parseTurtle` builds its `Graph` by prepending each statement's triples in
+reverse onto a reversed accumulator and reversing once at the end
+(`parseStatements`). The shard packer folds statements with exactly that
+step (`Storage.PackStream.ingestStep`) so that it never materialises a
+second whole-document graph. The two theorems below state that this is the
+SAME graph, so a packer run through the fold commits the bytes a
+`parseTurtle` run would commit. This is the Turtle counterpart of
+`NQuadsFold.streamConsume11_eq_batch` instantiated at the accumulator the
+batch parser itself uses; it closes the accumulator half of the agreement.
+The chunk-boundary half — that `TurtleChunkFold` over any chunking reaches
+the same accumulator as `parseTurtleFold` over the concatenation — is NOT
+proved here and is not proved anywhere; it rests on
+`TurtleStatementScan` never offering a candidate that `readStatement` would
+read past, and it is measured rather than proved. -/
+
+theorem parseStatements_eq_fold :
+    ∀ (fuel : Nat) (st : TurtleState) (pos : Nat) (cs : List Char) (accRev : List Triple),
+      parseStatements fuel st pos cs accRev
+        = (parseStatementsFold prependReverse fuel st pos cs accRev).map
+            (fun r => (r.1.reverse, r.2)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro st pos cs accRev; rfl
+  | succ fuel ih =>
+      intro st pos cs accRev
+      simp only [parseStatements, parseStatementsFold]
+      cases hr : (tws pos cs).2 with
+      | nil => simp [hr, Except.map]
+      | cons c rest =>
+          simp only [hr]
+          cases hs : readStatement fuel st (tws pos cs).1 (c :: rest) with
+          | error e => simp [hs, Except.map]
+          | ok v =>
+              obtain ⟨ts, st', p2, r2⟩ := v
+              simp only [hs, prependReverse]
+              by_cases hp : p2 ≤ (tws pos cs).1
+              · simp [hp, Except.map]
+              · simp only [hp, if_false]
+                exact ih st' p2 r2 (ts.reverse ++ accRev)
+
+/-- The document-level form: folding with the packer's step and reversing
+once yields precisely `parseTurtle`'s graph. -/
+theorem parseTurtle_eq_fold (text : String) (base : Option String) (mode : Mode) :
+    parseTurtle text base mode
+      = (parseTurtleFold prependReverse [] text base mode).map List.reverse := by
+  simp only [parseTurtle, parseTurtleFold]
+  rw [parseStatements_eq_fold]
+  cases parseStatementsFold prependReverse (text.toList.length + 2)
+      (TurtleState.initChars text.toList base mode) 0 text.toList [] <;> rfl
+
 /-! ## Axiom audit -/
 
 #print axioms transformReferences_of_scheme
@@ -337,5 +389,7 @@ theorem maxUnderscoreRun_ge_best (cs : List Char) :
 #print axioms removeDotSegments_noDots
 #print axioms parseTurtle_empty
 #print axioms maxUnderscoreRun_ge_best
+#print axioms parseStatements_eq_fold
+#print axioms parseTurtle_eq_fold
 
 end L4Factoidal.Syntax

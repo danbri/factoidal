@@ -148,6 +148,12 @@ def ingestStep (accRev : List L4Factoidal.RDF.Triple)
     (triples : List L4Factoidal.RDF.Triple) : List L4Factoidal.RDF.Triple :=
   triples.reverse ++ accRev
 
+/-- The packer's fold step IS the accumulator `parseStatements` uses, which
+    is what lets `Syntax.parseTurtle_eq_fold` speak about this packer: the
+    reversed accumulator this fold ends with, reversed once, is exactly the
+    `Graph` `parseTurtle` returns. -/
+theorem ingestStep_eq_prependReverse : ingestStep = L4Factoidal.Syntax.prependReverse := rfl
+
 /-- Publication metadata is small even for a large source: one manifest row
     and one TSV row per immutable output block, never the source triples. -/
 structure PackState where
@@ -538,41 +544,98 @@ memory is still proportional to the DATA, just no longer to a character list
 twenty-four times the source. A memory footprint independent of the input
 needs the publication point to move to the graph boundary, which
 `docs/designissues/2026-09-04-blocks-per-predicate.md` records as the next
-step. The other three grammars keep the buffered route: TriG has no
-chunk fold yet, and Turtle would need its own agreement theorem against
-`parseTurtle`. -/
+step.
 
-/-- The state of a streaming IBK4 pass over an N-Quads source. Every field is
-    bounded except the `FastDataset` accumulator. -/
+Turtle, and with it N-Triples, now takes the same route through
+`Syntax/TurtleChunkFold.lean` — the fold the IBK3 packer has always used.
+Its agreement with `parseTurtle` has two halves. The accumulator half is
+PROVED: `Syntax.parseTurtle_eq_fold` states that folding statements with
+`ingestStep` and reversing once gives exactly `parseTurtle`'s `Graph`, and
+`ingestStep_eq_prependReverse` ties the packer's step to it. The
+chunk-boundary half — that the fold reaches the same accumulator whatever
+the chunking — is NOT proved. It rests on `TurtleStatementScan` never
+offering a candidate that `readStatement` would read past, which is a
+lexical property of the scanner that no theorem here states. Byte identity
+against the buffered route is therefore MEASURED for Turtle and PROVED for
+N-Quads.
+
+TriG keeps the buffered route: it has no chunk fold at all. -/
+
+/-- The per-grammar part of a streaming IBK4 pass. Both alternatives hold
+    only the accumulated dataset plus one unfinished lexical unit: a partial
+    N-Quads line, or a partial Turtle statement. -/
+inductive QuadStream where
+  | nquads (stream : L4Factoidal.Syntax.NQuadsStreaming.StreamStateC L4Factoidal.Syntax.FastDataset)
+  | turtle (fold : TurtleChunkFoldState (List L4Factoidal.RDF.Triple))
+
+/-- The state of a streaming IBK4 pass. Every field is bounded except the
+    accumulated dataset inside `stream`. -/
 structure QuadIngestState where
   hasher : Hasher
   scope : String
   expected : ByteArray
   utf8 : Utf8Stream
-  stream : L4Factoidal.Syntax.NQuadsStreaming.StreamStateC L4Factoidal.Syntax.FastDataset
+  stream : QuadStream
   digest : Sha256Stream
 
-def quadIngestInit (h : Hasher) (prepass : SourcePrepass) : QuadIngestState :=
+/-- Start a streaming IBK4 pass. `grammar` selects the fold; a grammar for
+    which `quadStreams` is false must not reach here, and reads with the
+    Turtle fold if it does, which is what the file-suffix rule did for
+    `.nt`. -/
+def quadIngestInit (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
+    (baseIri : Option String) : QuadIngestState :=
   { hasher := h
     scope := bytesToHex prepass.sourceIdentity
     expected := prepass.sourceIdentity
     utf8 := Utf8Stream.init
-    stream := L4Factoidal.Syntax.NQuadsStreaming.initialStateC {}
+    stream :=
+      match grammar with
+      | .nquads => .nquads (L4Factoidal.Syntax.NQuadsStreaming.initialStateC {})
+      | .turtle | .ntriples | .trig =>
+          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix ingestStep [] baseIri)
     digest := Sha256Stream.init }
 
-/-- Feed one input chunk. A parse error is sticky in `StreamStateC` and is
-    reported by `quadIngestFinish`, which is where the batch route reports it
-    too. -/
+/-- Feed one input chunk. An N-Quads parse error is sticky in `StreamStateC`
+    and is reported by `quadIngestFinish`, which is where the batch route
+    reports it too; the Turtle fold reports at the chunk that carries the
+    offending statement, as `ingestFeed` does on the IBK3 path. -/
 def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
     Except String QuadIngestState :=
   match state.utf8.feed bytes with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
   | .ok (text, nextUtf8) =>
-      .ok { state with
-              utf8 := nextUtf8
-              stream := L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
-                          L4Factoidal.Syntax.addQuadFast state.stream text.toList
-              digest := state.digest.update bytes }
+      match state.stream with
+      | .nquads stream =>
+          .ok { state with
+                  utf8 := nextUtf8
+                  stream := .nquads (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
+                              L4Factoidal.Syntax.addQuadFast stream text.toList)
+                  digest := state.digest.update bytes }
+      | .turtle fold =>
+          match fold.feed ingestStep text with
+          | .error error =>
+              .error s!"l4block-shard-pack Turtle parse error at {error.pos}: {error.msg}"
+          | .ok nextFold =>
+              .ok { state with
+                      utf8 := nextUtf8
+                      stream := .turtle nextFold
+                      digest := state.digest.update bytes }
+
+/-- The dataset a finished stream denotes. A Turtle source has no named
+    graph, so its triples are the default graph, in source order: the fold
+    accumulator is reversed exactly once, which `Syntax.parseTurtle_eq_fold`
+    states is the `Graph` `parseTurtle` returns. -/
+def quadStreamDataset (stream : QuadStream) : Except ParseError L4Factoidal.RDF.Dataset :=
+  match stream with
+  | .nquads s =>
+      match L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11
+              L4Factoidal.Syntax.addQuadFast s with
+      | .error e => .error e
+      | .ok fast => .ok fast.toDataset
+  | .turtle fold =>
+      match fold.finish ingestStep with
+      | .error e => .error e
+      | .ok triples => .ok { default := triples.reverse, named := [] }
 
 /-- End of input: the streamed source digest must equal the first-pass
     commitment, as `ingestFinish` requires on the IBK3 path. The buffered
@@ -584,21 +647,20 @@ def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
       if state.digest.finish != state.expected then
         .error "l4block-shard-pack input changed between pre-pass and parse pass"
       else
-        match L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11
-                L4Factoidal.Syntax.addQuadFast state.stream with
-        | .error e => .error s!"l4block-shard-pack N-Quads parse error at {e.pos}: {e.msg}"
-        | .ok fast =>
-            let dataset := fast.toDataset
+        match quadStreamDataset state.stream with
+        | .error e => .error s!"l4block-shard-pack parse error at {e.pos}: {e.msg}"
+        | .ok dataset =>
             let graphs := dataset.named.length + 1
             match publishQuadBlocks state.hasher state.scope {} []
                 (L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset) with
             | .error message => .error message
             | .ok (packed, artifacts) => .ok { graphs, packed, artifacts }
 
-/-- Which grammars the streaming IBK4 route reads. -/
+/-- Which grammars the streaming IBK4 route reads. TriG stays buffered: it
+    has no chunk fold at all, so there is nothing to stream it with. -/
 def quadStreams : PackSyntax → Bool
-  | .nquads => true
-  | .turtle | .trig | .ntriples => false
+  | .nquads | .turtle | .ntriples => true
+  | .trig => false
 
 def quadManifestTsvHeader : String :=
   "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\tgeo-index\n"

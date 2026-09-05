@@ -1742,6 +1742,12 @@ def parseStatementsFold (step : α → List Triple → α) :
               if p2 ≤ p1 then .ok (nextAcc, st')
               else parseStatementsFold step fuel st' p2 r2 nextAcc
 
+/-- The reversing accumulator `parseStatements` itself uses, named so that a
+    streaming caller can fold with the SAME step and cite
+    `TurtleTheorems.parseTurtle_eq_fold` for the agreement. -/
+def prependReverse (accRev : List Triple) (ts : List Triple) : List Triple :=
+  ts.reverse ++ accRev
+
 /-- Parse a complete Turtle document into a `Graph`.
 
 `base` is the retrieval IRI (the W3C suites supply
