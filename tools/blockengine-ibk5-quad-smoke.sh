@@ -29,6 +29,10 @@ grep -q 'wire-version=10' "$run_dir/pack-trig.txt"
 grep -q 'syntax=nquads' "$run_dir/pack-nq.txt"
 grep -q 'quads=6 blocks=4 graphs=3' "$run_dir/pack-nq.txt"
 
+# Since 2026-09-05 the packer buckets by the pair (predicate, graph) and
+# publishes in first-seen KEY order. This fixture's graphs are not interleaved,
+# so its block SET is the one this script has always asserted; only the ORDER
+# of the four blocks can move, and no assertion below names an ordinal.
 # The block files carry the version in their name, and each has an LGI2 and a
 # GBI1 sidecar.
 for b in 0 1 2 3; do

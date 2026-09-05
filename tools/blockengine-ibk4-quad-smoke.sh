@@ -32,7 +32,12 @@ grep -q 'quads=6 blocks=4 graphs=3' "$run_dir/pack-nq.txt"
 cat "$run_dir/trig/manifest.tsv"
 awk -F'\t' '$1=="0" && $2=="http://example.org/name" && $3=="predicate-0.ibk4" && $4=="1" \
   && $8=="1" && $9=="default" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
-awk -F'\t' '$1=="3" && $2=="http://example.org/knows" && $3=="predicate-3.ibk4" && $4=="1" \
+# `knows` is block 1, not block 3: since 2026-09-05 the packer buckets by the
+# pair (predicate, graph) and publishes in first-seen KEY order, so the
+# default-graph `knows` bucket, whose key is seen before the g1 and g2 `name`
+# keys, comes second. The block SET is the same as before — this fixture's
+# graphs are not interleaved — only the order changed.
+awk -F'\t' '$1=="1" && $2=="http://example.org/knows" && $3=="predicate-1.ibk4" && $4=="1" \
   && $8=="1" && $9=="default" { found=1 } END { exit found?0:1 }' "$run_dir/trig/manifest.tsv"
 # Every row names exactly one graph, and the three name blocks partition it.
 awk -F'\t' '$1 ~ /^[0-9]+$/ && $8!="1" { bad=1 } END { exit bad?1:0 }' \
