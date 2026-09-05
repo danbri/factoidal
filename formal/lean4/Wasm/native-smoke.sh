@@ -438,16 +438,16 @@ check "storeManifestInspect reports an IBK4 generation and its graph set" storeM
    and r["entries"][0]["sidecars"]["literalIndex"] == "predicate-0.ibk4.lgi1"
    and len(r["entries"][0]["blankNodeScope"]) > 0
    and all(len(e["graphs"]) == 1 for e in r["entries"])
+   and all(e["sidecars"]["literalIndex"] == e["key"] + ".lgi1" for e in r["entries"])
    and [g["kind"] for g in r["entries"][0]["graphs"]][0] == "default"
-   and "http://example.org/g1" in [g["value"] for e in r["entries"] for g in e["graphs"]]'
+   and [g["value"] for g in r["entries"][1]["graphs"]] == ["http://example.org/g1"]'
 
 storeargs "$TMP/store-plan-ibk4.json" "$TMP/store-ibk4/manifest.sbm2" \
   'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }'
 check "storeQueryPlan selects IBK4 entries by graph set" storeQueryPlan "$TMP/store-plan-ibk4.json" \
   'r["ok"] is True and r["mode"] == "ibk4-full-manifest(1)" and r["shards"] == 1
-   and r["keys"] == ["predicate-1.ibk4"]'
-   and r["keys"] == ["predicate-0.ibk4"]
-   and r["sidecarKeys"] == ["predicate-0.ibk4.lgi1"]'
+   and r["keys"] == ["predicate-1.ibk4"]
+   and r["sidecarKeys"] == ["predicate-1.ibk4.lgi1"]'
 
 blobargs "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
   "$TMP/store-ibk4/manifest.sbm2" \
