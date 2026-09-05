@@ -443,21 +443,32 @@ def formatName : PackFormat → String
   | .ibk4 => "ibk4"
   | .ibk5 => "ibk5"
 
+/-- Which RDF version the source is read as. Wire version 10 is the first
+    format that can STORE an RDF 1.2 triple term or a directional literal, so
+    it is the first that may accept one from a source: an IBK4 block refuses a
+    triple term at encoding, and reading one only to refuse it later would
+    turn a clean parse error into a block-encoding failure. Every earlier
+    format therefore keeps reading RDF 1.1 exactly as before. -/
+def sourceMode : PackFormat → L4Factoidal.Syntax.Mode
+  | .ibk5 => .rdf12
+  | _ => .rdf11
+
 /-- The whole source, as a dataset. `trig` and `nquads` carry named graphs;
     `turtle` and `ntriples` put every triple in the default graph. -/
-def parseSource (grammar : PackSyntax) (text : String) (baseIri : Option String) :
-    Except String L4Factoidal.RDF.Dataset :=
+def parseSource (format : PackFormat) (grammar : PackSyntax) (text : String)
+    (baseIri : Option String) : Except String L4Factoidal.RDF.Dataset :=
+  let mode := sourceMode format
   match grammar with
   | .trig =>
-      match L4Factoidal.Syntax.parseTriG text baseIri with
+      match L4Factoidal.Syntax.parseTriG text baseIri mode with
       | .error e => .error s!"l4block-shard-pack TriG parse error at {e.pos}: {e.msg}"
       | .ok ds => .ok ds
   | .nquads =>
-      match L4Factoidal.Syntax.parseNQuadsFast text with
+      match L4Factoidal.Syntax.parseNQuadsFast text mode with
       | .error e => .error s!"l4block-shard-pack N-Quads parse error at {e.pos}: {e.msg}"
       | .ok ds => .ok ds
   | .turtle | .ntriples =>
-      match L4Factoidal.Syntax.parseTurtle text baseIri with
+      match L4Factoidal.Syntax.parseTurtle text baseIri mode with
       | .error e => .error s!"l4block-shard-pack Turtle parse error at {e.pos}: {e.msg}"
       | .ok graph => .ok { default := graph, named := [] }
 
@@ -728,7 +739,7 @@ structure QuadPack where
 def quadArtifacts (h : Hasher) (format : PackFormat) (grammar : PackSyntax)
     (prepass : SourcePrepass) (text : String) (baseIri : Option String) :
     Except String QuadPack := do
-  let dataset ← parseSource grammar text baseIri
+  let dataset ← parseSource format grammar text baseIri
   let (packed, artifacts) ←
     publishQuadBlocks h format (bytesToHex prepass.sourceIdentity) {}
       [] (L4Factoidal.Storage.PredicateQuadBlocks.runsOfDataset dataset)
@@ -853,9 +864,10 @@ def quadStreamDrain (stream : QuadStream) (flushMin : Option Nat) :
 /-- The accumulator a finished stream ends with. An N-Quads parse error is
     sticky in `StreamStateC` and surfaces here; the Turtle fold has already
     reported at the chunk that carried the offending statement. -/
-def quadStreamFinish (stream : QuadStream) : Except ParseError QuadPub :=
+def quadStreamFinish (mode : L4Factoidal.Syntax.Mode) (stream : QuadStream) :
+    Except ParseError QuadPub :=
   match stream with
-  | .nquads s => L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11 addQuadPub s
+  | .nquads s => L4Factoidal.Syntax.NQuadsStreaming.finishC mode addQuadPub s
   | .turtle fold => fold.finish quadPubStep
 
 /-- The state of a streaming IBK4 pass. Every field is bounded: the open runs
@@ -900,7 +912,8 @@ def quadIngestInit (h : Hasher) (format : PackFormat) (grammar : PackSyntax)
       match grammar with
       | .nquads => .nquads (L4Factoidal.Syntax.NQuadsStreaming.initialStateC {})
       | .turtle | .ntriples | .trig =>
-          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix quadPubStep {} baseIri)
+          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix quadPubStep {} baseIri
+            (sourceMode format))
     digest := Sha256Stream.init
     packed := {}
     bytesSinceBatch := 0
@@ -917,7 +930,8 @@ def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
   | .ok (text, nextUtf8) => do
       let fed ← match state.stream with
         | .nquads stream =>
-            .ok (QuadStream.nquads (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
+            .ok (QuadStream.nquads
+              (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC (sourceMode state.format)
                   addQuadPub stream text.toList))
         | .turtle fold =>
             match fold.feed quadPubStep text with
@@ -948,7 +962,7 @@ def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
       if state.digest.finishWith state.blocks != state.expected then
         .error "l4block-shard-pack input changed between pre-pass and parse pass"
       else
-        match quadStreamFinish state.stream with
+        match quadStreamFinish (sourceMode state.format) state.stream with
         | .error e => .error s!"l4block-shard-pack parse error at {e.pos}: {e.msg}"
         | .ok acc =>
             let runs := acc.readyRev.reverse ++

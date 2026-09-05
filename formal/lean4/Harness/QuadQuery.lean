@@ -26,6 +26,7 @@ import Harness.NativeHasher
 import L4Factoidal.RDF.DatasetGraphs
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.SPARQL.StoreDataset
+import L4Factoidal.Geo.Functions
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.IndexedBlockWireV5
@@ -197,7 +198,11 @@ private def finish (query : Query) (entries : List Entry) (codec : String) (ds :
   -- the backend runners read from `env.dataset`. It is the SAME dataset the
   -- backend answers from, so an EXISTS sub-pattern sees exactly the
   -- materialised generation.
-  let env : EvalEnv := { emptyEnv with dataset := some applied }
+  -- §17.6 extension functions: the GeoSPARQL simple-features predicates, so
+  -- a `geof:sf*` FILTER is evaluated here rather than being a type error.
+  -- `Geo.extFns` refuses every IRI outside the `geof:` namespace, which is
+  -- what §17.6 requires of an unregistered IRI.
+  let env : EvalEnv := { emptyEnv with dataset := some applied, ext := L4Factoidal.Geo.extFns }
   let indexed := namesAreIris applied
   let mode := if indexed then codec ++ "-full-manifest" else codec ++ "-full-manifest-reference"
   let graphs := applied.named.length
@@ -248,14 +253,22 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     let root := System.FilePath.mk directoryText
     let directory ← resolveStoreDirectory root
     let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm2")
-    match decode? manifestBytes, parseSparql queryText with
-    | none, _ => IO.eprintln "l4block-quad-query rejected: malformed SBM7 manifest"; return 1
-    | _, .error error =>
-        IO.eprintln s!"l4block-quad-query query parse error at {error.pos}: {error.msg}"; return 1
-    | some manifest, .ok query =>
+    match decode? manifestBytes with
+    | none => IO.eprintln "l4block-quad-query rejected: malformed SBM7 manifest"; return 1
+    | some manifest =>
         let ibk5 := manifest.version == 10 && isIbk5Layout manifest.layout
         let ibk4 := (manifest.version == 7 || manifest.version == 8 || manifest.version == 9) &&
           isIbk4Layout manifest.layout
+        /- A version-10 generation can hold an RDF 1.2 triple term and a
+           directional literal, so its queries are read as SPARQL 1.2, which
+           is what makes `LANGDIR`, `hasLANGDIR`, `STRLANGDIR` and the triple
+           term syntax available. Every earlier generation keeps SPARQL 1.1,
+           where those spellings are prefixed names. -/
+        match parseSparql queryText none (if ibk5 then .v12 else .v11) with
+        | .error error =>
+            IO.eprintln s!"l4block-quad-query query parse error at {error.pos}: {error.msg}"
+            return 1
+        | .ok query =>
         if !ibk4 && !ibk5 then
           IO.eprintln "l4block-quad-query rejected: not an SBM7, SBM8, SBM9 or SBM10 generation of quad blocks; use l4block-id-v3-query for an IBK3 generation"
           return 1
