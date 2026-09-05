@@ -93,7 +93,7 @@ function drain (engine, handle, output) {
  * @param {string} input the RDF file to read
  * @param {string} output the generation directory to fill; it must exist
  * @param {object} options
- * @param {string} options.layout `ibk3` or `ibk4`
+ * @param {string} options.layout `ibk3`, `ibk4` or `ibk5`
  * @param {string} options.syntax `turtle`, `trig` or `nquads`
  * @param {string} [options.base] the base IRI relative IRIs resolve against;
  *   the empty string means no base

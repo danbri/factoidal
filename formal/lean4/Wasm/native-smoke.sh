@@ -493,6 +493,12 @@ checkblob "storeQuery answers a GRAPH clause over a supplied IBK4 block region" 
 # The blob file names are content addresses, so they are read from the
 # generation rather than written here.
 IBK5_BLOBS=$(cd "$TMP/store-ibk5" && ls blob-*.lit)
+# The block that holds ex:big, looked up by predicate in the TSV rather than
+# assumed by ordinal: the packer publishes buckets in first-occurrence order
+# of (predicate, graph), and a fixture edit or a policy change moves ordinals
+# without moving the answer this gate is about.
+IBK5_BIG=$(awk -F'\t' '$2=="http://example.org/big" {print $3; exit}' "$TMP/store-ibk5/manifest.tsv")
+test -n "$IBK5_BIG"
 # shellcheck disable=SC2086
 set -- $IBK5_BLOBS
 BLOB_GEO="$1"
@@ -524,8 +530,8 @@ storeargs "$TMP/store-plan-ibk5.json" "$TMP/store-ibk5/manifest.sbm2" \
 check "storeQueryPlan lists the blob keys an IBK5 plan reaches" storeQueryPlan \
   "$TMP/store-plan-ibk5.json" \
   'r["ok"] is True and r["mode"] == "ibk5-full-manifest(1)" and r["shards"] == 1
-   and r["keys"] == ["predicate-3.ibk5"]
-   and r["sidecarKeys"] == ["predicate-3.ibk5.lgi2", "predicate-3.ibk5.gbi1"]
+   and r["keys"] == ["'"$IBK5_BIG"'"]
+   and r["sidecarKeys"] == ["'"$IBK5_BIG"'.lgi2", "'"$IBK5_BIG"'.gbi1"]
    and len(r["blobKeys"]) == 1
    and r["blobKeys"][0].startswith("blob-") and r["blobKeys"][0].endswith(".lit")
    and r["bytes"] > 70000
@@ -553,7 +559,7 @@ check "storeQueryPlan keeps the IBK5 entry whose zone map holds the subject" sto
 blobargs "$TMP/store-query-ibk5.json" "$TMP/store-query-ibk5.blob" \
   "$TMP/store-ibk5/manifest.sbm2" \
   'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } BIND(STRLEN(?o) AS ?n) }' \
-  "$TMP/store-ibk5" predicate-3.ibk5 "$BLOB_BIG"
+  "$TMP/store-ibk5" "$IBK5_BIG" "$BLOB_BIG"
 checkblob "storeQuery resolves an out-of-line literal the host supplied" storeQuery \
   "$TMP/store-query-ibk5.json" "$TMP/store-query-ibk5.blob" \
   'r["ok"] is True and r["kind"] == "select" and r["shards"] == 1
@@ -565,7 +571,7 @@ checkblob "storeQuery resolves an out-of-line literal the host supplied" storeQu
 blobargs "$TMP/store-query-ibk5-noblob.json" "$TMP/store-query-ibk5-noblob.blob" \
   "$TMP/store-ibk5/manifest.sbm2" \
   'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } BIND(STRLEN(?o) AS ?n) }' \
-  "$TMP/store-ibk5" predicate-3.ibk5
+  "$TMP/store-ibk5" "$IBK5_BIG"
 checkblob "storeQuery refuses an IBK5 block whose blob was not supplied" storeQuery \
   "$TMP/store-query-ibk5-noblob.json" "$TMP/store-query-ibk5-noblob.blob" \
   'r["ok"] is False and "no bytes were supplied for artifact" in r["error"]

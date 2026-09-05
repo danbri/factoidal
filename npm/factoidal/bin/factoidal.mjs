@@ -45,7 +45,7 @@ const EXIT_NOT_WIRED = 3
 // a time, so this is the window that catches one feed per report.
 const FEED_PROGRESS = 65536
 
-const PACK_LAYOUTS = ['ibk3', 'ibk4']
+const PACK_LAYOUTS = ['ibk3', 'ibk4', 'ibk5']
 const PACK_SYNTAXES = ['turtle', 'trig', 'nquads', 'ntriples']
 const PACK_SUFFIXES = [
   ['.ttl', 'turtle'], ['.turtle', 'turtle'],
@@ -230,7 +230,9 @@ INPUT is an RDF file. OUTPUT is the generation directory to create; it is
 normally STORE/gen-N. Packing does not activate: run activate next.
 
 options:
-  --layout LAYOUT    ibk3 (triples, default) or ibk4 (quads)
+  --layout LAYOUT    ibk3 (triples, default), ibk4 (quads, wire version 9)
+                     or ibk5 (quads, wire version 10: RDF 1.2 terms,
+                     out-of-line literals, zone maps)
   --syntax SYNTAX    turtle, trig or nquads; default from the file extension
   --chunk-bytes N    Merkle chunk size; default is the engine's
   --batch-bytes N    ibk4 only: source bytes between publication batches;

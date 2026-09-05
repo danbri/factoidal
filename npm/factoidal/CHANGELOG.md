@@ -6,6 +6,21 @@
 packed at `--layout ibk5`: out-of-line literals, RDF 1.2 triple terms and
 directional literals, and per-entry zone maps.
 
+### The packer
+
+`factoidal pack --layout ibk5` writes wire version 10. Blocks are now
+published DURING the ingest pass, every `--batch-bytes` of source (default
+64 MiB in the module, 256 MiB in the native tool), so peak memory is bounded
+by a batch and not by the source: the native packer's peak on the
+1,543,478,120-byte skosdex corpus fell from 5,951,730,560 to 396,869,632
+bytes, and the module's 128 MiB source cap is gone for N-Quads, Turtle and
+N-Triples (TriG still buffers). Rows are bucketed by predicate AND graph, so
+an N-Quads file whose graphs interleave line by line packs to the same
+block set as the same statements in graph order (measured: 11,636 blocks
+became 483). The literal search index is LGI2, whose LEB128 gaps are 23% of
+a `skos:prefLabel` block against LGI1's 54%; a version-10 generation of the
+210 MB skosdex prefix is 14.5% smaller than version 9.
+
 ### Out-of-line literals
 
 A literal above 65,536 UTF-8 bytes is stored as one `blob-<sha256
