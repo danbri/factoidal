@@ -258,9 +258,19 @@ export function turtleOfNQuads (engine, nquads) {
 // The stateless path above stays exactly as it was. A one-shot CLI query
 // should not pay to build a handle it will drop.
 
-/** The artifact keys a manifest declares, in manifest order. */
+/**
+ * The artifact keys a manifest declares, in manifest order: every block, and
+ * every index sidecar the entry names. The KEYS come from the engine; this
+ * function chooses none of them. A sidecar is what lets a literal search skip
+ * the scan (SBM8's LGI1); a generation that declares none is unaffected.
+ */
 function manifestKeys (engine, store) {
-  return inspectManifest(engine, store).entries.map((entry) => entry.key)
+  const keys = []
+  for (const entry of inspectManifest(engine, store).entries) {
+    keys.push(entry.key)
+    for (const key of Object.values(entry.sidecars ?? {})) keys.push(key)
+  }
+  return keys
 }
 
 /** Read the named artifacts and concatenate them into one region. */
@@ -346,7 +356,8 @@ export function openStoreHandle (engine, store, options = {}) {
   if (Array.isArray(options.keys)) {
     keys = options.keys
   } else if (typeof options.sparql === 'string') {
-    keys = planQuery(engine, store, options.sparql).keys
+    const plan = planQuery(engine, store, options.sparql)
+    keys = plan.keys.concat(plan.sidecarKeys ?? [])
   } else {
     keys = manifestKeys(engine, store)
   }

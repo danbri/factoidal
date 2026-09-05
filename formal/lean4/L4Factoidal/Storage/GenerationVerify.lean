@@ -41,6 +41,7 @@ import L4Factoidal.Storage.SubjectRowIndexWire
 import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.TermLocalIndexWire
+import L4Factoidal.Storage.LiteralGramIndexWire
 
 namespace L4Factoidal.Storage.GenerationVerify
 
@@ -102,6 +103,9 @@ def verifyFullEntries [Monad m] (h : Hasher) (read : Reader m) : List Entry → 
   | [] => pure true
   | entry :: rest => do
       if !(← verifyFullArtifact h read entry.artifact) then return false
+      match entry.literalIndex with
+      | some literal => if !(← verifyFullArtifact h read literal) then return false
+      | none => pure ()
       match entry.subjectIndex with
       | none => verifyFullEntries h read rest
       | some index =>
@@ -129,6 +133,8 @@ def termIndexFailure : String :=
   "candidate term-index sidecar is missing, changed, malformed, or bound to another block"
 def objectIndexFailure : String :=
   "candidate object-index sidecar is missing, changed, malformed, or inconsistent with its block"
+def literalIndexFailure : String :=
+  "candidate literal-index sidecar is missing, changed, malformed, or bound to another block"
 def quadEntryFailure : String :=
   "candidate IBK4 artifact is missing, changed, malformed, mislabelled by predicate, or its graph set differs from the manifest entry"
 
@@ -192,7 +198,42 @@ def objectIndexAgrees [Monad m] (read : Reader m) (version : Nat) (entry : Entry
                 decoded.pairs.toList ==
                   L4Factoidal.Storage.SubjectRowIndexWire.pairsOfObjects block.rows
 
-/-- One entry's three sidecars, checked in the order subject, term, object
+/-- LGI1, the SBM8 literal search index. What is checked here is that the
+    sidecar decodes under its own framing and CRC, that it names THIS block by
+    digest, and that it is sized for this block's dictionary.
+
+    The posting lists are NOT recomputed. Building the index of the SKOS
+    `skos:prefLabel` block costs 5.6 s, and an activation that rebuilt every
+    block's index would pay that per block for a value the manifest already
+    commits by SHA-256 and by Merkle root. What that leaves uncaught is a
+    PACKER fault which wrote a self-consistent index of the wrong content;
+    tampering after the pack is caught by the digest. The consequence of such
+    a fault is bounded: the index is a candidate filter and the planner
+    re-evaluates the original expression on the candidates, so a wrong index
+    can only DROP rows, never add them. Recomputing the postings is open work,
+    recorded in `docs/designissues/2026-09-04-literal-token-index.md`. -/
+def literalIndexAgrees [Monad m] (read : Reader m) (version : Nat) (entry : Entry)
+    (index : ArtifactRef) : m Bool := do
+  if version != 8 || !safeLeafKey index.key then return false
+  match ← read entry.artifact.key.value with
+  | none => return false
+  | some blockBytes =>
+      match L4Factoidal.Storage.IndexedBlockWireV4.decode blockBytes with
+      | none => return false
+      | some block =>
+          match ← read index.key.value with
+          | none => return false
+          | some indexBytes =>
+              match L4Factoidal.Storage.LiteralGramIndexWire.decode? indexBytes with
+              | none => return false
+              | some decoded =>
+                  return decoded.targetIBKSha256 == entry.artifact.sha256 &&
+                    decoded.index.dictCount == block.dict.size &&
+                    decoded.index.literalCount ==
+                      block.dict.toList.countP (fun t =>
+                        match t with | .literal _ => true | _ => false)
+
+/-- One entry's sidecars, checked in the order subject, term, object, literal
     against ONE read and ONE decode of its IBK3 artifact.
 
     `legacySubject` decides the SBM4-and-earlier subject index, whose SRI1
@@ -218,6 +259,10 @@ def verifyEntryIndexes [Monad m] (read : Reader m) (version : Nat)
     | none => pure true
     | some index => objectIndexAgrees read version entry index block?
   if !objectOk then return some objectIndexFailure
+  let literalOk ← match entry.literalIndex with
+    | none => pure true
+    | some index => literalIndexAgrees read version entry index
+  if !literalOk then return some literalIndexFailure
   pure none
 
 def verifyIndexSidecars [Monad m] (read : Reader m) (version : Nat)

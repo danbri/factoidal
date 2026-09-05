@@ -164,7 +164,7 @@ private def packQuads (input output : String) : IO UInt32 := do
     writeArtifacts output result.artifacts
     let manifest ← ofExcept (quadManifestArtifacts prepass result.packed)
     writeArtifacts output manifest
-    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} output={output} manifest=manifest.sbm2 wire-version=7 blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
+    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} output={output} manifest=manifest.sbm2 wire-version={manifestVersion .ibk4} blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
     return 0
   catch error =>
     IO.eprintln s!"l4block-shard-pack failure: {error}"

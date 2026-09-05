@@ -59,13 +59,17 @@ private def compactedIbk3Sri2Tli1Layout : String :=
 private def compactedIbk3Sri2Tli1Oli2Layout : String :=
   "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0-compacted-default-dlog-v1"
 
-/-- SBM7's only layout label. There is no compacted variant: the compactor
-    does not build IBK4 generations. -/
+/-- The IBK4 layout labels: SBM7's, and SBM8's, which adds the LGI1 literal
+    search index sidecar. There is no compacted variant of either: the
+    compactor does not build IBK4 generations. -/
 private def ibk4Layout : String :=
   "quad-ibk4-ptd1-merkle-v0"
 
+private def ibk4Lgi1Layout : String :=
+  "quad-ibk4-ptd1-lgi1-merkle-v0"
+
 private def isIbk4Layout (layout : String) : Bool :=
-  layout == ibk4Layout
+  layout == ibk4Layout || layout == ibk4Lgi1Layout
 
 private def isIbk3Layout (layout : String) : Bool :=
   layout == ibk3Layout || layout == ibk3Sri1Layout || layout == compactedIbk3Layout ||

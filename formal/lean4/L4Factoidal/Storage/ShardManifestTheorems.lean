@@ -314,17 +314,18 @@ theorem encodableEntry_common (version : Nat) (entry : Entry)
     fitsU32 entry.predicate.val.toUTF8.size ∧ fitsU32 entry.artifact.key.value.toUTF8.size ∧
       fitsU32 entry.artifact.bytes ∧ fitsU32 entry.rows ∧ fitsU32 entry.ordinal ∧
       entry.artifact.sha256.size = 32 := by
-  have hc : encodableCommon entry = true := andL (andL (andL (andL (andL he))))
+  have hc : encodableCommon entry = true := andL (andL (andL (andL (andL (andL he)))))
   simp only [encodableCommon, Bool.and_eq_true, beq_iff_eq] at hc
   exact ⟨hc.1.1.1.1.1, hc.1.1.1.1.2, hc.1.1.1.2, hc.1.1.2, hc.1.2, hc.2⟩
 
 /-- The reconstruction step: the record `decodeEntry` builds from decoded
     fields is the entry that produced them. -/
 theorem entry_rebuild (entry : Entry) (chunked : Option ChunkedArtifact.Ref)
-    (subjectIndex termIndex objectIndex : Option ArtifactRef)
+    (subjectIndex termIndex objectIndex literalIndex : Option ArtifactRef)
     (blockLayout : Option BlockLayout) (scope : String) (names : List GraphName)
     (hc : entry.artifact.chunked = chunked) (hs : entry.subjectIndex = subjectIndex)
     (ht : entry.termIndex = termIndex) (ho : entry.objectIndex = objectIndex)
+    (hli : entry.literalIndex = literalIndex)
     (hl : entry.blockLayout = blockLayout) (hsc : entry.blankNodeScope = scope)
     (hg : entry.graphSet = names) (h : isIri entry.predicate.val) :
     ({ predicate := ⟨entry.predicate.val, h⟩
@@ -333,12 +334,13 @@ theorem entry_rebuild (entry : Entry) (chunked : Option ChunkedArtifact.Ref)
        subjectIndex := subjectIndex
        termIndex := termIndex
        objectIndex := objectIndex
+       literalIndex := literalIndex
        blockLayout := blockLayout
        blankNodeScope := scope
        graphSet := names
        rows := entry.rows
        ordinal := entry.ordinal } : Entry) = entry := by
-  rw [byteArrayOfList_toList, ← hc, ← hs, ← ht, ← ho, ← hl, ← hsc, ← hg]
+  rw [byteArrayOfList_toList, ← hc, ← hs, ← ht, ← ho, ← hli, ← hl, ← hsc, ← hg]
 
 /-! ### Reading the two admission gates
 
@@ -349,7 +351,7 @@ shape they reduce, so `exact` on the reduced form suffices. -/
 
 /-- One index sidecar round-trips under the manifest's own two gates. -/
 theorem sidecar_roundTrip (version : Nat)
-    (hversion : version = 3 ∨ version = 4 ∨ version = 5 ∨ version = 6)
+    (hversion : version = 3 ∨ version = 4 ∨ version = 5 ∨ version = 6 ∨ version = 8)
     (index : ArtifactRef) (rest : List UInt8)
     (hav : artifactValidFor version index) (hen : encodableSidecar index) :
     decodeSidecarRef (encodeSidecarRef index ++ rest) = some (index, rest) := by
@@ -364,7 +366,7 @@ theorem sidecar_roundTrip (version : Nat)
   have htotal : c.totalBytes = index.bytes := by
     have h := andR hav
     rw [hc] at h
-    rcases hversion with rfl | rfl | rfl | rfl <;> simpa using andR h
+    rcases hversion with rfl | rfl | rfl | rfl | rfl <;> simpa using andR h
   exact decodeSidecarRef_encodeSidecarRef index c rest hc hkey hbytes hsha
     (andL (andL hmc)) (andR (andL hmc)) (by simpa using andR hmc) htotal
 
@@ -372,7 +374,7 @@ theorem sidecar_roundTrip (version : Nat)
     gates. -/
 theorem chunked_roundTrip (version : Nat)
     (hversion : version = 1 ∨ version = 2 ∨ version = 3 ∨ version = 4 ∨ version = 5 ∨
-      version = 6 ∨ version = 7)
+      version = 6 ∨ version = 7 ∨ version = 8)
     (entry : Entry) (c : ChunkedArtifact.Ref) (rest : List UInt8)
     (hc : entry.artifact.chunked = some c)
     (hav : artifactValidFor version entry.artifact) (hen : encodableChunked c) :
@@ -380,7 +382,7 @@ theorem chunked_roundTrip (version : Nat)
   have htotal : c.totalBytes = entry.artifact.bytes := by
     have h := andR hav
     rw [hc] at h
-    rcases hversion with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simpa using andR h
+    rcases hversion with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simpa using andR h
   exact decodeChunkedRef_encodeChunkedRef c entry.artifact.bytes rest
     (andL (andL hen)) (andR (andL hen)) (by simpa using andR hen) htotal
 
@@ -395,7 +397,7 @@ theorem decodeEntry_encodeEntry_v0 (entry : Entry) (rest : List UInt8)
     (hv : entryValid 0 entry) (he : encodableEntry 0 entry) :
     decodeEntry 0 (encodeEntry 0 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 0 entry he
-  have hav : artifactValidFor 0 entry.artifact := andR (andL (andL (andL (andL (andL hv)))))
+  have hav : artifactValidFor 0 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   have hchunk : entry.artifact.chunked = none := by
     cases h : entry.artifact.chunked with
     | none => rfl
@@ -403,15 +405,19 @@ theorem decodeEntry_encodeEntry_v0 (entry : Entry) (rest : List UInt8)
   have hs : entry.subjectIndex = none := by
     cases h : entry.subjectIndex with
     | none => rfl
-    | some i => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+    | some i => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
   have ht : entry.termIndex = none := by
     cases h : entry.termIndex with
     | none => rfl
-    | some i => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+    | some i => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
   have hoi : entry.objectIndex = none := by
     cases h : entry.objectIndex with
     | none => rfl
-    | some i => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
+    | some i => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+  have hli : entry.literalIndex = none := by
+    cases h : entry.literalIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
   have hl : entry.blockLayout = none := by
     cases h : entry.blockLayout with
     | none => rfl
@@ -423,7 +429,7 @@ theorem decodeEntry_encodeEntry_v0 (entry : Entry) (rest : List UInt8)
   simp only [bind, Option.bind]
   rw [dif_pos entry.predicate.property]
   simp only [Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry none none none none none "" [] hchunk hs ht hoi hl hsc hg
+  exact entry_rebuild entry none none none none none none "" [] hchunk hs ht hoi hli hl hsc hg
     entry.predicate.property
 
 theorem decodeEntry_encodeEntry_chunkedOnly (version : Nat)
@@ -433,7 +439,7 @@ theorem decodeEntry_encodeEntry_chunkedOnly (version : Nat)
   rcases hversion with rfl | rfl
   all_goals (
     obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common _ entry he
-    have hav : artifactValidFor _ entry.artifact := andR (andL (andL (andL (andL (andL hv)))))
+    have hav : artifactValidFor _ entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
     obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
       cases h : entry.artifact.chunked with
       | some c => exact ⟨c, rfl⟩
@@ -441,98 +447,17 @@ theorem decodeEntry_encodeEntry_chunkedOnly (version : Nat)
     have hs : entry.subjectIndex = none := by
       cases h : entry.subjectIndex with
       | none => rfl
-      | some i => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+      | some i => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
     have ht : entry.termIndex = none := by
       cases h : entry.termIndex with
       | none => rfl
+      | some i => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+    have hoi : entry.objectIndex = none := by
+      cases h : entry.objectIndex with
+      | none => rfl
       | some i => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
-    have hoi : entry.objectIndex = none := by
-      cases h : entry.objectIndex with
-      | none => rfl
-      | some i => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
-    have hl : entry.blockLayout = none := by
-      cases h : entry.blockLayout with
-      | none => rfl
-      | some k => have hm := andR (andL hv); rw [h] at hm; simp at hm
-    have hsc : entry.blankNodeScope = "" := by simpa using andL (andR hv)
-    have hg : entry.graphSet = [] := by simpa using andR (andR hv)
-    have hMc : encodableChunked c := by
-      have hm := andR (andL (andL (andL (andL he)))); rw [hchunk] at hm; exact hm
-    simp only [encodeEntry, hchunk, decodeEntry, List.append_assoc]
-    rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
-    simp only [bind, Option.bind]
-    rw [dif_pos entry.predicate.property,
-      chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
-    simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-    exact entry_rebuild entry (some c) none none none none "" [] hchunk hs ht hoi hl hsc hg
-      entry.predicate.property)
-
-theorem decodeEntry_encodeEntry_subject (entry : Entry) (rest : List UInt8)
-    (hv : entryValid 3 entry) (he : encodableEntry 3 entry) :
-    decodeEntry 3 (encodeEntry 3 entry ++ rest) = some (entry, rest) := by
-  obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 3 entry he
-  have hav : artifactValidFor 3 entry.artifact := andR (andL (andL (andL (andL (andL hv)))))
-  obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
-    cases h : entry.artifact.chunked with
-    | some c => exact ⟨c, rfl⟩
-    | none => have hm := andR hav; rw [h] at hm; simp at hm
-  obtain ⟨i, hsi⟩ : ∃ i, entry.subjectIndex = some i := by
-    cases h : entry.subjectIndex with
-    | some i => exact ⟨i, rfl⟩
-    | none => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
-  have ht : entry.termIndex = none := by
-    cases h : entry.termIndex with
-    | none => rfl
-    | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
-  have hoi : entry.objectIndex = none := by
-    cases h : entry.objectIndex with
-    | none => rfl
-    | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
-  have hl : entry.blockLayout = none := by
-    cases h : entry.blockLayout with
-    | none => rfl
-    | some k => have hm := andR (andL hv); rw [h] at hm; simp at hm
-  have hsc : entry.blankNodeScope = "" := by simpa using andL (andR hv)
-  have hg : entry.graphSet = [] := by simpa using andR (andR hv)
-  have hMc : encodableChunked c := by
-    have hm := andR (andL (andL (andL (andL he)))); rw [hchunk] at hm; exact hm
-  have hSav : artifactValidFor 3 i := by
-    have hm := andR (andL (andL (andL (andL hv)))); rw [hsi] at hm; exact andL hm
-  have hMs : encodableSidecar i := by
-    have hm := andR (andL (andL (andL he))); rw [hsi] at hm; exact hm
-  simp only [encodeEntry, hchunk, hsi, ht, hoi, decodeEntry, List.append_assoc]
-  rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
-  simp only [bind, Option.bind]
-  rw [dif_pos entry.predicate.property,
-    chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
-  simp only [bind, Option.bind]
-  rw [sidecar_roundTrip _ (by decide) i _ hSav hMs]
-  simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry (some c) (some i) none none none "" [] hchunk hsi ht hoi hl hsc hg
-    entry.predicate.property
-
-theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
-    (hversion : version = 4 ∨ version = 5) (entry : Entry) (rest : List UInt8)
-    (hv : entryValid version entry) (he : encodableEntry version entry) :
-    decodeEntry version (encodeEntry version entry ++ rest) = some (entry, rest) := by
-  rcases hversion with rfl | rfl
-  all_goals (
-    obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common _ entry he
-    have hav : artifactValidFor _ entry.artifact := andR (andL (andL (andL (andL (andL hv)))))
-    obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
-      cases h : entry.artifact.chunked with
-      | some c => exact ⟨c, rfl⟩
-      | none => have hm := andR hav; rw [h] at hm; simp at hm
-    obtain ⟨i, hsi⟩ : ∃ i, entry.subjectIndex = some i := by
-      cases h : entry.subjectIndex with
-      | some i => exact ⟨i, rfl⟩
-      | none => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
-    obtain ⟨t, hti⟩ : ∃ t, entry.termIndex = some t := by
-      cases h : entry.termIndex with
-      | some t => exact ⟨t, rfl⟩
-      | none => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
-    have hoi : entry.objectIndex = none := by
-      cases h : entry.objectIndex with
+    have hli : entry.literalIndex = none := by
+      cases h : entry.literalIndex with
       | none => rfl
       | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
     have hl : entry.blockLayout = none := by
@@ -542,17 +467,110 @@ theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
     have hsc : entry.blankNodeScope = "" := by simpa using andL (andR hv)
     have hg : entry.graphSet = [] := by simpa using andR (andR hv)
     have hMc : encodableChunked c := by
-      have hm := andR (andL (andL (andL (andL he)))); rw [hchunk] at hm; exact hm
-    have hms := andR (andL (andL (andL (andL hv))))
+      have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
+    simp only [encodeEntry, hchunk, decodeEntry, List.append_assoc]
+    rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
+    simp only [bind, Option.bind]
+    rw [dif_pos entry.predicate.property,
+      chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
+    simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
+    exact entry_rebuild entry (some c) none none none none none "" [] hchunk hs ht hoi hli hl
+      hsc hg entry.predicate.property)
+
+theorem decodeEntry_encodeEntry_subject (entry : Entry) (rest : List UInt8)
+    (hv : entryValid 3 entry) (he : encodableEntry 3 entry) :
+    decodeEntry 3 (encodeEntry 3 entry ++ rest) = some (entry, rest) := by
+  obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 3 entry he
+  have hav : artifactValidFor 3 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
+  obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
+    cases h : entry.artifact.chunked with
+    | some c => exact ⟨c, rfl⟩
+    | none => have hm := andR hav; rw [h] at hm; simp at hm
+  obtain ⟨i, hsi⟩ : ∃ i, entry.subjectIndex = some i := by
+    cases h : entry.subjectIndex with
+    | some i => exact ⟨i, rfl⟩
+    | none => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
+  have ht : entry.termIndex = none := by
+    cases h : entry.termIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+  have hoi : entry.objectIndex = none := by
+    cases h : entry.objectIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+  have hl : entry.blockLayout = none := by
+    cases h : entry.blockLayout with
+    | none => rfl
+    | some k => have hm := andR (andL hv); rw [h] at hm; simp at hm
+  have hsc : entry.blankNodeScope = "" := by simpa using andL (andR hv)
+  have hg : entry.graphSet = [] := by simpa using andR (andR hv)
+  have hMc : encodableChunked c := by
+    have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
+  have hli : entry.literalIndex = none := by
+    cases h : entry.literalIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
+  have hSav : artifactValidFor 3 i := by
+    have hm := andR (andL (andL (andL (andL (andL hv))))); rw [hsi] at hm; exact andL hm
+  have hMs : encodableSidecar i := by
+    have hm := andR (andL (andL (andL (andL he)))); rw [hsi] at hm; exact hm
+  simp only [encodeEntry, hchunk, hsi, ht, hoi, decodeEntry, List.append_assoc]
+  rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
+  simp only [bind, Option.bind]
+  rw [dif_pos entry.predicate.property,
+    chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
+  simp only [bind, Option.bind]
+  rw [sidecar_roundTrip _ (by decide) i _ hSav hMs]
+  simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
+  exact entry_rebuild entry (some c) (some i) none none none none "" [] hchunk hsi ht hoi hli hl
+    hsc hg entry.predicate.property
+
+theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
+    (hversion : version = 4 ∨ version = 5) (entry : Entry) (rest : List UInt8)
+    (hv : entryValid version entry) (he : encodableEntry version entry) :
+    decodeEntry version (encodeEntry version entry ++ rest) = some (entry, rest) := by
+  rcases hversion with rfl | rfl
+  all_goals (
+    obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common _ entry he
+    have hav : artifactValidFor _ entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
+    obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
+      cases h : entry.artifact.chunked with
+      | some c => exact ⟨c, rfl⟩
+      | none => have hm := andR hav; rw [h] at hm; simp at hm
+    obtain ⟨i, hsi⟩ : ∃ i, entry.subjectIndex = some i := by
+      cases h : entry.subjectIndex with
+      | some i => exact ⟨i, rfl⟩
+      | none => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
+    obtain ⟨t, hti⟩ : ∃ t, entry.termIndex = some t := by
+      cases h : entry.termIndex with
+      | some t => exact ⟨t, rfl⟩
+      | none => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+    have hoi : entry.objectIndex = none := by
+      cases h : entry.objectIndex with
+      | none => rfl
+      | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+    have hl : entry.blockLayout = none := by
+      cases h : entry.blockLayout with
+      | none => rfl
+      | some k => have hm := andR (andL hv); rw [h] at hm; simp at hm
+    have hsc : entry.blankNodeScope = "" := by simpa using andL (andR hv)
+    have hg : entry.graphSet = [] := by simpa using andR (andR hv)
+    have hMc : encodableChunked c := by
+      have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
+    have hli : entry.literalIndex = none := by
+      cases h : entry.literalIndex with
+      | none => rfl
+      | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
+    have hms := andR (andL (andL (andL (andL (andL hv)))))
     rw [hsi] at hms
     have hSav := andL hms
     have hMs : encodableSidecar i := by
-      have hm := andR (andL (andL (andL he))); rw [hsi] at hm; exact hm
-    have hmt := andR (andL (andL (andL hv)))
+      have hm := andR (andL (andL (andL (andL he)))); rw [hsi] at hm; exact hm
+    have hmt := andR (andL (andL (andL (andL hv))))
     rw [hti] at hmt
     have hTav := andL hmt
     have hMt : encodableSidecar t := by
-      have hm := andR (andL (andL he)); rw [hti] at hm; exact hm
+      have hm := andR (andL (andL (andL he))); rw [hti] at hm; exact hm
     simp only [encodeEntry, hchunk, hsi, hti, hoi, decodeEntry, List.append_assoc]
     rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
     simp only [bind, Option.bind]
@@ -563,14 +581,14 @@ theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
     simp only [bind, Option.bind]
     rw [sidecar_roundTrip _ (by decide) t _ hTav hMt]
     simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-    exact entry_rebuild entry (some c) (some i) (some t) none none "" [] hchunk hsi hti hoi hl
-      hsc hg entry.predicate.property)
+    exact entry_rebuild entry (some c) (some i) (some t) none none none "" [] hchunk hsi hti hoi
+      hli hl hsc hg entry.predicate.property)
 
 theorem decodeEntry_encodeEntry_object (entry : Entry) (rest : List UInt8)
     (hv : entryValid 6 entry) (he : encodableEntry 6 entry) :
     decodeEntry 6 (encodeEntry 6 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 6 entry he
-  have hav : artifactValidFor 6 entry.artifact := andR (andL (andL (andL (andL (andL hv)))))
+  have hav : artifactValidFor 6 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
     cases h : entry.artifact.chunked with
     | some c => exact ⟨c, rfl⟩
@@ -578,15 +596,15 @@ theorem decodeEntry_encodeEntry_object (entry : Entry) (rest : List UInt8)
   obtain ⟨i, hsi⟩ : ∃ i, entry.subjectIndex = some i := by
     cases h : entry.subjectIndex with
     | some i => exact ⟨i, rfl⟩
-    | none => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+    | none => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
   obtain ⟨t, hti⟩ : ∃ t, entry.termIndex = some t := by
     cases h : entry.termIndex with
     | some t => exact ⟨t, rfl⟩
-    | none => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+    | none => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
   obtain ⟨o, hoi⟩ : ∃ o, entry.objectIndex = some o := by
     cases h : entry.objectIndex with
     | some o => exact ⟨o, rfl⟩
-    | none => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
+    | none => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
   have hl : entry.blockLayout = none := by
     cases h : entry.blockLayout with
     | none => rfl
@@ -594,19 +612,23 @@ theorem decodeEntry_encodeEntry_object (entry : Entry) (rest : List UInt8)
   have hsc : entry.blankNodeScope = "" := by simpa using andL (andR hv)
   have hg : entry.graphSet = [] := by simpa using andR (andR hv)
   have hMc : encodableChunked c := by
-    have hm := andR (andL (andL (andL (andL he)))); rw [hchunk] at hm; exact hm
+    have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
+  have hli : entry.literalIndex = none := by
+    cases h : entry.literalIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
   have hSav : artifactValidFor 6 i := by
-    have hm := andR (andL (andL (andL (andL hv)))); rw [hsi] at hm; exact andL hm
+    have hm := andR (andL (andL (andL (andL (andL hv))))); rw [hsi] at hm; exact andL hm
   have hMs : encodableSidecar i := by
-    have hm := andR (andL (andL (andL he))); rw [hsi] at hm; exact hm
+    have hm := andR (andL (andL (andL (andL he)))); rw [hsi] at hm; exact hm
   have hTav : artifactValidFor 6 t := by
-    have hm := andR (andL (andL (andL hv))); rw [hti] at hm; exact andL hm
+    have hm := andR (andL (andL (andL (andL hv)))); rw [hti] at hm; exact andL hm
   have hMt : encodableSidecar t := by
-    have hm := andR (andL (andL he)); rw [hti] at hm; exact hm
+    have hm := andR (andL (andL (andL he))); rw [hti] at hm; exact hm
   have hOav : artifactValidFor 6 o := by
-    have hm := andR (andL (andL hv)); rw [hoi] at hm; exact andL hm
+    have hm := andR (andL (andL (andL hv))); rw [hoi] at hm; exact andL hm
   have hMo : encodableSidecar o := by
-    have hm := andR (andL he); rw [hoi] at hm; exact hm
+    have hm := andR (andL (andL he)); rw [hoi] at hm; exact hm
   simp only [encodeEntry, hchunk, hsi, hti, hoi, decodeEntry, List.append_assoc]
   rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
   simp only [bind, Option.bind]
@@ -619,14 +641,14 @@ theorem decodeEntry_encodeEntry_object (entry : Entry) (rest : List UInt8)
   simp only [bind, Option.bind]
   rw [sidecar_roundTrip _ (by decide) o _ hOav hMo]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry (some c) (some i) (some t) (some o) none "" [] hchunk hsi hti hoi hl
-    hsc hg entry.predicate.property
+  exact entry_rebuild entry (some c) (some i) (some t) (some o) none none "" [] hchunk hsi hti hoi
+    hli hl hsc hg entry.predicate.property
 
 theorem decodeEntry_encodeEntry_quad (entry : Entry) (rest : List UInt8)
     (hv : entryValid 7 entry) (he : encodableEntry 7 entry) :
     decodeEntry 7 (encodeEntry 7 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 7 entry he
-  have hav : artifactValidFor 7 entry.artifact := andR (andL (andL (andL (andL (andL hv)))))
+  have hav : artifactValidFor 7 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
     cases h : entry.artifact.chunked with
     | some c => exact ⟨c, rfl⟩
@@ -634,13 +656,17 @@ theorem decodeEntry_encodeEntry_quad (entry : Entry) (rest : List UInt8)
   have hs : entry.subjectIndex = none := by
     cases h : entry.subjectIndex with
     | none => rfl
-    | some x => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+    | some x => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
   have ht : entry.termIndex = none := by
     cases h : entry.termIndex with
     | none => rfl
-    | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+    | some x => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
   have hoi : entry.objectIndex = none := by
     cases h : entry.objectIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+  have hli : entry.literalIndex = none := by
+    cases h : entry.literalIndex with
     | none => rfl
     | some x => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
   obtain ⟨k, hl⟩ : ∃ k, entry.blockLayout = some k := by
@@ -650,7 +676,7 @@ theorem decodeEntry_encodeEntry_quad (entry : Entry) (rest : List UInt8)
   have hq := andR hv
   have hgadm : entry.graphSet.all graphNameAdmitted := andR (andL (andR hq))
   have hMc : encodableChunked c := by
-    have hm := andR (andL (andL (andL (andL he)))); rw [hchunk] at hm; exact hm
+    have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
   have hMbl : (fitsU32 entry.blankNodeScope.toUTF8.size && fitsU32 entry.graphSet.length &&
       entry.graphSet.all graphNameEncodable) = true := by
     have hm := andR he; rw [hl] at hm; exact hm
@@ -663,8 +689,66 @@ theorem decodeEntry_encodeEntry_quad (entry : Entry) (rest : List UInt8)
   rw [decodeQuadTail_encodeQuadTail k entry.blankNodeScope entry.graphSet _
     (andL (andL hMbl)) (andR (andL hMbl)) (andR hMbl) hgadm]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry (some c) none none none (some k) entry.blankNodeScope entry.graphSet
-    hchunk hs ht hoi hl rfl rfl entry.predicate.property
+  exact entry_rebuild entry (some c) none none none none (some k) entry.blankNodeScope
+    entry.graphSet hchunk hs ht hoi hli hl rfl rfl entry.predicate.property
+
+
+/-- SBM8 is SBM7 plus the LGI1 literal search index, written where SBM6 writes
+    its object index. -/
+theorem decodeEntry_encodeEntry_quadLiteral (entry : Entry) (rest : List UInt8)
+    (hv : entryValid 8 entry) (he : encodableEntry 8 entry) :
+    decodeEntry 8 (encodeEntry 8 entry ++ rest) = some (entry, rest) := by
+  obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 8 entry he
+  have hav : artifactValidFor 8 entry.artifact :=
+    andR (andL (andL (andL (andL (andL (andL hv))))))
+  obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
+    cases h : entry.artifact.chunked with
+    | some c => exact ⟨c, rfl⟩
+    | none => have hm := andR hav; rw [h] at hm; simp at hm
+  have hs : entry.subjectIndex = none := by
+    cases h : entry.subjectIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
+  have ht : entry.termIndex = none := by
+    cases h : entry.termIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+  have hoi : entry.objectIndex = none := by
+    cases h : entry.objectIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+  obtain ⟨l, hli⟩ : ∃ l, entry.literalIndex = some l := by
+    cases h : entry.literalIndex with
+    | some l => exact ⟨l, rfl⟩
+    | none => have hm := andR (andL (andL hv)); rw [h] at hm; simp at hm
+  obtain ⟨k, hl⟩ : ∃ k, entry.blockLayout = some k := by
+    cases h : entry.blockLayout with
+    | some k => exact ⟨k, rfl⟩
+    | none => have hm := andR (andL hv); rw [h] at hm; simp at hm
+  have hq := andR hv
+  have hgadm : entry.graphSet.all graphNameAdmitted := andR (andL (andR hq))
+  have hMc : encodableChunked c := by
+    have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
+  have hLav : artifactValidFor 8 l := by
+    have hm := andR (andL (andL hv)); rw [hli] at hm; exact andL hm
+  have hMl : encodableSidecar l := by
+    have hm := andR (andL he); rw [hli] at hm; exact hm
+  have hMbl : (fitsU32 entry.blankNodeScope.toUTF8.size && fitsU32 entry.graphSet.length &&
+      entry.graphSet.all graphNameEncodable) = true := by
+    have hm := andR he; rw [hl] at hm; exact hm
+  simp only [encodeEntry, hchunk, hl, hli, decodeEntry, List.append_assoc]
+  rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
+  simp only [bind, Option.bind]
+  rw [dif_pos entry.predicate.property,
+    chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
+  simp only [bind, Option.bind]
+  rw [sidecar_roundTrip _ (by decide) l _ hLav hMl]
+  simp only [bind, Option.bind]
+  rw [decodeQuadTail_encodeQuadTail k entry.blankNodeScope entry.graphSet _
+    (andL (andL hMbl)) (andR (andL hMbl)) (andR hMbl) hgadm]
+  simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
+  exact entry_rebuild entry (some c) none none none (some l) (some k) entry.blankNodeScope
+    entry.graphSet hchunk hs ht hoi hli hl rfl rfl entry.predicate.property
 
 /-- Every admitted entry round-trips, in every wire version. -/
 theorem decodeEntry_encodeEntry (version : Nat) (entry : Entry) (rest : List UInt8)
@@ -679,8 +763,9 @@ theorem decodeEntry_encodeEntry (version : Nat) (entry : Entry) (rest : List UIn
   | 5 => exact decodeEntry_encodeEntry_subjectTerm 5 (Or.inr rfl) entry rest hv he
   | 6 => exact decodeEntry_encodeEntry_object entry rest hv he
   | 7 => exact decodeEntry_encodeEntry_quad entry rest hv he
-  | n + 8 =>
-      exact absurd (andR (andR (andL (andL (andL (andL (andL hv))))))) (by simp)
+  | 8 => exact decodeEntry_encodeEntry_quadLiteral entry rest hv he
+  | n + 9 =>
+      exact absurd (andR (andR (andL (andL (andL (andL (andL (andL hv)))))))) (by simp)
 
 /-! ## The entry list -/
 
@@ -720,25 +805,29 @@ Only the eight admitted versions are written, so the decoder's rejection test
 is false and its `toNat` is exact. Both are decided one version at a time,
 here, so the manifest proof itself does not split. -/
 
-theorem versionByte_toNat (v : Nat) (h : v ≤ 7) : (UInt8.ofNat v).toNat = v := by
+theorem versionByte_toNat (v : Nat) (h : v ≤ 8) : (UInt8.ofNat v).toNat = v := by
   match v, h with
-  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => decide
-  | (n + 8), h => exact absurd h (by omega)
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ => decide
+  | (n + 9), h => exact absurd h (by omega)
 
-theorem versionByte_admitted (v : Nat) (h : v ≤ 7) :
+theorem versionByte_admitted (v : Nat) (h : v ≤ 8) :
     (UInt8.ofNat v != wireVersion0 && UInt8.ofNat v != wireVersion1 &&
       UInt8.ofNat v != wireVersion2 && UInt8.ofNat v != wireVersion3 &&
       UInt8.ofNat v != wireVersion4 && UInt8.ofNat v != wireVersion5 &&
-      UInt8.ofNat v != wireVersion6 && UInt8.ofNat v != wireVersion7) = false := by
+      UInt8.ofNat v != wireVersion6 && UInt8.ofNat v != wireVersion7 &&
+      UInt8.ofNat v != wireVersion8) = false := by
   match v, h with
-  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => decide
-  | (n + 8), h => exact absurd h (by omega)
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ => decide
+  | (n + 9), h => exact absurd h (by omega)
 
-theorem versionByte_is7 (v : Nat) (h : v ≤ 7) :
-    (UInt8.ofNat v == wireVersion7) = (v == 7) := by
+/-- SBM7 and SBM8 both carry the publication profile, and no earlier version
+    does, so the decoder's profile test is exactly this disjunction. -/
+theorem versionByte_is7or8 (v : Nat) (h : v ≤ 8) :
+    (UInt8.ofNat v == wireVersion7 || UInt8.ofNat v == wireVersion8) =
+      (v == 7 || v == 8) := by
   match v, h with
-  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => decide
-  | (n + 8), h => exact absurd h (by omega)
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ => decide
+  | (n + 9), h => exact absurd h (by omega)
 
 theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
     (h : encode? manifest = some bytes) : decode? bytes = some manifest := by
@@ -747,7 +836,7 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
   rw [encode?, if_pos hgate] at h
   have hvalid : valid manifest := andL hgate
   have hencodable : encodable manifest := andR hgate
-  have hverLe : manifest.version ≤ 7 := by
+  have hverLe : manifest.version ≤ 8 := by
     have hv := andL (andL (andL (andL (andL (andL (andL hvalid))))))
     simp only [Bool.or_eq_true, beq_iff_eq] at hv
     omega
@@ -772,7 +861,7 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
     readU32LE_writeU32LE_append, parseU8_cons, bind, Option.bind,
     bne_self_eq_false, Bool.false_eq_true, if_false,
     drop4_writeU32LE, versionByte_admitted _ hverLe, versionByte_toNat _ hverLe,
-    versionByte_is7 _ hverLe]
+    versionByte_is7or8 _ hverLe]
   rw [takeExact_of_length manifest.sourceIdentity.toList _ _
     (by rw [length_toList, u32_toNat_ofNat_of_lt hsl2])]
   simp only [bind, Option.bind]
@@ -780,21 +869,22 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
   simp only [bind, Option.bind]
   rw [decodeString_encodeString _ _ hlay]
   simp only [bind, Option.bind]
-  by_cases h7 : manifest.version = 7
-  · rw [h7] at hentriesEnc hentriesVal ⊢
-    simp only [beq_self_eq_true, if_true]
+  by_cases h7 : manifest.version = 7 ∨ manifest.version = 8
+  · have hprofile : (manifest.version == 7 || manifest.version == 8) = true := by
+      rcases h7 with h | h <;> simp [h]
+    simp only [hprofile, if_true]
     rw [decodeString_encodeString _ _ hprof]
     simp only [bind, Option.bind, readU32LE_writeU32LE_append,
       u32_toNat_ofNat_of_lt hn, drop4_writeU32LE]
     rw [decodeEntries_flatMap_nil _ manifest.entries hentriesVal hentriesEnc]
     simp only [bind, Option.bind, List.isEmpty_nil, Bool.true_and, byteArrayOfList_toList]
-    rw [show (7 : Nat) = manifest.version from h7.symm]
     simp only [hvalid, if_true]
   · have hprofEmpty : manifest.blankNodeProfile = "" := by
       have hq := andR (andL (andL (andL (andL (andL hvalid)))))
-      rw [if_neg (by simp [h7])] at hq
+      rw [if_neg (by simp [not_or.mp h7])] at hq
       simpa using hq
-    simp only [show (manifest.version == 7) = false from by simp [h7], Bool.false_eq_true,
+    simp only [show (manifest.version == 7 || manifest.version == 8) = false from by
+        simp [(not_or.mp h7).1, (not_or.mp h7).2], Bool.false_eq_true,
       if_false, List.nil_append, bind, Option.bind, readU32LE_writeU32LE_append,
       u32_toNat_ofNat_of_lt hn, drop4_writeU32LE]
     rw [decodeEntries_flatMap_nil _ manifest.entries hentriesVal hentriesEnc]

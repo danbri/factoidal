@@ -22,6 +22,7 @@ def wireVersion4 : UInt8 := 4
 def wireVersion5 : UInt8 := 5
 def wireVersion6 : UInt8 := 6
 def wireVersion7 : UInt8 := 7
+def wireVersion8 : UInt8 := 8
 
 def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -116,7 +117,20 @@ structure Entry where
   /-- Present and mandatory for SBM6. This independently committed OLI2
       object maps this artifact's local object IDs to source-row offsets. -/
   objectIndex : Option ArtifactRef := none
-  /-- Present and mandatory for SBM7: the primary block codec of `artifact`. -/
+  /-- Present and mandatory for SBM8. This independently committed LGI1
+      object holds the character 3-grams of the case-folded lexical form of
+      every literal in this IBK4 artifact's dictionary, with the local term
+      IDs that carry each gram. It is a CANDIDATE FILTER: a planner that uses
+      it re-evaluates the original SPARQL expression on the candidates, so
+      the rows are the scan's rows. Design record:
+      `docs/designissues/2026-09-04-literal-token-index.md`.
+
+      A block whose dictionary holds no literal carries an LGI1 with no gram
+      rather than no sidecar, so an SBM8 reader never asks whether the role is
+      present; it asks whether the manifest is SBM8. -/
+  literalIndex : Option ArtifactRef := none
+  /-- Present and mandatory for SBM7 and SBM8: the primary block codec of
+      `artifact`. -/
   blockLayout : Option BlockLayout := none
   /-- Present and mandatory for SBM7: the blank-node scope of the source
       partition this entry was packed from (specification section 2.4.1). The
@@ -186,17 +200,23 @@ def layoutConsistent (version : Nat) (layout : String) : Bool :=
      either; the compactor does not build IBK4 generations, and admitting a
      label nothing writes would be an untested reader path. -/
   | 7 => layout == "quad-ibk4-ptd1-merkle-v0"
+  /- SBM8 is SBM7 plus the LGI1 literal search index in a fourth sidecar
+     role. The label changes because the sidecar contract changed, and a
+     reader must not select a weaker reader by name. -/
+  | 8 => layout == "quad-ibk4-ptd1-lgi1-merkle-v0"
   | _ => true
 
 /-- The block codec every entry of a generation must use, from its
     manifest-level layout label. `none` for the labels that predate the
     per-entry field. -/
 def layoutBlockKind (layout : String) : Option BlockLayout :=
-  if layout == "quad-ibk4-ptd1-merkle-v0" then some .ibk4 else none
+  if layout == "quad-ibk4-ptd1-merkle-v0" || layout == "quad-ibk4-ptd1-lgi1-merkle-v0" then
+    some .ibk4 else none
 
-/-- SBM7's only layout label: a generation of IBK4 quad blocks. -/
+/-- The layout labels naming a generation of IBK4 quad blocks: SBM7's, and
+    SBM8's, which adds the LGI1 literal search index sidecar. -/
 def isIbk4Layout (layout : String) : Bool :=
-  layout == "quad-ibk4-ptd1-merkle-v0"
+  layout == "quad-ibk4-ptd1-merkle-v0" || layout == "quad-ibk4-ptd1-lgi1-merkle-v0"
 
 /-- Every layout label naming a generation of IBK3 blocks, base or compacted.
 
@@ -254,7 +274,8 @@ def uniqueArtifactKeys (entries : List Entry) : Bool :=
   let keys := entries.flatMap fun entry =>
     entry.artifact.key :: (entry.subjectIndex.map ArtifactRef.key).toList ++
       (entry.termIndex.map ArtifactRef.key).toList ++
-      (entry.objectIndex.map ArtifactRef.key).toList
+      (entry.objectIndex.map ArtifactRef.key).toList ++
+      (entry.literalIndex.map ArtifactRef.key).toList
   keys.length == keys.eraseDups.length
 
 /-- Structural acceptance before any host artifact is opened. -/
@@ -269,6 +290,7 @@ def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
     | 5, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 6, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 7, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
+    | 8, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | _, _ => false
 
 def entryValid (version : Nat) (entry : Entry) : Bool :=
@@ -278,26 +300,33 @@ def entryValid (version : Nat) (entry : Entry) : Bool :=
     | 4, some index => artifactValidFor 4 index && index.key != entry.artifact.key
     | 5, some index => artifactValidFor 5 index && index.key != entry.artifact.key
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 7, none => true
+    | 0, none | 1, none | 2, none | 7, none | 8, none => true
     | _, _ => false) &&
   (match version, entry.termIndex with
     | 4, some index => artifactValidFor 4 index && index.key != entry.artifact.key
     | 5, some index => artifactValidFor 5 index && index.key != entry.artifact.key
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 3, none | 7, none => true
+    | 0, none | 1, none | 2, none | 3, none | 7, none | 8, none => true
     | _, _ => false) &&
   (match version, entry.objectIndex with
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none => true
+    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none | 8, none => true
+    | _, _ => false) &&
+  /- SBM8's literal search index. It is MANDATORY at 8 and MUST BE ABSENT
+     before it, for the same reason the SBM7 additions are: a manifest below 8
+     carrying one would encode to bytes that drop it. -/
+  (match version, entry.literalIndex with
+    | 8, some index => artifactValidFor 8 index && index.key != entry.artifact.key
+    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none | 7, none => true
     | _, _ => false) &&
   /- SBM7's three additions. They are MANDATORY at 7 and MUST BE ABSENT
      before it: a pre-SBM7 manifest carrying them would encode to bytes that
      drop them, and the round trip would silently lose data. -/
   (match version, entry.blockLayout with
-    | 7, some _ => true
+    | 7, some _ | 8, some _ => true
     | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none => true
     | _, _ => false) &&
-  (if version == 7 then blankNodeScopeAdmitted entry.blankNodeScope &&
+  (if version == 7 || version == 8 then blankNodeScopeAdmitted entry.blankNodeScope &&
       graphSetAdmitted entry.graphSet
    else entry.blankNodeScope == "" && entry.graphSet == [])
 
@@ -310,9 +339,10 @@ def entryLayoutsMatchLabel (manifest : Manifest) : Bool :=
   | some kind => manifest.entries.all fun entry => entry.blockLayout == some kind
 
 def valid (manifest : Manifest) : Bool :=
-  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7) &&
+  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7 || manifest.version == 8) &&
     layoutConsistent manifest.version manifest.layout &&
-    (if manifest.version == 7 then knownBlankNodeProfile manifest.blankNodeProfile
+    (if manifest.version == 7 || manifest.version == 8 then
+        knownBlankNodeProfile manifest.blankNodeProfile
      else manifest.blankNodeProfile == "") &&
     entryLayoutsMatchLabel manifest &&
     (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
@@ -323,7 +353,7 @@ def valid (manifest : Manifest) : Bool :=
 /-- SBM1 and later retain the fixed-chunk Merkle commitment required by the
 range-backed local-file and remote readers. -/
 def rangeCommitted (manifest : Manifest) : Bool :=
-  manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7
+  manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7 || manifest.version == 8
 
 /-- Predicate selection is total and deterministic; a missing key means no
     candidate artifact, never a fallback that could hide an index error. -/
@@ -774,22 +804,27 @@ def encodableEntry (version : Nat) (entry : Entry) : Bool :=
   (match version, entry.artifact.chunked with
    | 0, none => true
    | 1, some chunked | 2, some chunked | 3, some chunked | 4, some chunked
-   | 5, some chunked | 6, some chunked | 7, some chunked => encodableChunked chunked
+   | 5, some chunked | 6, some chunked | 7, some chunked
+   | 8, some chunked => encodableChunked chunked
    | _, _ => false) &&
   (match version, entry.subjectIndex with
    | 3, some index | 4, some index | 5, some index | 6, some index => encodableSidecar index
-   | 0, none | 1, none | 2, none | 7, none => true
+   | 0, none | 1, none | 2, none | 7, none | 8, none => true
    | _, _ => false) &&
   (match version, entry.termIndex with
    | 4, some index | 5, some index | 6, some index => encodableSidecar index
-   | 0, none | 1, none | 2, none | 3, none | 7, none => true
+   | 0, none | 1, none | 2, none | 3, none | 7, none | 8, none => true
    | _, _ => false) &&
   (match version, entry.objectIndex with
    | 6, some index => encodableSidecar index
-   | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none => true
+   | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none | 8, none => true
+   | _, _ => false) &&
+  (match version, entry.literalIndex with
+   | 8, some index => encodableSidecar index
+   | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none | 7, none => true
    | _, _ => false) &&
   (match version, entry.blockLayout with
-   | 7, some _ => fitsU32 entry.blankNodeScope.toUTF8.size &&
+   | 7, some _ | 8, some _ => fitsU32 entry.blankNodeScope.toUTF8.size &&
        fitsU32 entry.graphSet.length && entry.graphSet.all graphNameEncodable
    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none => true
    | _, _ => false)
@@ -904,6 +939,15 @@ def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
           encodeCommon entry ++ encodeChunkedRef chunked ++
             encodeQuadTail kind entry.blankNodeScope entry.graphSet
       | none => []
+  /- SBM8 writes the LGI1 sidecar where SBM6 writes its object index, before
+     the quad tail, so the decoder reads one field sequence rather than a
+     version-dependent reordering. -/
+  | 8, some chunked =>
+      match entry.blockLayout, entry.literalIndex with
+      | some kind, some literal =>
+          encodeCommon entry ++ encodeChunkedRef chunked ++ encodeSidecarRef literal ++
+            encodeQuadTail kind entry.blankNodeScope entry.graphSet
+      | _, _ => []
   | _, _ => []
 
 /-- Canonical SBM0/SBM1/SBM2 bytes. SBM1 and SBM2 retain every SBM0 field and
@@ -914,7 +958,8 @@ def encode? (manifest : Manifest) : Option ByteArray :=
       writeU32LE magic ++ [UInt8.ofNat manifest.version] ++
       writeU32LE (UInt32.ofNat manifest.sourceIdentity.size) ++ manifest.sourceIdentity.toList ++
       encodeString manifest.termRegistryVersion ++ encodeString manifest.layout ++
-      (if manifest.version == 7 then encodeString manifest.blankNodeProfile else []) ++
+      (if manifest.version == 7 || manifest.version == 8 then
+        encodeString manifest.blankNodeProfile else []) ++
       writeU32LE (UInt32.ofNat manifest.entries.length) ++ manifest.entries.flatMap (encodeEntry manifest.version)
   else none
 
@@ -923,7 +968,7 @@ def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UIn
   if h : isIri common.predicateText then do
     let (chunked, afterChunked) ← match version with
       | 0 => some ((none : Option ChunkedArtifact.Ref), afterCommon)
-      | 1 | 2 | 3 | 4 | 5 | 6 | 7 => do
+      | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 => do
           let (ref, rest) ← decodeChunkedRef common.artifactBytes afterCommon
           some (some ref, rest)
       | _ => none
@@ -942,11 +987,16 @@ def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UIn
           let (ref, rest) ← decodeSidecarRef afterTerm
           some (some ref, rest)
       | _ => some ((none : Option ArtifactRef), afterTerm)
+    let (literalIndex, afterLiteral) ← match version with
+      | 8 => do
+          let (ref, rest) ← decodeSidecarRef afterObject
+          some (some ref, rest)
+      | _ => some ((none : Option ArtifactRef), afterObject)
     let (quad, rest) ← match version with
-      | 7 => do
-          let (fields, rest) ← decodeQuadTail afterObject
+      | 7 | 8 => do
+          let (fields, rest) ← decodeQuadTail afterLiteral
           some ((some fields.1, fields.2.1, fields.2.2), rest)
-      | _ => some (((none : Option BlockLayout), "", ([] : List GraphName)), afterObject)
+      | _ => some (((none : Option BlockLayout), "", ([] : List GraphName)), afterLiteral)
     some
       ({ predicate := ⟨common.predicateText, h⟩
          artifact := { key := { value := common.keyText }, bytes := common.artifactBytes,
@@ -954,6 +1004,7 @@ def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UIn
          subjectIndex
          termIndex
          objectIndex
+         literalIndex
          blockLayout := quad.1
          blankNodeScope := quad.2.1
          graphSet := quad.2.2
@@ -975,13 +1026,13 @@ def decode? (bytes : ByteArray) : Option Manifest := do
   let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none else do
   let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 && foundVersion != wireVersion4 && foundVersion != wireVersion5 && foundVersion != wireVersion6 && foundVersion != wireVersion7 then none else do
+  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 && foundVersion != wireVersion4 && foundVersion != wireVersion5 && foundVersion != wireVersion6 && foundVersion != wireVersion7 && foundVersion != wireVersion8 then none else do
   let sourceLength ← readU32LE afterVersion 0
   let (sourceIdentity, afterSource) ← takeExact sourceLength.toNat (afterVersion.drop 4)
   let (termRegistryVersion, afterRegistry) ← decodeString afterSource
   let (layout, afterLayout) ← decodeString afterRegistry
   let (blankNodeProfile, afterProfile) ←
-    if foundVersion == wireVersion7 then decodeString afterLayout
+    if foundVersion == wireVersion7 || foundVersion == wireVersion8 then decodeString afterLayout
     else some ("", afterLayout)
   let entryCount ← readU32LE afterProfile 0
   let (entries, rest) ← decodeEntries foundVersion.toNat entryCount.toNat (afterProfile.drop 4)
@@ -1154,7 +1205,52 @@ private def sampleManifestV6WithQuadFields : Manifest :=
 #guard decode? (encode? sampleManifestV4 |>.getD ByteArray.empty) == some sampleManifestV4
 #guard decode? (encode? sampleManifestV5 |>.getD ByteArray.empty) == some sampleManifestV5
 #guard decode? (encode? sampleManifestV6 |>.getD ByteArray.empty) == some sampleManifestV6
+/-! ## SBM8 samples
+
+SBM7 plus the LGI1 literal search index, which is mandatory at 8 and refused
+before it. -/
+
+private def sampleLiteralIndex : ArtifactRef :=
+  { key := { value := "blocks/p.lgi1" }, bytes := sampleBlockBytes.size,
+    sha256 := sampleDigest, chunked := some sampleChunked }
+
+private def sampleManifestV8 : Manifest :=
+  { sampleManifestV7 with
+    version := 8,
+    layout := "quad-ibk4-ptd1-lgi1-merkle-v0",
+    entries := sampleManifestV7.entries.map fun entry =>
+      { entry with literalIndex := some sampleLiteralIndex } }
+
+private def sampleManifestV8MissingLiteralIndex : Manifest :=
+  { sampleManifestV8 with entries := sampleManifestV8.entries.map fun entry =>
+    { entry with literalIndex := none } }
+
+private def sampleManifestV8OldLabel : Manifest :=
+  { sampleManifestV8 with layout := "quad-ibk4-ptd1-merkle-v0" }
+
+private def sampleManifestV8AliasedKey : Manifest :=
+  { sampleManifestV8 with entries := sampleManifestV8.entries.map fun entry =>
+    { entry with literalIndex := some { sampleLiteralIndex with key := entry.artifact.key } } }
+
+/-- An SBM7 manifest may not carry SBM8's sidecar: the encoder would drop it. -/
+private def sampleManifestV7WithLiteralIndex : Manifest :=
+  { sampleManifestV7 with entries := sampleManifestV7.entries.map fun entry =>
+    { entry with literalIndex := some sampleLiteralIndex } }
+
 #guard decode? (encode? sampleManifestV7 |>.getD ByteArray.empty) == some sampleManifestV7
+#guard decode? (encode? sampleManifestV8 |>.getD ByteArray.empty) == some sampleManifestV8
+#guard rangeCommitted sampleManifestV8
+#guard isIbk4Layout sampleManifestV8.layout
+#guard layoutBlockKind sampleManifestV8.layout == some BlockLayout.ibk4
+-- Every SBM8 admission condition refuses its own violation, on both sides.
+#guard !(valid sampleManifestV8MissingLiteralIndex) &&
+  (encode? sampleManifestV8MissingLiteralIndex).isNone
+#guard !(valid sampleManifestV8OldLabel) && (encode? sampleManifestV8OldLabel).isNone
+#guard !(valid sampleManifestV8AliasedKey) && (encode? sampleManifestV8AliasedKey).isNone
+#guard !(valid sampleManifestV7WithLiteralIndex) &&
+  (encode? sampleManifestV7WithLiteralIndex).isNone
+-- SBM7 bytes are unchanged by SBM8's arrival: an old generation still reads.
+#guard (encode? sampleManifestV7).isSome
 #guard rangeCommitted sampleManifestV7
 -- Every SBM7 admission condition refuses its own violation, on both sides.
 #guard !(valid sampleManifestV7BlankScope) && (encode? sampleManifestV7BlankScope).isNone

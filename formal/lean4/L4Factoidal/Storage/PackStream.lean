@@ -32,6 +32,7 @@ import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.LiteralGramIndexWire
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.NQuadsFast
@@ -77,7 +78,7 @@ def artifactName : PackFormat → Nat → String
 def layoutName : PackFormat → String
   | .ibk2 => "predicate-ibk2-merkle-v2-streaming"
   | .ibk3 => "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0"
-  | .ibk4 => "quad-ibk4-ptd1-merkle-v0"
+  | .ibk4 => "quad-ibk4-ptd1-lgi1-merkle-v0"
 
 def registryVersion : PackFormat → String
   | .ibk2 => "local-ibk2-dict-v0"
@@ -87,7 +88,7 @@ def registryVersion : PackFormat → String
 def manifestVersion : PackFormat → Nat
   | .ibk2 => 2
   | .ibk3 => 6
-  | .ibk4 => 7
+  | .ibk4 => 8
 
 def encodeBlock? : PackFormat → L4Factoidal.Storage.IndexedBlock.Block → Option ByteArray
   | .ibk2, block => L4Factoidal.Storage.IndexedBlockWireV2.encode? block
@@ -435,19 +436,37 @@ def publishQuadBlocks (h : Hasher) (scope : String) :
         | none => .error s!"unresolvable graph name in block for {predicate.val}"
         | some names => pure (names.map GraphName.ofGraphRef)
       let outRev := merkleArtifact h name bytes :: { name := name, bytes := bytes } :: outRev
+      /- SBM8's LGI1 literal search index. It is written for EVERY block: a
+         block whose dictionary holds no literal carries an index with no
+         gram, so an SBM8 reader never asks whether the role is present.
+         `LiteralGramIndex.build` decides the grams and the posting order and
+         `LiteralGramIndexWire.encode?` decides the bytes; nothing is restated
+         here. -/
+      let literal : L4Factoidal.Storage.LiteralGramIndexWire.Artifact :=
+        { targetIBKSha256 := artifact.sha256
+          index := L4Factoidal.Storage.LiteralGramIndex.build block.dict }
+      let (literalIndex, outRev) ←
+        match L4Factoidal.Storage.LiteralGramIndexWire.encode? literal with
+        | none => .error s!"could not encode LGI1 index for {predicate.val}"
+        | some indexBytes => do
+            let (ref, made) ← sidecar h (name ++ ".lgi1") indexBytes
+              s!"could not commit LGI1 chunks for {predicate.val}"
+            pure (some ref, made.reverse ++ outRev)
       let entry : Entry :=
         { predicate
           artifact
+          literalIndex
           blockLayout := some BlockLayout.ibk4
           blankNodeScope := scope
           graphSet
           rows := block.rows.size
           ordinal }
+      let literalIndexName := literalIndex.map (fun index => index.key.value) |>.getD ""
       publishQuadBlocks h scope
         { tripleCount := state.tripleCount + block.rows.size
           nextOrdinal := ordinal + 1
           entriesRev := entry :: state.entriesRev
-          linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}" :: state.linesRev }
+          linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}\t{literalIndexName}" :: state.linesRev }
         outRev rest
 
 /-- Every IBK4 block of one source. The blank-node scope is the SOURCE
@@ -559,7 +578,7 @@ def quadStreams : PackSyntax → Bool
   | .turtle | .trig | .ntriples => false
 
 def quadManifestTsvHeader : String :=
-  "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\n"
+  "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\n"
 
 /-- The SBM7 manifest and the TSV of a finished IBK4 `PackState`. -/
 def quadManifestArtifacts (prepass : SourcePrepass) (state : PackState) :
@@ -572,7 +591,7 @@ def quadManifestArtifacts (prepass : SourcePrepass) (state : PackState) :
       blankNodeProfile := "content-digest-shared"
       entries := state.entriesRev.reverse }
   match L4Factoidal.Storage.ShardManifest.encode? manifest with
-  | none => .error "could not encode structurally valid SBM7 manifest"
+  | none => .error "could not encode structurally valid SBM8 manifest"
   | some manifestBytes =>
       .ok [{ name := "manifest.sbm2", bytes := manifestBytes },
            { name := "manifest.tsv",

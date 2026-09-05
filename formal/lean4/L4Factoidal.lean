@@ -428,6 +428,7 @@ import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.TermLocalIndexWireTheorems
 import L4Factoidal.Storage.LiteralGramIndex
 import L4Factoidal.Storage.LiteralGramIndexWire
+import L4Factoidal.Storage.LiteralIndexPlan
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.IndexedBlockWireV3Theorems
 import L4Factoidal.Storage.IndexedBlockWireV3Tests

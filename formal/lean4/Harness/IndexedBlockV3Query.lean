@@ -573,8 +573,8 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | none, _ => IO.eprintln "l4block-id-v3-query rejected: malformed SBM2 manifest"; return 1
     | _, .error error => IO.eprintln s!"l4block-id-v3-query query parse error at {error.pos}: {error.msg}"; return 1
     | some manifest, .ok query =>
-        if isIbk4Layout manifest.layout || manifest.version == 7 then
-          IO.eprintln "l4block-id-v3-query rejected: this generation is SBM7 with IBK4 quad blocks; the quad-aware query path is not implemented, and an IBK3 reader would misread its rows"
+        if isIbk4Layout manifest.layout || manifest.version == 7 || manifest.version == 8 then
+          IO.eprintln "l4block-id-v3-query rejected: this generation is SBM7 or SBM8 with IBK4 quad blocks; the quad-aware query path is not implemented, and an IBK3 reader would misread its rows"
           return 1
         if !rangeCommitted manifest || !isIbk3Layout manifest.layout then
           IO.eprintln "l4block-id-v3-query rejected: not an IBK3 range-committed manifest"; return 1
