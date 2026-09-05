@@ -558,23 +558,18 @@ chunked run builds IS the dataset `parseSource .nquads` builds, so every
 committed byte is unchanged. Only 65,536 bytes of source, plus at most one
 partial line, are decoded at a time.
 
-What this does NOT make bounded: the IBK4 block set is partitioned at
-construction but published at the end of the pass, so the dataset, the blocks
-and their encoded bytes are all live when the last block is published, so
-nothing the pass builds is released before the end, and the character list
-twenty-four times the source is no longer among it. What the rest costs was
-MEASURED on skosdex prefixes, 2026-09-05: peak footprint 390,318,656 bytes
-for 52,428,626 of source, 599,870,336 for 104,857,577, 933,809,856 for
-209,715,187 and 5,951,730,560 for 1,543,478,120 — LINEAR in the source, at
-3.76 bytes of peak footprint per source byte plus a constant of about
-145 MB. The RATIO to the source falls with size (7.44x, 5.72x, 4.45x,
-3.86x) because that constant amortises; do not read a trend out of it. The
-first three points alone fit a sublinear power law and that reading was
-wrong (`docs/designissues/2026-09-05-shard-pack-profile-and-memory.md`,
-section 3). A memory footprint independent of the input needs the
-publication point to move to the graph boundary, which
-`docs/designissues/2026-09-04-blocks-per-predicate.md` records as the next
-step.
+What this ALSO makes bounded, since 2026-09-05: the publication point. The
+packer publishes a block as soon as the per-block cut rule closes its rows,
+and every open run of at least `minBatchRows` rows at each `batchBytes` of
+source (`docs/designissues/2026-09-05-pack-publication-every-batch.md`). The
+dataset is never built at all; what stays live is one open run per predicate,
+the carried rows below `maxCarriedRows`, and one manifest row per block.
+MEASURED on skosdex N-Quads prefixes at the 268,435,456-byte default,
+2026-09-05: peak footprint 222,955,392 bytes for 52,428,626 of source,
+328,272,128 for 104,857,577 and 331,581,824 for 209,715,187 — against
+390,318,656, 599,870,336 and 933,809,856 before, which were linear in the
+source at 3.76 bytes per source byte. The block SET is larger: 1,018, 1,135
+and 1,252 blocks against 964, 1,053 and 1,148.
 
 Turtle, and with it N-Triples, now takes the same route through
 `Syntax/TurtleChunkFold.lean` — the fold the IBK3 packer has always used.

@@ -111,17 +111,15 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
 
 /-! ## The IBK4 path
 
-The IBK4 packer publishes every block at the end of the input. The streaming
-Turtle fold of the IBK3 path publishes bounded BATCHES, which works because an
-IBK3 block holds one predicate of one graph and a later batch can open a new
-block for the same predicate (SBM2 permits several blocks per predicate). An
-IBK4 block holds one predicate across ALL graphs and commits its graph-set
-summary in the header, so a batch boundary would either split a predicate
-across blocks with partial graph sets or need a further pass to recompute
-them. Several blocks per predicate would change the emitted block set, which
-is a wire-format decision (specification section 10), so the IBK4 publication
-point is still the end of the source and peak memory is still proportional to
-the data.
+The IBK4 packer publishes blocks DURING the ingest pass
+(`docs/designissues/2026-09-05-pack-publication-every-batch.md`). A block is
+written as soon as the per-block cut rule closes its rows, every open run of
+at least `minBatchRows` rows is written at each `--batch-bytes` of source, and
+every open run is written at the end. `quadIngestFeed` returns the artifacts
+of one feed in the order they must be written, and `quadIngestFile` below
+writes them before it reads the next chunk, so the generation is never live
+all at once. Several blocks per predicate is what SBM2 has always admitted: a
+reader takes the union of the entries for a predicate.
 
 What the input no longer decides is the CHARACTER LIST. For the N-Quads
 grammar `quadIngestFile` below feeds 65,536-byte chunks to
@@ -132,8 +130,10 @@ footprint 2,531,999,744 bytes before, 1,127,907,328 bytes after, with a
 byte-identical generation
 (<https://github.com/danbri/factoidal/issues/650>). Turtle and N-Triples
 take the same route through the Turtle chunk fold; only TriG still buffers,
-because it has no chunk fold. What is proved and what is only measured for
-each route is stated at `PackStream`'s streaming section.
+because it has no chunk fold. Publication every batch then took the same
+104,857,577-byte prefix of skosdex from 599,870,336 bytes of peak footprint
+to 328,272,128. What is proved and what is only measured for each route is
+stated at `PackStream`'s streaming section.
 
 Every block, sidecar and manifest byte is decided by
 `PackStream.quadArtifacts` and `PackStream.quadManifestArtifacts`, which are
