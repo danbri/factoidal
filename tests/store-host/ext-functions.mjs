@@ -140,6 +140,7 @@ async function main () {
   registerExtensionFunction(engine, XSD + 'integer', () => 999)
   registerExtensionFunction(engine, GEOF + 'sfWithin', () => false)
   const builtin = q(
+    'PREFIX xsd: <http://www.w3.org/2001/XMLSchema#> ' +
     'SELECT (xsd:integer("42") AS ?n) WHERE { } ')
   check('a registration does not override the xsd: cast family',
     builtin.srj.results.bindings[0]?.n?.value === '42',
@@ -176,13 +177,21 @@ async function main () {
     const store = openStore(root)
     const sparql =
       `PREFIX ex: <${EX}> PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ` +
-      'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(ex:endsWithZed(?l)) } ' +
-      'ORDER BY ?c ?l LIMIT 8'
+      'SELECT ?c ?l WHERE { GRAPH ?g { ?c skos:prefLabel ?l } ' +
+      'FILTER(ex:endsWithZed(?l)) } ORDER BY ?c ?l LIMIT 8'
     const referenceSparql =
       'PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ' +
-      'SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(STRENDS(STR(?l), "z")) } ' +
-      'ORDER BY ?c ?l LIMIT 8'
-    const sh = openStoreHandle(engine, store, { sparql: referenceSparql })
+      'SELECT ?c ?l WHERE { GRAPH ?g { ?c skos:prefLabel ?l } ' +
+      'FILTER(STRENDS(STR(?l), "z")) } ORDER BY ?c ?l LIMIT 8'
+    // Scope the handle with the UNFILTERED pattern. The reference query's
+    // STRENDS can be served by the LGI1 literal index, which narrows the
+    // plan; the extension-function query cannot use the index and needs
+    // every prefLabel block. A handle scoped by the narrower plan does not
+    // retain what the wider one asks for, and refuses by name.
+    const scopeSparql =
+      'PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ' +
+      'SELECT ?c ?l WHERE { GRAPH ?g { ?c skos:prefLabel ?l } }'
+    const sh = openStoreHandle(engine, store, { sparql: scopeSparql })
     try {
       let calls = 0
       registerExtensionFunction(engine, EX + 'endsWithZed', (args) => {
