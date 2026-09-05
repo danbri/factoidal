@@ -626,6 +626,84 @@ another. `listStoreHandles` is how a server sees its own residency.
 **One call at a time.** The WebAssembly module is single-threaded. Two
 `query()` calls cannot overlap; a server queues them.
 
+### A handle on a large store: the worker route
+
+Several engine paths recurse once per manifest entry and once per row.
+Against a large collection that exceeds the default call stack of Node
+and of Deno, and the failure is `Maximum call stack size exceeded`.
+**Measured 2026-09-05**, macOS arm64, Node 22.22.2, on a 7,315,251-quad
+collection of 3,286 blocks in 204 graphs: `storeQueryPlan` alone
+overflows on plain `node`, before one artifact byte is read.
+`node --stack-size=60000` clears the plan, the open and every query.
+
+`openStoreHandleOnWorker` removes the flag. It holds the engine and the
+handle on a `worker_threads` thread with `resourceLimits.stackSizeMb`,
+the route `factoidal pack` already takes
+([issue 649](https://github.com/danbri/factoidal/issues/649)). A handle
+is state inside the wasm instance and an instance does not cross a
+thread boundary, so the handle lives where the raised stack is, and
+`query()` and `close()` are messages to it.
+
+```js
+import { openStoreHandleOnWorker, closeSharedStoreWorkerSession }
+  from '@factoidal/core/store-worker'
+
+// No runtime flag. One worker thread, shared by every handle opened
+// this way, so a caller that opens several stores pays for one thread
+// and one copy of the module.
+const handle = await openStoreHandleOnWorker('/path/to/store', {
+  sparql: 'SELECT ?c ?l WHERE { GRAPH <urn:g> { ?c ?p ?l } }'
+})
+const answer = await handle.query(`${PREFIX}
+  SELECT ?c ?l WHERE { GRAPH <urn:g> { ?c skos:prefLabel ?l }
+    FILTER(CONTAINS(LCASE(STR(?l)), "volcan")) } LIMIT 8`)
+await handle.close()
+await closeSharedStoreWorkerSession()
+```
+
+| option | effect |
+|---|---|
+| `{sparql}`, `{keys}` | the same artifact choice `openStoreHandle` takes |
+| `{generation}` | open a generation that has not been activated |
+| `{session}` | open into a session you started with `openStoreWorkerSession()` |
+| `{ownWorker: true}` | give this handle its own thread and its own copy of the module |
+| `{worker: false}` | open in this process, with no thread |
+
+What it costs, all **measured 2026-09-05** on the same machine, against
+the bundled sample store so the overhead is not lost in the query:
+
+| | in process | on a worker |
+|---|---|---|
+| one-shot query (thread start + engine load + query) | 163 ms | 220 ms |
+| handle open (thread start + engine load + open) | 124 ms | 236 ms |
+| every query after the open | 1 ms | 1 ms |
+
+So the thread and its second copy of the engine cost about 110 ms once,
+and the message round trip is under a millisecond. Three further costs:
+every call is asynchronous where the in-process handle is synchronous;
+an extension function registered on the main thread's engine
+(`bin/ext.mjs`) is not visible to the worker's engine; and the worker
+keeps the process alive until `close()`.
+
+**Deno takes a different route.** Deno's `node:worker_threads` shim
+accepts `resourceLimits.stackSizeMb` and raises almost nothing with it —
+measured by counting frames to the overflow inside the worker, Node
+reaches 41,195 frames by default and 696,555 at `stackSizeMb` 64, where
+Deno reaches 10,835 and 13,837. `openStoreHandleOnWorker` therefore
+gives a Deno caller an in-process handle behind the same asynchronous
+interface, and the process supplies the stack:
+
+```
+deno run --allow-read --v8-flags=--stack-size=65536 your-program.mjs
+```
+
+**A one-shot `factoidal query` pays none of this.** It builds no handle,
+so it runs in process and only retries on a worker if the runtime runs
+out of frames; under Deno it re-executes itself once with a raised V8
+stack, which needs `--allow-run` and `--allow-env`. `--no-worker` turns
+the retry off. See
+[issue 653](https://github.com/danbri/factoidal/issues/653).
+
 ## API (draft)
 
 The `factoidal` CLI (`bin/factoidal-cli/factoidal_cli.ml`, built to

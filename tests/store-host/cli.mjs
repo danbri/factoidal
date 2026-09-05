@@ -85,7 +85,12 @@ const shim = isDeno
       selfCommand: () => globalThis.Deno.execPath(),
       selfArgs: (file, rest) =>
         ['run', '--allow-read', '--allow-write', '--allow-run', '--allow-env', file, ...rest],
-      // The command needs only --allow-read for inspect and query.
+      // The command needs only --allow-read for inspect and query. A
+      // query that runs out of frames re-executes itself with a raised
+      // V8 stack and needs --allow-run and --allow-env as well
+      // (https://github.com/danbri/factoidal/issues/653); Deno's default
+      // stack clears every query in this suite, so the read-only claim
+      // still holds here and this is what keeps proving it.
       cliArgs: (file, rest) => ['run', '--allow-read', file, ...rest],
       // pack and activate WRITE: a generation directory, and CURRENT.
       // pack also RE-EXECUTES itself once with a raised V8 stack, which
@@ -536,22 +541,49 @@ if (binDirectory === null) {
   // A recursion-depth characteristic of the wasm build, not of the store:
   // some evaluator paths recurse once per row, and 6455 rows through an
   // explicit projection exceed Node's default WebAssembly frame budget
-  // while Deno's clears it. The command must explain that and exit 1; an
-  // unhandled RangeError would be a crash (measured 2026-09-03).
-  await check('a projection too deep for the runtime is explained, not crashed', () => {
+  // while Deno's clears it (measured 2026-09-03). Since
+  // https://github.com/danbri/factoidal/issues/653 the command must ANSWER
+  // it with NO runtime flag: it retries on a worker thread with a raised
+  // stack under Node, and re-executes itself with a raised V8 stack under
+  // Deno. Exiting 1 with advice is what it did before, and is now a
+  // regression, so this check no longer accepts it.
+  await check('a projection too deep for the default stack is answered with no flag', () => {
     const result = runCli(['query', triples, '--query',
       'SELECT ?s ?p ?o WHERE { ?s ?p ?o }', '--format', 'json', '--quiet'])
-    if (result.code === 0) {
-      const srj = JSON.parse(result.stdout)
-      assert(srj.results.bindings.length === 6455,
-        `the runtime answered ${srj.results.bindings.length} rows, expected 6455`)
+    assert(result.code === 0,
+      `the command exited ${result.code}: ${result.stderr.trim()}`)
+    const srj = JSON.parse(result.stdout)
+    assert(srj.results.bindings.length === 6455,
+      `the runtime answered ${srj.results.bindings.length} rows, expected 6455`)
+  })
+
+  // The same query with --no-worker must answer THE SAME ROWS, not the
+  // same count (anti-pattern 34). Either it overflows and explains
+  // itself, which is the old behaviour the escape hatch keeps reachable,
+  // or it answers, and then every row must match the worker's.
+  await check('the worker and --no-worker answer the same rows', () => {
+    const query = `SELECT ?s ?o WHERE { ?s <${predicate}> ?o } ORDER BY ?s ?o`
+    const onWorker = runCli(['query', triples, '--query', query,
+      '--format', 'json', '--quiet'])
+    assert(onWorker.code === 0,
+      `the command exited ${onWorker.code}: ${onWorker.stderr.trim()}`)
+    const inProcess = runCli(['query', triples, '--query', query,
+      '--format', 'json', '--quiet', '--no-worker'])
+    if (inProcess.code !== 0) {
+      assert(inProcess.stderr.indexOf('call stack') >= 0,
+        `--no-worker failed for another reason:\n${inProcess.stderr}`)
+      console.log('  note: --no-worker ran out of frames on this query, as designed')
       return
     }
-    assert(result.code === 1, `the command exited ${result.code}, expected 0 or 1`)
-    assert(result.stderr.indexOf('call stack') >= 0,
-      `the failure was not the runtime's frame budget:\n${result.stderr}`)
-    assert(result.stderr.indexOf('--stack-size') >= 0,
-      `the failure suggested no next step:\n${result.stderr}`)
+    const left = rowsOfSrj(JSON.parse(onWorker.stdout))
+    const right = rowsOfSrj(JSON.parse(inProcess.stdout))
+    assert(left.length === right.length,
+      `the worker answered ${left.length} rows, --no-worker answered ${right.length}`)
+    assert(left.length > 0, 'the query answered no row, so nothing was compared')
+    for (let index = 0; index < left.length; index += 1) {
+      assert(left[index] === right[index],
+        `row ${index} differs\n    worker:     ${left[index]}\n    no-worker:  ${right[index]}`)
+    }
   })
 
   // Only the reference semantics decide this one, and it must be decided

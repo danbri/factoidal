@@ -274,6 +274,18 @@ Design record:
 Gate: `bash tools/wasm-store-query-smoke.sh` (the committed wasm against
 generations the packer just wrote, rows compared with the native tools).
 
+**The call stack a large collection needs.** Several engine paths recurse
+once per manifest entry and once per row. On a 3,286-block collection
+`storeQueryPlan` alone overflows the default stack of Node, before any
+artifact byte is read (measured 2026-09-05). The host route is a
+`worker_threads` thread with a raised stack, and a store HANDLE lives on
+that thread because a wasm instance does not cross a thread boundary:
+`openStoreHandleOnWorker` in `npm/factoidal/bin/store-worker-host.mjs`.
+A one-shot `factoidal query` still runs in process and only retries there.
+Deno's worker shim does not raise the stack, so Deno re-executes itself
+instead, which needs `--allow-run` and `--allow-env`. Design record:
+[`docs/designissues/2026-09-05-store-handle-call-stack.md`](../../docs/designissues/2026-09-05-store-handle-call-stack.md).
+
 ## Corpus ladder, profiling and the census
 
 - Corpus ladder (which files are used at which size rung, and the rules

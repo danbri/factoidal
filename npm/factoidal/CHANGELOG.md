@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+**A large store no longer needs `node --stack-size`.** Several engine
+paths recurse once per manifest entry and once per row, and on a
+7,315,251-quad collection of 3,286 blocks `storeQueryPlan` alone
+overflowed the default call stack of Node, before an artifact byte was
+read ([issue 653](https://github.com/danbri/factoidal/issues/653)).
+
+- New `@factoidal/core/store-worker`: `openStoreHandleOnWorker` holds the
+  engine and the handle on a `worker_threads` thread with a raised stack.
+  A handle is state inside the wasm instance and an instance does not
+  cross a thread boundary, so the handle lives there and `query()` and
+  `close()` are messages to it. One thread per session, many handles per
+  thread. Every call is asynchronous; the synchronous `openStoreHandle`
+  is unchanged.
+- `factoidal query` still runs IN PROCESS, so a one-shot query pays
+  nothing for a worker it would drop. It runs again on a worker only when
+  the runtime runs out of frames — under Deno by re-executing itself with
+  a raised V8 stack, which needs `--allow-run` and `--allow-env`.
+  `--no-worker` turns the retry off.
+- Measured: the worker costs about 110 ms once (thread start plus a
+  second engine load) and under a millisecond per query after that.
+  Deno's `worker_threads` shim does not raise the stack (10,835 frames
+  by default, 13,837 at `stackSizeMb` 64, against Node's 41,195 and
+  696,555), so a Deno library caller gets an in-process handle behind the
+  same interface and starts its process with
+  `--v8-flags=--stack-size=65536`.
+
 ## 0.5.1 — 2026-09-04
 
 **A store can be opened once and queried many times.** `storeQuery` is
