@@ -391,7 +391,15 @@ unchanged.
 Old generations are unaffected. `factoidal-skoscross` and
 `factoidal-skosgraphs` are SBM7 generations that declare no sidecar at all;
 both answer through `storeHandleQuery` with the index path falling back
-silently, 5 pass, 0 fail (out of 5) between them.
+silently, 5 pass, 0 fail (out of 5) between them. The same fixture packed as
+SBM8 — LGI1 present, no GBI1 — answers the same `sfWithin` by scanning, with
+the same 5 rows: 1 pass, 0 fail (out of 1).
+
+`tests/store-host/cli.mjs` compares the wasm command against the native tool
+over a natively packed generation, so it fails until the wasm module is
+rebuilt: the committed module answers `bytes do not decode as an admitted
+SBM0 to SBM7 manifest`. That message names the whole cause. The native path
+is the evidence until the rebuild lands.
 
 ### 8.5 Pack time and generation size
 
