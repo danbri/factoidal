@@ -74,7 +74,11 @@ byte target.
 | IBK3 / SBM6 | readable | readable, unchanged | lineage and differential oracle |
 
 Every earlier version stays readable exactly as before. `l4block-shard-pack`
-writes version 10 only; the alpha allows repacking.
+takes the layout tag `ibk5` to write version 10 and keeps the tag `ibk4`
+writing version 9, which is what makes the two comparable on one corpus with
+one binary: version 9 is the differential oracle of gate 4 below. The alpha
+allows repacking, so nothing depends on version 9 staying writable beyond
+that use.
 
 ## 4. Term codec v2
 
