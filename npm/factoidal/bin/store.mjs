@@ -97,7 +97,10 @@ export function stackLimitAdvice (remedy) {
 
 /** The remedies for each command that can run out of frames. */
 export const STACK_REMEDY = {
-  query: 'Raise it with node --stack-size=4000, add a LIMIT, or use Deno.',
+  query: 'A worker thread with a raised stack normally runs this again ' +
+    '(bin/store-worker-host.mjs). It was refused or is unavailable here: ' +
+    'drop --no-worker, give Deno --allow-run and --allow-env, raise the ' +
+    'stack with node --stack-size=60000, or add a LIMIT.',
   pack: 'Raise it with node --stack-size=8000, or ' +
     'deno run --v8-flags=--stack-size=8000.'
 }

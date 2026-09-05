@@ -29,6 +29,9 @@ import { sampleStoreFacts, sampleStorePath } from '../sample-store.mjs'
 import { PackError, packSupported, verifyGeneration } from './pack.mjs'
 import { denoReexec, isStackOverflow, runPack } from './pack-host.mjs'
 import {
+  planQueryOnWorker, queryStoreOnWorker, workerRouteAvailable
+} from './store-worker-host.mjs'
+import {
   STACK_REMEDY, StoreOperationError, inspectManifest, openStore, planQuery,
   queryStore, stackLimitAdvice, turtleOfNQuads
 } from './store.mjs'
@@ -179,6 +182,21 @@ options:
   --generation NAME  query this generation instead of the activated one
   --json             shorthand for --format json
   --quiet            print the result only, no plan line on stderr
+  --no-worker        never retry on a worker thread (see below)
+
+Several engine paths recurse once per manifest entry or once per row, and
+against a large collection that exceeds the runtime's default call stack.
+A one-shot query builds no store handle, so it runs IN PROCESS and pays
+nothing for a worker it would drop; only when the runtime runs out of
+frames does it run again on a worker thread with a raised stack, or under
+Deno re-execute itself once with a raised V8 stack, which needs
+--allow-run and --allow-env (https://github.com/danbri/factoidal/issues/653).
+--no-worker turns the retry off, and the frame budget is then reported.
+
+A process that asks MANY questions about one store should hold a store
+handle instead: openStoreHandleOnWorker in bin/store-worker-host.mjs
+verifies and decodes once, on a thread with the raised stack, and answers
+every later query from what it retained.
 
 formats:
   table    a human display of the engine's SPARQL Query Results JSON;
@@ -532,6 +550,36 @@ function reportStoreFailure (error) {
   return EXIT_FAILURE
 }
 
+/**
+ * Run one store call again on a bigger call stack, after the in-process
+ * attempt ran out of frames.
+ *
+ * A one-shot query builds no handle and drops what it loads, so it runs
+ * IN PROCESS first and pays nothing for a worker it would throw away.
+ * This is the retry, and it is reached only by the overflow.
+ *
+ * Node takes the worker route; Deno has no `worker_threads` route with a
+ * stack size, so it re-executes this command once with a raised V8 stack
+ * (`denoReexec`), which needs --allow-run and --allow-env.
+ *
+ * @returns the retried answer, or a number to exit with (the Deno child's
+ *   code), or null when no bigger stack is available here
+ */
+async function onBiggerStack (options, quiet, retry) {
+  const host = { worker: options['no-worker'] !== true }
+  if (host.worker === false) return null
+  if (isDeno) {
+    const code = await denoReexec(host)
+    return typeof code === 'number' ? code : null
+  }
+  if (!workerRouteAvailable()) return null
+  if (!quiet) {
+    err('The runtime ran out of call stack; running again on a worker thread ' +
+      'with a bigger one.')
+  }
+  return await retry()
+}
+
 async function commandQuery (positional, options) {
   if (positional.length < 1) throw new UsageError('query needs a STORE')
   if (typeof options.base === 'string') {
@@ -554,8 +602,13 @@ async function commandQuery (positional, options) {
     try {
       plan = planQuery(engine, store, sparql)
     } catch (error) {
-      if (error instanceof StoreOperationError) return reportStoreFailure(error)
-      throw error
+      if (!(error instanceof StoreOperationError)) throw error
+      if (!error.stackLimit) return reportStoreFailure(error)
+      const retried = await onBiggerStack(options, quiet,
+        () => planQueryOnWorker(root, named, sparql))
+      if (retried === null) return reportStoreFailure(error)
+      if (typeof retried === 'number') return retried
+      plan = retried
     }
     if (format === 'json' || options.json === true) {
       out(JSON.stringify(plan, null, 2))
@@ -572,8 +625,13 @@ async function commandQuery (positional, options) {
   try {
     answer = queryStore(engine, store, sparql)
   } catch (error) {
-    if (error instanceof StoreOperationError) return reportStoreFailure(error)
-    throw error
+    if (!(error instanceof StoreOperationError)) throw error
+    if (!error.stackLimit) return reportStoreFailure(error)
+    const retried = await onBiggerStack(options, quiet,
+      () => queryStoreOnWorker(root, named, sparql))
+    if (retried === null) return reportStoreFailure(error)
+    if (typeof retried === 'number') return retried
+    answer = retried
   }
   const { plan, result, blobBytes } = answer
   if (!quiet) {

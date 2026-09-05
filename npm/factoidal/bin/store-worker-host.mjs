@@ -59,18 +59,39 @@
 // IN PROCESS, and only when the runtime runs out of frames does it retry
 // once on a worker (`queryStoreOnWorker`). The normal case pays nothing.
 
+import { loadEngine } from './engine.mjs'
 import {
   WORKER_STACK_MB, isStackOverflow, reviveError, workerRefused, workerStackMb
 } from './pack-host.mjs'
-import { StoreOperationError } from './store.mjs'
+import {
+  StoreOperationError, openStore, openStoreHandle, planQuery, queryStore
+} from './store.mjs'
 
 const isDeno = typeof globalThis.Deno !== 'undefined'
 
 export { WORKER_STACK_MB, isStackOverflow, workerRefused, workerStackMb }
 
-/** Whether this runtime has the `worker_threads` route at all. Deno's
- *  `Worker` takes no stack size, so Deno takes the re-exec route in
- *  `bin/pack-host.mjs` instead. */
+/**
+ * Whether this runtime has the `worker_threads` route at all.
+ *
+ * Deno has a `node:worker_threads` shim, and it accepts
+ * `resourceLimits.stackSizeMb` and does almost nothing with it. MEASURED
+ * 2026-09-05, deno 2.9.4 / V8 15.0.245.2 against Node 22.22.2, by
+ * counting frames to the overflow inside the worker:
+ *
+ *   runtime  default   stackSizeMb 64
+ *   node     41,195    696,555
+ *   deno     10,835     13,837
+ *
+ * A 1.28-times raise does not carry a store open that needs sixteen
+ * times the default, so Deno takes the re-exec route in
+ * `bin/pack-host.mjs` instead: the command runs itself again once with
+ * `--v8-flags=--stack-size=...`, which needs --allow-run and --allow-env.
+ * A Deno LIBRARY caller cannot re-execute its own host, so
+ * `openStoreHandleOnWorker` gives it an in-process handle behind the same
+ * asynchronous interface, and the process must be started with
+ *   deno run --allow-read --v8-flags=--stack-size=65536
+ */
 export function workerRouteAvailable () {
   return !isDeno
 }
@@ -270,6 +291,9 @@ export async function closeSharedStoreWorkerSession () {
  * @returns {Promise<WorkerStoreHandle>}
  */
 export async function openStoreHandleOnWorker (root, options = {}) {
+  if (!workerRouteAvailable() || workerRefused(options)) {
+    return await openHere(root, options)
+  }
   if (options.session instanceof StoreWorkerSession) {
     return await options.session.open(root, options)
   }
@@ -283,6 +307,44 @@ export async function openStoreHandleOnWorker (root, options = {}) {
   return await session.open(root, options)
 }
 
+// -------------------------------- the in-process facade, for Deno
+//
+// Same two methods, same envelopes, no thread. It exists so one caller
+// works on both runtimes; on Deno the stack must come from the host
+// (`--v8-flags=--stack-size=65536`), because Deno's worker_threads shim
+// does not raise it (see `workerRouteAvailable`).
+
+/** A handle held in this process, behind the asynchronous interface. */
+export class LocalStoreHandle {
+  constructor (handle) {
+    this.local = handle
+    this.handle = handle.handle
+    this.identity = handle.identity
+    this.layout = handle.layout
+    this.wireVersion = handle.wireVersion
+    this.artifacts = handle.artifacts
+    this.bytes = handle.bytes
+    this.rows = handle.rows
+  }
+
+  get closed () { return this.local.closed }
+
+  async query (sparql) { return this.local.query(sparql) }
+
+  async close () { this.local.close() }
+}
+
+/** Open a handle in this process, behind the asynchronous interface. */
+async function openHere (root, options) {
+  const engine = await loadEngine()
+  const store = openStore(root,
+    typeof options.generation === 'string' ? options.generation : null)
+  const pick = {}
+  if (Array.isArray(options.keys)) pick.keys = options.keys
+  else if (typeof options.sparql === 'string') pick.sparql = options.sparql
+  return new LocalStoreHandle(openStoreHandle(engine, store, pick))
+}
+
 // ------------------------------------------------- the one-shot retry
 
 /**
@@ -294,11 +356,41 @@ export async function openStoreHandleOnWorker (root, options = {}) {
  * @returns {Promise<{plan: object, result: object, blobBytes: number}>}
  */
 export async function queryStoreOnWorker (root, generation, sparql) {
+  if (!workerRouteAvailable()) {
+    const engine = await loadEngine()
+    const store = openStore(root, generation ?? null)
+    const answer = queryStore(engine, store, sparql)
+    return { plan: answer.plan, result: answer.result, blobBytes: answer.blobBytes }
+  }
   const session = await startWorker()
   try {
     return await session.send({
       kind: 'query-once', root, generation: generation ?? null, sparql
     })
+  } finally {
+    await session.terminate()
+  }
+}
+
+/**
+ * Plan one query on a worker thread, then stop the thread.
+ *
+ * `storeQueryPlan` walks the manifest, and on a collection of a few
+ * thousand blocks that walk alone exceeds the default stack. What
+ * `factoidal query --explain` retries with.
+ *
+ * @returns {Promise<object>} the plan envelope
+ */
+export async function planQueryOnWorker (root, generation, sparql) {
+  if (!workerRouteAvailable()) {
+    const engine = await loadEngine()
+    return planQuery(engine, openStore(root, generation ?? null), sparql)
+  }
+  const session = await startWorker()
+  try {
+    return (await session.send({
+      kind: 'plan', root, generation: generation ?? null, sparql
+    })).plan
   } finally {
     await session.terminate()
   }

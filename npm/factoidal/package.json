@@ -83,6 +83,9 @@
     "./store": {
       "default": "./bin/store.mjs"
     },
+    "./store-worker": {
+      "default": "./bin/store-worker-host.mjs"
+    },
     "./pack": {
       "default": "./bin/pack.mjs"
     },
