@@ -96,11 +96,21 @@ Admissible, for a variable `?o` bound by a single triple pattern
 | expression | uses the index |
 |---|---|
 | `CONTAINS(?o, "k")` | yes |
-| `CONTAINS(STR(?o), "k")` | yes |
-| `CONTAINS(LCASE(STR(?o)), "k")` | yes |
+| `CONTAINS(STR(?o), "k")` | yes, and see the `STR` rule below |
+| `CONTAINS(LCASE(STR(?o)), "k")` | yes, and see the `STR` rule below |
 | `CONTAINS(LCASE(?o), "k")` | yes |
 | `STRSTARTS`/`STRENDS` in the same four shapes | yes |
 | any of the above as a conjunct of `&&` | yes, on that conjunct |
+
+**The `STR` rule, added 2026-09-05 when the planner was written.** The table
+above was wrong for the two `STR` shapes as first stated. `STR` of an IRI is
+that IRI's string, so `CONTAINS(STR(?o), "water")` is TRUE for an IRI whose
+text contains `water`; LGI1 indexes LITERALS only, because `foldedOfTerm`
+gives a non-literal no gram. Restricting to candidates alone would therefore
+DROP those rows. A shape that applies `STR` must additionally keep every row
+whose object is not a literal. A shape without `STR` drops them, because
+`CONTAINS` on an IRI is a type error and the filter excludes the row anyway.
+This is `LiteralIndexPlan.Plan.keepNonLiterals`.
 
 Falls back to the scan, silently and correctly:
 
@@ -204,12 +214,123 @@ gap-weighted 1.3 bytes come to about 1.2 MB, about 22% of the block.
 ## 5. Manifest
 
 SBM6 carries three sidecar roles: `subjectIndex`, `termIndex`, `objectIndex`.
-SBM7, the IBK4 quad manifest the SKOS store uses, carries none. A fourth role
-`literalIndex` needs manifest wire version 8, valid for IBK3 and IBK4, with
-the sidecar's SHA-256 and its own Merkle commitment exactly as the other
-three have. The sidecar is ADDITIVE: a generation without it, and a manifest
-below version 8, must still activate and answer, and the planner must never
-require it.
+SBM7, the IBK4 quad manifest the SKOS store uses, carries none.
+
+**Landed 2026-09-05 as manifest wire version 8**, layout label
+`quad-ibk4-ptd1-lgi1-merkle-v0`. The entry gains `literalIndex : Option
+ArtifactRef`, carrying the sidecar's key, extent, SHA-256 and its own Merkle
+chunk commitment exactly as the other three roles do. It is written where
+SBM6 writes its object index, before the quad tail, so the decoder reads one
+field sequence and not a version-dependent reordering.
+
+**Why a version bump was unavoidable.** The role is a new per-entry FIELD, so
+either form of it changes SBM7's bytes: mandatory at 7 makes every existing
+SBM7 manifest undecodable, and optional at 7 needs a presence byte that
+existing SBM7 manifests do not carry. Encoder admission equals decoder
+admission and a byte change means a new wire version. (This is a different
+question from how many entries a predicate may have, which
+`ShardManifest.valid` already permits above version 1 through
+`uniquePredicates`.)
+
+The role is MANDATORY at 8 and must be ABSENT below it, for the same reason
+SBM7's three additions are: a manifest below 8 carrying one would encode to
+bytes that drop it and the round trip would lose data silently. A block whose
+dictionary holds no literal carries an LGI1 with no gram rather than no
+sidecar, so an SBM8 reader never asks whether the role is present; it asks
+whether the manifest is SBM8.
+
+Old generations are unaffected. `decode?` still admits SBM0 to SBM7,
+`isIbk4Layout` names both labels, and `l4block-quad-query` accepts 7 and 8.
+`ShardManifestTheorems.decode?_encode?` covers version 8 with the same
+statement and the same three axioms (`propext`, `Classical.choice`,
+`Quot.sound`).
+
+**What activation checks, and what it does not.** `GenerationVerify`
+checks the sidecar's declared SHA-256 like any artifact, then decodes it and
+requires that it names THIS block by `targetIBKSha256` and is sized for this
+block's dictionary (`dictCount` and `literalCount` recomputed from the
+block). It does NOT recompute the posting lists: building the index of the
+`skos:prefLabel` block costs 5.6 s, and an activation that rebuilt every
+block's index would pay that per block. What that leaves uncaught is a PACKER
+fault that wrote a self-consistent index of the wrong content; tampering
+after the pack is caught by the digest. The consequence is bounded — the
+index is a candidate filter and the planner re-evaluates the original
+expression, so a wrong index can only DROP rows, never add them — but it is
+weaker than the TLI1 and OLI2 checks, which do recompute. Open work.
+
+## 4b. Measured through the shipped path, 2026-09-05
+
+Sections 4's numbers are the mechanism measured through the PROBE. These are
+`storeHandleQuery`, the operation a host calls, measured by
+`l4block-literal-gate` (`Harness/LiteralGate.lean`). It opens one generation
+twice — one handle with the LGI1 sidecars, one without — answers the same
+query text on both, and compares the two envelopes byte for byte.
+
+The store is the SKOS corpus of section 1 re-packed as SBM8: 316,607 quads,
+119 blocks, 143 graphs. Its blocks are byte-identical to `factoidal-skosgraphs`
+(119 of 119 compare equal with `cmp`), because the corpus was recovered from
+that generation with `l4block-quad-dump` and packed again.
+
+    SELECT ?g ?s ?o WHERE { GRAPH ?g { ?s skos:prefLabel ?o
+      FILTER(CONTAINS(LCASE(STR(?o)), "needle")) } } ORDER BY ?g ?s ?o
+
+Best of five, load average 2.92.
+
+| needle | rows | scan | index | ratio |
+|---|---|---|---|---|
+| water | 265 | 97,876 us | 12,478 us | 7.8x |
+| **glacier (miss)** | 0 | 91,112 us | **1,795 us** | **51x** |
+| bicycle | 4 | 88,867 us | 1,888 us | 47x |
+| climate change | 14 | 97,817 us | 2,445 us | 40x |
+| ab (2 characters) | 805 | 121,307 us | 119,907 us | 1.0x, falls back |
+
+Row identity: 5 pass, 0 fail (out of 5), compared as rows.
+
+The ratios are smaller than section 4's because the shipped path pays a fixed
+per-query cost the probe does not: parse the SPARQL, plan the entry set, build
+a `Dataset` over the candidate rows, index it, and evaluate with `ORDER BY`.
+The miss measures that fixed cost almost exactly — 0 rows, 1,795 us — so the
+floor for this shape is about 1.8 ms against a 91 ms scan.
+
+`factoidal-skoscross`, an SBM7 generation that declares no sidecar, answers
+through the same operation with the index path falling back silently:
+`rdfs:label`, 1 block, 0 sidecars, 3 pass, 0 fail (out of 3).
+
+## 4c. Pack time and generation size
+
+Same input, same 5,571,580-byte block, measured three ways.
+
+| packer | pack time |
+|---|---|
+| before the sidecar existed (`dd84ed395`) | 4 s |
+| with the sidecar, first landed encoder | 520 s |
+| with the sidecar, encoder repaired | 5 s |
+
+`LiteralGramIndexWire.encodeBody` accumulated ONE flat `List UInt8` and
+appended each gram's directory entry and posting run to its end. `xs ++ ys`
+walks `xs`, so the accumulator was re-walked once per gram: quadratic in the
+encoded size. It now accumulates the chunks in reverse and reverses and
+flattens once. The bytes are unchanged, checked with `cmp` on a generation
+packed each way rather than assumed.
+
+Before the repair the full 119-block corpus did not finish inside a one-hour
+cap. After it:
+
+| | before (SBM7) | after (SBM8) |
+|---|---|---|
+| pack time, 316,607 quads, 119 blocks | not re-measured | 40 s |
+| block bytes | 28,394,316 | 28,394,316 |
+| LGI1 bytes | 0 | 15,701,141 |
+| LGI1 Merkle bytes | 0 | 10,976 |
+| generation on disk | 28,668 KiB | 44,864 KiB |
+
+The index is 55.3% of the block bytes and the generation grows by 56%. That
+is version 1's fixed-width gaps, and it is the reason section 3 wants a
+variable-length encoding.
+
+The index BUILD is not the expensive part and never was: `l4block-literal-gram`
+measures it at 650 ms for the `skos:prefLabel` block on an idle machine.
+Section 4's 5.6 s was measured at load average 149.
 
 ## 6. Staging
 
@@ -224,14 +345,20 @@ require it.
    reader, with the proof that the two agree, is a later optimisation.
 4. **Landed.** `Harness/LiteralGramProbe.lean` — the row-identity gate and
    the measurement of section 4.
-5. **Open.** The packer writes `.lgi1`; manifest version 8 commits its
-   SHA-256. SBM7, which the SKOS store uses, has no sidecar role at all, so
-   this is a manifest version, not a field.
-6. **Open.** The planner detects the admissible shapes of section 2.4,
-   intersects posting lists, re-evaluates the original filter on the
-   candidates, and falls back otherwise. Until this lands the shipped query
-   path still scans, and the numbers in section 4 are the mechanism measured
-   through the probe, not through `storeHandleQuery`.
+5. **Landed.** The packer writes `.lgi1` for every IBK4 block and manifest
+   version 8 commits its SHA-256 and its own Merkle root. Section 5 has the
+   version and why the bump was unavoidable.
+6. **Landed.** `Storage/LiteralIndexPlan.lean` decides which SPARQL shapes
+   the index may serve, and `Wasm/Ops/StoreHandles.lean` uses its answer:
+   `storeOpen` retains the decoded sidecar with an object-ID-to-row map, and
+   `storeHandleQuery` materialises the candidate rows and evaluates the
+   ORIGINAL query text over them. Section 4b is the measurement through that
+   path.
+7. **Open.** Version 2's variable-length gap encoding, 54% to about 22%.
+8. **Open.** Activation does not recompute the posting lists (section 5).
+9. **Open.** The stateless `storeQuery` still scans. Only the HANDLE path
+   uses the index, because the object-ID-to-row map is built once per open
+   and a one-shot query would pay for it and drop it.
 
 ## 7. The gate
 

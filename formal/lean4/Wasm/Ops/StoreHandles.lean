@@ -101,6 +101,8 @@ No `partial`, no `sorry`, no `native_decide`.
 -/
 import Std.Data.HashMap
 import Wasm.Ops.Store
+import L4Factoidal.Storage.LiteralGramIndexWire
+import L4Factoidal.Storage.LiteralIndexPlan
 
 namespace L4Wasm.Ops
 
@@ -129,13 +131,32 @@ inductive RetainedRows where
   | ibk3 (triples : List Triple)
   | ibk4 (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
 
+/-- What one block's LGI1 sidecar lets a query skip.
+
+`index` is the decoded sidecar. `rows` is the block's denoted quads by
+position, and `objectRows` maps a dictionary local ID to the positions whose
+OBJECT is that term — the OLI2 role, rebuilt here at `storeOpen` because SBM8
+commits no graph-aware OLI2. `nonLiteralRows` is every position whose object
+is not a literal; a `STR` shape keeps those, because `STR` of an IRI is a
+string a `CONTAINS` can match and LGI1 indexes no IRI
+(`LiteralIndexPlan.Plan.keepNonLiterals`). -/
+structure RetainedLiteralIndex where
+  index : L4Factoidal.Storage.LiteralGramIndex.Index
+  rows : Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow
+  objectRows : Array (Array Nat)
+  nonLiteralRows : Array Nat
+
 /-- One admitted artifact, decoded. `bytes` and `rows` are the manifest's own
-declarations, which admission has already checked the bytes against. -/
+declarations, which admission has already checked the bytes against.
+`literal` is present when the manifest declared an LGI1 sidecar AND the host
+supplied its bytes; a handle opened without them still answers, by scanning. -/
 structure RetainedArtifact where
   key : String
+  predicate : WfIri
   bytes : Nat
   rows : Nat
   payload : RetainedRows
+  literal : Option RetainedLiteralIndex
 
 /-- An open store: the manifest it was opened against, every artifact it
 retains in manifest order, and the dataset and index over the whole retained
@@ -200,6 +221,38 @@ def storeLayoutIbk4? (op : String) (manifest : Manifest) : Except String Bool :=
   else
     .error s!"{op}: layout '{manifest.layout}' is neither an IBK3 nor an IBK4 generation"
 
+/-- Build the retained literal index of one IBK4 block, or `none` when the
+manifest declares no LGI1 sidecar, the host supplied no bytes for it, the
+sidecar does not decode, or it names another block. Every one of those is a
+FALLBACK, not an error: the handle then scans, which is what it did before
+SBM8 existed. -/
+def retainedLiteralIndex? (op : String) (entry : Entry)
+    (sources : List (String × ArtifactSource)) (blob : ByteArray)
+    (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) (blockBytes : ByteArray) :
+    Option RetainedLiteralIndex := do
+  let ref ← entry.literalIndex
+  let _ ← supplied? sources ref.key.value
+  let indexBytes ← (admitRef op ref sources blob).toOption
+  let artifact ← L4Factoidal.Storage.LiteralGramIndexWire.decode? indexBytes
+  if artifact.targetIBKSha256 != entry.artifact.sha256 then none else do
+  let block ← L4Factoidal.Storage.IndexedBlockWireV4.decode blockBytes
+  let rows := quads.toArray
+  -- `denotes` filters, so a block whose rows do not all decode would make the
+  -- positions disagree with the object IDs. Refuse rather than misalign.
+  if block.rows.size != rows.size then none else
+  if artifact.index.dictCount != block.dict.size then none else
+  some (Id.run do
+    let mut objectRows : Array (Array Nat) := Array.replicate block.dict.size #[]
+    let mut nonLiteralRows : Array Nat := #[]
+    for h : i in [0 : block.rows.size] do
+      let o := block.rows[i].o
+      if o < objectRows.size then
+        objectRows := objectRows.set! o ((objectRows[o]!).push i)
+      match block.dict[o]? with
+      | some (.literal _) => pure ()
+      | _ => nonLiteralRows := nonLiteralRows.push i
+    pure { index := artifact.index, rows, objectRows, nonLiteralRows })
+
 /-- Admit and decode each selected entry, in manifest order. Every artifact
 goes through the same `admitArtifact` `storeQuery` uses, so the digest check
 is the same check in the same place in the sequence. -/
@@ -209,22 +262,29 @@ def readRetained (op : String) (ibk4 : Bool)
   | [], acc => pure acc.reverse
   | entry :: rest, acc => do
       let bytes ← admitArtifact op entry sources blob
-      let payload ← if ibk4 then
-            (do let quads ← ibk4QuadsOf op entry bytes; pure (RetainedRows.ibk4 quads))
+      let (payload, literal) ← if ibk4 then
+            (do
+              let quads ← ibk4QuadsOf op entry bytes
+              pure (RetainedRows.ibk4 quads,
+                    retainedLiteralIndex? op entry sources blob quads bytes))
           else
-            (do let triples ← ibk3TriplesOf op entry bytes; pure (RetainedRows.ibk3 triples))
+            (do let triples ← ibk3TriplesOf op entry bytes
+                pure (RetainedRows.ibk3 triples, none))
       readRetained op ibk4 sources blob rest
         ({ key := entry.artifact.key.value
+         , predicate := entry.predicate
          , bytes := entry.artifact.bytes
          , rows := entry.rows
-         , payload } :: acc)
+         , payload
+         , literal } :: acc)
 
 /-- Every key the host supplied bytes for must be a key this manifest
 declares; an unknown key is a host fault, not a silently ignored argument. -/
 private def checkSuppliedKeys (op : String) (manifest : Manifest)
     (sources : List (String × ArtifactSource)) : Except String Unit :=
   match sources.find? (fun pair =>
-      !(manifest.entries.any fun entry => entry.artifact.key.value == pair.1)) with
+      !(manifest.entries.any fun entry => entry.artifact.key.value == pair.1 ||
+          (entry.literalIndex.map fun ref => ref.key.value) == some pair.1)) with
   | some (key, _) => .error s!"{op}: artifact '{key}' is not declared by this manifest"
   | none => pure ()
 
@@ -295,6 +355,48 @@ def storeOpen (manifestHex artifactsJson : String) (blob : ByteArray) : IO Strin
           storeHandleTable.modify (·.insert handle opened)
           pure (okWith (openStoreJson handle opened))
 
+/-! ## The literal search path
+
+`LiteralIndexPlan.plan?` decides whether the index may serve a query at all.
+What is done with its answer is a RESTRICTION of the rows that are
+materialised, and then the ORIGINAL query is evaluated over them. No
+expression is rewritten and no filter is dropped, so the answer is the scan's
+answer whenever the restriction drops only rows that cannot appear in a
+solution — which is exactly what `plan?` establishes. -/
+
+/-- The rows of one block a needle can reach: the candidate terms' rows, plus
+the non-literal-object rows when the shape applied `STR`. Positions are
+returned ascending, so the reduced dataset keeps the block's row order and an
+unordered SELECT answers in the order the scan answers in.
+
+`none` means the index cannot serve this needle and the caller must scan. -/
+def literalRows? (retained : RetainedLiteralIndex)
+    (plan : L4Factoidal.Storage.LiteralIndexPlan.Plan) :
+    Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
+  match L4Factoidal.Storage.LiteralGramIndex.candidates? retained.index plan.needle with
+  | none => none
+  | some ids => Id.run do
+      let mut positions : Array Nat :=
+        if plan.keepNonLiterals then retained.nonLiteralRows else #[]
+      for id in ids do
+        if h : id < retained.objectRows.size then
+          positions := positions ++ retained.objectRows[id]
+      let ordered := positions.qsort (fun a b => decide (a < b))
+      pure (some (ordered.filterMap fun position => retained.rows[position]?))
+
+/-- The whole planned artifact set restricted by one literal search, or `none`
+when any planned block cannot serve it: no retained index, or a predicate the
+plan does not name, or a needle the index refuses. Every `none` is a
+fallback to the scan. -/
+def literalRestricted? (arts : List RetainedArtifact)
+    (plan : L4Factoidal.Storage.LiteralIndexPlan.Plan) :
+    Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
+  arts.foldlM (fun acc art => do
+    if art.predicate != plan.predicate then none else do
+    let retained ← art.literal
+    let rows ← literalRows? retained plan
+    some (acc ++ rows.toList)) []
+
 /-! ## storeHandleQuery -/
 
 /-- The shared error envelope for a handle that is not in the table. -/
@@ -313,6 +415,8 @@ The plan is computed exactly as `storeQuery` computes it, so `"shards"` and
 artifact the handle does not retain is a refusal naming that artifact: the
 handle answers the whole plan or it answers nothing. -/
 def storeHandleQuery (h sparql : String) : IO String := do
+  -- The caller-registered extension functions (SPARQL 1.1 section 17.6),
+  -- read ONCE per query so the evaluator stays a function of its inputs.
   let extIris ← extSnapshot
   match (← storeHandleTable.get)[h]? with
   | none => pure (unknownStoreHandle h)
@@ -328,12 +432,23 @@ def storeHandleQuery (h sparql : String) : IO String := do
       let extra : List (String × Json) :=
         [ ("shards", .number (toString plan.entries.length))
         , ("mode", .string plan.mode) ]
-      if planKeys.length == store.artifacts.length then
-        pure (queryParsedDatasetWith store.ds store.backend sparql extra extIris)
-      else
-        let arts := retainedFor store planKeys
-        let ds := datasetOfRetained store.ibk4 arts
-        pure (queryParsedDatasetWith ds (backendOfRetained store.ibk4 ds) sparql extra extIris)
+      let planned := retainedFor store planKeys
+      /- The literal search path. It changes WHICH ROWS are materialised and
+         nothing else: the same `sparql` text is evaluated, so the filter is
+         re-applied to every candidate and the rows are the scan's rows. -/
+      match (if store.ibk4 then
+               (L4Factoidal.Storage.LiteralIndexPlan.plan? query).bind
+                 (literalRestricted? planned)
+             else none) with
+      | some quads =>
+          let ds := datasetOfQuads quads
+          pure (queryParsedDatasetWith ds (backendOfRetained true ds) sparql extra extIris)
+      | none =>
+        if planKeys.length == store.artifacts.length then
+          pure (queryParsedDatasetWith store.ds store.backend sparql extra extIris)
+        else
+          let ds := datasetOfRetained store.ibk4 planned
+          pure (queryParsedDatasetWith ds (backendOfRetained store.ibk4 ds) sparql extra extIris)
     match outcome with
     | .error e => pure (errJson e)
     | .ok envelope => pure envelope

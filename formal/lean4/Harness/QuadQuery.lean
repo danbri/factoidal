@@ -183,8 +183,8 @@ private def run (directoryText queryText : String) : IO UInt32 := do
     | _, .error error =>
         IO.eprintln s!"l4block-quad-query query parse error at {error.pos}: {error.msg}"; return 1
     | some manifest, .ok query =>
-        if manifest.version != 7 || !isIbk4Layout manifest.layout then
-          IO.eprintln "l4block-quad-query rejected: not an SBM7 generation of IBK4 quad blocks; use l4block-id-v3-query for an IBK3 generation"
+        if (manifest.version != 7 && manifest.version != 8) || !isIbk4Layout manifest.layout then
+          IO.eprintln "l4block-quad-query rejected: not an SBM7 or SBM8 generation of IBK4 quad blocks; use l4block-id-v3-query for an IBK3 generation"
           return 1
         if !rangeCommitted manifest then
           IO.eprintln "l4block-quad-query rejected: candidate manifest has no Merkle range commitment"

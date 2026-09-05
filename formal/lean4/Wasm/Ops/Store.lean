@@ -20,7 +20,7 @@ by name and carries bytes, and every decision stays in Lean.
                     "blankNodeScope":"…",
                     "graphs":[{"kind":"default"|"iri"|"bnode","value":"…"}],
                     "sidecars":{"subjectIndex":"…","termIndex":"…",
-                                "objectIndex":"…"}}, …]}
+                                "objectIndex":"…","literalIndex":"…"}}, …]}
      | {"ok":false,"error":"…"}
 
   storeQueryPlan(manifestHex, sparql)
@@ -164,7 +164,8 @@ def entryBlockKind (manifest : Manifest) (entry : Entry) : String :=
 private def sidecarMembers (entry : Entry) : List (String × Json) :=
   (entry.subjectIndex.map fun r => ("subjectIndex", Json.string r.key.value)).toList ++
   (entry.termIndex.map fun r => ("termIndex", Json.string r.key.value)).toList ++
-  (entry.objectIndex.map fun r => ("objectIndex", Json.string r.key.value)).toList
+  (entry.objectIndex.map fun r => ("objectIndex", Json.string r.key.value)).toList ++
+  (entry.literalIndex.map fun r => ("literalIndex", Json.string r.key.value)).toList
 
 private def chunkMembers (entry : Entry) : List (String × Json) :=
   match entry.artifact.chunked with
@@ -243,6 +244,14 @@ structure StorePlan where
   ibk4 : Bool
   deriving Inhabited
 
+/-- The index sidecars of the planned entries, in manifest order. A host that
+opens a handle fetches these BESIDE the blocks: they are what makes a literal
+search skip the scan (`L4Factoidal.Storage.LiteralIndexPlan`). They are
+advisory — `storeQuery` never reads one, and `storeOpen` answers without them
+— so a host that does not fetch them keeps working. -/
+def planSidecarKeys (entries : List Entry) : List String :=
+  entries.filterMap fun entry => entry.literalIndex.map fun ref => ref.key.value
+
 def planFor (op : String) (manifest : Manifest) (query : Query) :
     Except String StorePlan :=
   if !rangeCommitted manifest then
@@ -283,6 +292,7 @@ def storeQueryPlan (manifestHex sparql : String) : String :=
       , ("mode", .string plan.mode)
       , ("shards", .number (toString plan.entries.length))
       , ("keys", .array (plan.entries.map fun entry => .string entry.artifact.key.value))
+      , ("sidecarKeys", .array ((planSidecarKeys plan.entries).map Json.string))
       , ("bytes", .number (toString (totalBytesOf plan.entries)))
       , ("rows", .number (toString (totalRowsOf plan.entries))) ])
   match outcome with
@@ -364,28 +374,35 @@ def supplied? (sources : List (String × ArtifactSource)) (key : String) :
     Option ArtifactSource :=
   (sources.find? fun pair => pair.1 == key).map Prod.snd
 
-/-- Admit one supplied artifact against its manifest entry: the bytes are
-where the descriptor says they are, their length is the declared extent, and
-their SHA-256 is the declared digest. -/
-def admitArtifact (op : String) (entry : Entry) (sources : List (String × ArtifactSource))
+/-- Admit one supplied artifact against the reference the manifest commits:
+the bytes are where the descriptor says they are, their length is the declared
+extent, and their SHA-256 is the declared digest. Blocks and index sidecars go
+through this one function, so a sidecar is trusted on exactly the terms a
+block is. -/
+def admitRef (op : String) (ref : ArtifactRef) (sources : List (String × ArtifactSource))
     (blob : ByteArray) : Except String ByteArray := do
-  let key := entry.artifact.key.value
+  let key := ref.key.value
   let source ← match supplied? sources key with
     | none => throw s!"{op}: no bytes were supplied for artifact '{key}'"
     | some source => pure source
   match source with
     | .window _ len =>
-        if len != entry.artifact.bytes then
-          throw s!"{op}: artifact '{key}' is {len} bytes, the manifest declares {entry.artifact.bytes}"
+        if len != ref.bytes then
+          throw s!"{op}: artifact '{key}' is {len} bytes, the manifest declares {ref.bytes}"
     | .hex text =>
-        if text.length / 2 != entry.artifact.bytes then
-          throw s!"{op}: artifact '{key}' is {text.length / 2} bytes, the manifest declares {entry.artifact.bytes}"
+        if text.length / 2 != ref.bytes then
+          throw s!"{op}: artifact '{key}' is {text.length / 2} bytes, the manifest declares {ref.bytes}"
   let bytes ← sourceBytes op key source blob
-  if bytes.size != entry.artifact.bytes then
-    throw s!"{op}: artifact '{key}' is {bytes.size} bytes, the manifest declares {entry.artifact.bytes}"
-  if !L4Factoidal.Storage.BlockArtifact.verify entry.artifact.sha256 bytes then
+  if bytes.size != ref.bytes then
+    throw s!"{op}: artifact '{key}' is {bytes.size} bytes, the manifest declares {ref.bytes}"
+  if !L4Factoidal.Storage.BlockArtifact.verify ref.sha256 bytes then
     throw s!"{op}: artifact '{key}' does not match the SHA-256 the manifest commits"
   pure bytes
+
+/-- Admit one supplied BLOCK against its manifest entry. -/
+def admitArtifact (op : String) (entry : Entry) (sources : List (String × ArtifactSource))
+    (blob : ByteArray) : Except String ByteArray :=
+  admitRef op entry.artifact sources blob
 
 def ibk3TriplesOf (op : String) (entry : Entry) (bytes : ByteArray) :
     Except String (List Triple) := do
@@ -575,6 +592,9 @@ private def pinOverrunJson : String :=
     "ibk3-paged-merkle-full-manifest"
 #guard (storeQueryPlan pinManifestHex
   "SELECT ?s WHERE { ?s <http://example.org/p> ?o }").contains "\"keys\":[\"predicate-0.ibk3\"]"
+-- An SBM3 generation declares no literal index, so the sidecar list is empty.
+#guard (storeQueryPlan pinManifestHex
+  "SELECT ?s WHERE { ?s <http://example.org/p> ?o }").contains "\"sidecarKeys\":[]"
 
 #guard (storeQuery pinManifestHex "SELECT ?s WHERE { ?s <http://example.org/p> ?o }"
   pinArtifactsJson ByteArray.empty).contains "http://example.org/s"
