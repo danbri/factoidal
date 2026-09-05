@@ -386,6 +386,18 @@ structure Index where
   /-- How many dictionary terms are literals. Informational. -/
   literalCount : Nat
   postings : Array Posting
+  /-- LGI2 only: the dictionary positions of the literals the index did NOT
+  gram, ascending and distinct. They are the out-of-line (tag 4) literals of
+  the version-2 term codec: the block dictionary names the digest and the byte
+  length of such a literal, not its lexical form, so no gram of it can be
+  computed. `candidatesOpaque?` therefore returns every one of them for every
+  needle, which keeps the candidate list a superset of the matching terms; the
+  caller re-evaluates the original SPARQL expression on the candidates, which
+  for an opaque literal means fetching its blob.
+
+  Empty in LGI1, whose encoder refuses a non-empty list because its bytes have
+  nowhere to carry it. -/
+  opaqueIds : List Nat := []
   deriving DecidableEq, Repr
 
 /-- The canonical gram order: by codepoint, shorter first on a tie. Every
@@ -472,6 +484,83 @@ def candidates? (idx : Index) (needle : String) : Option (List Nat) :=
 def agreesWithSpec (dict : Array Term) (needle : String) : Bool :=
   candidates? (build dict) needle == candidatesSpec dict needle
 
+/-! ## 7. Opaque literals: the LGI2 candidate set
+
+An out-of-line literal has no lexical form in the block, so it has no gram and
+no posting list can hold it. LGI2 stores the list of such positions and the
+candidate set is the union of the gram intersection and that list.
+
+`mem_candidatesOpaque_of_match` and `mem_candidatesOpaque_of_opaque` are the
+superset property restated for that union: a grammed term that matches is still
+a candidate, and an opaque literal is a candidate for every needle the index
+can serve. -/
+
+/-- Add the opaque positions to a candidate list, with no repeat. -/
+def withOpaque (ids opaqueList : List Nat) : List Nat :=
+  ids ++ opaqueList.filter (fun i => !ids.contains i)
+
+/-- The specification form of the LGI2 candidate set. `none` still means the
+index cannot serve this needle and the caller must scan: a needle that folds to
+fewer than `gramLength` characters names no gram, and an opaque literal is not
+a reason to answer a needle the gram index cannot answer. -/
+def candidatesSpecOpaque (dict : Array Term) (opaqueList : List Nat) (needle : String) :
+    Option (List Nat) :=
+  (candidatesSpec dict needle).map (fun ids => withOpaque ids opaqueList)
+
+/-- The runtime form, over an index that carries its own opaque list. -/
+def candidatesOpaque? (idx : Index) (needle : String) : Option (List Nat) :=
+  (candidates? idx needle).map (fun ids => withOpaque ids idx.opaqueIds)
+
+/-- The contract between the two, the LGI2 form of `agreesWithSpec`. -/
+def agreesWithSpecOpaque (dict : Array Term) (opaqueList : List Nat) (needle : String) : Bool :=
+  candidatesOpaque? { build dict with opaqueIds := opaqueList } needle ==
+    candidatesSpecOpaque dict opaqueList needle
+
+theorem mem_withOpaque_left {i : Nat} {ids opaqueList : List Nat} (h : i ∈ ids) :
+    i ∈ withOpaque ids opaqueList := List.mem_append_left _ h
+
+theorem mem_withOpaque_right {i : Nat} {ids opaqueList : List Nat} (h : i ∈ opaqueList) :
+    i ∈ withOpaque ids opaqueList := by
+  by_cases hin : ids.contains i = true
+  · exact List.mem_append_left _ (List.mem_of_elem_eq_true hin)
+  · refine List.mem_append_right _ ?_
+    simp only [List.mem_filter, Bool.not_eq_true']
+    exact ⟨h, by simpa using hin⟩
+
+/-- **The soundness gate, part one.** A grammed dictionary term whose folded
+lexical form contains the folded needle is still in the LGI2 candidate list. -/
+theorem mem_candidatesOpaque_of_match (dict : Array Term) (opaqueList : List Nat)
+    (needle : String) (i : Nat) (t : Term) (ids : List Nat)
+    (hget : dict.toList[i]? = some t)
+    (hmatch : listContainsSublist (foldString needle) (foldedOfTerm t) = true)
+    (hc : candidatesSpecOpaque dict opaqueList needle = some ids) :
+    i ∈ ids := by
+  unfold candidatesSpecOpaque at hc
+  cases hbase : candidatesSpec dict needle with
+  | none => rw [hbase] at hc; simp at hc
+  | some base =>
+      rw [hbase] at hc
+      simp only [Option.map_some, Option.some.injEq] at hc
+      subst hc
+      exact mem_withOpaque_left (mem_candidatesSpec dict needle i t base hget hmatch hbase)
+
+/-- **The soundness gate, part two.** An opaque literal is a candidate for
+every needle the index can serve, whatever its lexical form is. This is what
+keeps the filter a superset when a block holds out-of-line literals. -/
+theorem mem_candidatesOpaque_of_opaque (dict : Array Term) (opaqueList : List Nat)
+    (needle : String) (i : Nat) (ids : List Nat)
+    (hi : i ∈ opaqueList)
+    (hc : candidatesSpecOpaque dict opaqueList needle = some ids) :
+    i ∈ ids := by
+  unfold candidatesSpecOpaque at hc
+  cases hbase : candidatesSpec dict needle with
+  | none => rw [hbase] at hc; simp at hc
+  | some base =>
+      rw [hbase] at hc
+      simp only [Option.map_some, Option.some.injEq] at hc
+      subst hc
+      exact mem_withOpaque_right hi
+
 private def lit (s : String) : Term := .literal (Literal.string s)
 private def ex : WfIri := ⟨"https://example.test/a", by decide⟩
 private def sampleDict : Array Term :=
@@ -490,5 +579,23 @@ private def sampleDict : Array Term :=
 #guard agreesWithSpec sampleDict "lagoon"
 #guard agreesWithSpec sampleDict "ab"
 #guard (build sampleDict).literalCount == 4
+#guard (build sampleDict).opaqueIds == []
+
+/-! LGI2: position 3 is an IRI in this fixture, so treating it as opaque is
+artificial, but it pins the union. An opaque position is a candidate for every
+needle the index serves, and is not a candidate for a needle it refuses. -/
+#guard candidatesSpecOpaque sampleDict [3] "water" == some [0, 1, 4, 3]
+#guard candidatesSpecOpaque sampleDict [3] "bicycle" == some [3]
+#guard candidatesSpecOpaque sampleDict [0, 3] "water" == some [0, 1, 4, 3]
+#guard candidatesSpecOpaque sampleDict [3] "ab" == none
+#guard candidatesSpecOpaque sampleDict [] "water" == some [0, 1, 4]
+#guard agreesWithSpecOpaque sampleDict [3] "water"
+#guard agreesWithSpecOpaque sampleDict [3] "bicycle"
+#guard agreesWithSpecOpaque sampleDict [0, 3] "water"
+#guard agreesWithSpecOpaque sampleDict [3] "ab"
+
+#print axioms mem_candidatesSpec
+#print axioms mem_candidatesOpaque_of_match
+#print axioms mem_candidatesOpaque_of_opaque
 
 end L4Factoidal.Storage.LiteralGramIndex

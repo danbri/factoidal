@@ -384,6 +384,36 @@ host realization: files / mmap / PostgreSQL / TiKV / OPFS / WASM buffers
 
 ## 6. Format registry
 
+### 6.0 Stated ceilings
+
+Every size limit of the formats below is a named number with a defined
+behaviour above it. The table is copied from
+[the wire-version-10 design record](designissues/2026-09-05-wire-version-10-scale.md)
+section 2, which decided them; it is repeated here because a reader of the
+specification must not have to find a design record to learn what a format
+refuses.
+
+| Quantity | Ceiling | Where | Above it |
+|---|---|---|---|
+| inline lexical form of a literal | `maxInlineLexicalBytes` = 65,536 bytes | term codec v2 | stored out-of-line, never inline |
+| out-of-line literal | `maxBlobBytes` = 2^32 − 1 bytes | manifest blob table | the packer refuses, naming the literal's subject and predicate |
+| any length-prefixed string on the wire (IRI, blank-node label, language tag, datatype IRI) | 2^32 − 1 bytes | term codec | refused by the encoder, never truncated |
+| rows in one block | `maxBlockRows` = 16,384 | packer cut policy | a new block |
+| estimated block bytes | `maxBlockWireBytes` = 2,097,152 | packer cut policy | a new block; one quad above the target still forms a block of its own |
+| terms in one block dictionary | 2^32 − 1 (local ID width) | IBK5 | unreachable under the row and byte targets |
+| one artifact's bytes | 2^32 − 1 | SHA-256 binding: the HACL* entry point takes a `uint32_t` length and returns an EMPTY digest above it | refused by the packer; activation refuses an empty digest |
+| entries in one manifest | 2^32 − 1 | SBM | unreachable at the sizes above |
+| one source statement (Turtle) | the packer's memory | `PackStream.lean` | a stated bounded-input exception: a Turtle statement is retained until it completes |
+| the wasm address space | 4 GiB | wasm32 | the same caps as the native tools, plus the stated `maxPack*` and `maxStoreHandle*` caps |
+| one zone-map bound in a manifest entry | `zoneBytes` = 64 bytes | SBM10 | the bound is the first 64 bytes of the key, and the entry is kept rather than dropped |
+
+Four independent u32 ceilings meet at 4 GB by coincidence. They are one row
+each here, and the format constants name them separately.
+
+Terabyte literals are refused by design at `maxBlobBytes`. Multi-megabyte
+literals are handled: out-of-line, chunk-verified, range-readable, not indexed
+by grams, and not counted against a block's byte target.
+
 ### 6.1 Primary blocks and dictionaries
 
 | Name | Role | Current status | Executable definition |
@@ -407,6 +437,10 @@ defines IBK4, which carries graph identity in the rows, and section 6.3.1
 defines `SBM7`, the manifest that describes IBK4 artifacts and commits the
 blank-node scope of each source partition. The graph-aware index sidecars and
 the query planner are not defined yet.
+
+`IBK5`, the wire-version-10 block, is the IBK4 layout over a `PTD2` dictionary
+of version-2 terms; its section is written with that codec and section 6.3.2
+below states what the SBM10 manifest requires of it.
 
 #### 6.1.1 IBK4 — quad rows with an in-block graph column
 
@@ -529,6 +563,23 @@ of `IBK4`.
 | [`SRI2`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/SubjectRowIndexWireV2.lean) | pageable, target-bound local ID to row offsets | current generic postings codec used in the subject role |
 | [`TLI1`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermLocalIndexWire.lean) | canonical RDF-term bytes to one target IBK3 local ID | current cross-artifact term bridge |
 | `OLI2` | local object ID to row offsets | current SBM6 object role, encoded with the generic SRI2 postings codec |
+| [`LGI1`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/LiteralGramIndexWire.lean) | character 3-grams of the case-folded lexical form of every literal in a block dictionary, to the local term IDs carrying each gram | current SBM8 and SBM9 literal-search role; posting gaps are fixed-width u32 |
+| [`LGI2`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/LiteralGramIndexWire.lean) | the same relation, plus the local IDs of the literals the index did NOT gram | current SBM10 literal-search role; posting gaps are unsigned LEB128 varints |
+| [`GBI1`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/GeoBBoxIndexWire.lean) | axis-aligned bounding box and CRS of every `geo:wktLiteral` term in a block dictionary | current SBM9 and SBM10 geometry role |
+
+LGI1 and LGI2 are CANDIDATE FILTERS, not answer sets: a planner that uses one
+re-evaluates the original SPARQL expression on the candidates, so its rows are
+the scan's rows. LGI2 differs from LGI1 in two ways. Its posting gaps are
+unsigned LEB128 varints, which on the `skos:prefLabel` block of the skosdex
+corpus (5,571,302 bytes, 45,806 rows, 60,856 dictionary terms, 21,843 grams,
+641,709 postings) takes the sidecar from 3,018,141 bytes, 54% of the block, to
+1,282,519 bytes, 23%. And its prefix carries a count and then that many
+ascending distinct local IDs, the OPAQUE list: the dictionary positions of the
+out-of-line literals, whose lexical form is not in the block and which
+therefore have no gram. The LGI2 candidate set is the gram intersection joined
+with that list, so an out-of-line literal is a candidate for every needle the
+index serves. `LiteralGramIndex.mem_candidatesOpaque_of_match` and
+`mem_candidatesOpaque_of_opaque` are the two halves of the superset property.
 
 The role of OLI2 is not inferred from its bytes. SBM6 places the artifact in
 the object-index field, and activation recomputes the canonical object-to-row
@@ -547,6 +598,9 @@ not a semantic role.
 | `SBM5` | pageable SRI2 replacing SRI1 |
 | `SBM6` | mandatory object-role OLI2 indexes |
 | `SBM7` | IBK4 quad blocks: a per-entry block kind, blank-node scope and graph-set summary, and a manifest-level blank-node publication profile |
+| `SBM8` | mandatory LGI1 literal-search index in a fourth sidecar role |
+| `SBM9` | mandatory GBI1 geometry bounding-box index in a fifth sidecar role |
+| `SBM10` | IBK5 quad blocks with an LGI2 literal index: per-entry subject and object zone maps, per-entry blob references, and a manifest-level blob table of out-of-line literals |
 
 The current manifest structure records a wire version, source identity,
 term-registry version, physical-layout label, and ordered predicate/artifact
@@ -653,6 +707,112 @@ an untested reader path.
 **Round trip.** `ShardManifestTheorems.decode?_encode?` proves
 `encode? manifest = some bytes → decode? bytes = some manifest`, over every
 wire version SBM0 through SBM7, with that as its only hypothesis.
+
+#### 6.3.2 SBM10 — zone maps, the blob table, and IBK5
+
+SBM10 is the manifest a wire-version-10 generation carries. It keeps every
+SBM9 field, adds three per-entry fields and one manifest-level field, and
+changes the block kind and the literal-index role. Design record:
+[the wire-version-10 record](designissues/2026-09-05-wire-version-10-scale.md)
+section 6.
+
+**Layout label and block kind.** The one label admitted for SBM10 is
+`quad-ibk5-ptd2-lgi2-gbi1-merkle-v0`, and under it every entry must carry the
+block kind `IBK5`, whose kind byte is `2`. `IBK5` is not a member of the IBK4
+label set: an IBK4 reader over IBK5 bytes misreads terms rather than failing,
+so a reader selects its block codec by NAME and a reader that does not
+implement IBK5 refuses the generation. There is no compacted SBM10 label, for
+the reason SBM7 has none.
+
+**Per-entry fields.** Appended after the GBI1 sidecar reference and before the
+quad tail of section 6.3.1, in this order:
+
+| Width | Field | Value |
+|---|---|---|
+| 4 | blob count | number of blob-table positions this entry names |
+| 4 each | blob position | a position in the manifest blob table; ascending, no repeat, each below the table length |
+| 4 + n | `subjectMin` | the first `zoneBytes` (64) bytes of the smallest subject key in the block |
+| 4 + n | `subjectMax` | the first 64 bytes of the largest subject key |
+| 4 + n | `objectMin` | the first 64 bytes of the smallest object key |
+| 4 + n | `objectMax` | the first 64 bytes of the largest object key |
+
+A zone-map bound is a length-prefixed byte string, not a length-prefixed UTF-8
+string: it is a PREFIX of a key, and a prefix of UTF-8 need not be UTF-8.
+
+**A key and its order.** A key is the version-2 wire encoding of the term. The
+order is lexicographic on bytes, byte by byte with a proper prefix first: the
+canonical key order `TLI1` states, restated over version-2 bytes. It is
+`ShardManifest.lexLe`, written in the manifest module rather than imported so
+that the manifest does not depend on the term dictionary to state the order of
+its own fields.
+
+**Why the bounds are 64-byte prefixes.** A 64 KiB literal would otherwise put
+64 KiB into every entry that holds it. Truncation is sound because the order
+is preserved by taking a prefix of a fixed length:
+`ShardManifestTheorems.lexLe_take` proves `a ≤ b → a.take n ≤ b.take n`, and
+`zoneMap_sound` uses it to prove that a key at or above the block's smallest
+key and at or below its largest is inside the entry's truncated bounds. A
+planner that drops an entry on the zone test therefore never drops a block
+that holds a matching row.
+
+**Manifest-level field.** After the entry list: a u32 count, then one artifact
+reference per out-of-line literal, in the same framing an index sidecar uses
+(key, byte extent, SHA-256, fixed-chunk Merkle commitment). Each key is
+`blob-<64 lowercase hexadecimal>.lit` with the hexadecimal equal to that
+reference's own SHA-256, so a reader holding a version-2 out-of-line term can
+name the file its digest identifies. The table is ascending and distinct by
+SHA-256.
+
+**Planner use.** A pattern with a constant subject `s` excludes every entry
+whose subject zone cannot contain `key(s)`; likewise a constant object.
+`ShardManifest.quadEntriesForQueryWithKeys` runs that test beside the
+predicate and graph-name collectors of section 6.3.1. The key function is a
+parameter of that function, not an import, and every give-up keeps the entry:
+a collector that established nothing, an entry with no zone map, a term whose
+key cannot be computed, or an empty collected list. Selectivity depends on the
+source order. A subject-grouped source, which is what serialisers emit, gives
+disjoint ranges per block; a shuffled source gives overlapping ranges and a
+scan, which is correct and no worse than a generation with no zone maps.
+
+**Activation checks.** Beyond the admission list below, activation checks for
+every entry that each out-of-line term in the decoded dictionary names a
+digest that is the SHA-256 of an artifact in the blob table; that the
+artifact's bytes hash to its stated SHA-256, which equals the hexadecimal in
+its key; that its byte extent equals the term's stated byte length; and that
+the entry's position list is exactly the set of blobs its dictionary names.
+Those need the block bytes, so they are not part of manifest admission.
+
+**Admitted manifests.** Encoder admission equals decoder admission.
+
+1. Every SBM9 condition, with the LGI1 role now filled by an LGI2 artifact and
+   the block kind now `IBK5`.
+2. Every entry's blob positions are ascending, distinct, and below the length
+   of the blob table.
+3. Every entry carries both zone maps. Each bound is at most `zoneBytes` = 64
+   bytes, and each zone's lower bound is at or below its upper bound under
+   `lexLe`.
+4. Every blob-table reference is a fully committed artifact — a nonempty byte
+   extent, a 32-byte SHA-256, and a chunk commitment whose total byte count is
+   the artifact's — and its key is `blob-<hexadecimal>.lit` with the
+   hexadecimal equal to its SHA-256.
+5. The blob table is ascending and distinct by SHA-256.
+6. No blob key aliases a block key or a sidecar key.
+7. SBM0 through SBM9 must NOT carry a zone map, a blob position, or a blob
+   table. A manifest below version 10 carrying one would encode to bytes that
+   drop it, and the round trip would lose data without saying so. This is the
+   rule item 8 of section 6.3.1 states for SBM7's own fields.
+
+**Round trip.** `ShardManifestTheorems.decode?_encode?` proves
+`encode? manifest = some bytes → decode? bytes = some manifest`, over every
+wire version SBM0 through SBM10, with that as its only hypothesis. The
+version-10 entry shape is `decodeEntry_encodeEntry_quadZone`, and the framed
+objects it composes have their own lemmas:
+`decodeBytesField_encodeBytesField`, `decodeZone_encodeZone`,
+`decodeBlobRefs_encodeBlobRefs` and `decodeBlobTable_encodeBlobTable`. The
+zone-map soundness theorem is `zoneMap_sound`. Every one of them depends on
+`propext`, `Classical.choice` and `Quot.sound` only.
+
+SBM0 through SBM9 bytes are unchanged by SBM10's arrival.
 
 ### 6.4 Durable update and generation protocol
 
