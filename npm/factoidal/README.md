@@ -245,6 +245,45 @@ error. Async functions run over the synchronous verified engine
 through a bounded, memoised re-evaluation loop — within one query
 every call with the same arguments sees one stable answer.
 
+### The same functions against the Lean engine and a persisted store
+
+The registration above serves the F\* engine's in-memory `query()`. The
+Lean engine has its own registry, and it reaches every Lean query path,
+including a store handle — so a registered function can filter rows read
+off disk:
+
+```js
+import { loadEngine } from '@factoidal/core/bin/engine.mjs'
+import { openStore, openStoreHandle } from '@factoidal/core/bin/store.mjs'
+import { registerExtensionFunction, withExtensionFunctions }
+  from '@factoidal/core/bin/ext.mjs'
+
+const engine = await loadEngine()
+const handle = openStoreHandle(engine, openStore('/path/to/store'))
+
+registerExtensionFunction(engine, 'http://example.org/fn/endsWithZed',
+  ([label]) => label.value.endsWith('z'))
+
+const answer = handle.query(`
+  PREFIX ex:   <http://example.org/fn/>
+  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+  SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(ex:endsWithZed(?l)) }`)
+```
+
+The argument and result encoding, the §17.6 error rules and the
+async re-evaluation loop are the same as above, so one function serves
+both engines. Two differences to plan around:
+
+- **Registration is per engine instance**, not per handle or per query.
+  A server that answers for more than one caller uses
+  `withExtensionFunctions(engine, map, body)`, which registers, runs and
+  clears in a `finally`, or loads one engine per caller.
+- **Every call crosses into JavaScript**, so a function in a FILTER runs
+  once per row. Measure before putting one on a large scan.
+
+Design, with the determinism and scope rules in full:
+[`docs/designissues/2026-09-04-lean-extension-functions.md`](../../docs/designissues/2026-09-04-lean-extension-functions.md).
+
 ## Functional API (fn)
 
 `@factoidal/core/fn` is a strictly functional variant of the API above:

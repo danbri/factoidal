@@ -174,8 +174,12 @@ export function planQuery (engine, store, sparql) {
  */
 function capDecision (engine, store, sparql) {
   try {
-    return engine.callBlob('storeQuery',
-      [store.manifestHex, sparql, '[]'], new Uint8Array(0))
+    // callBlobIO, not callBlob: the blob-IO entry is the one that reaches
+    // the SPARQL 1.1 section 17.6 extension registry (Wasm/Dispatch.lean's
+    // callBlobIO), so a caller registration is in scope on the stateless
+    // store path too. The envelope is identical.
+    return engine.callBlobIO('storeQuery',
+      [store.manifestHex, sparql, '[]'], new Uint8Array(0)).envelope
   } catch (error) {
     const refusal = asStoreError(error)
     if (refusal.message.indexOf('no bytes were supplied for artifact') >= 0) {
@@ -191,7 +195,7 @@ function capDecision (engine, store, sparql) {
  * The sequence is: plan, cap decision, read exactly the artifacts the
  * plan named, concatenate them into one buffer, and call `storeQuery`
  * with a `{"key","offset","len"}` window per artifact. The buffer is
- * written straight into the wasm heap by `engine.callBlob` with no
+ * written straight into the wasm heap by `engine.callBlobIO` with no
  * encoding, and the engine bounds-checks every window.
  *
  * @returns {{plan: object, result: object, blobBytes: number,
@@ -216,8 +220,8 @@ export function queryStore (engine, store, sparql) {
   }
   let result
   try {
-    result = engine.callBlob('storeQuery',
-      [store.manifestHex, sparql, JSON.stringify(artifacts)], blob)
+    result = engine.callBlobIO('storeQuery',
+      [store.manifestHex, sparql, JSON.stringify(artifacts)], blob).envelope
   } catch (error) {
     throw asStoreError(error)
   }
