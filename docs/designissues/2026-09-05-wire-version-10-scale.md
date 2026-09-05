@@ -155,11 +155,14 @@ readers will see.
 
 Policy, deterministic in the input and the two operator numbers:
 
-1. Quads accumulate into per-predicate buckets as they parse
-   (`PredicateQuadBlocks.Buckets`).
-2. A bucket is cut into blocks by the existing rule: graph change, 16,384
-   rows, 2,097,152 estimated bytes. A block whose rows are complete under
-   that rule is published at once and its rows released.
+1. Quads accumulate into buckets as they parse
+   (`PredicateQuadBlocks.Buckets`). Since 2026-09-05 a bucket is keyed by
+   the PAIR (predicate, graph), not by the predicate alone.
+2. A bucket is cut into blocks by the two size targets: 16,384 rows,
+   2,097,152 estimated bytes. A block whose rows are complete under those
+   targets is published at once and its rows released. There is no graph
+   rule: a bucket's rows are all one graph by construction
+   (`PredicateQuadBlocksTheorems.bucket_one_graph`).
 3. When `batchSourceBytes` (default 268,435,456, `--batch-bytes`) of source
    have been fed since the last batch end, every bucket holding at least
    `minBatchRows` (4,096) rows is published; smaller buckets carry over.
@@ -167,10 +170,10 @@ Policy, deterministic in the input and the two operator numbers:
    (1,048,576) every bucket is published regardless of size.
 5. At end of source every bucket is published.
 
-Rule 3 keeps rare predicates from producing one tiny block per batch: with
+Rule 3 keeps rare buckets from producing one tiny block per batch: with
 YAGO's few hundred predicates and 550 batches that would be tens of
 thousands of near-empty entries. Rule 4 bounds what rule 3 retains, for a
-source with hundreds of thousands of predicates.
+source with hundreds of thousands of buckets.
 
 Peak memory is then about one batch of source plus carried rows plus the
 blocks being encoded, which the ladder of section 9 measures. The wasm
@@ -184,10 +187,22 @@ graph). Byte identity between the two routes holds only for a source
 smaller than one batch; above it the block SET differs and rows are
 compared, as gate 2 of the blocks-per-predicate record did.
 
-Interleaved graphs in N-Quads (g1, g2, g1, ...) now produce more blocks
-than the buffered route, which grouped a graph's rows before cutting. Each
-block still holds one graph; there may be several blocks per
-(predicate, graph) below the size targets. Correct, and stated.
+Interleaved graphs in N-Quads (g1, g2, g1, ...) do NOT produce more blocks.
+Until 2026-09-05 they did, and badly: the bucket key was the predicate alone
+and rule 2 cut a run at every graph change, so an interleaved source gave one
+block per graph RUN. The subsection "The shuffled source" below has the
+measurement and the repair. With the (predicate, graph) key, interleaving
+never closes a run. Each block still holds one graph, so the manifest
+`graphSet` has one member and `GRAPH <iri>` selection stays exact; there may
+be several blocks per key when a bucket passes a size target.
+
+Order. The buffered route (`blocksOfDataset`, still used by the TriG path and
+by the theorems) publishes in the FIRST-OCCURRENCE ORDER OF THE KEY in the
+graph-major `quadsOfDataset` flattening. The streamed route publishes a run
+when rule 2 closes it, and at a flush in the same first-occurrence key order.
+For a source below one batch the two routes write the same blocks with the
+same rows; the block ORDER, and with it the ordinals and the artifact names,
+differs.
 
 ## 6. SBM10
 
@@ -432,7 +447,9 @@ both packed at wire version 10:
 | activation | 3.43 s | 80.68 s |
 
 (The two prefixes hold different statements — 10 MB of a shuffled file is not
-a permutation of 10 MB of the sorted one — so the row counts differ by 6%.)
+a permutation of 10 MB of the sorted one — so the row counts differ by 6%.
+The re-measurement below fixes that: it shuffles the natural prefix itself,
+so both inputs hold the same 50,386 statements.)
 
 The zone maps themselves do NOT degrade. On the shuffled generation the
 bound-subject query selected 5 entries of 5,601 and the maps excluded 5,596,
@@ -446,8 +463,57 @@ So the zone map's dependence on source order, which section 6.1 predicted,
 is not the finding. The finding is that the graph-change cut rule has no
 lower bound on block size, and that an interleaved N-Quads source therefore
 produces one block per graph run. `minBatchRows` bounds what the BATCH rule
-publishes and does not bound this. Two candidates, neither taken here: a
+publishes and does not bound this. Two candidates were listed here: a
 minimum row count before the graph-change rule may close a run, or a block
 that holds several graphs with a graph column already in every row. Tracked
 at <https://github.com/danbri/factoidal/issues/658>.
+
+### The repair, measured 2026-09-05: bucket by (predicate, graph)
+
+Neither candidate was taken. The bucket key is now the PAIR (predicate,
+graph), so a bucket's rows are all one graph by construction and rule 2 has
+no graph rule left — only the row and byte targets. Interleaving never closes
+a run.
+
+Re-measured on the 10,485,664-byte natural prefix (`head -c 10485723 | sed
+'$d'`) and its `sort -R` permutation, which hold the SAME 50,386 statements
+(`sort | md5` agrees). Both packed at wire version 10 (`ibk5`), by the packer
+at `claude/main` and by this one, and queried with ONE binary.
+
+| | natural, main | natural, this | shuffled, main | shuffled, this |
+|---|---|---|---|---|
+| quads | 50,386 | 50,386 | 50,386 | 50,386 |
+| blocks | 483 | 483 | 11,636 | 483 |
+| pack wall clock | 3.79 s | 3.76 s | 20.15 s | 3.92 s |
+| pack peak footprint | 115,720,192 bytes | 115,949,568 bytes | 591,052,800 bytes | 122,617,856 bytes |
+| generation size | 20,376 KiB | 20,376 KiB | 304,820 KiB | 20,792 KiB |
+| activation | 3.00 s | 2.99 s | 21.88 s | 3.28 s |
+
+The shuffled block count is now the natural one, 483: the bucket SET is the
+set of (predicate, graph) pairs the source holds, and no bucket of this
+prefix reaches a size target, so source order cannot change it. The shuffled
+generation is 416 KiB larger than the natural one because the row order
+inside a block follows the source, which changes each block's dictionary.
+
+The queries, `skos:prefLabel` with a bound subject
+(`<http://cv.iptc.org/newscodes/authoritystatus/>`) and with an unbound one,
+both inside `GRAPH ?g`:
+
+| | entries selected | entries excluded by the zone maps | rows | wall clock |
+|---|---|---|---|---|
+| natural, main, bound | 21 | 52 | 1 | 0.42 s |
+| natural, this, bound | 21 | 52 | 1 | 0.40 s |
+| shuffled, main, bound | 2 | 4,448 | 1 | 23.76 s |
+| shuffled, this, bound | 21 | 52 | 1 | 0.50 s |
+| natural, main, unbound | 73 | 0 | 20,002 | 0.90 s |
+| natural, this, unbound | 73 | 0 | 20,002 | 0.90 s |
+| shuffled, main, unbound | 4,450 | 0 | 20,002 | 25.57 s |
+| shuffled, this, unbound | 73 | 0 | 20,002 | 1.09 s |
+
+Rows agree in every cell. On the shuffled source the bound query goes from
+23.76 s to 0.50 s and the unbound one from 25.57 s to 1.09 s, and the
+selected-entry counts become the natural-order ones. The shuffled main run
+selects FEWER entries for the bound query (2 of 4,450) and is still 47 times
+slower, because the cost is the manifest, not the block data — the same
+effect the 150 s figure above reports.
 

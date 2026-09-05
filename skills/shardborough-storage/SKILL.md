@@ -137,11 +137,34 @@ read trace; it targets the Merkle session layout, not an SBM6 collection.
 
 ## IBK4 generations (quad-aware, landed 2026-09-03)
 
-`l4block-shard-pack INPUT OUTPUT ibk4` writes a quad generation: one IBK4
-block per predicate ACROSS ALL GRAPHS, with a graph column in every row and a
-graph-set summary in the block header and in the SBM7 manifest entry. The
-input syntax comes from the file extension — `.trig`, `.nq`/`.nquads`, and
-anything else as Turtle with every triple in the default graph.
+`l4block-shard-pack INPUT OUTPUT ibk4` writes a quad generation, with a graph
+column in every row and a graph-set summary in the block header and in the
+SBM7 manifest entry. The input syntax comes from the file extension —
+`.trig`, `.nq`/`.nquads`, and anything else as Turtle with every triple in
+the default graph.
+
+**The block set.** Quads are bucketed by the PAIR (predicate, graph), and a
+bucket is cut into blocks by two size targets only: 16,384 rows and 2,097,152
+bytes of estimated wire size. So every block holds one predicate in ONE
+graph, its manifest `graphSet` has exactly one member, and a
+`GRAPH <iri> { ?s <p> ?o }` reads exactly the blocks of that pair.
+
+Until 2026-09-05 the bucket key was the predicate alone and a third rule cut
+a run at every GRAPH CHANGE. That rule had no lower bound on block size, so
+an N-Quads source whose graphs interleave line by line produced one block per
+graph run: 11,636 blocks against 483 for the same 50,386 statements, a
+generation of 304,820 KiB against 20,792 KiB, and a query of 23.76 s against
+0.50 s. The (predicate, graph) key removes it; interleaving never closes a
+run
+(`docs/designissues/2026-09-05-wire-version-10-scale.md` section 5 and its
+subsection "The repair, measured 2026-09-05").
+
+**Block order.** Blocks are published in the FIRST-OCCURRENCE ORDER OF THE
+KEY. The buffered route (TriG) sees that order in the graph-major
+`quadsOfDataset` flattening; the streamed route publishes a run when a size
+target closes it and, at a flush, in the same first-occurrence key order. The
+two routes write the same rows in the same blocks for a source below one
+batch; the ordinals and the artifact names can differ.
 
 ```bash
 l4block-shard-pack tests/local/data/quad_sample.trig /tmp/store/gen-1 ibk4
@@ -185,8 +208,10 @@ block, written at the end. Byte identity of the streamed PARSE against the
 buffered one is PROVED for N-Quads (`NQuadsFold.streamConsume11_eq_batch`)
 and only MEASURED for Turtle — the Turtle accumulator half is proved
 (`Syntax.parseTurtle_eq_fold`), the chunk-boundary half is not. What
-publication every batch preserves is proved per predicate in
-`PackStreamTheorems` (`pubRun_published_eq_fed`, `streamed_eq_buffered`);
+publication every batch preserves is proved per (predicate, graph) key in
+`PackStreamTheorems` (`pubRun_published_eq_fed`, `streamed_eq_buffered`), and
+`PredicateQuadBlocksTheorems.bucket_one_graph` is what keeps a block to one
+graph now that no cut rule does;
 the block SET and the block ORDER differ from the buffered route's, which
 every manifest since SBM2 admits.
 

@@ -2,6 +2,19 @@
 
 2026-09-04. Issue: <https://github.com/danbri/factoidal/issues/650>.
 
+**Superseded in part, 2026-09-05.** Rule 1 of the split policy below — cut a
+run at every graph change — is gone. The packer now buckets quads by the PAIR
+(predicate, graph), so a bucket's rows are all one graph by construction and
+only the two size targets cut a run. Rule 1 had no lower bound on block size,
+and an N-Quads source whose graphs interleave line by line therefore produced
+one block per graph RUN: 11,636 blocks against 483 for the same 50,386
+statements. Everything this document says about the CONSEQUENCE of the rule —
+one graph per block, an exact `GRAPH <iri>` filter, a longer manifest — still
+holds, because the bucket key gives the same guarantee. See
+[`2026-09-05-wire-version-10-scale.md`](2026-09-05-wire-version-10-scale.md)
+section 5 and its subsection "The repair, measured 2026-09-05", and
+<https://github.com/danbri/factoidal/issues/658>.
+
 Owner, 2026-09-04, verbatim: "scale the DB to handle all of skosdex, fast
 query/search with fulltext and geo and query extension properties."
 
@@ -58,11 +71,18 @@ generations they read.
 A block is closed when any of three conditions holds.
 
 1. **The graph changes.** Always. A block holds rows of one predicate in ONE
-   graph.
+   graph. **(Withdrawn 2026-09-05: the bucket key carries the graph instead.
+   See the note at the top of this file.)**
 2. **16,384 rows.**
 3. **2,097,152 bytes of estimated wire size.**
 
 ### Why the graph boundary
+
+Since 2026-09-05 this is the bucket KEY rather than a cut rule, and the
+paragraph below is the reasoning it replaced. What the key gives directly is
+what the cut rule gave: every row of a bucket has the bucket's graph
+(`PredicateQuadBlocksTheorems.bucket_one_graph`), so every block holds one
+graph.
 
 `quadsOfDataset` flattens a dataset graph-major: the default graph first,
 then each named graph in order. Restricting that list to one predicate
