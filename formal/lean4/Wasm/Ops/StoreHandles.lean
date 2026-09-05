@@ -103,6 +103,8 @@ import Std.Data.HashMap
 import Wasm.Ops.Store
 import L4Factoidal.Storage.LiteralGramIndexWire
 import L4Factoidal.Storage.LiteralIndexPlan
+import L4Factoidal.Storage.GeoBBoxIndexWire
+import L4Factoidal.Storage.GeoIndexPlan
 
 namespace L4Wasm.Ops
 
@@ -131,32 +133,40 @@ inductive RetainedRows where
   | ibk3 (triples : List Triple)
   | ibk4 (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
 
-/-- What one block's LGI1 sidecar lets a query skip.
+/-- What one block's candidate-filter sidecars let a query skip.
 
-`index` is the decoded sidecar. `rows` is the block's denoted quads by
-position, and `objectRows` maps a dictionary local ID to the positions whose
-OBJECT is that term — the OLI2 role, rebuilt here at `storeOpen` because SBM8
-commits no graph-aware OLI2. `nonLiteralRows` is every position whose object
-is not a literal; a `STR` shape keeps those, because `STR` of an IRI is a
-string a `CONTAINS` can match and LGI1 indexes no IRI
-(`LiteralIndexPlan.Plan.keepNonLiterals`). -/
-structure RetainedLiteralIndex where
-  index : L4Factoidal.Storage.LiteralGramIndex.Index
+`literal` and `geo` are the decoded LGI1 and GBI1 sidecars, each present only
+when the manifest declared it, the host supplied its bytes, it decoded, and it
+names THIS block. They share the row machinery below because they index the
+SAME local dictionary IDs.
+
+`rows` is the block's denoted quads by position, and `objectRows` maps a
+dictionary local ID to the positions whose OBJECT is that term — the OLI2
+role, rebuilt here at `storeOpen` because SBM8 and SBM9 commit no graph-aware
+OLI2. `nonLiteralRows` is every position whose object is not a literal; a
+`STR` shape keeps those, because `STR` of an IRI is a string a `CONTAINS` can
+match and LGI1 indexes no IRI (`LiteralIndexPlan.Plan.keepNonLiterals`). The
+geometry path never keeps them: `Geo.wktArg` refuses a non-literal term, so
+such a row is a type error and the filter excludes it. -/
+structure RetainedIndexes where
+  literal : Option L4Factoidal.Storage.LiteralGramIndex.Index
+  geo : Option L4Factoidal.Storage.GeoBBoxIndex.Index
   rows : Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow
   objectRows : Array (Array Nat)
   nonLiteralRows : Array Nat
 
 /-- One admitted artifact, decoded. `bytes` and `rows` are the manifest's own
 declarations, which admission has already checked the bytes against.
-`literal` is present when the manifest declared an LGI1 sidecar AND the host
-supplied its bytes; a handle opened without them still answers, by scanning. -/
+`indexes` is present when the manifest declared at least one candidate-filter
+sidecar AND the host supplied its bytes; a handle opened without them still
+answers, by scanning. -/
 structure RetainedArtifact where
   key : String
   predicate : WfIri
   bytes : Nat
   rows : Nat
   payload : RetainedRows
-  literal : Option RetainedLiteralIndex
+  indexes : Option RetainedIndexes
 
 /-- An open store: the manifest it was opened against, every artifact it
 retains in manifest order, and the dataset and index over the whole retained
@@ -221,26 +231,44 @@ def storeLayoutIbk4? (op : String) (manifest : Manifest) : Except String Bool :=
   else
     .error s!"{op}: layout '{manifest.layout}' is neither an IBK3 nor an IBK4 generation"
 
-/-- Build the retained literal index of one IBK4 block, or `none` when the
-manifest declares no LGI1 sidecar, the host supplied no bytes for it, the
-sidecar does not decode, or it names another block. Every one of those is a
-FALLBACK, not an error: the handle then scans, which is what it did before
-SBM8 existed. -/
-def retainedLiteralIndex? (op : String) (entry : Entry)
+/-- One sidecar the manifest declared, decoded and checked against this block,
+or `none`. Every `none` is a FALLBACK, not an error: the handle then scans,
+which is what it did before the sidecar existed. -/
+private def retainedSidecar? {α : Type} (op : String) (ref? : Option ArtifactRef)
     (sources : List (String × ArtifactSource)) (blob : ByteArray)
-    (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) (blockBytes : ByteArray) :
-    Option RetainedLiteralIndex := do
-  let ref ← entry.literalIndex
+    (decode : ByteArray → Option α) : Option α := do
+  let ref ← ref?
   let _ ← supplied? sources ref.key.value
   let indexBytes ← (admitRef op ref sources blob).toOption
-  let artifact ← L4Factoidal.Storage.LiteralGramIndexWire.decode? indexBytes
-  if artifact.targetIBKSha256 != entry.artifact.sha256 then none else do
+  decode indexBytes
+
+/-- Build the retained candidate-filter indexes of one IBK4 block, or `none`
+when the manifest declares neither sidecar, the host supplied bytes for
+neither, neither decodes, or neither names this block. -/
+def retainedIndexes? (op : String) (entry : Entry)
+    (sources : List (String × ArtifactSource)) (blob : ByteArray)
+    (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) (blockBytes : ByteArray) :
+    Option RetainedIndexes := do
+  let literal? := retainedSidecar? op entry.literalIndex sources blob (fun bytes =>
+    match L4Factoidal.Storage.LiteralGramIndexWire.decode? bytes with
+    | some artifact =>
+        if artifact.targetIBKSha256 == entry.artifact.sha256 then some artifact.index else none
+    | none => none)
+  let geo? := retainedSidecar? op entry.geoIndex sources blob (fun bytes =>
+    match L4Factoidal.Storage.GeoBBoxIndexWire.decode? bytes with
+    | some artifact =>
+        if artifact.targetIBKSha256 == entry.artifact.sha256 then some artifact.index else none
+    | none => none)
+  if literal?.isNone && geo?.isNone then none else do
   let block ← L4Factoidal.Storage.IndexedBlockWireV4.decode blockBytes
   let rows := quads.toArray
   -- `denotes` filters, so a block whose rows do not all decode would make the
   -- positions disagree with the object IDs. Refuse rather than misalign.
   if block.rows.size != rows.size then none else
-  if artifact.index.dictCount != block.dict.size then none else
+  -- A sidecar sized for another dictionary is dropped rather than trusted.
+  let literal? := literal?.filter fun index => index.dictCount == block.dict.size
+  let geo? := geo?.filter fun index => index.dictCount == block.dict.size
+  if literal?.isNone && geo?.isNone then none else
   some (Id.run do
     let mut objectRows : Array (Array Nat) := Array.replicate block.dict.size #[]
     let mut nonLiteralRows : Array Nat := #[]
@@ -251,7 +279,7 @@ def retainedLiteralIndex? (op : String) (entry : Entry)
       match block.dict[o]? with
       | some (.literal _) => pure ()
       | _ => nonLiteralRows := nonLiteralRows.push i
-    pure { index := artifact.index, rows, objectRows, nonLiteralRows })
+    pure { literal := literal?, geo := geo?, rows, objectRows, nonLiteralRows })
 
 /-- Admit and decode each selected entry, in manifest order. Every artifact
 goes through the same `admitArtifact` `storeQuery` uses, so the digest check
@@ -266,7 +294,7 @@ def readRetained (op : String) (ibk4 : Bool)
             (do
               let quads ← ibk4QuadsOf op entry bytes
               pure (RetainedRows.ibk4 quads,
-                    retainedLiteralIndex? op entry sources blob quads bytes))
+                    retainedIndexes? op entry sources blob quads bytes))
           else
             (do let triples ← ibk3TriplesOf op entry bytes
                 pure (RetainedRows.ibk3 triples, none))
@@ -276,7 +304,7 @@ def readRetained (op : String) (ibk4 : Bool)
          , bytes := entry.artifact.bytes
          , rows := entry.rows
          , payload
-         , literal } :: acc)
+         , indexes := literal } :: acc)
 
 /-- Every key the host supplied bytes for must be a key this manifest
 declares; an unknown key is a host fault, not a silently ignored argument. -/
@@ -284,7 +312,8 @@ private def checkSuppliedKeys (op : String) (manifest : Manifest)
     (sources : List (String × ArtifactSource)) : Except String Unit :=
   match sources.find? (fun pair =>
       !(manifest.entries.any fun entry => entry.artifact.key.value == pair.1 ||
-          (entry.literalIndex.map fun ref => ref.key.value) == some pair.1)) with
+          (entry.literalIndex.map fun ref => ref.key.value) == some pair.1 ||
+          (entry.geoIndex.map fun ref => ref.key.value) == some pair.1)) with
   | some (key, _) => .error s!"{op}: artifact '{key}' is not declared by this manifest"
   | none => pure ()
 
@@ -370,32 +399,63 @@ returned ascending, so the reduced dataset keeps the block's row order and an
 unordered SELECT answers in the order the scan answers in.
 
 `none` means the index cannot serve this needle and the caller must scan. -/
-def literalRows? (retained : RetainedLiteralIndex)
-    (plan : L4Factoidal.Storage.LiteralIndexPlan.Plan) :
-    Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
-  match L4Factoidal.Storage.LiteralGramIndex.candidates? retained.index plan.needle with
-  | none => none
-  | some ids => Id.run do
-      let mut positions : Array Nat :=
-        if plan.keepNonLiterals then retained.nonLiteralRows else #[]
-      for id in ids do
-        if h : id < retained.objectRows.size then
-          positions := positions ++ retained.objectRows[id]
-      let ordered := positions.qsort (fun a b => decide (a < b))
-      pure (some (ordered.filterMap fun position => retained.rows[position]?))
+def rowsOfCandidates (retained : RetainedIndexes) (extra : Array Nat) (ids : List Nat) :
+    Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow := Id.run do
+  let mut positions : Array Nat := extra
+  for id in ids do
+    if h : id < retained.objectRows.size then
+      positions := positions ++ retained.objectRows[id]
+  let ordered := positions.qsort (fun a b => decide (a < b))
+  pure (ordered.filterMap fun position => retained.rows[position]?)
 
-/-- The whole planned artifact set restricted by one literal search, or `none`
-when any planned block cannot serve it: no retained index, or a predicate the
-plan does not name, or a needle the index refuses. Every `none` is a
-fallback to the scan. -/
+def literalRows? (retained : RetainedIndexes)
+    (plan : L4Factoidal.Storage.LiteralIndexPlan.Plan) :
+    Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
+  let index ← retained.literal
+  let ids ← L4Factoidal.Storage.LiteralGramIndex.candidates? index plan.needle
+  some (rowsOfCandidates retained
+    (if plan.keepNonLiterals then retained.nonLiteralRows else #[]) ids)
+
+/-- The rows of one block a geometry `FILTER` can reach: the candidate terms'
+rows and nothing else. No non-literal row is kept, because `Geo.wktArg`
+refuses a term that is not a `geo:wktLiteral` and the filter drops it.
+
+`none` means the index cannot serve this query — `sfDisjoint`, or a query
+geometry outside the proved fragment — and the caller must scan. -/
+def geoRows? (retained : RetainedIndexes)
+    (plan : L4Factoidal.Storage.GeoIndexPlan.Plan) :
+    Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
+  let index ← retained.geo
+  let ids ← L4Factoidal.Storage.GeoBBoxIndex.candidates? index plan.op plan.query
+  some (rowsOfCandidates retained #[] ids)
+
+/-- The whole planned artifact set restricted by one candidate filter, or
+`none` when any planned block cannot serve it: no retained index, or a
+predicate the plan does not name, or an argument the index refuses. Every
+`none` is a fallback to the scan.
+
+The `restrict` argument is `literalRows?` or `geoRows?`. Both return a
+SUPERSET of the rows their filter accepts, and `storeHandleQuery` then
+evaluates the original query text over the result, so neither can add a row
+and neither can drop one. -/
+def restricted? {π : Type} (arts : List RetainedArtifact) (predicate : WfIri)
+    (restrict : RetainedIndexes → π → Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow))
+    (plan : π) : Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
+  arts.foldlM (fun acc art => do
+    if art.predicate != predicate then none else do
+    let retained ← art.indexes
+    let rows ← restrict retained plan
+    some (acc ++ rows.toList)) []
+
 def literalRestricted? (arts : List RetainedArtifact)
     (plan : L4Factoidal.Storage.LiteralIndexPlan.Plan) :
     Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
-  arts.foldlM (fun acc art => do
-    if art.predicate != plan.predicate then none else do
-    let retained ← art.literal
-    let rows ← literalRows? retained plan
-    some (acc ++ rows.toList)) []
+  restricted? arts plan.predicate literalRows? plan
+
+def geoRestricted? (arts : List RetainedArtifact)
+    (plan : L4Factoidal.Storage.GeoIndexPlan.Plan) :
+    Option (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
+  restricted? arts plan.predicate geoRows? plan
 
 /-! ## storeHandleQuery -/
 
@@ -433,12 +493,22 @@ def storeHandleQuery (h sparql : String) : IO String := do
         [ ("shards", .number (toString plan.entries.length))
         , ("mode", .string plan.mode) ]
       let planned := retainedFor store planKeys
-      /- The literal search path. It changes WHICH ROWS are materialised and
-         nothing else: the same `sparql` text is evaluated, so the filter is
-         re-applied to every candidate and the rows are the scan's rows. -/
+      /- The candidate-filter paths, literal search and geometry. Each changes
+         WHICH ROWS are materialised and nothing else: the same `sparql` text
+         is evaluated, so the filter is re-applied to every candidate and the
+         rows are the scan's rows. A bounding box in particular can EXCLUDE
+         and can never CONFIRM, so dropping the re-evaluation would return
+         rows the query does not license.
+
+         The two plans cannot both admit one query: `LiteralIndexPlan` needs a
+         `CONTAINS`/`STRSTARTS`/`STRENDS` conjunct and `GeoIndexPlan` needs a
+         `geof:` call. The literal plan is tried first, and its answer is used
+         when it applies. -/
       match (if store.ibk4 then
-               (L4Factoidal.Storage.LiteralIndexPlan.plan? query).bind
-                 (literalRestricted? planned)
+               ((L4Factoidal.Storage.LiteralIndexPlan.plan? query).bind
+                  (literalRestricted? planned)).orElse (fun _ =>
+                (L4Factoidal.Storage.GeoIndexPlan.plan? query).bind
+                  (geoRestricted? planned))
              else none) with
       | some quads =>
           let ds := datasetOfQuads quads
