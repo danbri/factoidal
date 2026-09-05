@@ -120,12 +120,25 @@ contain it.
   reverse-and-drop-whitespace form) after any run from `init`.
 - `TurtleTheorems.lean`, `SyntaxTheorems.lean`: earlier properties of the
   reference parser (see the files).
-- Not yet proved: that the streaming execution (2.2) equals `parseTurtle`
-  on the same text. The gate today is byte identity of packed generations
+- `TurtleTheorems.lean` (2026-09-05): `parseStatements_eq_fold` and
+  `parseTurtle_eq_fold` — folding statements with `Syntax.prependReverse`
+  and reversing once gives exactly the `Graph` `parseTurtle` returns.
+  `PackStream.ingestStep_eq_prependReverse` ties the shard packer's step to
+  that accumulator. This is the ACCUMULATOR half of the streaming
+  agreement, the counterpart of instantiating
+  `NQuadsFold.streamConsume11_eq_batch` at the accumulator the batch parser
+  uses.
+- Still not proved: the CHUNK-BOUNDARY half — that the streaming execution
+  (2.2) reaches the same accumulator whatever the chunking, and so equals
+  `parseTurtle` on the same text. It rests on `TurtleStatementScan` never
+  offering a candidate that `readStatement` would read past, which no
+  theorem states. The gate today is byte identity of packed generations
   across scanner changes (378 artifacts on a 370,355-triple slice,
-  2026-09-03) and the five committed hub blocks under
-  `docs/web/hub/assets/blocks/lifesci-crossgraph/`. The N-Quads tree has
-  the theorem this one still needs (`NQuadsStreaming.lean`, section 3).
+  2026-09-03; 261 identical, 0 differed out of 262 inputs including a
+  104,179,872-byte Turtle source, 2026-09-05) and the five committed hub
+  blocks under `docs/web/hub/assets/blocks/lifesci-crossgraph/`. The
+  N-Quads tree has the theorem this one still needs
+  (`NQuadsStreaming.lean`, section 3).
 
 ### 2.4 Costs paid and costs open
 
@@ -137,6 +150,7 @@ contain it.
 | open | 22.9 s user + 21.7 s system and 5.39 GB resident to parse 134 MB (measured 2026-09-03) | `List Char` representation: about 16 bytes and one allocation per character, built twice (scanner `currentRev`, then `text.toList` for the grammar) | a `String`/`ByteArray`-position lexer with its own equality proof against 2.1 |
 | 2026-09-04 | named-graph IBK4 pack quadratic; 553 MB over 194 graphs killed by the operating system after 1 h 57 min | `NQuadsFast.addQuadFast` read the graph with `getElem?` and inserted it back, so `Std.HashMap.insert` copied the whole bucket map of that graph per quad | `Std.HashMap.modify`, which consumes the map; proofs restated through `getElem?_modify`. 104 MB over 50 graphs: 268.73 s to 103.12 s (`2026-09-04-ibk4-named-graph-packing-scale.md`) |
 | 2026-09-04 | IBK4 pack held a whole-file `String.toList` | `quadArtifacts` took the source as one `String` | `PackStream.quadIngestFeed` streams the N-Quads grammar in 65,536-byte chunks; byte identity by `NQuadsFold.streamConsume11_eq_batch`. 104 MB over 50 graphs: peak memory 2,531,999,744 to 1,127,907,328 bytes |
+| 2026-09-05 | the same whole-file `String.toList` for a TURTLE source into IBK4 | nothing called `TurtleChunkFold`; the quad route needs a `Dataset` and the fold hands back statements | `PackStream.QuadStream` carries the Turtle chunk fold beside the N-Quads stream, `quadStreamDataset` closes either. 104,179,872-byte Turtle source: peak resident set 2,788,786,176 to 1,253,408,768 bytes (26.8 to 12.0 bytes per source byte), generation byte-identical. Byte identity MEASURED, not proved — see 2.3 |
 | open | peak IBK4 memory is still about ten times the source | one block per predicate over the whole source, so every row and every encoded block is live at the manifest | several blocks per predicate, which changes the emitted block set and needs a wire-version decision (`2026-09-04-ibk4-named-graph-packing-scale.md`) |
 | open | multi-megabyte literals cost seconds each in the packer | every literal goes through the term codec, PTD1 pages, TLI1 keys and Merkle leaves | large-literal policy (corpus ladder, `docs/20260902-persisted-query-ladder.md`) |
 
@@ -146,7 +160,7 @@ contain it.
 | --- | --- | --- | --- |
 | N-Triples | `NTriples.lean` `parseNTriples` | — | W3C suite; `NTriplesRoundTrip.lean` |
 | N-Quads | `NQuads.lean` `parseNQuads` | `NQuadsFast.lean` `parseNQuadsFast` (bucketed accumulator; the WASM `datasetOpen` path); `NQuadsStreaming.lean` (chunk-boundary fold), `NQuadsFold.lean` (the generic consumer the IBK4 shard packer streams through) | `parseNQuadsFast_eq_parseNQuads` proved 2026-09-02 (`NQuadsFastTheorems.lean`); the streaming module carries its own chunk-boundary theorem |
-| TriG | `TriG.lean` `parseTriG` (shares the Turtle productions; the default graph is the unlabelled block) | none; an IBK4 pack over TriG still buffers the whole source, unlike the N-Quads route (quad-aware layout: `2026-09-02-quad-aware-block-layout.md`) | W3C suites |
+| TriG | `TriG.lean` `parseTriG` (shares the Turtle productions; the default graph is the unlabelled block) | none; an IBK4 pack over TriG still buffers the whole source, unlike the Turtle and N-Quads routes (quad-aware layout: `2026-09-02-quad-aware-block-layout.md`) | W3C suites |
 | RDF/XML | `RdfXml.lean` | — | W3C suite; `RdfXmlTheorems.lean` (blank-node label spaces disjoint by construction) |
 
 Shared lexical pieces: `Lexing.lean` (the N-Triples string body and escape

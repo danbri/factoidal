@@ -97,6 +97,69 @@ Only the N-Quads grammar streams. TriG has no chunk fold. Turtle has one
 (`TurtleChunkFold`) but no agreement theorem against `parseTurtle` for the
 IBK4 dataset shape, so it stays buffered until that theorem lands.
 
+**Superseded 2026-09-05 for Turtle and N-Triples.** See the section below.
+
+## Turtle streams too (2026-09-05)
+
+What stopped Turtle was not the parser. `Syntax/TurtleChunkFold.lean` has
+streamed Turtle since the IBK3 packer landed. The quad path did not call it
+because the IBK4 route needs a `Dataset` and the fold hands back statements;
+nobody had written the twenty lines that turn one into the other.
+
+`PackStream.QuadIngestState.stream` is now a `QuadStream` with two
+alternatives — the N-Quads `StreamStateC` and the Turtle chunk fold with the
+packer's own `ingestStep` — and `quadStreamDataset` closes either one. A
+Turtle source has no named graph, so its triples are the default graph in
+source order. `quadStreams` is true for `turtle`, `ntriples` and `nquads`.
+
+### What is proved and what is measured
+
+The N-Quads route is byte-identical BY THEOREM, as above. The Turtle route
+is HALF proved:
+
+- PROVED. `Syntax.parseStatements_eq_fold` and `Syntax.parseTurtle_eq_fold`
+  state that folding statements with `Syntax.prependReverse` and reversing
+  once gives exactly the `Graph` `parseTurtle` returns.
+  `PackStream.ingestStep_eq_prependReverse` ties the packer's step to that
+  accumulator. This is the counterpart of instantiating
+  `streamConsume11_eq_batch` at the accumulator the batch parser uses.
+- NOT PROVED. That the chunk fold reaches the same accumulator whatever the
+  chunking. It rests on `TurtleStatementScan` never offering a candidate
+  that `readStatement` would read past — a lexical property of the scanner
+  that no theorem states. The IBK3 packer has always rested on it too.
+
+So Turtle byte identity is MEASURED, not proved. Do not describe it as
+proved.
+
+### Measured 2026-09-05
+
+Byte identity, `diff -r` of the previous binary's generation against the new
+one: 261 identical, 0 differed (out of 262 inputs; 1 rejected by both). The
+inputs were the W3C RDF 1.1 Turtle suite files, 40 rdf-canon N-Quads files,
+the heterogeneous Turtle fixture, the 4-named-graph TriG fixture, and a
+104,179,872-byte Turtle source (six copies of the lifesci-kgx `gene.ttl`,
+5,333,694 quads, 407 blocks).
+
+Peak memory on that 104,179,872-byte Turtle source, `/usr/bin/time -l`
+maximum resident set size, shared machine at load average 10 (before) and 21
+(after):
+
+| | Peak RSS | Bytes per source byte |
+|---|---|---|
+| buffered | 2,788,786,176 | 26.8 |
+| streaming | 1,253,408,768 | 12.0 |
+
+Ratio 0.45 after over before; 2.23 before over after. The generation was
+byte-identical.
+
+Throughput, RECORDED NOT FIXED, for whoever profiles the packer: user CPU
+went from 139.88 s to 164.43 s on that input, about 17 per cent more work.
+Wall clock went from 175.75 s to 401.47 s, but the load average doubled
+between the two runs, so the wall figure is not a measurement of the change.
+
+TriG still buffers. It has no chunk fold at all, so there is nothing to
+stream it with; writing one is a separate piece of work.
+
 ## Measured after
 
 | Input bytes | Graphs | Wall clock | Peak memory | Peak / input |
