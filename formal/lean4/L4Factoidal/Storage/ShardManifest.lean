@@ -510,15 +510,18 @@ def constantPathPredicates? : PropertyPath → Option (List WfIri)
     sound default until they receive their own planning proof.
 
     Soundness of the accepted set (BGP, `join`, `union`, `minus`, `leftJoin`,
-    `bind` and `filter` with a `backendLocal` expression, and `propertyPath`
-    over constant-IRI steps): the evaluation of each of those operators is a
-    function of its operands' solution sequences and of the current solution
-    mapping alone — `SPARQL.join`, `SPARQL.union`, `SPARQL.minus` and
-    `SPARQL.leftJoin` read no triples themselves, and a `backendLocal`
-    expression reads only the row (it carries no nested `QueryPattern`, so
-    `substituteExistentials` is the identity on it).  §18.6 `BIND(e AS ?v)`
-    extends each row of its sub-pattern with one value of `e`, so a
-    `backendLocal` `e` adds no triple read of its own.  A BGP whose every
+    `bind` and `filter` with an `Expr.existsFree` expression, and
+    `propertyPath` over constant-IRI steps): the evaluation of each of those
+    operators is a function of its operands' solution sequences and of the
+    current solution mapping alone — `SPARQL.join`, `SPARQL.union`,
+    `SPARQL.minus` and `SPARQL.leftJoin` read no triples themselves, and an
+    `existsFree` expression reads no triple: `Expr.existsPat` and
+    `Expr.notExistsPat` are the only two `Expr` constructors that carry a
+    `QueryPattern`, so `substituteExistentials` is the identity on an
+    `existsFree` expression and `Expr.evalIn` never reaches
+    `EvalEnv.dataset`.  §18.6 `BIND(e AS ?v)` extends each row of its
+    sub-pattern with one value of `e`, so an `existsFree` `e` adds no triple
+    read of its own.  A BGP whose every
     triple pattern has a constant predicate matches only triples with those
     predicates, and `constantPathPredicates?` above carries the same argument
     for a path.  By induction, evaluating an accepted pattern over the dataset
@@ -538,19 +541,28 @@ def nativeConstantPredicates? : QueryPattern → Option (List WfIri)
       let r ← nativeConstantPredicates? right
       some (l ++ r)
   | .leftJoin left right cond =>
-      if cond.backendLocal then do
+      if cond.existsFree then do
         let l ← nativeConstantPredicates? left
         let r ← nativeConstantPredicates? right
         some (l ++ r)
       else none
   | .filter condition pattern =>
-      if condition.backendLocal then nativeConstantPredicates? pattern else none
+      if condition.existsFree then nativeConstantPredicates? pattern else none
   -- §18.6 BIND: one extra binding per row of the sub-pattern, computed by
-  -- `Expr.evalIn` from the row alone when the expression is `backendLocal`.
-  -- A non-`backendLocal` expression can carry an EXISTS, which reads triples
-  -- through `EvalEnv.dataset` and would then see only the opened shards.
+  -- `Expr.evalIn` from the row alone when the expression is `existsFree`.
+  -- An expression carrying an EXISTS reads triples through `EvalEnv.dataset`
+  -- and would then see only the opened shards.
+  --
+  -- The test here is `Expr.existsFree` and NOT `Expr.backendLocal`
+  -- (https://github.com/danbri/factoidal/issues/656). `backendLocal` answers
+  -- a DIFFERENT question — may the backend evaluate this expression itself,
+  -- rather than materialise and delegate — and it excludes REGEX, REPLACE,
+  -- `IRI()`, `NOW()`, the digest functions and every §17.6 extension-function
+  -- call. None of those reads a triple. Selection is about which BLOCKS the
+  -- pattern needs, and a FILTER can only remove rows the pattern produced,
+  -- so a filter must never WIDEN the selected set.
   | .bind expression _ pattern =>
-      if expression.backendLocal then nativeConstantPredicates? pattern else none
+      if expression.existsFree then nativeConstantPredicates? pattern else none
   -- §18.4 a path contributes exactly its step IRIs when every step is a
   -- constant IRI. The subject and object positions are irrelevant here: they
   -- constrain the pairs, they do not widen the set of predicates read.
@@ -612,9 +624,10 @@ never "no answers": the caller then opens every entry. -/
 
     `none` is "cannot be established": a `GRAPH ?v`, a sub-SELECT, SERVICE,
     LATERAL, VALUES, or a FILTER / OPTIONAL / BIND expression that is not
-    `Expr.backendLocal` — such an expression may carry an `EXISTS`, which
-    reads triples through `EvalEnv.dataset` and so reads graphs this
-    collector cannot see.
+    `Expr.existsFree` — such an expression carries an `EXISTS`, which reads
+    triples through `EvalEnv.dataset` and so reads graphs this collector
+    cannot see. An expression with no `EXISTS` in it carries no
+    `QueryPattern` at all and reads no graph, whatever functions it calls.
 
     A `GRAPH <iri> { ... }` contributes its own name even when its body reads
     no triple. Section 18.6 gives `GRAPH <g> { }` one solution when `<g>`
@@ -631,15 +644,15 @@ def graphsReadFrom (active : GraphName) : QueryPattern → Option (List GraphNam
       let r ← graphsReadFrom active right
       some (l ++ r)
   | .leftJoin left right cond =>
-      if cond.backendLocal then do
+      if cond.existsFree then do
         let l ← graphsReadFrom active left
         let r ← graphsReadFrom active right
         some (l ++ r)
       else none
   | .filter cond pattern =>
-      if cond.backendLocal then graphsReadFrom active pattern else none
+      if cond.existsFree then graphsReadFrom active pattern else none
   | .bind expression _ pattern =>
-      if expression.backendLocal then graphsReadFrom active pattern else none
+      if expression.existsFree then graphsReadFrom active pattern else none
   | .graph (.iri name) pattern => do
       let inner ← graphsReadFrom (.iri name) pattern
       some (if inner.contains (.iri name) then inner else .iri name :: inner)
@@ -691,15 +704,15 @@ def quadNativeConstantPredicates? : QueryPattern → Option (List WfIri)
       let r ← quadNativeConstantPredicates? right
       some (l ++ r)
   | .leftJoin left right cond =>
-      if cond.backendLocal then do
+      if cond.existsFree then do
         let l ← quadNativeConstantPredicates? left
         let r ← quadNativeConstantPredicates? right
         some (l ++ r)
       else none
   | .filter condition pattern =>
-      if condition.backendLocal then quadNativeConstantPredicates? pattern else none
+      if condition.existsFree then quadNativeConstantPredicates? pattern else none
   | .bind expression _ pattern =>
-      if expression.backendLocal then quadNativeConstantPredicates? pattern else none
+      if expression.existsFree then quadNativeConstantPredicates? pattern else none
   | .graph _ pattern => quadNativeConstantPredicates? pattern
   | .propertyPath _ path _ => constantPathPredicates? path
   | _ => none
@@ -1503,5 +1516,32 @@ row. -/
 #guard (quadEntriesForQuery sampleQuadManifest
   (mkQuery (.select .all) (.bgp [sampleTp]) [] none []
     { orderBy := some [.asc (.existsPat (.bgp [sampleOtherTp]))] })).length == 2
+
+/-! https://github.com/danbri/factoidal/issues/656 — a FILTER may narrow a
+plan or leave it unchanged, and must never widen it. A §17.6 extension
+function reads no triple, so the bound predicate still selects its one
+entry. The same holds for REGEX, which is likewise not `Expr.backendLocal`. -/
+private def sampleExtFn : WfIri := ⟨"https://example.test/z", by decide⟩
+
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all)
+    (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp])))).map
+  Entry.predicate == [samplePredicate]
+
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all)
+    (.filter (.regex (.var "o") (.var "pat") none)
+      (.bgp [sampleTp])))).map Entry.predicate == [samplePredicate]
+
+/-! An EXISTS inside the FILTER still widens the plan: it reads triples the
+enclosing pattern never names. -/
+#guard (quadEntriesForQuery sampleQuadManifest
+  (mkQuery (.select .all)
+    (.filter (.existsPat (.bgp [sampleOtherTp])) (.bgp [sampleTp])))).length == 2
+
+/-! The IBK3 collector carries the same rule. -/
+#guard (nativeConstantPredicates?
+  (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp]))
+  == some [samplePredicate])
 
 end L4Factoidal.Storage.ShardManifest
