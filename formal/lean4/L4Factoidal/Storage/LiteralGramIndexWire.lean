@@ -34,12 +34,43 @@ the directory extents are contiguous and cover the posting area exactly. An
 encoder that emitted bytes its own decoder refuses would be a defect, and
 `#guard`s below pin the round trip and four rejections.
 
-## What version 1 does not do
+## LGI2
 
-The gaps are fixed-width `u32`. On the SKOS `skos:prefLabel` block that is
-3,018,141 bytes against a 5,571,302 byte block, 54%. A variable-length gap
-encoding brings the same postings to roughly a third of that and is a version
-2 decision, because it needs a round-trip theorem of its own.
+Version 2 changes two things and keeps every other byte rule.
+
+    magic "LGI2", version 2
+    prefix   u32 magic, u8 version, [32] targetIBKSha256,
+             u32 gramLength, u32 dictCount, u32 literalCount,
+             u32 gramCount, u32 directoryBytes, u32 postingsBytes,
+             u32 opaqueCount
+    opaque   opaqueCount ascending distinct u32 local IDs
+    directory  as LGI1, except that a run's `length` is its byte length and is
+             no longer four times its posting count
+    postings per gram: the first ID as an unsigned LEB128 varint, then each
+             later ID as the LEB128 gap from the previous one
+    u32      crc32c(payload)
+
+The gaps were fixed-width `u32` in LGI1. On the SKOS `skos:prefLabel` block
+that is 3,018,141 bytes against a 5,571,302 byte block, 54%.
+
+The opaque list holds the dictionary positions of the literals the index did
+NOT gram: the out-of-line (tag 4) literals of the version-2 term codec, whose
+lexical form is not in the block. `LiteralGramIndex.candidatesOpaque?` returns
+them for every needle it serves, and
+`LiteralGramIndex.mem_candidatesOpaque_of_opaque` states that they are always
+candidates, so the filter stays a superset when a block holds blob literals.
+
+LGI1 bytes are unchanged. An LGI1 artifact carrying a non-empty opaque list is
+refused by `supported`, because LGI1 has nowhere to write it.
+
+## Theorem status
+
+`decodeLeb128_encodeLeb128` and `parsePostings2_encodePostings2` are proved:
+the varint and one posting run round-trip. The END-TO-END LGI2 round trip is
+pinned by the `#guard`s below and NOT by a theorem, which is the position LGI1
+is in for the same reason: `decode?` reads through `ByteArray.extract` and a
+crc32c over a slice, and no lemma relates those to the encoder's list
+assembly yet.
 
 There is ONE decoder here. `TermLocalIndexWire` carries a `decodeSpec?` beside
 its `decode?` because its byte-indexed reader is an optimisation of a list
@@ -63,6 +94,11 @@ def version : UInt8 := 1
 def prefixBytes : Nat := 4 + 1 + 32 + 4 + 4 + 4 + 4 + 4 + 4
 def crcBytes : Nat := 4
 
+def magic2 : UInt32 := 0x3249474C /-- `LGI2` little endian. -/
+def version2 : UInt8 := 2
+/-- LGI1's prefix plus the u32 `opaqueCount`. -/
+def prefixBytes2 : Nat := prefixBytes + 4
+
 /-- The fixed LGI1 prefix. A range reader obtains this before it fetches the
 directory or any posting run. -/
 structure Prefix where
@@ -73,6 +109,18 @@ structure Prefix where
   gramCount : Nat
   directoryBytes : Nat
   postingsBytes : Nat
+  deriving DecidableEq
+
+/-- The fixed LGI2 prefix: LGI1's fields plus the count of opaque local IDs. -/
+structure Prefix2 where
+  targetIBKSha256 : ByteArray
+  gramLength : Nat
+  dictCount : Nat
+  literalCount : Nat
+  gramCount : Nat
+  directoryBytes : Nat
+  postingsBytes : Nat
+  opaqueCount : Nat
   deriving DecidableEq
 
 structure DirectoryEntry where
@@ -122,7 +170,10 @@ def supported (artifact : Artifact) : Bool :=
         idsAscending posting.ids &&
         fitsU32 posting.ids.length &&
         posting.ids.all (fun id => id < artifact.index.dictCount)) &&
-    gramsAscending artifact.index.postings.toList
+    gramsAscending artifact.index.postings.toList &&
+    /- LGI1 has no field for the opaque list, so an artifact carrying one is
+       refused rather than written without it. -/
+    artifact.index.opaqueIds.isEmpty
 
 /-! ## 2. Encoding -/
 
@@ -269,6 +320,301 @@ def decode? (bytes : ByteArray) : Option Artifact := do
 def entryFor? (entries : List DirectoryEntry) (wanted : List Char) : Option DirectoryEntry :=
   entries.find? (fun entry => entry.gram == wanted)
 
+/-! ## 4. LGI2
+
+### 4.1 Unsigned LEB128
+
+Seven bits of the value per byte, the low group first, the continuation bit
+set on every byte except the last. A gap below 128 therefore costs one byte
+where LGI1 spends four. -/
+
+def encodeLeb128 (n : Nat) : List UInt8 :=
+  if h : n < 128 then [UInt8.ofNat n]
+  else UInt8.ofNat (128 + n % 128) :: encodeLeb128 (n / 128)
+decreasing_by exact Nat.div_lt_self (by omega) (by omega)
+
+/-- Read one varint. `fuel` bounds the byte count, so a run of continuation
+bytes cannot make the reader walk the rest of the artifact. -/
+def decodeLeb128Go : Nat → List UInt8 → Nat → Nat → Option (Nat × List UInt8)
+  | 0, _, _, _ => none
+  | _ + 1, [], _, _ => none
+  | fuel + 1, b :: rest, shift, acc =>
+      let value := acc + (b.toNat % 128) * shift
+      if b.toNat < 128 then some (value, rest)
+      else decodeLeb128Go fuel rest (shift * 128) value
+
+/-- Five bytes carry thirty-five bits, which covers every u32 local ID and
+gap. A sixth byte is refused. -/
+def leb128Fuel : Nat := 5
+
+def decodeLeb128 (bytes : List UInt8) : Option (Nat × List UInt8) :=
+  decodeLeb128Go leb128Fuel bytes 1 0
+
+private theorem u8_toNat_ofNat {n : Nat} (h : n < 256) : (UInt8.ofNat n).toNat = n := by
+  simp [UInt8.toNat_ofNat, Nat.mod_eq_of_lt h]
+
+private theorem leb_step (n shift : Nat) :
+    n % 128 * shift + n / 128 * (shift * 128) = n * shift := by
+  have h : 128 * (n / 128) + n % 128 = n := Nat.div_add_mod n 128
+  calc n % 128 * shift + n / 128 * (shift * 128)
+      = n % 128 * shift + 128 * (n / 128) * shift := by
+        rw [Nat.mul_comm shift 128, ← Nat.mul_assoc, Nat.mul_comm (n / 128) 128]
+    _ = (128 * (n / 128) + n % 128) * shift := by
+        rw [Nat.add_mul]; exact Nat.add_comm _ _
+    _ = n * shift := by rw [h]
+
+theorem decodeLeb128Go_encodeLeb128 : ∀ (fuel n : Nat), n < 128 ^ (fuel + 1) →
+    ∀ (shift acc : Nat) (rest : List UInt8),
+      decodeLeb128Go (fuel + 1) (encodeLeb128 n ++ rest) shift acc =
+        some (acc + n * shift, rest) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+      intro n hn shift acc rest
+      have hlt : n < 128 := by simpa using hn
+      rw [encodeLeb128, dif_pos hlt]
+      simp only [List.cons_append, List.nil_append, decodeLeb128Go]
+      rw [u8_toNat_ofNat (by omega), Nat.mod_eq_of_lt hlt, if_pos hlt]
+  | succ fuel ih =>
+      intro n hn shift acc rest
+      by_cases hlt : n < 128
+      · rw [encodeLeb128, dif_pos hlt]
+        simp only [List.cons_append, List.nil_append, decodeLeb128Go]
+        rw [u8_toNat_ofNat (by omega), Nat.mod_eq_of_lt hlt, if_pos hlt]
+      · rw [encodeLeb128, dif_neg hlt]
+        simp only [List.cons_append, decodeLeb128Go]
+        have hmodlt : n % 128 < 128 := Nat.mod_lt _ (by omega)
+        rw [u8_toNat_ofNat (by omega)]
+        have hmod : (128 + n % 128) % 128 = n % 128 := by omega
+        rw [hmod, if_neg (by omega)]
+        have hdiv : n / 128 < 128 ^ (fuel + 1) := by
+          rw [Nat.div_lt_iff_lt_mul (by omega)]
+          calc n < 128 ^ (fuel + 1 + 1) := hn
+            _ = 128 ^ (fuel + 1) * 128 := by rw [Nat.pow_succ]
+        rw [ih (n / 128) hdiv (shift * 128) (acc + n % 128 * shift) rest]
+        rw [Nat.add_assoc, leb_step n shift]
+
+/-- The varint round trip for every value a u32 local ID or gap can take. -/
+theorem decodeLeb128_encodeLeb128 (n : Nat) (h : n < 4294967296) (rest : List UInt8) :
+    decodeLeb128 (encodeLeb128 n ++ rest) = some (n, rest) := by
+  have hpow : (128 : Nat) ^ 5 = 34359738368 := by decide +kernel
+  have hb : n < 128 ^ (4 + 1) := by rw [show 4 + 1 = 5 from rfl, hpow]; omega
+  have hgo := decodeLeb128Go_encodeLeb128 4 n hb 1 0 rest
+  simpa [decodeLeb128, leb128Fuel] using hgo
+
+/-! ### 4.2 Posting runs -/
+
+/-- One posting run: the first ID, then the gap to each later ID, each as a
+varint. -/
+def encodePostings2 : List Nat → Nat → List UInt8
+  | [], _ => []
+  | id :: rest, previous => encodeLeb128 (id - previous) ++ encodePostings2 rest id
+
+def postingRunBytes2 (posting : Posting) : List UInt8 := encodePostings2 posting.ids 0
+
+/-- Read one posting run, undoing the varint gaps. -/
+def parsePostings2 : Nat → List UInt8 → Nat → List Nat → Option (List Nat)
+  | 0, xs, _, reversed => if xs.isEmpty then some reversed.reverse else none
+  | count + 1, xs, previous, reversed => do
+      let (gap, rest) ← decodeLeb128 xs
+      let id := previous + gap
+      parsePostings2 count rest id (id :: reversed)
+
+/-- Non-decreasing from a starting point. `idsAscending` gives this with the
+first ID at or above zero, which every ID is. -/
+def gapsFrom (previous : Nat) : List Nat → Bool
+  | [] => true
+  | id :: rest => previous ≤ id && gapsFrom id rest
+
+/-- Every member of an ascending list is at or above its head. -/
+theorem le_of_mem_idsAscending : ∀ (head : Nat) (tail : List Nat) (j : Nat),
+    idsAscending (head :: tail) = true → j ∈ head :: tail → head ≤ j := by
+  intro head tail
+  induction tail generalizing head with
+  | nil => intro j _ hj; simp only [List.mem_singleton] at hj; omega
+  | cons next rest ih =>
+      intro j hasc hj
+      simp only [idsAscending, Bool.and_eq_true, decide_eq_true_eq] at hasc
+      rcases List.mem_cons.mp hj with rfl | hj'
+      · omega
+      · have := ih next j hasc.2 hj'
+        omega
+
+theorem gapsFrom_of_idsAscending : ∀ (ids : List Nat) (previous : Nat),
+    idsAscending ids = true → (∀ id ∈ ids, previous ≤ id) → gapsFrom previous ids = true := by
+  intro ids
+  induction ids with
+  | nil => intro previous _ _; simp [gapsFrom]
+  | cons id rest ih =>
+      intro previous hasc hle
+      have hrest : idsAscending rest = true := by
+        cases rest with
+        | nil => simp [idsAscending]
+        | cons next tail => exact (Bool.and_eq_true _ _).mp hasc |>.2
+      simp only [gapsFrom, Bool.and_eq_true, decide_eq_true_eq]
+      refine ⟨hle id (by simp), ih id hrest ?_⟩
+      intro j hj
+      exact le_of_mem_idsAscending id rest j hasc (List.mem_cons_of_mem _ hj)
+
+/-- One posting run round-trips: the varint gaps read back as the ascending
+IDs that produced them. -/
+theorem parsePostings2_encodePostings2 : ∀ (ids : List Nat) (previous : Nat)
+    (reversed : List Nat), gapsFrom previous ids = true →
+    (∀ id ∈ ids, id < 4294967296) →
+    parsePostings2 ids.length (encodePostings2 ids previous) previous reversed =
+      some (reversed.reverse ++ ids) := by
+  intro ids
+  induction ids with
+  | nil => intro previous reversed _ _; simp [parsePostings2, encodePostings2]
+  | cons id rest ih =>
+      intro previous reversed hgaps hbound
+      simp only [gapsFrom, Bool.and_eq_true, decide_eq_true_eq] at hgaps
+      have hid : id < 4294967296 := hbound id (by simp)
+      have hgap : id - previous < 4294967296 := by omega
+      simp only [List.length_cons, encodePostings2, parsePostings2]
+      rw [decodeLeb128_encodeLeb128 _ hgap]
+      simp only [bind, Option.bind]
+      have hsum : previous + (id - previous) = id := by omega
+      rw [hsum, ih id (id :: reversed) hgaps.2 (fun j hj => hbound j (by simp [hj]))]
+      simp
+
+/-- The whole run of one posting list round-trips. -/
+theorem parsePostings2_postingRunBytes2 (posting : Posting)
+    (hasc : idsAscending posting.ids = true)
+    (hbound : ∀ id ∈ posting.ids, id < 4294967296) :
+    parsePostings2 posting.ids.length (postingRunBytes2 posting) 0 [] = some posting.ids := by
+  have hgaps := gapsFrom_of_idsAscending posting.ids 0 hasc (by intro id _; omega)
+  simpa [postingRunBytes2] using
+    parsePostings2_encodePostings2 posting.ids 0 [] hgaps hbound
+
+/-! ### 4.3 The LGI2 artifact -/
+
+/-- The LGI2 encoder gate. `decode2?` re-runs every conjunct on what it
+reads. -/
+def supported2 (artifact : Artifact) : Bool :=
+  artifact.targetIBKSha256.size == 32 &&
+    artifact.index.gramLength == gramLength &&
+    fitsU32 artifact.index.dictCount && fitsU32 artifact.index.literalCount &&
+    fitsU32 artifact.index.postings.size &&
+    artifact.index.postings.toList.all (fun posting =>
+      posting.gram.length == gramLength &&
+        fitsU32 (gramBytes posting.gram).length &&
+        !posting.ids.isEmpty &&
+        idsAscending posting.ids &&
+        fitsU32 posting.ids.length &&
+        posting.ids.all (fun id => id < artifact.index.dictCount)) &&
+    gramsAscending artifact.index.postings.toList &&
+    fitsU32 artifact.index.opaqueIds.length &&
+    idsAscending artifact.index.opaqueIds &&
+    artifact.index.opaqueIds.all (fun id => id < artifact.index.dictCount)
+
+def encodeBody2 : List Posting → Nat → List (List UInt8) → List (List UInt8) →
+    (List UInt8 × List UInt8)
+  | [], _, directory, runs => (directory.reverse.flatten, runs.reverse.flatten)
+  | posting :: rest, offset, directory, runs =>
+      let run := postingRunBytes2 posting
+      encodeBody2 rest (offset + run.length)
+        (encodeDirectoryEntry posting offset run.length :: directory) (run :: runs)
+
+def encodeOpaque (ids : List Nat) : List UInt8 :=
+  ids.flatMap (fun id => writeU32LE (UInt32.ofNat id))
+
+def encode2? (artifact : Artifact) : Option ByteArray := do
+  if !supported2 artifact then none else
+  let (directory, runs) := encodeBody2 artifact.index.postings.toList 0 [] []
+  if !fitsU32 directory.length || !fitsU32 runs.length then none else
+  let payload := artifact.targetIBKSha256.data.toList ++
+    writeU32LE (UInt32.ofNat gramLength) ++
+    writeU32LE (UInt32.ofNat artifact.index.dictCount) ++
+    writeU32LE (UInt32.ofNat artifact.index.literalCount) ++
+    writeU32LE (UInt32.ofNat artifact.index.postings.size) ++
+    writeU32LE (UInt32.ofNat directory.length) ++
+    writeU32LE (UInt32.ofNat runs.length) ++
+    writeU32LE (UInt32.ofNat artifact.index.opaqueIds.length) ++
+    encodeOpaque artifact.index.opaqueIds ++ directory ++ runs
+  some <| byteArrayOfList (writeU32LE magic2 ++ [version2] ++ payload ++ writeU32LE (crc32c payload))
+
+/-- Strictly decode just the fixed-length LGI2 prefix. -/
+def decodePrefix2? (bytes : ByteArray) : Option Prefix2 := do
+  if bytes.size != prefixBytes2 then none else do
+  let input := listOfByteArray bytes
+  let foundMagic ← readU32LE input 0
+  if foundMagic != magic2 then none else do
+  let (foundVersion, afterVersion) ← parseU8 (input.drop 4)
+  if foundVersion != version2 then none else do
+  let (target, afterTarget) ← takeExact 32 afterVersion
+  let foundGramLength ← readU32LE afterTarget 0
+  let dictCount ← readU32LE afterTarget 4
+  let literalCount ← readU32LE afterTarget 8
+  let gramCount ← readU32LE afterTarget 12
+  let directoryBytes ← readU32LE afterTarget 16
+  let postingsBytes ← readU32LE afterTarget 20
+  let opaqueCount ← readU32LE afterTarget 24
+  if foundGramLength.toNat != gramLength then none else
+    some { targetIBKSha256 := byteArrayOfList target, gramLength := foundGramLength.toNat,
+           dictCount := dictCount.toNat, literalCount := literalCount.toNat,
+           gramCount := gramCount.toNat,
+           directoryBytes := directoryBytes.toNat, postingsBytes := postingsBytes.toNat,
+           opaqueCount := opaqueCount.toNat }
+
+def parseOpaque : Nat → List UInt8 → List Nat → Option (List Nat)
+  | 0, xs, reversed => if xs.isEmpty then some reversed.reverse else none
+  | count + 1, xs, reversed => do
+      let value ← readU32LE xs 0
+      parseOpaque count (xs.drop 4) (value.toNat :: reversed)
+
+/-- The LGI2 form of `entriesContiguous`. A run's byte length is no longer four
+times its posting count, because the gaps are varints, so the test is that the
+extents are contiguous from zero and that a run holds at least one ID. -/
+def entriesContiguous2 : List DirectoryEntry → Nat → Bool
+  | [], _ => true
+  | entry :: rest, expected =>
+      entry.length > 0 && entry.offset == expected && entry.postingCount > 0 &&
+        entriesContiguous2 rest (expected + entry.length)
+
+def decodeRuns2 (dictCount : Nat) (runs : ByteArray) :
+    List DirectoryEntry → List Posting → Option (List Posting)
+  | [], reversed => some reversed.reverse
+  | entry :: rest, reversed => do
+      if entry.offset + entry.length > runs.size then none else do
+      let slice := runs.extract entry.offset (entry.offset + entry.length)
+      let ids ← parsePostings2 entry.postingCount (listOfByteArray slice) 0 []
+      if ids.isEmpty || !idsAscending ids || !ids.all (fun id => id < dictCount) ||
+          entry.gram.length != gramLength then none else
+        decodeRuns2 dictCount runs rest ({ gram := entry.gram, ids } :: reversed)
+
+/-- The LGI2 admission decoder. Every encoder condition is re-run here. -/
+def decode2? (bytes : ByteArray) : Option Artifact := do
+  if bytes.size < prefixBytes2 + crcBytes then none else do
+  let header ← decodePrefix2? (bytes.extract 0 prefixBytes2)
+  let opaqueBytes := 4 * header.opaqueCount
+  let payloadLength := 32 + 28 + opaqueBytes + header.directoryBytes + header.postingsBytes
+  if bytes.size != 5 + payloadLength + crcBytes then none else do
+  let storedCrc ← readU32LE (listOfByteArray (bytes.extract (bytes.size - crcBytes) bytes.size)) 0
+  if storedCrc !=
+      (crc32cAppendArray 0xFFFFFFFF (bytes.extract 5 (5 + payloadLength)) ^^^ 0xFFFFFFFF) then
+    none else do
+  let opaqueArea := bytes.extract prefixBytes2 (prefixBytes2 + opaqueBytes)
+  let directoryStart := prefixBytes2 + opaqueBytes
+  let directory := bytes.extract directoryStart (directoryStart + header.directoryBytes)
+  let runs := bytes.extract (directoryStart + header.directoryBytes)
+    (directoryStart + header.directoryBytes + header.postingsBytes)
+  let opaqueIds ← parseOpaque header.opaqueCount (listOfByteArray opaqueArea) []
+  if !idsAscending opaqueIds || !opaqueIds.all (fun id => id < header.dictCount) then none else do
+  let (entries, trailing) ← parseDirectory header.gramCount (listOfByteArray directory) []
+  if !trailing.isEmpty || !entriesContiguous2 entries 0 || !entriesAscending entries ||
+      entries.foldl (fun total entry => total + entry.length) 0 != runs.size then none else do
+  let postings ← decodeRuns2 header.dictCount runs entries []
+  some { targetIBKSha256 := header.targetIBKSha256
+         index := { gramLength := gramLength, dictCount := header.dictCount,
+                    literalCount := header.literalCount,
+                    postings := postings.toArray, opaqueIds := opaqueIds } }
+
+/-- The encoded byte count of one index in each version, for the size
+measurement of the design record. -/
+def encodedBytes1 (artifact : Artifact) : Option Nat := (encode? artifact).map ByteArray.size
+def encodedBytes2 (artifact : Artifact) : Option Nat := (encode2? artifact).map ByteArray.size
+
 private def lit (s : String) : Term := .literal (Literal.string s)
 private def ex : WfIri := ⟨"https://example.test/a", by decide⟩
 private def sampleDict : Array Term :=
@@ -299,5 +645,57 @@ private def outOfRange : Artifact :=
   == some (candidatesSpec sampleDict "water")
 #guard ((decode? sampleBytes).map (fun a => candidates? a.index "glacier"))
   == some (candidatesSpec sampleDict "glacier")
+
+/-! ## LGI2 samples
+
+The same fixture with an opaque list, through the version-2 codec. LGI1 bytes
+are untouched: every `#guard` above still runs against `encode?`/`decode?`. -/
+
+private def sample2 : Artifact :=
+  { sample with index := { sample.index with opaqueIds := [3] } }
+private def sample2Bytes : ByteArray := (encode2? sample2).getD ByteArray.empty
+private def sample2NoOpaque : Artifact := sample
+private def unsortedOpaque : Artifact :=
+  { sample with index := { sample.index with opaqueIds := [3, 3] } }
+private def outOfRangeOpaque : Artifact :=
+  { sample with index := { sample.index with opaqueIds := [99] } }
+
+#guard supported2 sample2
+#guard decode2? sample2Bytes == some sample2
+#guard decode2? ((encode2? sample2NoOpaque).getD ByteArray.empty) == some sample2NoOpaque
+#guard (decode2? (corrupt sample2Bytes)).isNone
+#guard (decode2? (sample2Bytes.extract 0 (sample2Bytes.size - 1))).isNone
+#guard (encode2? unsortedOpaque).isNone
+#guard (encode2? outOfRangeOpaque).isNone
+-- LGI1 has no field for the opaque list, so it refuses an artifact with one.
+#guard (encode? sample2).isNone
+#guard supported sample
+-- Neither decoder reads the other's bytes: the magic and the version differ.
+#guard (decode? sample2Bytes).isNone
+#guard (decode2? sampleBytes).isNone
+#guard (decodePrefix2? (sample2Bytes.extract 0 prefixBytes2)).map Prefix2.opaqueCount == some 1
+#guard prefixBytes2 == prefixBytes + 4
+-- The candidate set of the decoded LGI2 index is the specification's union.
+#guard ((decode2? sample2Bytes).map (fun a => candidatesOpaque? a.index "water"))
+  == some (candidatesSpecOpaque sampleDict [3] "water")
+#guard ((decode2? sample2Bytes).map (fun a => candidatesOpaque? a.index "bicycle"))
+  == some (candidatesSpecOpaque sampleDict [3] "bicycle")
+-- The varint. 127 is one byte, 128 is two, 16,383 is two, 16,384 is three.
+#guard encodeLeb128 0 == [0]
+#guard encodeLeb128 127 == [127]
+#guard (encodeLeb128 128).length == 2
+#guard (encodeLeb128 16383).length == 2
+#guard (encodeLeb128 16384).length == 3
+#guard (encodeLeb128 4294967295).length == 5
+#guard decodeLeb128 (encodeLeb128 4294967295 ++ [9]) == some (4294967295, [9])
+#guard decodeLeb128 (encodeLeb128 300) == some (300, [])
+-- LGI2 is smaller than LGI1 on this fixture, which has small gaps.
+#guard match encodedBytes1 sample, encodedBytes2 sample with
+  | some one, some two => two < one
+  | _, _ => false
+
+#print axioms decodeLeb128_encodeLeb128
+#print axioms parsePostings2_encodePostings2
+#print axioms parsePostings2_postingRunBytes2
 
 end L4Factoidal.Storage.LiteralGramIndexWire

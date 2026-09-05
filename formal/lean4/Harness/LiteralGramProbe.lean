@@ -21,6 +21,7 @@ No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.LiteralGramIndex
+import L4Factoidal.Storage.LiteralGramIndexWire
 
 open L4Factoidal.RDF
 open L4Factoidal.SPARQL
@@ -127,6 +128,18 @@ def run (args : List String) : IO UInt32 := do
             let t2 ← IO.monoMsNow
             IO.println s!"lgi build {t1 - t0} ms, grams {idx.postings.size}, postings {postings}, literals {idx.literalCount}"
             IO.println s!"lgi encoded bytes {encodedBytes idx} ({(encodedBytes idx) * 100 / bytes.size}% of the block)"
+            /- The two wire sizes, from the encoders themselves rather than
+               from the layout arithmetic above. An IBK4 block has no
+               out-of-line literal, so `opaqueIds` is empty here and the whole
+               difference is the LEB128 gap encoding. -/
+            let wireArtifact : LiteralGramIndexWire.Artifact :=
+              { targetIBKSha256 := ByteArray.mk (Array.replicate 32 0), index := idx }
+            match LiteralGramIndexWire.encode? wireArtifact,
+                  LiteralGramIndexWire.encode2? wireArtifact with
+            | some one, some two =>
+                IO.println s!"lgi1 wire bytes {one.size} ({one.size * 100 / bytes.size}% of the block)"
+                IO.println s!"lgi2 wire bytes {two.size} ({two.size * 100 / bytes.size}% of the block)"
+            | _, _ => IO.println "lgi wire encode refused"
             IO.println s!"object index build {t2 - t1} ms"
             let mut failures := 0
             /- Best of five. The measurement machine is shared, so a single
