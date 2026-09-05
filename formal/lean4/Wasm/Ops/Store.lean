@@ -578,19 +578,33 @@ def admitBlobs (op : String) (refs : List ArtifactRef)
 def blobLookup (blobs : BlobBytes) : ByteArray → Option ByteArray :=
   fun digest => (blobs.find? fun pair => pair.1 == digest.toList).map Prod.snd
 
-def ibk5QuadsOf (op : String) (entry : Entry) (bytes : ByteArray) (blobs : BlobBytes) :
-    Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
+/-- Decode one IBK5 block and hold it to the row count its manifest entry
+declares. The block is returned so a caller that also wants the `WireTerm`
+dictionary — `storeOpen`, for its candidate-filter indexes — decodes once. -/
+def ibk5BlockOf (op : String) (entry : Entry) (bytes : ByteArray) :
+    Except String L4Factoidal.Storage.IndexedBlockWireV5.QuadBlock := do
   let key := entry.artifact.key.value
   let block ← match L4Factoidal.Storage.IndexedBlockWireV5.decode bytes with
     | none => throw s!"{op}: artifact '{key}' is not a decodable IBK5 block"
     | some block => pure block
   if block.rows.size != entry.rows then
     throw s!"{op}: artifact '{key}' holds {block.rows.size} rows, the manifest declares {entry.rows}"
+  pure block
+
+/-- Resolve one decoded IBK5 block against the admitted blobs. -/
+def resolveIbk5 (op : String) (entry : Entry)
+    (block : L4Factoidal.Storage.IndexedBlockWireV5.QuadBlock) (blobs : BlobBytes) :
+    Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
   match L4Factoidal.Storage.IndexedBlockWireV5.resolveBlock
       L4Factoidal.Crypto.sha256Hacl (blobLookup blobs) block with
   | none =>
-      throw s!"{op}: artifact '{key}' names an out-of-line literal whose bytes are absent, of the wrong extent, or of the wrong SHA-256"
-  | some quads => pure quads
+      .error s!"{op}: artifact '{entry.artifact.key.value}' names an out-of-line literal whose bytes are absent, of the wrong extent, or of the wrong SHA-256"
+  | some quads => .ok quads
+
+def ibk5QuadsOf (op : String) (entry : Entry) (bytes : ByteArray) (blobs : BlobBytes) :
+    Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
+  let block ← ibk5BlockOf op entry bytes
+  resolveIbk5 op entry block blobs
 
 private def readIbk3 (sources : List (String × ArtifactSource)) (blob : ByteArray) :
     List Entry → List Triple → Except String (List Triple)

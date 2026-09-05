@@ -14,7 +14,7 @@ These operations hold that work:
 
   storeOpen(manifestHex, artifactsJson) + blob
     -> {"ok":true,"handle":"s1","identity":"…","layout":"…","wireVersion":N,
-        "artifacts":N,"bytes":N,"rows":N}
+        "artifacts":N,"bytes":N,"rows":N,"blobs":N}
      | {"ok":false,"error":"…"}
   storeHandleQuery(handle, sparql)
     -> the SAME envelope family `storeQuery` answers with, unchanged:
@@ -25,6 +25,28 @@ These operations hold that work:
         "handleCap":N,"bytesCap":N}
   storeHandleClose(handle)
     -> {"ok":true}
+
+## Wire version 10
+
+An SBM10 generation is opened exactly as an SBM9 one, with two additions, and
+both are paid ONCE at `storeOpen`:
+
+* the region must carry the BLOB artifacts the retained entries name, which
+  `storeQueryPlan` lists as `blobKeys`. Each is admitted by the SHA-256 the
+  manifest blob table commits, like any other artifact, and a blob the host
+  did not supply refuses the open by name. Every IBK5 block is then RESOLVED
+  once, so a query never re-reads an out-of-line literal;
+* the two candidate filters go through `BlockV5Plan.literalCandidates?` and
+  `BlockV5Plan.geoCandidates?`. An out-of-line literal has no lexical form in
+  the block, so it carries no gram and no bounding box; both functions union
+  the block's out-of-line positions into every candidate set, which is what
+  keeps the set a SUPERSET of the matching terms. Taking `candidates?`
+  directly would answer no row for a needle inside a 70,000-byte literal and
+  drop a polygon above the inline ceiling from a `geof:` filter.
+
+The retained-byte cap counts blob bytes beside block bytes, because both are
+retained. `storeHandleList` and `storeHandleQuery` answer the same members
+they always did; only the open envelope gains `"blobs"`.
 
 ## The trust argument is unchanged; it moves to `storeOpen`
 
@@ -169,6 +191,7 @@ import L4Factoidal.Storage.LiteralGramIndexWire
 import L4Factoidal.Storage.LiteralIndexPlan
 import L4Factoidal.Storage.GeoBBoxIndexWire
 import L4Factoidal.Storage.GeoIndexPlan
+import L4Factoidal.Storage.BlockV5Plan
 
 namespace L4Wasm.Ops
 
@@ -197,6 +220,12 @@ denotes: triples for an IBK3 predicate block, quads for an IBK4 block. -/
 inductive RetainedRows where
   | ibk3 (triples : List Triple)
   | ibk4 (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
+  /-- An IBK5 block, RESOLVED: every out-of-line literal was fetched from the
+      blob the manifest names, checked against its byte extent and its
+      SHA-256, and turned into an ordinary `RDF.Term` once, at `storeOpen`.
+      A query therefore never re-reads a blob, which is the point of a
+      handle. -/
+  | ibk5 (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
 
 /-- What one block's candidate-filter sidecars let a query skip.
 
@@ -219,6 +248,16 @@ structure RetainedIndexes where
   rows : Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow
   objectRows : Array (Array Nat)
   nonLiteralRows : Array Nat
+  /-- The decoded IBK5 block, present only for a wire-version-10 entry. It
+      carries the `WireTerm` DICTIONARY, which is what says which dictionary
+      positions are out-of-line literals. Both candidate filters need that:
+      an out-of-line literal has no lexical form in the block, so it carries
+      no gram and no bounding box, and it must be added to every candidate
+      set by `BlockV5Plan.literalCandidates?` and
+      `BlockV5Plan.geoCandidates?` or a query would drop the rows that hold
+      it. `none` is an IBK4 entry, whose candidate sets come straight from
+      the two indexes. -/
+  v5 : Option L4Factoidal.Storage.IndexedBlockWireV5.QuadBlock := none
 
 /-- One admitted artifact, decoded. `bytes` and `rows` are the manifest's own
 declarations, which admission has already checked the bytes against.
@@ -243,11 +282,13 @@ structure OpenStore where
   identity : String
   layout : String
   wireVersion : Nat
-  ibk4 : Bool
+  codec : StoreCodec
   manifest : Manifest
   artifacts : List RetainedArtifact
   retainedBytes : Nat
   retainedRows : Nat
+  /-- How many out-of-line literals this handle resolved at `storeOpen`. -/
+  retainedBlobs : Nat := 0
   ds : Dataset
   backend : Option DatasetBackend
 
@@ -264,37 +305,42 @@ private def ibk3RowsOf (art : RetainedArtifact) : List Triple :=
   match art.payload with
   | .ibk3 triples => triples
   | .ibk4 _ => []
+  | .ibk5 _ => []
 
-private def ibk4RowsOf (art : RetainedArtifact) :
+/-- The quads of a retained quad block, IBK4 or IBK5. An IBK5 block's rows
+are already resolved, so the two arms denote the same type. -/
+private def quadRowsOf (art : RetainedArtifact) :
     List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow :=
   match art.payload with
   | .ibk4 quads => quads
+  | .ibk5 quads => quads
   | .ibk3 _ => []
 
 /-- The dataset denoted by a set of retained artifacts. The IBK3 arm puts
 every triple in the default graph and the IBK4 arm takes the quads' own graph
 names, exactly as `storeQuery` does for the blocks it read. -/
-def datasetOfRetained (ibk4 : Bool) (arts : List RetainedArtifact) : Dataset :=
-  if ibk4 then datasetOfQuads (arts.flatMap ibk4RowsOf)
+def datasetOfRetained (quads : Bool) (arts : List RetainedArtifact) : Dataset :=
+  if quads then datasetOfQuads (arts.flatMap quadRowsOf)
   else { default := arts.flatMap ibk3RowsOf, named := [] }
 
 /-- The indexed backend for such a dataset, or `none` where the reference
 evaluator is required (an IBK4 dataset with a blank-node graph name). -/
-def backendOfRetained (ibk4 : Bool) (ds : Dataset) : Option DatasetBackend :=
-  if ibk4 then (if namesAreIris ds then some (indexedDatasetBackend ds) else none)
+def backendOfRetained (quads : Bool) (ds : Dataset) : Option DatasetBackend :=
+  if quads then (if namesAreIris ds then some (indexedDatasetBackend ds) else none)
   else some (indexedDatasetBackend ds)
 
 /-! ## storeOpen -/
 
 /-- Which codec a manifest's layout names, with the same two refusals
 `planFor` carries. -/
-def storeLayoutIbk4? (op : String) (manifest : Manifest) : Except String Bool :=
+def storeCodec? (op : String) (manifest : Manifest) : Except String StoreCodec :=
   if !rangeCommitted manifest then
     .error s!"{op}: this manifest carries no fixed-chunk Merkle commitment"
-  else if isIbk4Layout manifest.layout then .ok true
-  else if isIbk3Layout manifest.layout then .ok false
+  else if isIbk5Layout manifest.layout then .ok .ibk5
+  else if isIbk4Layout manifest.layout then .ok .ibk4
+  else if isIbk3Layout manifest.layout then .ok .ibk3
   else
-    .error s!"{op}: layout '{manifest.layout}' is neither an IBK3 nor an IBK4 generation"
+    .error s!"{op}: layout '{manifest.layout}' is not an IBK3, IBK4 or IBK5 generation"
 
 /-- One sidecar the manifest declared, decoded and checked against this block,
 or `none`. Every `none` is a FALLBACK, not an error: the handle then scans,
@@ -306,6 +352,25 @@ private def retainedSidecar? {α : Type} (op : String) (ref? : Option ArtifactRe
   let _ ← supplied? sources ref.key.value
   let indexBytes ← (admitRef op ref sources blob).toOption
   decode indexBytes
+
+/-- The two row-position tables both codecs need, over one block's rows:
+`objectRows` maps a dictionary local ID to the row positions whose OBJECT is
+that term (the OLI2 role, rebuilt here because no manifest below version 10
+commits a graph-aware OLI2), and `nonLiteralRows` is every row whose object is
+not a literal. An OUT-OF-LINE literal IS a literal, so its rows are not in
+`nonLiteralRows`; they reach a query through the opaque candidate list
+instead. -/
+private def rowTables (dictSize rowCount : Nat)
+    (objectOf : Nat → Nat) (literalAt : Nat → Bool) : Array (Array Nat) × Array Nat :=
+  Id.run do
+    let mut objectRows : Array (Array Nat) := Array.replicate dictSize #[]
+    let mut nonLiteralRows : Array Nat := #[]
+    for i in [0 : rowCount] do
+      let o := objectOf i
+      if o < objectRows.size then
+        objectRows := objectRows.set! o ((objectRows[o]!).push i)
+      if !literalAt o then nonLiteralRows := nonLiteralRows.push i
+    pure (objectRows, nonLiteralRows)
 
 /-- Build the retained candidate-filter indexes of one IBK4 block, or `none`
 when the manifest declares neither sidecar, the host supplied bytes for
@@ -334,42 +399,80 @@ def retainedIndexes? (op : String) (entry : Entry)
   let literal? := literal?.filter fun index => index.dictCount == block.dict.size
   let geo? := geo?.filter fun index => index.dictCount == block.dict.size
   if literal?.isNone && geo?.isNone then none else
-  some (Id.run do
-    let mut objectRows : Array (Array Nat) := Array.replicate block.dict.size #[]
-    let mut nonLiteralRows : Array Nat := #[]
-    for h : i in [0 : block.rows.size] do
-      let o := block.rows[i].o
-      if o < objectRows.size then
-        objectRows := objectRows.set! o ((objectRows[o]!).push i)
-      match block.dict[o]? with
-      | some (.literal _) => pure ()
-      | _ => nonLiteralRows := nonLiteralRows.push i
-    pure { literal := literal?, geo := geo?, rows, objectRows, nonLiteralRows })
+  let (objectRows, nonLiteralRows) :=
+    rowTables block.dict.size block.rows.size
+      (fun i => (block.rows[i]?).map (fun row => row.o) |>.getD 0)
+      (fun o => match block.dict[o]? with | some (.literal _) => true | _ => false)
+  some { literal := literal?, geo := geo?, rows, objectRows, nonLiteralRows, v5 := none }
+
+/-- The same, for an IBK5 block: LGI2 in the `literalIndex` role, GBI1
+unchanged in the `geoIndex` role, and the decoded block retained so both
+candidate paths can add its out-of-line literals. The `rows` are the
+RESOLVED quads, in the block's own row order, so a candidate position still
+names the same row it names in the block. -/
+def retainedIndexesV5? (op : String) (entry : Entry)
+    (sources : List (String × ArtifactSource)) (blob : ByteArray)
+    (quads : List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
+    (block : L4Factoidal.Storage.IndexedBlockWireV5.QuadBlock) :
+    Option RetainedIndexes := do
+  let literal? := retainedSidecar? op entry.literalIndex sources blob (fun bytes =>
+    match L4Factoidal.Storage.LiteralGramIndexWire.decode2? bytes with
+    | some artifact =>
+        if artifact.targetIBKSha256 == entry.artifact.sha256 then some artifact.index else none
+    | none => none)
+  let geo? := retainedSidecar? op entry.geoIndex sources blob (fun bytes =>
+    match L4Factoidal.Storage.GeoBBoxIndexWire.decode? bytes with
+    | some artifact =>
+        if artifact.targetIBKSha256 == entry.artifact.sha256 then some artifact.index else none
+    | none => none)
+  if literal?.isNone && geo?.isNone then none else do
+  let rows := quads.toArray
+  if block.rows.size != rows.size then none else
+  let literal? := literal?.filter fun index => index.dictCount == block.dict.size
+  let geo? := geo?.filter fun index => index.dictCount == block.dict.size
+  if literal?.isNone && geo?.isNone then none else
+  let (objectRows, nonLiteralRows) :=
+    rowTables block.dict.size block.rows.size
+      (fun i => (block.rows[i]?).map (fun row => row.o) |>.getD 0)
+      (fun o => match block.dict[o]? with
+                | some (.inline (.literal _)) => true
+                | some (.blob _) => true
+                | _ => false)
+  some { literal := literal?, geo := geo?, rows, objectRows, nonLiteralRows, v5 := some block }
 
 /-- Admit and decode each selected entry, in manifest order. Every artifact
 goes through the same `admitArtifact` `storeQuery` uses, so the digest check
 is the same check in the same place in the sequence. -/
-def readRetained (op : String) (ibk4 : Bool)
+def readRetained (op : String) (codec : StoreCodec) (blobs : BlobBytes)
     (sources : List (String × ArtifactSource)) (blob : ByteArray) :
     List Entry → List RetainedArtifact → Except String (List RetainedArtifact)
   | [], acc => pure acc.reverse
   | entry :: rest, acc => do
       let bytes ← admitArtifact op entry sources blob
-      let (payload, literal) ← if ibk4 then
+      let (payload, indexes) ← match codec with
+        | .ibk5 =>
+            (do
+              -- ONE decode: the resolved rows and the dictionary the
+              -- candidate filters need come from the same block.
+              let block ← ibk5BlockOf op entry bytes
+              let quads ← resolveIbk5 op entry block blobs
+              pure (RetainedRows.ibk5 quads,
+                    retainedIndexesV5? op entry sources blob quads block))
+        | .ibk4 =>
             (do
               let quads ← ibk4QuadsOf op entry bytes
               pure (RetainedRows.ibk4 quads,
                     retainedIndexes? op entry sources blob quads bytes))
-          else
+        | .ibk3 =>
             (do let triples ← ibk3TriplesOf op entry bytes
                 pure (RetainedRows.ibk3 triples, none))
-      readRetained op ibk4 sources blob rest
+      readRetained op codec blobs sources blob rest
         ({ key := entry.artifact.key.value
          , predicate := entry.predicate
          , bytes := entry.artifact.bytes
          , rows := entry.rows
          , payload
-         , indexes := literal } :: acc)
+         , indexes } :: acc)
 
 /-- Every key an entry declares, in any role: the block itself and each
 sidecar the manifest names for it.
@@ -383,12 +486,18 @@ IBK3 generation with `artifact 'predicate-0.ibk3.sri2' is not declared
 by this manifest` (measured 2026-09-05 on the bundled sample store).
 A handle does not USE the SRI2, TLI1 and OLI2 sidecars, but they ARE
 declared, and refusing a declared artifact is a different statement from
-refusing an undeclared one. -/
-private def entryDeclaredKeys (entry : Entry) : List String :=
+refusing an undeclared one.
+
+An SBM10 entry also declares the BLOB artifacts its dictionary names. They
+are manifest-level files, so their keys are resolved through the manifest's
+own blob table; a host that supplies the blobs `storeQueryPlan` listed must
+not be told they are undeclared. -/
+private def entryDeclaredKeys (manifest : Manifest) (entry : Entry) : List String :=
   entry.artifact.key.value ::
     ([entry.subjectIndex, entry.termIndex, entry.objectIndex,
       entry.literalIndex, entry.geoIndex].filterMap
-        (fun ref? => ref?.map fun ref => ref.key.value))
+        (fun ref? => ref?.map fun ref => ref.key.value)) ++
+    entryBlobKeys manifest entry
 
 /-- Every key the host supplied bytes for must be a key this manifest
 declares; an unknown key is a host fault, not a silently ignored argument. -/
@@ -396,7 +505,7 @@ private def checkSuppliedKeys (op : String) (manifest : Manifest)
     (sources : List (String × ArtifactSource)) : Except String Unit :=
   match sources.find? (fun pair =>
       !(manifest.entries.any fun entry =>
-          (entryDeclaredKeys entry).contains pair.1)) with
+          (entryDeclaredKeys manifest entry).contains pair.1)) with
   | some (key, _) => .error s!"{op}: artifact '{key}' is not declared by this manifest"
   | none => pure ()
 
@@ -404,8 +513,11 @@ private def checkSuppliedKeys (op : String) (manifest : Manifest)
 bytes every already-open handle retains; `entries` are the manifest entries
 this open would add. It is checked BEFORE any artifact is hashed or decoded,
 so a refusal costs the manifest decode and nothing more. -/
-def checkHandleBytes (held : Nat) (entries : List Entry) : Except String Unit := do
-  let want := held + totalBytesOf entries
+def checkHandleBytes (held : Nat) (entries : List Entry)
+    (blobBytes : Nat := 0) : Except String Unit := do
+  -- An out-of-line literal is bytes the handle retains, so it is counted
+  -- beside the blocks. It is zero below wire version 10.
+  let want := held + totalBytesOf entries + blobBytes
   if want > maxStoreHandleBytes then
     throw s!"storeOpen: this open would retain {want} artifact bytes, the cap is {maxStoreHandleBytes}"
   pure ()
@@ -415,27 +527,34 @@ result. -/
 private def buildOpenStore (held : Nat) (manifestHex artifactsJson : String)
     (blob : ByteArray) : Except String OpenStore := do
   let manifest ← decodeManifest? "storeOpen" manifestHex
-  let ibk4 ← storeLayoutIbk4? "storeOpen" manifest
+  let codec ← storeCodec? "storeOpen" manifest
   let sources ← artifactSources "storeOpen" artifactsJson
   checkSuppliedKeys "storeOpen" manifest sources
   let entries := manifest.entries.filter fun entry =>
     sources.any fun pair => pair.1 == entry.artifact.key.value
   if entries.isEmpty then
     throw "storeOpen: no artifact bytes were supplied; a handle retains at least one block"
-  checkHandleBytes held entries
-  let artifacts ← readRetained "storeOpen" ibk4 sources blob entries []
-  let ds := datasetOfRetained ibk4 artifacts
+  -- Every out-of-line literal the retained entries name. A blob the host did
+  -- not supply refuses the OPEN, by name: a handle that answered without one
+  -- would answer a shorter literal than the block states.
+  let blobRefs := planBlobRefs manifest entries
+  checkHandleBytes held entries (blobBytesOf blobRefs)
+  let blobs ← admitBlobs "storeOpen" blobRefs sources blob
+  let artifacts ← readRetained "storeOpen" codec blobs sources blob entries []
+  let quads := codec != .ibk3
+  let ds := datasetOfRetained quads artifacts
   pure { ordinal := 0
        , identity := hexOfBytes manifest.sourceIdentity
        , layout := manifest.layout
        , wireVersion := manifest.version
-       , ibk4
+       , codec
        , manifest
        , artifacts
-       , retainedBytes := totalBytesOf entries
+       , retainedBytes := totalBytesOf entries + blobBytesOf blobRefs
        , retainedRows := totalRowsOf entries
+       , retainedBlobs := blobRefs.length
        , ds
-       , backend := backendOfRetained ibk4 ds }
+       , backend := backendOfRetained quads ds }
 
 private def openStoreJson (handle : String) (store : OpenStore) : List (String × Json) :=
   [ ("handle", .string handle)
@@ -474,7 +593,10 @@ def storeOpen (manifestHex artifactsJson : String) (blob : ByteArray) : IO Strin
         let handle := s!"s{n}"
         let opened := { store with ordinal := n }
         storeHandleTable.modify (·.insert handle opened)
-        pure (okWith (openStoreJson handle opened))
+        -- The open envelope names how many out-of-line literals the handle
+        -- resolved. `storeHandleList` reports the same rows it always did.
+        pure (okWith (openStoreJson handle opened ++
+          [("blobs", .number (toString opened.retainedBlobs))]))
 
 /-! ## The literal search path
 
@@ -500,13 +622,37 @@ def rowsOfCandidates (retained : RetainedIndexes) (extra : Array Nat) (ids : Lis
   let ordered := positions.qsort (fun a b => decide (a < b))
   pure (ordered.filterMap fun position => retained.rows[position]?)
 
+/-- The candidate dictionary positions of one needle. An IBK5 block goes
+through `BlockV5Plan.literalCandidates?`, which unions the block's out-of-line
+literals into every candidate set the LGI2 index can serve: such a literal has
+no lexical form in the block, so it carries no gram, and without the union a
+needle inside a 70,000-byte literal would answer no row. -/
+def literalCandidatePositions? (retained : RetainedIndexes) (needle : String) :
+    Option (List Nat) := do
+  let index ← retained.literal
+  match retained.v5 with
+  | some _ => L4Factoidal.Storage.BlockV5Plan.literalCandidates? index needle
+  | none => L4Factoidal.Storage.LiteralGramIndex.candidates? index needle
+
 def literalRows? (retained : RetainedIndexes)
     (plan : L4Factoidal.Storage.LiteralIndexPlan.Plan) :
     Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
-  let index ← retained.literal
-  let ids ← L4Factoidal.Storage.LiteralGramIndex.candidates? index plan.needle
+  let ids ← literalCandidatePositions? retained plan.needle
   some (rowsOfCandidates retained
     (if plan.keepNonLiterals then retained.nonLiteralRows else #[]) ids)
+
+/-- The candidate dictionary positions of one geometry test. GBI1 is
+unchanged at wire version 10 and has no field for the out-of-line literals, so
+the CALLER adds them: `BlockV5Plan.geoCandidates?` is that union, and without
+it a polygon above the inline ceiling would be dropped before the filter saw
+it. -/
+def geoCandidatePositions? (retained : RetainedIndexes)
+    (plan : L4Factoidal.Storage.GeoIndexPlan.Plan) : Option (List Nat) := do
+  let index ← retained.geo
+  match retained.v5 with
+  | some block =>
+      L4Factoidal.Storage.BlockV5Plan.geoCandidates? block index plan.op plan.query
+  | none => L4Factoidal.Storage.GeoBBoxIndex.candidates? index plan.op plan.query
 
 /-- The rows of one block a geometry `FILTER` can reach: the candidate terms'
 rows and nothing else. No non-literal row is kept, because `Geo.wktArg`
@@ -517,8 +663,7 @@ geometry outside the proved fragment — and the caller must scan. -/
 def geoRows? (retained : RetainedIndexes)
     (plan : L4Factoidal.Storage.GeoIndexPlan.Plan) :
     Option (Array L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
-  let index ← retained.geo
-  let ids ← L4Factoidal.Storage.GeoBBoxIndex.candidates? index plan.op plan.query
+  let ids ← geoCandidatePositions? retained plan
   some (rowsOfCandidates retained #[] ids)
 
 /-- The whole planned artifact set restricted by one candidate filter, or
@@ -596,7 +741,7 @@ def storeHandleQuery (h sparql : String) : IO String := do
          `CONTAINS`/`STRSTARTS`/`STRENDS` conjunct and `GeoIndexPlan` needs a
          `geof:` call. The literal plan is tried first, and its answer is used
          when it applies. -/
-      match (if store.ibk4 then
+      match (if store.codec != .ibk3 then
                ((L4Factoidal.Storage.LiteralIndexPlan.plan? query).bind
                   (literalRestricted? planned)).orElse (fun _ =>
                 (L4Factoidal.Storage.GeoIndexPlan.plan? query).bind
@@ -609,8 +754,9 @@ def storeHandleQuery (h sparql : String) : IO String := do
         if planKeys.length == store.artifacts.length then
           pure (queryParsedDatasetWith store.ds store.backend sparql extra extIris)
         else
-          let ds := datasetOfRetained store.ibk4 planned
-          pure (queryParsedDatasetWith ds (backendOfRetained store.ibk4 ds) sparql extra extIris)
+          let quads := store.codec != .ibk3
+          let ds := datasetOfRetained quads planned
+          pure (queryParsedDatasetWith ds (backendOfRetained quads ds) sparql extra extIris)
     match outcome with
     | .error e => pure (errJson e)
     | .ok envelope => pure envelope
