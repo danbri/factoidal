@@ -3,7 +3,9 @@
 //
 // WHAT THIS FILE IS ALLOWED TO DO
 // Read CURRENT, read a manifest file by name, read the artifact files the
-// engine's plan named, concatenate their bytes, and hand them over. It
+// engine's plan named -- blocks, index sidecars, and the `blob-<hex>.lit`
+// out-of-line literals of wire version 10 -- concatenate their bytes, and
+// hand them over. It
 // never parses a manifest, never verifies a digest, never decodes a block
 // and never decides which artifact answers a query. Every one of those is
 // a format decision and it lives in `formal/lean4/Wasm/Ops/Store.lean`
@@ -192,6 +194,22 @@ function capDecision (engine, store, sparql) {
   }
 }
 
+/** Read the named artifacts and concatenate them into one region. */
+function regionOf (store, keys) {
+  const chunks = keys.map((key) => readWhole(joinPath(store.generationDir, key)))
+  let total = 0
+  for (const chunk of chunks) total += chunk.length
+  const blob = new Uint8Array(total)
+  const artifacts = []
+  let offset = 0
+  for (let index = 0; index < chunks.length; index += 1) {
+    blob.set(chunks[index], offset)
+    artifacts.push({ key: keys[index], offset, len: chunks[index].length })
+    offset += chunks[index].length
+  }
+  return { blob, artifacts, total }
+}
+
 /**
  * Evaluate one SPARQL query against one generation.
  *
@@ -210,17 +228,12 @@ export function queryStore (engine, store, sparql) {
   if (empty !== null) {
     return { plan, result: empty, blobBytes: 0, artifacts: [] }
   }
-  const chunks = plan.keys.map((key) => readWhole(joinPath(store.generationDir, key)))
-  let total = 0
-  for (const chunk of chunks) total += chunk.length
-  const blob = new Uint8Array(total)
-  const artifacts = []
-  let offset = 0
-  for (let index = 0; index < chunks.length; index += 1) {
-    blob.set(chunks[index], offset)
-    artifacts.push({ key: plan.keys[index], offset, len: chunks[index].length })
-    offset += chunks[index].length
-  }
+  // `blobKeys` are the out-of-line literals the selected blocks name (wire
+  // version 10). A block holds only their byte extent and SHA-256, so a
+  // query that touches one needs its file as much as it needs the block.
+  // The engine chose these keys; this host reads the files and nothing more.
+  const keys = plan.keys.concat(plan.blobKeys ?? [])
+  const { blob, artifacts, total } = regionOf(store, keys)
   let result
   try {
     result = engine.callBlobIO('storeQuery',
@@ -274,28 +287,16 @@ export function turtleOfNQuads (engine, nquads) {
  * need no change here: the engine names them under `entry.sidecars`.
  */
 function manifestKeys (engine, store) {
+  const envelope = inspectManifest(engine, store)
   const keys = []
-  for (const entry of inspectManifest(engine, store).entries) {
+  for (const entry of envelope.entries) {
     keys.push(entry.key)
     for (const key of Object.values(entry.sidecars ?? {})) keys.push(key)
   }
+  // The manifest blob table of wire version 10: one `blob-<hex>.lit` file per
+  // out-of-line literal, shared by every block whose dictionary names it.
+  for (const blob of envelope.blobs ?? []) keys.push(blob.key)
   return keys
-}
-
-/** Read the named artifacts and concatenate them into one region. */
-function regionOf (store, keys) {
-  const chunks = keys.map((key) => readWhole(joinPath(store.generationDir, key)))
-  let total = 0
-  for (const chunk of chunks) total += chunk.length
-  const blob = new Uint8Array(total)
-  const artifacts = []
-  let offset = 0
-  for (let index = 0; index < chunks.length; index += 1) {
-    blob.set(chunks[index], offset)
-    artifacts.push({ key: keys[index], offset, len: chunks[index].length })
-    offset += chunks[index].length
-  }
-  return { blob, artifacts }
 }
 
 /**
@@ -316,6 +317,9 @@ export class StoreHandle {
     this.artifacts = envelope.artifacts
     this.bytes = envelope.bytes
     this.rows = envelope.rows
+    // Wire version 10 only: how many out-of-line literals the engine
+    // resolved when it opened the handle. Zero elsewhere.
+    this.blobs = envelope.blobs ?? 0
     this.closed = false
   }
 
@@ -366,7 +370,7 @@ export function openStoreHandle (engine, store, options = {}) {
     keys = options.keys
   } else if (typeof options.sparql === 'string') {
     const plan = planQuery(engine, store, options.sparql)
-    keys = plan.keys.concat(plan.sidecarKeys ?? [])
+    keys = plan.keys.concat(plan.sidecarKeys ?? [], plan.blobKeys ?? [])
   } else {
     keys = manifestKeys(engine, store)
   }

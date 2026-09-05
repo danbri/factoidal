@@ -20,13 +20,25 @@ by name and carries bytes, and every decision stays in Lean.
                     "blankNodeScope":"…",
                     "graphs":[{"kind":"default"|"iri"|"bnode","value":"…"}],
                     "sidecars":{"subjectIndex":"…","termIndex":"…",
-                                "objectIndex":"…","literalIndex":"…"}}, …]}
+                                "objectIndex":"…","literalIndex":"…"},
+                    -- wire version 10 only
+                    "blobRefs":["blob-<hex>.lit", …],
+                    "subjectZone":{"min":"<hex>","max":"<hex>"},
+                    "objectZone":{"min":"<hex>","max":"<hex>"}}, …],
+        -- wire version 10 only
+        "blobs":[{"key":"blob-<hex>.lit","bytes":N,"sha256":"…", …}, …]}
      | {"ok":false,"error":"…"}
 
   storeQueryPlan(manifestHex, sparql)
     -> {"ok":true,"wireVersion":N,"layout":"…","mode":"…","shards":N,
-        "keys":["…", …],"bytes":N,"rows":N}
+        "keys":["…", …],"sidecarKeys":["…", …],"blobKeys":["…", …],
+        "bytes":N,"rows":N,"zoneExcluded":N}
      | {"ok":false,"error":"…"}
+
+`blobKeys` is empty and `zoneExcluded` is zero for every generation below wire
+version 10: no earlier manifest carries a blob table or a zone map. A host
+fetches `keys` and `blobKeys` before it calls `storeQuery`, and `sidecarKeys`
+as well before it calls `storeOpen`.
 
   storeQuery(manifestHex, sparql, artifactsJson) + one blob region
     -> the ordinary queryDataset SELECT / ASK / CONSTRUCT envelope, with
@@ -130,8 +142,10 @@ import Wasm.Ops.Query
 import L4Factoidal.SPARQL.Parser
 import L4Factoidal.Storage.IndexedBlockWireV3
 import L4Factoidal.Storage.IndexedBlockWireV4
+import L4Factoidal.Storage.IndexedBlockWireV5
 import L4Factoidal.Storage.QuadDataset
 import L4Factoidal.Storage.ShardManifest
+import L4Factoidal.Crypto.SHA2Native
 
 namespace L4Wasm.Ops
 
@@ -185,6 +199,48 @@ private def chunkMembers (entry : Entry) : List (String × Json) :=
       , ("chunkCount", .number (toString chunks.chunkCount))
       , ("merkleRoot", .string (hexOfBytes chunks.root)) ]
 
+/-- The zone-map bound pair of one entry, as two hexadecimal prefixes. A bound
+    is at most `zoneBytes` bytes of the smallest (or largest) version-2 term
+    key the block holds, so a host can see the range without decoding a
+    block. -/
+private def zoneJson (zone : List UInt8 × List UInt8) : Json :=
+  .object
+    [ ("min", .string (hexOfBytes (byteArrayOfList zone.1)))
+    , ("max", .string (hexOfBytes (byteArrayOfList zone.2))) ]
+
+/-- The blob table members one entry names, as ARTIFACT KEYS. The manifest
+    stores indices into its own blob table; a host fetches files by name, so
+    the indices are resolved here and never cross the boundary. -/
+def entryBlobKeys (manifest : Manifest) (entry : Entry) : List String :=
+  entry.blobRefs.filterMap fun index =>
+    (manifest.blobs[index]?).map fun ref => ref.key.value
+
+/-- The SBM10 members of one entry: the out-of-line literals its dictionary
+    names and the two zone maps. Every one of them is absent from a manifest
+    below version 10, so an SBM9 entry answers exactly the members it
+    answered before. -/
+private def sbm10EntryMembers (manifest : Manifest) (entry : Entry) :
+    List (String × Json) :=
+  (if entry.blobRefs.isEmpty then []
+   else [("blobRefs", .array ((entryBlobKeys manifest entry).map Json.string))]) ++
+  (entry.subjectZone.map fun zone => ("subjectZone", zoneJson zone)).toList ++
+  (entry.objectZone.map fun zone => ("objectZone", zoneJson zone)).toList
+
+/-- One member of the manifest-level blob table. The same four values every
+    other artifact reference carries, so a host admits a blob exactly as it
+    admits a block. -/
+private def blobRefJson (ref : ArtifactRef) : Json :=
+  .object
+    ([ ("key", .string ref.key.value)
+     , ("bytes", .number (toString ref.bytes))
+     , ("sha256", .string (hexOfBytes ref.sha256)) ] ++
+     (match ref.chunked with
+      | none => []
+      | some chunks =>
+          [ ("chunkBytes", .number (toString chunks.chunkBytes))
+          , ("chunkCount", .number (toString chunks.chunkCount))
+          , ("merkleRoot", .string (hexOfBytes chunks.root)) ]))
+
 private def entryJson (manifest : Manifest) (entry : Entry) : Json :=
   .object
     ([ ("ordinal", .number (toString entry.ordinal))
@@ -197,7 +253,8 @@ private def entryJson (manifest : Manifest) (entry : Entry) : Json :=
      , ("blockKind", .string (entryBlockKind manifest entry))
      , ("blankNodeScope", .string entry.blankNodeScope)
      , ("graphs", .array (entry.graphSet.map graphNameJson))
-     , ("sidecars", .object (sidecarMembers entry)) ])
+     , ("sidecars", .object (sidecarMembers entry)) ] ++
+     sbm10EntryMembers manifest entry)
 
 def totalBytesOf (entries : List Entry) : Nat :=
   entries.foldl (fun total entry => total + entry.artifact.bytes) 0
@@ -223,14 +280,16 @@ def storeManifestInspect (manifestHex : String) : String :=
   | .error e => errJson e
   | .ok manifest =>
       okWith
-        [ ("wireVersion", .number (toString manifest.version))
+        ([ ("wireVersion", .number (toString manifest.version))
         , ("layout", .string manifest.layout)
         , ("blankNodeProfile", .string manifest.blankNodeProfile)
         , ("termRegistryVersion", .string manifest.termRegistryVersion)
         , ("rangeCommitted", .bool (rangeCommitted manifest))
         , ("totalBytes", .number (toString (totalBytesOf manifest.entries)))
         , ("totalRows", .number (toString (totalRowsOf manifest.entries)))
-        , ("entries", .array (manifest.entries.map (entryJson manifest))) ]
+        , ("entries", .array (manifest.entries.map (entryJson manifest))) ] ++
+        (if manifest.blobs.isEmpty then []
+         else [("blobs", .array (manifest.blobs.map blobRefJson))]))
 
 /-! ## Planning
 
@@ -246,13 +305,32 @@ Section 18.6 evaluates an EXISTS in a projection, a GROUP BY key, a HAVING
 condition or an ORDER BY condition against the active graph, so a query
 carrying one must see the whole generation. -/
 
+/-- Which block codec a generation's layout names. `ibk5` is wire version 10,
+whose blocks may name out-of-line literals. -/
+inductive StoreCodec where
+  | ibk3
+  | ibk4
+  | ibk5
+  deriving DecidableEq, Inhabited
+
 /-- The blocks one query needs from one generation, plus the mode string the
-native tools print for the same decision. -/
+native tools print for the same decision.
+
+`blobs` is the manifest blob-table members the selected entries refer to, in
+manifest order and without repeats; `zoneExcluded` is how many entries the
+predicate and graph collectors kept and the SBM10 zone maps then dropped. Both
+are empty and zero for every generation below wire version 10, which carries
+neither field. -/
 structure StorePlan where
   entries : List Entry
   mode : String
-  ibk4 : Bool
+  codec : StoreCodec
+  blobs : List ArtifactRef := []
+  zoneExcluded : Nat := 0
   deriving Inhabited
+
+/-- The quad codecs. IBK3 denotes triples; IBK4 and IBK5 denote quads. -/
+def StorePlan.quads (plan : StorePlan) : Bool := plan.codec != .ibk3
 
 /-- The index sidecars of the planned entries, in manifest order. A host that
 opens a handle fetches these BESIDE the blocks: they are what makes a literal
@@ -265,25 +343,57 @@ def planSidecarKeys (entries : List Entry) : List String :=
     (entry.literalIndex.map fun ref => ref.key.value).toList ++
     (entry.geoIndex.map fun ref => ref.key.value).toList
 
+/-- The blob artifacts the selected entries refer to, in MANIFEST order and
+without repeats: the manifest blob table filtered to the members at least one
+selected entry names. An entry's own `blobRefs` are indices into that table,
+so the order is the table's, not the entries'. -/
+def planBlobRefs (manifest : Manifest) (entries : List Entry) : List ArtifactRef :=
+  manifest.blobs.zipIdx.filterMap fun (ref, index) =>
+    if entries.any (fun entry => entry.blobRefs.contains index) then some ref else none
+
+/-- The declared byte extent of a set of blob artifacts. -/
+def blobBytesOf (refs : List ArtifactRef) : Nat :=
+  refs.foldl (fun total ref => total + ref.bytes) 0
+
+/-- The SBM10 zone-map key function: the canonical version-2 wire bytes of a
+term, which are the bytes the packer compared when it computed an entry's zone
+bounds. `Harness/QuadQuery.lean` uses the same function with the native
+hasher; the two hashers agree on every input, and a key function that
+disagreed with the packer's would drop entries holding matching rows. -/
+def zoneTermKey (t : Term) : Option (List UInt8) :=
+  L4Factoidal.Storage.TermWireV2.keyBytes
+    (L4Factoidal.Storage.TermWireV2.toWire L4Factoidal.Crypto.sha256Hacl t)
+
 def planFor (op : String) (manifest : Manifest) (query : Query) :
     Except String StorePlan :=
   if !rangeCommitted manifest then
     .error s!"{op}: this manifest carries no fixed-chunk Merkle commitment"
+  else if isIbk5Layout manifest.layout then
+    -- The predicate and graph collectors run first, exactly as for IBK4; the
+    -- zone maps then drop an entry whose subject or object range cannot hold
+    -- a constant the query names.
+    let withoutZones := quadEntriesForQuery manifest query
+    let entries := quadEntriesForQueryWithKeys zoneTermKey manifest query
+    .ok { entries
+        , mode := s!"ibk5-full-manifest({entries.length})"
+        , codec := .ibk5
+        , blobs := planBlobRefs manifest entries
+        , zoneExcluded := withoutZones.length - entries.length }
   else if isIbk4Layout manifest.layout then
     let entries := quadEntriesForQuery manifest query
-    .ok { entries, mode := s!"ibk4-full-manifest({entries.length})", ibk4 := true }
+    .ok { entries, mode := s!"ibk4-full-manifest({entries.length})", codec := .ibk4 }
   else if isIbk3Layout manifest.layout then
     match queryNativeConstantPredicates? query with
     | some predicates =>
         let entries := entriesForPredicates manifest predicates
-        .ok { entries, mode := s!"ibk3-paged-merkle({predicates.length})", ibk4 := false }
+        .ok { entries, mode := s!"ibk3-paged-merkle({predicates.length})", codec := .ibk3 }
     | none =>
         let entries := manifest.entries
         .ok { entries
             , mode := s!"ibk3-paged-merkle-full-manifest({(predicateOrder entries).length})"
-            , ibk4 := false }
+            , codec := .ibk3 }
   else
-    .error s!"{op}: layout '{manifest.layout}' is neither an IBK3 nor an IBK4 generation"
+    .error s!"{op}: layout '{manifest.layout}' is not an IBK3, IBK4 or IBK5 generation"
 
 def parseQuery (op sparql : String) : Except String Query :=
   match parseSparql sparql with
@@ -306,8 +416,10 @@ def storeQueryPlan (manifestHex sparql : String) : String :=
       , ("shards", .number (toString plan.entries.length))
       , ("keys", .array (plan.entries.map fun entry => .string entry.artifact.key.value))
       , ("sidecarKeys", .array ((planSidecarKeys plan.entries).map Json.string))
-      , ("bytes", .number (toString (totalBytesOf plan.entries)))
-      , ("rows", .number (toString (totalRowsOf plan.entries))) ])
+      , ("blobKeys", .array ((plan.blobs.map fun ref => ref.key.value).map Json.string))
+      , ("bytes", .number (toString (totalBytesOf plan.entries + blobBytesOf plan.blobs)))
+      , ("rows", .number (toString (totalRowsOf plan.entries)))
+      , ("zoneExcluded", .number (toString plan.zoneExcluded)) ])
   match outcome with
   | .error e => errJson e
   | .ok envelope => envelope
@@ -439,6 +551,61 @@ def ibk4QuadsOf (op : String) (entry : Entry) (bytes : ByteArray) :
     throw s!"{op}: artifact '{key}' holds {block.rows.size} rows, the manifest declares {entry.rows}"
   pure block.denotes
 
+/-! ## IBK5 blocks and their out-of-line literals
+
+An IBK5 block denotes quads whose object may be a `TermWireV2.WireTerm.blob`:
+the block names a byte extent and a SHA-256 digest, and the lexical form is
+one `blob-<hex>.lit` artifact of the manifest blob table.
+`IndexedBlockWireV5.resolveBlock` turns those into RDF terms through a lookup
+and refuses missing bytes, a wrong byte count, a wrong digest and invalid
+UTF-8, so a blob that does not match its term refuses the query rather than
+answering with a fabricated literal. `Harness/QuadQuery.lean` reads the same
+generations the same way, over files instead of a supplied region. -/
+
+/-- One admitted blob keyed by its SHA-256, as `resolveBlock` looks it up. -/
+abbrev BlobBytes := List (List UInt8 × ByteArray)
+
+/-- Admit every blob the plan named, on exactly the terms a block is admitted
+on: the declared byte extent and the manifest-committed SHA-256, through
+`admitRef`. A blob the host did not supply is refused by name. -/
+def admitBlobs (op : String) (refs : List ArtifactRef)
+    (sources : List (String × ArtifactSource)) (blob : ByteArray) :
+    Except String BlobBytes :=
+  refs.mapM fun ref => do
+    let bytes ← admitRef op ref sources blob
+    pure (ref.sha256.toList, bytes)
+
+def blobLookup (blobs : BlobBytes) : ByteArray → Option ByteArray :=
+  fun digest => (blobs.find? fun pair => pair.1 == digest.toList).map Prod.snd
+
+/-- Decode one IBK5 block and hold it to the row count its manifest entry
+declares. The block is returned so a caller that also wants the `WireTerm`
+dictionary — `storeOpen`, for its candidate-filter indexes — decodes once. -/
+def ibk5BlockOf (op : String) (entry : Entry) (bytes : ByteArray) :
+    Except String L4Factoidal.Storage.IndexedBlockWireV5.QuadBlock := do
+  let key := entry.artifact.key.value
+  let block ← match L4Factoidal.Storage.IndexedBlockWireV5.decode bytes with
+    | none => throw s!"{op}: artifact '{key}' is not a decodable IBK5 block"
+    | some block => pure block
+  if block.rows.size != entry.rows then
+    throw s!"{op}: artifact '{key}' holds {block.rows.size} rows, the manifest declares {entry.rows}"
+  pure block
+
+/-- Resolve one decoded IBK5 block against the admitted blobs. -/
+def resolveIbk5 (op : String) (entry : Entry)
+    (block : L4Factoidal.Storage.IndexedBlockWireV5.QuadBlock) (blobs : BlobBytes) :
+    Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
+  match L4Factoidal.Storage.IndexedBlockWireV5.resolveBlock
+      L4Factoidal.Crypto.sha256Hacl (blobLookup blobs) block with
+  | none =>
+      .error s!"{op}: artifact '{entry.artifact.key.value}' names an out-of-line literal whose bytes are absent, of the wrong extent, or of the wrong SHA-256"
+  | some quads => .ok quads
+
+def ibk5QuadsOf (op : String) (entry : Entry) (bytes : ByteArray) (blobs : BlobBytes) :
+    Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := do
+  let block ← ibk5BlockOf op entry bytes
+  resolveIbk5 op entry block blobs
+
 private def readIbk3 (sources : List (String × ArtifactSource)) (blob : ByteArray) :
     List Entry → List Triple → Except String (List Triple)
   | [], acc => pure acc
@@ -456,6 +623,16 @@ private def readIbk4 (sources : List (String × ArtifactSource)) (blob : ByteArr
       let quads ← ibk4QuadsOf "storeQuery" entry bytes
       readIbk4 sources blob rest (acc ++ quads)
 
+private def readIbk5 (sources : List (String × ArtifactSource)) (blob : ByteArray)
+    (blobs : BlobBytes) :
+    List Entry → List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow →
+    Except String (List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow)
+  | [], acc => pure acc
+  | entry :: rest, acc => do
+      let bytes ← admitArtifact "storeQuery" entry sources blob
+      let quads ← ibk5QuadsOf "storeQuery" entry bytes blobs
+      readIbk5 sources blob blobs rest (acc ++ quads)
+
 /-- Every read cap of the STATELESS path, checked against the manifest's own
 declarations before a single byte is hashed.
 
@@ -468,10 +645,13 @@ BYTES, not the per-call cost these caps bound; it carries its own
 `maxStoreHandleBytes`, derived from a measured resident multiplier. See that
 module's banner and
 https://github.com/danbri/factoidal/issues/657. -/
-def checkEntryCaps (subject : String) (entries : List Entry) : Except String Unit := do
+def checkEntryCaps (subject : String) (entries : List Entry)
+    (blobBytes : Nat := 0) : Except String Unit := do
   if entries.length > maxStoreArtifacts then
     throw s!"{subject} {entries.length} artifacts, the cap is {maxStoreArtifacts}"
-  let bytes := totalBytesOf entries
+  -- An out-of-line literal is bytes the call must carry and hash, so it is
+  -- counted here beside the blocks. It is zero below wire version 10.
+  let bytes := totalBytesOf entries + blobBytes
   if bytes > maxStoreBytes then
     throw s!"{subject} {bytes} artifact bytes, the cap is {maxStoreBytes}"
   let rows := totalRowsOf entries
@@ -503,23 +683,30 @@ def storeQuery (manifestHex sparql artifactsJson : String) (blob : ByteArray)
     let manifest ← decodeManifest? "storeQuery" manifestHex
     let query ← parseQuery "storeQuery" sparql
     let plan ← planFor "storeQuery" manifest query
-    checkEntryCaps "storeQuery: the plan selects" plan.entries
+    checkEntryCaps "storeQuery: the plan selects" plan.entries (blobBytesOf plan.blobs)
     let sources ← artifactSources "storeQuery" artifactsJson
     let extra : List (String × Json) :=
       [ ("shards", .number (toString plan.entries.length))
       , ("mode", .string plan.mode) ]
-    if plan.ibk4 then
-      let quads ← readIbk4 sources blob plan.entries []
-      let ds := datasetOfQuads quads
-      -- A blank-node graph name cannot survive `materialiseDatasetBackend`,
-      -- so such a dataset takes the reference evaluator, exactly as
-      -- `Harness/QuadQuery.lean` does natively.
-      let backend := if namesAreIris ds then some (indexedDatasetBackend ds) else none
-      pure (queryParsedDatasetWith ds backend sparql extra extIris)
-    else
-      let triples ← readIbk3 sources blob plan.entries []
-      let ds : Dataset := { default := triples, named := [] }
-      pure (queryParsedDatasetWith ds (some (indexedDatasetBackend ds)) sparql extra extIris)
+    match plan.codec with
+    | .ibk5 =>
+        let blobs ← admitBlobs "storeQuery" plan.blobs sources blob
+        let quads ← readIbk5 sources blob blobs plan.entries []
+        let ds := datasetOfQuads quads
+        let backend := if namesAreIris ds then some (indexedDatasetBackend ds) else none
+        pure (queryParsedDatasetWith ds backend sparql extra extIris)
+    | .ibk4 =>
+        let quads ← readIbk4 sources blob plan.entries []
+        let ds := datasetOfQuads quads
+        -- A blank-node graph name cannot survive `materialiseDatasetBackend`,
+        -- so such a dataset takes the reference evaluator, exactly as
+        -- `Harness/QuadQuery.lean` does natively.
+        let backend := if namesAreIris ds then some (indexedDatasetBackend ds) else none
+        pure (queryParsedDatasetWith ds backend sparql extra extIris)
+    | .ibk3 =>
+        let triples ← readIbk3 sources blob plan.entries []
+        let ds : Dataset := { default := triples, named := [] }
+        pure (queryParsedDatasetWith ds (some (indexedDatasetBackend ds)) sparql extra extIris)
   match outcome with
   | .error e => errJson e
   | .ok envelope => envelope
@@ -612,6 +799,17 @@ private def pinOverrunJson : String :=
 -- An SBM3 generation declares no literal index, so the sidecar list is empty.
 #guard (storeQueryPlan pinManifestHex
   "SELECT ?s WHERE { ?s <http://example.org/p> ?o }").contains "\"sidecarKeys\":[]"
+-- No manifest below SBM10 carries a blob table or a zone map, so the two
+-- version-10 plan fields report empty and zero rather than being absent.
+#guard (storeQueryPlan pinManifestHex
+  "SELECT ?s WHERE { ?s <http://example.org/p> ?o }").contains "\"blobKeys\":[]"
+#guard (storeQueryPlan pinManifestHex
+  "SELECT ?s WHERE { ?s <http://example.org/p> ?o }").contains "\"zoneExcluded\":0"
+-- An SBM3 entry names no out-of-line literal and no zone map, so inspect
+-- reports exactly the members it reported before wire version 10.
+#guard !(storeManifestInspect pinManifestHex).contains "blobRefs"
+#guard !(storeManifestInspect pinManifestHex).contains "subjectZone"
+#guard !(storeManifestInspect pinManifestHex).contains "\"blobs\""
 
 #guard (storeQuery pinManifestHex "SELECT ?s WHERE { ?s <http://example.org/p> ?o }"
   pinArtifactsJson ByteArray.empty).contains "http://example.org/s"

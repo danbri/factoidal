@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.7.0 — 2026-09-05
+
+**Wire version 10.** The command and `bin/store.mjs` read a generation
+packed at `--layout ibk5`: out-of-line literals, RDF 1.2 triple terms and
+directional literals, and per-entry zone maps.
+
+### Out-of-line literals
+
+A literal above 65,536 UTF-8 bytes is stored as one `blob-<sha256
+hex>.lit` file beside the block, committed by the manifest blob table.
+The block holds only the byte extent and the digest, so a host must fetch
+the blob as well as the block:
+
+- `storeQueryPlan` lists them under `blobKeys`, after `keys` and
+  `sidecarKeys`, and counts their bytes in `bytes`;
+- `queryStore` and `openStoreHandle` fetch them without a flag;
+- a blob that is absent or whose bytes hash differently REFUSES the
+  query by name. Nothing is answered with a shortened literal.
+
+A store handle resolves every blob ONCE, at `storeOpen`, and the open
+envelope reports how many. The two candidate-filter indexes keep an
+out-of-line literal in every candidate set, so `CONTAINS` over a
+70,000-byte literal and `geof:sfIntersects` over a polygon above the
+ceiling both answer their rows.
+
+### RDF 1.2 terms
+
+A triple term and a directional language literal are stored and read
+back. Wire version 9 refuses both.
+
+### Zone maps
+
+Each manifest entry carries the first 64 bytes of the smallest and the
+largest subject key and object key of its block. A query with a constant
+subject or object skips every block whose range cannot hold it, from the
+manifest alone. `storeQueryPlan` reports the count as `zoneExcluded`, and
+`factoidal inspect` prints the bounds beside each entry.
+
+### Unchanged
+
+Wire version 9 and earlier answer exactly what they answered before: no
+manifest below version 10 carries a blob table or a zone map, so
+`blobKeys` is empty and `zoneExcluded` is zero for them.
+
 ## 0.6.0 — 2026-09-05
 
 **A full-text index, a geometry index, extension functions from
