@@ -387,9 +387,10 @@ def manifestArtifacts (format : PackFormat) (prepass : SourcePrepass) (state : P
 
 An IBK3 block holds one predicate of one graph, so the streaming fold above
 may open a new block for the same predicate in a later batch. An IBK4 block
-now also holds one predicate of one graph: `PredicateQuadBlocks` cuts a
-predicate's rows at every graph change and at two size targets, and the
-manifest carries the union (`docs/designissues/2026-09-04-blocks-per-predicate.md`).
+also holds one predicate of one graph: `PredicateQuadBlocks` buckets the quads
+by the pair (predicate, graph) and cuts a bucket's rows at two size targets,
+and the manifest carries the union
+(`docs/designissues/2026-09-04-blocks-per-predicate.md`).
 The IBK4 packer is still bounded by the input size for a different reason: it
 partitions the block set at CONSTRUCTION and publishes every block at the end
 of the pass, so the dataset and the encoded generation are live together.
@@ -566,10 +567,11 @@ def zoneText (zone : Option (List UInt8 × List UInt8)) : String :=
     than one encoded block beside the rows it has not reached yet. -/
 def publishQuadBlocks (h : Hasher) (format : PackFormat) (scope : String) :
     PackState → List Artifact →
-    List (L4Factoidal.RDF.WfIri × List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) →
+    List (L4Factoidal.Storage.PredicateQuadBlocks.BucketKey ×
+      List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) →
     Except String (PackState × List Artifact)
   | state, outRev, [] => .ok (state, outRev.reverse)
-  | state, outRev, (predicate, rows) :: rest =>
+  | state, outRev, ((predicate, _graph), rows) :: rest =>
     if format == .ibk5 then do
       /- Section 2 of the wire-version-10 record: a literal above
          `maxBlobBytes` is refused, naming its subject and predicate. -/
@@ -796,7 +798,7 @@ TriG keeps the buffered route: it has no chunk fold at all. -/
 /-! ### The publication accumulator
 
 The fold no longer builds a `Dataset`. It builds
-`PredicateQuadBlocks.Pub` — one OPEN RUN per predicate, each at most
+`PredicateQuadBlocks.Pub` — one OPEN RUN per (predicate, graph) key, each at most
 `maxBlockRows` rows and `maxBlockWireBytes` estimated bytes — plus the runs
 the cut rule has closed since the last time the caller drained it. The
 caller (`quadIngestFeed`) encodes those runs into artifacts and releases
@@ -812,7 +814,7 @@ batch rule, and the manifest rows.
     since the last drain (in reverse), and the named graphs seen. -/
 structure QuadPub where
   pub : L4Factoidal.Storage.PredicateQuadBlocks.Pub := {}
-  readyRev : List (L4Factoidal.RDF.WfIri ×
+  readyRev : List (L4Factoidal.Storage.PredicateQuadBlocks.BucketKey ×
     List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := []
   /-- The distinct named graphs seen. Only its size is reported. -/
   graphs : Std.HashMap L4Factoidal.RDF.GraphRef Unit := ∅
@@ -844,7 +846,7 @@ inductive QuadStream where
     is the batch rule: `none` publishes only what the per-block cut rule
     closed, `some n` also publishes every open run of at least `n` rows. -/
 def quadStreamDrain (stream : QuadStream) (flushMin : Option Nat) :
-    QuadStream × List (L4Factoidal.RDF.WfIri ×
+    QuadStream × List (L4Factoidal.Storage.PredicateQuadBlocks.BucketKey ×
       List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
   let take := fun (acc : QuadPub) =>
     let ready := acc.readyRev.reverse
