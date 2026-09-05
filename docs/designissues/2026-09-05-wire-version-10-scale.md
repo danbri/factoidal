@@ -325,7 +325,7 @@ Every number is from the run named beside it; nothing is an estimate.
 | 3 `tools/blockengine-ibk5-w3c-trig-smoke.sh` (new) | 241 pass, 0 fail (out of 241) |
 | 3 `tools/blockengine-ibk4-w3c-trig-smoke.sh` | 241 pass, 0 fail (out of 241) |
 | 7 `formal/lean4/Wasm/native-smoke.sh` | 85 pass, 0 fail (out of 85) |
-| 7 wasm and npm host | NOT RUN; the WebAssembly and host side is the next piece of work |
+| 7 wasm and npm host | PASS, 2026-09-05, module `7df3acd6…`: `Wasm/native-smoke.sh` 96 pass, 0 fail (out of 96); `tests/store-host/conformance.mjs` 34 pass, 0 fail, 0 skipped (out of 34) on Node and on Deno; `tests/store-host/cli.mjs` 32 pass, 0 fail, 0 skipped (out of 32) on both; `tools/wasm-store-query-smoke.sh` pass |
 
 ### Gate 4 — row identity, version 9 against version 10
 
