@@ -38,6 +38,15 @@ private def inputChunkBytes : USize := 65536
     which has no streaming HACL* counterpart bound here. -/
 private def hasher : L4Factoidal.Storage.BlockMerkle.Hasher := nativeHasher
 
+/-- The SHA-256 compression walk of the source-identity digest. The pure Lean
+    walk is the specification and is what the WebAssembly packer runs; this
+    native host passes HACL* C, which is the same fold at C speed. The
+    pre-pass and the ingest pass each stream every input byte through it, so
+    on a 104,857,577-byte N-Quads source it was the single largest cost in
+    the pack: 14,162 of the pre-pass's 21,806 leaf samples
+    (`/usr/bin/sample`, 2026-09-05). -/
+private def blockFold : L4Factoidal.Crypto.BlockFold256 := nativeBlockFold256
+
 private def ofExcept (result : Except String α) : IO α :=
   match result with
   | .error message => throw <| IO.userError message
@@ -61,7 +70,7 @@ private partial def foldHandle {α : Type} (handle : IO.FS.Handle)
 private def prepassFile (input : System.FilePath) : IO SourcePrepass :=
   IO.FS.withFile input .read fun handle => do
     let state ← foldHandle handle (fun state bytes => ofExcept (prepassFeed state bytes))
-      prepassInit
+      (prepassInit blockFold)
     ofExcept (prepassFinish state)
 
 /-- The second pass: read a chunk, feed it, write whatever completed. -/
@@ -73,7 +82,7 @@ private def ingestFile (format : PackFormat) (input output : System.FilePath)
         let (next, artifacts) ← ofExcept (ingestFeed state bytes)
         writeArtifacts output.toString artifacts
         pure next)
-      (ingestInit hasher format prepass (some ("file://" ++ input.toString)))
+      (ingestInit hasher format prepass (some ("file://" ++ input.toString)) blockFold)
     let (packed, artifacts) ← ofExcept (ingestFinish state)
     writeArtifacts output.toString artifacts
     pure packed
@@ -144,7 +153,7 @@ private def syntaxOf (input : String) : PackSyntax :=
 private def quadIngestFile (input : System.FilePath) (prepass : SourcePrepass) : IO QuadPack :=
   IO.FS.withFile input .read fun handle => do
     let state ← foldHandle handle (fun state bytes => ofExcept (quadIngestFeed state bytes))
-      (quadIngestInit hasher prepass)
+      (quadIngestInit hasher prepass blockFold)
     ofExcept (quadIngestFinish state)
 
 private def packQuads (input output : String) : IO UInt32 := do

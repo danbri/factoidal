@@ -437,14 +437,37 @@ structure Sha256Stream where
 /-- Empty incremental SHA-256 state. -/
 def Sha256Stream.init : Sha256Stream := {}
 
-/-- Absorb a byte chunk, retaining only its final incomplete 64-byte block. -/
-def Sha256Stream.update (stream : Sha256Stream) (chunk : ByteArray) : Sha256Stream :=
+/-- The SHA-256 block fold as an INJECTABLE operation, so that a host may
+    substitute a C realisation of the compression walk without this library
+    depending on an extern for its own semantics. It is the streaming twin of
+    `Storage.BlockMerkle.Hasher`, which the packer already takes as an
+    explicit parameter, and it is used the same way: every `#guard`, every
+    theorem and every WebAssembly operation evaluates `pureBlockFold256`, and
+    only the native executable edge passes anything else.
+
+    `run h data offset blocks` must equal `processBlocks256At h data offset
+    blocks`: absorb `blocks` complete 64-byte compression blocks of `data`
+    starting at byte `offset` into the chaining state `h`. -/
+structure BlockFold256 where
+  run : Array UInt32 → ByteArray → Nat → Nat → Array UInt32
+
+/-- The specification block fold: the pure Lean positioned walk. -/
+def pureBlockFold256 : BlockFold256 := ⟨processBlocks256At⟩
+
+/-- Absorb a byte chunk with a given block fold, retaining only its final
+    incomplete 64-byte block. -/
+def Sha256Stream.updateWith (fold : BlockFold256) (stream : Sha256Stream)
+    (chunk : ByteArray) : Sha256Stream :=
   let combined := stream.pending ++ chunk
   let complete := combined.size / 64
   let consumed := complete * 64
-  { h := processBlocks256At stream.h combined 0 complete
+  { h := fold.run stream.h combined 0 complete
   , pending := combined.extract consumed combined.size
   , bytes := stream.bytes + chunk.size }
+
+/-- Absorb a byte chunk, retaining only its final incomplete 64-byte block. -/
+def Sha256Stream.update (stream : Sha256Stream) (chunk : ByteArray) : Sha256Stream :=
+  Sha256Stream.updateWith pureBlockFold256 stream chunk
 
 /-- Serialize a completed SHA-256 chaining state. -/
 private def sha256Digest (hFinal : Array UInt32) : ByteArray :=
@@ -460,12 +483,16 @@ private def sha256Digest (hFinal : Array UInt32) : ByteArray :=
 
 /-- Finalize a public-artifact SHA-256 stream using the complete input length
     carried separately from its under-64-byte tail. -/
-def Sha256Stream.finish (stream : Sha256Stream) : ByteArray :=
+def Sha256Stream.finishWith (fold : BlockFold256) (stream : Sha256Stream) : ByteArray :=
   let r := (stream.pending.size + 1) % 64
   let zeros := if r ≤ 56 then 56 - r else 120 - r
   let padded := pushN (pushN (stream.pending.push 0x80) zeros (fun _ => 0)) 8
     (fun i => natByteBE (stream.bytes * 8) 8 i)
-  sha256Digest (processBlocks256At stream.h padded 0 (padded.size / 64))
+  sha256Digest (fold.run stream.h padded 0 (padded.size / 64))
+
+/-- Finalize a public-artifact SHA-256 stream with the specification fold. -/
+def Sha256Stream.finish (stream : Sha256Stream) : ByteArray :=
+  Sha256Stream.finishWith pureBlockFold256 stream
 
 /-- FIPS 180-4 §6.4 SHA-512 of an arbitrary `ByteArray`. Output is
 always 64 bytes (`SHA2Theorems.sha512_size`). -/

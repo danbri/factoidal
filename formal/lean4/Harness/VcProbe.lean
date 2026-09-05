@@ -46,6 +46,7 @@ runners do.
 -/
 import L4Factoidal.Crypto.Ed25519
 import L4Factoidal.Crypto.SHA2Native
+import Harness.NativeHasher
 import L4Factoidal.VC.DataIntegrity
 import L4Factoidal.VC.Tests
 import L4Factoidal.Syntax.NQuads
@@ -467,6 +468,20 @@ private def fips112 : String :=
   "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmn" ++
   "hijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
 
+/-- Split a buffer into consecutive chunks of at most `n` bytes. -/
+private def chunksOf (n : Nat) (b : ByteArray) : List ByteArray :=
+  if n == 0 then [b]
+  else (List.range ((b.size + n - 1) / n)).map
+        (fun i => b.extract (i * n) (min ((i + 1) * n) b.size))
+
+/-- The incremental SHA-256 of a buffer fed in `n`-byte chunks, with a given
+block fold. With `Crypto.pureBlockFold256` this is `Sha256Stream` itself;
+with `Harness.nativeBlockFold256` it is the HACL* walk the shard packer's
+source identity uses. -/
+private def streamDigestWith (fold : L4Factoidal.Crypto.BlockFold256) (n : Nat)
+    (b : ByteArray) : ByteArray :=
+  ((chunksOf n b).foldl (fun st c => st.updateWith fold c) Sha256Stream.init).finishWith fold
+
 def runSha256Native : IO Tally := do
   IO.println "\n=== 5. SHA-256 via HACL* extern — differential against pure Lean ==="
   let t ← IO.mkRef ({} : Tally)
@@ -489,6 +504,19 @@ def runSha256Native : IO Tally := do
     let got := sha256Hacl bytes
     check t s!"sha256Hacl == sha256 — {name} ({bytes.size} bytes)" (got == expected)
       s!"pure {bytesToHex expected} vs HACL* {bytesToHex got}"
+  -- The STREAMING walk. `sha256BlocksHacl` is the second SHA-256 extern and
+  -- the one the shard packer's source identity runs on, so it needs its own
+  -- differential. Feeding the same message in several chunk sizes exercises
+  -- the carried under-64-byte tail, which is where a block-walk binding gets
+  -- an offset wrong, and the final padded block, which `finishWith` supplies.
+  for (name, bytes) in cases do
+    let sizes := if bytes.size > 200 then [64, 65536] else [1, 7, 64, 65536]
+    for size in sizes do
+      let expected := sha256 bytes
+      let got := streamDigestWith Harness.nativeBlockFold256 size bytes
+      check t s!"native block fold == sha256 — {name} ({bytes.size} bytes, {size}-byte chunks)"
+        (got == expected)
+        s!"pure {bytesToHex expected} vs HACL* stream {bytesToHex got}"
   t.get
 
 /-! ## Main -/

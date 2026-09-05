@@ -37,4 +37,49 @@ def nativeSha256 : ByteArray → ByteArray := L4Factoidal.Crypto.sha256Hacl
 `L4Factoidal.Storage.BlockMerkle.pureHasher`. -/
 def nativeHasher : L4Factoidal.Storage.BlockMerkle.Hasher := ⟨nativeSha256⟩
 
+/-! ## The streaming edge
+
+`nativeHasher` above hashes a WHOLE artifact, so it cannot digest a source
+the packer never holds in memory. The packer's source identity is built by
+`Crypto.Sha256Stream`, which walks its 65,536-byte chunks with the pure Lean
+compression fold, and the shard packer runs that walk TWICE over every input
+byte: once in the pre-pass that commits the source identity, and once in the
+ingest pass that checks the file did not change between the two.
+
+Measured with `/usr/bin/sample` on a 104,857,577-byte N-Quads pack,
+2026-09-05: the pre-pass held every one of the 21,918 samples of the
+20-second window, and 14,162 of its 21,806 leaf samples were inside
+`Sha256Stream.update`. `nativeBlockFold256` below is the same fold realised
+by HACL* C, injected at the executable edge only. -/
+
+private def wordsToStateBytes (h : Array UInt32) : ByteArray :=
+  (List.range 8).foldl
+    (fun acc i =>
+      let w : UInt32 := h[i]!
+      ((acc.push (w >>> 24).toUInt8).push (w >>> 16).toUInt8).push
+        (w >>> 8).toUInt8 |>.push w.toUInt8)
+    ByteArray.empty
+
+private def stateBytesToWords (b : ByteArray) : Array UInt32 :=
+  (List.range 8).foldl
+    (fun acc i =>
+      acc.push
+        ((b[4 * i]!).toUInt32 <<< 24 ||| (b[4 * i + 1]!).toUInt32 <<< 16 |||
+          (b[4 * i + 2]!).toUInt32 <<< 8 ||| (b[4 * i + 3]!).toUInt32))
+    (Array.empty)
+
+/-- The SHA-256 compression walk realised by HACL* C. Extensionally equal to
+`L4Factoidal.Crypto.pureBlockFold256`; see `Crypto/SHA2Native.lean` for where
+that equality is measured. A refusal from the extern (an empty result, which
+is never a chaining value) falls back to the pure walk, so this function
+computes the specification fold whatever the extern answers. -/
+def nativeBlockFold256 : L4Factoidal.Crypto.BlockFold256 :=
+  ⟨fun h data offset blocks =>
+    if blocks == 0 then h
+    else
+      let next := L4Factoidal.Crypto.sha256BlocksHacl (wordsToStateBytes h) data
+                    offset.toUSize blocks.toUSize
+      if next.size == 32 then stateBytesToWords next
+      else L4Factoidal.Crypto.processBlocks256At h data offset blocks⟩
+
 end Harness

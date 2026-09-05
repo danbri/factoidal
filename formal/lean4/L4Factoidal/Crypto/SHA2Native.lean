@@ -85,4 +85,28 @@ length returns the EMPTY `ByteArray` (a refusal, never a digest). -/
 @[extern "l4_hacl_sha256"]
 opaque sha256Hacl (m : @& ByteArray) : ByteArray
 
+/-- The SHA-256 COMPRESSION WALK over `blocks` complete 64-byte blocks of
+`data` starting at byte `offset`, via HACL* `Hacl_Hash_SHA2_sha256_update_
+nblocks`. `state` is the eight-word chaining value as 32 big-endian bytes,
+and the result is the next chaining value in the same form. No padding and
+no length are involved: this is the inner fold of FIPS 180-4 section 6.2.2,
+so a caller keeps its own padding and byte count.
+
+Extensionally equal to `Crypto.processBlocks256At` read through the same
+big-endian word encoding, on every state and every in-range block run. That
+equality is MEASURED by the `sha256 differential` section of
+`lake exe l4vc-probe`, exactly as `sha256Hacl`'s is; it cannot be proved
+here, because this side is opaque.
+
+Contract, with the same never-a-digest rule as `sha256Hacl`:
+
+  * `state` must be 32 bytes, `offset + blocks * 64` must be at most
+    `data.size`, and `blocks * 64` must be at most `2^32-1`.
+  * A request that breaks any of those is REFUSED with the EMPTY
+    `ByteArray`. A chaining value is always 32 bytes, so an empty result is
+    unambiguously a refusal and never a state. -/
+@[extern "l4_hacl_sha256_blocks"]
+opaque sha256BlocksHacl (state : @& ByteArray) (data : @& ByteArray)
+    (offset : USize) (blocks : USize) : ByteArray
+
 end L4Factoidal.Crypto

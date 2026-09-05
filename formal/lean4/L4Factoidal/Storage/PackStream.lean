@@ -117,27 +117,36 @@ structure SourcePrepass where
 
 /-! ## First pass -/
 
+/-- The pre-pass carries its SHA-256 block fold the way the ingest carries
+    its `Hasher`: as an injected operation, so the executable edge can pass
+    the HACL* C walk (`Harness.nativeBlockFold256`) while every `#guard`,
+    every theorem and every WebAssembly operation keeps the pure Lean
+    specification walk. The two are extensionally equal; the agreement is a
+    measured gate, not an assumption (`Crypto/SHA2Native.lean`). -/
 structure PrepassState where
+  blocks : Crypto.BlockFold256 := Crypto.pureBlockFold256
   utf8 : Utf8Stream := Utf8Stream.init
   underscores : UnderscoreRun := {}
   digest : Sha256Stream := Sha256Stream.init
 
-def prepassInit : PrepassState := {}
+def prepassInit (blocks : Crypto.BlockFold256 := Crypto.pureBlockFold256) :
+    PrepassState := { blocks }
 
 def prepassFeed (state : PrepassState) (bytes : ByteArray) : Except String PrepassState :=
   match state.utf8.feed bytes with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
   | .ok (text, nextUtf8) =>
-      .ok { utf8 := nextUtf8
-            underscores := state.underscores.feedChars text.toList
-            digest := state.digest.update bytes }
+      .ok { state with
+              utf8 := nextUtf8
+              underscores := state.underscores.feedChars text.toList
+              digest := state.digest.updateWith state.blocks bytes }
 
 def prepassFinish (state : PrepassState) : Except String SourcePrepass :=
   match state.utf8.finish with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
   | .ok _ =>
       .ok { bnodePrefix := freshBnodePrefixOfLongest state.underscores.longest
-            sourceIdentity := state.digest.finish }
+            sourceIdentity := state.digest.finishWith state.blocks }
 
 /-! ## Second pass -/
 
@@ -251,6 +260,7 @@ def publishBatch (h : Hasher) (format : PackFormat) (state : PackState)
     one manifest row per output block. -/
 structure IngestState where
   hasher : Hasher
+  blocks : Crypto.BlockFold256
   format : PackFormat
   expected : ByteArray
   utf8 : Utf8Stream
@@ -260,8 +270,10 @@ structure IngestState where
   chunksSincePublish : Nat
 
 def ingestInit (h : Hasher) (format : PackFormat) (prepass : SourcePrepass)
-    (baseIri : Option String) : IngestState :=
+    (baseIri : Option String)
+    (blocks : Crypto.BlockFold256 := Crypto.pureBlockFold256) : IngestState :=
   { hasher := h
+    blocks := blocks
     format
     expected := prepass.sourceIdentity
     utf8 := Utf8Stream.init
@@ -284,14 +296,14 @@ def ingestFeed (state : IngestState) (bytes : ByteArray) :
           let nextCount := state.chunksSincePublish + 1
           if nextCount < publicationChunkCount then
             .ok ({ state with utf8 := nextUtf8, fold := nextFold,
-                              digest := state.digest.update bytes,
+                              digest := state.digest.updateWith state.blocks bytes,
                               chunksSincePublish := nextCount }, [])
           else
             match publishBatch state.hasher state.format state.packed nextFold.acc.reverse with
             | .error message => .error message
             | .ok (packed, made) =>
                 .ok ({ state with utf8 := nextUtf8, fold := { nextFold with acc := [] },
-                                  digest := state.digest.update bytes,
+                                  digest := state.digest.updateWith state.blocks bytes,
                                   packed := packed, chunksSincePublish := 0 }, made)
 
 /-- End of input: the streamed source digest must equal the first-pass
@@ -301,7 +313,7 @@ def ingestFinish (state : IngestState) : Except String (PackState × List Artifa
   match state.utf8.finish with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
   | .ok _ =>
-      if state.digest.finish != state.expected then
+      if state.digest.finishWith state.blocks != state.expected then
         .error "l4block-shard-pack input changed between pre-pass and parse pass"
       else
         match state.fold.finish ingestStep with
@@ -546,14 +558,17 @@ chunk fold yet, and Turtle would need its own agreement theorem against
     bounded except the `FastDataset` accumulator. -/
 structure QuadIngestState where
   hasher : Hasher
+  blocks : Crypto.BlockFold256
   scope : String
   expected : ByteArray
   utf8 : Utf8Stream
   stream : L4Factoidal.Syntax.NQuadsStreaming.StreamStateC L4Factoidal.Syntax.FastDataset
   digest : Sha256Stream
 
-def quadIngestInit (h : Hasher) (prepass : SourcePrepass) : QuadIngestState :=
+def quadIngestInit (h : Hasher) (prepass : SourcePrepass)
+    (blocks : Crypto.BlockFold256 := Crypto.pureBlockFold256) : QuadIngestState :=
   { hasher := h
+    blocks := blocks
     scope := bytesToHex prepass.sourceIdentity
     expected := prepass.sourceIdentity
     utf8 := Utf8Stream.init
@@ -572,7 +587,7 @@ def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
               utf8 := nextUtf8
               stream := L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
                           L4Factoidal.Syntax.addQuadFast state.stream text.toList
-              digest := state.digest.update bytes }
+              digest := state.digest.updateWith state.blocks bytes }
 
 /-- End of input: the streamed source digest must equal the first-pass
     commitment, as `ingestFinish` requires on the IBK3 path. The buffered
@@ -581,7 +596,7 @@ def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
   match state.utf8.finish with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
   | .ok _ =>
-      if state.digest.finish != state.expected then
+      if state.digest.finishWith state.blocks != state.expected then
         .error "l4block-shard-pack input changed between pre-pass and parse pass"
       else
         match L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11
