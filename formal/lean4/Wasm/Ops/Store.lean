@@ -165,7 +165,8 @@ private def sidecarMembers (entry : Entry) : List (String × Json) :=
   (entry.subjectIndex.map fun r => ("subjectIndex", Json.string r.key.value)).toList ++
   (entry.termIndex.map fun r => ("termIndex", Json.string r.key.value)).toList ++
   (entry.objectIndex.map fun r => ("objectIndex", Json.string r.key.value)).toList ++
-  (entry.literalIndex.map fun r => ("literalIndex", Json.string r.key.value)).toList
+  (entry.literalIndex.map fun r => ("literalIndex", Json.string r.key.value)).toList ++
+  (entry.geoIndex.map fun r => ("geoIndex", Json.string r.key.value)).toList
 
 private def chunkMembers (entry : Entry) : List (String × Json) :=
   match entry.artifact.chunked with
@@ -246,11 +247,14 @@ structure StorePlan where
 
 /-- The index sidecars of the planned entries, in manifest order. A host that
 opens a handle fetches these BESIDE the blocks: they are what makes a literal
-search skip the scan (`L4Factoidal.Storage.LiteralIndexPlan`). They are
-advisory — `storeQuery` never reads one, and `storeOpen` answers without them
-— so a host that does not fetch them keeps working. -/
+search skip the scan (`L4Factoidal.Storage.LiteralIndexPlan`) and what makes a
+geometry `FILTER` skip the WKT parse (`L4Factoidal.Storage.GeoIndexPlan`).
+They are advisory — `storeQuery` never reads one, and `storeOpen` answers
+without them — so a host that does not fetch them keeps working. -/
 def planSidecarKeys (entries : List Entry) : List String :=
-  entries.filterMap fun entry => entry.literalIndex.map fun ref => ref.key.value
+  entries.flatMap fun entry =>
+    (entry.literalIndex.map fun ref => ref.key.value).toList ++
+    (entry.geoIndex.map fun ref => ref.key.value).toList
 
 def planFor (op : String) (manifest : Manifest) (query : Query) :
     Except String StorePlan :=

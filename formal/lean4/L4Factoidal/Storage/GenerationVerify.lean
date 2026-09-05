@@ -42,6 +42,7 @@ import L4Factoidal.Storage.SubjectRowIndexWireV2
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.TermLocalIndexWire
 import L4Factoidal.Storage.LiteralGramIndexWire
+import L4Factoidal.Storage.GeoBBoxIndexWire
 
 namespace L4Factoidal.Storage.GenerationVerify
 
@@ -106,6 +107,9 @@ def verifyFullEntries [Monad m] (h : Hasher) (read : Reader m) : List Entry → 
       match entry.literalIndex with
       | some literal => if !(← verifyFullArtifact h read literal) then return false
       | none => pure ()
+      match entry.geoIndex with
+      | some geo => if !(← verifyFullArtifact h read geo) then return false
+      | none => pure ()
       match entry.subjectIndex with
       | none => verifyFullEntries h read rest
       | some index =>
@@ -135,6 +139,8 @@ def objectIndexFailure : String :=
   "candidate object-index sidecar is missing, changed, malformed, or inconsistent with its block"
 def literalIndexFailure : String :=
   "candidate literal-index sidecar is missing, changed, malformed, or bound to another block"
+def geoIndexFailure : String :=
+  "candidate geometry-index sidecar is missing, changed, malformed, or bound to another block"
 def quadEntryFailure : String :=
   "candidate IBK4 artifact is missing, changed, malformed, mislabelled by predicate, or its graph set differs from the manifest entry"
 
@@ -214,7 +220,7 @@ def objectIndexAgrees [Monad m] (read : Reader m) (version : Nat) (entry : Entry
     recorded in `docs/designissues/2026-09-04-literal-token-index.md`. -/
 def literalIndexAgrees [Monad m] (read : Reader m) (version : Nat) (entry : Entry)
     (index : ArtifactRef) : m Bool := do
-  if version != 8 || !safeLeafKey index.key then return false
+  if (version != 8 && version != 9) || !safeLeafKey index.key then return false
   match ← read entry.artifact.key.value with
   | none => return false
   | some blockBytes =>
@@ -233,7 +239,42 @@ def literalIndexAgrees [Monad m] (read : Reader m) (version : Nat) (entry : Entr
                       block.dict.toList.countP (fun t =>
                         match t with | .literal _ => true | _ => false)
 
-/-- One entry's sidecars, checked in the order subject, term, object, literal
+/-- GBI1, the SBM9 geometry bounding-box index. What is checked is what
+    `literalIndexAgrees` checks, for the same reason and with the same limit:
+    the sidecar decodes under its own framing and CRC, it names THIS block by
+    digest, and it is sized for this block's dictionary.
+
+    The boxes are NOT recomputed. Rebuilding the index parses every
+    `geo:wktLiteral` in the dictionary again, which is the whole cost the
+    index exists to remove, and an activation that paid it per block would
+    pay it for a value the manifest already commits by SHA-256 and by Merkle
+    root. What that leaves uncaught is a PACKER fault which wrote a
+    self-consistent index of the wrong content; tampering after the pack is
+    caught by the digest. The consequence is bounded in the same way: the
+    index is a candidate filter and the planner re-evaluates the original
+    expression on the candidates, so a wrong index can only DROP rows, never
+    add them. Recomputing the boxes is open work, recorded in
+    `docs/designissues/2026-09-05-geometry-bounding-box-index.md`. -/
+def geoIndexAgrees [Monad m] (read : Reader m) (version : Nat) (entry : Entry)
+    (index : ArtifactRef) : m Bool := do
+  if version != 9 || !safeLeafKey index.key then return false
+  match ← read entry.artifact.key.value with
+  | none => return false
+  | some blockBytes =>
+      match L4Factoidal.Storage.IndexedBlockWireV4.decode blockBytes with
+      | none => return false
+      | some block =>
+          match ← read index.key.value with
+          | none => return false
+          | some indexBytes =>
+              match L4Factoidal.Storage.GeoBBoxIndexWire.decode? indexBytes with
+              | none => return false
+              | some decoded =>
+                  return decoded.targetIBKSha256 == entry.artifact.sha256 &&
+                    decoded.index.dictCount == block.dict.size
+
+/-- One entry's sidecars, checked in the order subject, term, object, literal,
+    geometry
     against ONE read and ONE decode of its IBK3 artifact.
 
     `legacySubject` decides the SBM4-and-earlier subject index, whose SRI1
@@ -263,6 +304,10 @@ def verifyEntryIndexes [Monad m] (read : Reader m) (version : Nat)
     | none => pure true
     | some index => literalIndexAgrees read version entry index
   if !literalOk then return some literalIndexFailure
+  let geoOk ← match entry.geoIndex with
+    | none => pure true
+    | some index => geoIndexAgrees read version entry index
+  if !geoOk then return some geoIndexFailure
   pure none
 
 def verifyIndexSidecars [Monad m] (read : Reader m) (version : Nat)

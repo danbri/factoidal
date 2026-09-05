@@ -33,6 +33,7 @@ import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.LiteralGramIndexWire
+import L4Factoidal.Storage.GeoBBoxIndexWire
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.NQuadsFast
@@ -78,7 +79,7 @@ def artifactName : PackFormat → Nat → String
 def layoutName : PackFormat → String
   | .ibk2 => "predicate-ibk2-merkle-v2-streaming"
   | .ibk3 => "predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0"
-  | .ibk4 => "quad-ibk4-ptd1-lgi1-merkle-v0"
+  | .ibk4 => "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0"
 
 def registryVersion : PackFormat → String
   | .ibk2 => "local-ibk2-dict-v0"
@@ -88,7 +89,7 @@ def registryVersion : PackFormat → String
 def manifestVersion : PackFormat → Nat
   | .ibk2 => 2
   | .ibk3 => 6
-  | .ibk4 => 8
+  | .ibk4 => 9
 
 def encodeBlock? : PackFormat → L4Factoidal.Storage.IndexedBlock.Block → Option ByteArray
   | .ibk2, block => L4Factoidal.Storage.IndexedBlockWireV2.encode? block
@@ -455,21 +456,39 @@ def publishQuadBlocks (h : Hasher) (scope : String) :
             let (ref, made) ← sidecar h (name ++ ".lgi1") indexBytes
               s!"could not commit LGI1 chunks for {predicate.val}"
             pure (some ref, made.reverse ++ outRev)
+      /- SBM9's GBI1 geometry bounding-box index, written for EVERY block on
+         the same rule: a block whose dictionary holds no geometry carries an
+         index with no entry, so an SBM9 reader never asks whether the role is
+         present. `GeoBBoxIndex.build` decides the boxes, the CRS table and
+         the entry order, and `GeoBBoxIndexWire.encode?` decides the bytes;
+         nothing is restated here. -/
+      let geo : L4Factoidal.Storage.GeoBBoxIndexWire.Artifact :=
+        { targetIBKSha256 := artifact.sha256
+          index := L4Factoidal.Storage.GeoBBoxIndex.build block.dict }
+      let (geoIndex, outRev) ←
+        match L4Factoidal.Storage.GeoBBoxIndexWire.encode? geo with
+        | none => .error s!"could not encode GBI1 index for {predicate.val}"
+        | some indexBytes => do
+            let (ref, made) ← sidecar h (name ++ ".gbi1") indexBytes
+              s!"could not commit GBI1 chunks for {predicate.val}"
+            pure (some ref, made.reverse ++ outRev)
       let entry : Entry :=
         { predicate
           artifact
           literalIndex
+          geoIndex
           blockLayout := some BlockLayout.ibk4
           blankNodeScope := scope
           graphSet
           rows := block.rows.size
           ordinal }
       let literalIndexName := literalIndex.map (fun index => index.key.value) |>.getD ""
+      let geoIndexName := geoIndex.map (fun index => index.key.value) |>.getD ""
       publishQuadBlocks h scope
         { tripleCount := state.tripleCount + block.rows.size
           nextOrdinal := ordinal + 1
           entriesRev := entry :: state.entriesRev
-          linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}\t{literalIndexName}" :: state.linesRev }
+          linesRev := s!"{ordinal}\t{predicate.val}\t{name}\t{block.rows.size}\t{bytes.size}\t{bytesToHex artifact.sha256}\t{name}.merkle\t{graphSet.length}\t{graphSetText graphSet}\t{literalIndexName}\t{geoIndexName}" :: state.linesRev }
         outRev rest
 
 /-- Every IBK4 block of one source. The blank-node scope is the SOURCE
@@ -582,7 +601,7 @@ def quadStreams : PackSyntax → Bool
   | .turtle | .trig | .ntriples => false
 
 def quadManifestTsvHeader : String :=
-  "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\n"
+  "# index\tpredicate\tfile\trows\tbytes\tsha256\tmerkle-leaves\tgraphs\tgraph-set\tliteral-index\tgeo-index\n"
 
 /-- The SBM7 manifest and the TSV of a finished IBK4 `PackState`. -/
 def quadManifestArtifacts (prepass : SourcePrepass) (state : PackState) :
