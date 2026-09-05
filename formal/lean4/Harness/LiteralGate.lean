@@ -135,22 +135,70 @@ def bestOf (repeats : Nat) (act : IO String) : IO (Nat × String) := do
   pure (best / 1000, answer)
 
 def usage : String :=
-  "usage: l4block-literal-gate COLLECTION-ROOT PREDICATE-IRI NEEDLE [NEEDLE ...]"
+  "usage: l4block-literal-gate [--probe] COLLECTION-ROOT PREDICATE-IRI NEEDLE [NEEDLE ...]"
+
+/-- The plan of the shape a generation can answer, and the shape itself. The
+gate and the probe select a plan the same way. -/
+def planFor (manifestHex predicate probe : String) : IO (Shape × Json) := do
+  let namedPlan ← envelopeOf (storeQueryPlan manifestHex (queryFor .named predicate probe))
+  if (stringsAt namedPlan "keys").isEmpty then do
+    let barePlan ← envelopeOf (storeQueryPlan manifestHex (queryFor .bare predicate probe))
+    pure (Shape.bare, barePlan)
+  else pure (Shape.named, namedPlan)
+
+def handleId (json : Json) : IO String :=
+  match json with
+  | .object members =>
+      match members.find? (fun m => m.1 == "handle") with
+      | some (_, .string h) => pure h
+      | _ => throw (IO.userError "storeOpen answered no handle")
+  | _ => throw (IO.userError "storeOpen answered no handle")
+
+/-- `--probe`: open ONE handle over the whole plan, with its sidecars, and
+report the open cost and the per-needle search cost. This is the measurement
+the handle byte cap is derived from
+(https://github.com/danbri/factoidal/issues/657); it holds one handle rather
+than two, so `/usr/bin/time -l` around it reports the resident cost of ONE
+retained artifact set. It compares nothing and gates nothing — the gate is
+the no-flag form above it. -/
+def probe (root predicate : String) (needles : List String) : IO UInt32 := do
+  let directory ← resolveGeneration (System.FilePath.mk root)
+  let manifestHex := hexOfBytes (← IO.FS.readBinFile (directory / "manifest.sbm2"))
+  let (shape, plan) ← planFor manifestHex predicate (needles.headD "")
+  let blockKeys := stringsAt plan "keys"
+  let sidecarKeys := stringsAt plan "sidecarKeys"
+  let shapeName := match shape with | .named => "GRAPH ?g" | .bare => "default graph"
+  IO.println s!"generation {directory} shape {shapeName} blocks {blockKeys.length} sidecars {sidecarKeys.length}"
+  if blockKeys.isEmpty then do
+    IO.eprintln "l4block-literal-gate --probe: the plan selects no block for that predicate"
+    pure 1
+  else do
+    let t0 ← IO.monoNanosNow
+    let (blob, json) ← regionOf directory (blockKeys ++ sidecarKeys)
+    let openedText ← storeOpen manifestHex json blob
+    let t1 ← IO.monoNanosNow
+    let opened ← envelopeOf openedText
+    let handle ← handleId opened
+    IO.println s!"storeOpen {handle}: {(t1 - t0) / 1000000} ms, region {blob.size} bytes"
+    IO.println s!"storeOpen envelope: {openedText}"
+    for needle in needles do
+      let (us, answer) ← bestOf 3 (storeHandleQuery handle (queryFor shape predicate needle))
+      let rows := (rowCount answer).map toString |>.getD "?"
+      IO.println s!"needle \"{needle}\": rows {rows}, {us} us"
+    IO.println s!"storeHandleList: {← storeHandleList}"
+    let _ ← storeHandleClose handle
+    pure 0
 
 def run (args : List String) : IO UInt32 := do
   match args with
+  | "--probe" :: root :: predicate :: needles =>
+      if needles.isEmpty then do IO.eprintln usage; pure 2 else probe root predicate needles
   | root :: predicate :: needles =>
       if needles.isEmpty then do IO.eprintln usage; pure 2 else do
       let directory ← resolveGeneration (System.FilePath.mk root)
       let manifestBytes ← IO.FS.readBinFile (directory / "manifest.sbm2")
       let manifestHex := hexOfBytes manifestBytes
-      let probe := needles.headD ""
-      let namedPlan ← envelopeOf (storeQueryPlan manifestHex (queryFor .named predicate probe))
-      let (shape, plan) ←
-        if (stringsAt namedPlan "keys").isEmpty then do
-          let barePlan ← envelopeOf (storeQueryPlan manifestHex (queryFor .bare predicate probe))
-          pure (Shape.bare, barePlan)
-        else pure (Shape.named, namedPlan)
+      let (shape, plan) ← planFor manifestHex predicate (needles.headD "")
       let blockKeys := stringsAt plan "keys"
       let sidecarKeys := stringsAt plan "sidecarKeys"
       let shapeName := match shape with | .named => "GRAPH ?g" | .bare => "default graph"
@@ -163,13 +211,6 @@ def run (args : List String) : IO UInt32 := do
         let (scanBlob, scanJson) ← regionOf directory blockKeys
         let indexHandle ← envelopeOf (← storeOpen manifestHex withJson withBlob)
         let scanHandle ← envelopeOf (← storeOpen manifestHex scanJson scanBlob)
-        let handleId (json : Json) : IO String :=
-          match json with
-          | .object members =>
-              match members.find? (fun m => m.1 == "handle") with
-              | some (_, .string h) => pure h
-              | _ => throw (IO.userError "storeOpen answered no handle")
-          | _ => throw (IO.userError "storeOpen answered no handle")
         let indexId ← handleId indexHandle
         let scanId ← handleId scanHandle
         IO.println s!"handles index={indexId} scan={scanId} bytes-with-sidecars {withBlob.size} bytes-without {scanBlob.size}"

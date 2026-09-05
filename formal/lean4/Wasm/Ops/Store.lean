@@ -103,6 +103,14 @@ silently (anti-pattern 25).
 set by the cost of the pure Lean SHA-256 rather than by memory: the hash is
 the dominant term in a whole-artifact admission.
 
+These three bound ONE CALL of an operation that pays the hash and the decode
+EVERY time it is called, and they are unchanged by
+https://github.com/danbri/factoidal/issues/657. The handle path answers a
+different question — what may be RETAINED between calls — and carries its own
+cap (`Wasm/Ops/StoreHandles.lean`). Raising these would make a single
+stateless call slower without making any second call faster, which is the
+opposite of what a host with a wide query needs; such a host opens a handle.
+
 ## What this operation is NOT
 
 * It reads the manifest's committed artifacts only. A generation carrying a
@@ -447,14 +455,18 @@ private def readIbk4 (sources : List (String × ArtifactSource)) (blob : ByteArr
       let quads ← ibk4QuadsOf "storeQuery" entry bytes
       readIbk4 sources blob rest (acc ++ quads)
 
-/-- Every read cap, checked against the manifest's own declarations before a
-single byte is hashed.
+/-- Every read cap of the STATELESS path, checked against the manifest's own
+declarations before a single byte is hashed.
 
-`subject` is the sentence opener, so the same three caps read correctly for
-the operation that trips one: `storeQuery` selects a plan, `storeOpen`
-(Wasm/Ops/StoreHandles.lean) is handed a set of artifacts. The values are the
-same in both, so a handle can never retain an artifact set that `storeQuery`
-would refuse to read. -/
+`subject` is the sentence opener, so the caps read correctly for the
+operation that trips one.
+
+`storeOpen` (Wasm/Ops/StoreHandles.lean) does NOT call this. A handle hashes
+and decodes once and then answers many queries, so what bounds it is retained
+BYTES, not the per-call cost these caps bound; it carries its own
+`maxStoreHandleBytes`, derived from a measured resident multiplier. See that
+module's banner and
+https://github.com/danbri/factoidal/issues/657. -/
 def checkEntryCaps (subject : String) (entries : List Entry) : Except String Unit := do
   if entries.length > maxStoreArtifacts then
     throw s!"{subject} {entries.length} artifacts, the cap is {maxStoreArtifacts}"

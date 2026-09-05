@@ -60,24 +60,86 @@ Either way the rows are the rows of the planned blocks, and `"shards"` and
 
 ## Caps
 
-A cap trip is an explicit error naming the cap; nothing is evicted and
-nothing is truncated (anti-pattern 25).
+A cap trip is an explicit error naming the cap AND the value that tripped it;
+nothing is evicted and nothing is truncated (anti-pattern 25).
 
-| Cap | Value | What it bounds |
-|---|---|---|
-| `maxStoreArtifacts` / `maxStoreBytes` / `maxStoreRows` | as `storeQuery` | one `storeOpen` |
-| `maxStoreHandles` | 8 | open store handles in the process |
-| `maxStoreHandleBytes` | 67108864 (64 MiB) | admitted artifact bytes retained across ALL open handles |
+| Cap | Value | What it bounds | What it protects against |
+|---|---|---|---|
+| `maxStoreHandles` | 8 | open store handles in the process | a host that opens and never closes: each handle carries a manifest, a dataset and an index whose fixed cost the byte cap counts only through its artifacts |
+| `maxStoreHandleBytes` | 134217728 (128 MiB) | admitted artifact bytes retained across ALL open handles | resident memory, of which it is a measured proxy — see below |
 
-The three read caps are `storeQuery`'s own, so a handle can never retain an
-artifact set `storeQuery` would refuse to read. The two residency caps are
-new and are process-wide.
+These two are the handle path's OWN caps and they are process-wide.
+`storeOpen` does NOT apply `storeQuery`'s `maxStoreArtifacts` (64),
+`maxStoreBytes` (8 MiB) or `maxStoreRows` (100000); it did until
+https://github.com/danbri/factoidal/issues/657, by inheritance rather than by
+derivation.
 
-`maxStoreHandleBytes` counts ADMITTED ARTIFACT BYTES, which is what the
-manifest declares and what the host transferred. It is not the resident cost:
-a decoded block plus its index is a multiple of its packed size, and that
-multiple depends on the data. A host that must bound resident memory reads
-`storeHandleList` and measures its own process.
+### Why an artifact COUNT bounds nothing here
+
+`storeQuery`'s 64-artifact cap was set when every query re-read, re-hashed and
+re-decoded its blocks, so a wide plan meant a large cost paid AGAIN for every
+question. A handle pays that cost once. What is left to bound is residency,
+and residency is bytes: 257 small blocks may retain far less than four large
+ones. On the skosdex corpus `skos:prefLabel` occupies 257 blocks — one per
+graph, because the split cuts at graph boundaries — totalling 103341302
+bytes, and the COUNT refused a set the BYTES admit. A count would have to
+name a per-artifact cost that bytes does not already carry; there is none
+large enough to bound, so there is no count cap.
+
+`maxStoreRows` is dropped for the same reason. A row cannot be smaller than a
+few packed bytes, so the byte cap bounds rows too, and `storeHandleList`
+reports the retained row count for a host that wants to see it.
+
+### Where 128 MiB comes from
+
+`maxStoreHandleBytes` counts ADMITTED ARTIFACT BYTES — what the manifest
+declares and what the host transferred. It is a PROXY for resident memory,
+and the multiplier between the two is measured rather than assumed.
+
+Measured 2026-09-05 on the full skosdex corpus (7,315,251 quads, 3,286
+blocks, 204 named graphs, SBM8 with an LGI1 per block), through
+`l4block-literal-gate --probe`, one handle over the corpus-wide
+`skos:prefLabel` plan:
+
+    retained artifact bytes        103,341,302   (257 IBK4 blocks)
+    region transferred             159,673,831   (those blocks + 257 LGI1)
+    peak resident                1,675,345,920
+    resident per retained byte            16.2
+
+The peak covers the transferred region, the decoded rows, the rebuilt
+object-row index, the decoded sidecars and the working set of the queries
+that followed. The row-identity gate, which opens the SAME set twice (once
+without the sidecars), measured 2,569,797,632 resident for 206,682,604
+retained bytes — 12.4 — so 16.2 is the conservative of the two.
+
+wasm32 gives 4,294,967,296 bytes of address space in total, and a browser tab
+in practice holds less. Half of it is reserved here for the host's own
+allocations, for the incoming region before the engine consumes it, and for
+growth:
+
+    2,147,483,648 / 16.2  =  132,464,438 bytes
+
+The cap is the nearest power of two, 134217728 (128 MiB). That is 1.3 percent
+above the computed bound and predicts 2,175,907,586 bytes resident, 50.7
+percent of the wasm32 address space; the rounding is inside the variation of
+the multiplier itself, which is data-dependent. It admits the corpus-wide
+`skos:prefLabel` set with 30,876,426 bytes of headroom, and refuses a second
+handle over the same set.
+
+A SINGLE SMALL block measures a much larger multiple — about 32 for a 5.5 MB
+block — because it carries the fixed cost of the process. The marginal figure
+above is the one a cap is derived from. The multiplier stays data-dependent:
+many short literals over a large dictionary cost more per packed byte than
+few long ones. A host that must bound its OWN memory reads `storeHandleList`
+and measures its own process; this cap bounds the engine, not the host.
+
+### Why `storeQuery`'s caps did not move
+
+They answer a different question. `storeQuery` pays the hash and the decode
+on EVERY call, so its caps bound one call's latency, and 8 MiB is set by the
+throughput of the pure Lean SHA-256, not by memory. Raising them would make a
+single stateless call slower without making any second call faster. A host
+with a wide query opens a handle.
 
 `storeOpen` REFUSES when a cap is reached. It does not evict another handle:
 a handle belongs to whichever caller opened it, and a store disappearing
@@ -121,9 +183,10 @@ open L4Factoidal.JSON
 def maxStoreHandles : Nat := 8
 
 /-- At most this many admitted artifact bytes may be retained across every
-open store handle. See the banner: this is the packed size, not the resident
-size. -/
-def maxStoreHandleBytes : Nat := 64 * 1024 * 1024
+open store handle. This is the packed size, not the resident size; the banner
+carries the measured multiplier between them and the arithmetic that turns it
+into this number. -/
+def maxStoreHandleBytes : Nat := 128 * 1024 * 1024
 
 /-! ## What a handle retains -/
 
@@ -317,10 +380,20 @@ private def checkSuppliedKeys (op : String) (manifest : Manifest)
   | some (key, _) => .error s!"{op}: artifact '{key}' is not declared by this manifest"
   | none => pure ()
 
+/-- The retained-bytes admission of one `storeOpen`. `held` is the artifact
+bytes every already-open handle retains; `entries` are the manifest entries
+this open would add. It is checked BEFORE any artifact is hashed or decoded,
+so a refusal costs the manifest decode and nothing more. -/
+def checkHandleBytes (held : Nat) (entries : List Entry) : Except String Unit := do
+  let want := held + totalBytesOf entries
+  if want > maxStoreHandleBytes then
+    throw s!"storeOpen: this open would retain {want} artifact bytes, the cap is {maxStoreHandleBytes}"
+  pure ()
+
 /-- The admission of `storeOpen`, kept pure so the IO layer only inserts the
 result. -/
-private def buildOpenStore (manifestHex artifactsJson : String) (blob : ByteArray) :
-    Except String OpenStore := do
+private def buildOpenStore (held : Nat) (manifestHex artifactsJson : String)
+    (blob : ByteArray) : Except String OpenStore := do
   let manifest ← decodeManifest? "storeOpen" manifestHex
   let ibk4 ← storeLayoutIbk4? "storeOpen" manifest
   let sources ← artifactSources "storeOpen" artifactsJson
@@ -329,7 +402,7 @@ private def buildOpenStore (manifestHex artifactsJson : String) (blob : ByteArra
     sources.any fun pair => pair.1 == entry.artifact.key.value
   if entries.isEmpty then
     throw "storeOpen: no artifact bytes were supplied; a handle retains at least one block"
-  checkEntryCaps "storeOpen: the call supplies" entries
+  checkHandleBytes held entries
   let artifacts ← readRetained "storeOpen" ibk4 sources blob entries []
   let ds := datasetOfRetained ibk4 artifacts
   pure { ordinal := 0
@@ -363,26 +436,25 @@ diagnostic `{"key","bytes":"<hex>"}` form. A host normally supplies the keys
 `storeQueryPlan` named for the queries it intends to ask, or every key
 `storeManifestInspect` listed.
 
-Refuses, naming the cap, when the process already holds `maxStoreHandles`
-handles or when this open would push the retained artifact bytes above
-`maxStoreHandleBytes`. Nothing is evicted. -/
+Refuses, naming the cap and the value, when the process already holds
+`maxStoreHandles` handles or when this open would push the retained artifact
+bytes above `maxStoreHandleBytes`. The byte refusal is decided from the
+manifest's own declarations BEFORE any artifact is hashed or decoded, so it
+costs the manifest decode and nothing more. Nothing is evicted. -/
 def storeOpen (manifestHex artifactsJson : String) (blob : ByteArray) : IO String := do
   let table ← storeHandleTable.get
   if table.size ≥ maxStoreHandles then
     pure (errJson s!"storeOpen: {table.size} store handles are open, the cap is {maxStoreHandles}")
   else
-    match buildOpenStore manifestHex artifactsJson blob with
+    let held := table.fold (fun total _ opened => total + opened.retainedBytes) 0
+    match buildOpenStore held manifestHex artifactsJson blob with
     | .error e => pure (errJson e)
-    | .ok store =>
-        let held := table.fold (fun total _ opened => total + opened.retainedBytes) 0
-        if held + store.retainedBytes > maxStoreHandleBytes then
-          pure (errJson s!"storeOpen: this open would retain {held + store.retainedBytes} artifact bytes, the cap is {maxStoreHandleBytes}")
-        else do
-          let n ← storeHandleCounter.modifyGet fun n => (n + 1, n + 1)
-          let handle := s!"s{n}"
-          let opened := { store with ordinal := n }
-          storeHandleTable.modify (·.insert handle opened)
-          pure (okWith (openStoreJson handle opened))
+    | .ok store => do
+        let n ← storeHandleCounter.modifyGet fun n => (n + 1, n + 1)
+        let handle := s!"s{n}"
+        let opened := { store with ordinal := n }
+        storeHandleTable.modify (·.insert handle opened)
+        pure (okWith (openStoreJson handle opened))
 
 /-! ## The literal search path
 
@@ -549,5 +621,43 @@ def storeHandleClose (h : String) : IO String := do
     pure (okWith [])
   else
     pure (unknownStoreHandle h)
+
+/-! ## Cap tests
+
+`checkHandleBytes` is the function `storeOpen` calls, against the shipped
+constant, so these exercise the refusal a host sees rather than a copy of
+it. -/
+
+private def capEntry (bytes : Nat) : Entry :=
+  { predicate := ⟨"http://example.org/p", by decide⟩
+  , artifact := { key := ⟨"predicate-0.ibk4"⟩, bytes, sha256 := ByteArray.empty,
+                  chunked := none }
+  , rows := 0
+  , ordinal := 0 }
+
+-- Exactly the cap is admitted; one byte more is refused, and the refusal
+-- names the value that tripped it AND the cap (anti-pattern 25).
+#guard (checkHandleBytes 0 [capEntry maxStoreHandleBytes]).toOption.isSome
+#guard match checkHandleBytes 0 [capEntry (maxStoreHandleBytes + 1)] with
+  | .error e => e.contains (toString (maxStoreHandleBytes + 1)) &&
+                e.contains (toString maxStoreHandleBytes)
+  | .ok _ => false
+
+-- The bound is over EVERY open handle. A set that fits on its own is refused
+-- once another handle already holds the budget, and the message names the
+-- TOTAL, not this call's share.
+#guard match checkHandleBytes maxStoreHandleBytes [capEntry 1] with
+  | .error e => e.contains (toString (maxStoreHandleBytes + 1))
+  | .ok _ => false
+
+-- The count of artifacts bounds nothing here: 512 blocks of 1024 bytes are
+-- admitted, where `storeQuery`'s inherited 64-artifact cap refused them.
+#guard (checkHandleBytes 0 (List.replicate 512 (capEntry 1024))).toOption.isSome
+
+-- The corpus-wide `skos:prefLabel` artifact set of the skosdex corpus,
+-- measured 2026-09-05: 257 blocks, 103341302 bytes. It is admitted, and a
+-- second handle over the same set is not.
+#guard (checkHandleBytes 0 [capEntry 103341302]).toOption.isSome
+#guard (checkHandleBytes 103341302 [capEntry 103341302]).toOption.isNone
 
 end L4Wasm.Ops
