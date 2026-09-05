@@ -213,6 +213,7 @@ import L4Factoidal.Geo.Types
 import L4Factoidal.Geo.Order
 import L4Factoidal.Geo.BBox
 import L4Factoidal.Geo.Topology
+import L4Factoidal.Geo.BBoxSound
 import L4Factoidal.Geo.Wkt
 import L4Factoidal.Geo.WktTests
 import L4Factoidal.Geo.Functions
