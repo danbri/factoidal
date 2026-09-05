@@ -89,7 +89,7 @@ private theorem byteArray_toList_loop (bs : ByteArray) (i : Nat) (r : List UInt8
 
 /-- The index loop of `ByteArray.toList` yields the underlying array's
 element list. -/
-private theorem byteArray_toList_eq (bs : ByteArray) : bs.toList = bs.data.toList := by
+theorem byteArray_toList_eq (bs : ByteArray) : bs.toList = bs.data.toList := by
   rw [ByteArray.toList, byteArray_toList_loop]; simp
 
 /-! ## Length-prefixed strings -/
