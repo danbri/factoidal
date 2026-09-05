@@ -46,7 +46,7 @@ import { StoreHostError, listGeneration, readWhole } from '../store-host/index.m
 import { fileUrlToPath, joinPath } from '../store-host/paths.mjs'
 import { loadEngine } from './engine.mjs'
 import { PackError, packFile, packSupported, verifyGeneration } from './pack.mjs'
-import { openStore } from './store.mjs'
+import { StoreOperationError, openStore } from './store.mjs'
 
 const isDeno = typeof globalThis.Deno !== 'undefined'
 
@@ -144,6 +144,16 @@ export function describeError (error) {
       path: error.path === undefined ? null : error.path
     }
   }
+  if (error instanceof StoreOperationError) {
+    return {
+      type: 'StoreOperationError',
+      message: error.message,
+      capValue: error.capValue,
+      capLimit: error.capLimit,
+      digestKey: error.digestKey,
+      stackLimit: error.stackLimit
+    }
+  }
   return {
     type: 'Error',
     message: error && error.message ? String(error.message) : String(error)
@@ -159,6 +169,14 @@ export function reviveError (description) {
   if (description.type === 'StoreHostError') {
     const detail = description.path === null ? {} : { path: description.path }
     return new StoreHostError(description.code, description.message, detail)
+  }
+  if (description.type === 'StoreOperationError') {
+    return new StoreOperationError(description.message, {
+      capValue: description.capValue === null ? undefined : description.capValue,
+      capLimit: description.capLimit === null ? undefined : description.capLimit,
+      digestKey: description.digestKey === null ? undefined : description.digestKey,
+      stackLimit: description.stackLimit
+    })
   }
   return new Error(description.message)
 }
