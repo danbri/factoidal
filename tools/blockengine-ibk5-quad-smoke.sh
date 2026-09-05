@@ -167,6 +167,18 @@ r12_query 'SELECT ?s WHERE { GRAPH ?g { ?s <http://www.opengis.net/ont/geosparql
 cat "$run_dir/q-geo.txt"
 grep -q 'rows=1 ' "$run_dir/q-geo.txt"
 
+# The generation dumps back to N-Quads, blobs resolved, and the dump packs
+# again: a format change can therefore be tested on the same data.
+"$bin/l4block-quad-dump" "$run_dir/r12store" "$run_dir/r12-dump.nq" \
+  >"$run_dir/dump.txt"
+cat "$run_dir/dump.txt"
+grep -q 'blocks=5 quads=5' "$run_dir/dump.txt"
+grep -q '<<( ' "$run_dir/r12-dump.nq"
+grep -q '@ar--rtl' "$run_dir/r12-dump.nq"
+"$bin/l4block-shard-pack" "$run_dir/r12-dump.nq" "$run_dir/r12repack" ibk5 \
+  >"$run_dir/repack.txt"
+grep -q 'quads=5 blocks=5' "$run_dir/repack.txt"
+
 # A blob file whose bytes changed is refused rather than answered.
 cp -R "$run_dir/r12store/gen-1" "$run_dir/r12bad"
 blob=$(ls "$run_dir/r12bad"/blob-*.lit | head -1)

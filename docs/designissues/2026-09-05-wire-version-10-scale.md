@@ -307,3 +307,147 @@ fields (the same rule SBM7 states for its fields).
    after a wasm rebuild.
 8. Specification sections 6.1, 6.2, 6.3 and 10 updated; the ceilings
    table of section 2 copied into the specification.
+
+## 10. Gate results, 2026-09-05
+
+Measured on the MacBook Air the project runs on, with one binary per row.
+Every number is from the run named beside it; nothing is an estimate.
+
+### The packer and the readers
+
+| Gate | Result |
+|---|---|
+| 1 `lake build` | clean |
+| 1 `tools/lean-hygiene-audit.py` | `sorry` 0, user `axiom` 0, `native_decide` 0, `unsafe` 0, `@[implemented_by]` 0, `partial def` 172 (baseline 172) |
+| 2 committed hub blocks | unchanged; PTD1 and IBK3 were not touched |
+| 3 `tools/blockengine-ibk4-quad-smoke.sh` | pass, unchanged from wire version 9 |
+| 3 `tools/blockengine-ibk5-quad-smoke.sh` (new) | pass |
+| 3 `tools/blockengine-ibk5-w3c-trig-smoke.sh` (new) | 241 pass, 0 fail (out of 241) |
+| 3 `tools/blockengine-ibk4-w3c-trig-smoke.sh` | 241 pass, 0 fail (out of 241) |
+| 7 `formal/lean4/Wasm/native-smoke.sh` | 85 pass, 0 fail (out of 85) |
+| 7 wasm and npm host | NOT RUN; the WebAssembly and host side is the next piece of work |
+
+### Gate 4 — row identity, version 9 against version 10
+
+The 209,715,187-byte skosdex N-Quads prefix, cut at a line boundary, packed
+under both tags and activated, then the ten query shapes of
+[`2026-09-05-pack-publication-every-batch.md`](2026-09-05-pack-publication-every-batch.md)
+section 6 run against both with ONE binary, the `shards=` header line
+stripped.
+
+**The two outputs are identical over 186 lines. GATE 4 PASSES.**
+
+Answers: 17,648 rows, 0, 2,634, 1,392, 4,887, `true`, `false`, 0, 17,426 and
+1. Two of the ten answer zero rows and are therefore weak comparisons; they
+are reported as they ran rather than replaced afterwards. Query 2 asks for
+`skos:broader` in a graph that uses none, and query 8 asks for a
+`skos:prefLabel` subject in `iptc-mediatopic` with no `skos:definition`, of
+which there are none.
+
+| | wire version 9 | wire version 10 |
+|---|---|---|
+| pack wall clock | 83.57 s | 84.77 s |
+| pack peak memory footprint | 349,143,040 bytes | 242,778,112 bytes |
+| generation size | 167,488 KiB | 143,236 KiB |
+| rows | 942,869 | 942,869 |
+| blocks | 1,252 | 1,252 |
+| activation wall clock | 23.60 s | 52.68 s |
+
+Version 10 is 14.5% SMALLER, which is LGI2's LEB128 posting gaps against
+LGI1's fixed u32, and it packs in the same time. Activation costs 2.2x
+because it REBUILDS the LGI2 and the GBI1 index of every block and compares
+them, which SBM8 and SBM9 activation does not do; 52.68 s for a 1,252-block
+generation is what made that affordable.
+
+The block set is identical, predicate by predicate, to version 9's. The
+version-2 term width in `PredicateQuadBlocks.quadWireBytes` moved no block
+boundary on this corpus, whose largest literal is 38,201 bytes.
+
+### The cost that was NOT the format
+
+The first version-10 pack of that prefix took 243.57 s against version 9's
+72.62 s. `/usr/bin/sample` put 10,159 of 15,405 samples inside one
+`List.length`: `readNQuad12` passed `cs.length + 1` as the fuel bounding
+`<<( ... )>>` nesting, where `cs` is the whole remaining input, so it walked
+the rest of the buffer once per statement. Version 10 reads its source as
+RDF 1.2 (section 4), which made it the first route through that reader.
+
+Counting to the next line break instead took a 52,428,626-byte pack from
+53.96 s to 23.08 s with every artifact byte-identical. Version 9 packs the
+same prefix in 17.07 s, so the format's own cost is 1.35x at 52 MB and 1.01x
+at 210 MB, not 3.16x.
+
+Recorded because the first reading of the 3.35x was "the new codec is
+slower", and that reading was wrong. A pack profile costs one `sample` run.
+
+### Gate 5 — memory against source
+
+Wire version 10, N-Quads, the default 268,435,456-byte batch. Peak footprint
+is bounded by one batch plus the carried rows, not by the source.
+
+| source bytes | quads | blocks | pack wall clock | peak footprint |
+|---|---|---|---|---|
+| 52,428,626 | 260,286 | 1,018 | 23.08 s | 188,874,752 bytes |
+| 209,715,187 | 942,869 | 1,252 | 84.77 s | 242,778,112 bytes |
+| 1,543,478,120 | 7,316,318 | 3,306 | 743.83 s | 396,869,632 bytes |
+
+29.4x the source for 2.1x the memory. The 105 MB rung of the stated ladder
+was not run.
+
+The full corpus activated in 390.90 s (3,306 blocks, 758,894,348 verified
+logical bytes) and its generation is 922,920 KiB.
+
+### Gate 6 — zone-map selectivity
+
+`SELECT ?l WHERE { GRAPH ?g { <http://cv.iptc.org/newscodes/mediatopic/>
+skos:prefLabel ?l } }` against the full corpus, beside the same shape with an
+unbound subject. Entries SELECTED is what the planner opens; entries EXCLUDED
+is what the zone maps dropped after the predicate and graph collectors kept
+them.
+
+| | entries selected | entries excluded by the zone maps | bytes read | wall clock |
+|---|---|---|---|---|
+| unbound subject | 258 | 0 | 103,341,569 | 43.92 s |
+| bound subject | 28 | 230 | 14,264,765 | 7.41 s |
+
+9.2x fewer entries, 7.2x fewer bytes, 5.9x faster. **GATE 6 PASSES** on a
+source in its natural, graph-grouped order.
+
+### The shuffled source, and what it says about the BLOCK SET
+
+The degenerate case was to be a shuffled 210 MB prefix. It was killed after
+it had written 152,714 files, because `shuf` had turned it into something
+else: the packer cuts a block at every GRAPH CHANGE, and a shuffled N-Quads
+source changes graph on nearly every line, so almost every run closes at one
+or two rows. Measured on a 10,485,723-byte prefix and its shuffled twin,
+both packed at wire version 10:
+
+| | natural order | shuffled |
+|---|---|---|
+| quads | 50,386 | 47,166 |
+| blocks | 483 | 25,813 |
+| pack wall clock | 4.21 s | 102.09 s |
+| pack peak footprint | 117,932,032 bytes | 1,346,781,184 bytes |
+| generation size | 20,376 KiB | 650,928 KiB |
+| activation | 3.43 s | 80.68 s |
+
+(The two prefixes hold different statements — 10 MB of a shuffled file is not
+a permutation of 10 MB of the sorted one — so the row counts differ by 6%.)
+
+The zone maps themselves do NOT degrade. On the shuffled generation the
+bound-subject query selected 5 entries of 5,601 and the maps excluded 5,596,
+against 9 of 73 with 64 excluded in natural order: a block of two rows has a
+very narrow subject range. What degrades is the BLOCK SET, and with it the
+manifest: 25,813 entries, and both queries then spent about 150 s, almost all
+of it decoding and validating that manifest rather than reading blocks — the
+bound query read 2,303 bytes of block data in 183.66 s.
+
+So the zone map's dependence on source order, which section 6.1 predicted,
+is not the finding. The finding is that the graph-change cut rule has no
+lower bound on block size, and that an interleaved N-Quads source therefore
+produces one block per graph run. `minBatchRows` bounds what the BATCH rule
+publishes and does not bound this. Two candidates, neither taken here: a
+minimum row count before the graph-change rule may close a run, or a block
+that holds several graphs with a graph column already in every row. Tracked
+at <https://github.com/danbri/factoidal/issues/658>.
+
