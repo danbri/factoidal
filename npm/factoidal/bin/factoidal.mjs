@@ -474,10 +474,27 @@ async function commandInspect (positional, options) {
   out(`term registry ${envelope.termRegistryVersion === '' ? '(none recorded)' : envelope.termRegistryVersion}`)
   out(`fixed-chunk Merkle commitment ${envelope.rangeCommitted ? 'yes' : 'no'}`)
   out(`${envelope.entries.length} ${envelope.entries.length === 1 ? 'entry' : 'entries'}, ${envelope.totalBytes} bytes, ${plural(envelope.totalRows, 'row')}`)
+  // Wire version 10: the manifest blob table. Each `blob-<hex>.lit` holds the
+  // lexical form of one literal above the 65,536-byte inline ceiling, and is
+  // shared by every block whose dictionary names it.
+  const blobs = envelope.blobs ?? []
+  if (blobs.length > 0) {
+    let blobBytes = 0
+    for (const blob of blobs) blobBytes += blob.bytes
+    out(`${plural(blobs.length, 'out-of-line literal')}, ${blobBytes} bytes`)
+  }
   out(`generation directory holds ${files.length} files, ${directoryBytes} bytes`)
   out('')
+  // The zone maps are per entry, so the columns appear only for a manifest
+  // that carries them. A bound is the first 64 bytes of the smallest (or
+  // largest) term key of the block; the first eight are enough to see that
+  // two blocks hold different ranges.
+  const zoned = envelope.entries.some((entry) => entry.subjectZone !== undefined)
+  const zoneCell = (zone) =>
+    zone === undefined ? '-' : `${zone.min.slice(0, 16)}..${zone.max.slice(0, 16)}`
   printTable(
-    ['#', 'rows', 'bytes', 'kind', 'graphs', 'predicate'],
+    ['#', 'rows', 'bytes', 'kind', 'graphs', 'predicate']
+      .concat(zoned ? ['blobs', 'subject zone'] : []),
     envelope.entries.map((entry) => [
       String(entry.ordinal),
       String(entry.rows),
@@ -485,7 +502,9 @@ async function commandInspect (positional, options) {
       entry.blockKind,
       entry.graphs.length === 0 ? '-' : entry.graphs.map(graphLabel).join(' '),
       entry.predicate
-    ]))
+    ].concat(zoned
+      ? [String((entry.blobRefs ?? []).length), zoneCell(entry.subjectZone)]
+      : [])))
   return EXIT_OK
 }
 

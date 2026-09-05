@@ -942,6 +942,42 @@ would drop answers. A non-overlapping pair of boxes proves geometries
 disjoint, but that saves work inside a scan rather than reducing the
 candidate set.
 
+### Wire version 10: large literals, RDF 1.2 terms, zone maps
+
+A generation packed at wire version 10 (`--layout ibk5`) carries three
+things earlier versions do not. Everything below is read by the command
+and by `bin/store.mjs` without a flag; wire versions 9 and earlier are
+read exactly as before.
+
+**Out-of-line literals.** A literal whose lexical form is at most 65,536
+UTF-8 bytes is stored inside the block. A longer one is stored as one
+file beside it, `blob-<sha256 hex>.lit`, holding exactly those bytes; the
+block keeps only the byte length and the SHA-256, and the manifest blob
+table commits the file. The name is the content address, so the same
+literal in twenty blocks is one file. `factoidal inspect` prints how many
+such files a generation holds and their total size, and the plan a query
+produces lists them under `blobKeys` beside `keys` and `sidecarKeys` — a
+host reading a store itself must fetch all three. A blob that is missing
+or whose bytes hash differently REFUSES the query; it is never answered
+with a shortened literal.
+
+Above 4,294,967,295 bytes the packer refuses the literal and names its
+subject and predicate. That ceiling, and every other one, is stated in
+`docs/designissues/2026-09-05-wire-version-10-scale.md` section 2.
+
+**RDF 1.2 terms.** A triple term (`<<( :a :p :b )>>`) and a directional
+language literal (`"..."@ar--rtl`) are stored and read back. Wire version
+9 refuses both.
+
+**Zone maps.** Each manifest entry carries the smallest and the largest
+subject key and object key of its block, truncated to 64 bytes. A query
+with a constant subject or object skips every block whose range cannot
+hold it, from the manifest alone, with no block read. The plan reports
+how many entries were dropped that way as `zoneExcluded`. Selectivity
+depends on the source order: a subject-grouped or graph-grouped file
+gives disjoint ranges per block, a shuffled one gives overlapping ranges
+and a scan, which is correct and no worse than wire version 9.
+
 ## Limits (deliberate, documented)
 
 - **In-memory only.** ~1.2 KB RAM per quad (measured); 1M quads ≈

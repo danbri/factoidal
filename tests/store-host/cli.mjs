@@ -163,6 +163,13 @@ async function check (name, body) {
   }
 }
 
+/** A check that did not run, with the reason printed rather than swallowed
+ *  (anti-pattern 3: a skipped check is never counted as a pass). */
+function skip (name, reason) {
+  skipped += 1
+  console.log(`  skip ${name} - ${reason}`)
+}
+
 function assert (condition, message) {
   if (!condition) throw new Error(message)
 }
@@ -656,6 +663,103 @@ if (binDirectory === null) {
     assert(result.stderr.indexOf('Narrow the query') >= 0,
       `the refusal suggested no next step:\n${result.stderr}`)
   })
+
+  // --------------------------------------------------- wire version 10
+  //
+  // An SBM10 generation of IBK5 blocks
+  // (docs/designissues/2026-09-05-wire-version-10-scale.md). The fixture
+  // holds an RDF 1.2 triple term, a directional literal, a 70,000-byte
+  // literal and a 68,226-byte geometry; the last two are OUT OF LINE, so
+  // the block states only their byte extent and SHA-256 and the lexical
+  // form is one `blob-<hex>.lit` file the host must fetch beside it.
+  //
+  // These need a wasm module built from a Store.lean that reads IBK5. The
+  // committed module refuses the layout, so the group is skipped, with the
+  // reason printed, until the coordinator rebuilds it. The probe is a
+  // positive capability check: an engine that reads wire version 10
+  // reports the manifest blob table.
+  const V10_CHECK_COUNT = 6
+  const rdf12 = pack('tests/local/data/rdf12_sample.trig', 'store-ibk5', 'ibk5')
+  const v10Inspect = runCli(['inspect', rdf12, '--json'])
+  const v10Envelope = v10Inspect.code === 0 ? JSON.parse(v10Inspect.stdout) : { ok: false }
+  const readsIbk5 = v10Envelope.ok === true && Array.isArray(v10Envelope.blobs)
+
+  if (!readsIbk5) {
+    skip(`wire version 10 (${V10_CHECK_COUNT} checks)`,
+      'this engine reports no manifest blob table, so the committed wasm module ' +
+      'does not read IBK5 yet; rebuild it (Wasm/build-wasm.sh) to run these')
+    skipped += V10_CHECK_COUNT - 1
+  } else {
+    await check('inspect reports an IBK5 generation, its blob table and its zone maps', () => {
+      assert(v10Envelope.wireVersion === 10,
+        `inspect reports wire version ${v10Envelope.wireVersion}`)
+      assert(v10Envelope.entries.every((entry) => entry.blockKind === 'IBK5'),
+        'inspect reports a block kind other than IBK5')
+      assert(v10Envelope.blobs.length === 2,
+        `inspect reports ${v10Envelope.blobs.length} out-of-line literals, expected 2`)
+      for (const blob of v10Envelope.blobs) {
+        assert(blob.key === `blob-${blob.sha256}.lit`,
+          `the blob key ${blob.key} does not name its own digest`)
+      }
+      const sizes = v10Envelope.blobs.map((blob) => blob.bytes).sort((a, b) => a - b)
+      assert(sizes[0] === 68226 && sizes[1] === 70000,
+        `the out-of-line literals are ${sizes.join(', ')} bytes`)
+      assert(v10Envelope.entries.every((entry) =>
+        entry.subjectZone !== undefined && entry.objectZone !== undefined),
+      'an entry carries no zone map')
+    })
+
+    await check('inspect prints the blob table and the zone columns in its table form', () => {
+      const printed = runCli(['inspect', rdf12])
+      assert(printed.code === 0, `inspect exited ${printed.code}: ${printed.stderr.trim()}`)
+      assert(printed.stdout.indexOf('2 out-of-line literals') >= 0,
+        `inspect printed:\n${printed.stdout}`)
+      assert(printed.stdout.indexOf('subject zone') >= 0,
+        `inspect printed no zone column:\n${printed.stdout}`)
+    })
+
+    await check('a query answers the RDF 1.2 triple term and the directional literal', () => {
+      const triple = cliRows(rdf12,
+        'SELECT ?o WHERE { <http://example.org/s1> <http://example.org/says> ?o }')
+      assert(triple.length === 1, `the triple-term query answered ${triple.length} rows`)
+      assert(triple[0].indexOf('http://example.org/b') >= 0,
+        `the triple term came back as ${triple[0]}`)
+      const directional = cliRows(rdf12,
+        'SELECT ?o WHERE { <http://example.org/s2> <http://example.org/label> ?o }')
+      assert(directional.length === 1,
+        `the directional-literal query answered ${directional.length} rows`)
+      assert(directional[0].indexOf('ar') >= 0,
+        `the directional literal came back as ${directional[0]}`)
+    })
+
+    await check('STRLEN of the out-of-line literal is its full length', () => {
+      const rows = cliRows(rdf12,
+        'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } ' +
+        'BIND(STRLEN(?o) AS ?n) }')
+      assert(rows.length === 1, `STRLEN answered ${rows.length} rows`)
+      assert(rows[0].indexOf('70000') >= 0, `STRLEN answered ${rows[0]}`)
+    })
+
+    await check('a CONTAINS needle inside the out-of-line literal answers its row', () => {
+      const rows = cliRows(rdf12,
+        'SELECT ?s WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } ' +
+        'FILTER(CONTAINS(?o, "needle")) }')
+      assert(rows.length === 1, `the CONTAINS query answered ${rows.length} rows`)
+      assert(rows[0].indexOf('http://example.org/s3') >= 0,
+        `the CONTAINS query answered ${rows[0]}`)
+    })
+
+    await check('geof:sfIntersects against the out-of-line polygon answers its row', () => {
+      const rows = cliRows(rdf12,
+        'SELECT ?s WHERE { GRAPH ?g { ?s ' +
+        '<http://www.opengis.net/ont/geosparql#asWKT> ?o } FILTER(' +
+        '<http://www.opengis.net/def/function/geosparql/sfIntersects>(?o, ' +
+        '"POINT(5 5)"^^<http://www.opengis.net/ont/geosparql#wktLiteral>)) }')
+      assert(rows.length === 1, `the geometry query answered ${rows.length} rows`)
+      assert(rows[0].indexOf('http://example.org/s4') >= 0,
+        `the geometry query answered ${rows[0]}`)
+    })
+  }
 
   // ------------------------------------------------------- the pack path
   //

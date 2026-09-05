@@ -534,6 +534,152 @@ if (binDirectory === null || !shim.exists(fixture)) {
   })
 }
 
+// --- wire version 10, through the store host --------------------------
+//
+// An SBM10 generation of IBK5 blocks
+// (docs/designissues/2026-09-05-wire-version-10-scale.md). What is gated
+// here is the HOST side of it: `plan.blobKeys` names the `blob-<hex>.lit`
+// files a query touches, and `bin/store.mjs` must fetch them beside the
+// blocks for both the stateless path and the handle path. A block above
+// the 65,536-byte inline ceiling holds only a byte extent and a SHA-256,
+// so a host that fetches the blocks alone gets a refusal, not a short
+// literal.
+//
+// The engine checks need a wasm module built from a Store.lean that reads
+// IBK5. The committed module refuses the layout, so the group is skipped
+// with the reason printed until the coordinator rebuilds it. The probe is
+// a positive capability check: an engine that reads wire version 10
+// reports the manifest blob table.
+
+const V10_FILE_CHECKS = 1
+const V10_ENGINE_CHECKS = 4
+const rdf12Source = joinPath(repoRoot, 'tests/local/data/rdf12_sample.trig')
+
+if (binDirectory === null || !shim.exists(rdf12Source)) {
+  skip(`wire version 10 (${V10_FILE_CHECKS + V10_ENGINE_CHECKS} checks)`,
+    binDirectory === null
+      ? 'no l4block-shard-pack found; set L4_BIN_DIR to the directory holding it'
+      : `fixture absent: ${rdf12Source}`)
+  skipped += V10_FILE_CHECKS + V10_ENGINE_CHECKS - 1
+} else {
+  const v10Root = joinPath(workDirectory, 'collection-v10')
+  const v10Generation = joinPath(v10Root, 'gen-1')
+  const v10Packed = shim.run(joinPath(binDirectory, 'l4block-shard-pack'),
+    [rdf12Source, v10Generation, 'ibk5'])
+  const v10Activated = v10Packed.code === 0
+    ? shim.run(joinPath(binDirectory, 'l4block-shard-activate'), [v10Root, 'gen-1'])
+    : { code: 1, stdout: '', stderr: 'the pack step failed' }
+
+  await check('every out-of-line literal is a file named by its own SHA-256', async () => {
+    assert(v10Packed.code === 0,
+      `l4block-shard-pack exited ${v10Packed.code}: ${v10Packed.stderr}`)
+    assert(v10Activated.code === 0,
+      `l4block-shard-activate exited ${v10Activated.code}: ${v10Activated.stderr}`)
+    const blobs = listGeneration(v10Generation)
+      .filter((file) => file.name.startsWith('blob-') && file.name.endsWith('.lit'))
+    assert(blobs.length === 2, `the generation holds ${blobs.length} blob files, expected 2`)
+    for (const blob of blobs) {
+      const bytes = readWhole(joinPath(v10Generation, blob.name))
+      assert(bytes.length === blob.size,
+        `${blob.name}: read ${bytes.length} bytes, listed ${blob.size}`)
+      const digest = await sha256Hex(bytes)
+      assert(blob.name === `blob-${digest}.lit`,
+        `${blob.name} does not name its own digest ${digest}`)
+    }
+    const sizes = blobs.map((blob) => blob.size).sort((a, b) => a - b)
+    assert(sizes[0] === 68226 && sizes[1] === 70000,
+      `the out-of-line literals are ${sizes.join(', ')} bytes`)
+  })
+
+  // The engine half. `store.mjs` is the module under test here, not the
+  // command: it is what turns `plan.blobKeys` into files on the region.
+  const storeModule = await import('../../npm/factoidal/bin/store.mjs')
+  const engineModule = await import('../../npm/factoidal/bin/engine.mjs')
+  let v10Engine = null
+  let v10Store = null
+  let readsIbk5 = false
+  try {
+    v10Engine = await engineModule.loadEngine()
+    v10Store = storeModule.openStore(v10Root)
+    const envelope = storeModule.inspectManifest(v10Engine, v10Store)
+    readsIbk5 = envelope.ok === true && Array.isArray(envelope.blobs)
+  } catch (_error) {
+    readsIbk5 = false
+  }
+
+  if (!readsIbk5) {
+    skip(`wire version 10 through the engine (${V10_ENGINE_CHECKS} checks)`,
+      'this engine reports no manifest blob table, so the committed wasm module ' +
+      'does not read IBK5 yet; rebuild it (Wasm/build-wasm.sh) to run these')
+    skipped += V10_ENGINE_CHECKS - 1
+  } else {
+    await check('the plan names the blob files a query touches', () => {
+      const plan = storeModule.planQuery(v10Engine, v10Store,
+        'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } ' +
+        'BIND(STRLEN(?o) AS ?n) }')
+      assert(plan.ok === true, 'the plan was refused')
+      assert(Array.isArray(plan.blobKeys) && plan.blobKeys.length === 1,
+        `the plan named ${JSON.stringify(plan.blobKeys)}`)
+      assert(plan.blobKeys[0].startsWith('blob-') && plan.blobKeys[0].endsWith('.lit'),
+        `the plan named ${plan.blobKeys[0]}`)
+      assert(typeof plan.zoneExcluded === 'number',
+        'the plan reports no zone-map exclusion count')
+    })
+
+    await check('the stateless path resolves the 70,000-byte literal', () => {
+      const answer = storeModule.queryStore(v10Engine, v10Store,
+        'SELECT ?n WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } ' +
+        'BIND(STRLEN(?o) AS ?n) }')
+      const bindings = answer.result.srj.results.bindings
+      assert(bindings.length === 1, `STRLEN answered ${bindings.length} rows`)
+      assert(bindings[0].n.value === '70000', `STRLEN answered ${bindings[0].n.value}`)
+      assert(answer.artifacts.some((artifact) => artifact.key.startsWith('blob-')),
+        'the host carried no blob artifact')
+    })
+
+    await check('a handle resolves the blobs once and answers the candidate paths', () => {
+      const handle = storeModule.openStoreHandle(v10Engine, v10Store)
+      try {
+        assert(handle.blobs === 2, `the handle resolved ${handle.blobs} blobs, expected 2`)
+        const needle = handle.query(
+          'SELECT ?s WHERE { GRAPH ?g { ?s <http://example.org/big> ?o } ' +
+          'FILTER(CONTAINS(?o, "needle")) }')
+        assert(needle.srj.results.bindings.length === 1,
+          `the CONTAINS query answered ${needle.srj.results.bindings.length} rows`)
+        const geo = handle.query(
+          'SELECT ?s WHERE { GRAPH ?g { ?s ' +
+          '<http://www.opengis.net/ont/geosparql#asWKT> ?o } FILTER(' +
+          '<http://www.opengis.net/def/function/geosparql/sfIntersects>(?o, ' +
+          '"POINT(5 5)"^^<http://www.opengis.net/ont/geosparql#wktLiteral>)) }')
+        assert(geo.srj.results.bindings.length === 1,
+          `the geometry query answered ${geo.srj.results.bindings.length} rows`)
+      } finally {
+        handle.close()
+      }
+    })
+
+    await check('a handle opened without the blobs is refused, by name', () => {
+      const envelope = storeModule.inspectManifest(v10Engine, v10Store)
+      const keys = []
+      for (const entry of envelope.entries) {
+        keys.push(entry.key)
+        for (const key of Object.values(entry.sidecars ?? {})) keys.push(key)
+      }
+      let refusal = null
+      let opened = null
+      try {
+        opened = storeModule.openStoreHandle(v10Engine, v10Store, { keys })
+      } catch (error) {
+        refusal = error
+      }
+      if (opened !== null) opened.close()
+      assert(refusal !== null, 'an open without the blob files was admitted')
+      assert(refusal.message.indexOf('.lit') >= 0,
+        `the refusal did not name the blob: ${refusal.message}`)
+    })
+  }
+}
+
 // ------------------------------------------------------------- reporting
 
 shim.removeTree(workDirectory)
