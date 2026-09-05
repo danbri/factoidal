@@ -598,10 +598,10 @@ caller that holds only the handle id.
 | tenth query, all different | 1382 ms | 103 ms |
 | ten queries, total | 13962 ms | 2277 ms |
 
-**What a handle buys and what it does not.** It removes the per-query
-digest check, block decode and index build. It does NOT make search
-sub-linear: `CONTAINS` still scans every retained row, so a query still
-costs time proportional to the row count. A text index is separate work.
+**What a handle buys.** It removes the per-query digest check, block
+decode and index build. With the LGI1 literal index (below) a search is
+also sub-linear rather than a scan, so a handle plus the index is what
+makes repeated search on a large store interactive.
 
 **Residency.** Retaining a decoded block costs memory. Measured on the
 same store: 76 MiB resident with the engine loaded and no handle, 170 MiB
@@ -896,15 +896,51 @@ handling beyond what the WKT literal carries; no GML literals. Geometry
 comes from a WKT parser, so a shapefile, GeoJSON or GML source must be
 converted to `geo:wktLiteral` before it is loaded.
 
-### Full text: SPARQL's own functions, no index
+### Full text: SPARQL's own functions, over a character-gram index
 
 `CONTAINS`, `STRSTARTS`, `STRENDS` and `REGEX` (SPARQL 1.1 §17.4.3) are
-implemented and are the way to search text. They are evaluated per row
-after a block is decoded — **there is no inverted index and no
-`text:query`-style extension**. Measured 2026-09-04: a `CONTAINS` over
-45,806 `skos:prefLabel` values in one block answers in about 6 seconds.
-That is fine for a vocabulary and will not scale to a large literal
-corpus.
+the way to search text. There is no `text:query`-style extension and you
+do not ask for the index: where the query shape allows it, the planner
+uses the **LGI1** literal index the packer writes beside each block.
+
+LGI1 holds character 3-grams of the case-folded lexical form, and it is a
+CANDIDATE FILTER rather than a decider — it answers a superset and the
+engine re-evaluates your original `FILTER` on those rows, so the answer
+is exactly the answer a scan gives. Tokens would not do: `CONTAINS` is a
+substring test, and "underwater" contains "water" without being the
+token "water".
+
+Measured 2026-09-05, full skosdex corpus (7,315,251 quads, 3,286 blocks,
+204 named graphs, 1.0 GB), through a store handle on plain `node`:
+
+| search | rows | time |
+|---|---|---|
+| `water` | 5 | 645 ms |
+| `glacier` | 0 | 670 ms |
+| `bicycle` | 2 | 617 ms |
+
+A miss costs what a hit costs, because both are index lookups rather than
+scans. On a 45,806-row block the same search was about 180 ms of scan
+before the index and 1.8 ms after it.
+
+**It falls back to a scan**, silently and correctly, for: a needle under
+3 characters, a variable needle, `REGEX`, `UCASE`, `!CONTAINS`,
+`CONTAINS` under `||`, a filter on a variable not bound in object
+position, and any block whose generation has no `.lgi1` sidecar. The
+index costs about 55% of the block bytes.
+
+### Geometry: the GBI1 bounding-box index
+
+The same construction for `geof:`. Each `geo:wktLiteral` object's
+bounding box is indexed, and five of the six topological functions are
+filtered by it — `sfIntersects`, `sfWithin`, `sfContains`, `sfTouches`,
+`sfEquals`. Measured 74x to 94x against a scan, with a miss at 82x.
+
+**`sfDisjoint` is refused and falls back to a scan**, deliberately: it
+accepts exactly the rows a box can exclude, so a box test inverts and
+would drop answers. A non-overlapping pair of boxes proves geometries
+disjoint, but that saves work inside a scan rather than reducing the
+candidate set.
 
 ## Limits (deliberate, documented)
 

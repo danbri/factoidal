@@ -1,6 +1,88 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-09-05
+
+**A full-text index, a geometry index, extension functions from
+JavaScript, and a planner that no longer reads the whole store for a
+`REGEX`.** Measured end to end on the largest corpus we have: 7,315,251
+quads over 204 named graphs, 3,286 blocks, a 1.0 GB generation, queried
+through a store handle on plain `node` with no flags.
+
+| search | rows | time |
+|---|---|---|
+| `water` | 5 | 645 ms |
+| `glacier` | **0** | 670 ms |
+| `bicycle` | 2 | 617 ms |
+
+A miss costs what a hit costs, because both are index lookups.
+
+### The planner stopped reading the whole store
+
+`REGEX`, `REPLACE`, `IRI()`, `NOW()`, the digest functions, aggregates in
+a filter position, the triple-term accessors and every SPARQL 1.1
+section 17.6 extension call each made the planner abandon predicate
+selection and take every block in the manifest. On a 119-block store a
+`REGEX` filter selected 119 artifacts where the same query with
+`CONTAINS` selected 1.
+
+The test was `Expr.backendLocal`, which answers a different question: may
+the backend evaluate this expression, or must it materialise and
+delegate. The right test is `Expr.existsFree` — `Expr.existsPat` and
+`Expr.notExistsPat` are the only constructors carrying a pattern, so an
+exists-free expression reads no triple whatever functions it calls. A
+FILTER may narrow a plan or leave it alone; it must never widen it.
+`EXISTS` and `NOT EXISTS` still widen, correctly.
+
+### LGI1, a character-gram literal index
+
+The packer writes a `.lgi1` sidecar beside each block and the planner
+uses it where the query shape allows. It holds character 3-grams of the
+case-folded lexical form and is a CANDIDATE FILTER, never a decider: it
+answers a superset and the engine re-evaluates the original `FILTER`, so
+the rows are the scan's rows. Tokens would not do, because `CONTAINS` is
+a substring test and "underwater" contains "water" without being the
+token "water".
+
+Falls back to a scan, silently and correctly: a needle under 3
+characters, a variable needle, `REGEX`, `UCASE`, `!CONTAINS`, `CONTAINS`
+under `||`, a filter on a variable not bound in object position, and any
+generation without the sidecar. Costs about 55% of the block bytes.
+
+### GBI1, a geometry bounding-box index
+
+The same construction for `geof:`. Five of the six topological functions
+are filtered by a box — `sfIntersects`, `sfWithin`, `sfContains`,
+`sfTouches`, `sfEquals` — at 74 to 94 times a scan, with a miss at 82
+times. **`sfDisjoint` is refused** and falls back: it accepts exactly the
+rows a box can exclude, so a box test inverts and would drop answers.
+
+### Extension functions, from JavaScript, on the Lean engine
+
+`registerExtensionFunction` reaches the Lean engine and the persisted
+store, not only the in-memory F* path. Section 17.6 semantics are gated:
+an unregistered IRI is unbound in SELECT and drops the row in FILTER, a
+registration never overrides a built-in family, and `geof:` still
+answers from the built-in table. Synchronous only; async is designed and
+deferred.
+
+### A handle is bounded by retained bytes
+
+`storeOpen` was capped at 64 artifacts, inherited from the stateless path
+where every query re-read and re-decoded its blocks. A handle pays that
+once, so a count was the wrong shape — 257 small blocks may cost less
+than 4 large ones. The cap is now 134,217,728 retained bytes, derived
+from a measured 16.2 bytes resident per retained byte against half the
+wasm32 address space, and the check runs BEFORE the read rather than
+after hashing and decoding the whole set. A corpus-wide handle over 257
+blocks and 741,179 rows now opens.
+
+### Named graphs pack at scale
+
+Blocks cut at graph boundaries, so `GRAPH <iri>` with a constant
+predicate reads one block and the graph filter is exact rather than
+conservative. Packer peak memory fell 32.6% and dictionary duplication
+is 2.57%. No new wire version was needed: SBM7 already admitted several
+entries per predicate.
 
 **A large store no longer needs `node --stack-size`.** Several engine
 paths recurse once per manifest entry and once per row, and on a
@@ -27,6 +109,28 @@ read ([issue 653](https://github.com/danbri/factoidal/issues/653)).
   696,555), so a Deno library caller gets an in-process handle behind the
   same interface and starts its process with
   `--v8-flags=--stack-size=65536`.
+
+### Fixed
+
+- `openStoreHandle` with no options failed on any IBK3 generation with
+  `artifact 'predicate-0.ibk3.sri2' is not declared by this manifest`.
+  Two engine operations disagreed: `storeManifestInspect` reports
+  `subjectIndex`, `termIndex` and `objectIndex`, while the handle's
+  admission accepted only the block, `literalIndex` and `geoIndex`. One
+  list now serves both.
+- The README named GeoSPARQL functions that do not exist and said a text
+  index was "separate work". Both corrected, with the shapes that fall
+  back to a scan listed.
+
+### Known limits, measured
+
+- Ingest is about 2,180 quads per second and peak memory is 2.07 times
+  the source, so a 142 GB corpus is not importable at that ratio. Making
+  memory flat is a wire change and is not done.
+- The quad packer streams N-Quads only; Turtle and TriG are buffered.
+- `ORDER BY ... LIMIT n` still overflows above about 14,576 materialised
+  rows. https://github.com/danbri/factoidal/issues/653
+- The manifest is at version 9. Older generations still read.
 
 ## 0.5.1 — 2026-09-04
 

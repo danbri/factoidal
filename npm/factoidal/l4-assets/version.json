@@ -2,13 +2,13 @@
   "engine": "lean4",
   "note": "The Lean 4 (L4Factoidal) engine's own build provenance and claims -- distinct from ../version.json, which is the F* engine's. Do not merge the two: they come from different toolchains, different git SHAs in general, and carry different proof obligations (issue #618).",
   "version": "0.1.0",
-  "gitSha": "1d5355fd9c4762e24e1580aa96ebdd8e6e420715",
-  "builtAt": "2026-09-05T10:24:31+00:00",
+  "gitSha": "178d7ce330ab01f4e5814801e9fda483d4478f34",
+  "builtAt": "2026-09-05T13:03:17+00:00",
   "leanToolchain": "leanprover/lean4:v4.33.1",
   "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.8-git",
   "abiVersion": "1",
-  "wasmSha256": "9799e6e1c2b7fc2a2fd2fcab16dbad3a7f54a357abd07bf9a676458b8686894e",
-  "wasmBytes": 5607049,
+  "wasmSha256": "0de098a8aad0255eb575b4af236592eacb628da70a0784d22267624d2eaa6507",
+  "wasmBytes": 5606105,
   "claims": {
     "source": "formal/lean4 (L4Factoidal): no sorry, no user axioms, no native_decide; W3C behaviour pinned by build-time #guard",
     "suitesAtBuildSha": "see docs/test-results and formal/lean4/PORT_NOTES.md at gitSha"

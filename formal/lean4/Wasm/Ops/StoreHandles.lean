@@ -371,14 +371,32 @@ def readRetained (op : String) (ibk4 : Bool)
          , payload
          , indexes := literal } :: acc)
 
+/-- Every key an entry declares, in any role: the block itself and each
+sidecar the manifest names for it.
+
+This must agree with what `storeManifestInspect` REPORTS, or a host that
+supplies exactly what one operation told it is refused by the other. It
+did not: the check admitted only the block, `literalIndex` and
+`geoIndex`, while inspect reports `subjectIndex`, `termIndex` and
+`objectIndex` too, so `openStoreHandle` with no options failed on any
+IBK3 generation with `artifact 'predicate-0.ibk3.sri2' is not declared
+by this manifest` (measured 2026-09-05 on the bundled sample store).
+A handle does not USE the SRI2, TLI1 and OLI2 sidecars, but they ARE
+declared, and refusing a declared artifact is a different statement from
+refusing an undeclared one. -/
+private def entryDeclaredKeys (entry : Entry) : List String :=
+  entry.artifact.key.value ::
+    ([entry.subjectIndex, entry.termIndex, entry.objectIndex,
+      entry.literalIndex, entry.geoIndex].filterMap
+        (fun ref? => ref?.map fun ref => ref.key.value))
+
 /-- Every key the host supplied bytes for must be a key this manifest
 declares; an unknown key is a host fault, not a silently ignored argument. -/
 private def checkSuppliedKeys (op : String) (manifest : Manifest)
     (sources : List (String × ArtifactSource)) : Except String Unit :=
   match sources.find? (fun pair =>
-      !(manifest.entries.any fun entry => entry.artifact.key.value == pair.1 ||
-          (entry.literalIndex.map fun ref => ref.key.value) == some pair.1 ||
-          (entry.geoIndex.map fun ref => ref.key.value) == some pair.1)) with
+      !(manifest.entries.any fun entry =>
+          (entryDeclaredKeys entry).contains pair.1)) with
   | some (key, _) => .error s!"{op}: artifact '{key}' is not declared by this manifest"
   | none => pure ()
 
