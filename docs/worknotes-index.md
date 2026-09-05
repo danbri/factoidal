@@ -76,3 +76,4 @@ worknote, kept as the record of a decision or a measurement),
 | 2026-08-23 | [Specification coverage ledger](designissues/2026-08-23-spec-coverage-ledger.md) | 71db0d505 | record: structure current, scores are 2026-08-22 |
 | 2026-09-03 | [A browser reads a Shardborough generation: the three WASM store operations](designissues/2026-09-03-wasm-shardborough-store-ops.md) | b68bec8e5 | current: the record of the WASM store ABI, its blob transport and its caps |
 | 2026-09-03 | [Internal test inventory and the internal-tests.sh runner](20260903-internal-test-inventory.md) | 5b3036bc5 | current: the one-runner catalogue for non-W3C project-internal suites |
+| 2026-09-05 | [The packer publishes every batch](designissues/2026-09-05-pack-publication-every-batch.md) | (this landing) | current: the publication policy of wire version 10, what it proves, the memory ladder and gate 2 |
