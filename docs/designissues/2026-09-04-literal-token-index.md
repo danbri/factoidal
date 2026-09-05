@@ -168,24 +168,38 @@ Version 1 stores gaps as fixed u32. A variable-length gap encoding is a
 version 2 decision; it needs a round-trip theorem of its own and it is not
 worth delaying the format for.
 
-## 4. Size
+## 4. Size and speed, measured
 
-Estimated for the `skos:prefLabel` block of the SKOS store
-(`predicate-7.ibk4`, 45,806 rows, 5,571,302 bytes), before measurement:
+`l4block-literal-gram` (`formal/lean4/Harness/LiteralGramProbe.lean`) on the
+`skos:prefLabel` block of the SKOS store, `predicate-7.ibk4`.
 
-| part | estimate |
+| part | measured |
 |---|---|
-| distinct literals | about 45,000 |
-| distinct 3-grams per literal | about 20 |
-| postings | about 900,000 |
-| postings area, u32 gaps | about 3.6 MB |
-| directory, about 30,000 grams | about 0.5 MB |
-| total | about 4.1 MB, about 74% of the block |
+| block | 5,571,302 bytes, 45,806 rows |
+| dictionary | 60,856 terms, 41,619 of them literals |
+| distinct grams | 21,843 |
+| postings | 641,709 |
+| LGI1 bytes, u32 gaps | 3,018,145, **54% of the block** |
+| index build | 5.6 s, at pack time only |
 
-That fraction is the price of version 1's fixed-width gaps and is the reason
+Answering `CONTAINS(LCASE(STR(?o)), needle)` over that block. Best of five;
+the measurement machine was at load 149, so both columns are inflated and
+their ratio is the reading that carries.
+
+| needle | rows | scan | index | ratio |
+|---|---|---|---|---|
+| water | 265 | 211,990 us | 566 us | 375x |
+| bicycle | 4 | 272,443 us | 50 us | 5,449x |
+| **glacier (miss)** | 0 | 241,348 us | **58 us** | **4,161x** |
+| climate change | 14 | 252,200 us | 219 us | 1,152x |
+| ab | 805 | 192,045 us | index not used, falls back | 1x |
+
+The rows returned through the index equal the rows returned by the scan for
+every needle, compared as row lists.
+
+The 54% is the price of version 1's fixed-width gaps and is the reason
 version 2 wants a variable-length encoding: the same postings at a
-gap-weighted 1.3 bytes come to about 1.2 MB, about 30% of the block. The
-measured figure replaces this table when the packer runs.
+gap-weighted 1.3 bytes come to about 1.2 MB, about 22% of the block.
 
 ## 5. Manifest
 
@@ -199,15 +213,25 @@ require it.
 
 ## 6. Staging
 
-1. This record.
-2. `Storage/LiteralGramIndex.lean` — the fold, the grams, the index and its
-   lookup, and the superset theorem. This is the semantic core; nothing
-   downstream may restate a fold or a gram.
-3. `Storage/LiteralGramIndexWire.lean` plus its theorems — LGI1 bytes.
-4. The packer writes `.lgi1`; manifest version 8 commits its SHA-256.
-5. The planner detects the admissible shapes of section 2.4, intersects
-   posting lists, re-evaluates the original filter on the candidates, and
-   falls back otherwise.
+1. **Landed.** This record.
+2. **Landed.** `Storage/LiteralGramIndex.lean` — the fold, the grams, the
+   index and its lookup, and the superset theorem. This is the semantic core;
+   nothing downstream may restate a fold or a gram.
+3. **Landed.** `Storage/LiteralGramIndexWire.lean` — LGI1 bytes, with
+   encoder admission equal to decoder admission and `#guard`s over the round
+   trip and four rejections. There is one decoder, so no `decodeSpec?` pair
+   and no equality theorem is claimed; a byte-indexed reader beside a list
+   reader, with the proof that the two agree, is a later optimisation.
+4. **Landed.** `Harness/LiteralGramProbe.lean` — the row-identity gate and
+   the measurement of section 4.
+5. **Open.** The packer writes `.lgi1`; manifest version 8 commits its
+   SHA-256. SBM7, which the SKOS store uses, has no sidecar role at all, so
+   this is a manifest version, not a field.
+6. **Open.** The planner detects the admissible shapes of section 2.4,
+   intersects posting lists, re-evaluates the original filter on the
+   candidates, and falls back otherwise. Until this lands the shipped query
+   path still scans, and the numbers in section 4 are the mechanism measured
+   through the probe, not through `storeHandleQuery`.
 
 ## 7. The gate
 
