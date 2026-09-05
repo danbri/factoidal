@@ -157,9 +157,29 @@ trust domain must either use that wrapper or load one engine instance
 per domain. `extClear()` exists so a caller can always return the engine
 to the `geof:`-only table.
 
-## 8. Cost
+## 8. What is checked, and what is still open (2026-09-05)
 
-Crossing to JavaScript is measured, not assumed — a function called once
-per row is on the hot path. The measurement and its method are recorded
-in the landing report and in
-`docs/claude-rules/performance.md`.
+**Landed and checked natively.** `tests/store-host/ext-native.sh` drives
+the dispatch entries through `l4wasm-cli callseq` in one process:
+16 pass, 0 fail (out of 16). It covers the registry ops, the snapshot
+threading into the in-memory dataset-handle path and the store-handle
+path, and every §17.6 rule of section 6 above.
+
+**Not yet checked: that a JavaScript function answers.** The native build
+compiles `ffi/l4_ext.c`'s no-host arm, so `l4_ext_call` answers the empty
+string and a registered IRI is the §17.6 error. The bridge can only be
+exercised through a wasm module built from this tree, and the committed
+module predates the registry ops (it answers "unknown op" for
+`extRegister`). `tests/store-host/ext-functions.mjs` is the check and runs
+as soon as the module is rebuilt.
+
+**Async is deferred.** Section 4 records the design; `bin/ext.mjs` carries
+`withExtensionRounds` because it is the same code the F\* host already
+runs, but no async function has been driven end to end. Sync first.
+
+**Cost is not yet measured.** A function called once per row is on the hot
+path, so the per-call cost of crossing to JavaScript must be measured
+before anyone puts one on a large scan. `tests/store-host/ext-functions.mjs`
+has the measurement (a 20,000-row FILTER, registered function against a
+built-in of the same selectivity, best of three); the number goes here and
+in `docs/claude-rules/performance.md` when the module is rebuilt.
