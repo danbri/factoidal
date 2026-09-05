@@ -55,10 +55,57 @@ def foldChars (cs : List Char) : List Char := cs.map Char.toLower
 /-- The folded characters of a string. -/
 def foldString (s : String) : List Char := foldChars s.toList
 
+/-- The window walk: `count` windows of `n` characters, one per position,
+sliding down the list. It is structural on `count`, and each step takes at
+most `n` characters off the FRONT of the list it already holds.
+
+Why it is not the obvious `(List.range k).map (fun i => (cs.drop i).take n)`:
+that form calls `List.drop i` for every position, and `List.drop i` walks `i`
+cons cells, so a literal of `L` characters costs about `L^2 / 2` cell steps.
+Measured with `/usr/bin/sample` on a 52,428,626-byte N-Quads pack, 2026-09-05:
+`List.drop` under `LiteralGramIndex.pairsOf` held 5,318 of the 14,904 samples
+of a 20-second window in the publication phase, the largest single leaf in it.
+`gramsOf_eq_windows` below states that this walk computes that list. -/
+def gramsGo (n : Nat) : Nat → List Char → List (List Char)
+  | 0, _ => []
+  | _ + 1, [] => []
+  | count + 1, cs@(_ :: rest) => cs.take n :: gramsGo n count rest
+
 /-- Every contiguous window of `n` characters, left to right. When the input
 is shorter than `n` there are none. -/
 def gramsOf (n : Nat) (cs : List Char) : List (List Char) :=
-  (List.range (cs.length + 1 - n)).map (fun i => (cs.drop i).take n)
+  gramsGo n (cs.length + 1 - n) cs
+
+/-- `gramsGo` is the positioned window list, as long as the requested window
+count stays inside the input. -/
+theorem gramsGo_eq_map (n : Nat) (hn : 0 < n) :
+    ∀ (count : Nat) (cs : List Char), count + n ≤ cs.length + 1 →
+      gramsGo n count cs = (List.range count).map (fun i => (cs.drop i).take n) := by
+  intro count
+  induction count with
+  | zero => intro cs _; simp [gramsGo]
+  | succ count ih =>
+      intro cs hcount
+      cases cs with
+      | nil =>
+          simp only [List.length_nil] at hcount
+          omega
+      | cons c rest =>
+          have hrest : count + n ≤ rest.length + 1 := by
+            simp only [List.length_cons] at hcount; omega
+          simp only [gramsGo, ih rest hrest, List.range_succ_eq_map,
+            List.map_cons, List.map_map, List.drop_zero, Function.comp_def,
+            List.drop_succ_cons]
+
+/-- The specification form of `gramsOf`: the map over positions. Every proof
+below reasons with this equation rather than with the walk. -/
+theorem gramsOf_eq_windows (n : Nat) (hn : 0 < n) (cs : List Char) :
+    gramsOf n cs = (List.range (cs.length + 1 - n)).map (fun i => (cs.drop i).take n) := by
+  unfold gramsOf
+  by_cases h : n ≤ cs.length + 1
+  · exact gramsGo_eq_map n hn _ cs (by omega)
+  · have hzero : cs.length + 1 - n = 0 := by omega
+    simp [hzero, gramsGo]
 
 /-- Only literals are indexed; the folded lexical form is what is indexed. -/
 def foldedOfTerm : Term → List Char
@@ -199,15 +246,15 @@ theorem window_eq (n : Nat) (needle hay : List Char) (d i : Nat)
 
 /-- The superset property. Every gram of a contiguous sublist is a gram of
 the whole. This is what makes the index a sound candidate filter. -/
-theorem gramsSubset_of_containsSublist (n : Nat) (needle hay : List Char)
-    (h : listContainsSublist needle hay = true) :
+theorem gramsSubset_of_containsSublist (n : Nat) (hn : 0 < n)
+    (needle hay : List Char) (h : listContainsSublist needle hay = true) :
     ∀ g ∈ gramsOf n needle, g ∈ gramsOf n hay := by
   intro g hg
   obtain ⟨d, hd, hlen⟩ := exists_offset_of_containsSublist needle hay h
-  simp only [gramsOf, List.mem_map, List.mem_range] at hg
+  simp only [gramsOf_eq_windows n hn, List.mem_map, List.mem_range] at hg
   obtain ⟨i, hi, rfl⟩ := hg
   have hin : i + n ≤ needle.length := by omega
-  simp only [gramsOf, List.mem_map, List.mem_range]
+  simp only [gramsOf_eq_windows n hn, List.mem_map, List.mem_range]
   exact ⟨d + i, by omega, (window_eq n needle hay d i hd hin).symm⟩
 
 /-! ## 4. The index specification and its candidate list -/
@@ -292,7 +339,7 @@ theorem mem_candidatesSpec (dict : Array Term) (needle : String) (i : Nat)
   have hall : ∀ g ∈ gramsOfNeedle needle, i ∈ idsWithGram dict g := by
     intro g hg
     refine mem_idsWithGram dict i t g hget ?_
-    exact gramsSubset_of_containsSublist gramLength _ _ hmatch g hg
+    exact gramsSubset_of_containsSublist gramLength (by decide) _ _ hmatch g hg
   unfold candidatesSpec at hc
   cases hgn : gramsOfNeedle needle with
   | nil => rw [hgn] at hc; simp at hc
