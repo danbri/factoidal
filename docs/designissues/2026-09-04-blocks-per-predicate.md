@@ -182,6 +182,28 @@ An intermediate corpus WAS packed with the new packer: 257,120,468 bytes over
 12 vocabularies, 1,294,576 quads, 476 blocks, 437.6 s wall clock,
 932,167,680 bytes peak memory, 134 MB generation.
 
+## The committed WebAssembly module predates this change
+
+`tests/store-host/cli.mjs` is 24 pass, 1 fail (out of 25) on Node and on Deno.
+The one failure is `pack builds an IBK4 generation from 3.8 MB, byte for byte`:
+the module wrote 3 blocks and the native packer wrote 10, for the same input.
+
+That is the STALE ARTIFACT, not a defect in the change. The module at
+`docs/web/hub/assets/l4/l4factoidal.wasm` is a committed binary built from an
+earlier tree, so it still runs the one-block-per-predicate packer. The pack
+code itself is shared: `PackStream.quadArtifacts` and
+`PredicateQuadBlocks.blocksOfDataset` are what both the CLI and
+`Wasm/Ops/Pack.lean` call, and `Wasm/native-smoke.sh` — which runs the ops
+NATIVELY rather than through the module — compares the two generations with
+`diff -r` and is 85 pass, 0 fail (out of 85). The check will pass again after
+the next module rebuild, which is deliberately not done here: a second agent is
+changing the same packer and manifest area, and one rebuild covering both is
+cheaper and avoids a collision.
+
+The evidence for this change is therefore the native path throughout:
+`l4block-shard-pack`, `l4block-shard-activate`, `l4block-quad-query` and
+`Wasm/native-smoke.sh`.
+
 ## What this does NOT do
 
 Peak packer memory is still proportional to the source. The blocks are
