@@ -424,6 +424,8 @@ by grams, and not counted against a block's byte target.
 | `IBK3` | Current predicate-local fixed ID rows followed by an embedded pageable dictionary | current primary alpha block | [IndexedBlockWireV3.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3.lean) |
 | `PTD1` | IBK3-local ID to RDF term, split into independently readable pages | current embedded dictionary | [PagedTermDictionary.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionary.lean) |
 | `IBK4` | Quad rows: one predicate, one or more graphs, a graph column in every row, a header graph-set summary, then the same embedded PTD1 | current quad-aware block; codec, round-trip theorem, packer and SBM7 manifest landed | [IndexedBlockWireV4.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean) |
+| `PTD2` | The PTD1 page layout over term codec v2 (`WireTerm`: an RDF 1.2 term, or an out-of-line literal named by byte length and SHA-256) | current embedded dictionary of IBK5; PTD1 and PTD2 are two instantiations of one generic module and share one round-trip theorem | [PagedTermDictionaryV2.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryV2.lean), generic layout in [PagedTermDictionaryCore.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryCore.lean) |
+| `IBK5` | The IBK4 layout, field for field, over a PTD2 dictionary | current wire-version-10 block; codec and round-trip theorem landed 2026-09-05 | [IndexedBlockWireV5.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV5.lean) |
 
 IBK3 contains triples and requires one predicate per artifact. Its current
 term codec accepts IRIs, blank nodes, and RDF 1.1-style literals, but refuses
@@ -438,9 +440,8 @@ defines `SBM7`, the manifest that describes IBK4 artifacts and commits the
 blank-node scope of each source partition. The graph-aware index sidecars and
 the query planner are not defined yet.
 
-`IBK5`, the wire-version-10 block, is the IBK4 layout over a `PTD2` dictionary
-of version-2 terms; its section is written with that codec and section 6.3.2
-below states what the SBM10 manifest requires of it.
+Section 6.1.2 defines `IBK5`, the wire-version-10 block, and section 6.1.3
+the term codec it carries.
 
 #### 6.1.1 IBK4 — quad rows with an in-block graph column
 
@@ -554,6 +555,90 @@ subsection alters its bytes or its meaning. IBK4 is a new magic/version pair,
 not a reinterpretation of IBK3 (section 4.5). Any later change to the byte
 layout or the meaning above requires a further new version, not an amendment
 of `IBK4`.
+
+#### 6.1.2 IBK5 — the IBK4 layout over a PTD2 dictionary
+
+IBK5 is the wire-version-10 block. Its byte layout is IBK4's, field for
+field — the 17-byte header, the graph-set summary, the 20-byte rows, the
+embedded dictionary, the CRC32C — with two changes: the magic is `IBK5`
+(bytes `0x49 0x42 0x4B 0x35`) with version byte `5`, and the dictionary is
+`PTD2`, whose terms are encoded with term codec v2 (section 6.1.3). An IBK4
+reader refuses an IBK5 artifact at the magic, and an IBK5 reader refuses an
+IBK4 artifact the same way; neither misreads the other.
+
+The decoded dictionary is an array of `WireTerm`: an RDF term, or an
+out-of-line literal (`BlobLiteral`: datatype, language tag, direction, byte
+length, SHA-256 of the UTF-8 lexical form). A blob may only be an object:
+`fromParts?` refuses a block whose subject, predicate or graph-name position
+resolves to a blob, as it refuses a literal in a subject position.
+
+**Admitted artifacts.** Encoder admission equals decoder admission:
+
+1. every dictionary term is admitted by term codec v2 (section 6.1.3);
+2. the dictionary size, the row count, every row's `s`, `p`, `o` and biased
+   graph column, and every graph-set summary entry are below `2^32`;
+3. the block is nonempty and predicate-local;
+4. PTD2's own admission holds for the dictionary array;
+5. `fromParts?` succeeds: no repeated term, every row resolves, no blob
+   outside an object position;
+6. the graph-set summary is the distinct graph column values in
+   first-occurrence order; the framing is exact and the CRC32C matches.
+
+**Denotation.** An admitted IBK5 artifact denotes the list of
+`(g, s, p, WireTerm)` rows in physical order. `resolveBlock`, given a way to
+fetch blob bytes by digest, turns that into RDF quads and refuses a missing
+blob, a byte count that disagrees with the term's length, bytes that hash to
+a different digest, or invalid UTF-8. Theorems, in
+[`IndexedBlockWireV5Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV5Theorems.lean):
+`decode_encode?`, `denotes_decode_encode?`, `resolveBlock_decode_encode?`,
+and `resolveBlock_decode_encode?_toWire` (resolving the decoded encoding of
+a block built from RDF quads returns those quads; it takes the interning
+step as a hypothesis, which the `#guard`s check concretely).
+
+`blobDigests` (ascending, distinct) is what the SBM10 entry's blob
+references are made from; `subjectKeys` and `objectKeys` are the v2 key
+bytes the SBM10 zone maps take their bounds from (section 6.3.2).
+
+#### 6.1.3 Term codec v2
+
+Module [`TermWireV2.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermWireV2.lean).
+Every integer little-endian; `lstring` is a u32 byte length then UTF-8
+bytes, as in the v1 codec of `DeltaLog`.
+
+| Tag | Term | Body |
+|---|---|---|
+| 0 | IRI | `lstring` |
+| 1 | blank node | `lstring` label |
+| 2 | literal, inline | `lstring` lexical form; `lstring` datatype IRI; u8 flag; if flag ≥ 1, `lstring` language tag |
+| 3 | triple term | subject: u8 (0 IRI, 1 blank node) + `lstring`; predicate `lstring`; object: one v2 term, recursively |
+| 4 | literal, out-of-line | `lstring` datatype IRI; u8 flag; if flag ≥ 1, `lstring` language tag; u64 byte length of the UTF-8 lexical form; 32 bytes SHA-256 of that lexical form |
+
+Flag: 0 no language tag; 1 language tag, no direction (`rdf:langString`);
+2 language tag, direction `ltr`; 3 language tag, direction `rtl` (both
+`rdf:dirLangString`). The decoder rebuilds the literal through
+`RDF.literalWf`, so a flag that disagrees with the datatype is refused.
+
+**Admission** (encoder equals decoder): every `lstring` below `2^32` bytes;
+an inline literal's lexical form at most `maxInlineLexicalBytes` = 65,536
+bytes; an out-of-line literal's byte length above that and at most
+`maxBlobBytes` = 2^32 − 1, with a 32-byte digest; the language tag and the
+direction agree with the datatype. The two length rules are the canonical
+choice: a literal at or below the ceiling MUST use tag 2, a longer one MUST
+use tag 4, and the decoder refuses the other, so one term has one encoding.
+The object of a triple term is parsed as an inline term, so a triple term
+whose object literal is above the ceiling has no encoding and is refused.
+
+The lexical form of a tag-4 literal is one artifact,
+`blob-<sha256 hex>.lit`, committed in the SBM10 blob table (section 6.3.2).
+Content addressing stores a literal shared by several blocks once.
+
+Theorems, in `TermWireV2Theorems.lean`: `parseTerm_serializeTerm?` (round
+trip, single hypothesis, no fuel in the statement), `toWire_inline_iff` and
+`toWire_blob_iff` (the canonical choice), `resolve_toWire` (a term written
+by the packer's `toWire` resolves back to itself given its own bytes).
+
+The v1 codec is unchanged and remains what IBK3, PTD1, TLI1 and the DLOG
+delta log use.
 
 ### 6.2 Index sidecars
 
@@ -719,9 +804,10 @@ section 6.
 **Layout label and block kind.** The one label admitted for SBM10 is
 `quad-ibk5-ptd2-lgi2-gbi1-merkle-v0`, and under it every entry must carry the
 block kind `IBK5`, whose kind byte is `2`. `IBK5` is not a member of the IBK4
-label set: an IBK4 reader over IBK5 bytes misreads terms rather than failing,
-so a reader selects its block codec by NAME and a reader that does not
-implement IBK5 refuses the generation. There is no compacted SBM10 label, for
+label set: an IBK4 reader refuses an IBK5 artifact at its magic, and a reader
+selects its block codec by the manifest's label and kind before it opens any
+artifact, so a reader that does not implement IBK5 refuses the generation
+from the manifest alone. There is no compacted SBM10 label, for
 the reason SBM7 has none.
 
 **Per-entry fields.** Appended after the GBI1 sidecar reference and before the
@@ -1126,6 +1212,11 @@ of the current family. Each depends only on the three standard Lean axioms.
 | PTD1 | `decode?_encode?` | [`Storage/PagedTermDictionaryTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryTheorems.lean) | none beyond `encode? terms = some bytes`: `supported` checks both term conditions |
 | IBK3 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV3Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3Theorems.lean) | none beyond `encode? block = some bytes`: `supported` runs the decoder's own `fromParts?` admission |
 | IBK4 | `decode_encode?`, `denotes_decode_encode?` | [`Storage/IndexedBlockWireV4Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4Theorems.lean) | none beyond `encode? block = some bytes`: `supported` runs the graph-column bounds, the graph-set summary condition and the decoder's own `fromParts?` admission |
+| Term codec v2 | `parseTerm_serializeTerm?`, `resolve_toWire` | [`Storage/TermWireV2Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermWireV2Theorems.lean) | none beyond `serializeTerm? w = some bytes`: the encoder's admission is the decoder's |
+| PTD1 and PTD2, generic | `decode?_encode?` over `PagedFormat`, once | [`Storage/PagedTermDictionaryCoreTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryCoreTheorems.lean) | none beyond `encode? terms = some bytes`; PTD1's own definitions are proved equal to the generic ones by `rfl` and its bytes are unchanged (hub blocks byte-identical, 2026-09-05) |
+| IBK5 | `decode_encode?`, `denotes_decode_encode?`, `resolveBlock_decode_encode?` | [`Storage/IndexedBlockWireV5Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV5Theorems.lean) | none beyond `encode? block = some bytes` |
+| SBM10 | `decode?_encode?` (versions 0 through 10), `zoneMap_sound` | [`Storage/ShardManifestTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/ShardManifestTheorems.lean) | none beyond `encode? manifest = some bytes` |
+| LGI2 | `decodeLeb128_encodeLeb128`, `parsePostings2_encodePostings2`, `mem_candidatesOpaque_of_match`, `mem_candidatesOpaque_of_opaque` | [`Storage/LiteralGramIndexWire.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/LiteralGramIndexWire.lean) | the whole-artifact round trip is checked by `#guard`, not proved: `decode2?` reads through `ByteArray.extract` and a CRC over a slice, as LGI1 does |
 | SRI2 (also the OLI2 object role) | `decode?_encode?` | [`Storage/SubjectRowIndexWireV2Theorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/SubjectRowIndexWireV2Theorems.lean) | none beyond `encode? index = some bytes`: `supported` now runs `offsetsPermutation`, which the decoder re-runs |
 | TLI1 | `decode?_encode?` | [`Storage/TermLocalIndexWireTheorems.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermLocalIndexWireTheorems.lean) | none beyond `encode? index = some bytes`: `supported` now runs `localIdsPermutation`, `termSupported` and `termFitsU32b` |
 
