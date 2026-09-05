@@ -24,6 +24,7 @@ def wireVersion6 : UInt8 := 6
 def wireVersion7 : UInt8 := 7
 def wireVersion8 : UInt8 := 8
 def wireVersion9 : UInt8 := 9
+def wireVersion10 : UInt8 := 10
 
 def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 def listOfByteArray (bs : ByteArray) : List UInt8 := bs.data.toList
@@ -45,6 +46,13 @@ def decodeString (bytes : List UInt8) : Option (String × List UInt8) := do
 def takeExact (n : Nat) (bytes : List UInt8) : Option (List UInt8 × List UInt8) :=
   let value := bytes.take n
   if value.length == n then some (value, bytes.drop n) else none
+
+/-- The field widths in SBM0.  Oversized manifests are refused rather than
+    being truncated into an ambiguous byte stream.
+
+    It is defined here rather than beside the codecs because the SBM10
+    admission tests read it and those run inside `valid`. -/
+def fitsU32 (n : Nat) : Bool := n < 4294967296
 
 /-- A relative artifact key.  Host integrations decide whether this denotes a
     file, `bytea`, TiKV value, OPFS entry, or mapped byte range. -/
@@ -77,6 +85,10 @@ structure ArtifactRef where
 inductive BlockLayout where
   | ibk3
   | ibk4
+  /-- SBM10's block codec: the IBK4 layout over a PTD2 dictionary of version-2
+      terms. Kind byte 2. Required under the `quad-ibk5-ptd2-lgi2-gbi1-merkle-v0`
+      label and refused under every earlier one. -/
+  | ibk5
   deriving DecidableEq
 
 /-- One member of an entry's graph-set summary: the default graph, or the IRI
@@ -155,6 +167,22 @@ structure Entry where
   /-- Present and mandatory for SBM7: the graph set of the IBK4 artifact, in
       the block's first-occurrence row order. Empty for SBM0 through SBM6. -/
   graphSet : List GraphName := []
+  /-- Present and mandatory for SBM10: the positions in the manifest blob table
+      of the out-of-line literals this block's dictionary names. Ascending and
+      distinct, each below the blob-table length. Empty for SBM0 through SBM9,
+      which have no blob table.
+
+      The list is positions rather than digests so that one entry costs four
+      bytes per blob instead of thirty-two, and the digest stays in one place. -/
+  blobRefs : List Nat := []
+  /-- Present and mandatory for SBM10: the smallest and the largest subject key
+      in the block, each truncated to the first `zoneBytes` bytes. A key is the
+      version-2 wire encoding of the term; the order is `lexLe`. Absent for
+      SBM0 through SBM9. -/
+  subjectZone : Option (List UInt8 × List UInt8) := none
+  /-- Present and mandatory for SBM10: the same two bounds over the block's
+      object keys. Absent for SBM0 through SBM9. -/
+  objectZone : Option (List UInt8 × List UInt8) := none
   rows : Nat
   ordinal : Nat
   deriving DecidableEq
@@ -184,6 +212,12 @@ structure Manifest where
       widening this set later is a compatible change. -/
   blankNodeProfile : String := ""
   entries : List Entry
+  /-- Present and mandatory for SBM10: one reference per out-of-line literal
+      artifact, ascending and distinct by SHA-256. The key of each is
+      `blob-<64 lowercase hex>.lit` with the hex equal to that SHA-256, so a
+      reader that holds a version-2 term can name the file the term's digest
+      identifies. Empty for SBM0 through SBM9. -/
+  blobs : List ArtifactRef := []
   deriving DecidableEq
 
 def uniquePredicates : List Entry → Bool
@@ -221,6 +255,12 @@ def layoutConsistent (version : Nat) (layout : String) : Bool :=
      sidecar role. The label changes for the reason SBM8's did: a reader must
      not select a weaker reader by name. -/
   | 9 => layout == "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0"
+  /- SBM10 keeps SBM9's five sidecar roles and changes three things at once:
+     the block codec is IBK5, the literal index is LGI2, and the manifest
+     carries a blob table and per-entry zone maps. The label changes for the
+     reason every earlier one did: a reader must not select a weaker reader by
+     name. -/
+  | 10 => layout == "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0"
   | _ => true
 
 /-- The block codec every entry of a generation must use, from its
@@ -229,7 +269,8 @@ def layoutConsistent (version : Nat) (layout : String) : Bool :=
 def layoutBlockKind (layout : String) : Option BlockLayout :=
   if layout == "quad-ibk4-ptd1-merkle-v0" || layout == "quad-ibk4-ptd1-lgi1-merkle-v0" ||
       layout == "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0" then
-    some .ibk4 else none
+    some .ibk4
+  else if layout == "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0" then some .ibk5 else none
 
 /-- The layout labels naming a generation of IBK4 quad blocks: SBM7's, SBM8's,
     which adds the LGI1 literal search index sidecar, and SBM9's, which adds
@@ -237,6 +278,13 @@ def layoutBlockKind (layout : String) : Option BlockLayout :=
 def isIbk4Layout (layout : String) : Bool :=
   layout == "quad-ibk4-ptd1-merkle-v0" || layout == "quad-ibk4-ptd1-lgi1-merkle-v0" ||
   layout == "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0"
+
+/-- The layout label naming a generation of IBK5 quad blocks. It is deliberately
+    NOT a member of `isIbk4Layout`: an IBK4 reader over IBK5 bytes misreads
+    terms rather than failing, so a reader selects its block codec by name and a
+    reader that does not implement IBK5 refuses the generation. -/
+def isIbk5Layout (layout : String) : Bool :=
+  layout == "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0"
 
 /-- Every layout label naming a generation of IBK3 blocks, base or compacted.
 
@@ -288,6 +336,65 @@ def graphSetAdmitted (names : List GraphName) : Bool :=
   !names.isEmpty && names.all graphNameAdmitted &&
     names.length == names.eraseDups.length
 
+/-! ## SBM10 admission: byte order, zone maps, the blob table
+
+The zone map is two byte strings per position. Both are PREFIXES of a key, so
+the order they are read in must be preserved by taking a prefix of a fixed
+length; `lexLe` below has that property and `lexLe_take` proves it. -/
+
+/-- The number of leading key bytes one zone-map bound holds. A 64 KiB literal
+    therefore puts 64 bytes, not 64 KiB, into every entry that holds it. -/
+def zoneBytes : Nat := 64
+
+/-- Lexicographic order on byte strings, non-strict.
+
+    This is the canonical key order of `L4Factoidal.Storage.TermLocalIndex`
+    (byte by byte, a proper prefix first), restated here rather than imported:
+    that module's `lessBytes` is private to the term index, and the manifest
+    must not depend on the term dictionary to state the order of its own
+    fields. The two definitions agree by inspection, `lexLt` against
+    `TermLocalIndex.lessBytes` clause for clause. -/
+def lexLe : List UInt8 → List UInt8 → Bool
+  | [], _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => if a < b then true else if a == b then lexLe as bs else false
+
+/-- The strict form of the same order. It is what "ascending and distinct by
+    SHA-256" means for the blob table. -/
+def lexLt : List UInt8 → List UInt8 → Bool
+  | [], [] => false
+  | [], _ :: _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => if a < b then true else if a == b then lexLt as bs else false
+
+/-- One zone-map bound pair: both bounds at most `zoneBytes` bytes, and the
+    lower bound at or below the upper one. -/
+def zoneAdmitted (zone : List UInt8 × List UInt8) : Bool :=
+  zone.1.length ≤ zoneBytes && zone.2.length ≤ zoneBytes && lexLe zone.1 zone.2
+
+/-- Whether a key can be inside a zone. A planner drops an entry when this is
+    false for every constant key of the position, and `zoneMap_sound` in
+    `ShardManifestTheorems` states that a key inside the block's own bounds
+    always answers true. -/
+def zoneMayContain (zone : List UInt8 × List UInt8) (key : List UInt8) : Bool :=
+  lexLe zone.1 (key.take zoneBytes) && lexLe (key.take zoneBytes) zone.2
+
+/-- Ascending with no repeat. -/
+def ascendingDistinctNats : List Nat → Bool
+  | [] | [_] => true
+  | a :: b :: rest => a < b && ascendingDistinctNats (b :: rest)
+
+/-- The artifact key of one out-of-line literal: `blob-<64 lowercase hex>.lit`
+    with the hex equal to the artifact's SHA-256. The digest of a version-2
+    tag-4 term is therefore enough to name the file. -/
+def blobKeyOf (digest : ByteArray) : String :=
+  "blob-" ++ L4Factoidal.Crypto.bytesToHex digest ++ ".lit"
+
+/-- Ascending and distinct by SHA-256. -/
+def blobsAscending : List ArtifactRef → Bool
+  | [] | [_] => true
+  | a :: b :: rest => lexLt a.sha256.toList b.sha256.toList && blobsAscending (b :: rest)
+
 /-- No immutable artifact key may play two manifest roles.  In particular an
     SBM3 subject-index sidecar cannot alias another block or sidecar. -/
 def uniqueArtifactKeys (entries : List Entry) : Bool :=
@@ -313,7 +420,25 @@ def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
     | 7, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 8, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | 9, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
+    | 10, some chunked => ChunkedArtifact.valid chunked && chunked.totalBytes == artifact.bytes
     | _, _ => false
+
+/-- SBM10's per-entry additions, as ONE conjunct appended to `entryValid`.
+
+    They are MANDATORY at 10 and MUST BE ABSENT before it, the rule SBM7 states
+    for its own fields: a manifest below version 10 carrying a zone map or a
+    blob reference would encode to bytes that drop it, and the round trip would
+    silently lose data.
+
+    Whether the references are IN RANGE of the blob table is not decidable from
+    one entry, so it is a manifest-level conjunct (`sbm10ManifestFields`). -/
+def sbm10EntryFields (version : Nat) (entry : Entry) : Bool :=
+  if version == 10 then
+    ascendingDistinctNats entry.blobRefs &&
+      (match entry.subjectZone, entry.objectZone with
+       | some subject, some object => zoneAdmitted subject && zoneAdmitted object
+       | _, _ => false)
+  else entry.blobRefs.isEmpty && entry.subjectZone.isNone && entry.objectZone.isNone
 
 def entryValid (version : Nat) (entry : Entry) : Bool :=
   entry.rows > 0 && artifactValidFor version entry.artifact &&
@@ -322,18 +447,19 @@ def entryValid (version : Nat) (entry : Entry) : Bool :=
     | 4, some index => artifactValidFor 4 index && index.key != entry.artifact.key
     | 5, some index => artifactValidFor 5 index && index.key != entry.artifact.key
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 7, none | 8, none | 9, none => true
+    | 0, none | 1, none | 2, none | 7, none | 8, none | 9, none | 10, none => true
     | _, _ => false) &&
   (match version, entry.termIndex with
     | 4, some index => artifactValidFor 4 index && index.key != entry.artifact.key
     | 5, some index => artifactValidFor 5 index && index.key != entry.artifact.key
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
-    | 0, none | 1, none | 2, none | 3, none | 7, none | 8, none | 9, none => true
+    | 0, none | 1, none | 2, none | 3, none | 7, none | 8, none | 9, none
+    | 10, none => true
     | _, _ => false) &&
   (match version, entry.objectIndex with
     | 6, some index => artifactValidFor 6 index && index.key != entry.artifact.key
     | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none | 8, none
-    | 9, none => true
+    | 9, none | 10, none => true
     | _, _ => false) &&
   /- SBM8's literal search index and SBM9's geometry bounding-box index. Each
      is MANDATORY at its own version and MUST BE ABSENT before it, for the
@@ -349,6 +475,9 @@ def entryValid (version : Nat) (entry : Entry) : Bool :=
     | 9, some literal, some geo =>
         artifactValidFor 9 literal && literal.key != entry.artifact.key &&
         artifactValidFor 9 geo && geo.key != entry.artifact.key
+    | 10, some literal, some geo =>
+        artifactValidFor 10 literal && literal.key != entry.artifact.key &&
+        artifactValidFor 10 geo && geo.key != entry.artifact.key
     | 0, none, none | 1, none, none | 2, none, none | 3, none, none | 4, none, none
     | 5, none, none | 6, none, none | 7, none, none => true
     | _, _, _ => false) &&
@@ -356,13 +485,18 @@ def entryValid (version : Nat) (entry : Entry) : Bool :=
      before it: a pre-SBM7 manifest carrying them would encode to bytes that
      drop them, and the round trip would silently lose data. -/
   (match version, entry.blockLayout with
-    | 7, some _ | 8, some _ | 9, some _ => true
+    | 7, some _ | 8, some _ | 9, some _ | 10, some _ => true
     | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none => true
     | _, _ => false) &&
-  (if version == 7 || version == 8 || version == 9 then
+  (if version == 7 || version == 8 || version == 9 || version == 10 then
       blankNodeScopeAdmitted entry.blankNodeScope &&
       graphSetAdmitted entry.graphSet
-   else entry.blankNodeScope == "" && entry.graphSet == [])
+   else entry.blankNodeScope == "" && entry.graphSet == []) &&
+  /- SBM10's zone maps and blob references. This conjunct is APPENDED rather
+     than inserted so that the accessor chains of `ShardManifestTheorems` keep
+     their positions: each of the nine entry proofs takes one extra `andL` at
+     the outermost position and nothing else moves. -/
+  sbm10EntryFields version entry
 
 /-- The manifest-level layout label and the per-entry block kind must agree.
     Before SBM7 the label is the only statement of the codec and there is no
@@ -372,22 +506,50 @@ def entryLayoutsMatchLabel (manifest : Manifest) : Bool :=
   | none => manifest.entries.all fun entry => entry.blockLayout.isNone
   | some kind => manifest.entries.all fun entry => entry.blockLayout == some kind
 
+/-- SBM10's manifest-level additions, as ONE conjunct appended to `valid`.
+
+    The blob table is present only at version 10, where every reference is a
+    fully committed artifact whose key is `blob-<hex>.lit` with the hex equal
+    to its own SHA-256, the table is ascending and distinct by SHA-256, and no
+    blob key aliases a block or a sidecar key. Each entry's references are
+    positions in that table.
+
+    Activation checks more than this: that the tag-4 terms of a decoded
+    dictionary name exactly the blobs the entry lists, and that each artifact
+    hashes to its stated digest. Those need the block bytes, so they live in
+    `Harness/ShardActivate.lean`, not here. -/
+def sbm10ManifestFields (manifest : Manifest) : Bool :=
+  if manifest.version == 10 then
+    manifest.blobs.all (fun blob =>
+      artifactValidFor 10 blob && blob.key.value == blobKeyOf blob.sha256) &&
+    blobsAscending manifest.blobs &&
+    manifest.entries.all (fun entry =>
+      entry.blobRefs.all (fun index => index < manifest.blobs.length)) &&
+    (let keys := manifest.blobs.map ArtifactRef.key ++
+      manifest.entries.flatMap (fun entry =>
+        entry.artifact.key :: (entry.literalIndex.map ArtifactRef.key).toList ++
+          (entry.geoIndex.map ArtifactRef.key).toList)
+     keys.length == keys.eraseDups.length)
+  else manifest.blobs.isEmpty
+
 def valid (manifest : Manifest) : Bool :=
-  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7 || manifest.version == 8 || manifest.version == 9) &&
+  (manifest.version == 0 || manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7 || manifest.version == 8 || manifest.version == 9 || manifest.version == 10) &&
     layoutConsistent manifest.version manifest.layout &&
-    (if manifest.version == 7 || manifest.version == 8 || manifest.version == 9 then
+    (if manifest.version == 7 || manifest.version == 8 || manifest.version == 9 ||
+        manifest.version == 10 then
         knownBlankNodeProfile manifest.blankNodeProfile
      else manifest.blankNodeProfile == "") &&
     entryLayoutsMatchLabel manifest &&
     (if manifest.version < 2 then uniquePredicates manifest.entries else true) &&
     uniqueArtifactKeys manifest.entries &&
     contiguousOrdinals manifest.entries 0 &&
-    manifest.entries.all (entryValid manifest.version)
+    manifest.entries.all (entryValid manifest.version) &&
+    sbm10ManifestFields manifest
 
 /-- SBM1 and later retain the fixed-chunk Merkle commitment required by the
 range-backed local-file and remote readers. -/
 def rangeCommitted (manifest : Manifest) : Bool :=
-  manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7 || manifest.version == 8 || manifest.version == 9
+  manifest.version == 1 || manifest.version == 2 || manifest.version == 3 || manifest.version == 4 || manifest.version == 5 || manifest.version == 6 || manifest.version == 7 || manifest.version == 8 || manifest.version == 9 || manifest.version == 10
 
 /-- Predicate selection is total and deterministic; a missing key means no
     candidate artifact, never a fallback that could hide an index error. -/
@@ -758,26 +920,141 @@ def queryQuadConstantPredicates? (query : Query) : Option (List WfIri) :=
     quadNativeConstantPredicates? query.pattern
   else none
 
-/-- The IBK4 entries a query can read, in manifest order.
+/-! ## SBM10 entry selection: the zone maps
 
-    An entry survives unless a collector excludes it, so a `none` from either
+A third collector beside the predicate and the graph-name ones. It reads the
+CONSTANT terms of the subject position of every triple pattern the query
+carries, and of the object position, and an entry is dropped when its zone map
+says no collected key can be inside the block.
+
+`none` means "no restriction established", never "no answers", exactly as the
+other two collectors do. -/
+
+/-- The constant subject of one triple pattern, as an RDF term. A blank node in
+    a pattern acts as a variable (specification section 18.1.6), and a triple
+    term whose parts may be variables is not a constant, so both give `none`
+    and the whole collector then gives up. -/
+def constantSubjectOf : PatternSubject → Option Term
+  | .iri value => some (.iri value)
+  | _ => none
+
+/-- The constant object of one triple pattern. An IRI and a literal are
+    constants; a variable, a pattern blank node and a triple term are not. -/
+def constantObjectOf : PatternTerm → Option Term
+  | .iri value => some (.iri value)
+  | .literal value => some (.literal value)
+  | _ => none
+
+/-- The constant terms one position of a pattern reads, or `none` when any
+    triple pattern reads that position unbound.
+
+    `positionOf` picks the position. The pattern arms are the arms of
+    `quadNativeConstantPredicates?` with two differences, both narrowing:
+
+    * `.propertyPath` gives `none`. A path's endpoints bound the pair the path
+      denotes, they do not bound the subject of every step triple, and a step
+      triple's subject is what a block's subject zone map bounds.
+    * an empty BGP and `.empty` give `none`, as they do there. -/
+def quadConstantTerms? (positionOf : TriplePattern → Option Term) :
+    QueryPattern → Option (List Term)
+  | .bgp patterns =>
+      if patterns.isEmpty then none else
+      patterns.foldr (fun pattern rest => do
+        let terms ← rest
+        let term ← positionOf pattern
+        some (term :: terms)) (some [])
+  | .join left right
+  | .union left right
+  | .minus left right => do
+      let l ← quadConstantTerms? positionOf left
+      let r ← quadConstantTerms? positionOf right
+      some (l ++ r)
+  | .leftJoin left right cond =>
+      if cond.existsFree then do
+        let l ← quadConstantTerms? positionOf left
+        let r ← quadConstantTerms? positionOf right
+        some (l ++ r)
+      else none
+  | .filter condition pattern =>
+      if condition.existsFree then quadConstantTerms? positionOf pattern else none
+  | .bind expression _ pattern =>
+      if expression.existsFree then quadConstantTerms? positionOf pattern else none
+  | .graph _ pattern => quadConstantTerms? positionOf pattern
+  | _ => none
+
+/-- The query-level form, under the same EXISTS guard the other two collectors
+    carry: section 18.6 evaluates an EXISTS in the projection, a GROUP BY key,
+    a HAVING condition or an ORDER BY condition against the active graph, and
+    this collector reads only `query.pattern`. -/
+def queryQuadConstantSubjects? (query : Query) : Option (List Term) :=
+  if query.expressionsOutsidePatternExistsFree then
+    quadConstantTerms? (fun pattern => constantSubjectOf pattern.s) query.pattern
+  else none
+
+def queryQuadConstantObjects? (query : Query) : Option (List Term) :=
+  if query.expressionsOutsidePatternExistsFree then
+    quadConstantTerms? (fun pattern => constantObjectOf pattern.o) query.pattern
+  else none
+
+/-- Whether one zone map keeps an entry, given the constant keys of that
+    position. Every give-up keeps the entry:
+
+    * the collector established nothing (`wanted` is `none`);
+    * the entry has no zone map (SBM0 through SBM9);
+    * `termKey` cannot compute a key for one of the terms;
+    * the collected list is empty, which no admitted pattern produces but which
+      must not be read as "exclude everything". -/
+def zoneKeepsEntry (termKey : Term → Option (List UInt8))
+    (wanted : Option (List Term)) (zone : Option (List UInt8 × List UInt8)) : Bool :=
+  match wanted, zone with
+  | some terms, some bounds =>
+      terms.isEmpty || terms.any fun term =>
+        match termKey term with
+        | some key => zoneMayContain bounds key
+        | none => true
+  | _, _ => true
+
+/-- The IBK4 or IBK5 entries a query can read, in manifest order.
+
+    An entry survives unless a collector excludes it, so a `none` from any
     collector keeps every entry that collector could have excluded. An invalid
-    manifest selects nothing, as `selectAll` does. -/
-def quadEntriesForQuery (manifest : Manifest) (query : Query) : List Entry :=
+    manifest selects nothing, as `selectAll` does.
+
+    `termKey` is the key function of the zone maps, INJECTED rather than
+    imported because the version-2 term codec is a separate module. Its
+    contract:
+
+    * it returns the canonical wire key bytes of a term — the version-2
+      encoding of that term — which are the bytes the packer compared when it
+      computed the entry's zone bounds;
+    * it is total and deterministic;
+    * `none` means the key cannot be computed, and the entry is then kept.
+
+    A `termKey` that disagrees with the packer's own key function drops entries
+    that hold matching rows. `(fun _ => none)` is always safe and always keeps
+    every entry, which is what `quadEntriesForQuery` below passes. -/
+def quadEntriesForQueryWithKeys (termKey : Term → Option (List UInt8))
+    (manifest : Manifest) (query : Query) : List Entry :=
   if !valid manifest then [] else
   let predicates := queryQuadConstantPredicates? query
   let graphs := queryGraphNames? query
+  let subjects := queryQuadConstantSubjects? query
+  let objects := queryQuadConstantObjects? query
   manifest.entries.filter fun entry =>
     (match predicates with
      | none => true
      | some wanted => wanted.contains entry.predicate) &&
     (match graphs with
      | none => true
-     | some wanted => entry.graphSet.any fun name => wanted.contains name)
+     | some wanted => entry.graphSet.any fun name => wanted.contains name) &&
+    zoneKeepsEntry termKey subjects entry.subjectZone &&
+    zoneKeepsEntry termKey objects entry.objectZone
 
-/-- The field widths in SBM0.  Oversized manifests are refused rather than
-    being truncated into an ambiguous byte stream. -/
-def fitsU32 (n : Nat) : Bool := n < 4294967296
+/-- The zone-map-free form, for the callers that have no version-2 key
+    function yet. It keeps exactly the entries the predicate and graph-name
+    collectors keep. -/
+def quadEntriesForQuery (manifest : Manifest) (query : Query) : List Entry :=
+  quadEntriesForQueryWithKeys (fun _ => none) manifest query
 
 /-! ## SBM7 field codecs
 
@@ -789,9 +1066,11 @@ column. -/
 def blockLayoutTag : BlockLayout → UInt8
   | .ibk3 => 0
   | .ibk4 => 1
+  | .ibk5 => 2
 
 def blockLayoutOfTag (tag : UInt8) : Option BlockLayout :=
-  if tag == 0 then some .ibk3 else if tag == 1 then some .ibk4 else none
+  if tag == 0 then some .ibk3 else if tag == 1 then some .ibk4
+  else if tag == 2 then some .ibk5 else none
 
 def graphNameTag : GraphName → UInt8
   | .defaultGraph => 0
@@ -854,44 +1133,66 @@ def encodableSidecar (index : ArtifactRef) : Bool :=
    ran. The sidecar field-width tests of SBM3 through SBM6 were dead. Found
    2026-09-03 while proving `decodeEntry_encodeEntry`: the proof needed a
    sidecar bound that the definition did not supply. -/
+/-- SBM10's per-entry wire-field bounds, as ONE conjunct appended to
+    `encodableEntry`. The zone bounds need no width test of their own: `valid`
+    already caps each at `zoneBytes` bytes. -/
+def sbm10EntryEncodable (version : Nat) (entry : Entry) : Bool :=
+  if version == 10 then
+    fitsU32 entry.blobRefs.length && entry.blobRefs.all fitsU32
+  else true
+
 def encodableEntry (version : Nat) (entry : Entry) : Bool :=
   encodableCommon entry &&
   (match version, entry.artifact.chunked with
    | 0, none => true
    | 1, some chunked | 2, some chunked | 3, some chunked | 4, some chunked
    | 5, some chunked | 6, some chunked | 7, some chunked
-   | 8, some chunked | 9, some chunked => encodableChunked chunked
+   | 8, some chunked | 9, some chunked | 10, some chunked => encodableChunked chunked
    | _, _ => false) &&
   (match version, entry.subjectIndex with
    | 3, some index | 4, some index | 5, some index | 6, some index => encodableSidecar index
-   | 0, none | 1, none | 2, none | 7, none | 8, none | 9, none => true
+   | 0, none | 1, none | 2, none | 7, none | 8, none | 9, none | 10, none => true
    | _, _ => false) &&
   (match version, entry.termIndex with
    | 4, some index | 5, some index | 6, some index => encodableSidecar index
-   | 0, none | 1, none | 2, none | 3, none | 7, none | 8, none | 9, none => true
+   | 0, none | 1, none | 2, none | 3, none | 7, none | 8, none | 9, none
+   | 10, none => true
    | _, _ => false) &&
   (match version, entry.objectIndex with
    | 6, some index => encodableSidecar index
    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 7, none | 8, none
-   | 9, none => true
+   | 9, none | 10, none => true
    | _, _ => false) &&
   (match version, entry.literalIndex, entry.geoIndex with
    | 8, some literal, none => encodableSidecar literal
    | 9, some literal, some geo => encodableSidecar literal && encodableSidecar geo
+   | 10, some literal, some geo => encodableSidecar literal && encodableSidecar geo
    | 0, none, none | 1, none, none | 2, none, none | 3, none, none | 4, none, none
    | 5, none, none | 6, none, none | 7, none, none => true
    | _, _, _ => false) &&
   (match version, entry.blockLayout with
-   | 7, some _ | 8, some _ | 9, some _ => fitsU32 entry.blankNodeScope.toUTF8.size &&
+   | 7, some _ | 8, some _ | 9, some _ | 10, some _ =>
+       fitsU32 entry.blankNodeScope.toUTF8.size &&
        fitsU32 entry.graphSet.length && entry.graphSet.all graphNameEncodable
    | 0, none | 1, none | 2, none | 3, none | 4, none | 5, none | 6, none => true
-   | _, _ => false)
+   | _, _ => false) &&
+  /- Appended for the reason `sbm10EntryFields` is appended to `entryValid`. -/
+  sbm10EntryEncodable version entry
+
+/-- SBM10's manifest-level wire-field bounds, as ONE conjunct appended to
+    `encodable`. Every blob reference is written by `encodeSidecarRef`, so it
+    carries the same bounds an index sidecar does. -/
+def sbm10ManifestEncodable (manifest : Manifest) : Bool :=
+  if manifest.version == 10 then
+    fitsU32 manifest.blobs.length && manifest.blobs.all encodableSidecar
+  else true
 
 def encodable (manifest : Manifest) : Bool :=
   fitsU32 manifest.sourceIdentity.size && fitsU32 manifest.termRegistryVersion.toUTF8.size &&
     fitsU32 manifest.layout.toUTF8.size && fitsU32 manifest.blankNodeProfile.toUTF8.size &&
     fitsU32 manifest.entries.length &&
-    manifest.entries.all (encodableEntry manifest.version)
+    manifest.entries.all (encodableEntry manifest.version) &&
+    sbm10ManifestEncodable manifest
 
 /-! ## The entry codec, as composable framed objects
 
@@ -960,6 +1261,67 @@ def decodeSidecarRef (bytes : List UInt8) : Option (ArtifactRef × List UInt8) :
   some ({ key := { value := indexKey }, bytes := indexBytes.toNat,
           sha256 := byteArrayOfList indexDigest, chunked := some chunked }, rest)
 
+/-! ## SBM10 field codecs
+
+Three framed objects: the entry's blob-reference list, one zone-map bound pair,
+and the manifest's blob table. Each has its own round-trip lemma in
+`ShardManifestTheorems`. -/
+
+/-- A length-prefixed byte string: u32 byte count, then the bytes. It is the
+    shape `encodeString` writes, without the UTF-8 requirement, because a zone
+    bound is a prefix of a key and a prefix of UTF-8 need not be UTF-8. -/
+def encodeBytesField (xs : List UInt8) : List UInt8 :=
+  writeU32LE (UInt32.ofNat xs.length) ++ xs
+
+def decodeBytesField (bytes : List UInt8) : Option (List UInt8 × List UInt8) := do
+  let count ← readU32LE bytes 0
+  takeExact count.toNat (bytes.drop 4)
+
+/-- One zone map: the lower bound then the upper bound. -/
+def encodeZone (zone : List UInt8 × List UInt8) : List UInt8 :=
+  encodeBytesField zone.1 ++ encodeBytesField zone.2
+
+def decodeZone (bytes : List UInt8) :
+    Option ((List UInt8 × List UInt8) × List UInt8) := do
+  let (lower, afterLower) ← decodeBytesField bytes
+  let (upper, rest) ← decodeBytesField afterLower
+  some ((lower, upper), rest)
+
+/-- The entry's blob references: u32 count, then one u32 position each. -/
+def encodeBlobRefs (indices : List Nat) : List UInt8 :=
+  writeU32LE (UInt32.ofNat indices.length) ++
+    indices.flatMap (fun index => writeU32LE (UInt32.ofNat index))
+
+def decodeBlobRefList : Nat → List UInt8 → Option (List Nat × List UInt8)
+  | 0, bytes => some ([], bytes)
+  | count + 1, bytes => do
+      let value ← readU32LE bytes 0
+      let (_, afterValue) ← takeExact 4 bytes
+      let (rest, trailing) ← decodeBlobRefList count afterValue
+      some (value.toNat :: rest, trailing)
+
+def decodeBlobRefs (bytes : List UInt8) : Option (List Nat × List UInt8) := do
+  let count ← readU32LE bytes 0
+  let (_, afterCount) ← takeExact 4 bytes
+  decodeBlobRefList count.toNat afterCount
+
+/-- The manifest blob table: u32 count, then one artifact reference each, in
+    the same framing an index sidecar uses. -/
+def encodeBlobTable (blobs : List ArtifactRef) : List UInt8 :=
+  writeU32LE (UInt32.ofNat blobs.length) ++ blobs.flatMap encodeSidecarRef
+
+def decodeBlobList : Nat → List UInt8 → Option (List ArtifactRef × List UInt8)
+  | 0, bytes => some ([], bytes)
+  | count + 1, bytes => do
+      let (blob, afterBlob) ← decodeSidecarRef bytes
+      let (rest, trailing) ← decodeBlobList count afterBlob
+      some (blob :: rest, trailing)
+
+def decodeBlobTable (bytes : List UInt8) : Option (List ArtifactRef × List UInt8) := do
+  let count ← readU32LE bytes 0
+  let (_, afterCount) ← takeExact 4 bytes
+  decodeBlobList count.toNat afterCount
+
 /-- SBM7's tail: block kind, blank-node scope, graph-set summary. -/
 def encodeQuadTail (kind : BlockLayout) (scope : String) (names : List GraphName) : List UInt8 :=
   [blockLayoutTag kind] ++ encodeString scope ++
@@ -1016,6 +1378,18 @@ def encodeEntry (version : Nat) (entry : Entry) : List UInt8 :=
           encodeCommon entry ++ encodeChunkedRef chunked ++ encodeSidecarRef literal ++
             encodeSidecarRef geo ++ encodeQuadTail kind entry.blankNodeScope entry.graphSet
       | _, _, _ => []
+  /- SBM10 is SBM9 plus the blob references and the two zone maps, written
+     after the GBI1 sidecar and before the quad tail, so the decoder reads one
+     field sequence rather than a version-dependent reordering. -/
+  | 10, some chunked =>
+      match entry.blockLayout, entry.literalIndex, entry.geoIndex,
+            entry.subjectZone, entry.objectZone with
+      | some kind, some literal, some geo, some subject, some object =>
+          encodeCommon entry ++ encodeChunkedRef chunked ++ encodeSidecarRef literal ++
+            encodeSidecarRef geo ++ encodeBlobRefs entry.blobRefs ++
+            encodeZone subject ++ encodeZone object ++
+            encodeQuadTail kind entry.blankNodeScope entry.graphSet
+      | _, _, _, _, _ => []
   | _, _ => []
 
 /-- Canonical SBM0/SBM1/SBM2 bytes. SBM1 and SBM2 retain every SBM0 field and
@@ -1026,9 +1400,12 @@ def encode? (manifest : Manifest) : Option ByteArray :=
       writeU32LE magic ++ [UInt8.ofNat manifest.version] ++
       writeU32LE (UInt32.ofNat manifest.sourceIdentity.size) ++ manifest.sourceIdentity.toList ++
       encodeString manifest.termRegistryVersion ++ encodeString manifest.layout ++
-      (if manifest.version == 7 || manifest.version == 8 || manifest.version == 9 then
+      (if manifest.version == 7 || manifest.version == 8 || manifest.version == 9 ||
+          manifest.version == 10 then
         encodeString manifest.blankNodeProfile else []) ++
-      writeU32LE (UInt32.ofNat manifest.entries.length) ++ manifest.entries.flatMap (encodeEntry manifest.version)
+      writeU32LE (UInt32.ofNat manifest.entries.length) ++
+      manifest.entries.flatMap (encodeEntry manifest.version) ++
+      (if manifest.version == 10 then encodeBlobTable manifest.blobs else [])
   else none
 
 def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UInt8) := do
@@ -1036,7 +1413,7 @@ def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UIn
   if h : isIri common.predicateText then do
     let (chunked, afterChunked) ← match version with
       | 0 => some ((none : Option ChunkedArtifact.Ref), afterCommon)
-      | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 => do
+      | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 => do
           let (ref, rest) ← decodeChunkedRef common.artifactBytes afterCommon
           some (some ref, rest)
       | _ => none
@@ -1056,20 +1433,30 @@ def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UIn
           some (some ref, rest)
       | _ => some ((none : Option ArtifactRef), afterTerm)
     let (literalIndex, afterLiteral) ← match version with
-      | 8 | 9 => do
+      | 8 | 9 | 10 => do
           let (ref, rest) ← decodeSidecarRef afterObject
           some (some ref, rest)
       | _ => some ((none : Option ArtifactRef), afterObject)
     let (geoIndex, afterGeo) ← match version with
-      | 9 => do
+      | 9 | 10 => do
           let (ref, rest) ← decodeSidecarRef afterLiteral
           some (some ref, rest)
       | _ => some ((none : Option ArtifactRef), afterLiteral)
+    let (blobRefs, afterBlobs) ← match version with
+      | 10 => decodeBlobRefs afterGeo
+      | _ => some (([] : List Nat), afterGeo)
+    let (zones, afterZones) ← match version with
+      | 10 => do
+          let (subject, afterSubject) ← decodeZone afterBlobs
+          let (object, rest) ← decodeZone afterSubject
+          some ((some subject, some object), rest)
+      | _ => some (((none : Option (List UInt8 × List UInt8)),
+                    (none : Option (List UInt8 × List UInt8))), afterBlobs)
     let (quad, rest) ← match version with
-      | 7 | 8 | 9 => do
-          let (fields, rest) ← decodeQuadTail afterGeo
+      | 7 | 8 | 9 | 10 => do
+          let (fields, rest) ← decodeQuadTail afterZones
           some ((some fields.1, fields.2.1, fields.2.2), rest)
-      | _ => some (((none : Option BlockLayout), "", ([] : List GraphName)), afterGeo)
+      | _ => some (((none : Option BlockLayout), "", ([] : List GraphName)), afterZones)
     some
       ({ predicate := ⟨common.predicateText, h⟩
          artifact := { key := { value := common.keyText }, bytes := common.artifactBytes,
@@ -1082,6 +1469,9 @@ def decodeEntry (version : Nat) (bytes : List UInt8) : Option (Entry × List UIn
          blockLayout := quad.1
          blankNodeScope := quad.2.1
          graphSet := quad.2.2
+         blobRefs := blobRefs
+         subjectZone := zones.1
+         objectZone := zones.2
          rows := common.rows
          ordinal := common.ordinal }, rest)
   else none
@@ -1100,19 +1490,24 @@ def decode? (bytes : ByteArray) : Option Manifest := do
   let foundMagic ← readU32LE allBytes 0
   if foundMagic != magic then none else do
   let (foundVersion, afterVersion) ← parseU8 (allBytes.drop 4)
-  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 && foundVersion != wireVersion4 && foundVersion != wireVersion5 && foundVersion != wireVersion6 && foundVersion != wireVersion7 && foundVersion != wireVersion8 && foundVersion != wireVersion9 then none else do
+  if foundVersion != wireVersion0 && foundVersion != wireVersion1 && foundVersion != wireVersion2 && foundVersion != wireVersion3 && foundVersion != wireVersion4 && foundVersion != wireVersion5 && foundVersion != wireVersion6 && foundVersion != wireVersion7 && foundVersion != wireVersion8 && foundVersion != wireVersion9 && foundVersion != wireVersion10 then none else do
   let sourceLength ← readU32LE afterVersion 0
   let (sourceIdentity, afterSource) ← takeExact sourceLength.toNat (afterVersion.drop 4)
   let (termRegistryVersion, afterRegistry) ← decodeString afterSource
   let (layout, afterLayout) ← decodeString afterRegistry
   let (blankNodeProfile, afterProfile) ←
     if foundVersion == wireVersion7 || foundVersion == wireVersion8 ||
-        foundVersion == wireVersion9 then decodeString afterLayout
+        foundVersion == wireVersion9 || foundVersion == wireVersion10 then
+      decodeString afterLayout
     else some ("", afterLayout)
   let entryCount ← readU32LE afterProfile 0
-  let (entries, rest) ← decodeEntries foundVersion.toNat entryCount.toNat (afterProfile.drop 4)
+  let (entries, afterEntries) ←
+    decodeEntries foundVersion.toNat entryCount.toNat (afterProfile.drop 4)
+  let (blobs, rest) ←
+    if foundVersion == wireVersion10 then decodeBlobTable afterEntries
+    else some (([] : List ArtifactRef), afterEntries)
   let manifest := { version := foundVersion.toNat, sourceIdentity := byteArrayOfList sourceIdentity,
-                    termRegistryVersion, layout, blankNodeProfile, entries }
+                    termRegistryVersion, layout, blankNodeProfile, entries, blobs }
   if rest.isEmpty && valid manifest then some manifest else none
 
 private def samplePredicate : WfIri := ⟨"https://example.test/p", by decide⟩
@@ -1520,6 +1915,121 @@ Parliament "work packages current" count query. -/
   (.propertyPath (.var "s") (.sequence (.iri sampleOtherPredicate)
     (.iri samplePredicate)) (.var "o")))
   == some [samplePredicate, sampleOtherPredicate, samplePredicate])
+
+/-! ## SBM10 samples
+
+SBM9 plus the IBK5 block kind, the LGI2 literal index, a manifest blob table,
+per-entry blob references and the two zone maps. Every one of those is
+mandatory at 10 and refused before it. -/
+
+private def sampleLiteralIndexV2 : ArtifactRef :=
+  { key := { value := "blocks/p.lgi2" }, bytes := sampleBlockBytes.size,
+    sha256 := sampleDigest, chunked := some sampleChunked }
+
+private def sampleBlob : ArtifactRef :=
+  { key := { value := blobKeyOf sampleDigest }, bytes := sampleBlockBytes.size,
+    sha256 := sampleDigest, chunked := some sampleChunked }
+
+private def sampleSubjectZone : List UInt8 × List UInt8 := ([0, 16], [0, 200])
+private def sampleObjectZone : List UInt8 × List UInt8 := ([2], [2, 255])
+
+private def sampleManifestV10 : Manifest :=
+  { sampleManifestV9 with
+    version := 10,
+    layout := "quad-ibk5-ptd2-lgi2-gbi1-merkle-v0",
+    blobs := [sampleBlob],
+    entries := sampleManifestV9.entries.map fun entry =>
+      { entry with
+        blockLayout := some BlockLayout.ibk5,
+        literalIndex := some sampleLiteralIndexV2,
+        blobRefs := [0],
+        subjectZone := some sampleSubjectZone,
+        objectZone := some sampleObjectZone } }
+
+private def sampleManifestV10Ibk4Entry : Manifest :=
+  { sampleManifestV10 with entries := sampleManifestV10.entries.map fun entry =>
+    { entry with blockLayout := some .ibk4 } }
+
+private def sampleManifestV10OldLabel : Manifest :=
+  { sampleManifestV10 with layout := "quad-ibk4-ptd1-lgi1-gbi1-merkle-v0" }
+
+/-- A blob index past the end of the blob table. -/
+private def sampleManifestV10BlobIndexOutOfRange : Manifest :=
+  { sampleManifestV10 with entries := sampleManifestV10.entries.map fun entry =>
+    { entry with blobRefs := [5] } }
+
+/-- A blob index list that repeats. -/
+private def sampleManifestV10RepeatedBlobIndex : Manifest :=
+  { sampleManifestV10 with entries := sampleManifestV10.entries.map fun entry =>
+    { entry with blobRefs := [0, 0] } }
+
+/-- A zone whose lower bound is above its upper bound. -/
+private def sampleManifestV10DescendingZone : Manifest :=
+  { sampleManifestV10 with entries := sampleManifestV10.entries.map fun entry =>
+    { entry with subjectZone := some ([0, 200], [0, 16]) } }
+
+/-- A zone bound of 65 bytes: one past `zoneBytes`. -/
+private def sampleManifestV10OversizedZone : Manifest :=
+  { sampleManifestV10 with entries := sampleManifestV10.entries.map fun entry =>
+    { entry with objectZone := some (List.replicate 65 0, List.replicate 65 0) } }
+
+/-- A blob whose key names a digest that is not its own SHA-256. -/
+private def sampleManifestV10WrongBlobKey : Manifest :=
+  { sampleManifestV10 with
+    blobs := [{ sampleBlob with key := { value := blobKeyOf (ByteArray.mk (Array.replicate 32 0)) } }] }
+
+/-- A blob with no chunk commitment: every SBM1+ artifact carries one. -/
+private def sampleManifestV10UncommittedBlob : Manifest :=
+  { sampleManifestV10 with blobs := [{ sampleBlob with chunked := none }] }
+
+/-- An SBM9 manifest may not carry SBM10's zone maps, blob references or blob
+    table: the encoder would drop them and the round trip would lose data. -/
+private def sampleManifestV9WithZone : Manifest :=
+  { sampleManifestV9 with entries := sampleManifestV9.entries.map fun entry =>
+    { entry with subjectZone := some sampleSubjectZone } }
+
+private def sampleManifestV9WithBlobRefs : Manifest :=
+  { sampleManifestV9 with entries := sampleManifestV9.entries.map fun entry =>
+    { entry with blobRefs := [0] } }
+
+private def sampleManifestV9WithBlobTable : Manifest :=
+  { sampleManifestV9 with blobs := [sampleBlob] }
+
+#guard decode? (encode? sampleManifestV10 |>.getD ByteArray.empty) == some sampleManifestV10
+#guard rangeCommitted sampleManifestV10
+#guard isIbk5Layout sampleManifestV10.layout
+#guard !(isIbk4Layout sampleManifestV10.layout)
+#guard layoutBlockKind sampleManifestV10.layout == some BlockLayout.ibk5
+#guard blobKeyOf sampleBlob.sha256 == sampleBlob.key.value
+#guard (blobKeyOf sampleBlob.sha256).length == 5 + 64 + 4
+-- Every SBM10 admission condition refuses its own violation, on both sides.
+#guard !(valid sampleManifestV10Ibk4Entry) && (encode? sampleManifestV10Ibk4Entry).isNone
+#guard !(valid sampleManifestV10OldLabel) && (encode? sampleManifestV10OldLabel).isNone
+#guard !(valid sampleManifestV10BlobIndexOutOfRange) &&
+  (encode? sampleManifestV10BlobIndexOutOfRange).isNone
+#guard !(valid sampleManifestV10RepeatedBlobIndex) &&
+  (encode? sampleManifestV10RepeatedBlobIndex).isNone
+#guard !(valid sampleManifestV10DescendingZone) &&
+  (encode? sampleManifestV10DescendingZone).isNone
+#guard !(valid sampleManifestV10OversizedZone) &&
+  (encode? sampleManifestV10OversizedZone).isNone
+#guard !(valid sampleManifestV10WrongBlobKey) && (encode? sampleManifestV10WrongBlobKey).isNone
+#guard !(valid sampleManifestV10UncommittedBlob) &&
+  (encode? sampleManifestV10UncommittedBlob).isNone
+#guard !(valid sampleManifestV9WithZone) && (encode? sampleManifestV9WithZone).isNone
+#guard !(valid sampleManifestV9WithBlobRefs) && (encode? sampleManifestV9WithBlobRefs).isNone
+#guard !(valid sampleManifestV9WithBlobTable) && (encode? sampleManifestV9WithBlobTable).isNone
+-- SBM9 bytes are unchanged by SBM10's arrival: an old generation still reads.
+#guard (encode? sampleManifestV9).isSome
+-- The zone-map order and the prefix rule.
+#guard zoneMayContain sampleSubjectZone [0, 100]
+#guard !(zoneMayContain sampleSubjectZone [0, 250])
+#guard !(zoneMayContain sampleSubjectZone [0])
+#guard zoneMayContain (List.replicate 64 0, List.replicate 64 255) (List.replicate 100 7)
+#guard lexLe [1, 2] [1, 2, 3]
+#guard lexLt [1, 2] [1, 2, 3]
+#guard !(lexLt [1, 2] [1, 2])
+#guard lexLe [1, 2] [1, 2]
 
 /-! ## SBM7 entry selection -/
 

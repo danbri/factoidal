@@ -314,7 +314,8 @@ theorem encodableEntry_common (version : Nat) (entry : Entry)
     fitsU32 entry.predicate.val.toUTF8.size ∧ fitsU32 entry.artifact.key.value.toUTF8.size ∧
       fitsU32 entry.artifact.bytes ∧ fitsU32 entry.rows ∧ fitsU32 entry.ordinal ∧
       entry.artifact.sha256.size = 32 := by
-  have hc : encodableCommon entry = true := andL (andL (andL (andL (andL (andL he)))))
+  have hc : encodableCommon entry = true :=
+    andL (andL (andL (andL (andL (andL (andL he))))))
   simp only [encodableCommon, Bool.and_eq_true, beq_iff_eq] at hc
   exact ⟨hc.1.1.1.1.1, hc.1.1.1.1.2, hc.1.1.1.2, hc.1.1.2, hc.1.2, hc.2⟩
 
@@ -323,11 +324,14 @@ theorem encodableEntry_common (version : Nat) (entry : Entry)
 theorem entry_rebuild (entry : Entry) (chunked : Option ChunkedArtifact.Ref)
     (subjectIndex termIndex objectIndex literalIndex geoIndex : Option ArtifactRef)
     (blockLayout : Option BlockLayout) (scope : String) (names : List GraphName)
+    (blobRefs : List Nat) (subjectZone objectZone : Option (List UInt8 × List UInt8))
     (hc : entry.artifact.chunked = chunked) (hs : entry.subjectIndex = subjectIndex)
     (ht : entry.termIndex = termIndex) (ho : entry.objectIndex = objectIndex)
     (hli : entry.literalIndex = literalIndex) (hgi : entry.geoIndex = geoIndex)
     (hl : entry.blockLayout = blockLayout) (hsc : entry.blankNodeScope = scope)
-    (hg : entry.graphSet = names) (h : isIri entry.predicate.val) :
+    (hg : entry.graphSet = names) (hbr : entry.blobRefs = blobRefs)
+    (hsz : entry.subjectZone = subjectZone) (hoz : entry.objectZone = objectZone)
+    (h : isIri entry.predicate.val) :
     ({ predicate := ⟨entry.predicate.val, h⟩
        artifact := { key := { value := entry.artifact.key.value }, bytes := entry.artifact.bytes,
                      sha256 := byteArrayOfList entry.artifact.sha256.toList, chunked := chunked }
@@ -339,9 +343,13 @@ theorem entry_rebuild (entry : Entry) (chunked : Option ChunkedArtifact.Ref)
        blockLayout := blockLayout
        blankNodeScope := scope
        graphSet := names
+       blobRefs := blobRefs
+       subjectZone := subjectZone
+       objectZone := objectZone
        rows := entry.rows
        ordinal := entry.ordinal } : Entry) = entry := by
-  rw [byteArrayOfList_toList, ← hc, ← hs, ← ht, ← ho, ← hli, ← hgi, ← hl, ← hsc, ← hg]
+  rw [byteArrayOfList_toList, ← hc, ← hs, ← ht, ← ho, ← hli, ← hgi, ← hl, ← hsc, ← hg,
+    ← hbr, ← hsz, ← hoz]
 
 /-! ### Reading the two admission gates
 
@@ -353,7 +361,7 @@ shape they reduce, so `exact` on the reduced form suffices. -/
 /-- One index sidecar round-trips under the manifest's own two gates. -/
 theorem sidecar_roundTrip (version : Nat)
     (hversion : version = 3 ∨ version = 4 ∨ version = 5 ∨ version = 6 ∨ version = 8 ∨
-      version = 9)
+      version = 9 ∨ version = 10)
     (index : ArtifactRef) (rest : List UInt8)
     (hav : artifactValidFor version index) (hen : encodableSidecar index) :
     decodeSidecarRef (encodeSidecarRef index ++ rest) = some (index, rest) := by
@@ -368,7 +376,7 @@ theorem sidecar_roundTrip (version : Nat)
   have htotal : c.totalBytes = index.bytes := by
     have h := andR hav
     rw [hc] at h
-    rcases hversion with rfl | rfl | rfl | rfl | rfl | rfl <;> simpa using andR h
+    rcases hversion with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simpa using andR h
   exact decodeSidecarRef_encodeSidecarRef index c rest hc hkey hbytes hsha
     (andL (andL hmc)) (andR (andL hmc)) (by simpa using andR hmc) htotal
 
@@ -376,7 +384,7 @@ theorem sidecar_roundTrip (version : Nat)
     gates. -/
 theorem chunked_roundTrip (version : Nat)
     (hversion : version = 1 ∨ version = 2 ∨ version = 3 ∨ version = 4 ∨ version = 5 ∨
-      version = 6 ∨ version = 7 ∨ version = 8 ∨ version = 9)
+      version = 6 ∨ version = 7 ∨ version = 8 ∨ version = 9 ∨ version = 10)
     (entry : Entry) (c : ChunkedArtifact.Ref) (rest : List UInt8)
     (hc : entry.artifact.chunked = some c)
     (hav : artifactValidFor version entry.artifact) (hen : encodableChunked c) :
@@ -384,10 +392,156 @@ theorem chunked_roundTrip (version : Nat)
   have htotal : c.totalBytes = entry.artifact.bytes := by
     have h := andR hav
     rw [hc] at h
-    rcases hversion with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+    rcases hversion with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
       simpa using andR h
   exact decodeChunkedRef_encodeChunkedRef c entry.artifact.bytes rest
     (andL (andL hen)) (andR (andL hen)) (by simpa using andR hen) htotal
+
+/-! ## SBM10 fields: the byte string, the zone map, the blob references
+
+The zone bounds are PREFIXES of keys, so the order the manifest states over
+them must survive taking a prefix of a fixed length. `lexLe_take` is that
+property and `zoneMap_sound` is its use. -/
+
+/-- Taking the same number of leading bytes off both sides preserves the
+    lexicographic order. This is what makes a truncated zone bound sound. -/
+theorem lexLe_take : ∀ (n : Nat) (a b : List UInt8), lexLe a b = true →
+    lexLe (a.take n) (b.take n) = true := by
+  intro n
+  induction n with
+  | zero => intro a b _; simp [lexLe]
+  | succ n ih =>
+      intro a b h
+      cases a with
+      | nil => simp [lexLe]
+      | cons x xs =>
+          cases b with
+          | nil => simp [lexLe] at h
+          | cons y ys =>
+              simp only [List.take_succ_cons, lexLe]
+              simp only [lexLe] at h
+              by_cases hxy : x < y
+              · simp [hxy]
+              · simp only [hxy, if_false] at h ⊢
+                by_cases heq : x == y
+                · simp only [heq, if_true] at h ⊢
+                  exact ih xs ys h
+                · simp only [heq, if_false] at h; exact absurd h (by simp)
+
+/-- **The zone-map gate.** A key at or above the block's smallest key and at or
+    below its largest is inside the entry's truncated bounds, so a planner that
+    drops an entry on this test never drops a block that holds a matching
+    row. -/
+theorem zoneMap_sound (lower upper key : List UInt8)
+    (hlower : lexLe lower key = true) (hupper : lexLe key upper = true) :
+    zoneMayContain (lower.take zoneBytes, upper.take zoneBytes) key = true := by
+  simp only [zoneMayContain, Bool.and_eq_true]
+  exact ⟨lexLe_take zoneBytes lower key hlower, lexLe_take zoneBytes key upper hupper⟩
+
+/-- Below version 10 the three per-entry SBM10 fields are absent. -/
+theorem sbm10EntryFields_absent (version : Nat) (entry : Entry)
+    (hne : (version == 10) = false) (h : sbm10EntryFields version entry = true) :
+    entry.blobRefs = [] ∧ entry.subjectZone = none ∧ entry.objectZone = none := by
+  rw [sbm10EntryFields, if_neg (by simp [hne])] at h
+  refine ⟨?_, ?_, ?_⟩
+  · simpa using andL (andL h)
+  · have h2 : entry.subjectZone.isNone = true := andR (andL h)
+    simpa using h2
+  · have h3 : entry.objectZone.isNone = true := andR h
+    simpa using h3
+
+/-- A length-prefixed byte string round-trips. Unlike `encodeString` it makes
+    no UTF-8 claim: a zone bound is a prefix of a key. -/
+theorem decodeBytesField_encodeBytesField (xs rest : List UInt8) (h : fitsU32 xs.length) :
+    decodeBytesField (encodeBytesField xs ++ rest) = some (xs, rest) := by
+  have hlt : xs.length < UInt32.size := by
+    have h' : xs.length < 4294967296 := by simpa [fitsU32] using h
+    have hsize : UInt32.size = 4294967296 := rfl
+    omega
+  rw [encodeBytesField, decodeBytesField]
+  simp only [List.append_assoc, bind, Option.bind, readU32LE_writeU32LE_append,
+    u32_toNat_ofNat_of_lt hlt, drop4_writeU32LE]
+  exact takeExact_append xs rest
+
+theorem decodeZone_encodeZone (zone : List UInt8 × List UInt8) (rest : List UInt8)
+    (hlower : fitsU32 zone.1.length) (hupper : fitsU32 zone.2.length) :
+    decodeZone (encodeZone zone ++ rest) = some (zone, rest) := by
+  rw [encodeZone, decodeZone]
+  simp only [List.append_assoc, bind, Option.bind]
+  rw [decodeBytesField_encodeBytesField _ _ hlower]
+  simp only [bind, Option.bind]
+  rw [decodeBytesField_encodeBytesField _ _ hupper]
+
+/-- A zone bound of at most `zoneBytes` bytes is within the u32 field width. -/
+theorem fitsU32_of_le_zoneBytes {n : Nat} (h : n ≤ zoneBytes) : fitsU32 n := by
+  simp only [zoneBytes] at h
+  simp only [fitsU32, decide_eq_true_eq]
+  omega
+
+theorem decodeBlobRefList_flatMap : ∀ (indices : List Nat) (rest : List UInt8),
+    indices.all fitsU32 = true →
+    decodeBlobRefList indices.length
+        (indices.flatMap (fun index => writeU32LE (UInt32.ofNat index)) ++ rest) =
+      some (indices, rest) := by
+  intro indices
+  induction indices with
+  | nil => intro rest _; simp [decodeBlobRefList]
+  | cons index tail ih =>
+      intro rest h
+      simp only [List.all_cons, Bool.and_eq_true] at h
+      have hlt : index < UInt32.size := by
+        have h' : index < 4294967296 := by simpa [fitsU32] using h.1
+        have hsize : UInt32.size = 4294967296 := rfl
+        omega
+      simp only [List.length_cons, List.flatMap_cons, List.append_assoc, decodeBlobRefList,
+        bind, Option.bind, readU32LE_writeU32LE_append, u32_toNat_ofNat_of_lt hlt]
+      rw [takeExact_of_length (writeU32LE (UInt32.ofNat index)) _ 4 (by simp)]
+      simp only [bind, Option.bind]
+      rw [ih rest h.2]
+
+theorem decodeBlobRefs_encodeBlobRefs (indices : List Nat) (rest : List UInt8)
+    (hcount : fitsU32 indices.length) (hall : indices.all fitsU32 = true) :
+    decodeBlobRefs (encodeBlobRefs indices ++ rest) = some (indices, rest) := by
+  have hlt : indices.length < UInt32.size := by
+    have h' : indices.length < 4294967296 := by simpa [fitsU32] using hcount
+    have hsize : UInt32.size = 4294967296 := rfl
+    omega
+  rw [encodeBlobRefs, decodeBlobRefs]
+  simp only [List.append_assoc, bind, Option.bind, readU32LE_writeU32LE_append,
+    u32_toNat_ofNat_of_lt hlt]
+  rw [takeExact_of_length (writeU32LE (UInt32.ofNat indices.length)) _ 4 (by simp)]
+  simp only [bind, Option.bind]
+  exact decodeBlobRefList_flatMap indices rest hall
+
+theorem decodeBlobList_flatMap : ∀ (blobs : List ArtifactRef) (rest : List UInt8),
+    blobs.all (artifactValidFor 10) = true → blobs.all encodableSidecar = true →
+    decodeBlobList blobs.length (blobs.flatMap encodeSidecarRef ++ rest) =
+      some (blobs, rest) := by
+  intro blobs
+  induction blobs with
+  | nil => intro rest _ _; simp [decodeBlobList]
+  | cons blob tail ih =>
+      intro rest hv he
+      simp only [List.all_cons, Bool.and_eq_true] at hv he
+      simp only [List.length_cons, List.flatMap_cons, List.append_assoc, decodeBlobList]
+      rw [sidecar_roundTrip 10 (by decide) blob _ hv.1 he.1]
+      simp only [bind, Option.bind]
+      rw [ih rest hv.2 he.2]
+
+theorem decodeBlobTable_encodeBlobTable (blobs : List ArtifactRef) (rest : List UInt8)
+    (hcount : fitsU32 blobs.length) (hv : blobs.all (artifactValidFor 10) = true)
+    (he : blobs.all encodableSidecar = true) :
+    decodeBlobTable (encodeBlobTable blobs ++ rest) = some (blobs, rest) := by
+  have hlt : blobs.length < UInt32.size := by
+    have h' : blobs.length < 4294967296 := by simpa [fitsU32] using hcount
+    have hsize : UInt32.size = 4294967296 := rfl
+    omega
+  rw [encodeBlobTable, decodeBlobTable]
+  simp only [List.append_assoc, bind, Option.bind, readU32LE_writeU32LE_append,
+    u32_toNat_ofNat_of_lt hlt]
+  rw [takeExact_of_length (writeU32LE (UInt32.ofNat blobs.length)) _ 4 (by simp)]
+  simp only [bind, Option.bind]
+  exact decodeBlobList_flatMap blobs rest hv he
 
 /-! ### The entry round trip, one wire-version shape at a time
 
@@ -400,6 +554,9 @@ theorem decodeEntry_encodeEntry_v0 (entry : Entry) (rest : List UInt8)
     (hv : entryValid 0 entry) (he : encodableEntry 0 entry) :
     decodeEntry 0 (encodeEntry 0 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 0 entry he
+  obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+  have hv := andL hv
+  have he := andL he
   have hav : artifactValidFor 0 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   have hchunk : entry.artifact.chunked = none := by
     cases h : entry.artifact.chunked with
@@ -441,9 +598,8 @@ theorem decodeEntry_encodeEntry_v0 (entry : Entry) (rest : List UInt8)
   simp only [bind, Option.bind]
   rw [dif_pos entry.predicate.property]
   simp only [Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry none none none none none none none "" [] hchunk hs ht hoi hli hgi hl
-      hsc hg
-    entry.predicate.property
+  exact entry_rebuild entry none none none none none none none "" [] [] none none hchunk hs ht
+    hoi hli hgi hl hsc hg hbr hsz hoz entry.predicate.property
 
 theorem decodeEntry_encodeEntry_chunkedOnly (version : Nat)
     (hversion : version = 1 ∨ version = 2) (entry : Entry) (rest : List UInt8)
@@ -452,6 +608,9 @@ theorem decodeEntry_encodeEntry_chunkedOnly (version : Nat)
   rcases hversion with rfl | rfl
   all_goals (
     obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common _ entry he
+    obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+    have hv := andL hv
+    have he := andL he
     have hav : artifactValidFor _ entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
     obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
       cases h : entry.artifact.chunked with
@@ -496,13 +655,16 @@ theorem decodeEntry_encodeEntry_chunkedOnly (version : Nat)
     rw [dif_pos entry.predicate.property,
       chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
     simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-    exact entry_rebuild entry (some c) none none none none none none "" [] hchunk hs ht hoi hli hgi hl
-      hsc hg entry.predicate.property)
+    exact entry_rebuild entry (some c) none none none none none none "" [] [] none none hchunk hs
+      ht hoi hli hgi hl hsc hg hbr hsz hoz entry.predicate.property)
 
 theorem decodeEntry_encodeEntry_subject (entry : Entry) (rest : List UInt8)
     (hv : entryValid 3 entry) (he : encodableEntry 3 entry) :
     decodeEntry 3 (encodeEntry 3 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 3 entry he
+  obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+  have hv := andL hv
+  have he := andL he
   have hav : artifactValidFor 3 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
     cases h : entry.artifact.chunked with
@@ -553,9 +715,8 @@ theorem decodeEntry_encodeEntry_subject (entry : Entry) (rest : List UInt8)
   simp only [bind, Option.bind]
   rw [sidecar_roundTrip _ (by decide) i _ hSav hMs]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry (some c) (some i) none none none none none "" [] hchunk hsi ht hoi hli
-      hgi hl
-    hsc hg entry.predicate.property
+  exact entry_rebuild entry (some c) (some i) none none none none none "" [] [] none none hchunk
+    hsi ht hoi hli hgi hl hsc hg hbr hsz hoz entry.predicate.property
 
 theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
     (hversion : version = 4 ∨ version = 5) (entry : Entry) (rest : List UInt8)
@@ -564,6 +725,9 @@ theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
   rcases hversion with rfl | rfl
   all_goals (
     obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common _ entry he
+    obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+    have hv := andL hv
+    have he := andL he
     have hav : artifactValidFor _ entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
     obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
       cases h : entry.artifact.chunked with
@@ -622,13 +786,16 @@ theorem decodeEntry_encodeEntry_subjectTerm (version : Nat)
     simp only [bind, Option.bind]
     rw [sidecar_roundTrip _ (by decide) t _ hTav hMt]
     simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-    exact entry_rebuild entry (some c) (some i) (some t) none none none none "" [] hchunk hsi hti
-      hoi hli hgi hl hsc hg entry.predicate.property)
+    exact entry_rebuild entry (some c) (some i) (some t) none none none none "" [] [] none none
+      hchunk hsi hti hoi hli hgi hl hsc hg hbr hsz hoz entry.predicate.property)
 
 theorem decodeEntry_encodeEntry_object (entry : Entry) (rest : List UInt8)
     (hv : entryValid 6 entry) (he : encodableEntry 6 entry) :
     decodeEntry 6 (encodeEntry 6 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 6 entry he
+  obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+  have hv := andL hv
+  have he := andL he
   have hav : artifactValidFor 6 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
     cases h : entry.artifact.chunked with
@@ -691,13 +858,16 @@ theorem decodeEntry_encodeEntry_object (entry : Entry) (rest : List UInt8)
   simp only [bind, Option.bind]
   rw [sidecar_roundTrip _ (by decide) o _ hOav hMo]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
-  exact entry_rebuild entry (some c) (some i) (some t) (some o) none none none "" [] hchunk hsi hti
-    hoi hli hgi hl hsc hg entry.predicate.property
+  exact entry_rebuild entry (some c) (some i) (some t) (some o) none none none "" [] [] none none
+    hchunk hsi hti hoi hli hgi hl hsc hg hbr hsz hoz entry.predicate.property
 
 theorem decodeEntry_encodeEntry_quad (entry : Entry) (rest : List UInt8)
     (hv : entryValid 7 entry) (he : encodableEntry 7 entry) :
     decodeEntry 7 (encodeEntry 7 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 7 entry he
+  obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+  have hv := andL hv
+  have he := andL he
   have hav : artifactValidFor 7 entry.artifact := andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
     cases h : entry.artifact.chunked with
@@ -749,7 +919,8 @@ theorem decodeEntry_encodeEntry_quad (entry : Entry) (rest : List UInt8)
     (andL (andL hMbl)) (andR (andL hMbl)) (andR hMbl) hgadm]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
   exact entry_rebuild entry (some c) none none none none none (some k) entry.blankNodeScope
-    entry.graphSet hchunk hs ht hoi hli hgi hl rfl rfl entry.predicate.property
+    entry.graphSet [] none none hchunk hs ht hoi hli hgi hl rfl rfl hbr hsz hoz
+    entry.predicate.property
 
 
 /-- SBM8 is SBM7 plus the LGI1 literal search index, written where SBM6 writes
@@ -758,6 +929,9 @@ theorem decodeEntry_encodeEntry_quadLiteral (entry : Entry) (rest : List UInt8)
     (hv : entryValid 8 entry) (he : encodableEntry 8 entry) :
     decodeEntry 8 (encodeEntry 8 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 8 entry he
+  obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+  have hv := andL hv
+  have he := andL he
   have hav : artifactValidFor 8 entry.artifact :=
     andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
@@ -815,7 +989,8 @@ theorem decodeEntry_encodeEntry_quadLiteral (entry : Entry) (rest : List UInt8)
     (andL (andL hMbl)) (andR (andL hMbl)) (andR hMbl) hgadm]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
   exact entry_rebuild entry (some c) none none none (some l) none (some k) entry.blankNodeScope
-    entry.graphSet hchunk hs ht hoi hli hgi hl rfl rfl entry.predicate.property
+    entry.graphSet [] none none hchunk hs ht hoi hli hgi hl rfl rfl hbr hsz hoz
+    entry.predicate.property
 
 /-- SBM9 is SBM8 plus the GBI1 geometry bounding-box index, written
     immediately after the LGI1 sidecar and before the quad tail. -/
@@ -823,6 +998,9 @@ theorem decodeEntry_encodeEntry_quadGeo (entry : Entry) (rest : List UInt8)
     (hv : entryValid 9 entry) (he : encodableEntry 9 entry) :
     decodeEntry 9 (encodeEntry 9 entry ++ rest) = some (entry, rest) := by
   obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 9 entry he
+  obtain ⟨hbr, hsz, hoz⟩ := sbm10EntryFields_absent _ entry (by decide) (andR hv)
+  have hv := andL hv
+  have he := andL he
   have hav : artifactValidFor 9 entry.artifact :=
     andR (andL (andL (andL (andL (andL (andL hv))))))
   obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
@@ -886,8 +1064,118 @@ theorem decodeEntry_encodeEntry_quadGeo (entry : Entry) (rest : List UInt8)
     (andL (andL hMbl)) (andR (andL hMbl)) (andR hMbl) hgadm]
   simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
   exact entry_rebuild entry (some c) none none none (some l) (some g) (some k)
-    entry.blankNodeScope entry.graphSet hchunk hs ht hoi hli hgi hl rfl rfl
-    entry.predicate.property
+    entry.blankNodeScope entry.graphSet [] none none hchunk hs ht hoi hli hgi hl rfl rfl
+    hbr hsz hoz entry.predicate.property
+
+
+/-- SBM10 is SBM9 plus the blob-reference list and the two zone maps, written
+    after the GBI1 sidecar and before the quad tail. -/
+theorem decodeEntry_encodeEntry_quadZone (entry : Entry) (rest : List UInt8)
+    (hv : entryValid 10 entry) (he : encodableEntry 10 entry) :
+    decodeEntry 10 (encodeEntry 10 entry ++ rest) = some (entry, rest) := by
+  obtain ⟨hp, hk, hb, hr, hord, hd⟩ := encodableEntry_common 10 entry he
+  have hz := andR hv
+  have hze := andR he
+  have hv := andL hv
+  have he := andL he
+  have hav : artifactValidFor 10 entry.artifact :=
+    andR (andL (andL (andL (andL (andL (andL hv))))))
+  obtain ⟨c, hchunk⟩ : ∃ c, entry.artifact.chunked = some c := by
+    cases h : entry.artifact.chunked with
+    | some c => exact ⟨c, rfl⟩
+    | none => have hm := andR hav; rw [h] at hm; simp at hm
+  have hs : entry.subjectIndex = none := by
+    cases h : entry.subjectIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL (andL (andL hv))))); rw [h] at hm; simp at hm
+  have ht : entry.termIndex = none := by
+    cases h : entry.termIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL (andL hv)))); rw [h] at hm; simp at hm
+  have hoi : entry.objectIndex = none := by
+    cases h : entry.objectIndex with
+    | none => rfl
+    | some x => have hm := andR (andL (andL (andL hv))); rw [h] at hm; simp at hm
+  obtain ⟨l, g, hli, hgi⟩ :
+      ∃ l g, entry.literalIndex = some l ∧ entry.geoIndex = some g := by
+    have hm := andR (andL (andL hv))
+    cases h1 : entry.literalIndex with
+    | none =>
+        cases h2 : entry.geoIndex with
+        | none => rw [h1, h2] at hm; simp at hm
+        | some y => rw [h1, h2] at hm; simp at hm
+    | some x =>
+        cases h2 : entry.geoIndex with
+        | none => rw [h1, h2] at hm; simp at hm
+        | some y => exact ⟨x, y, rfl, rfl⟩
+  obtain ⟨k, hl⟩ : ∃ k, entry.blockLayout = some k := by
+    cases h : entry.blockLayout with
+    | some k => exact ⟨k, rfl⟩
+    | none => have hm := andR (andL hv); rw [h] at hm; simp at hm
+  have hq := andR hv
+  have hgadm : entry.graphSet.all graphNameAdmitted := andR (andL (andR hq))
+  have hMc : encodableChunked c := by
+    have hm := andR (andL (andL (andL (andL (andL he))))); rw [hchunk] at hm; exact hm
+  have hpair := andR (andL (andL hv))
+  rw [hli, hgi] at hpair
+  have hLav : artifactValidFor 10 l := andL (andL (andL hpair))
+  have hGav : artifactValidFor 10 g := andR (andL hpair)
+  have hMpair := andR (andL he)
+  rw [hli, hgi] at hMpair
+  have hMl : encodableSidecar l := andL hMpair
+  have hMg : encodableSidecar g := andR hMpair
+  have hMbl : (fitsU32 entry.blankNodeScope.toUTF8.size && fitsU32 entry.graphSet.length &&
+      entry.graphSet.all graphNameEncodable) = true := by
+    have hm := andR he; rw [hl] at hm; exact hm
+  -- The SBM10 conjuncts: the blob references and the two zone maps.
+  rw [sbm10EntryFields, if_pos (by decide)] at hz
+  rw [sbm10EntryEncodable, if_pos (by decide)] at hze
+  obtain ⟨sz, oz, hsz, hoz⟩ :
+      ∃ sz oz, entry.subjectZone = some sz ∧ entry.objectZone = some oz := by
+    have hm := andR hz
+    cases h1 : entry.subjectZone with
+    | none =>
+        cases h2 : entry.objectZone with
+        | none => rw [h1, h2] at hm; simp at hm
+        | some y => rw [h1, h2] at hm; simp at hm
+    | some x =>
+        cases h2 : entry.objectZone with
+        | none => rw [h1, h2] at hm; simp at hm
+        | some y => exact ⟨x, y, rfl, rfl⟩
+  have hzones := andR hz
+  rw [hsz, hoz] at hzones
+  have hszAdm : zoneAdmitted sz := andL hzones
+  have hozAdm : zoneAdmitted oz := andR hzones
+  have hszLo : fitsU32 sz.1.length :=
+    fitsU32_of_le_zoneBytes (by simpa using andL (andL hszAdm))
+  have hszHi : fitsU32 sz.2.length :=
+    fitsU32_of_le_zoneBytes (by simpa using andR (andL hszAdm))
+  have hozLo : fitsU32 oz.1.length :=
+    fitsU32_of_le_zoneBytes (by simpa using andL (andL hozAdm))
+  have hozHi : fitsU32 oz.2.length :=
+    fitsU32_of_le_zoneBytes (by simpa using andR (andL hozAdm))
+  simp only [encodeEntry, hchunk, hl, hli, hgi, hsz, hoz, decodeEntry, List.append_assoc]
+  rw [decodeCommon_encodeCommon entry _ hp hk hb hd hr hord]
+  simp only [bind, Option.bind]
+  rw [dif_pos entry.predicate.property,
+    chunked_roundTrip _ (by decide) entry c _ hchunk hav hMc]
+  simp only [bind, Option.bind]
+  rw [sidecar_roundTrip _ (by decide) l _ hLav hMl]
+  simp only [bind, Option.bind]
+  rw [sidecar_roundTrip _ (by decide) g _ hGav hMg]
+  simp only [bind, Option.bind]
+  rw [decodeBlobRefs_encodeBlobRefs entry.blobRefs _ (andL hze) (andR hze)]
+  simp only [bind, Option.bind]
+  rw [decodeZone_encodeZone sz _ hszLo hszHi]
+  simp only [bind, Option.bind]
+  rw [decodeZone_encodeZone oz _ hozLo hozHi]
+  simp only [bind, Option.bind]
+  rw [decodeQuadTail_encodeQuadTail k entry.blankNodeScope entry.graphSet _
+    (andL (andL hMbl)) (andR (andL hMbl)) (andR hMbl) hgadm]
+  simp only [bind, Option.bind, Option.some.injEq, Prod.mk.injEq, and_true]
+  exact entry_rebuild entry (some c) none none none (some l) (some g) (some k)
+    entry.blankNodeScope entry.graphSet entry.blobRefs (some sz) (some oz) hchunk hs ht hoi hli
+    hgi hl rfl rfl rfl hsz hoz entry.predicate.property
 
 /-- Every admitted entry round-trips, in every wire version. -/
 theorem decodeEntry_encodeEntry (version : Nat) (entry : Entry) (rest : List UInt8)
@@ -904,8 +1192,10 @@ theorem decodeEntry_encodeEntry (version : Nat) (entry : Entry) (rest : List UIn
   | 7 => exact decodeEntry_encodeEntry_quad entry rest hv he
   | 8 => exact decodeEntry_encodeEntry_quadLiteral entry rest hv he
   | 9 => exact decodeEntry_encodeEntry_quadGeo entry rest hv he
-  | n + 10 =>
-      exact absurd (andR (andR (andL (andL (andL (andL (andL (andL hv)))))))) (by simp)
+  | 10 => exact decodeEntry_encodeEntry_quadZone entry rest hv he
+  | n + 11 =>
+      exact absurd
+        (andR (andR (andL (andL (andL (andL (andL (andL (andL hv))))))))) (by simp)
 
 /-! ## The entry list -/
 
@@ -941,33 +1231,42 @@ theorem decodeEntries_flatMap_nil (version : Nat) (entries : List Entry)
 
 /-! ### The version byte
 
-Only the eight admitted versions are written, so the decoder's rejection test
+Only the eleven admitted versions are written, so the decoder's rejection test
 is false and its `toNat` is exact. Both are decided one version at a time,
 here, so the manifest proof itself does not split. -/
 
-theorem versionByte_toNat (v : Nat) (h : v ≤ 9) : (UInt8.ofNat v).toNat = v := by
+theorem versionByte_toNat (v : Nat) (h : v ≤ 10) : (UInt8.ofNat v).toNat = v := by
   match v, h with
-  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ => decide
-  | (n + 10), h => exact absurd h (by omega)
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ | 10, _ => decide
+  | (n + 11), h => exact absurd h (by omega)
 
-theorem versionByte_admitted (v : Nat) (h : v ≤ 9) :
+theorem versionByte_admitted (v : Nat) (h : v ≤ 10) :
     (UInt8.ofNat v != wireVersion0 && UInt8.ofNat v != wireVersion1 &&
       UInt8.ofNat v != wireVersion2 && UInt8.ofNat v != wireVersion3 &&
       UInt8.ofNat v != wireVersion4 && UInt8.ofNat v != wireVersion5 &&
       UInt8.ofNat v != wireVersion6 && UInt8.ofNat v != wireVersion7 &&
-      UInt8.ofNat v != wireVersion8 && UInt8.ofNat v != wireVersion9) = false := by
+      UInt8.ofNat v != wireVersion8 && UInt8.ofNat v != wireVersion9 &&
+      UInt8.ofNat v != wireVersion10) = false := by
   match v, h with
-  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ => decide
-  | (n + 10), h => exact absurd h (by omega)
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ | 10, _ => decide
+  | (n + 11), h => exact absurd h (by omega)
 
-/-- SBM7, SBM8 and SBM9 all carry the publication profile, and no earlier
+/-- SBM7 through SBM10 all carry the publication profile, and no earlier
     version does, so the decoder's profile test is exactly this disjunction. -/
-theorem versionByte_is7or8or9 (v : Nat) (h : v ≤ 9) :
+theorem versionByte_is7to10 (v : Nat) (h : v ≤ 10) :
     (UInt8.ofNat v == wireVersion7 || UInt8.ofNat v == wireVersion8 ||
-      UInt8.ofNat v == wireVersion9) = (v == 7 || v == 8 || v == 9) := by
+      UInt8.ofNat v == wireVersion9 || UInt8.ofNat v == wireVersion10) =
+      (v == 7 || v == 8 || v == 9 || v == 10) := by
   match v, h with
-  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ => decide
-  | (n + 10), h => exact absurd h (by omega)
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ | 10, _ => decide
+  | (n + 11), h => exact absurd h (by omega)
+
+/-- Only SBM10 carries the blob table. -/
+theorem versionByte_is10 (v : Nat) (h : v ≤ 10) :
+    (UInt8.ofNat v == wireVersion10) = (v == 10) := by
+  match v, h with
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ | 8, _ | 9, _ | 10, _ => decide
+  | (n + 11), h => exact absurd h (by omega)
 
 theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
     (h : encode? manifest = some bytes) : decode? bytes = some manifest := by
@@ -975,9 +1274,14 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
   case neg => rw [encode?, if_neg hgate] at h; simp at h
   rw [encode?, if_pos hgate] at h
   have hvalid : valid manifest := andL hgate
-  have hencodable : encodable manifest := andR hgate
-  have hverLe : manifest.version ≤ 9 := by
-    have hv := andL (andL (andL (andL (andL (andL (andL hvalid))))))
+  have hencodableAll : encodable manifest := andR hgate
+  -- `valid` and `encodable` each gained ONE appended SBM10 conjunct, so every
+  -- accessor chain below reads the base conjunction and the SBM10 facts are
+  -- read from the appended one.
+  have hvalidBase := andL hvalid
+  have hencodable := andL hencodableAll
+  have hverLe : manifest.version ≤ 10 := by
+    have hv := andL (andL (andL (andL (andL (andL (andL hvalidBase))))))
     simp only [Bool.or_eq_true, beq_iff_eq] at hv
     omega
   have hsid : fitsU32 manifest.sourceIdentity.size := andL (andL (andL (andL (andL hencodable))))
@@ -987,7 +1291,7 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
   have hprof : fitsU32 manifest.blankNodeProfile.toUTF8.size := andR (andL (andL hencodable))
   have hcount : fitsU32 manifest.entries.length := andR (andL hencodable)
   have hentriesEnc : manifest.entries.all (encodableEntry manifest.version) := andR hencodable
-  have hentriesVal : manifest.entries.all (entryValid manifest.version) := andR hvalid
+  have hentriesVal : manifest.entries.all (entryValid manifest.version) := andR hvalidBase
   have hsize : UInt32.size = 4294967296 := rfl
   have hsl2 : manifest.sourceIdentity.size < UInt32.size := by
     have h' : manifest.sourceIdentity.size < 4294967296 := by simpa [fitsU32] using hsid
@@ -1001,7 +1305,10 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
     readU32LE_writeU32LE_append, parseU8_cons, bind, Option.bind,
     bne_self_eq_false, Bool.false_eq_true, if_false,
     drop4_writeU32LE, versionByte_admitted _ hverLe, versionByte_toNat _ hverLe,
-    versionByte_is7or8or9 _ hverLe]
+    versionByte_is7to10 _ hverLe]
+  -- Applied AFTER the four-fold profile test above, so that its own rewrite of
+  -- the tenth version byte does not break that test's pattern.
+  simp only [versionByte_is10 _ hverLe]
   rw [takeExact_of_length manifest.sourceIdentity.toList _ _
     (by rw [length_toList, u32_toNat_ofNat_of_lt hsl2])]
   simp only [bind, Option.bind]
@@ -1009,37 +1316,74 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
   simp only [bind, Option.bind]
   rw [decodeString_encodeString _ _ hlay]
   simp only [bind, Option.bind]
-  by_cases h7 : manifest.version = 7 ∨ manifest.version = 8 ∨ manifest.version = 9
-  · have hprofile : (manifest.version == 7 || manifest.version == 8 ||
-        manifest.version == 9) = true := by
-      rcases h7 with h | h | h <;> simp [h]
+  by_cases h10 : manifest.version = 10
+  · -- SBM10: the profile is written, and the blob table follows the entries.
+    have hprofile : (manifest.version == 7 || manifest.version == 8 ||
+        manifest.version == 9 || manifest.version == 10) = true := by simp [h10]
+    have hisBlob : (manifest.version == 10) = true := by simp [h10]
+    have hblobFields : sbm10ManifestFields manifest := andR hvalid
+    rw [sbm10ManifestFields, if_pos hisBlob] at hblobFields
+    have hblobEncodable : sbm10ManifestEncodable manifest := andR hencodableAll
+    rw [sbm10ManifestEncodable, if_pos hisBlob] at hblobEncodable
+    have hblobValid : manifest.blobs.all (artifactValidFor 10) = true := by
+      have hall := andL (andL (andL hblobFields))
+      simp only [List.all_eq_true] at hall ⊢
+      intro blob hmem
+      exact andL (hall blob hmem)
+    have hblobCount : fitsU32 manifest.blobs.length := andL hblobEncodable
+    have hblobEnc : manifest.blobs.all encodableSidecar = true := andR hblobEncodable
     simp only [hprofile, if_true]
+    simp only [hisBlob, if_true]
     rw [decodeString_encodeString _ _ hprof]
     simp only [bind, Option.bind, readU32LE_writeU32LE_append,
       u32_toNat_ofNat_of_lt hn, drop4_writeU32LE]
-    rw [decodeEntries_flatMap_nil _ manifest.entries hentriesVal hentriesEnc]
+    rw [decodeEntries_flatMap _ manifest.entries _ hentriesVal hentriesEnc]
+    simp only [bind, Option.bind]
+    rw [show encodeBlobTable manifest.blobs = encodeBlobTable manifest.blobs ++ [] by simp,
+      decodeBlobTable_encodeBlobTable manifest.blobs [] hblobCount hblobValid hblobEnc]
     simp only [bind, Option.bind, List.isEmpty_nil, Bool.true_and, byteArrayOfList_toList]
     simp only [hvalid, if_true]
-  · have h7' := not_or.mp h7
-    have h89 := not_or.mp h7'.2
-    have hprofEmpty : manifest.blankNodeProfile = "" := by
-      have hq := andR (andL (andL (andL (andL (andL hvalid)))))
-      rw [if_neg (by simp [h7'.1, h89.1, h89.2])] at hq
-      simpa using hq
-    simp only [show (manifest.version == 7 || manifest.version == 8 ||
-        manifest.version == 9) = false from by
-        simp [h7'.1, h89.1, h89.2], Bool.false_eq_true,
-      if_false, List.nil_append, bind, Option.bind, readU32LE_writeU32LE_append,
-      u32_toNat_ofNat_of_lt hn, drop4_writeU32LE]
-    rw [decodeEntries_flatMap_nil _ manifest.entries hentriesVal hentriesEnc]
-    simp only [bind, Option.bind, List.isEmpty_nil, Bool.true_and, byteArrayOfList_toList,
-      ← hprofEmpty]
-    simp only [hvalid, if_true]
+  · have hnot10 : (manifest.version == 10) = false := by simp [h10]
+    simp only [hnot10, Bool.false_eq_true, if_false, List.append_nil, Bool.or_false]
+    have hblobsEmpty : manifest.blobs = [] := by
+      have hf : sbm10ManifestFields manifest := andR hvalid
+      rw [sbm10ManifestFields, if_neg (by simp [hnot10])] at hf
+      simpa using hf
+    by_cases h7 : manifest.version = 7 ∨ manifest.version = 8 ∨ manifest.version = 9
+    · have hprofile : (manifest.version == 7 || manifest.version == 8 ||
+          manifest.version == 9) = true := by
+        rcases h7 with h | h | h <;> simp [h]
+      simp only [hprofile, if_true]
+      rw [decodeString_encodeString _ _ hprof]
+      simp only [bind, Option.bind, readU32LE_writeU32LE_append,
+        u32_toNat_ofNat_of_lt hn, drop4_writeU32LE]
+      rw [decodeEntries_flatMap_nil _ manifest.entries hentriesVal hentriesEnc]
+      simp only [bind, Option.bind, List.isEmpty_nil, Bool.true_and, byteArrayOfList_toList,
+        ← hblobsEmpty]
+      simp only [hvalid, if_true]
+    · have h7' := not_or.mp h7
+      have h89 := not_or.mp h7'.2
+      have hprofEmpty : manifest.blankNodeProfile = "" := by
+        have hq := andR (andL (andL (andL (andL (andL hvalidBase)))))
+        rw [if_neg (by simp [h7'.1, h89.1, h89.2, h10])] at hq
+        simpa using hq
+      simp only [show (manifest.version == 7 || manifest.version == 8 ||
+          manifest.version == 9) = false from by
+          simp [h7'.1, h89.1, h89.2], Bool.false_eq_true,
+        if_false, List.nil_append, bind, Option.bind, readU32LE_writeU32LE_append,
+        u32_toNat_ofNat_of_lt hn, drop4_writeU32LE]
+      rw [decodeEntries_flatMap_nil _ manifest.entries hentriesVal hentriesEnc]
+      simp only [bind, Option.bind, List.isEmpty_nil, Bool.true_and, byteArrayOfList_toList,
+        ← hprofEmpty, ← hblobsEmpty]
+      simp only [hvalid, if_true]
 
 #print axioms decodeString_encodeString
 #print axioms decodeGraphNames_flatMap
 #print axioms decodeEntry_encodeEntry
 #print axioms decodeEntries_flatMap
+#print axioms lexLe_take
+#print axioms zoneMap_sound
+#print axioms decodeBlobTable_encodeBlobTable
 #print axioms decode?_encode?
 
 end L4Factoidal.Storage.ShardManifest

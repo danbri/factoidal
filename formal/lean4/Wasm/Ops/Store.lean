@@ -165,6 +165,7 @@ private def graphNameJson (name : GraphName) : Json :=
     manifest layout label is the only statement of it. -/
 def entryBlockKind (manifest : Manifest) (entry : Entry) : String :=
   match entry.blockLayout with
+  | some .ibk5 => "IBK5"
   | some .ibk4 => "IBK4"
   | some .ibk3 => "IBK3"
   | none => if isIbk3Layout manifest.layout then "IBK3" else "IBK2"
