@@ -201,7 +201,18 @@ extern_lib libl4blockhost pkg := do
 -- SBM7 by layout. `GRAPH <iri>`, `GRAPH ?g`, `FROM` / `FROM NAMED` and
 -- default-graph patterns all run against the dataset the blocks denote.
 @[default_target] lean_exe «l4block-quad-query» where root := `Harness.QuadQuery
+
+-- Write an IBK4 generation's quads back out as N-Quads, so the SAME corpus
+-- can be packed again under a changed format and the two compared.
+@[default_target] lean_exe «l4block-quad-dump» where root := `Harness.QuadDump
 @[default_target] lean_exe «l4block-literal-gram» where root := `Harness.LiteralGramProbe
+
+-- The row-identity gate for the LGI1 literal search index, driven through
+-- `storeHandleQuery` — the operation a host calls. It opens one handle with
+-- the sidecars and one without, and compares the two answer envelopes.
+@[default_target] lean_exe «l4block-literal-gate» where
+  srcDir := "."
+  root := `Harness.LiteralGate
 @[default_target] lean_exe «l4block-shard-query» where root := `Harness.ShardManifestQuery
 @[default_target] lean_exe «l4block-shard-session» where root := `Harness.ShardManifestSession
 
