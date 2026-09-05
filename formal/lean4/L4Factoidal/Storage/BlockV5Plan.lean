@@ -118,6 +118,46 @@ def subjectZone? (block : QuadBlock) : Option (List UInt8 × List UInt8) :=
 def objectZone? (block : QuadBlock) : Option (List UInt8 × List UInt8) :=
   zoneOfIds block.dict (block.rows.toList.map IdQuad.o)
 
+/-! ## The superset obligation over an IBK5 block
+
+Both sidecars are CANDIDATE FILTERS: a planner takes the candidate positions,
+reaches their rows, and re-evaluates the original SPARQL expression on those
+rows. That is sound only while the candidate list is a SUPERSET of the
+positions whose term can match. An out-of-line literal breaks the superset
+property of both indexes for the same reason: its lexical form is not in the
+block, so no gram and no bounding box can be computed from it.
+
+* LGI2 repairs it in the index. The opaque list is part of the artifact and
+  `LiteralGramIndex.candidatesOpaque?` returns every member for every needle
+  the index can serve (`mem_candidatesOpaque_of_opaque`). A caller must use
+  `candidatesOpaque?`, not `candidates?`.
+* GBI1 is unchanged at wire version 10 and has no field for the blob
+  positions — its own `opaqueIds` are the geometries it could parse but not
+  bound, which is a different set. So the CALLER must add them, which is what
+  `geoCandidates?` below does.
+
+`docs/designissues/2026-09-05-geometry-bounding-box-index.md` names the
+obligation; these two functions are how an IBK5 caller meets it. Every place
+that turns a candidate set of an IBK5 block into rows must go through them.
+The native `l4block-quad-query` reads every selected block whole and takes no
+index path at all, so it meets the obligation trivially; the index paths are
+`Wasm/Ops/StoreHandles.lean`. -/
+
+/-- The LGI2 candidate positions for one needle: the gram intersection plus
+    every out-of-line literal of the block, which the index carries. -/
+def literalCandidates? (index : LiteralGramIndex.Index) (needle : String) :
+    Option (List Nat) :=
+  LiteralGramIndex.candidatesOpaque? index needle
+
+/-- The GBI1 candidate positions for one geometry test over an IBK5 block: the
+    boxes the index selects, plus every out-of-line literal of the block. A
+    blob geometry has no box, so without this union a large polygon would be
+    dropped before the filter ever saw it. -/
+def geoCandidates? (block : QuadBlock) (index : GeoBBoxIndex.Index)
+    (op : GeoBBoxIndex.GeoOp) (query : L4Factoidal.Geo.WktValue) : Option (List Nat) :=
+  (GeoBBoxIndex.candidates? index op query).map fun ids =>
+    LiteralGramIndex.withOpaque ids (opaquePositions block.dict)
+
 /-! ## Build-time checks -/
 
 private def pName : WfIri := ⟨"http://example.org/name", by simp [isIri]⟩
@@ -152,5 +192,13 @@ private def sample : QuadBlock := fromRdfQuads specHash sampleQuads
 #guard ((objectZone? sample).map fun zone =>
   (objectKeys sample).map fun keys =>
     keys.all fun key => ShardManifest.zoneMayContain zone key) == some (some true)
+
+-- The out-of-line literal is a candidate of every needle the LGI2 index can
+-- serve, including one no inline literal of the block carries.
+#guard (literalCandidates? (literalIndexOf sample) "zzz").isSome
+#guard ((literalCandidates? (literalIndexOf sample) "zzz").map fun ids =>
+  (opaquePositions sample.dict).all fun i => ids.contains i) == some true
+#guard ((literalCandidates? (literalIndexOf sample) "hel").map fun ids =>
+  (opaquePositions sample.dict).all fun i => ids.contains i) == some true
 
 end L4Factoidal.Storage.BlockV5Plan
