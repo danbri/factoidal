@@ -22,7 +22,7 @@ underscores in the whole source, so it cannot be known from a prefix of it).
 The second parses and publishes blocks. The operations therefore expose the
 pass, and a host feeds the source twice:
 
-  packBegin(syntaxTag, layoutTag)
+  packBegin(syntaxTag, layoutTag, baseIri, batchBytes)
     syntaxTag : turtle | trig | nquads | ntriples
     layoutTag : ibk2 | ibk3 | ibk4
     -> {"ok":true,"handle":"p1","pass":"prepass"}
@@ -138,10 +138,17 @@ def maxPackFeedBytes : Nat := 4 * 1024 * 1024
 def maxPackQueuedBytes : Nat := 128 * 1024 * 1024
 
 /-- The largest source an IBK4 pack may buffer: 134,217,728 bytes. The IBK3
-    path buffers no source at all, and neither does the IBK4 N-Quads route,
-    which streams through `PackStream.quadIngestFeed`. This cap therefore
-    binds only IBK4 over TriG, Turtle and N-Triples. -/
+    path buffers no source at all, and neither do the IBK4 streamed grammars
+    — N-Quads, Turtle and N-Triples all run through
+    `PackStream.quadIngestFeed`. This cap therefore binds only IBK4 over
+    TriG, which has no chunk fold. -/
 def maxPackSourceBytes : Nat := 128 * 1024 * 1024
+
+/-- The publication batch of an IBK4 streamed pack when the host names none:
+    67,108,864 source bytes. It is half the native default because the
+    module has a 32-bit address space, so the open runs of one batch share
+    4 GiB with the queued artifacts and everything else the module holds. -/
+def defaultPackBatchBytes : Nat := 64 * 1024 * 1024
 
 /-- The largest number of pack handles which may be open at once. -/
 def maxPackHandles : Nat := 8
@@ -177,6 +184,11 @@ structure OpenPack where
       gave it. `none` is no base. The native packer uses `file://<input>`;
       a host that wants byte-identical output must pass the same string. -/
   base : Option String
+  /-- Source bytes per publication batch, for the IBK4 streamed grammars.
+      The wasm default is 67,108,864 (64 MiB), half the native default,
+      because the module has a 32-bit address space and the queued
+      generation shares it with the packer's own state. -/
+  batchBytes : Nat
   pass : PackPass
   pre : PrepassState
   prepass : Option SourcePrepass
@@ -235,14 +247,20 @@ private def passEnvelope (pass : PackPass) (pending : Nat) : String :=
 
 /-! ## The operations -/
 
-/-- `packBegin(syntaxTag, layoutTag, baseIri)` — open a pack and enter the
-    prepass. An empty `baseIri` means no base, and a relative IRI in the
+/-- `packBegin(syntaxTag, layoutTag, baseIri, batchBytes)` — open a pack and
+    enter the prepass. An empty `baseIri` means no base, and a relative IRI in the
     source is then a parse error rather than a silently different term. The
     native packer passes `file://<input>`; a host that wants the same bytes
     must pass the same string, which is why this is an argument and not a
     default chosen here.
+
+    `batchBytes` is the source bytes per publication batch for the IBK4
+    streamed grammars. An empty string is `defaultPackBatchBytes`
+    (67,108,864); anything else must be a positive decimal, and a host that
+    wants the native packer's block set must pass the native packer's
+    `--batch-bytes` value.
     A tag which names no grammar or no layout issues no handle. -/
-def packBegin (syntaxTag layoutTag baseIri : String) : IO String := do
+def packBegin (syntaxTag layoutTag baseIri batchBytes : String) : IO String := do
   match syntaxOfTag? syntaxTag, formatOfTag? layoutTag with
   | none, _ =>
       pure (errJson s!"packBegin: unknown grammar tag '{syntaxTag}' (turtle | trig | nquads | ntriples)")
@@ -256,7 +274,11 @@ def packBegin (syntaxTag layoutTag baseIri : String) : IO String := do
       if (format == .ibk2 || format == .ibk3) &&
           !(grammar == .turtle || grammar == .ntriples) then
         pure (errJson s!"packBegin: layout {formatName format} reads turtle or ntriples, not {syntaxName grammar}; use layout ibk4 for named graphs")
-      else do
+      else match (if batchBytes.isEmpty then some defaultPackBatchBytes
+                  else batchBytes.toNat?.filter (· > 0)) with
+      | none =>
+          pure (errJson s!"packBegin: batchBytes '{batchBytes}' is not a positive decimal")
+      | some batch => do
         let table ← packTable.get
         if table.size >= maxPackHandles then
           pure (errJson s!"packBegin: {table.size} pack handles are open, the cap is {maxPackHandles}")
@@ -265,6 +287,7 @@ def packBegin (syntaxTag layoutTag baseIri : String) : IO String := do
           let h := s!"p{n}"
           packTable.modify (·.insert h
             { format, grammar, base := if baseIri.isEmpty then none else some baseIri,
+              batchBytes := batch,
               pass := .prepass, pre := prepassInit, prepass := none,
               ingest := none, quads := none, source := ByteArray.empty, packed := {},
               queue := [], queueBytes := 0, manifestPublished := false })
@@ -300,9 +323,12 @@ def packFeed (h : String) (blob : ByteArray) : IO String :=
           | some state =>
               match quadIngestFeed state blob with
               | .error e => pure (errJson e)
-              | .ok next => do
-                  packTable.modify (·.insert h { pack with quads := some next })
-                  pure (passEnvelope .ingest pack.queue.length)
+              | .ok (next, made) =>
+                  match enqueue "packFeed" { pack with quads := some next } made with
+                  | .error e => pure (errJson e)
+                  | .ok pack' => do
+                      packTable.modify (·.insert h pack')
+                      pure (passEnvelope .ingest pack'.queue.length)
           | none =>
             if pack.source.size + blob.size > maxPackSourceBytes then
               pure (errJson s!"packFeed: this pack has buffered {pack.source.size + blob.size} source bytes, the cap is {maxPackSourceBytes}")
@@ -344,7 +370,9 @@ def packEndPass (h : String) : IO String :=
               if pack.format == .ibk4 then none
               else some (ingestInit packHasher pack.format prepass pack.base)
             let quads :=
-              if streamsQuads then some (quadIngestInit packHasher pack.grammar prepass pack.base) else none
+              if streamsQuads then
+                some (quadIngestInit packHasher pack.grammar prepass pack.base pack.batchBytes)
+              else none
             packTable.modify (·.insert h
               { pack with pass := .ingest, prepass := some prepass, ingest, quads })
             pure (passEnvelope .ingest 0)

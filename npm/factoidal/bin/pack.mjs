@@ -97,12 +97,18 @@ function drain (engine, handle, output) {
  * @param {string} options.syntax `turtle`, `trig` or `nquads`
  * @param {string} [options.base] the base IRI relative IRIs resolve against;
  *   the empty string means no base
+ * @param {number|string} [options.batchBytes] source bytes per publication
+ *   batch for the IBK4 streamed grammars; omitted means the engine's own
+ *   default. Match the native packer's `--batch-bytes` to get its block set.
  * @param {(progress: object) => void} [options.onProgress]
  * @returns {object} the engine's own finish envelope, plus what was written
  */
 export function packFile (engine, input, output, options) {
   const begun = engine.call('packBegin',
-    [options.syntax, options.layout, typeof options.base === 'string' ? options.base : ''])
+    [options.syntax, options.layout,
+      typeof options.base === 'string' ? options.base : '',
+      options.batchBytes === undefined || options.batchBytes === null
+        ? '' : String(options.batchBytes)])
   const handle = begun.handle
   if (typeof handle !== 'string') {
     throw new PackError('packBegin answered no handle')

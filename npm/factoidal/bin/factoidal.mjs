@@ -233,6 +233,10 @@ options:
   --layout LAYOUT    ibk3 (triples, default) or ibk4 (quads)
   --syntax SYNTAX    turtle, trig or nquads; default from the file extension
   --chunk-bytes N    Merkle chunk size; default is the engine's
+  --batch-bytes N    ibk4 only: source bytes between publication batches;
+                     default is the engine's. Blocks are published during
+                     the ingest pass, so this bounds the packer's memory.
+                     Match l4block-shard-pack --batch-bytes for its blocks.
   --json             emit one JSON object
   --no-worker        pack in this process instead of on a worker thread
 
@@ -764,7 +768,8 @@ async function commandPack (positional, options) {
   let answer
   try {
     answer = await runPack(
-      { kind: 'pack', input, output, syntax, layout, base: packBase(input, options) },
+      { kind: 'pack', input, output, syntax, layout, base: packBase(input, options),
+        batchBytes: options['batch-bytes'] },
       quiet
         ? undefined
         : (progress) => {

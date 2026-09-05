@@ -129,6 +129,20 @@ def chunkGo : List QuadRow → List QuadRow → Nat → Nat → Option GraphRef 
 def chunkQuadRows (quads : List QuadRow) : List (List QuadRow) :=
   chunkGo quads [] 0 0 none
 
+/-- The rows of one predicate's blocks, before they are encoded. Separating
+    the ROW partition from the block construction lets the packer build one
+    `QuadBlock` at a time instead of holding the whole block set. -/
+def runsOfBuckets (buckets : Buckets) : List (WfIri × List QuadRow) :=
+  buckets.orderRev.reverse.flatMap fun predicate =>
+    (chunkQuadRows (buckets.rows.getD predicate []).reverse).map fun rows =>
+      (predicate, rows)
+
+def runsOfQuads (quads : List QuadRow) : List (WfIri × List QuadRow) :=
+  runsOfBuckets (addQuads {} quads)
+
+def runsOfDataset (ds : Dataset) : List (WfIri × List QuadRow) :=
+  runsOfQuads (quadsOfDataset ds)
+
 def blocksOfBuckets (buckets : Buckets) : List (WfIri × QuadBlock) :=
   buckets.orderRev.reverse.flatMap fun predicate =>
     (chunkQuadRows (buckets.rows.getD predicate []).reverse).map fun rows =>
@@ -141,6 +155,117 @@ def blocksOfQuads (quads : List QuadRow) : List (WfIri × QuadBlock) :=
 
 def blocksOfDataset (ds : Dataset) : List (WfIri × QuadBlock) :=
   blocksOfQuads (quadsOfDataset ds)
+
+/-! ## Publication every batch
+
+`docs/designissues/2026-09-05-pack-publication-every-batch.md` records the
+policy; section 5 of
+`docs/designissues/2026-09-05-wire-version-10-scale.md` decides it. The
+packer publishes blocks DURING the ingest pass, so its peak memory is bounded
+by two operator numbers instead of by the source.
+
+`Buckets` above holds every row of every predicate until the end of the
+source. `Pub` below holds, per predicate, only the OPEN RUN — the rows of the
+block currently being built — with the running cut state `chunkGo` carries in
+its arguments. The five rules:
+
+1. quads accumulate into the per-predicate open runs;
+2. a run the per-block cut rule closes is published at once and its rows are
+   released (`pubAdd`);
+3. after `batchSourceBytes` of source, every run holding at least
+   `minBatchRows` rows is published; smaller runs carry over
+   (`pubFlush st minBatchRows`);
+4. when the carried rows pass `maxCarriedRows`, every run is published
+   (`pubAdd`, which checks after each quad);
+5. at end of source every run is published (`pubFlush st 0`).
+
+With no flush between (a source below one batch), rules 2 and 5 cut each
+predicate's rows at the same places `runsOfBuckets` does; what differs is the
+ORDER the runs are published in, which is completion order rather than
+predicate-major order, so the block ORDINALS differ. Rules 3 and 4 are what
+cut memory, and they change the block SET as well: a predicate whose rows
+straddle a batch boundary gets a block ending at that boundary. Every manifest
+since SBM2 admits both — a reader takes the union of the entries for a
+predicate.
+-/
+
+/-- The default of `--batch-bytes`: 268,435,456 source bytes per batch. -/
+def batchSourceBytesDefault : Nat := 268435456
+
+/-- A run below this many rows carries over a batch end rather than becoming
+    a block of its own. Without it a source with a few hundred predicates and
+    hundreds of batches produces tens of thousands of near-empty entries. -/
+def minBatchRows : Nat := 4096
+
+/-- The bound on the rows every open run holds together. Rule 3 retains small
+    runs; this is what bounds what it retains, for a source with hundreds of
+    thousands of predicates. -/
+def maxCarriedRows : Nat := 1048576
+
+/-- The open run of one predicate: the rows of the block being built, in
+    reverse order, and the cut state `chunkGo` carries as arguments. -/
+structure Run where
+  accRev : List QuadRow := []
+  rows : Nat := 0
+  bytes : Nat := 0
+  graph : Option GraphRef := none
+
+/-- The publication state. `orderRev` is the reverse first-occurrence order of
+    the predicates, which fixes the order runs are published in at a flush;
+    `carried` is the total rows the open runs hold. -/
+structure Pub where
+  runs : Std.HashMap WfIri Run := ∅
+  orderRev : List WfIri := []
+  carried : Nat := 0
+
+/-- Publish every open run holding at least `minRows` rows, in first-occurrence
+    predicate order. `minRows = 0` publishes every non-empty run. -/
+def pubFlush (st : Pub) (minRows : Nat) : Pub × List (WfIri × List QuadRow) :=
+  let step := fun (acc : Pub × List (WfIri × List QuadRow)) (predicate : WfIri) =>
+    let (state, outRev) := acc
+    match state.runs[predicate]? with
+    | none => acc
+    | some run =>
+        if run.rows == 0 || run.rows < minRows then acc
+        else
+          ({ state with runs := state.runs.insert predicate ({} : Run),
+                        carried := state.carried - run.rows },
+           (predicate, run.accRev.reverse) :: outRev)
+  let (state, outRev) := st.orderRev.reverse.foldl step (st, [])
+  (state, outRev.reverse)
+
+/-- Add one quad to its predicate's open run. The run is published when the
+    per-block cut rule closes it (rule 2), and every run is published when the
+    carried rows pass `maxCarriedRows` (rule 4). -/
+def pubAdd (st : Pub) (quad : QuadRow) : Pub × List (WfIri × List QuadRow) :=
+  let predicate := quad.2.p
+  let weight := quadWireBytes quad
+  let fresh : Run := { accRev := [quad], rows := 1, bytes := weight, graph := quad.1 }
+  let (state, out) : Pub × List (WfIri × List QuadRow) :=
+    match st.runs[predicate]? with
+    | none =>
+        ({ runs := st.runs.insert predicate fresh
+         , orderRev := predicate :: st.orderRev
+         , carried := st.carried + 1 }, [])
+    | some run =>
+        if run.rows == 0 then
+          ({ st with runs := st.runs.insert predicate fresh
+                   , carried := st.carried + 1 }, [])
+        else if quad.1 == run.graph && run.rows < maxBlockRows &&
+            run.bytes + weight <= maxBlockWireBytes then
+          ({ st with
+               runs := st.runs.insert predicate
+                 { accRev := quad :: run.accRev, rows := run.rows + 1
+                 , bytes := run.bytes + weight, graph := run.graph }
+               carried := st.carried + 1 }, [])
+        else
+          ({ st with runs := st.runs.insert predicate fresh
+                   , carried := st.carried + 1 - run.rows },
+           [(predicate, run.accRev.reverse)])
+  if state.carried > maxCarriedRows then
+    let (state, flushed) := pubFlush state 0
+    (state, out ++ flushed)
+  else (state, out)
 
 /-! ## Build-time checks -/
 
@@ -179,5 +304,20 @@ private def sampleBlocks := blocksOfDataset sample
 
 -- Every quad of the dataset is denoted by exactly one block, in source order.
 #guard (sampleBlocks.flatMap fun entry => entry.2.denotes).length == 3
+
+-- The streamed publication of a source below one batch is the buffered
+-- partition: rules 2 and 5 alone, with no flush in between.
+private def pubRunsAll (quads : List QuadRow) : List (WfIri × List QuadRow) :=
+  let step := fun (acc : Pub × List (WfIri × List QuadRow)) (quad : QuadRow) =>
+    let (state, out) := acc
+    let (state, made) := pubAdd state quad
+    (state, out ++ made)
+  let (state, out) := quads.foldl step ({}, [])
+  out ++ (pubFlush state 0).2
+
+#guard pubRunsAll (quadsOfDataset sample) == runsOfDataset sample
+#guard (pubRunsAll (quadsOfDataset sample)).flatMap Prod.snd ==
+  (runsOfDataset sample).flatMap Prod.snd
+#guard (pubRunsAll []) == []
 
 end L4Factoidal.Storage.PredicateQuadBlocks
