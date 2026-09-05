@@ -424,8 +424,8 @@ by grams, and not counted against a block's byte target.
 | `IBK3` | Current predicate-local fixed ID rows followed by an embedded pageable dictionary | current primary alpha block | [IndexedBlockWireV3.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV3.lean) |
 | `PTD1` | IBK3-local ID to RDF term, split into independently readable pages | current embedded dictionary | [PagedTermDictionary.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionary.lean) |
 | `IBK4` | Quad rows: one predicate, one or more graphs, a graph column in every row, a header graph-set summary, then the same embedded PTD1 | current quad-aware block; codec, round-trip theorem, packer and SBM7 manifest landed | [IndexedBlockWireV4.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV4.lean) |
-| `PTD2` | The PTD1 page layout over term codec v2 (`WireTerm`: an RDF 1.2 term, or an out-of-line literal named by byte length and SHA-256) | current embedded dictionary of IBK5; PTD1 and PTD2 are two instantiations of one generic module and share one round-trip theorem | [PagedTermDictionaryV2.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryV2.lean), generic layout in [PagedTermDictionaryCore.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryCore.lean) |
-| `IBK5` | The IBK4 layout, field for field, over a PTD2 dictionary | current wire-version-10 block; codec and round-trip theorem landed 2026-09-05 | [IndexedBlockWireV5.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV5.lean) |
+| `PTD2` | The PTD1 page layout over term codec v2 (`WireTerm`: an RDF 1.2 term, or an out-of-line literal named by byte length and SHA-256) | current embedded dictionary of IBK5; PTD1 and PTD2 are two instantiations of one generic module and share one round-trip theorem; packer and native readers landed 2026-09-05 | [PagedTermDictionaryV2.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryV2.lean), generic layout in [PagedTermDictionaryCore.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/PagedTermDictionaryCore.lean) |
+| `IBK5` | The IBK4 layout, field for field, over a PTD2 dictionary | current wire-version-10 block; codec, round-trip theorem, packer and native readers landed 2026-09-05 | [IndexedBlockWireV5.lean](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/IndexedBlockWireV5.lean) |
 
 IBK3 contains triples and requires one predicate per artifact. Its current
 term codec accepts IRIs, blank nodes, and RDF 1.1-style literals, but refuses
@@ -649,7 +649,7 @@ delta log use.
 | [`TLI1`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/TermLocalIndexWire.lean) | canonical RDF-term bytes to one target IBK3 local ID | current cross-artifact term bridge |
 | `OLI2` | local object ID to row offsets | current SBM6 object role, encoded with the generic SRI2 postings codec |
 | [`LGI1`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/LiteralGramIndexWire.lean) | character 3-grams of the case-folded lexical form of every literal in a block dictionary, to the local term IDs carrying each gram | current SBM8 and SBM9 literal-search role; posting gaps are fixed-width u32 |
-| [`LGI2`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/LiteralGramIndexWire.lean) | the same relation, plus the local IDs of the literals the index did NOT gram | current SBM10 literal-search role; posting gaps are unsigned LEB128 varints |
+| [`LGI2`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/LiteralGramIndexWire.lean) | the same relation, plus the local IDs of the literals the index did NOT gram | current SBM10 literal-search role; posting gaps are unsigned LEB128 varints; packer and native readers landed 2026-09-05 |
 | [`GBI1`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/Storage/GeoBBoxIndexWire.lean) | axis-aligned bounding box and CRS of every `geo:wktLiteral` term in a block dictionary | current SBM9 and SBM10 geometry role |
 
 LGI1 and LGI2 are CANDIDATE FILTERS, not answer sets: a planner that uses one
@@ -685,7 +685,7 @@ not a semantic role.
 | `SBM7` | IBK4 quad blocks: a per-entry block kind, blank-node scope and graph-set summary, and a manifest-level blank-node publication profile |
 | `SBM8` | mandatory LGI1 literal-search index in a fourth sidecar role |
 | `SBM9` | mandatory GBI1 geometry bounding-box index in a fifth sidecar role |
-| `SBM10` | IBK5 quad blocks with an LGI2 literal index: per-entry subject and object zone maps, per-entry blob references, and a manifest-level blob table of out-of-line literals |
+| `SBM10` | IBK5 quad blocks with an LGI2 literal index: per-entry subject and object zone maps, per-entry blob references, and a manifest-level blob table of out-of-line literals. Packer and native readers landed 2026-09-05; `l4block-shard-pack` writes it under the layout tag `ibk5` |
 
 The current manifest structure records a wire version, source identity,
 term-registry version, physical-layout label, and ordered predicate/artifact

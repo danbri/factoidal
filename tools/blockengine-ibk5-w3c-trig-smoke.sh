@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Pack and activate every positive W3C TriG 1.1 test file as an IBK4
+# Pack and activate every positive W3C TriG 1.1 test file as an IBK5
 # generation. Positive means `rdft:TestTrigPositiveSyntax` or
 # `rdft:TestTrigEval`; the negative-syntax and negative-eval tests are for the
 # parser, not for the storage layer, and are not run here.
+#
+# Wire version 10 reads its source as RDF 1.2, so the TriG 1.1 suite is the
+# same input under a wider grammar: a 1.1 document is a 1.2 document.
 #
 # Reports pass and fail counts and the first three failures with their message.
 set -uo pipefail
@@ -14,7 +17,7 @@ bin="$lean_dir/.lake/build/bin"
 # from a worktree against the main checkout's suite, with the worktree's own
 # binaries (hazard 15, skills/workflow-gotchas-debugging).
 suite="${TRIG_SUITE:-$repo_root/third_party/testing/w3c/rdf/rdf11/rdf-trig}"
-run_dir=$(mktemp -d /private/tmp/factoidal-ibk4-trig.XXXXXX)
+run_dir=$(mktemp -d /private/tmp/factoidal-ibk5-trig.XXXXXX)
 trap 'rm -rf "$run_dir"' EXIT
 
 python3 - "$suite/manifest.ttl" >"$run_dir/actions.txt" <<'PY'
@@ -42,7 +45,7 @@ while read -r action; do
   out="$run_dir/out/$total"
   mkdir -p "$out"
   message=""
-  if ! pack_out=$("$bin/l4block-shard-pack" "$suite/$action" "$out/gen-1" ibk4 2>&1); then
+  if ! pack_out=$("$bin/l4block-shard-pack" "$suite/$action" "$out/gen-1" ibk5 2>&1); then
     message="pack: $(printf '%s' "$pack_out" | tail -1)"
   elif ! activate_out=$("$bin/l4block-shard-activate" "$out" gen-1 2>&1); then
     message="activate: $(printf '%s' "$activate_out" | tail -1)"
@@ -59,5 +62,5 @@ while read -r action; do
   rm -rf "$out"
 done <"$run_dir/actions.txt"
 
-echo "blockengine-ibk4-w3c-trig: $pass_count pass, $fail_count fail (out of $total)"
+echo "blockengine-ibk5-w3c-trig: $pass_count pass, $fail_count fail (out of $total)"
 test "$fail_count" -eq 0
