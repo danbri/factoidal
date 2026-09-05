@@ -264,9 +264,10 @@ EOF
 # fixture above 64 MiB would need --batch-bytes on the CLI and the fourth
 # packBegin argument in the module, set to the same number.
 #
-# The block set of this fixture is unchanged by that landing: <http://e/p> is
-# cut at its graph change either way, and the two blocks publish in the same
-# order.
+# The block set of this fixture is unchanged by that landing, and by the
+# 2026-09-05 change to (predicate, graph) buckets: <http://e/p> has rows in
+# the default graph and in g1, which is two blocks under either rule, and the
+# first-seen key order is the order the old predicate-major route used here.
 printf '%s\n' \
   '<http://e/a> <http://e/p> "x" .' \
   '<http://e/a> <http://e/p> "y" <http://e/g1> .' \
