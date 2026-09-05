@@ -45,6 +45,15 @@ theorem decodePrefix_ok (t p c : Nat) (ht : t < UInt32.size) (hp0 : 0 < p)
       = some { termCount := t, pageTerms := p, pageCount := c } :=
   PTD.decodePrefix_ok v2Format t p c ht hp0 hp hc hcc
 
+/-- Anything PTD2 encodes declares the default page size in its prefix, which
+is what the IBK5 decoder re-checks before it reads the dictionary. -/
+theorem pageTerms_of_encode? (terms : Array WireTerm) (dictionary : ByteArray)
+    (h : encode? terms = some dictionary) :
+    ∃ header, decodePrefix (dictionary.extract 0 prefixBytes) = some header ∧
+      header.pageTerms = defaultPageTerms :=
+  PTD.pageTerms_of_encode? v2Format terms dictionary h
+
+#print axioms pageTerms_of_encode?
 #print axioms decodePrefix_ok
 #print axioms decode?_eq_spec
 #print axioms decodeSpec?_encode?

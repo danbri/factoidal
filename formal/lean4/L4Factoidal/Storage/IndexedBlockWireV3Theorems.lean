@@ -346,57 +346,8 @@ theorem ptd_pageTerms_of_encode? (terms : Array Term) (dictionary : ByteArray)
     (h : PagedTermDictionary.encode? terms = some dictionary) :
     ∃ header, PagedTermDictionary.decodePrefix
         (dictionary.extract 0 PagedTermDictionary.prefixBytes) = some header ∧
-      header.pageTerms = PagedTermDictionary.defaultPageTerms := by
-  simp only [PagedTermDictionary.encode?] at h
-  split at h
-  · exact absurd h (by simp)
-  · rename_i hsupp
-    split at h
-    · exact absurd h (by simp)
-    · rename_i hguard
-      injection h with h
-      subst h
-      have hsupported : PagedTermDictionary.supported terms = true := by simpa using hsupp
-      rw [PagedTermDictionary.supported, Bool.and_eq_true] at hsupported
-      have hszfit : terms.size < 4294967296 := by
-        simpa [PagedTermDictionary.fitsU32, PTD.fitsU32] using hsupported.2
-      simp [PagedTermDictionary.fitsU32, PTD.fitsU32] at hguard
-      obtain ⟨⟨hpcfit, -⟩, -⟩ := hguard
-      have hu32 : (4294967296 : Nat) = UInt32.size := rfl
-      refine ⟨{ termCount := terms.size,
-                pageTerms := PagedTermDictionary.defaultPageTerms,
-                pageCount := (PagedTermDictionary.encodePages terms.toList).length },
-              ?_, rfl⟩
-      obtain ⟨P, hP⟩ : ∃ P, P = PagedTermDictionary.encodePages terms.toList := ⟨_, rfl⟩
-      rw [← hP] at hpcfit ⊢
-      obtain ⟨dir, hdir⟩ : ∃ dir, dir = (PagedTermDictionary.directoryFor P).flatMap
-        PagedTermDictionary.encodeDirectory := ⟨_, rfl⟩
-      rw [← hdir]
-      obtain ⟨pay, hpay⟩ : ∃ pay, pay = writeU32LE (UInt32.ofNat terms.size) ++
-        writeU32LE (UInt32.ofNat PagedTermDictionary.defaultPageTerms) ++
-        writeU32LE (UInt32.ofNat P.length) ++ dir ++ P.flatten := ⟨_, rfl⟩
-      rw [← hpay]
-      obtain ⟨pre17, hpre17⟩ : ∃ q, q = writeU32LE PagedTermDictionary.magic ++
-        [PagedTermDictionary.version] ++ writeU32LE (UInt32.ofNat terms.size) ++
-        writeU32LE (UInt32.ofNat PagedTermDictionary.defaultPageTerms) ++
-        writeU32LE (UInt32.ofNat P.length) := ⟨_, rfl⟩
-      have hsplit : writeU32LE PagedTermDictionary.magic ++ [PagedTermDictionary.version] ++
-          pay ++ writeU32LE (crc32c pay)
-          = pre17 ++ (dir ++ P.flatten ++ writeU32LE (crc32c pay)) := by
-        rw [hpay, hpre17]; simp [List.append_assoc]
-      have htake : ((writeU32LE PagedTermDictionary.magic ++ [PagedTermDictionary.version] ++
-          pay ++ writeU32LE (crc32c pay)).drop 0).take (PagedTermDictionary.prefixBytes - 0)
-          = pre17 := by
-        rw [List.drop_zero, hsplit]
-        exact List.take_left'
-          (by rw [hpre17]; simp [PagedTermDictionary.prefixBytes, PTD.prefixBytes])
-      rw [PagedTermDictionary.extract_byteArrayOfList, htake, hpre17]
-      exact PagedTermDictionary.decodePrefix_ok terms.size PagedTermDictionary.defaultPageTerms
-        P.length (hu32 ▸ hszfit) (by decide) (by decide) (hu32 ▸ hpcfit)
-        (by rw [hP, PagedTermDictionary.encodePages_length]
-            simp only [PagedTermDictionary.defaultPageTerms, PTD.defaultPageTerms,
-              Array.length_toList]
-            omega)
+      header.pageTerms = PagedTermDictionary.defaultPageTerms :=
+  PTD.pageTerms_of_encode? PagedTermDictionary.v1Format terms dictionary h
 
 /-! ## The fixed IBK3 header -/
 

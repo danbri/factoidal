@@ -805,6 +805,59 @@ theorem decode?_encode? (terms : Array τ)
   rw [decode?_eq_spec]
   exact decodeSpec?_encode? F terms bytes h
 
+
+/-! ## The declared page size -/
+
+/-- Anything the paged encoder writes declares the default page size in its
+prefix, which is what an enclosing block decoder re-checks before it reads
+the dictionary. -/
+theorem pageTerms_of_encode? (terms : Array τ) (dictionary : ByteArray)
+    (h : encode? F terms = some dictionary) :
+    ∃ header, decodePrefix F (dictionary.extract 0 prefixBytes) = some header ∧
+      header.pageTerms = defaultPageTerms := by
+  simp only [encode?] at h
+  split at h
+  · exact absurd h (by simp)
+  · rename_i hsupp
+    split at h
+    · exact absurd h (by simp)
+    · rename_i hguard
+      injection h with h
+      subst h
+      have hsupported : supported F terms = true := by simpa using hsupp
+      rw [supported, Bool.and_eq_true] at hsupported
+      have hszfit : terms.size < 4294967296 := by simpa [fitsU32] using hsupported.2
+      simp [fitsU32] at hguard
+      obtain ⟨⟨hpcfit, -⟩, -⟩ := hguard
+      have hu32 : (4294967296 : Nat) = UInt32.size := rfl
+      refine ⟨{ termCount := terms.size, pageTerms := defaultPageTerms,
+                pageCount := (encodePages F terms.toList).length }, ?_, rfl⟩
+      obtain ⟨P, hP⟩ : ∃ P, P = encodePages F terms.toList := ⟨_, rfl⟩
+      rw [← hP] at hpcfit ⊢
+      obtain ⟨dir, hdir⟩ : ∃ dir, dir = (directoryFor P).flatMap encodeDirectory := ⟨_, rfl⟩
+      rw [← hdir]
+      obtain ⟨pay, hpay⟩ : ∃ pay, pay = writeU32LE (UInt32.ofNat terms.size) ++
+        writeU32LE (UInt32.ofNat defaultPageTerms) ++
+        writeU32LE (UInt32.ofNat P.length) ++ dir ++ P.flatten := ⟨_, rfl⟩
+      rw [← hpay]
+      obtain ⟨pre17, hpre17⟩ : ∃ q, q = writeU32LE F.magic ++
+        [F.version] ++ writeU32LE (UInt32.ofNat terms.size) ++
+        writeU32LE (UInt32.ofNat defaultPageTerms) ++
+        writeU32LE (UInt32.ofNat P.length) := ⟨_, rfl⟩
+      have hsplit : writeU32LE F.magic ++ [F.version] ++ pay ++ writeU32LE (crc32c pay)
+          = pre17 ++ (dir ++ P.flatten ++ writeU32LE (crc32c pay)) := by
+        rw [hpay, hpre17]; simp [List.append_assoc]
+      have htake : ((writeU32LE F.magic ++ [F.version] ++
+          pay ++ writeU32LE (crc32c pay)).drop 0).take (prefixBytes - 0) = pre17 := by
+        rw [List.drop_zero, hsplit]
+        exact List.take_left' (by rw [hpre17]; simp [prefixBytes])
+      rw [extract_byteArrayOfList, htake, hpre17]
+      exact decodePrefix_ok F terms.size defaultPageTerms P.length
+        (hu32 ▸ hszfit) (by decide) (by decide) (hu32 ▸ hpcfit)
+        (by rw [hP, encodePages_length]
+            simp only [defaultPageTerms, Array.length_toList]
+            omega)
+
 #print axioms decodePrefix_ok
 #print axioms decodeDirectory?_ok
 #print axioms decodeTerms_ok
@@ -814,5 +867,6 @@ theorem decode?_encode? (terms : Array τ)
 #print axioms decode?_eq_spec
 #print axioms decode?_encoded
 #print axioms decode?_encode?
+#print axioms pageTerms_of_encode?
 
 end L4Factoidal.Storage.PTD
