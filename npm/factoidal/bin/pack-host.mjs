@@ -215,6 +215,7 @@ export async function packHere (task, onProgress) {
     syntax: task.syntax,
     layout: task.layout,
     base: task.base,
+    batchBytes: task.batchBytes,
     onProgress
   })
   return { report }
@@ -298,7 +299,7 @@ async function packInWorker (task, onProgress) {
  * already re-executed (see `denoReexec`), so this runs in process.
  *
  * @param {object} task {kind, ...}: a pack takes
- *   {input, output, syntax, layout, base}, an activate takes
+ *   {input, output, syntax, layout, base, batchBytes}, an activate takes
  *   {root, generation}
  * @param {(progress: object) => void} [onProgress]
  * @param {object} [options] {worker: false} forces the in-process path

@@ -111,17 +111,15 @@ private def pack (format : PackFormat) (input output : String) : IO UInt32 := do
 
 /-! ## The IBK4 path
 
-The IBK4 packer publishes every block at the end of the input. The streaming
-Turtle fold of the IBK3 path publishes bounded BATCHES, which works because an
-IBK3 block holds one predicate of one graph and a later batch can open a new
-block for the same predicate (SBM2 permits several blocks per predicate). An
-IBK4 block holds one predicate across ALL graphs and commits its graph-set
-summary in the header, so a batch boundary would either split a predicate
-across blocks with partial graph sets or need a further pass to recompute
-them. Several blocks per predicate would change the emitted block set, which
-is a wire-format decision (specification section 10), so the IBK4 publication
-point is still the end of the source and peak memory is still proportional to
-the data.
+The IBK4 packer publishes blocks DURING the ingest pass
+(`docs/designissues/2026-09-05-pack-publication-every-batch.md`). A block is
+written as soon as the per-block cut rule closes its rows, every open run of
+at least `minBatchRows` rows is written at each `--batch-bytes` of source, and
+every open run is written at the end. `quadIngestFeed` returns the artifacts
+of one feed in the order they must be written, and `quadIngestFile` below
+writes them before it reads the next chunk, so the generation is never live
+all at once. Several blocks per predicate is what SBM2 has always admitted: a
+reader takes the union of the entries for a predicate.
 
 What the input no longer decides is the CHARACTER LIST. For the N-Quads
 grammar `quadIngestFile` below feeds 65,536-byte chunks to
@@ -132,8 +130,10 @@ footprint 2,531,999,744 bytes before, 1,127,907,328 bytes after, with a
 byte-identical generation
 (<https://github.com/danbri/factoidal/issues/650>). Turtle and N-Triples
 take the same route through the Turtle chunk fold; only TriG still buffers,
-because it has no chunk fold. What is proved and what is only measured for
-each route is stated at `PackStream`'s streaming section.
+because it has no chunk fold. Publication every batch then took the same
+104,857,577-byte prefix of skosdex from 599,870,336 bytes of peak footprint
+to 328,272,128. What is proved and what is only measured for each route is
+stated at `PackStream`'s streaming section.
 
 Every block, sidecar and manifest byte is decided by
 `PackStream.quadArtifacts` and `PackStream.quadManifestArtifacts`, which are
@@ -151,15 +151,24 @@ private def syntaxOf (input : String) : PackSyntax :=
   else .turtle
 
 /-- The streaming IBK4 second pass. The source `String` and its `List Char`
-    never exist; only one 65,536-byte chunk is decoded at a time. -/
-private def quadIngestFile (input : System.FilePath) (grammar : PackSyntax)
-    (prepass : SourcePrepass) (baseIri : Option String) : IO QuadPack :=
+    never exist; only one 65,536-byte chunk is decoded at a time, and each
+    feed's artifacts are written before the next chunk is read, so the
+    generation is never live all at once. -/
+private def quadIngestFile (input : System.FilePath) (output : System.FilePath)
+    (grammar : PackSyntax) (prepass : SourcePrepass) (baseIri : Option String)
+    (batchBytes : Nat) : IO QuadPack :=
   IO.FS.withFile input .read fun handle => do
-    let state ← foldHandle handle (fun state bytes => ofExcept (quadIngestFeed state bytes))
-      (quadIngestInit hasher grammar prepass baseIri blockFold)
-    ofExcept (quadIngestFinish state)
+    let state ← foldHandle handle
+      (fun state bytes => do
+        let (next, artifacts) ← ofExcept (quadIngestFeed state bytes)
+        writeArtifacts output.toString artifacts
+        pure next)
+      (quadIngestInit hasher grammar prepass baseIri batchBytes blockFold)
+    let result ← ofExcept (quadIngestFinish state)
+    writeArtifacts output.toString result.artifacts
+    pure { result with artifacts := [] }
 
-private def packQuads (input output : String) : IO UInt32 := do
+private def packQuads (input output : String) (batchBytes : Nat) : IO UInt32 := do
   try
     let prepass ← prepassFile input
     let outputPath := System.FilePath.mk output
@@ -170,25 +179,41 @@ private def packQuads (input output : String) : IO UInt32 := do
     let baseIri := some ("file://" ++ input)
     let result ←
       if quadStreams grammar then
-        quadIngestFile input grammar prepass baseIri
+        quadIngestFile input outputPath grammar prepass baseIri batchBytes
       else do
         let text ← IO.FS.readFile input
-        ofExcept (quadArtifacts hasher grammar prepass text baseIri)
-    writeArtifacts output result.artifacts
+        let buffered ← ofExcept (quadArtifacts hasher grammar prepass text baseIri)
+        writeArtifacts output buffered.artifacts
+        pure { buffered with artifacts := [] }
     let manifest ← ofExcept (quadManifestArtifacts prepass result.packed)
     writeArtifacts output manifest
-    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} output={output} manifest=manifest.sbm2 wire-version={manifestVersion .ibk4} blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
+    IO.println s!"l4block-shard-pack format={layoutName .ibk4} syntax={syntaxName grammar} input={input} quads={result.packed.tripleCount} blocks={result.packed.entriesRev.length} graphs={result.graphs} batches={result.batches} batch-bytes={batchBytes} output={output} manifest=manifest.sbm2 wire-version={manifestVersion .ibk4} blank-node-scope={bytesToHex prepass.sourceIdentity} chunk-bytes={chunkBytes}"
     return 0
   catch error =>
     IO.eprintln s!"l4block-shard-pack failure: {error}"
     return 1
 
+/-- Read `--batch-bytes N` out of the tail arguments. `none` is a malformed
+    or missing value; the caller then reports the usage line rather than
+    packing with a number nobody asked for. -/
+private def batchBytesOf : List String → Option Nat
+  | [] => some L4Factoidal.Storage.PredicateQuadBlocks.batchSourceBytesDefault
+  | ["--batch-bytes", value] => value.toNat?.filter (· > 0)
+  | _ => none
+
 def main (args : List String) : IO UInt32 := do
   match args with
   | [input, output] => try pack .ibk2 input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
   | [input, output, "ibk3"] => try pack .ibk3 input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
-  | [input, output, "ibk4"] => try packQuads input output catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
-  | _ => IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4]  (ibk4 accepts .ttl, .trig, .nq, .nt)"; return 2
+  | input :: output :: "ibk4" :: rest =>
+      match batchBytesOf rest with
+      | none =>
+          IO.eprintln "l4block-shard-pack: --batch-bytes needs one positive decimal argument"
+          return 2
+      | some batchBytes =>
+          try packQuads input output batchBytes
+          catch e => IO.eprintln s!"l4block-shard-pack failure: {e}"; return 1
+  | _ => IO.eprintln "usage: l4block-shard-pack INPUT OUTPUT-DIR [ibk3|ibk4] [--batch-bytes N]  (ibk4 accepts .ttl, .trig, .nq, .nt)"; return 2
 
 end Harness.PredicateShardPack
 def main (args : List String) : IO UInt32 := Harness.PredicateShardPack.main args

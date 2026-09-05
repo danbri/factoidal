@@ -439,13 +439,18 @@ private def graphSetText (names : List GraphName) : String :=
 
 /-- One IBK4 block, its Merkle sidecar and its manifest row. The artifact
     order is the block bytes and then the sidecar, which is the order the
-    native packer wrote them in. -/
+    native packer wrote them in.
+
+    The argument is the ROWS of each block, not the blocks: the `QuadBlock` is
+    built here, one at a time, so a caller publishing a batch never holds more
+    than one encoded block beside the rows it has not reached yet. -/
 def publishQuadBlocks (h : Hasher) (scope : String) :
     PackState → List Artifact →
-    List (L4Factoidal.RDF.WfIri × L4Factoidal.Storage.IndexedBlockWireV4.QuadBlock) →
+    List (L4Factoidal.RDF.WfIri × List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) →
     Except String (PackState × List Artifact)
   | state, outRev, [] => .ok (state, outRev.reverse)
-  | state, outRev, (predicate, block) :: rest => do
+  | state, outRev, (predicate, rows) :: rest => do
+      let block := L4Factoidal.Storage.IndexedBlockWireV4.fromQuads rows
       let bytes ← match L4Factoidal.Storage.IndexedBlockWireV4.encode? block with
         | none => .error s!"unsupported quad block for {predicate.val}"
         | some bytes => pure bytes
@@ -518,6 +523,10 @@ structure QuadPack where
   /-- The named graphs of the source plus its default graph. Reported by the
       native packer's summary line; not a committed value. -/
   graphs : Nat
+  /-- How many publication batches the pass ran. The buffered route is one
+      batch by definition. Reported by the summary line; not a committed
+      value. -/
+  batches : Nat := 1
   packed : PackState
   artifacts : List Artifact
 
@@ -526,8 +535,8 @@ def quadArtifacts (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
   let dataset ← parseSource grammar text baseIri
   let (packed, artifacts) ←
     publishQuadBlocks h (bytesToHex prepass.sourceIdentity) {}
-      [] (L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset)
-  .ok { graphs := dataset.named.length + 1, packed, artifacts }
+      [] (L4Factoidal.Storage.PredicateQuadBlocks.runsOfDataset dataset)
+  .ok { graphs := dataset.named.length + 1, batches := 1, packed, artifacts }
 
 /-! ### The streaming N-Quads route to IBK4
 
@@ -549,23 +558,18 @@ chunked run builds IS the dataset `parseSource .nquads` builds, so every
 committed byte is unchanged. Only 65,536 bytes of source, plus at most one
 partial line, are decoded at a time.
 
-What this does NOT make bounded: the IBK4 block set is partitioned at
-construction but published at the end of the pass, so the dataset, the blocks
-and their encoded bytes are all live when the last block is published, so
-nothing the pass builds is released before the end, and the character list
-twenty-four times the source is no longer among it. What the rest costs was
-MEASURED on skosdex prefixes, 2026-09-05: peak footprint 390,318,656 bytes
-for 52,428,626 of source, 599,870,336 for 104,857,577, 933,809,856 for
-209,715,187 and 5,951,730,560 for 1,543,478,120 — LINEAR in the source, at
-3.76 bytes of peak footprint per source byte plus a constant of about
-145 MB. The RATIO to the source falls with size (7.44x, 5.72x, 4.45x,
-3.86x) because that constant amortises; do not read a trend out of it. The
-first three points alone fit a sublinear power law and that reading was
-wrong (`docs/designissues/2026-09-05-shard-pack-profile-and-memory.md`,
-section 3). A memory footprint independent of the input needs the
-publication point to move to the graph boundary, which
-`docs/designissues/2026-09-04-blocks-per-predicate.md` records as the next
-step.
+What this ALSO makes bounded, since 2026-09-05: the publication point. The
+packer publishes a block as soon as the per-block cut rule closes its rows,
+and every open run of at least `minBatchRows` rows at each `batchBytes` of
+source (`docs/designissues/2026-09-05-pack-publication-every-batch.md`). The
+dataset is never built at all; what stays live is one open run per predicate,
+the carried rows below `maxCarriedRows`, and one manifest row per block.
+MEASURED on skosdex N-Quads prefixes at the 268,435,456-byte default,
+2026-09-05: peak footprint 222,955,392 bytes for 52,428,626 of source,
+328,272,128 for 104,857,577 and 331,581,824 for 209,715,187 — against
+390,318,656, 599,870,336 and 933,809,856 before, which were linear in the
+source at 3.76 bytes per source byte. The block SET is larger: 1,018, 1,135
+and 1,252 blocks against 964, 1,053 and 1,148.
 
 Turtle, and with it N-Triples, now takes the same route through
 `Syntax/TurtleChunkFold.lean` — the fold the IBK3 packer has always used.
@@ -582,23 +586,99 @@ N-Quads.
 
 TriG keeps the buffered route: it has no chunk fold at all. -/
 
-/-- The per-grammar part of a streaming IBK4 pass. Both alternatives hold
-    only the accumulated dataset plus one unfinished lexical unit: a partial
+/-! ### The publication accumulator
+
+The fold no longer builds a `Dataset`. It builds
+`PredicateQuadBlocks.Pub` — one OPEN RUN per predicate, each at most
+`maxBlockRows` rows and `maxBlockWireBytes` estimated bytes — plus the runs
+the cut rule has closed since the last time the caller drained it. The
+caller (`quadIngestFeed`) encodes those runs into artifacts and releases
+their rows. What stays live is the open runs, the carried rows below the
+batch rule, and the manifest rows.
+
+`addQuadPub` has exactly the consumer signature
+`NQuadsFold.foldQuadLinesAcc` takes, so `NQuadsFold.streamConsume11_eq_batch`
+— stated for EVERY consumer — applies to it unchanged, and
+`PackStreamTheorems` uses it. -/
+
+/-- The packer's fold accumulator: the publication state, the runs closed
+    since the last drain (in reverse), and the named graphs seen. -/
+structure QuadPub where
+  pub : L4Factoidal.Storage.PredicateQuadBlocks.Pub := {}
+  readyRev : List (L4Factoidal.RDF.WfIri ×
+    List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) := []
+  /-- The distinct named graphs seen. Only its size is reported. -/
+  graphs : Std.HashMap L4Factoidal.RDF.GraphRef Unit := ∅
+
+/-- The N-Quads consumer. One quad enters its predicate's open run; whatever
+    the cut rule closes is held for the next drain. -/
+def addQuadPub (state : QuadPub) (triple : L4Factoidal.RDF.Triple)
+    (graph : Option L4Factoidal.RDF.Subject) : QuadPub :=
+  let (pub, made) := L4Factoidal.Storage.PredicateQuadBlocks.pubAdd state.pub (graph, triple)
+  { pub := pub
+    readyRev := made.reverse ++ state.readyRev
+    graphs := match graph with
+      | none => state.graphs
+      | some name => state.graphs.insert name () }
+
+/-- The Turtle consumer: the statements one chunk completed, all in the
+    default graph, in source order. -/
+def quadPubStep (state : QuadPub) (triples : List L4Factoidal.RDF.Triple) : QuadPub :=
+  triples.foldl (fun acc triple => addQuadPub acc triple none) state
+
+/-- The per-grammar part of a streaming IBK4 pass. Both alternatives hold the
+    publication accumulator plus one unfinished lexical unit: a partial
     N-Quads line, or a partial Turtle statement. -/
 inductive QuadStream where
-  | nquads (stream : L4Factoidal.Syntax.NQuadsStreaming.StreamStateC L4Factoidal.Syntax.FastDataset)
-  | turtle (fold : TurtleChunkFoldState (List L4Factoidal.RDF.Triple))
+  | nquads (stream : L4Factoidal.Syntax.NQuadsStreaming.StreamStateC QuadPub)
+  | turtle (fold : TurtleChunkFoldState QuadPub)
 
-/-- The state of a streaming IBK4 pass. Every field is bounded except the
-    accumulated dataset inside `stream`. -/
+/-- Take the runs the fold has closed, and reset the ready list. `flushMin`
+    is the batch rule: `none` publishes only what the per-block cut rule
+    closed, `some n` also publishes every open run of at least `n` rows. -/
+def quadStreamDrain (stream : QuadStream) (flushMin : Option Nat) :
+    QuadStream × List (L4Factoidal.RDF.WfIri ×
+      List L4Factoidal.Storage.IndexedBlockWireV4.QuadRow) :=
+  let take := fun (acc : QuadPub) =>
+    let ready := acc.readyRev.reverse
+    match flushMin with
+    | none => ({ acc with readyRev := [] }, ready)
+    | some rows =>
+        let (pub, more) := L4Factoidal.Storage.PredicateQuadBlocks.pubFlush acc.pub rows
+        ({ acc with pub := pub, readyRev := [] }, ready ++ more)
+  match stream with
+  | .nquads s =>
+      let (acc, out) := take s.acc
+      (.nquads { s with acc := acc }, out)
+  | .turtle fold =>
+      let (acc, out) := take fold.acc
+      (.turtle { fold with acc := acc }, out)
+
+/-- The accumulator a finished stream ends with. An N-Quads parse error is
+    sticky in `StreamStateC` and surfaces here; the Turtle fold has already
+    reported at the chunk that carried the offending statement. -/
+def quadStreamFinish (stream : QuadStream) : Except ParseError QuadPub :=
+  match stream with
+  | .nquads s => L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11 addQuadPub s
+  | .turtle fold => fold.finish quadPubStep
+
+/-- The state of a streaming IBK4 pass. Every field is bounded: the open runs
+    by the per-block cut rule and `maxCarriedRows`, the manifest rows by the
+    block count, the rest by construction. -/
 structure QuadIngestState where
   hasher : Hasher
   blocks : Crypto.BlockFold256
   scope : String
   expected : ByteArray
+  /-- Source bytes per publication batch; `--batch-bytes` on the native CLI,
+      the fourth argument of `packBegin` in the WebAssembly module. -/
+  batchBytes : Nat
   utf8 : Utf8Stream
   stream : QuadStream
   digest : Sha256Stream
+  packed : PackState
+  bytesSinceBatch : Nat
+  batches : Nat
 
 /-- Start a streaming IBK4 pass. `grammar` selects the fold; a grammar for
     which `quadStreams` is false must not reach here, and reads with the
@@ -608,64 +688,58 @@ structure QuadIngestState where
     extensionally equal. -/
 def quadIngestInit (h : Hasher) (grammar : PackSyntax) (prepass : SourcePrepass)
     (baseIri : Option String)
+    (batchBytes : Nat := L4Factoidal.Storage.PredicateQuadBlocks.batchSourceBytesDefault)
     (blocks : Crypto.BlockFold256 := Crypto.pureBlockFold256) : QuadIngestState :=
   { hasher := h
     blocks := blocks
     scope := bytesToHex prepass.sourceIdentity
     expected := prepass.sourceIdentity
+    batchBytes := batchBytes
     utf8 := Utf8Stream.init
     stream :=
       match grammar with
       | .nquads => .nquads (L4Factoidal.Syntax.NQuadsStreaming.initialStateC {})
       | .turtle | .ntriples | .trig =>
-          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix ingestStep [] baseIri)
-    digest := Sha256Stream.init }
+          .turtle (TurtleChunkFoldState.init prepass.bnodePrefix quadPubStep {} baseIri)
+    digest := Sha256Stream.init
+    packed := {}
+    bytesSinceBatch := 0
+    batches := 0 }
 
-/-- Feed one input chunk. An N-Quads parse error is sticky in `StreamStateC`
-    and is reported by `quadIngestFinish`, which is where the batch route
-    reports it too; the Turtle fold reports at the chunk that carries the
-    offending statement, as `ingestFeed` does on the IBK3 path. -/
+/-- Feed one input chunk and publish. The artifacts a feed returns are the
+    ones the host must write, in that order; nothing is held for later. A
+    feed publishes the runs the per-block cut rule closed, and at a batch end
+    also every open run of at least `minBatchRows` rows. -/
 def quadIngestFeed (state : QuadIngestState) (bytes : ByteArray) :
-    Except String QuadIngestState :=
+    Except String (QuadIngestState × List Artifact) :=
   match state.utf8.feed bytes with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
-  | .ok (text, nextUtf8) =>
-      match state.stream with
-      | .nquads stream =>
-          .ok { state with
-                  utf8 := nextUtf8
-                  stream := .nquads (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
-                              L4Factoidal.Syntax.addQuadFast stream text.toList)
-                  digest := state.digest.updateWith state.blocks bytes }
-      | .turtle fold =>
-          match fold.feed ingestStep text with
-          | .error error =>
-              .error s!"l4block-shard-pack Turtle parse error at {error.pos}: {error.msg}"
-          | .ok nextFold =>
-              .ok { state with
-                      utf8 := nextUtf8
-                      stream := .turtle nextFold
-                      digest := state.digest.updateWith state.blocks bytes }
-
-/-- The dataset a finished stream denotes. A Turtle source has no named
-    graph, so its triples are the default graph, in source order: the fold
-    accumulator is reversed exactly once, which `Syntax.parseTurtle_eq_fold`
-    states is the `Graph` `parseTurtle` returns. -/
-def quadStreamDataset (stream : QuadStream) : Except ParseError L4Factoidal.RDF.Dataset :=
-  match stream with
-  | .nquads s =>
-      match L4Factoidal.Syntax.NQuadsStreaming.finishC .rdf11
-              L4Factoidal.Syntax.addQuadFast s with
-      | .error e => .error e
-      | .ok fast => .ok fast.toDataset
-  | .turtle fold =>
-      match fold.finish ingestStep with
-      | .error e => .error e
-      | .ok triples => .ok { default := triples.reverse, named := [] }
+  | .ok (text, nextUtf8) => do
+      let fed ← match state.stream with
+        | .nquads stream =>
+            .ok (QuadStream.nquads (L4Factoidal.Syntax.NQuadsStreaming.feedChunkC .rdf11
+                  addQuadPub stream text.toList))
+        | .turtle fold =>
+            match fold.feed quadPubStep text with
+            | .error error =>
+                .error s!"l4block-shard-pack Turtle parse error at {error.pos}: {error.msg}"
+            | .ok next => .ok (QuadStream.turtle next)
+      let since := state.bytesSinceBatch + bytes.size
+      let batchEnds := since >= state.batchBytes
+      let (stream, runs) := quadStreamDrain fed
+        (if batchEnds then some L4Factoidal.Storage.PredicateQuadBlocks.minBatchRows else none)
+      let (packed, made) ← publishQuadBlocks state.hasher state.scope state.packed [] runs
+      .ok ({ state with
+               utf8 := nextUtf8
+               stream := stream
+               digest := state.digest.updateWith state.blocks bytes
+               packed := packed
+               bytesSinceBatch := if batchEnds then 0 else since
+               batches := if batchEnds then state.batches + 1 else state.batches }, made)
 
 /-- End of input: the streamed source digest must equal the first-pass
-    commitment, as `ingestFinish` requires on the IBK3 path. The buffered
-    IBK4 route had no such check on the native packer. -/
+    commitment, as `ingestFinish` requires on the IBK3 path. Then every open
+    run is published, whatever its size (rule 5). -/
 def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
   match state.utf8.finish with
   | .error message => .error s!"l4block-shard-pack UTF-8 error: {message}"
@@ -673,14 +747,19 @@ def quadIngestFinish (state : QuadIngestState) : Except String QuadPack :=
       if state.digest.finishWith state.blocks != state.expected then
         .error "l4block-shard-pack input changed between pre-pass and parse pass"
       else
-        match quadStreamDataset state.stream with
+        match quadStreamFinish state.stream with
         | .error e => .error s!"l4block-shard-pack parse error at {e.pos}: {e.msg}"
-        | .ok dataset =>
-            let graphs := dataset.named.length + 1
-            match publishQuadBlocks state.hasher state.scope {} []
-                (L4Factoidal.Storage.PredicateQuadBlocks.blocksOfDataset dataset) with
+        | .ok acc =>
+            let runs := acc.readyRev.reverse ++
+              (L4Factoidal.Storage.PredicateQuadBlocks.pubFlush acc.pub 0).2
+            match publishQuadBlocks state.hasher state.scope state.packed [] runs with
             | .error message => .error message
-            | .ok (packed, artifacts) => .ok { graphs, packed, artifacts }
+            | .ok (packed, artifacts) =>
+                .ok { graphs := acc.graphs.size + 1
+                      batches := state.batches + 1
+                      packed := packed
+                      artifacts := artifacts }
+
 
 /-- Which grammars the streaming IBK4 route reads. TriG stays buffered: it
     has no chunk fold at all, so there is nothing to stream it with. -/

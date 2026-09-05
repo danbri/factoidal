@@ -253,6 +253,20 @@ EOF
 # the host. Neither buffers the source. A routing change that made only one of
 # them stream would still pass every other check here, so the gate is a byte
 # comparison of the two generations, not a count.
+#
+# Both routes now also PUBLISH during the ingest pass
+# (docs/designissues/2026-09-05-pack-publication-every-batch.md), so the block
+# SET depends on the publication batch as well as on the source. The two
+# defaults differ -- 268,435,456 source bytes on the native CLI, 67,108,864 in
+# the module, which has a 32-bit address space -- so a byte comparison is only
+# meaningful below the smaller of them. This fixture is five lines, so neither
+# route reaches a batch end and both publish under rules 2 and 5 alone. A
+# fixture above 64 MiB would need --batch-bytes on the CLI and the fourth
+# packBegin argument in the module, set to the same number.
+#
+# The block set of this fixture is unchanged by that landing: <http://e/p> is
+# cut at its graph change either way, and the two blocks publish in the same
+# order.
 printf '%s\n' \
   '<http://e/a> <http://e/p> "x" .' \
   '<http://e/a> <http://e/p> "y" <http://e/g1> .' \

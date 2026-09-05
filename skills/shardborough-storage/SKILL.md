@@ -117,7 +117,7 @@ not written yet.
 | Bounded Merkle scan or row range | `l4block-id-v3-merkle-scan SHARD-DIR PREDICATE-IRI LIMIT` / `--range START COUNT` |
 | Convert an IBK2 block to IBK3 | `l4block-id-v3-convert INPUT.ibk2 OUTPUT-DIR PREDICATE-IRI` |
 | Session of many SELECTs over one shard | `l4block-shard-merkle-session SHARD-DIR < queries.rq` |
-| Pack a quad generation (IBK4, SBM7) | `l4block-shard-pack INPUT OUTPUT-DIR ibk4` (`.trig`, `.nq`, `.ttl`) |
+| Pack a quad generation (IBK4, SBM7) | `l4block-shard-pack INPUT OUTPUT-DIR ibk4 [--batch-bytes N]` (`.trig`, `.nq`, `.ttl`) |
 | Query an activated quad generation | `l4block-quad-query COLLECTION-ROOT --query SELECT...` |
 | Superseded formats (BLK0, IBK1, IBK2) | `l4block-pack`, `l4block-id-pack`, `l4block-id-v2-pack` and their `*-file-query` / `*-diff` partners |
 
@@ -141,18 +141,24 @@ l4block-quad-query /tmp/store --query 'SELECT * WHERE { GRAPH ?g { ?s ?p ?o } }'
 ```
 
 Memory. The N-Quads, Turtle and N-Triples routes stream the source in
-65,536-byte chunks (`PackStream.quadIngestFeed`), so peak memory is about ten
-to twelve times the input, measured 2026-09-04 and 2026-09-05. TriG still
-reads the whole file: it has no chunk fold. Byte identity against the
-buffered route is PROVED for N-Quads
-(`NQuadsFold.streamConsume11_eq_batch`) and only MEASURED for Turtle — the
-Turtle accumulator half is proved (`Syntax.parseTurtle_eq_fold`), the
-chunk-boundary half is not. Peak memory
-stays PROPORTIONAL to the data on every route, because one IBK4 block holds a
-predicate across the whole source: several blocks per predicate would bound
-it and is a wire-version decision, not a refactor
-(`docs/designissues/2026-09-04-ibk4-named-graph-packing-scale.md`,
-<https://github.com/danbri/factoidal/issues/650>).
+65,536-byte chunks (`PackStream.quadIngestFeed`), and since 2026-09-05 they
+also PUBLISH during the ingest pass, so peak memory is bounded by the
+operator's `--batch-bytes` (default 268,435,456 source bytes) rather than by
+the source
+(`docs/designissues/2026-09-05-pack-publication-every-batch.md`). TriG still
+reads the whole file: it has no chunk fold. Measured on skosdex N-Quads
+prefixes, 2026-09-05: peak footprint 222,955,392 bytes for 52,428,626 of
+source, 328,272,128 for 104,857,577, 331,581,824 for 209,715,187 and
+472,746,624 for 1,543,478,120 — a 2.12x rise over a 29.4x source, against
+15.25x before. The residue that still grows is the manifest, one entry per
+block, written at the end. Byte identity of the streamed PARSE against the
+buffered one is PROVED for N-Quads (`NQuadsFold.streamConsume11_eq_batch`)
+and only MEASURED for Turtle — the Turtle accumulator half is proved
+(`Syntax.parseTurtle_eq_fold`), the chunk-boundary half is not. What
+publication every batch preserves is proved per predicate in
+`PackStreamTheorems` (`pubRun_published_eq_fed`, `streamed_eq_buffered`);
+the block SET and the block ORDER differ from the buffered route's, which
+every manifest since SBM2 admits.
 
 What works:
 
@@ -177,10 +183,14 @@ What does NOT work yet:
   admits none. Every selected block is therefore read whole; there is no
   selective row access path. The graph-aware sidecars are the next piece of
   work.
-- **No streaming pack.** The IBK4 path parses the whole input file before it
-  writes a block, because an IBK4 block commits its graph-set summary in the
-  header and a batch boundary would split a predicate across blocks with
-  partial graph sets. The IBK3 path is still the streaming one.
+- **The manifest is still written at the end.** Its entries are held in
+  memory until then — one `Entry` and one TSV line per block — which is the
+  one part of the packer that still grows with the source. On the full
+  1,543,478,120-byte skosdex corpus that is 3,306 entries and about 141 MB of
+  the 472,746,624-byte peak. A manifest written incrementally is the next
+  step. (The BLOCKS themselves are no longer held: the IBK4 path publishes
+  them during the ingest pass, and the streamed grammars — N-Quads, Turtle,
+  N-Triples — no longer buffer the source either. Only TriG does.)
 - **No compaction and no delta log.** There is no compacted SBM7 layout label.
 
 ### Querying an IBK4 generation

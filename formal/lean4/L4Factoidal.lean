@@ -448,6 +448,7 @@ import L4Factoidal.Storage.IndexedBlockWireV5Theorems
 import L4Factoidal.Storage.PredicateBlocks
 import L4Factoidal.Storage.PredicateQuadBlocks
 import L4Factoidal.Storage.PredicateQuadBlocksTheorems
+import L4Factoidal.Storage.PackStreamTheorems
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ShardManifestTheorems
 import L4Factoidal.Storage.PackStream

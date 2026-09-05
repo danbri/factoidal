@@ -327,16 +327,18 @@ def callIO (op : String) (argsJson : String) : IO String :=
   | "datasetUpdate"    => withArgs (arityIO2 op Ops.datasetUpdate)
   | "datasetSerialize" => withArgs (arityIO2 op Ops.datasetSerialize)
   | "datasetClose"     => withArgs (arityIO1 op Ops.datasetClose)
-  -- packBegin takes an optional third argument, the base IRI. Two arguments
-  -- means no base, which keeps every host written against the stage-C
-  -- contract working and makes a relative IRI a parse error rather than a
-  -- silently different term.
+  -- packBegin takes an optional third argument, the base IRI, and an
+  -- optional fourth, the publication batch in source bytes. Fewer arguments
+  -- means no base and the default batch, which keeps every host written
+  -- against the stage-C contract working and makes a relative IRI a parse
+  -- error rather than a silently different term.
   | "packBegin" =>
       withArgs (fun args =>
         match args with
-        | [a, b]    => Ops.packBegin a b ""
-        | [a, b, c] => Ops.packBegin a b c
-        | args => pure (errJson s!"packBegin expects 2 or 3 arguments, got {args.length}"))
+        | [a, b]       => Ops.packBegin a b "" ""
+        | [a, b, c]    => Ops.packBegin a b c ""
+        | [a, b, c, d] => Ops.packBegin a b c d
+        | args => pure (errJson s!"packBegin expects 2, 3 or 4 arguments, got {args.length}"))
   | "packEndPass"      => withArgs (arityIO1 op Ops.packEndPass)
   | "packFinish"       => withArgs (arityIO1 op Ops.packFinish)
   | "packClose"        => withArgs (arityIO1 op Ops.packClose)
