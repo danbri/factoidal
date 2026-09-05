@@ -220,52 +220,100 @@ structure Pub where
 
 /-- Publish every open run holding at least `minRows` rows, in first-occurrence
     predicate order. `minRows = 0` publishes every non-empty run. -/
-def pubFlush (st : Pub) (minRows : Nat) : Pub × List (WfIri × List QuadRow) :=
-  let step := fun (acc : Pub × List (WfIri × List QuadRow)) (predicate : WfIri) =>
-    let (state, outRev) := acc
-    match state.runs[predicate]? with
-    | none => acc
-    | some run =>
-        if run.rows == 0 || run.rows < minRows then acc
-        else
-          ({ state with runs := state.runs.insert predicate ({} : Run),
-                        carried := state.carried - run.rows },
-           (predicate, run.accRev.reverse) :: outRev)
-  let (state, outRev) := st.orderRev.reverse.foldl step (st, [])
-  (state, outRev.reverse)
+def flushStep (minRows : Nat) (acc : Pub × List (WfIri × List QuadRow))
+    (predicate : WfIri) : Pub × List (WfIri × List QuadRow) :=
+  match acc.1.runs[predicate]? with
+  | none => acc
+  | some run =>
+      if run.accRev.isEmpty || run.rows < minRows then acc
+      else
+        ({ acc.1 with runs := acc.1.runs.insert predicate ({} : Run),
+                      carried := acc.1.carried - run.rows },
+         (predicate, run.accRev.reverse) :: acc.2)
 
-/-- Add one quad to its predicate's open run. The run is published when the
-    per-block cut rule closes it (rule 2), and every run is published when the
-    carried rows pass `maxCarriedRows` (rule 4). -/
-def pubAdd (st : Pub) (quad : QuadRow) : Pub × List (WfIri × List QuadRow) :=
+def pubFlush (st : Pub) (minRows : Nat) : Pub × List (WfIri × List QuadRow) :=
+  let result := st.orderRev.reverse.foldl (flushStep minRows) (st, [])
+  (result.1, result.2.reverse)
+
+/-- The open run one quad starts. -/
+def freshRun (quad : QuadRow) : Run :=
+  { accRev := [quad], rows := 1, bytes := quadWireBytes quad, graph := quad.1 }
+
+/-- Add one quad to its predicate's open run, publishing the run the
+    per-block cut rule closes (rule 2). This is `chunkGo`'s step with the cut
+    state held per predicate instead of in the arguments. -/
+def pubAddRun (st : Pub) (quad : QuadRow) : Pub × List (WfIri × List QuadRow) :=
   let predicate := quad.2.p
   let weight := quadWireBytes quad
-  let fresh : Run := { accRev := [quad], rows := 1, bytes := weight, graph := quad.1 }
-  let (state, out) : Pub × List (WfIri × List QuadRow) :=
-    match st.runs[predicate]? with
-    | none =>
-        ({ runs := st.runs.insert predicate fresh
-         , orderRev := predicate :: st.orderRev
-         , carried := st.carried + 1 }, [])
-    | some run =>
-        if run.rows == 0 then
-          ({ st with runs := st.runs.insert predicate fresh
-                   , carried := st.carried + 1 }, [])
-        else if quad.1 == run.graph && run.rows < maxBlockRows &&
-            run.bytes + weight <= maxBlockWireBytes then
-          ({ st with
-               runs := st.runs.insert predicate
-                 { accRev := quad :: run.accRev, rows := run.rows + 1
-                 , bytes := run.bytes + weight, graph := run.graph }
-               carried := st.carried + 1 }, [])
-        else
-          ({ st with runs := st.runs.insert predicate fresh
-                   , carried := st.carried + 1 - run.rows },
-           [(predicate, run.accRev.reverse)])
-  if state.carried > maxCarriedRows then
-    let (state, flushed) := pubFlush state 0
-    (state, out ++ flushed)
-  else (state, out)
+  let fresh : Run := freshRun quad
+  match st.runs[predicate]? with
+  | none =>
+      ({ runs := st.runs.insert predicate fresh
+       , orderRev := predicate :: st.orderRev
+       , carried := st.carried + 1 }, [])
+  | some run =>
+      if run.accRev.isEmpty then
+        ({ st with runs := st.runs.insert predicate fresh
+                 , carried := st.carried + 1 }, [])
+      else if quad.1 == run.graph && run.rows < maxBlockRows &&
+          run.bytes + weight <= maxBlockWireBytes then
+        ({ st with
+             runs := st.runs.insert predicate
+               { accRev := quad :: run.accRev, rows := run.rows + 1
+               , bytes := run.bytes + weight, graph := run.graph }
+             carried := st.carried + 1 }, [])
+      else
+        ({ st with runs := st.runs.insert predicate fresh
+                 , carried := st.carried + 1 - run.rows },
+         [(predicate, run.accRev.reverse)])
+
+/-- `pubAddRun` with its `let` bindings substituted, so a proof can rewrite
+    the match scrutinee. Definitional; the definition above is the executable
+    one and evaluates each binding once. -/
+theorem pubAddRun_eq (st : Pub) (quad : QuadRow) :
+    pubAddRun st quad =
+      (match st.runs[quad.2.p]? with
+       | none =>
+           ({ runs := st.runs.insert quad.2.p (freshRun quad)
+            , orderRev := quad.2.p :: st.orderRev
+            , carried := st.carried + 1 }, [])
+       | some run =>
+           if run.accRev.isEmpty then
+             ({ st with runs := st.runs.insert quad.2.p (freshRun quad)
+                      , carried := st.carried + 1 }, [])
+           else if quad.1 == run.graph && run.rows < maxBlockRows &&
+               run.bytes + quadWireBytes quad <= maxBlockWireBytes then
+             ({ st with
+                  runs := st.runs.insert quad.2.p
+                    ({ accRev := quad :: run.accRev, rows := run.rows + 1
+                     , bytes := run.bytes + quadWireBytes quad, graph := run.graph } : Run)
+                  carried := st.carried + 1 }, [])
+           else
+             ({ st with runs := st.runs.insert quad.2.p (freshRun quad)
+                      , carried := st.carried + 1 - run.rows },
+              [(quad.2.p, run.accRev.reverse)])) := rfl
+
+/-- `pubAddRun` plus rule 4: when the carried rows pass `maxCarriedRows`
+    every open run is published, whatever its size. -/
+def pubAdd (st : Pub) (quad : QuadRow) : Pub × List (WfIri × List QuadRow) :=
+  let stepped := pubAddRun st quad
+  if stepped.1.carried > maxCarriedRows then
+    ((pubFlush stepped.1 0).1, stepped.2 ++ (pubFlush stepped.1 0).2)
+  else stepped
+
+/-- `pubAdd` with its `let` binding substituted. Definitional. -/
+theorem pubAdd_eq (st : Pub) (quad : QuadRow) :
+    pubAdd st quad =
+      (if (pubAddRun st quad).1.carried > maxCarriedRows then
+         ((pubFlush (pubAddRun st quad).1 0).1,
+          (pubAddRun st quad).2 ++ (pubFlush (pubAddRun st quad).1 0).2)
+       else pubAddRun st quad) := rfl
+
+/-- `pubFlush` with its `let` binding substituted. Definitional. -/
+theorem pubFlush_eq (st : Pub) (minRows : Nat) :
+    pubFlush st minRows =
+      ((st.orderRev.reverse.foldl (flushStep minRows) (st, [])).1,
+       (st.orderRev.reverse.foldl (flushStep minRows) (st, [])).2.reverse) := rfl
 
 /-! ## Build-time checks -/
 
