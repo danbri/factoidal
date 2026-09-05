@@ -30,9 +30,14 @@ dictionary, plus that term's CRS.**
 * Coordinates stay EXACT. A box is four `Scaled` decimals, not four floats.
   A float box would need an outward rounding rule to stay conservative, and a
   wrong rounding direction is exactly the silent-row-loss failure.
-* A term whose lexical form does not parse, or whose geometry is empty, has
-  NO box. It is absent from the index and is always a candidate — the index
-  never excludes a row it failed to understand.
+* A term whose geometry is outside the PROVED FRAGMENT has no box. It is
+  recorded as OPAQUE and is always a candidate — the index never excludes a
+  row whose geometry its proof does not reach. The fragment is a point, and a
+  polygon whose exterior ring and holes are all closed; section 5 says why a
+  linestring is not in it yet.
+* A term that is not a `geo:wktLiteral`, or whose lexical form does not parse,
+  is in neither list and is never a candidate. `Geo.geoPredicate` answers
+  `none` for it, a `none` is a §17.6 type error, and an error drops the row.
 * The CRS is stored as an index into a per-sidecar string table, with 0
   meaning the default CRS84. `Geo.geoPredicate` refuses a cross-CRS pair with
   `none`, and a `none` is a §17.6 type error, so such a row is never accepted
@@ -108,6 +113,7 @@ requires a shared point, and no other.** Five of the six require one.
 | `!geof:sfX(...)` | the complement of a superset is not a superset |
 | `geof:sfX(...)` under `\|\|` | one disjunct being false does not exclude the row |
 | a variable the pattern does not bind in object position | no entry applies |
+| the query geometry is a linestring, a `Multi*`, a `GeometryCollection`, an empty, or a polygon with an open ring | outside the proved fragment; `fragmentBox` is `none` |
 | the block has no `.gbi1` sidecar | old generations keep answering |
 | `geof:sfDisjoint` | section 4.1 |
 
@@ -121,17 +127,26 @@ that would be mis-served.
 `mem_candidatesSpec`:
 
     theorem mem_candidatesSpec
-      (dict : Array Term) (op : GeoOp) (query : WktValue) (i : Nat) (t : Term)
+      (dict : Array Term) (op : GeoOp) (query : WktValue)
+      (i : Nat) (t : Term) (ids : List Nat)
+      (hop    : op ≠ GeoOp.disjoint)
       (hget   : dict.toList[i]? = some t)
-      (hfrag  : inFragment op query = true)
-      (hmatch : evalOp op t query = some true)
+      (hmatch : evalTerm op t query = some true)
       (hc     : candidatesSpec dict op query = some ids)
       : i ∈ ids
 
 Read: a dictionary term the exact predicate accepts is always a candidate.
-`evalOp` reaches the SAME `Geo.sfIntersects` / `sfWithin` / … the evaluator
-calls, through the same `Geo.wktArg` and the same `Geo.sameCrs` guard, and
-does not restate any of them.
+`evalTerm` reaches the SAME `Geo.sfIntersects` / `sfWithin` / … the evaluator
+calls, through the same datatype gate and the same `Geo.sameCrs` guard, and
+does not restate any of them. `#guard`s in the module compare it against
+`Geo.extFns` on six pairs, so a change to `Geo.geoPredicate` breaks the build
+rather than the index.
+
+The geometric step under it is `exists_common_point`: two fragment geometries
+a served predicate accepts have a point BOTH boxes contain. `sfDisjoint` is
+excluded there by hypothesis, and the polygon-to-polygon case is discharged
+because every base predicate REFUSES that pair — `Geo.Topology` answers
+`none`, never `some true`.
 
 The geometric content is in `Geo/BBoxSound.lean`. Two facts carry it.
 
@@ -165,14 +180,14 @@ The closed-ring hypothesis is discharged, not assumed: `inFragment` checks
 `isClosedLine` on the query polygon's rings at plan time, which is a WKT
 convention every conforming polygon literal satisfies and costs one pass.
 
-`inFragment` also names what the proof does NOT yet cover, so those shapes
-scan instead of being served wrongly. The open obligation is the
+`fragmentBox` names what the proof does NOT yet cover, so those geometries
+are opaque instead of being filtered wrongly. The open obligation is the
 four-orientation proper-crossing rule (`segmentsIntersect` returning true
 through `o1 != o2 && o3 != o4`, which carries no `inSegBBox` conjunct) and
-the linestring-to-linestring and linestring-to-polygon cases built on it.
-They are true and they need the separating-axis argument; until that is
-proved, `inFragment` admits only query geometries whose components are
-points and polygons.
+the linestring cases built on it. They are true and they need the
+separating-axis argument; until that is proved, a linestring carries no box.
+Compound geometries are opaque for a second reason: `Geo.Topology.components`
+is a `partial def`, so no proof can see through it.
 
 ## 6. The wire format
 
@@ -183,12 +198,13 @@ fixed prefix, payload, CRC-32C.
     magic "GBI1", 0x31494247 little endian
     version 1
 
-    prefix (fixed, 57 bytes)
+    prefix (fixed, 61 bytes)
       u32   magic
       u8    version
       [32]  targetIBKSha256
-      u32   dictCount        -- the bound every entry ID is below
+      u32   dictCount        -- the bound every ID is below
       u32   entryCount       -- boxed dictionary terms
+      u32   opaqueCount      -- parseable terms outside the fragment
       u32   crsCount         -- CRS table entries
       u32   crsBytes
       u32   entriesBytes
@@ -203,19 +219,22 @@ fixed prefix, payload, CRC-32C.
       u32   crsIndex          -- 0 = default CRS84
       4 x { u64 mantissa two's complement, u8 scale }   -- xmin ymin xmax ymax
 
+    opaque ids (opaqueCount, strictly ascending u32)
+
     u32   crc32c(payload)
 
 An entry is 4 + 4 + 4*9 = 44 bytes, fixed. Fixed width is deliberate: the
 lookup is a linear pass over the entry array comparing four decimals, and a
 variable-length entry would make that pass parse before it can compare. A
-term with no box is absent from the array, and absence means "always a
-candidate", so the array holds only the terms the index can use.
+term with no box is absent from the entry array and present in the opaque-ID
+array, which is where "always a candidate" is recorded. A term in NEITHER
+array is not a geometry at all and is never a candidate.
 
 `supported` is the encoder gate; `decode?` re-runs every one of its
-conditions — IDs strictly ascending and below `dictCount`, every scale below
-256, every mantissa inside the signed 64-bit range, every CRS index at most
-`crsCount`, `xmin <= xmax`, `ymin <= ymax`, and the extents covering the
-payload exactly. There are TWO readers, so unlike LGI1 the equality IS
+conditions — both ID lists strictly ascending and below `dictCount`, every
+scale below 256, every mantissa inside the signed 64-bit range, every CRS
+index at most `crsCount`, `xmin <= xmax`, `ymin <= ymax`, and the extents
+covering the payload exactly. There are TWO readers, so unlike LGI1 the equality IS
 claimed: `decodeSpec?` over `List UInt8` states what GBI1 admits, `decode?`
 reads the artifact by byte-array index, and `decode_eq_spec` proves they
 agree on every input.

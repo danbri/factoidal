@@ -20,7 +20,7 @@ structure BBox where
   ymin : Scaled
   xmax : Scaled
   ymax : Scaled
-deriving Repr, Inhabited
+deriving Repr, DecidableEq, Inhabited
 
 def BBox.ofPoint (p : Point) : BBox := ⟨p.x, p.y, p.x, p.y⟩
 
