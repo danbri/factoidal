@@ -422,14 +422,20 @@ storeargs "$TMP/store-plan-cap.json" "$TMP/store-wide/manifest.sbm2" \
 check "storeQueryPlan reports a plan the query cap would refuse" storeQueryPlan "$TMP/store-plan-cap.json" \
   'r["ok"] is True and r["shards"] == 65'
 
-# --- The same three ops over an SBM7 generation of IBK4 quad blocks ---
+# --- The same three ops over an SBM8 generation of IBK4 quad blocks ---
+#
+# SBM8 is SBM7 plus the LGI1 literal search index in a fourth sidecar role,
+# which is what `l4block-shard-pack ... ibk4` now writes. SBM7 generations
+# still decode and still answer; `tests/store-host/conformance.mjs` and
+# `l4block-literal-gate` cover an SBM7 store that declares no sidecar.
 storeargs "$TMP/store-inspect-ibk4.json" "$TMP/store-ibk4/manifest.sbm2"
 check "storeManifestInspect reports an IBK4 generation and its graph set" storeManifestInspect "$TMP/store-inspect-ibk4.json" \
-  'r["ok"] is True and r["wireVersion"] == 7
-   and r["layout"] == "quad-ibk4-ptd1-merkle-v0"
+  'r["ok"] is True and r["wireVersion"] == 8
+   and r["layout"] == "quad-ibk4-ptd1-lgi1-merkle-v0"
    and r["blankNodeProfile"] == "content-digest-shared"
    and len(r["entries"]) == 2
    and r["entries"][0]["blockKind"] == "IBK4"
+   and r["entries"][0]["sidecars"]["literalIndex"] == "predicate-0.ibk4.lgi1"
    and len(r["entries"][0]["blankNodeScope"]) > 0
    and [g["kind"] for g in r["entries"][0]["graphs"]][0] == "default"
    and "http://example.org/g1" in [g["value"] for g in r["entries"][0]["graphs"]]'
@@ -438,7 +444,8 @@ storeargs "$TMP/store-plan-ibk4.json" "$TMP/store-ibk4/manifest.sbm2" \
   'SELECT * WHERE { GRAPH <http://example.org/g1> { ?s ?p ?o } }'
 check "storeQueryPlan selects IBK4 entries by graph set" storeQueryPlan "$TMP/store-plan-ibk4.json" \
   'r["ok"] is True and r["mode"] == "ibk4-full-manifest(1)" and r["shards"] == 1
-   and r["keys"] == ["predicate-0.ibk4"]'
+   and r["keys"] == ["predicate-0.ibk4"]
+   and r["sidecarKeys"] == ["predicate-0.ibk4.lgi1"]'
 
 blobargs "$TMP/store-query-ibk4.json" "$TMP/store-query-ibk4.blob" \
   "$TMP/store-ibk4/manifest.sbm2" \

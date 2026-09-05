@@ -96,11 +96,21 @@ Admissible, for a variable `?o` bound by a single triple pattern
 | expression | uses the index |
 |---|---|
 | `CONTAINS(?o, "k")` | yes |
-| `CONTAINS(STR(?o), "k")` | yes |
-| `CONTAINS(LCASE(STR(?o)), "k")` | yes |
+| `CONTAINS(STR(?o), "k")` | yes, and see the `STR` rule below |
+| `CONTAINS(LCASE(STR(?o)), "k")` | yes, and see the `STR` rule below |
 | `CONTAINS(LCASE(?o), "k")` | yes |
 | `STRSTARTS`/`STRENDS` in the same four shapes | yes |
 | any of the above as a conjunct of `&&` | yes, on that conjunct |
+
+**The `STR` rule, added 2026-09-05 when the planner was written.** The table
+above was wrong for the two `STR` shapes as first stated. `STR` of an IRI is
+that IRI's string, so `CONTAINS(STR(?o), "water")` is TRUE for an IRI whose
+text contains `water`; LGI1 indexes LITERALS only, because `foldedOfTerm`
+gives a non-literal no gram. Restricting to candidates alone would therefore
+DROP those rows. A shape that applies `STR` must additionally keep every row
+whose object is not a literal. A shape without `STR` drops them, because
+`CONTAINS` on an IRI is a type error and the filter excludes the row anyway.
+This is `LiteralIndexPlan.Plan.keepNonLiterals`.
 
 Falls back to the scan, silently and correctly:
 
@@ -204,12 +214,49 @@ gap-weighted 1.3 bytes come to about 1.2 MB, about 22% of the block.
 ## 5. Manifest
 
 SBM6 carries three sidecar roles: `subjectIndex`, `termIndex`, `objectIndex`.
-SBM7, the IBK4 quad manifest the SKOS store uses, carries none. A fourth role
-`literalIndex` needs manifest wire version 8, valid for IBK3 and IBK4, with
-the sidecar's SHA-256 and its own Merkle commitment exactly as the other
-three have. The sidecar is ADDITIVE: a generation without it, and a manifest
-below version 8, must still activate and answer, and the planner must never
-require it.
+SBM7, the IBK4 quad manifest the SKOS store uses, carries none.
+
+**Landed 2026-09-05 as manifest wire version 8**, layout label
+`quad-ibk4-ptd1-lgi1-merkle-v0`. The entry gains `literalIndex : Option
+ArtifactRef`, carrying the sidecar's key, extent, SHA-256 and its own Merkle
+chunk commitment exactly as the other three roles do. It is written where
+SBM6 writes its object index, before the quad tail, so the decoder reads one
+field sequence and not a version-dependent reordering.
+
+**Why a version bump was unavoidable.** The role is a new per-entry FIELD, so
+either form of it changes SBM7's bytes: mandatory at 7 makes every existing
+SBM7 manifest undecodable, and optional at 7 needs a presence byte that
+existing SBM7 manifests do not carry. Encoder admission equals decoder
+admission and a byte change means a new wire version. (This is a different
+question from how many entries a predicate may have, which
+`ShardManifest.valid` already permits above version 1 through
+`uniquePredicates`.)
+
+The role is MANDATORY at 8 and must be ABSENT below it, for the same reason
+SBM7's three additions are: a manifest below 8 carrying one would encode to
+bytes that drop it and the round trip would lose data silently. A block whose
+dictionary holds no literal carries an LGI1 with no gram rather than no
+sidecar, so an SBM8 reader never asks whether the role is present; it asks
+whether the manifest is SBM8.
+
+Old generations are unaffected. `decode?` still admits SBM0 to SBM7,
+`isIbk4Layout` names both labels, and `l4block-quad-query` accepts 7 and 8.
+`ShardManifestTheorems.decode?_encode?` covers version 8 with the same
+statement and the same three axioms (`propext`, `Classical.choice`,
+`Quot.sound`).
+
+**What activation checks, and what it does not.** `GenerationVerify`
+checks the sidecar's declared SHA-256 like any artifact, then decodes it and
+requires that it names THIS block by `targetIBKSha256` and is sized for this
+block's dictionary (`dictCount` and `literalCount` recomputed from the
+block). It does NOT recompute the posting lists: building the index of the
+`skos:prefLabel` block costs 5.6 s, and an activation that rebuilt every
+block's index would pay that per block. What that leaves uncaught is a PACKER
+fault that wrote a self-consistent index of the wrong content; tampering
+after the pack is caught by the digest. The consequence is bounded — the
+index is a candidate filter and the planner re-evaluates the original
+expression, so a wrong index can only DROP rows, never add them — but it is
+weaker than the TLI1 and OLI2 checks, which do recompute. Open work.
 
 ## 6. Staging
 
