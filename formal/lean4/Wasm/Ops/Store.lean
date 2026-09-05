@@ -463,7 +463,8 @@ it; nothing is truncated.
 The answer is the ordinary `queryDataset` envelope with `"shards"` and
 `"mode"` in front of `"kind"`, so a host handles the result exactly as it
 handles `queryDataset`. -/
-def storeQuery (manifestHex sparql artifactsJson : String) (blob : ByteArray) : String :=
+def storeQuery (manifestHex sparql artifactsJson : String) (blob : ByteArray)
+    (extIris : List String := []) : String :=
   let outcome : Except String String := do
     let manifest ← decodeManifest? "storeQuery" manifestHex
     let query ← parseQuery "storeQuery" sparql
@@ -480,14 +481,21 @@ def storeQuery (manifestHex sparql artifactsJson : String) (blob : ByteArray) : 
       -- so such a dataset takes the reference evaluator, exactly as
       -- `Harness/QuadQuery.lean` does natively.
       let backend := if namesAreIris ds then some (indexedDatasetBackend ds) else none
-      pure (queryParsedDatasetWith ds backend sparql extra)
+      pure (queryParsedDatasetWith ds backend sparql extra extIris)
     else
       let triples ← readIbk3 sources blob plan.entries []
       let ds : Dataset := { default := triples, named := [] }
-      pure (queryParsedDatasetWith ds (some (indexedDatasetBackend ds)) sparql extra)
+      pure (queryParsedDatasetWith ds (some (indexedDatasetBackend ds)) sparql extra extIris)
   match outcome with
   | .error e => errJson e
   | .ok envelope => envelope
+
+/-- `storeQuery` through the IO dispatch entry: the same envelope, with
+the caller's §17.6 extension registrations in scope (snapshot read once,
+before evaluation). -/
+def storeQueryIO (manifestHex sparql artifactsJson : String) (blob : ByteArray) :
+    IO String := do
+  pure (storeQuery manifestHex sparql artifactsJson blob (← extSnapshot))
 
 /-! ## Executable ABI pins
 

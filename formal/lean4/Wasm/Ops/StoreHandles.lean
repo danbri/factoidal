@@ -313,6 +313,7 @@ The plan is computed exactly as `storeQuery` computes it, so `"shards"` and
 artifact the handle does not retain is a refusal naming that artifact: the
 handle answers the whole plan or it answers nothing. -/
 def storeHandleQuery (h sparql : String) : IO String := do
+  let extIris ← extSnapshot
   match (← storeHandleTable.get)[h]? with
   | none => pure (unknownStoreHandle h)
   | some store =>
@@ -328,11 +329,11 @@ def storeHandleQuery (h sparql : String) : IO String := do
         [ ("shards", .number (toString plan.entries.length))
         , ("mode", .string plan.mode) ]
       if planKeys.length == store.artifacts.length then
-        pure (queryParsedDatasetWith store.ds store.backend sparql extra)
+        pure (queryParsedDatasetWith store.ds store.backend sparql extra extIris)
       else
         let arts := retainedFor store planKeys
         let ds := datasetOfRetained store.ibk4 arts
-        pure (queryParsedDatasetWith ds (backendOfRetained store.ibk4 ds) sparql extra)
+        pure (queryParsedDatasetWith ds (backendOfRetained store.ibk4 ds) sparql extra extIris)
     match outcome with
     | .error e => pure (errJson e)
     | .ok envelope => pure envelope

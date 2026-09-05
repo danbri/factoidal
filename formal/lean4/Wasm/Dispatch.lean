@@ -44,6 +44,7 @@ import Wasm.Ops.CL
 import Wasm.Ops.Proof
 import Wasm.Ops.Handles
 import Wasm.Ops.Pack
+import Wasm.Ops.ExtFns
 
 namespace L4Wasm
 
@@ -192,6 +193,16 @@ def storeHandleOpNames : List String :=
   , "storeHandleList"
   , "storeHandleClose" ]
 
+/-- The SPARQL 1.1 §17.6 extension-registry op names
+(`Wasm/Ops/ExtFns.lean`), served ONLY by `callIO` and `callBlobIO` — the
+registry is an `IO.Ref` the pure `call` cannot reach, so that entry keeps
+answering with the built-in `geof:` table alone. -/
+def extOpNames : List String :=
+  [ "extRegister"
+  , "extUnregister"
+  , "extClear"
+  , "extList" ]
+
 /-- The pack op names (`Wasm/Ops/Pack.lean`), served ONLY by `callIO` and
 `callBlobIO` — the pure `call` cannot reach the pack table. `packFeed` and
 `packNext` also need a byte region and are listed in `blobIoOpNames`; through
@@ -292,6 +303,25 @@ def callIO (op : String) (argsJson : String) : IO String :=
     | .error e  => pure (errJson e)
     | .ok args  => k args
   match op with
+  -- §17.6 extension functions. `queryDataset` and `storeQuery` are
+  -- overridden here (rather than delegating to the pure `call`) so a
+  -- caller registration reaches the stateless query ops too; every other
+  -- stateless op still falls through to `call` unchanged.
+  | "extRegister"      => withArgs (arityIO1 op Ops.extRegister)
+  | "extUnregister"    => withArgs (arityIO1 op Ops.extUnregister)
+  | "extClear" =>
+      withArgs (fun args =>
+        match args with
+        | [] => Ops.extClear
+        | args => pure (errJson s!"extClear expects 0 arguments, got {args.length}"))
+  | "extList" =>
+      withArgs (fun args =>
+        match args with
+        | [] => Ops.extList
+        | args => pure (errJson s!"extList expects 0 arguments, got {args.length}"))
+  | "queryDataset"     => withArgs (arityIO2 op Ops.queryDatasetIO)
+  | "storeQuery"       => withArgs (arityIO3 op
+                            (fun a b c => Ops.storeQueryIO a b c ByteArray.empty))
   | "datasetOpen"      => withArgs (arityIO3 op Ops.datasetOpen)
   | "datasetQuery"     => withArgs (arityIO2 op Ops.datasetQuery)
   | "datasetUpdate"    => withArgs (arityIO2 op Ops.datasetUpdate)
@@ -321,7 +351,8 @@ def callIO (op : String) (argsJson : String) : IO String :=
         | [] => Ops.storeHandleList
         | args => pure (errJson s!"storeHandleList expects 0 arguments, got {args.length}"))
   | "ops"              => pure (opsReflectionFor
-                                 (opNames ++ handleOpNames ++ storeHandleOpNames ++ packOpNames))
+                                 (opNames ++ handleOpNames ++ storeHandleOpNames ++ packOpNames
+                                    ++ extOpNames))
   | _                  => pure (call op argsJson)
 
 /-- The dispatch entry the `l4_call_blob_io` C export serves: the string
@@ -356,6 +387,14 @@ def callBlobIO (op : String) (argsJson : String) (blob : ByteArray) :
   -- `storeOpen` is the one op that needs BOTH the incoming region and the
   -- handle table, so neither `callBlob` (pure) nor `callIO` (no region) can
   -- serve it. It builds no out region.
+  -- `storeQuery` needs BOTH the incoming region and the §17.6 registry,
+  -- so neither `callBlob` (pure) nor `callIO` (no region) can serve it.
+  | "storeQuery" =>
+      match decodeArgs argsJson with
+      | .error e      => pure (errJson e, ByteArray.empty)
+      | .ok [a, b, c] => do pure (← Ops.storeQueryIO a b c blob, ByteArray.empty)
+      | .ok args      => pure (errJson s!"storeQuery expects 3 arguments, got {args.length}",
+                               ByteArray.empty)
   | "storeOpen" =>
       match decodeArgs argsJson with
       | .error e   => pure (errJson e, ByteArray.empty)

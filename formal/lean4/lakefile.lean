@@ -73,6 +73,19 @@ extern_lib libl4blockhost pkg := do
   let name := nameToStaticLib "l4blockhost"
   buildStaticLib (pkg.staticLibDir / name) #[pread]
 
+/-- The host call-out for caller-registered SPARQL 1.1 section 17.6
+    extension functions (`Wasm/ExtHost.lean`'s `@[extern "l4_ext_call"]`).
+    On a native build it has no host and answers the empty string, which
+    Lean reads as the section 17.6 error; the Emscripten build compiles the
+    same file with an EM_JS body (`Wasm/build-wasm.sh`). -/
+target l4_ext.o pkg : FilePath :=
+  buildHaclO pkg "l4_ext" (pkg.dir / "ffi" / "l4_ext.c")
+
+extern_lib libl4exthost pkg := do
+  let ext ← l4_ext.o.fetch
+  let name := nameToStaticLib "l4exthost"
+  buildStaticLib (pkg.staticLibDir / name) #[ext]
+
 @[default_target] lean_lib L4Factoidal
 
 -- The W3C harness's shared modules. They live in a lib rather than
@@ -93,6 +106,7 @@ extern_lib libl4blockhost pkg := do
 @[default_target] lean_lib l4wasm where
   srcDir := "."
   roots := #[`Wasm.Abi, `Wasm.Exports, `Wasm.Dispatch,
+             `Wasm.ExtHost, `Wasm.Ops.ExtFns,
              `Wasm.Ops.Support, `Wasm.Ops.Parse, `Wasm.Ops.Query,
              `Wasm.Ops.Reason, `Wasm.Ops.Canon, `Wasm.Ops.CL,
              `Wasm.Ops.Block,

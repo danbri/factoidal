@@ -298,6 +298,14 @@ for f in "$HACL_DIR/src/Hacl_Ed25519.c" "$HACL_DIR/src/Hacl_Curve25519_51.c" \
   emcc $CFLAGS -I "$HACL_DIR/include" -c "$f" -o "$LIB_OBJ/$(basename "${f%.c}").o"
 done
 emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_ed25519.c" -o "$LIB_OBJ/l4_hacl_shim.o"
+# The SPARQL 1.1 section 17.6 extension-function host call-out
+# (Wasm/ExtHost.lean's `@[extern "l4_ext_call"]`).  Under Emscripten the
+# body is an EM_JS thunk onto globalThis.__factoidalExtCall, which the
+# JavaScript host installs (npm/factoidal/bin/ext.mjs); native builds get
+# the same file from the lakefile's libl4exthost, where it has no host and
+# answers the section 17.6 error.  Without this object the link fails on
+# l4_ext_call.
+emcc $CFLAGS -c "$LEAN_DIR/ffi/l4_ext.c" -o "$LIB_OBJ/l4_ext.o"
 echo "  library objects: $(ls "$LIB_OBJ"/*.o | wc -l | tr -d ' ')"
 
 # ---------------------------------------------------------------------

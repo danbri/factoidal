@@ -27,7 +27,7 @@ import L4Factoidal.SPARQL.Results
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.Update
-import L4Factoidal.Geo.Functions
+import Wasm.Ops.ExtFns
 import L4Factoidal.SPARQL.StoreDataset
 import L4Factoidal.Syntax.NQuadsFast
 
@@ -62,7 +62,8 @@ such a dataset — the same rule `Harness/QuadQuery.lean` applies natively.
 op can add its own fields (shard count, open mode) to the shared envelope
 without introducing a second envelope shape. -/
 def queryParsedDatasetWith (ds : Dataset) (dsb : Option DatasetBackend)
-    (sparql : String) (extra : List (String × Json) := []) : String :=
+    (sparql : String) (extra : List (String × Json) := [])
+    (extIris : List String := []) : String :=
   match parseSparql sparql with
   | .error e => errJson s!"SPARQL parse error: {fmtParseError e}"
   | .ok q =>
@@ -78,7 +79,15 @@ def queryParsedDatasetWith (ds : Dataset) (dsb : Option DatasetBackend)
     -- found 2026-09-02 by tools/w3c-persisted-census.sh: FILTER NOT EXISTS
     -- answered zero rows).  With no FROM clause (the only case the backend
     -- path takes) the query's dataset is `ds` itself.
-    let env : EvalEnv := { base := q.base, ext := L4Factoidal.Geo.extFns, dataset := some ds }
+    -- §17.6: the built-in families are matched inside `evalExpr` before
+    -- `env.ext` is consulted at all, so a caller registration can never
+    -- override one.  `extFnsWith` then answers `geof:` from the built-in
+    -- GeoSPARQL table and only crosses to the host for an IRI the caller
+    -- registered (`Wasm/Ops/ExtFns.lean`).  `extIris` is a SNAPSHOT the IO
+    -- dispatch entry took once for this query, so the evaluator stays a
+    -- function of its explicit inputs.  With no registration the table is
+    -- exactly `Geo.extFns`, as it was before.
+    let env : EvalEnv := { base := q.base, ext := extFnsWith extIris, dataset := some ds }
     let backendEligible := q.dataset.isEmpty
     match q.form with
     | .ask =>
@@ -124,6 +133,17 @@ def queryDataset (nq sparql : String) : String :=
   match parseNQuadsFast nq .rdf12 with
   | .error e => errJson (fmtParseError e)
   | .ok ds   => queryParsedDataset ds sparql
+
+/-- `queryDataset` through the IO dispatch entry: the same envelope,
+with the caller's §17.6 extension registrations in scope. The snapshot
+is read ONCE here, before evaluation starts, so every call the query
+makes runs against the same registration set. -/
+def queryDatasetIO (nq sparql : String) : IO String := do
+  let extIris ← extSnapshot
+  match parseNQuadsFast nq .rdf12 with
+  | .error e => pure (errJson (fmtParseError e))
+  | .ok ds   =>
+      pure (queryParsedDatasetWith ds (some (indexedDatasetBackend ds)) sparql [] extIris)
 
 /-- Parse and apply a SPARQL Update to an ALREADY-PARSED dataset —
 shared by the stateless op below and the handle op `datasetUpdate`

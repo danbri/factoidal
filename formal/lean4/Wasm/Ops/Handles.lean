@@ -92,8 +92,10 @@ def datasetOpen (text formatTag baseIri : String) : IO String := do
 /-- `datasetQuery(handle, sparql)` — the `queryDataset` envelope family
 over the stored dataset and its cached indexed backend, without the
 per-call N-Quads round trip. -/
-def datasetQuery (h sparql : String) : IO String :=
-  withHandle h fun od => pure (queryParsedDatasetWith od.ds (some od.backend) sparql)
+def datasetQuery (h sparql : String) : IO String := do
+  let extIris ← extSnapshot
+  withHandle h fun od =>
+    pure (queryParsedDatasetWith od.ds (some od.backend) sparql [] extIris)
 
 /-- `datasetUpdate(handle, sparqlUpdate)` — apply the update and
 REPLACE the stored dataset (and rebuild its index); answers the new quad
