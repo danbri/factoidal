@@ -110,7 +110,9 @@ The peak covers the transferred region, the decoded rows, the rebuilt
 object-row index, the decoded sidecars and the working set of the queries
 that followed. The row-identity gate, which opens the SAME set twice (once
 without the sidecars), measured 2,569,797,632 resident for 206,682,604
-retained bytes — 12.4 — so 16.2 is the conservative of the two.
+retained bytes — 12.4. A second run of the same one-handle probe measured
+1,369,391,104 resident — 13.3. Three readings on one shared machine spread
+from 12.4 to 16.2, and the cap is derived from the LARGEST of them.
 
 wasm32 gives 4,294,967,296 bytes of address space in total, and a browser tab
 in practice holds less. Half of it is reserved here for the host's own

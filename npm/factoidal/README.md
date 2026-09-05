@@ -552,7 +552,7 @@ const docs = openStoreHandle(engine, openStore('./docs-store'))
 
 console.log(listStoreHandles(engine))
 // { ok: true, handles: [ {handle:'s1', bytes:…, rows:…}, {handle:'s2', …} ],
-//   bytes: …, rows: …, handleCap: 8, bytesCap: 67108864 }
+//   bytes: …, rows: …, handleCap: 8, bytesCap: 134217728 }
 
 const PREFIX = 'PREFIX skos: <http://www.w3.org/2004/02/skos/core#>'
 
@@ -606,10 +606,21 @@ costs time proportional to the row count. A text index is separate work.
 **Residency.** Retaining a decoded block costs memory. Measured on the
 same store: 76 MiB resident with the engine loaded and no handle, 170 MiB
 with the handle open — about 94 MiB for a 5.5 MB packed block, and
-evaluation peaks higher again (346 MiB during the queries above). The
-caps are on ARTIFACT bytes, which is what the manifest declares: 8 open
-handles, and 67108864 retained artifact bytes across all of them. A cap
-is a refusal naming the cap; no handle is ever evicted to make room for
+evaluation peaks higher again (346 MiB during the queries above). At
+corpus scale the marginal figure is smaller, because that one is carrying
+the fixed cost of the process: measured 2026-09-05 on a 7,315,251-quad
+store, one handle over 257 blocks and 103,341,302 retained artifact bytes
+peaked at 1,675,345,920 bytes resident — 16.2 bytes resident per retained
+byte.
+
+The caps are on ARTIFACT bytes, which is what the manifest declares: 8
+open handles, and 134217728 (128 MiB) retained artifact bytes across all
+of them. There is NO cap on the number of artifacts a handle retains; a
+count bounds nothing that the bytes do not
+(https://github.com/danbri/factoidal/issues/657). 128 MiB is half the
+wasm32 address space divided by that measured multiplier, and it admits
+the 257-block corpus-wide set above. A cap is a refusal naming the cap
+and the value that tripped it; no handle is ever evicted to make room for
 another. `listStoreHandles` is how a server sees its own residency.
 
 **One call at a time.** The WebAssembly module is single-threaded. Two

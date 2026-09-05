@@ -519,7 +519,7 @@ checkseq "store handle: open once, answer many, same rows as storeQuery" \
    and rs[4]["ok"] is True and rs[4]["kind"] == "ask"
    and rs[5]["ok"] is True and len(rs[5]["handles"]) == 1
    and rs[5]["handles"][0]["handle"] == "s1" and rs[5]["bytes"] == rs[0]["bytes"]
-   and rs[5]["handleCap"] == 8 and rs[5]["bytesCap"] == 67108864
+   and rs[5]["handleCap"] == 8 and rs[5]["bytesCap"] == 134217728
    and rs[6] == {"ok": True}
    and rs[7]["ok"] is False and rs[7]["error"] == "unknown store handle: s1"
    and rs[8]["ok"] is True and rs[8]["handle"] == "s2" and rs[8]["artifacts"] == 1
