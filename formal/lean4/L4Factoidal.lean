@@ -336,8 +336,11 @@ import L4Factoidal.XForms.BindTests
 import L4Factoidal.GRDDL.Discovery
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.TermCodecTheorems
+import L4Factoidal.Storage.PagedTermDictionaryCore
 import L4Factoidal.Storage.TermWireV2
 import L4Factoidal.Storage.TermWireV2Theorems
+import L4Factoidal.Storage.PagedTermDictionaryV2
+import L4Factoidal.Storage.PagedTermDictionaryV2Theorems
 import L4Factoidal.Storage.DeltaLogTests
 import L4Factoidal.Storage.BlockMvp
 import L4Factoidal.Storage.BlockMvpTests

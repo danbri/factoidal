@@ -14,6 +14,8 @@ new term identity scheme: its terms and their array indexes have exactly the
 same meaning as `IndexedBlock.Block.dict`.
 -/
 import L4Factoidal.Storage.BlockWireV0
+import L4Factoidal.Storage.PagedTermDictionaryCore
+import L4Factoidal.Storage.TermCodecTheorems
 
 namespace L4Factoidal.Storage.PagedTermDictionary
 
@@ -24,58 +26,71 @@ open L4Factoidal.Storage.BlockWireV0
 /-- `'PTD1'` in little-endian form. -/
 def magic : UInt32 := 0x31445450
 def version : UInt8 := 1
-def defaultPageTerms : Nat := 256
-def prefixBytes : Nat := 4 + 1 + 12
 
-structure Prefix where
-  termCount : Nat
-  pageTerms : Nat
-  pageCount : Nat
-  deriving Repr, DecidableEq, Inhabited
+/-! The three record types, the page-planning functions and the whole page
+layout are shared with PTD2 through
+`L4Factoidal.Storage.PagedTermDictionaryCore`. PTD1's own definitions below
+keep their bodies, so every existing caller and proof is unchanged; the
+`PagedTermDictionaryTheorems` corollaries then show each of them is the
+generic definition at the v1 codec, and the round-trip proof is the generic
+one. -/
 
-structure PageEntry where
-  offset : Nat
-  length : Nat
-  deriving Repr, DecidableEq, Inhabited
+abbrev Prefix := PTD.Prefix
+abbrev PageEntry := PTD.PageEntry
+abbrev ByteRange := PTD.ByteRange
 
-structure ByteRange where
-  offset : Nat
-  length : Nat
-  deriving Repr, DecidableEq, Inhabited
+/-- The v1 term codec as a `PTD.TermCodec`: the total `DeltaLog` encoder,
+its two-part admission test, and the round trip
+`L4Factoidal.Storage.parseTerm_serializeTerm` proves on that subset. -/
+def v1Codec : PTD.TermCodec Term where
+  encode := serializeTerm
+  admits := fun t => BlockWireV0.termSupported t && termFitsU32b t
+  decode := parseTerm
+  encode_ne_nil := fun t => by cases t <;> simp [serializeTerm]
+  roundTrip := fun t rest h => by
+    rw [Bool.and_eq_true] at h
+    exact parseTerm_serializeTerm t rest h.1 ((termFitsU32b_iff t).mp h.2)
 
-def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
-def listOfByteArray (bytes : ByteArray) : List UInt8 := bytes.data.toList
-def fitsU32 (n : Nat) : Bool := n < 4294967296
+/-- PTD1: the shared paged layout at the v1 codec. -/
+def v1Format : PTD.PagedFormat Term :=
+  { magic := magic, version := version, codec := v1Codec }
 
-def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
-  let b0 ← bytes[offset]?
-  let b1 ← bytes[offset + 1]?
-  let b2 ← bytes[offset + 2]?
-  let b3 ← bytes[offset + 3]?
-  some (b0.toUInt32 ||| (b1.toUInt32 <<< 8) |||
-    (b2.toUInt32 <<< 16) ||| (b3.toUInt32 <<< 24))
+/-! The page layout, the planning functions and the decoders below are the
+generic ones of `PagedTermDictionaryCore` at `v1Format`. The four
+definitions that keep their own bodies — `supported`, `encodePages`,
+`encode?`, `decodeSpec?` and `decode?` — are the generic bodies written
+out, and `PagedTermDictionaryTheorems` proves each equal to the generic
+definition by `rfl`. -/
 
-private def at? : List α → Nat → Option α
-  | [], _ => none
-  | term :: _, 0 => some term
-  | _ :: rest, index + 1 => at? rest index
-
-def pagesOf (pageTerms : Nat) : Nat → List Term → List (List Term)
-  | 0, _ => []
-  | _ + 1, [] => []
-  | fuel + 1, terms => terms.take pageTerms :: pagesOf pageTerms fuel (terms.drop pageTerms)
-
-def encodePages (terms : List Term) : List (List UInt8) :=
-  (pagesOf defaultPageTerms terms.length terms).map (fun page => page.flatMap serializeTerm)
-
-def directoryFor (pages : List (List UInt8)) : List PageEntry :=
-  let (_, reversed) := pages.foldl (fun (state : Nat × List PageEntry) page =>
-    let (offset, entries) := state
-    (offset + page.length, { offset := offset, length := page.length } :: entries)) (0, [])
-  reversed.reverse
-
-def encodeDirectory (entry : PageEntry) : List UInt8 :=
-  writeU32LE (UInt32.ofNat entry.offset) ++ writeU32LE (UInt32.ofNat entry.length)
+abbrev byteArrayOfList := PTD.byteArrayOfList
+abbrev listOfByteArray := PTD.listOfByteArray
+abbrev fitsU32 := PTD.fitsU32
+abbrev readU32At? := PTD.readU32At?
+abbrev defaultPageTerms := PTD.defaultPageTerms
+abbrev prefixBytes := PTD.prefixBytes
+private abbrev at? := @PTD.at? Term
+abbrev pagesOf := @PTD.pagesOf Term
+abbrev directoryFor := PTD.directoryFor
+abbrev encodeDirectory := PTD.encodeDirectory
+abbrev decodePrefix := PTD.decodePrefix v1Format
+abbrev directoryRange := PTD.directoryRange
+abbrev pageAreaOffset := PTD.pageAreaOffset
+abbrev decodeDirectoryGo := PTD.decodeDirectoryGo
+abbrev directoryContiguous := PTD.directoryContiguous
+abbrev directoryCovers := PTD.directoryCovers
+abbrev decodeDirectory? := PTD.decodeDirectory?
+abbrev pageIndex? := PTD.pageIndex?
+abbrev pageTermCount := PTD.pageTermCount
+abbrev pageRange? := PTD.pageRange?
+abbrev pageRangesForTerms? := PTD.pageRangesForTerms?
+abbrev decodeTermsGo := PTD.decodeTermsGo v1Format
+abbrev decodeTerms := PTD.decodeTerms v1Format
+abbrev decodePagesGo := PTD.decodePagesGo v1Format
+abbrev decodePages? := PTD.decodePages? v1Format
+abbrev decodePage? := PTD.decodePage? v1Format
+abbrev decodePageArray? := PTD.decodePageArray? v1Format
+abbrev decodeTermFromPage? := PTD.decodeTermFromPage? v1Format
+abbrev findTermId? := @PTD.findTermId? Term _
 
 /-- PTD1 admission. `termSupported` is the direct-term subset the inherited
     term codec decodes; `termFitsU32b` is the u32 length-prefix test for the
@@ -86,6 +101,9 @@ def encodeDirectory (entry : PageEntry) : List UInt8 :=
     term-level hypothesis. -/
 def supported (terms : Array Term) : Bool :=
   terms.toList.all (fun term => termSupported term && termFitsU32b term) && fitsU32 terms.size
+
+def encodePages (terms : List Term) : List (List UInt8) :=
+  (pagesOf defaultPageTerms terms.length terms).map (fun page => page.flatMap serializeTerm)
 
 /-- Canonical full bytes.  The CRC covers every post-version byte through the
     final page; a range reader instead relies on the enclosing block's Merkle
@@ -102,150 +120,6 @@ def encode? (terms : Array Term) : Option ByteArray :=
       writeU32LE (UInt32.ofNat defaultPageTerms) ++ writeU32LE (UInt32.ofNat pages.length) ++
       directory.flatMap encodeDirectory ++ pageBytes
     some <| byteArrayOfList (writeU32LE magic ++ [version] ++ payload ++ writeU32LE (crc32c payload))
-
-def decodePrefix (bytes : ByteArray) : Option Prefix := do
-  if bytes.size != prefixBytes then none else do
-  let foundMagic ← readU32At? bytes 0
-  if foundMagic != magic then none else do
-  let foundVersion ← bytes[4]?
-  if foundVersion != version then none else do
-  let termCount ← readU32At? bytes 5
-  let pageTerms ← readU32At? bytes 9
-  let pageCount ← readU32At? bytes 13
-  if pageTerms.toNat == 0 then none
-  else if pageCount.toNat != (termCount.toNat + pageTerms.toNat - 1) / pageTerms.toNat then none
-  else some { termCount := termCount.toNat, pageTerms := pageTerms.toNat, pageCount := pageCount.toNat }
-
-def directoryRange (header : Prefix) : ByteRange :=
-  { offset := prefixBytes, length := header.pageCount * 8 }
-
-def pageAreaOffset (header : Prefix) : Nat := prefixBytes + header.pageCount * 8
-
-def decodeDirectoryGo : Nat → ByteArray → Nat → List PageEntry → Option (List PageEntry)
-  | 0, _, _, reversed => some reversed.reverse
-  | count + 1, bytes, offset, reversed => do
-      let pageOffset ← readU32At? bytes offset
-      let length ← readU32At? bytes (offset + 4)
-      decodeDirectoryGo count bytes (offset + 8)
-        ({ offset := pageOffset.toNat, length := length.toNat } :: reversed)
-
-def directoryContiguous : List PageEntry → Nat → Bool
-  | [], _ => true
-  | entry :: rest, expected =>
-      entry.length > 0 && entry.offset == expected && directoryContiguous rest (expected + entry.length)
-
-def directoryCovers (directory : List PageEntry) (total : Nat) : Bool :=
-  directory.foldl (fun expected entry => if entry.length > 0 && entry.offset == expected
-    then expected + entry.length else total + 1) 0 == total
-
-def decodeDirectory? (header : Prefix) (bytes : ByteArray) : Option (List PageEntry) := do
-  if bytes.size != header.pageCount * 8 then none else do
-  let directory ← decodeDirectoryGo header.pageCount bytes 0 []
-  if !directoryContiguous directory 0 then none else some directory
-
-def pageIndex? (header : Prefix) (termId : Nat) : Option Nat :=
-  if termId >= header.termCount then none else some (termId / header.pageTerms)
-
-def pageTermCount (header : Prefix) (page : Nat) : Nat :=
-  min header.pageTerms (header.termCount - page * header.pageTerms)
-
-def pageRange? (header : Prefix) (directory : List PageEntry) (termId : Nat) : Option ByteRange := do
-  let page ← pageIndex? header termId
-  let entry ← at? directory page
-  some { offset := pageAreaOffset header + entry.offset, length := entry.length }
-
-private def distinctPageIdsGo (header : Prefix) : List Nat → Array Bool → List Nat → Option (List Nat)
-  | [], _, reversed => some reversed.reverse
-  | termId :: rest, seen, reversed => do
-      let page ← pageIndex? header termId
-      match seen[page]? with
-      | none => none
-      | some true => distinctPageIdsGo header rest seen reversed
-      | some false => distinctPageIdsGo header rest (seen.set! page true) (page :: reversed)
-
-/-- Page identity is bounded by the dictionary header, so use an indexed
-    seen-set rather than repeatedly scanning the growing output list. The
-    reverse accumulator restores first-term occurrence order exactly. -/
-private def distinctPageIds? (header : Prefix) (termIds : List Nat) : Option (List Nat) :=
-  distinctPageIdsGo header termIds (Array.replicate header.pageCount false) []
-
-/-- Plan the distinct term pages required by a collection of row IDs. Ordering
-    follows first occurrence in `termIds`, which makes the host's read trace
-    deterministic and avoids re-fetching a page when a row mentions an ID
-    twice. -/
-def pageRangesForTerms? (header : Prefix) (directory : List PageEntry)
-    (termIds : List Nat) : Option (List ByteRange) := do
-  let pageIds ← distinctPageIds? header termIds
-  pageIds.mapM fun page => do
-    let entry ← at? directory page
-    some { offset := pageAreaOffset header + entry.offset, length := entry.length }
-
-def decodeTermsGo : Nat → List UInt8 → List Term → Option (List Term × List UInt8)
-  | 0, bytes, reversed => some (reversed.reverse, bytes)
-  | count + 1, bytes, reversed => do
-      let (term, afterTerm) ← parseTerm bytes
-      decodeTermsGo count afterTerm (term :: reversed)
-
-def decodeTerms (count : Nat) (bytes : List UInt8) : Option (List Term × List UInt8) :=
-  decodeTermsGo count bytes []
-
-/-- Full decoding uses the declared page boundaries too, not merely one
-    concatenated term stream. That makes malformed page lengths fail at the
-    canonical admission boundary before a range reader can rely on them. -/
-def decodePagesGo (header : Prefix) : Nat → List PageEntry → ByteArray → Nat → List Term → Option (List Term)
-  | _, [], bytes, offset, reversed => if offset == bytes.size then some reversed.reverse else none
-  | page, entry :: rest, bytes, offset, reversed => do
-      let current := bytes.extract offset (offset + entry.length)
-      if current.size != entry.length then none else do
-      let (terms, trailing) ← decodeTerms (pageTermCount header page) (listOfByteArray current)
-      if !trailing.isEmpty then none else do
-      let next := terms.foldl (fun acc term => term :: acc) reversed
-      decodePagesGo header (page + 1) rest bytes (offset + entry.length) next
-
-def decodePages? (header : Prefix) (page : Nat) (directory : List PageEntry)
-    (bytes : ByteArray) : Option (List Term) :=
-  decodePagesGo header page directory bytes 0 []
-
-/- Decode one declared page. The caller supplies exactly the planned page
-   range, normally after a Merkle inclusion check. Exposing the decoded page
-   lets an execution host validate it once and reuse its terms for many rows. -/
-def decodePage? (header : Prefix) (directory : List PageEntry) (page : Nat)
-    (pageBytes : ByteArray) : Option (List Term) := do
-  let entry ← at? directory page
-  if pageBytes.size != entry.length then none else do
-  let (terms, rest) ← decodeTerms (pageTermCount header page) (listOfByteArray pageBytes)
-  if !rest.isEmpty then none else some terms
-
-/-- Range execution resolves each page's local IDs many times. Decode once to
-    an array so those local lookups are constant-time. The list decoder remains
-    the canonical public semantic representation. -/
-def decodePageArray? (header : Prefix) (directory : List PageEntry) (page : Nat)
-    (pageBytes : ByteArray) : Option (Array Term) :=
-  (decodePage? header directory page pageBytes).map List.toArray
-
-/-- Decode the one page selected by `termId`. -/
-def decodeTermFromPage? (header : Prefix) (directory : List PageEntry) (termId : Nat)
-    (pageBytes : ByteArray) : Option Term := do
-  let page ← pageIndex? header termId
-  let terms ← decodePage? header directory page pageBytes
-  at? terms (termId % header.pageTerms)
-
-/-- Reference mapping from an RDF term to this dictionary's local ID. The
-    comparison is complete RDF-term structural equality, not a hash shortcut.
-    A later persistent term lookup index must return the same answer before it
-    is allowed to drive Subject Row Index postings. -/
-private def findTermIdGo (terms : Array Term) (wanted : Term) (index fuel : Nat) : Option Nat :=
-  match fuel with
-  | 0 => none
-  | remaining + 1 =>
-      match terms[index]? with
-      | none => none
-      | some term =>
-          if term == wanted then some index
-          else findTermIdGo terms wanted (index + 1) remaining
-
-def findTermId? (terms : Array Term) (wanted : Term) : Option Nat :=
-  findTermIdGo terms wanted 0 terms.size
 
 /-! ## The admission decoder
 

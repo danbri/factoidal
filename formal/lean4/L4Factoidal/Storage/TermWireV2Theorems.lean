@@ -426,6 +426,15 @@ theorem parseTerm_serializeTerm? (w : WireTerm) (bs rest : List UInt8)
       rw [← List.cons_append, ← hbs, hpar]
       rfl
 
+/-- Every v2 encoding starts with a tag byte, so it is never empty. The
+paged dictionary's page framing needs this. -/
+theorem serializeTerm?_ne_nil (w : WireTerm) (bs : List UInt8)
+    (h : serializeTerm? w = some bs) : bs ≠ [] := by
+  intro hnil
+  have hpar := parseTerm_serializeTerm? w bs [] h
+  rw [hnil] at hpar
+  simp [parseTerm] at hpar
+
 /-! ## The canonical tag choice -/
 
 /-- Section 4.1, one direction: a literal at or below the inline ceiling
@@ -516,6 +525,7 @@ theorem resolve_toWire (h : ByteArray → ByteArray) (t : Term) :
 #print axioms parseInline_serializeInline?
 #print axioms parseBlob_serializeBlob?
 #print axioms parseTerm_serializeTerm?
+#print axioms serializeTerm?_ne_nil
 #print axioms toWire_inline_iff
 #print axioms toWire_blob_iff
 #print axioms resolve_toWire

@@ -359,8 +359,8 @@ theorem ptd_pageTerms_of_encode? (terms : Array Term) (dictionary : ByteArray)
       have hsupported : PagedTermDictionary.supported terms = true := by simpa using hsupp
       rw [PagedTermDictionary.supported, Bool.and_eq_true] at hsupported
       have hszfit : terms.size < 4294967296 := by
-        simpa [PagedTermDictionary.fitsU32] using hsupported.2
-      simp [PagedTermDictionary.fitsU32] at hguard
+        simpa [PagedTermDictionary.fitsU32, PTD.fitsU32] using hsupported.2
+      simp [PagedTermDictionary.fitsU32, PTD.fitsU32] at hguard
       obtain ⟨⟨hpcfit, -⟩, -⟩ := hguard
       have hu32 : (4294967296 : Nat) = UInt32.size := rfl
       refine ⟨{ termCount := terms.size,
@@ -388,12 +388,14 @@ theorem ptd_pageTerms_of_encode? (terms : Array Term) (dictionary : ByteArray)
           pay ++ writeU32LE (crc32c pay)).drop 0).take (PagedTermDictionary.prefixBytes - 0)
           = pre17 := by
         rw [List.drop_zero, hsplit]
-        exact List.take_left' (by rw [hpre17]; simp [PagedTermDictionary.prefixBytes])
+        exact List.take_left'
+          (by rw [hpre17]; simp [PagedTermDictionary.prefixBytes, PTD.prefixBytes])
       rw [PagedTermDictionary.extract_byteArrayOfList, htake, hpre17]
       exact PagedTermDictionary.decodePrefix_ok terms.size PagedTermDictionary.defaultPageTerms
         P.length (hu32 ▸ hszfit) (by decide) (by decide) (hu32 ▸ hpcfit)
         (by rw [hP, PagedTermDictionary.encodePages_length]
-            simp only [PagedTermDictionary.defaultPageTerms, Array.length_toList]
+            simp only [PagedTermDictionary.defaultPageTerms, PTD.defaultPageTerms,
+              Array.length_toList]
             omega)
 
 /-! ## The fixed IBK3 header -/
