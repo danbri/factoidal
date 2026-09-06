@@ -76,6 +76,11 @@ structure RequestArgs where
   slug : Option String := none
   /-- Ask the server to refuse if the resource already exists. -/
   ifNoneMatchStar : Bool := false
+  /-- The state of a multi-step operation, carried from the previous
+  interpretation. For `discoverStorage` it is the next resource of the
+  storage walk of §4.1, which `storageStepOf` named; the request is then
+  made on it rather than on `target`. -/
+  state : Option String := none
 deriving Repr, Inhabited
 
 /-- The `Accept` field a client sends for an RDF source. §5.5 requires the
@@ -99,7 +104,10 @@ def buildRequest (kind : RequestKind) (a : RequestArgs) : Request :=
       { method := "GET", path := a.target, queryStr := "",
         headers := [("accept", rdfAccept)], body := "" }
   | .discoverStorage =>
-      { method := "HEAD", path := a.target, queryStr := "",
+      -- The walk asks about `state` once the first reply has named a
+      -- parent to move up to; the first request has no state and asks
+      -- about the target itself.
+      { method := "HEAD", path := a.state.getD a.target, queryStr := "",
         headers := [], body := "" }
   | .readProfile =>
       { method := "GET", path := a.target, queryStr := "",

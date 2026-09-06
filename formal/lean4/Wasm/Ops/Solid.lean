@@ -134,7 +134,8 @@ def solidClientRequest (kind argsJson : String) : String :=
                 , body := (j.getString? "body").getD ""
                 , contentType := (j.getString? "contentType").getD "text/turtle"
                 , slug := j.getString? "slug"
-                , ifNoneMatchStar := (j.getBool? "ifNoneMatchStar").getD false }
+                , ifNoneMatchStar := (j.getBool? "ifNoneMatchStar").getD false
+                , state := j.getString? "state" }
               let r := buildRequest k a
               okWith [("request", .object
                 [ ("method", .string r.method)
@@ -151,8 +152,10 @@ private def optJson : Option String → Json
 
 /-- `solidClientResponse(kind, responseJson)` — interpret a response.
 
-The response document is the one `solidStep` answers, with two extra members
-the `profile` kind needs: `webId` and `baseIri`. -/
+The response document is the one `solidStep` answers, with extra members two
+kinds need: `webId` and `baseIri` for `profile`, and `target` — the request
+target the reply answers — for `storage`, which the walk of §4.1 needs to
+move up the path hierarchy. -/
 def solidClientResponse (kind responseJson : String) : String :=
   match parseJson responseJson with
   | .error e => errJson s!"response: {toString e}"
@@ -171,13 +174,21 @@ def solidClientResponse (kind responseJson : String) : String :=
       let resp : Response := { status, headers, body }
       match kind with
       | "storage" =>
-          let f := resourceFacts resp
+          -- The optional "target" member is the resource the reply
+          -- answers. With it the interpretation decides the storage walk
+          -- of Solid Protocol §4.1 and answers "continue" and "state";
+          -- without it the reply is read as facts about one resource.
+          let r := storageReading (j.getString? "target") resp
+          let f := r.facts
           okWith [("interpretation", .object
             [ ("isStorage", .bool f.isStorage)
+            , ("storage", optJson r.storage)
             , ("storageDescription", optJson f.storageDescription)
             , ("owner", optJson f.owner)
             , ("lastModified", optJson f.lastModified)
-            , ("allow", stringsJson f.allow) ])]
+            , ("allow", stringsJson f.allow)
+            , ("continue", .bool r.more)
+            , ("state", optJson r.next) ])]
       | "auxiliaries" =>
           let f := resourceFacts resp
           okWith [("interpretation", .object

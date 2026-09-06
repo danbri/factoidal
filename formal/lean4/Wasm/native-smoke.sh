@@ -1317,6 +1317,38 @@ check "solidClientResponse drops an unrecognised access mode" solidClientRespons
   "$TMP/solid-client-resp.json" \
   'r["ok"] is True and r["interpretation"] == {"user": ["read", "write"], "public": ["read"]}'
 
+# The storage walk of Solid Protocol §4.1 is a multi-step operation: the
+# reply names the next resource to ask for, and the host sends the state
+# back. Two responses drive it here — a 404 that continues, and the root
+# reply that ends it.
+args "$TMP/solid-walk-req.json" "discoverStorage" '{"target":"/notes/one","state":"/notes/"}'
+check "solidClientRequest discoverStorage asks about the walk state" solidClientRequest \
+  "$TMP/solid-walk-req.json" \
+  'r["ok"] is True and r["request"]["method"] == "HEAD"
+   and r["request"]["target"] == "/notes/"'
+
+args "$TMP/solid-walk-1.json" "storage" '{"status":404,"headers":[],"body":"","target":"/notes/one"}'
+check "solidClientResponse storage walk continues past a 404" solidClientResponse \
+  "$TMP/solid-walk-1.json" \
+  'r["ok"] is True and r["interpretation"]["isStorage"] is False
+   and r["interpretation"]["storage"] is None
+   and r["interpretation"]["continue"] is True
+   and r["interpretation"]["state"] == "/notes/"'
+
+args "$TMP/solid-walk-2.json" "storage" '{"status":200,"headers":[["link","<http://www.w3.org/ns/pim/space#Storage>; rel=\"type\""]],"body":"","target":"/"}'
+check "solidClientResponse storage walk ends at the storage root" solidClientResponse \
+  "$TMP/solid-walk-2.json" \
+  'r["ok"] is True and r["interpretation"]["isStorage"] is True
+   and r["interpretation"]["storage"] == "/"
+   and r["interpretation"]["continue"] is False
+   and r["interpretation"]["state"] is None'
+
+args "$TMP/solid-walk-3.json" "storage" '{"status":404,"headers":[],"body":"","target":"/"}'
+check "solidClientResponse storage walk stops at the root path" solidClientResponse \
+  "$TMP/solid-walk-3.json" \
+  'r["ok"] is True and r["interpretation"]["storage"] is None
+   and r["interpretation"]["continue"] is False'
+
 args "$TMP/solid-client-bad.json" "notAKind" '{"status":200}'
 check "solidClientResponse unknown kind -> error" solidClientResponse \
   "$TMP/solid-client-bad.json" \

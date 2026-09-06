@@ -21,7 +21,11 @@
 //   solidClientResponse [kind, responseJson] -> { ok, interpretation }
 //
 //   request  { method, target, headers: [[name, value]], body }
-//   response { status, headers: [[name, value]], body }
+//   response { status, headers: [[name, value]], body, target }
+//
+// The `target` of a response record is the request target the reply
+// answers, echoed back from the request the engine built. The `storage`
+// interpretation needs it to move up the path hierarchy.
 //
 // The two operations take DIFFERENT kind vocabularies, and this host
 // keeps them apart rather than deriving one from the other.
@@ -60,7 +64,7 @@ export const SOLID_REQUEST_KINDS = [
 
 /** The interpretation kinds the ABI names. */
 export const SOLID_INTERPRETATION_KINDS = [
-  'storage', 'containment', 'auxiliaries', 'profile', 'wacAllow'
+  'storage', 'containment', 'auxiliaries', 'profile', 'wacAllow', 'created'
 ]
 
 /** An error raised by the Solid client host. `unknownOp` is set when the
@@ -238,7 +242,11 @@ export async function createSolidClient (options = {}) {
         steps: step
       }
       if (interpretKind === null) return answer
-      const interpretation = interpretationOf(callResponse(interpretKind, record))
+      // The record says what came back; `target` says what was asked. The
+      // storage walk needs both, and this is the engine's own target
+      // echoed back, not a URL this file composed.
+      const interpretation = interpretationOf(
+        callResponse(interpretKind, { ...record, target: request.target }))
       answer.interpretation = interpretation
       if (interpretation.continue !== true) return answer
       state = interpretation.state === undefined ? null : interpretation.state

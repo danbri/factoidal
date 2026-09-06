@@ -106,6 +106,11 @@ def registry : List Requirement :=
   , statement := "When a server wants to advertise the owner of a storage, the server MUST include the Link header field with rel=\"http://www.w3.org/ns/solid/terms#owner\" targeting the URI of the owner in the response of HTTP HEAD or GET requests targeting the root container."
   , module := "L4Factoidal.LWS.Discovery.discoveryLinks"
   , status := .guarded "solidGuardOwnerLink" }
+, { id := "solid-04-15"
+  , section_ := "Solid Protocol §4.1 Storage Resource"
+  , statement := "Clients can determine the storage of a resource by moving up the URI path hierarchy until the response includes a Link header field with rel=\"type\" targeting http://www.w3.org/ns/pim/space#Storage."
+  , module := "L4Factoidal.Solid.Client.Discovery.storageStepOf, Responses.storageReading"
+  , status := .guarded "solidGuardClientStorageWalkSteps" }
   -- §4.2 Resource Containment
 , { id := "solid-04-08"
   , section_ := "Solid Protocol §4.2 Resource Containment"

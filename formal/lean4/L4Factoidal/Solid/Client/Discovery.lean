@@ -199,4 +199,38 @@ def walkStep (p : String) (answered : List (String × Bool)) : WalkStep :=
       | some next => .ask next
       | none      => .exhausted
 
+/-- What one reply of the walk decides. `storage` names the resource whose
+reply carried the storage type link; `next` is the resource to ask for after
+this one. -/
+structure StorageStep where
+  storage : Option String
+  next : Option String
+deriving Repr, DecidableEq
+
+/-- The walk as the client host drives it: one request at a time, each reply
+deciding whether another request follows.
+
+§4.1: "Clients can determine the storage of a resource by moving up the URI
+path hierarchy until the response includes a Link header field with
+rel=\"type\" targeting http://www.w3.org/ns/pim/space#Storage."
+
+`target` is the resource the reply answers. The walk ends when the reply
+carries that link, and then `storage` is `target`; it also ends when
+`target` has no parent, which is the root path, and then `storage` is
+`none` — the client reached the top of the path hierarchy without finding a
+storage.
+
+A status code does not end the walk. A 404 or a 403 on an intermediate
+resource says nothing about where the storage is: the resource a client
+writes to does not exist yet, and §2.2 lets a client repeat a 403 or 404
+request with different credentials rather than conclude from it. Only the
+link decides.
+
+`walkStep` above answers the same question from the whole history; this
+answers it from one reply, which is what the `solidClientResponse`
+operation has. -/
+def storageStepOf (target : String) (resp : Response) : StorageStep :=
+  if isStorage resp then { storage := some target, next := none }
+  else { storage := none, next := parent? target }
+
 end L4Factoidal.Solid.Client

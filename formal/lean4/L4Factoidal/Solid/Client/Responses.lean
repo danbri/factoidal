@@ -142,4 +142,28 @@ def resourceFacts (resp : Response) : ResourceFacts :=
   , lastModified := headerOf resp "last-modified"
   , allow := allowedMethodsOf resp }
 
+/-- What a reply tells a client that is walking up to the storage: the facts
+of the resource, plus where the walk stands.
+
+`target?` is the resource the reply answers; a caller that does not name it
+gets the facts and no walk, because §4.1's rule is about the path hierarchy
+of a named resource. -/
+structure StorageReading where
+  facts : ResourceFacts
+  /-- The resource whose reply carried the storage type link. -/
+  storage : Option String
+  /-- Is a further request part of this operation? -/
+  more : Bool
+  /-- The resource to ask for next, when `more` is true. -/
+  next : Option String
+deriving Repr
+
+def storageReading (target? : Option String) (resp : Response) : StorageReading :=
+  let f := resourceFacts resp
+  match target? with
+  | none => { facts := f, storage := none, more := false, next := none }
+  | some t =>
+      let s := storageStepOf t resp
+      { facts := f, storage := s.storage, more := s.next.isSome, next := s.next }
+
 end L4Factoidal.Solid.Client

@@ -35,6 +35,7 @@ def checks : List (String × Bool) :=
   , ("solid-04-04", Tests.solidGuardStorageDescriptionLink)
   , ("solid-04-06", Tests.solidGuardOwnerLink)
   , ("solid-04-07", Tests.solidGuardOwnerLink)
+  , ("solid-04-15", Tests.solidGuardClientStorageWalkSteps)
   , ("solid-04-09", Tests.solidGuardContainment)
   , ("solid-04-10", Tests.solidGuardContainment)
   , ("solid-04-12", Tests.solidGuardAuxiliaryLinks)

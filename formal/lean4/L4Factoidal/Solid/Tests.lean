@@ -609,6 +609,53 @@ def solidGuardClientStorageWalk : Bool :=
   walkStep "/alice/notes/one" [("/alice/notes/", false), ("/", true)]
     == WalkStep.found "/"
 
+/-- §4.1: "Clients can determine the storage of a resource by moving up the
+URI path hierarchy until the response includes a Link header field with
+rel=\"type\" targeting http://www.w3.org/ns/pim/space#Storage."
+
+The walk as the client host drives it: one reply at a time. Three levels
+from a resource that does not exist yet up to the storage root; a walk that
+reaches the root path with no storage link and stops there with no storage;
+and a 404 in the middle, which does not end the walk. -/
+def solidGuardClientStorageWalkSteps : Bool :=
+  let plain : Response := { status := 200, headers := [], body := "" }
+  let missing : Response := { status := 404, headers := [], body := "" }
+  let storageRoot : Response :=
+    { status := 200
+    , headers := [("link", "<http://www.w3.org/ns/pim/space#Storage>; rel=\"type\"")]
+    , body := "" }
+  -- Three levels: /alice/notes/one -> /alice/notes/ -> /alice/ -> /, and
+  -- the root reply carries the type link, so the walk ends there.
+  storageStepOf "/alice/notes/one" plain
+    == { storage := none, next := some "/alice/notes/" } &&
+  storageStepOf "/alice/notes/" plain
+    == { storage := none, next := some "/alice/" } &&
+  storageStepOf "/alice/" plain == { storage := none, next := some "/" } &&
+  storageStepOf "/" storageRoot == { storage := some "/", next := none } &&
+  -- The root path has no parent: the walk ends with no storage.
+  storageStepOf "/" plain == { storage := none, next := none } &&
+  -- A 404 mid-walk continues; the status decides nothing.
+  storageStepOf "/alice/notes/" missing
+    == { storage := none, next := some "/alice/" } &&
+  storageStepOf "/alice/notes/one" missing
+    == { storage := none, next := some "/alice/notes/" } &&
+  -- The same decisions as the `storage` interpretation answers them.
+  (storageReading (some "/alice/notes/one") missing).more &&
+  (storageReading (some "/alice/notes/one") missing).next == some "/alice/notes/" &&
+  (storageReading (some "/alice/notes/one") missing).storage == none &&
+  (storageReading (some "/") storageRoot).storage == some "/" &&
+  (storageReading (some "/") storageRoot).more == false &&
+  (storageReading (some "/") plain).storage == none &&
+  (storageReading (some "/") plain).more == false &&
+  -- With no target named, one reply is read as facts and no walk follows.
+  (storageReading none storageRoot).more == false &&
+  (storageReading none storageRoot).storage == none &&
+  -- The request the walk makes on the state it was given.
+  (buildRequest RequestKind.discoverStorage
+      { target := "/alice/notes/one", state := some "/alice/" }).path == "/alice/" &&
+  (buildRequest RequestKind.discoverStorage
+      { target := "/alice/notes/one" }).path == "/alice/notes/one"
+
 /-- WAC §6.1's client parsing rule: unrecognised access modes are processed
 as if absent. -/
 def solidGuardClientWacAllowParsing : Bool :=
@@ -673,6 +720,7 @@ def solidGuardClientLinkFieldShapes : Bool :=
 #guard solidGuardClientReadsLinks
 #guard solidGuardClientLinkFieldShapes
 #guard solidGuardClientStorageWalk
+#guard solidGuardClientStorageWalkSteps
 #guard solidGuardClientWacAllowParsing
 #guard solidGuardClientProfile
 
