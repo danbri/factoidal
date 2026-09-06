@@ -114,7 +114,9 @@ extern_lib libl4exthost pkg := do
              `Wasm.Ops.StoreHandles,
              `Wasm.Ops.Proof,
              `Wasm.Ops.Handles,
-             `Wasm.Ops.Pack]
+             `Wasm.Ops.Pack,
+             `Wasm.Ops.Lws,
+             `Wasm.Ops.Solid]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See
@@ -343,3 +345,15 @@ extern_lib libl4exthost pkg := do
 -- (Harness/RdfsSemiNaive.lean). The module exists for speed, so this
 -- measures speed as well as agreement.
 @[default_target] lean_exe «l4rdfs-semi» where root := `Harness.RdfsSemiNaive
+
+-- Conformance registry probes for the Linked Web Storage Protocol 1.0 Core
+-- and for the Solid Protocol with Web Access Control
+-- (https://github.com/danbri/factoidal/issues/659). Neither specification
+-- ships a test suite, so the registry IS the conformance record: each row
+-- quotes one normative statement verbatim and names the theorem or the
+-- `#guard` that decides it. Each probe evaluates every guard and prints
+-- "N pass, M fail (out of T)" with the open rows listed, and exits non-zero
+-- if a check fails or a guarded row names no check.
+-- See docs/lws-solid-conformance.md.
+@[default_target] lean_exe «l4lws-probe» where root := `Harness.LwsProbe
+@[default_target] lean_exe «l4solid-probe» where root := `Harness.SolidProbe
