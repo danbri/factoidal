@@ -120,3 +120,149 @@ proof and the run-time guard are one definition.
   a set (the theorem is over `D`, which is that set).
 * No collector may be widened without extending the lemma: a `#guard` pins
   each collector's admitted fragment.
+
+---
+
+## 6. Status, 2026-09-06
+
+Landed on branch `wt/planner-soundness`. `lake build` clean (1002 jobs),
+`tools/lean-hygiene-audit.py` clean (0 `sorry`, 0 user `axiom`, 0
+`native_decide`, 0 `unsafe`, 172 `partial def` at baseline),
+`tools/blockengine-ibk5-quad-smoke.sh` and
+`tools/blockengine-ibk4-quad-smoke.sh` pass, and the persisted census
+(`tools/w3c-persisted-census.sh`) reports 501 executed / 491 matched /
+**0 differed** on the default-graph path and 29 executed / 29 matched /
+**0 differed** on the named-graph path.
+
+### 6.1 What is proved
+
+`formal/lean4/L4Factoidal/SPARQL/DatasetRestriction.lean`:
+
+| Theorem | Statement |
+|---|---|
+| `igSearch_ofGraph_filter` | A bound whose every match survives a Boolean `keep` reads the same rows, in the same order, from `Index.ofGraph (g.filter keep)` as from `Index.ofGraph g`. This is what removes the hash index from the rest of the development: `Index.Wf` (`OWL/RLClosureIndexed.lean`) already proves each bucket lookup is a `List.filter`, so the six candidate sets commute with the restriction and `tripleMatchesBound` absorbs it. |
+| `evalBgpBackend_restrict` | The BGP evaluator, planner included: equal estimates give the same plan in the same order, so the answer is the same LIST. |
+| `evalPatternBackend_restrict` | The pattern induction over `plannerFragment`. |
+| `evalSelectBackendOnGraph_restrict`, `evalSelectBackendDataset_restrict`, `evalAskBackend_restrict` | The four fast paths, branch by branch. |
+| `runSelectQueryBackendDataset_restrict`, `runAskQueryBackendDataset_restrict` | The two query entry points, over `q.pattern.rewriteBnodes`. |
+
+`formal/lean4/L4Factoidal/Storage/PlannerSoundness.lean`:
+
+| Theorem | Statement |
+|---|---|
+| `datasetRestricted_restrictDataset` | The canonical restriction `restrictDataset keep d` satisfies `DatasetRestricted`, for a dataset whose named-graph keys are distinct and whose named graphs are non-empty — both of which `datasetOfQuads` gives. |
+| `plannerSoundnessSelect`, `plannerSoundnessAsk` | Section 2's equality, with the storage side reduced to `restrictDataset keep (D S) = restrictDataset keep (D E)`. |
+| `patternKept_of_queryPredicates` | `queryQuadConstantPredicates? q = some P` implies `PatternKept (keepPred P) q.pattern.rewriteBnodes` — the predicate collector establishes the evaluator theorem's hypothesis. The two zone collectors have the same shape and are not written. |
+
+`#print axioms` of every theorem above: `propext`, `Classical.choice`,
+`Quot.sound`.
+
+### 6.2 The fragment
+
+`SPARQL.DatasetRestriction.plannerFragment`, and all four collectors of
+`Storage/ShardManifest.lean` now guard on it, over
+`query.pattern.rewriteBnodes` — the pattern the evaluator runs — so the
+run-time guard and the theorem's hypothesis are one expression, which is
+section 4's rule.
+
+Admitted: a BGP (empty or not), `JOIN`, `UNION`, `MINUS`, `OPTIONAL` and
+`FILTER` with an `Expr.backendLocal` condition, `GRAPH <iri>` and
+`GRAPH ?v` whose body carries no further `GRAPH`, and the empty group
+pattern. The two empty leaves carry a side condition in `PatternKept`:
+they answer one solution without reading the active graph, so the
+restriction must keep every triple — which is what the collectors
+establish for them, since all three return `none` on an empty leaf.
+
+Refused: a `GRAPH` inside a `GRAPH`, `BIND`, a property path, a
+sub-SELECT, `VALUES`, `SERVICE`, `LATERAL`, and a `FILTER` or `OPTIONAL`
+whose condition is not `Expr.backendLocal`.
+
+### 6.3 Two defects the proof found
+
+Both are wrong answers, not slow ones, and both are repaired by the
+narrowing rather than merely left unproved.
+
+1. **A `GRAPH` inside a `GRAPH`.** Section 18.6 gives `GRAPH <n> { P }`
+   no solutions when the dataset does not name `n`, whatever `P` is. The
+   predicate collector drops every entry of graph `n` when no row of `n`
+   carries a predicate the query names, and `n` then disappears from the
+   materialised dataset — so
+   `GRAPH <n> { GRAPH <m> { ?s :p ?o } }` answers rows over every entry
+   and nothing over the selected ones, because the inner pattern reads
+   `m` and never touches `n`. The zone collectors can drop `n`'s entries
+   the same way.
+2. **A language-tagged or `rdf:XMLLiteral` constant object.**
+   `Term.eqb` folds language-tag CASE and canonicalises XML;
+   a zone bound is the version-2 wire key, which does neither.
+   `"chat"@en-US` and `"chat"@en-us` are one value with two keys, so an
+   object-zone test on the query's key can drop a block that holds a
+   matching row. `constantObjectOf` now applies
+   `RDF.exactObjectIndexKeySafe`, the same condition the in-memory object
+   index carries for the same reason.
+
+### 6.4 What the narrowing costs
+
+Measured, not estimated: both quad smoke scripts pass unchanged, so the
+`shards=` counts they pin — including the `GRAPH ?g` predicate selection
+and the `zone-excluded=2` subject-zone case — are unchanged, and the
+census reports no answer difference.
+
+The one shape that reads more than before is a `FILTER` or `OPTIONAL`
+whose condition is not `Expr.backendLocal`: an extension function, REGEX,
+REPLACE, `IRI()`, `NOW()`, an aggregate. The planner now keeps every
+entry for those, which is the widening
+<https://github.com/danbri/factoidal/issues/656> recorded. It is back
+deliberately: `evalPatternBackend` materialises the whole dataset for
+those arms and delegates to the algebra evaluator, which this theorem
+does not reach. Removing it again means extending
+`evalPatternBackend_restrict` to the delegating arms
+(<https://github.com/danbri/factoidal/issues/614>).
+
+### 6.5 Where section 3 was wrong, and the repair
+
+Section 3 states the storage side as `D S = restrictPred P (D E)`. That
+is not what the planner produces. An entry the planner KEEPS may hold
+rows the restriction drops: a block selected by its predicate carries
+rows whose subject lies outside the query's zone bounds, and the reader
+reads them. `D S` therefore lies BETWEEN `restrict keep (D E)` and
+`D E`, and is neither.
+
+The repair is to apply the evaluator theorem to each side:
+
+```
+eval Q (D S) = eval Q (restrict keep (D S))
+             = eval Q (restrict keep (D E))     -- the storage obligation
+             = eval Q (D E)
+```
+
+which is `plannerSoundnessSelect`. The storage obligation is now an
+equality of DATASETS — a statement about which quads survive, with no
+evaluator in it.
+
+### 6.6 Open
+
+1. **The `datasetOfQuads` bridge.** `restrictDataset keep (D S) =
+   restrictDataset keep (D E)` is not proved.
+   `Storage/QuadDataset.lean`'s `datasetOfQuads` is a `foldl` over
+   `Std.HashMap` accumulators, and the proof needs a `Index.Wf`-style
+   characterisation of it against a specification (first-occurrence
+   dedup per graph, graphs in first-occurrence order), and then the
+   entry-level facts: an excluded entry's rows all fail `keep`, or lie
+   in a graph the query cannot read. The activation invariants those
+   entry-level facts need are what `GenerationVerify` checks —
+   `graphSet` equals the block's graph set, `subjectZone`/`objectZone`
+   equal `BlockV5Plan.zones?`, `predicate` equals the block's predicate
+   — plus `zoneMap_sound` (`Storage/ShardManifestTheorems.lean`), which
+   turns the packer's bounds into `zoneMayContain`.
+2. **The two ZONE collectors' correspondence.** The predicate one is
+   `patternKept_of_queryPredicates`. The subject and object analogues
+   need one extra step each: the evaluator's `keep` compares terms with
+   `Subject.eqb` / `Term.eqb` while a zone compares wire keys, so the
+   bridge is that an `exactObjectIndexKeySafe` constant which is
+   `Term.eqb`-equal to a row's object is EQUAL to it. That is why
+   `constantObjectOf` now carries that test (6.3, defect 2).
+3. **The delegating arms**, per 6.4.
+4. **`env.dataset`.** The theorem is stated for a FIXED `env`, so it
+   says nothing about a caller that builds `env.dataset` from the
+   selected entries. The `Query.expressionsOutsidePatternExistsFree`
+   guard stays on the collectors for that reason.

@@ -32,6 +32,7 @@ import L4Factoidal.SPARQL.StoreBackend
 import L4Factoidal.SPARQL.StorePlan
 import L4Factoidal.SPARQL.StoreFastPath
 import L4Factoidal.SPARQL.StoreDataset
+import L4Factoidal.SPARQL.DatasetRestriction
 import L4Factoidal.SPARQL.AskBgpRoundTrip
 import L4Factoidal.SPARQL.AskBgpRoundTripString
 import L4Factoidal.SPARQL.RewriteVarStrip
@@ -452,6 +453,7 @@ import L4Factoidal.Storage.PredicateQuadBlocksTheorems
 import L4Factoidal.Storage.PackStreamTheorems
 import L4Factoidal.Storage.ShardManifest
 import L4Factoidal.Storage.ShardManifestTheorems
+import L4Factoidal.Storage.PlannerSoundness
 import L4Factoidal.Storage.PackStream
 import L4Factoidal.Storage.GenerationVerify
 import L4Factoidal.CL.Syntax
