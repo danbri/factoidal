@@ -331,7 +331,7 @@ const VALUE_OPTIONS = {
   'sample-store': new Set([]),
   inspect: new Set(['generation']),
   query: new Set(['query', 'file', 'format', 'limit', 'base', 'generation']),
-  pack: new Set(['layout', 'syntax', 'chunk-bytes', 'base']),
+  pack: new Set(['layout', 'syntax', 'chunk-bytes', 'base', 'batch-bytes']),
   activate: new Set([]),
   update: new Set(['update', 'file']),
   compact: new Set([])

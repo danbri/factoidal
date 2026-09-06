@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1 — 2026-09-06
+
+`factoidal pack --batch-bytes N` was documented in 0.7.0 and refused by the
+option parser ("usage" exit 2): the value-option table for `pack` did not
+list it. It is accepted now, and `tests/store-host/cli.mjs` packs with it.
+No engine change; the wasm module is 0.7.0's.
+
 ## 0.7.0 — 2026-09-05
 
 **Wire version 10.** The command and `bin/store.mjs` read a generation

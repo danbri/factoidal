@@ -1,0 +1,38 @@
+# factoidal-skosall: a one-shot build machine, not a service.
+#
+#   fly volumes create skosall_data -a factoidal-skosall -r lhr -s 150
+#   fly secrets set -a factoidal-skosall R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... \
+#       R2_SECRET_ACCESS_KEY=... R2_BUCKET=skosdex001
+#   fly deploy -c deploy/fly/skosall/fly.toml
+#
+# The machine runs build-skosall.sh once and stops. Every step leaves a
+# stamp under /data/state, so a redeploy resumes where it stopped.
+app = "factoidal-skosall"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Source bytes between publication batches. Bounds the packer's memory.
+  FACTOIDAL_BATCH_BYTES = "268435456"
+  # Where the generation lands in the bucket.
+  R2_PREFIX = "skosall"
+  # Git ref of danbri/skosdex to build from.
+  SKOSDEX_REF = "claude/main"
+
+[[mounts]]
+  source = "skosall_data"
+  destination = "/data"
+
+[processes]
+  build = "bash /opt/build-skosall.sh"
+
+[[vm]]
+  size = "performance-2x"
+  memory = "8gb"
+  processes = ["build"]
+
+[[restart]]
+  policy = "never"
+  processes = ["build"]

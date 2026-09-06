@@ -452,6 +452,23 @@ await check('a generation the command packed is one the command can activate', (
     `the activated generation commits ${envelope.totalRows} rows, expected 112742`)
 })
 
+await check('pack accepts --batch-bytes, the documented publication interval', () => {
+  // 0.7.0 documented the flag and refused it: the value-option table for
+  // `pack` did not list it, so the command printed its usage and exited 2.
+  const source = joinPath(repoRoot, 'tests/local/data/quad_sample.nq')
+  if (!shim.exists(source)) {
+    skipped += 1
+    console.log('  skip batch-bytes - the fixture is absent')
+    return
+  }
+  const root = joinPath(workDirectory, 'batch-bytes')
+  shim.mkdir(joinPath(root, 'gen-1'))
+  const packed = runCliWrite(['pack', source, joinPath(root, 'gen-1'),
+    '--layout', 'ibk5', '--batch-bytes', '262144', '--quiet'])
+  assert(packed.code === 0, `pack --batch-bytes exited ${packed.code}: ${packed.stderr.trim()}`)
+  assert(shim.exists(joinPath(root, 'gen-1', 'manifest.sbm2')), 'pack wrote no manifest')
+})
+
 await check('the bundled store answers the join the README prints', () => {
   const root = runCli(['sample-store']).stdout.trim()
   const result = runCli(['query', root, '--query',
