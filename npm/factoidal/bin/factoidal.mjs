@@ -110,6 +110,8 @@ commands:
   update   STORE [UPDATE]     apply a SPARQL Update through the delta log
   compact  STORE GENERATION   fold the delta log into a new generation
   lws-serve DIR               serve Linked Web Storage 1.0 over HTTP
+  solid-serve DIR             serve the Solid Protocol over HTTP
+  solid-client OP URL         run one Solid client operation
 
 global options:
   -h, --help                  print this text, or a command's own help
@@ -297,7 +299,40 @@ Last-Modified and the PATCH blank-node refusal are all answered by
 formal/lean4/L4Factoidal/LWS/. A WebAssembly module built before those
 operations landed makes this command exit 3 and say so.
 
-Specification: https://w3c.github.io/lws-protocol/lws10-core/`
+Specification: https://w3c.github.io/lws-protocol/lws10-core/`,
+
+  'solid-serve': `factoidal solid-serve - serve the Solid Protocol over HTTP
+
+usage: factoidal solid-serve DIR [--port N] [--host ADDRESS]
+
+Starts a Node HTTP server that answers every request through the engine's
+solidStep operation. DIR is the storage root the engine keeps state under.
+
+  --port N        the port to bind; 0 takes an ephemeral one (default 3000)
+  --host ADDRESS  the address to bind (default 127.0.0.1)
+
+The server makes no protocol decision. Storage discovery, containment
+triples, slash semantics, the Allow and Accept-* headers, the PUT/POST/
+PATCH/DELETE rules, the acl and describedby lifecycle, N3 Patch, Web
+Access Control, CORS and the LDN inbox are answered by
+formal/lean4/L4Factoidal/Solid/Server/. A WebAssembly module built before
+those operations landed makes this command exit 3 and say so.
+
+Specification: https://solidproject.org/TR/protocol`,
+
+  'solid-client': `factoidal solid-client - run one Solid client operation
+
+usage: factoidal solid-client <get|put|post|delete|discover> URL [options]
+
+Every request is built by the engine's solidClientRequest operation and
+every response is read by solidClientResponse. This command supplies a
+socket and prints what the engine answered.
+
+  --body TEXT     the request body for put and post
+  --file PATH     read the request body from a file
+  --json          print the engine's interpretation as JSON (the default)
+
+Specification: https://solidproject.org/TR/protocol`
 }
 
 // ------------------------------------------------------------- arguments
@@ -353,7 +388,9 @@ const VALUE_OPTIONS = {
   activate: new Set([]),
   update: new Set(['update', 'file']),
   compact: new Set([]),
-  'lws-serve': new Set(['port', 'host'])
+  'lws-serve': new Set(['port', 'host']),
+  'solid-serve': new Set(['port', 'host']),
+  'solid-client': new Set(['body', 'file'])
 }
 
 // ------------------------------------------------------------- commands
@@ -987,6 +1024,66 @@ async function commandLwsServe (positional, options) {
   return untilInterrupted(running, quiet)
 }
 
+async function commandSolidServe (positional, options) {
+  if (positional.length !== 1) throw new UsageError('solid-serve needs one DIR')
+  const quiet = options.quiet === true
+  const { listen, SolidServerHostError } = await import('../solid/server/index.mjs')
+  let running
+  try {
+    running = await listen({
+      root: positional[0],
+      port: servePort(options, 3000),
+      host: serveHost(options)
+    })
+  } catch (error) {
+    if (error instanceof SolidServerHostError && error.unknownOp) {
+      return notWired('solid-serve', error.message)
+    }
+    throw error
+  }
+  if (!quiet) err(`solid-serve: listening on ${running.origin} for ${positional[0]}`)
+  out(running.origin)
+  return untilInterrupted(running, quiet)
+}
+
+const SOLID_CLIENT_OPERATIONS = ['get', 'put', 'post', 'delete', 'discover']
+
+async function commandSolidClient (positional, options) {
+  if (positional.length !== 2) {
+    throw new UsageError('solid-client needs an operation and a URL')
+  }
+  const [operation, url] = positional
+  if (!SOLID_CLIENT_OPERATIONS.includes(operation)) {
+    throw new UsageError(
+      `unknown operation "${operation}"; one of ${SOLID_CLIENT_OPERATIONS.join(', ')}`)
+  }
+  let body
+  if (typeof options.file === 'string') {
+    body = new TextDecoder('utf-8', { fatal: true }).decode(readWhole(options.file))
+  } else if (typeof options.body === 'string') {
+    body = options.body
+  }
+  if ((operation === 'put' || operation === 'post') && body === undefined) {
+    throw new UsageError(`${operation} needs --body or --file`)
+  }
+  const { createSolidClient, SolidClientHostError } =
+    await import('../solid/client/index.mjs')
+  let answer
+  try {
+    const client = await createSolidClient()
+    answer = body === undefined
+      ? await client.run(operation, { url })
+      : await client.run(operation, { url, body })
+  } catch (error) {
+    if (error instanceof SolidClientHostError && error.unknownOp) {
+      return notWired('solid-client', error.message)
+    }
+    throw error
+  }
+  out(JSON.stringify(answer, null, 2))
+  return EXIT_OK
+}
+
 const COMMANDS = {
   version: (positional, options) => commandVersion(options),
   'sample-store': (positional, options) => commandSampleStore(options),
@@ -996,7 +1093,9 @@ const COMMANDS = {
   activate: commandActivate,
   update: commandUpdate,
   compact: commandCompact,
-  'lws-serve': commandLwsServe
+  'lws-serve': commandLwsServe,
+  'solid-serve': commandSolidServe,
+  'solid-client': commandSolidClient
 }
 
 // ----------------------------------------------------------------- main

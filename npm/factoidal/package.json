@@ -94,6 +94,12 @@
     },
     "./lws": {
       "default": "./lws/server.mjs"
+    },
+    "./solid/server": {
+      "default": "./solid/server/index.mjs"
+    },
+    "./solid/client": {
+      "default": "./solid/client/index.mjs"
     }
   },
   "files": [
@@ -115,6 +121,7 @@
     "lib/",
     "bin/",
     "lws/",
+    "solid/",
     "store-host/",
     "browser.js",
     "browser.d.ts",
