@@ -44,3 +44,12 @@
 [submodule "third_party/testing/xslt1-xalan/xalan-test-src"]
 	path = third_party/testing/xslt1-xalan/xalan-test-src
 	url = https://github.com/apache/xalan-test.git
+[submodule "third_party/testing/solid-crud-tests"]
+	path = third_party/testing/solid-crud-tests
+	url = https://github.com/solid-contrib/solid-crud-tests.git
+[submodule "third_party/testing/web-access-control-tests"]
+	path = third_party/testing/web-access-control-tests
+	url = https://github.com/solid-contrib/web-access-control-tests.git
+[submodule "third_party/testing/solid-specification-tests"]
+	path = third_party/testing/solid-specification-tests
+	url = https://github.com/solid-contrib/specification-tests.git
