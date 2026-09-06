@@ -132,24 +132,6 @@ let delete_res s r =
 (** Part 4: Rendering identifiers, links and responses                      **)
 (** ======================================================================= **)
 
-let rec join_segs (l : list string) : Tot string (decreases l) =
-  match l with
-  | [] -> ""
-  | x :: tl -> "/" ^ x ^ join_segs tl
-
-let rid_path (r : rid) : string =
-  let b = join_segs r.segs in
-  if r.container then (if b = "" then "/" else b ^ "/") else b
-
-// The suffixes below are this model's choice of auxiliary-resource paths.
-// Solid Protocol section 4.3 leaves the URI of an auxiliary resource to the
-// server and requires only that it is advertised by a link, which is what
-// requirement lws-core-08 and solid-04-12 state; a client that derives the
-// path by string operations is refused by requirement solid-wac-09.
-let acl_suffix          : string = ".acl"
-let describedby_suffix  : string = ".meta"
-let storage_description : string = "/.storage-description"
-
 let discovery_links s r =
   let common = [
     { l_target = rid_path r ^ acl_suffix;         l_rel = rel_acl };
@@ -202,38 +184,46 @@ let lws_core_05_delete_updates_containment s r c =
 
 let lws_core_root_not_deleted s = ()
 
+let rec lookup_filter_other (es : list entry) (r r2 : rid) :
+  Lemma (requires r2 =!= r)
+        (ensures  lookup_entries (filter (not_id r) es) r2 == lookup_entries es r2)
+        (decreases es) =
+  match es with
+  | [] -> ()
+  | (k, _) :: tl -> lookup_filter_other tl r r2
+
+let create_preserves_others s r r2 res = lookup_filter_other s.s_entries r r2
+
+let update_preserves_others s r r2 res = lookup_filter_other s.s_entries r r2
+
+let delete_preserves_others s r r2 =
+  if r = root then () else lookup_filter_other s.s_entries r r2
+
+let rec contained_are_children_aux (es : list entry) (c r : rid) :
+  Lemma (requires mem r (map entry_id (filter (child_of c) es)))
+        (ensures  contains_child c r)
+        (decreases es) =
+  match es with
+  | [] -> ()
+  | e :: tl ->
+    if child_of c e && entry_id e = r then ()
+    else contained_are_children_aux tl c r
+
+let contained_are_children s c r = contained_are_children_aux s.s_entries c r
+
 let lws_core_08_auxiliary_links_advertised s r = ()
 
 let lws_core_18_storage_description_link s r = ()
+
+let root_storage_type_link s = ()
+
+let root_owner_link s o = ()
 
 (** ======================================================================= **)
 (** Part 6: PATCH                                                           **)
 (** ======================================================================= **)
 
 let lws_core_04_insertions_no_blank_nodes p = ()
-
-let patch_is_ground (p : patch) : bool =
-  Nil? (formula_vars p.insertions) &&
-  Nil? (formula_vars p.deletions) &&
-  Nil? (formula_vars p.conditions)
-
-let term_string (t : patch_term) : string =
-  match t with
-  | PT_Iri s -> s
-  | PT_Lit s -> s
-  | PT_Var v -> v
-  | PT_Bnode b -> b
-
-let ground_triple (t : patch_triple) : rdf_triple =
-  { t_s = term_string t.p_s; t_p = term_string t.p_p; t_o = term_string t.p_o }
-
-let ground_formula (f : list patch_triple) : list rdf_triple = map ground_triple f
-
-let in_graph (g : list rdf_triple) (t : rdf_triple) : bool = mem t g
-let all_present (g : list rdf_triple) (ts : list rdf_triple) : bool = for_all (in_graph g) ts
-let not_in (ts : list rdf_triple) (t : rdf_triple) : bool = not (mem t ts)
-let remove_triples (g : list rdf_triple) (ts : list rdf_triple) : list rdf_triple =
-  filter (not_in ts) g
 
 let refusal (code : nat) : response = { status = code; headers = []; body = "" }
 
@@ -255,6 +245,10 @@ let apply_patch s r p =
       (refusal 204, update_res s r ({ res with r_graph = g2 }))
 
 let lws_core_04_ill_formed_patch_refused s r p = ()
+
+let lws_patch_not_refused s r p = ()
+
+let lws_patch_applied s r p res = ()
 
 (** ======================================================================= **)
 (** Part 7: The operation dispatch                                          **)

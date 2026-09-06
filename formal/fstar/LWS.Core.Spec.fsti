@@ -208,6 +208,24 @@ val update_res (s : store) (r : rid) (res : resource) :
 val delete_res (s : store) (r : rid) :
   Tot (t : store { r =!= root ==> None? (lookup t r) })
 
+let rec join_segs (l : list string) : Tot string (decreases l) =
+  match l with
+  | [] -> ""
+  | x :: tl -> "/" ^ x ^ join_segs tl
+
+let rid_path (r : rid) : string =
+  let b = join_segs r.segs in
+  if r.container then (if b = "" then "/" else b ^ "/") else b
+
+// The suffixes below are this model's choice of auxiliary-resource paths.
+// Solid Protocol section 4.3 leaves the URI of an auxiliary resource to the
+// server and requires only that it is advertised by a link, which is what
+// requirement lws-core-08 and solid-04-12 state; a client that derives the
+// path by string operations is refused by requirement solid-wac-09.
+let acl_suffix          : string = ".acl"
+let describedby_suffix  : string = ".meta"
+let storage_description : string = "/.storage-description"
+
 // The links a response advertises for one identifier.
 val discovery_links : store -> rid -> list link
 
@@ -268,6 +286,30 @@ val lws_core_05_delete_updates_containment (s : store) (r c : rid) :
 val lws_core_root_not_deleted (s : store) :
   Lemma (delete_res s root == s)
 
+(** Frame law: creating one resource leaves every other identifier alone.
+    Needed by any layer above this one, and by the containment statements. **)
+val create_preserves_others (s : store) (r r2 : rid) (res : resource) :
+  Lemma (requires r2 =!= r)
+        (ensures  lookup (create_res s r res) r2 == lookup s r2)
+
+(** Frame law: updating one resource leaves every other identifier alone. **)
+val update_preserves_others (s : store) (r r2 : rid) (res : resource) :
+  Lemma (requires r2 =!= r)
+        (ensures  lookup (update_res s r res) r2 == lookup s r2)
+
+(** Frame law: deleting one resource leaves every other identifier alone. **)
+val delete_preserves_others (s : store) (r r2 : rid) :
+  Lemma (requires r2 =!= r)
+        (ensures  lookup (delete_res s r) r2 == lookup s r2)
+
+(** Soundness of the enumeration: every member of a container's enumeration
+    is a direct child of that container. The other half of requirement
+    lws-core-05, and what makes the Solid one-to-one correspondence between
+    containment triples and the path hierarchy (solid-04-08) meaningful. **)
+val contained_are_children (s : store) (c r : rid) :
+  Lemma (requires mem r (contained s c))
+        (ensures  contains_child c r)
+
 (** LWS core, Terminology.
     "Auxiliary resources are discovered using web links [RFC8288] of a
     specific type (see Section )."
@@ -290,6 +332,21 @@ val lws_core_08_auxiliary_links_advertised (s : store) (r : rid) :
 val lws_core_18_storage_description_link (s : store) (r : rid) :
   Lemma (requires Some? (lookup s r))
         (ensures  has_rel rel_storage_description (discovery_links s r))
+
+(** LWS core, Discovery, with the Solid Protocol v0.11.0 section 4.1
+    binding. The storage root advertises its type, which is what Solid
+    requirement solid-04-03 states. **)
+val root_storage_type_link (s : store) :
+  Lemma (mem ({ l_target = iri_pim_storage; l_rel = rel_type })
+             (discovery_links s root))
+
+(** LWS core, Discovery, with the Solid Protocol v0.11.0 section 4.1
+    binding: a storage that knows its owner advertises it, which is Solid
+    requirement solid-04-07. **)
+val root_owner_link (s : store) (o : string) :
+  Lemma (requires owner_of s == Some o)
+        (ensures  mem ({ l_target = o; l_rel = rel_owner })
+                      (discovery_links s root))
 
 (** ======================================================================= **)
 (** Part 6: PATCH                                                           **)
@@ -356,6 +413,29 @@ val lws_core_04_insertions_no_blank_nodes (p : patch) :
   Lemma (requires patch_well_formed p)
         (ensures  formula_has_bnode p.insertions == false)
 
+let patch_is_ground (p : patch) : bool =
+  Nil? (formula_vars p.insertions) &&
+  Nil? (formula_vars p.deletions) &&
+  Nil? (formula_vars p.conditions)
+
+let term_string (t : patch_term) : string =
+  match t with
+  | PT_Iri s -> s
+  | PT_Lit s -> s
+  | PT_Var v -> v
+  | PT_Bnode b -> b
+
+let ground_triple (t : patch_triple) : rdf_triple =
+  { t_s = term_string t.p_s; t_p = term_string t.p_p; t_o = term_string t.p_o }
+
+let ground_formula (f : list patch_triple) : list rdf_triple = map ground_triple f
+
+let in_graph (g : list rdf_triple) (t : rdf_triple) : bool = mem t g
+let all_present (g : list rdf_triple) (ts : list rdf_triple) : bool = for_all (in_graph g) ts
+let not_in (ts : list rdf_triple) (t : rdf_triple) : bool = not (mem t ts)
+let remove_triples (g : list rdf_triple) (ts : list rdf_triple) : list rdf_triple =
+  filter (not_in ts) g
+
 // Applying a patch. Ground patches only: a patch with variables needs a
 // solution mapping over the target graph, which this specification does not
 // state (the row stays open in the registry). A patch with variables in its
@@ -371,6 +451,32 @@ val lws_core_04_ill_formed_patch_refused (s : store) (r : rid) (p : patch) :
   Lemma (requires patch_well_formed p == false)
         (ensures  (fst (apply_patch s r p)).status == 422 /\
                   snd (apply_patch s r p) == s)
+
+(** A well formed patch is never refused as ill formed, as an unsupported
+    media type, or as an unsupported method. The positive half of
+    requirement solid-05-13, "Servers MUST accept a PATCH request with an N3
+    Patch body when the target of the request is an RDF document". **)
+val lws_patch_not_refused (s : store) (r : rid) (p : patch) :
+  Lemma (requires patch_well_formed p)
+        (ensures  (fst (apply_patch s r p)).status <> 422 /\
+                  (fst (apply_patch s r p)).status <> 415 /\
+                  (fst (apply_patch s r p)).status <> 405)
+
+(** What applying a patch does: a well formed ground patch whose conditions
+    and whose deletions are all in the target graph is applied, the response
+    is 204, and the new graph is the insertions over the graph with the
+    deletions removed. The requirement solid-05-20 operations follow from
+    the same three formulae. **)
+val lws_patch_applied (s : store) (r : rid) (p : patch) (res : resource) :
+  Lemma (requires patch_well_formed p /\ patch_is_ground p /\
+                  lookup s r == Some res /\
+                  all_present res.r_graph (ground_formula p.conditions) /\
+                  all_present res.r_graph (ground_formula p.deletions))
+        (ensures  (fst (apply_patch s r p)).status == 204 /\
+                  Some? (lookup (snd (apply_patch s r p)) r) /\
+                  (Some?.v (lookup (snd (apply_patch s r p)) r)).r_graph ==
+                    ground_formula p.insertions
+                    @ remove_triples res.r_graph (ground_formula p.deletions))
 
 (** ======================================================================= **)
 (** Part 7: The operation dispatch and its status codes                     **)
