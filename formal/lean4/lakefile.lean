@@ -54,13 +54,42 @@ target Hacl_Curve25519_51.o pkg : FilePath :=
 target Hacl_Hash_SHA2.o pkg : FilePath :=
   buildHaclO pkg "Hacl_Hash_SHA2" (haclDir pkg / "src" / "Hacl_Hash_SHA2.c")
 
+/-! The JOSE additions (2026-09-06). `L4Factoidal/Crypto/P256Native.lean`
+declares `@[extern "l4_hacl_p256_*"]` for JWS ES256 and
+`L4Factoidal/Crypto/RsaNative.lean` `@[extern "l4_hacl_rsa_public_op"]`
+for the RS256 public operation. They are realised by `ffi/hacl_p256.c`
+and `ffi/hacl_rsa.c` over the same vendored HACL* C. `Hacl_Bignum.c` is
+the generic bignum field `Hacl_Bignum64.c` calls into; `Hacl_P256.c`
+already reaches the `Hacl_Hash_SHA2.c` unit above for its digest. -/
+
+target hacl_p256_shim.o pkg : FilePath :=
+  buildHaclO pkg "hacl_p256_shim" (pkg.dir / "ffi" / "hacl_p256.c")
+
+target hacl_rsa_shim.o pkg : FilePath :=
+  buildHaclO pkg "hacl_rsa_shim" (pkg.dir / "ffi" / "hacl_rsa.c")
+
+target Hacl_P256.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_P256" (haclDir pkg / "src" / "Hacl_P256.c")
+
+target Hacl_Bignum64.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_Bignum64" (haclDir pkg / "src" / "Hacl_Bignum64.c")
+
+target Hacl_Bignum.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_Bignum" (haclDir pkg / "src" / "Hacl_Bignum.c")
+
 extern_lib libl4hacl pkg := do
   let shim ← hacl_ed25519_shim.o.fetch
   let ed ← Hacl_Ed25519.o.fetch
   let curve ← Hacl_Curve25519_51.o.fetch
   let sha2 ← Hacl_Hash_SHA2.o.fetch
+  let p256Shim ← hacl_p256_shim.o.fetch
+  let rsaShim ← hacl_rsa_shim.o.fetch
+  let p256 ← Hacl_P256.o.fetch
+  let bn64 ← Hacl_Bignum64.o.fetch
+  let bn ← Hacl_Bignum.o.fetch
   let name := nameToStaticLib "l4hacl"
-  buildStaticLib (pkg.staticLibDir / name) #[shim, ed, curve, sha2]
+  buildStaticLib (pkg.staticLibDir / name)
+    #[shim, ed, curve, sha2, p256Shim, rsaShim, p256, bn64, bn]
 
 /-- Build the deliberately small POSIX `pread` host adapter used only by the
     native IBK2 range-read probe. The pure planner/decoder remains in Lean;
