@@ -79,6 +79,9 @@ check third_party/testing/xslt/manifest.json         "xslt"               "xslt_
 check third_party/testing/xslt1-xalan/xalan-test-src/tests/conf/axes/axes01.xsl "xslt1-xalan (Apache)" "xslt_runner --base xslt1-xalan (XSLT 1.0 conformance mirror)"
 check third_party/testing/owl                        "owl"                "owl_runner"
 check third_party/testing/hdt/rml-core-ontology.hdt  "hdt"                "hdt parity, hub post24, npm hdt tests"
+check third_party/testing/solid-crud-tests/package.json          "solid-crud"         "tools/solid-server-interop.sh (Solid CRUD surface tests)"
+check third_party/testing/web-access-control-tests/package.json  "solid-wac"          "tools/solid-server-interop.sh (Web Access Control tests)"
+check third_party/testing/solid-specification-tests/run.sh       "solid-spec-tests"   "tools/solid-conformance-harness.sh (Gherkin harness, needs Docker)"
 
 if [ "$MISSING" -eq 1 ]; then
   echo "ensure-test-env: GAPS FOUND — do not trust 0/0 scores or ENOENT test failures from this checkout." >&2
