@@ -55,6 +55,7 @@ import L4Factoidal.JOSE.DPoP
 import L4Factoidal.Crypto.P256Native
 import L4Factoidal.Crypto.RsaNative
 import L4Factoidal.Crypto.Ed25519
+import L4Factoidal.Solid.Server.Auth
 
 namespace JoseProbe
 
@@ -465,7 +466,7 @@ def runDPoP : IO Tally := do
   let tok := "Kz~8mXK1EalYznwH-LC-1fBAo.4Ljp~zsPE_NeO.gxU".toUTF8
   let pol : ProofPolicy :=
     { now := 1562262618, iatWindow := 60, jtiFresh := fun _ => true }
-  let req : Request :=
+  let req : ProofRequest :=
     { method := "GET", uri := "https://resource.example.org/protectedresource" }
   let jkt := "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
   check t "RFC 9449 Figure 13: full proof validation"
@@ -485,6 +486,140 @@ def runDPoP : IO Tally := do
   check t "RFC 9449 Figure 13: a replayed jti refused"
     (validateProof nativeVerifiers { pol with jtiFresh := fun _ => false } req
       (some tok) (some jkt) rfc9449Fig13 == .jtiReplayed)
+  t.get
+
+/-! ## Section 7: Solid-OIDC authentication, end to end
+
+`L4Factoidal/Solid/Server/Auth.lean` decides whether a request carries a
+valid Solid-OIDC identity. Checking that needs a SIGNED access token and
+a SIGNED DPoP proof, so this section mints both with the one signing
+primitive the tree has — HACL* Ed25519 — and runs
+`Solid.Server.authenticate` over a synthetic request.
+
+Ed25519 rather than ES256 because HACL*'s ECDSA signing entry takes a
+caller-supplied nonce and this project binds only the verification side
+(`Crypto/P256Native.lean` exposes no signer, deliberately). `EdDSA` is
+in the JWS allowlist and Solid-OIDC does not forbid it, so the chain
+exercised here is the same chain an `ES256` token takes: allowlist, key
+type, signature, claims, DPoP binding. -/
+
+private def edSecret : ByteArray :=
+  ⟨(List.replicate 32 (0x42 : UInt8)).toArray⟩
+
+private def edPublic : ByteArray := L4Factoidal.Crypto.Ed25519.secretToPublic edSecret
+
+private def edJwkJson : String :=
+  "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"" ++ Base64Url.encode edPublic ++ "\"}"
+
+private def edJwk : Jwk := (parseJwkString? edJwkJson).getD (.okp ByteArray.empty)
+
+/-- Mint a compact JWS with Ed25519. Harness plumbing: the library
+never signs. -/
+private def signEd (header payload : String) : String :=
+  let h := Base64Url.encodeUtf8 header
+  let p := Base64Url.encodeUtf8 payload
+  let sig := L4Factoidal.Crypto.Ed25519.sign edSecret (h ++ "." ++ p).toUTF8
+  h ++ "." ++ p ++ "." ++ Base64Url.encode sig
+
+def runSolidOidc : IO Tally := do
+  let t ← IO.mkRef ({} : Tally)
+  IO.println "-- solid-oidc"
+  check t "the harness Ed25519 key is a usable OKP JWK" (edJwk.kty == .okp)
+  let jkt := thumbprint edJwk
+  let now : Int := 1700000000
+  let token := signEd "{\"alg\":\"EdDSA\"}"
+    ("{\"iss\":\"https://idp.example/\",\"sub\":\"https://alice.example/card#me\"," ++
+     "\"webid\":\"https://alice.example/card#me\",\"aud\":\"https://storage.example/\"," ++
+     "\"exp\":1700000600,\"iat\":1700000000,\"cnf\":{\"jkt\":\"" ++ jkt ++ "\"}}")
+  let ath := athFor token.toUTF8
+  let proof := signEd ("{\"typ\":\"dpop+jwt\",\"alg\":\"EdDSA\",\"jwk\":" ++ edJwkJson ++ "}")
+    ("{\"jti\":\"j-1\",\"htm\":\"GET\",\"htu\":\"https://storage.example/r\"," ++
+     "\"iat\":1700000000,\"ath\":\"" ++ ath ++ "\"}")
+  let cfg : L4Factoidal.Solid.Server.ServerConfig :=
+    { lws := { baseIri := "https://storage.example/" },
+      auth := { enforceAuth := true, idpKeys := [edJwk],
+                policy := { now := now, leeway := 60, issuer := "https://idp.example/",
+                            audience := "https://storage.example/" },
+                proofPolicy := { now := now, iatWindow := 60, jtiFresh := fun _ => true } } }
+  let mkReq (headers : List (String × String)) : L4Factoidal.HTTP.Request :=
+    { method := "GET", path := "/r", queryStr := "", headers := headers }
+  let good := mkReq [("authorization", "DPoP " ++ token), ("dpop", proof)]
+  let got := L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg good
+  check t "a valid DPoP-bound token authenticates"
+    (got == .authenticated "https://alice.example/card#me" jkt) s!"{repr got}"
+  -- The same token as a bearer credential is refused.
+  check t "the same token as Bearer is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg
+      (mkReq [("authorization", "Bearer " ++ token)]) == .refused (.wrongScheme "Bearer"))
+  -- No proof.
+  check t "no DPoP header is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg
+      (mkReq [("authorization", "DPoP " ++ token)]) == .refused .missingProof)
+  let otherPath := { good with path := "/other" }
+  check t "a proof whose htu is another path is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg otherPath
+      == .refused (.proofRefused .htuMismatch))
+  -- The request method changed.
+  check t "a proof whose htm is another method is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg { good with method := "PUT" }
+      == .refused (.proofRefused .htmMismatch))
+  -- The clock moved past the expiry.
+  let lateCfg := { cfg with auth := { cfg.auth with
+    policy := { cfg.auth.policy with now := 1700000700 } } }
+  check t "an expired token is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers lateCfg good
+      == .refused (.claimsRefused .expired))
+  -- Another issuer.
+  let otherIss := { cfg with auth := { cfg.auth with
+    policy := { cfg.auth.policy with issuer := "https://evil.example/" } } }
+  check t "a token from another issuer is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers otherIss good
+      == .refused (.claimsRefused .issuerMismatch))
+  -- A replayed jti.
+  let replay := { cfg with auth := { cfg.auth with
+    proofPolicy := { cfg.auth.proofPolicy with jtiFresh := fun _ => false } } }
+  check t "a replayed jti is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers replay good
+      == .refused (.proofRefused .jtiReplayed))
+  -- The identity provider's key list is empty.
+  let noKeys := { cfg with auth := { cfg.auth with idpKeys := [] } }
+  check t "no configured identity-provider key refuses, it does not fall open"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers noKeys good
+      == .refused (.noTrustedKey []))
+  -- A token signed by a key the identity provider did not publish.
+  let strangerJwk : Jwk :=
+    (parseJwkString? ("{\"kty\":\"OKP\",\"crv\":\"Ed25519\"," ++
+      "\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"}")).getD (.okp ByteArray.empty)
+  let strangerCfg := { cfg with auth := { cfg.auth with idpKeys := [strangerJwk] } }
+  check t "a token signed by an unpublished key is refused"
+    (match L4Factoidal.Solid.Server.authenticate nativeVerifiers strangerCfg good with
+     | .refused (.noTrustedKey _) => true
+     | _ => false)
+  -- A token bound to a DIFFERENT key than the proof's.
+  let wrongBindToken := signEd "{\"alg\":\"EdDSA\"}"
+    ("{\"iss\":\"https://idp.example/\",\"sub\":\"https://alice.example/card#me\"," ++
+     "\"webid\":\"https://alice.example/card#me\",\"aud\":\"https://storage.example/\"," ++
+     "\"exp\":1700000600,\"iat\":1700000000," ++
+     "\"cnf\":{\"jkt\":\"kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k\"}}")
+  let wrongAth := athFor wrongBindToken.toUTF8
+  let wrongProof := signEd
+    ("{\"typ\":\"dpop+jwt\",\"alg\":\"EdDSA\",\"jwk\":" ++ edJwkJson ++ "}")
+    ("{\"jti\":\"j-2\",\"htm\":\"GET\",\"htu\":\"https://storage.example/r\"," ++
+     "\"iat\":1700000000,\"ath\":\"" ++ wrongAth ++ "\"}")
+  check t "a token bound to another key is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg
+      (mkReq [("authorization", "DPoP " ++ wrongBindToken), ("dpop", wrongProof)])
+      == .refused (.proofRefused .keyThumbprintMismatch))
+  -- A proof whose ath is another token's.
+  check t "a proof carrying another token's ath is refused"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers cfg
+      (mkReq [("authorization", "DPoP " ++ token), ("dpop", wrongProof)])
+      == .refused (.proofRefused .athMismatch))
+  -- With enforcement off, the same request is `disabled` and the
+  -- handle configuration's WebID stands.
+  check t "with enforceAuth off the decision is disabled"
+    (L4Factoidal.Solid.Server.authenticate nativeVerifiers
+      { cfg with auth := { cfg.auth with enforceAuth := false } } good == .disabled)
   t.get
 
 /-! ## The `--jsonl` mode
@@ -552,6 +687,7 @@ def main (args : List String) : IO UInt32 := do
   let t5 ← runRsaFile (wp / "rsa_signature_4096_sha256_test.json")
              "wycheproof-rsa-4096-sha256"
   let t6 ← runDPoP
+  let t7 ← runSolidOidc
   IO.println "\n========================================"
   IO.println (scoreLine "jose-rfc-fixtures" t1)
   IO.println (scoreLine "wycheproof-ecdsa-secp256r1-sha256-p1363" t2)
@@ -559,7 +695,8 @@ def main (args : List String) : IO UInt32 := do
   IO.println (scoreLine "wycheproof-rsa-3072-sha256" t4)
   IO.println (scoreLine "wycheproof-rsa-4096-sha256" t5)
   IO.println (scoreLine "dpop-rfc9449" t6)
-  let ts := [t1, t2, t3, t4, t5, t6]
+  IO.println (scoreLine "solid-oidc" t7)
+  let ts := [t1, t2, t3, t4, t5, t6, t7]
   let total : Tally :=
     { pass := (ts.map Tally.pass).foldl (· + ·) 0,
       fail := (ts.map Tally.fail).foldl (· + ·) 0,

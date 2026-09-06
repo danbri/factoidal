@@ -12,6 +12,7 @@ WAC §5.3.3 as ACL documents in Turtle, parsed by the Turtle parser and
 decided by `Solid.Server.decideAccess`.
 -/
 import L4Factoidal.Solid.Server.Methods
+import L4Factoidal.Solid.Server.Auth
 import L4Factoidal.Solid.Client.Requests
 import L4Factoidal.Solid.Client.Responses
 import L4Factoidal.Solid.Client.Profile
@@ -508,6 +509,96 @@ def solidGuardWacEnforced : Bool :=
   (run strict (req "GET" "/alice/card") st).1.status == 401 &&
   (run strictBob (req "GET" "/alice/card.acl") st).1.status == 403 &&
   (run strictBob (req "GET" "/alice/card") st).1.status == 200
+
+/-! ## Solid-OIDC (Solid Protocol §10.1, RFC 9449)
+
+`L4Factoidal.Solid.Server.Auth` decides whether a request carries a valid
+Solid-OIDC identity. The SIGNATURE part of that decision needs HACL*, which
+does not evaluate at build time, so this guard runs the decision with a
+stub verifier: everything except the signature check is exercised here, and
+the signature is exercised by the `solid-oidc` section of
+`lake exe l4jose-probe` with real Ed25519 signatures.
+-/
+
+open L4Factoidal.JOSE in
+/-- A key the guard treats as the identity provider's. -/
+def oidcKey : L4Factoidal.JOSE.Jwk :=
+  (parseJwkString? ("{\"kty\":\"OKP\",\"crv\":\"Ed25519\"," ++
+    "\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"}")).getD
+    (.okp ByteArray.empty)
+
+open L4Factoidal.JOSE in
+def oidcJkt : String := thumbprint oidcKey
+
+open L4Factoidal.JOSE in
+private def joseToken (header payload : String) : String :=
+  Base64Url.encodeUtf8 header ++ "." ++ Base64Url.encodeUtf8 payload ++ "." ++
+  Base64Url.encode ⟨#[0x00]⟩
+
+open L4Factoidal.JOSE in
+private def oidcStub : Verifiers :=
+  { es256 := fun _ _ _ => true, rs256 := fun _ _ _ _ => true, eddsa := fun _ _ _ => true }
+
+open L4Factoidal.JOSE in
+private def oidcAccessToken : String :=
+  joseToken "{\"alg\":\"EdDSA\"}"
+    ("{\"iss\":\"https://idp.example/\",\"sub\":\"https://alice.example/card#me\"," ++
+     "\"webid\":\"https://alice.example/card#me\",\"aud\":\"https://storage.example/\"," ++
+     "\"exp\":1700000600,\"iat\":1700000000,\"cnf\":{\"jkt\":\"" ++ oidcJkt ++ "\"}}")
+
+open L4Factoidal.JOSE in
+private def oidcProof : String :=
+  joseToken ("{\"typ\":\"dpop+jwt\",\"alg\":\"EdDSA\",\"jwk\":{\"kty\":\"OKP\"," ++
+      "\"crv\":\"Ed25519\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\"}}")
+    ("{\"jti\":\"j-1\",\"htm\":\"GET\",\"htu\":\"https://storage.example/alice/card\"," ++
+     "\"iat\":1700000000,\"ath\":\"" ++ athFor oidcAccessToken.toUTF8 ++ "\"}")
+
+open L4Factoidal.JOSE in
+private def oidcCfg : ServerConfig :=
+  { lws := { baseIri := "https://storage.example/" },
+    auth := { enforceAuth := true, idpKeys := [oidcKey],
+              policy := { now := 1700000000, leeway := 60,
+                          issuer := "https://idp.example/",
+                          audience := "https://storage.example/" },
+              proofPolicy := { now := 1700000000, iatWindow := 60,
+                               jtiFresh := fun _ => true } } }
+
+open L4Factoidal.JOSE in
+private def oidcReq (headers : List (String × String)) : L4Factoidal.HTTP.Request :=
+  { method := "GET", path := "/alice/card", queryStr := "", headers := headers }
+
+/-- Solid Protocol §10.1: "Servers MUST conform to the Solid-OIDC
+specification." A DPoP-bound access token yields the WebID it carries; a
+bearer presentation of the same token, a missing proof, a token bound to
+another key, an expired token and a token from another issuer are all
+refused; and with `enforceAuth` off the decision is `disabled` so the
+first-slice behaviour is unchanged. -/
+def solidGuardSolidOidcDpop : Bool :=
+  let good := oidcReq [("authorization", "DPoP " ++ oidcAccessToken), ("dpop", oidcProof)]
+  (authenticate oidcStub oidcCfg good
+     == .authenticated "https://alice.example/card#me" oidcJkt) &&
+  (authenticate oidcStub oidcCfg (oidcReq [("authorization", "Bearer " ++ oidcAccessToken)])
+     == .refused (.wrongScheme "Bearer")) &&
+  (authenticate oidcStub oidcCfg (oidcReq [("authorization", "DPoP " ++ oidcAccessToken)])
+     == .refused .missingProof) &&
+  (authenticate oidcStub oidcCfg (oidcReq []) == .anonymous) &&
+  (authenticate oidcStub { oidcCfg with auth := { oidcCfg.auth with idpKeys := [] } } good
+     == .refused (.noTrustedKey [])) &&
+  (authenticate oidcStub { oidcCfg with auth := { oidcCfg.auth with
+      policy := { oidcCfg.auth.policy with now := 1700000700 } } } good
+     == .refused (.claimsRefused .expired)) &&
+  (authenticate oidcStub { oidcCfg with auth := { oidcCfg.auth with
+      policy := { oidcCfg.auth.policy with issuer := "https://evil.example/" } } } good
+     == .refused (.claimsRefused .issuerMismatch)) &&
+  (authenticate oidcStub oidcCfg { good with path := "/bob/card" }
+     == .refused (.proofRefused .htuMismatch)) &&
+  (authenticate oidcStub { oidcCfg with auth := { oidcCfg.auth with
+      proofPolicy := { oidcCfg.auth.proofPolicy with jtiFresh := fun _ => false } } } good
+     == .refused (.proofRefused .jtiReplayed)) &&
+  (authenticate oidcStub { oidcCfg with auth := { oidcCfg.auth with enforceAuth := false } } good
+     == .disabled)
+
+#guard solidGuardSolidOidcDpop
 
 #guard solidGuardWacAccessToAgentMode
 #guard solidGuardWacDefaultAgentClassSuperclassMode

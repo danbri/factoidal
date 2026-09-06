@@ -68,6 +68,12 @@ structure Claims where
   iat : Option Int := none
   jti : Option String := none
   cnfJkt : Option String := none
+  /-- The Solid-OIDC `webid` claim. NOT an RFC 7519 registered claim:
+  Solid-OIDC (Editor's Draft, §6) defines it, and says that when it is
+  absent the `sub` claim MAY be the WebID if the issuer is authoritative
+  for it. Read here so that `Solid/Server/Auth.lean` can apply that rule
+  in one place. -/
+  webid : Option String := none
   deriving Repr, DecidableEq, BEq
 
 /-- Read an RFC 7519 §2 `NumericDate`. Integers only; a fractional value
@@ -110,6 +116,7 @@ def parseClaims? (j : Json) : Option Claims :=
       let iss ← str "iss"
       let sub ← str "sub"
       let jti ← str "jti"
+      let webid ← str "webid"
       let exp ← num "exp"
       let nbf ← num "nbf"
       let iat ← num "iat"
@@ -125,7 +132,7 @@ def parseClaims? (j : Json) : Option Claims :=
             | none => some none
             | some (.string s) => some (some s)
             | some _ => none
-      some { iss, sub, aud, exp, nbf, iat, jti, cnfJkt }
+      some { iss, sub, aud, exp, nbf, iat, jti, cnfJkt, webid }
   | _ => none
 
 /-- Parse claims from a JWS payload's octets. -/
@@ -146,7 +153,7 @@ structure Policy where
   issuer : String
   /-- The audience this verifier is. -/
   audience : String
-  deriving Repr, DecidableEq
+  deriving Repr, DecidableEq, Inhabited
 
 /-- Why a claims set was or was not accepted. -/
 inductive ClaimsOutcome where
@@ -328,6 +335,11 @@ private def sampleClaims : Claims :=
   parseClaims?).map Claims.cnfJkt == some (some "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I")
 #guard ((parseJson? "{\"cnf\":{\"x5t#S256\":\"AA\"}}").bind parseClaims?).map Claims.cnfJkt
         == some none
+
+-- The Solid-OIDC `webid` claim.
+#guard ((parseJson? "{\"webid\":\"https://alice.example/card#me\"}").bind parseClaims?).map
+  Claims.webid == some (some "https://alice.example/card#me")
+#guard ((parseJson? "{\"webid\":42}").bind parseClaims?).isNone
 
 -- The RFC 7519 §3.1 example payload.
 #guard ((parseJson? "{\"iss\":\"joe\",\"exp\":1300819380,\"http://example.com/is_root\":true}").bind

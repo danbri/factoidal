@@ -127,6 +127,20 @@ conformance ledger as "host-verified", and the first slice serves public
 resources and unauthenticated writes to a test-only storage. WAC decisions
 are pure Lean over the agent the host verified.
 
+> **Superseded 2026-09-06 (same day).** The premise — that RSA and P-256
+> are not vendored — stopped being true within hours: `Hacl_P256.c` and
+> HACL\*'s generic 64-bit bignum field were vendored from the same pinned
+> release, and `L4Factoidal/JOSE/` now holds base64url, EMSA-PKCS1-v1_5,
+> JWK, JWS, JWT and DPoP in pure Lean with theorems.
+> `L4Factoidal/Solid/Server/Auth.lean` decides Solid-OIDC authentication,
+> and the ledger rows `lws-core-14`, `lws-core-15` and `solid-10-01`
+> moved from "host-verified" and "open" to "guarded". The boundary is
+> now where every other boundary in this project is: the host fetches
+> the identity provider's keys over the network and holds the replay
+> store; Lean decides which key verifies a token, whether the claims are
+> acceptable, and whether the DPoP proof binds it. Full record:
+> [`2026-09-06-jose-dpop-over-hacl.md`](2026-09-06-jose-dpop-over-hacl.md).
+
 ## 3. The first slice (what "set up" delivers)
 
 1. Directories, module skeletons with the types above, READMEs in every

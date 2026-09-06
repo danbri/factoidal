@@ -340,8 +340,8 @@ def registry : List Requirement :=
 , { id := "solid-10-01"
   , section_ := "Solid Protocol §10.1 Solid-OIDC"
   , statement := "Servers MUST conform to the Solid-OIDC specification."
-  , module := "(the host)"
-  , status := .hostVerified "tests/solid/server/protocol.mjs — RS256 and ES256 are not vendored; the host verifies the token and passes the WebID in the handle configuration" }
+  , module := "L4Factoidal.Solid.Server.Auth"
+  , status := .guarded "solidGuardSolidOidcDpop" }
   -- §11 Authorization, and Web Access Control
 , { id := "solid-11-01"
   , section_ := "Solid Protocol §11 Authorization"

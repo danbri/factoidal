@@ -77,6 +77,7 @@ decision is enforced, and a target with no effective ACL resource is denied,
 as Web Access Control §5.3 requires. The registry row states the condition
 rather than leaving the default unsaid.
 -/
+import L4Factoidal.Solid.Server.AuthConfig
 import L4Factoidal.Solid.Server.WAC
 import L4Factoidal.Solid.Server.Auxiliary
 import L4Factoidal.Solid.Server.N3Patch
@@ -96,6 +97,11 @@ the access decision is enforced. -/
 structure ServerConfig where
   lws : LWS.Config := {}
   enforceWac : Bool := false
+  /-- Solid-OIDC authentication. Off by default, exactly as `enforceWac`
+  is; `L4Factoidal/Solid/Server/Auth.lean` holds the type and the
+  decision. The field lives here because `Auth.lean` imports this module
+  and not the other way round. -/
+  auth : AuthConfig := {}
 deriving Inhabited
 
 /-- Parse an ACL resource body. Web Access Control §3.2: "Servers MUST

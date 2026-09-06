@@ -126,9 +126,14 @@ structure ProofPolicy where
   /-- Replay detection (RFC 9449 §11.1). `true` means "this `jti` has not
   been seen". Supplied by the caller because the store is the caller's. -/
   jtiFresh : String → Bool
+  deriving Inhabited
 
-/-- The HTTP request the proof must be about. -/
-structure Request where
+/-- The HTTP request the proof must be about. Named `ProofRequest`
+rather than `Request` because `L4Factoidal.HTTP.Request` is the parsed
+HTTP message and the two are open in the same scope in
+`Solid/Server/Auth.lean`; two types called `Request` there would be an
+ambiguity the elaborator cannot settle. -/
+structure ProofRequest where
   method : String
   uri : String
   deriving Repr, DecidableEq
@@ -193,7 +198,7 @@ is that token's `cnf.jkt` claim, which the caller has already validated
 with `Jwt.validate`. When a token is presented, BOTH `ath` and the
 thumbprint binding are required: a proof presented with a token that is
 bound to no key is not accepted as an unbound proof. -/
-def proofAccepts (V : Verifiers) (pol : ProofPolicy) (req : Request)
+def proofAccepts (V : Verifiers) (pol : ProofPolicy) (req : ProofRequest)
     (accessToken : Option ByteArray) (cnfJkt : Option String)
     (proof : String) : Bool :=
   match preKey proof with
@@ -228,7 +233,7 @@ said no, so `noRefusalFound` is unreachable; it exists because the
 cascade must be total, and it is a refusal, never an acceptance
 (`diagnoseProof_ne_ok`). Reordering this changes only which refusal is
 reported. -/
-def diagnoseProof (V : Verifiers) (pol : ProofPolicy) (req : Request)
+def diagnoseProof (V : Verifiers) (pol : ProofPolicy) (req : ProofRequest)
     (accessToken : Option ByteArray) (cnfJkt : Option String)
     (proof : String) : ProofOutcome :=
   match preKey proof with
@@ -280,7 +285,7 @@ def diagnoseProof (V : Verifiers) (pol : ProofPolicy) (req : Request)
 
 /-- Validate a DPoP proof (RFC 9449 §4.3) and its binding to an access
 token (§6.1). -/
-def validateProof (V : Verifiers) (pol : ProofPolicy) (req : Request)
+def validateProof (V : Verifiers) (pol : ProofPolicy) (req : ProofRequest)
     (accessToken : Option ByteArray) (cnfJkt : Option String)
     (proof : String) : ProofOutcome :=
   if proofAccepts V pol req accessToken cnfJkt proof then .ok
@@ -366,7 +371,7 @@ theorem htu_refuses_difference {claimed actual : String}
 
 /-- The diagnosis never accepts, so `validateProof` has exactly one path
 to `.ok`. -/
-theorem diagnoseProof_ne_ok (V : Verifiers) (pol : ProofPolicy) (req : Request)
+theorem diagnoseProof_ne_ok (V : Verifiers) (pol : ProofPolicy) (req : ProofRequest)
     (at? : Option ByteArray) (jkt? : Option String) (proof : String) :
     diagnoseProof V pol req at? jkt? proof ≠ .ok := by
   unfold diagnoseProof
@@ -374,7 +379,7 @@ theorem diagnoseProof_ne_ok (V : Verifiers) (pol : ProofPolicy) (req : Request)
   all_goals simp
 
 /-- **Acceptance is exactly `proofAccepts`.** -/
-theorem validateProof_ok_iff (V : Verifiers) (pol : ProofPolicy) (req : Request)
+theorem validateProof_ok_iff (V : Verifiers) (pol : ProofPolicy) (req : ProofRequest)
     (at? : Option ByteArray) (jkt? : Option String) (proof : String) :
     validateProof V pol req at? jkt? proof = .ok ↔
       proofAccepts V pol req at? jkt? proof = true := by
@@ -386,7 +391,7 @@ theorem validateProof_ok_iff (V : Verifiers) (pol : ProofPolicy) (req : Request)
 
 /-- The accepting condition, unfolded once the proof's structural parts
 are known. Every theorem below reads one conjunct out of it. -/
-theorem proofAccepts_parts {V : Verifiers} {pol : ProofPolicy} {req : Request}
+theorem proofAccepts_parts {V : Verifiers} {pol : ProofPolicy} {req : ProofRequest}
     {tok : ByteArray} {jkt : String} {proof : String} {c : Compact} {hdr : Header}
     {key : Jwk} {pc : ProofClaims}
     (hp : preKey proof = .ok (c, hdr)) (hk : proofKey? hdr = some key)
@@ -406,7 +411,7 @@ theorem proofAccepts_parts {V : Verifiers} {pol : ProofPolicy} {req : Request}
 the access token is bound to.** This is the RFC 9449 §6.1 binding: it is
 what makes possession of the proof key mean possession of the token's
 key. A proof key whose thumbprint differs from `cnf.jkt` is refused. -/
-theorem proof_ok_thumbprint_bound {V : Verifiers} {pol : ProofPolicy} {req : Request}
+theorem proof_ok_thumbprint_bound {V : Verifiers} {pol : ProofPolicy} {req : ProofRequest}
     {tok : ByteArray} {jkt : String} {proof : String}
     (h : validateProof V pol req (some tok) (some jkt) proof = .ok) :
     ∃ c hdr key, preKey proof = .ok (c, hdr) ∧ proofKey? hdr = some key ∧
@@ -433,7 +438,7 @@ theorem proof_ok_thumbprint_bound {V : Verifiers} {pol : ProofPolicy} {req : Req
 /-- **An accepted proof carries the `ath` of the token presented with
 it** (RFC 9449 §4.3 item 10), so a proof captured on one request cannot
 be attached to a request carrying a different token. -/
-theorem proof_ok_ath_bound {V : Verifiers} {pol : ProofPolicy} {req : Request}
+theorem proof_ok_ath_bound {V : Verifiers} {pol : ProofPolicy} {req : ProofRequest}
     {tok : ByteArray} {jkt : String} {proof : String}
     (h : validateProof V pol req (some tok) (some jkt) proof = .ok) :
     ∃ c hdr pc, preKey proof = .ok (c, hdr) ∧ payloadClaims? c = some pc ∧
@@ -460,7 +465,7 @@ theorem proof_ok_ath_bound {V : Verifiers} {pol : ProofPolicy} {req : Request}
 /-- **A proof presented with an access token that is not bound to any key
 is refused.** A verifier that accepted it would be treating a
 possession proof as a bearer token. -/
-theorem proof_unbound_token_refused {V : Verifiers} {pol : ProofPolicy} {req : Request}
+theorem proof_unbound_token_refused {V : Verifiers} {pol : ProofPolicy} {req : ProofRequest}
     {tok : ByteArray} {proof : String} :
     validateProof V pol req (some tok) none proof ≠ .ok := by
   intro h
@@ -487,7 +492,7 @@ theorem proof_unbound_token_refused {V : Verifiers} {pol : ProofPolicy} {req : R
 /-- **A JWS refusal stops a proof.** With `Jws.hmacFamily_not_allowed`
 and `Jws.alg_none_not_allowed`, this is the statement that no HMAC or
 `none` proof is ever accepted, whatever else it carries. -/
-theorem proof_jws_refusal {V : Verifiers} {pol : ProofPolicy} {req : Request}
+theorem proof_jws_refusal {V : Verifiers} {pol : ProofPolicy} {req : ProofRequest}
     {at? : Option ByteArray} {jkt? : Option String} {proof : String} {r : Refusal}
     (h : preKey proof = .error r) :
     validateProof V pol req at? jkt? proof = .jwsRefused r := by
@@ -574,7 +579,7 @@ private def stubV : Verifiers :=
 private def alwaysFresh : ProofPolicy :=
   { now := 1562262616, iatWindow := 60, jtiFresh := fun _ => true }
 private def alwaysStale : ProofPolicy := { alwaysFresh with jtiFresh := fun _ => false }
-private def tokenRequest : Request :=
+private def tokenRequest : ProofRequest :=
   { method := "POST", uri := "https://server.example.com/token" }
 
 private def proofWith (header payload : String) : String :=

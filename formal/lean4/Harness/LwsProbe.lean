@@ -31,7 +31,12 @@ def checks : List (String × Bool) :=
   , ("lws-core-12", Tests.lwsGuardCreatedIsNotSuccess)
     -- The draft's "not permitted" response is decided by Web Access
     -- Control, which is Solid's layer; the check lives there.
-  , ("lws-core-13", L4Factoidal.Solid.Tests.solidGuardWacDenies) ]
+  , ("lws-core-13", L4Factoidal.Solid.Tests.solidGuardWacDenies)
+    -- The draft's "unknown requester", and its Authentication section's
+    -- appeal to OpenID Connect, are decided by the Solid-OIDC layer
+    -- (L4Factoidal/Solid/Server/Auth.lean); the check lives there.
+  , ("lws-core-14", L4Factoidal.Solid.Tests.solidGuardSolidOidcDpop)
+  , ("lws-core-15", L4Factoidal.Solid.Tests.solidGuardSolidOidcDpop) ]
 
 def check? (id : String) : Option Bool :=
   (checks.find? (fun (rid, _) => rid == id)).map (·.2)
