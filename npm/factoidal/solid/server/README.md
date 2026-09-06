@@ -33,21 +33,30 @@ knows nothing of that layering.
 
 | op | arguments | answer |
 | --- | --- | --- |
-| `solidOpen` | `[configJson]` | `{ ok, handle }` |
+| `solidOpen` | `[configJson]` | `{ ok, handle, root, storage }` |
 | `solidStep` | `[handle, requestJson]` | `{ ok, response }` |
 | `solidClose` | `[handle]` | `{ ok }` |
 
 ```
-request  { method, target, headers: [[name, value]], body, baseUrl }
+request  { method, target, headers: [[name, value]], body }
 response { status, headers: [[name, value]], body }
 ```
 
-`configJson` carries `root` (the directory the engine may keep state
-under) and `baseUrl` (the origin the storage is published at). With an
-ephemeral port the origin is not known until the socket is bound, so it
-also travels on each request record as `baseUrl`; the engine needs it to
-write absolute link targets and containment triples, and this host never
-builds one itself.
+`configJson` members, all optional: `baseIri` (the absolute IRI the
+storage root maps to), `now` (the engine clock in seconds, advancing one
+second per mutation), `owner` (the WebID advertised through
+`Link: rel="…solid/terms#owner"`) and `agent` (the WebID of the
+requesting agent). With an ephemeral port the origin is not known until
+the socket is bound, so `listen` binds first and opens the storage
+after. `target` is a path within the storage; this host composes no IRI.
+
+`agent` is where authentication meets the engine. Verifying a Solid-OIDC
+token is a host job and is not built yet, so a handle with no `agent` is
+an unauthenticated agent, which is what the first slice serves. Web
+Access Control decisions are the engine's, over the agent the host
+verified.
+
+The full contract is `docs/lws-solid-conformance.md`, section "wasm ABI".
 
 A module built before these ops landed answers `unknown op`.
 `solidServerOpsAvailable(engine)` reports that, and `tests/solid/server/`
@@ -58,13 +67,13 @@ skips with the reason printed.
 ```js
 import { listen } from '@factoidal/core/solid/server'
 
-const running = await listen({ root: '/var/lib/solid', port: 3000 })
+const running = await listen({ port: 3000, baseIri: 'https://pod.example/' })
 console.log(running.origin)
 await running.close()
 ```
 
 ```
-factoidal solid-serve /var/lib/solid --port 3000
+factoidal solid-serve /var/lib/solid --port 3000 --base https://pod.example/
 ```
 
 ## Exports

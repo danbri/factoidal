@@ -16,23 +16,33 @@
 // in this file has found a rule violation.
 //
 // THE WASM CONTRACT
+// Fixed in docs/lws-solid-conformance.md, section "wasm ABI".
 //   solidClientRequest  [kind, argsJson]     -> { ok, request }
-//   solidClientResponse [kind, responseJson] -> { ok, ... }
+//   solidClientResponse [kind, responseJson] -> { ok, interpretation }
 //
 //   request  { method, target, headers: [[name, value]], body }
 //   response { status, headers: [[name, value]], body }
 //
-// `kind` names the client operation: "discover", "get", "put", "post",
-// "delete", "patch", "profile". The interpretation `solidClientResponse`
-// answers is the operation's own shape and this file passes it through
-// unread, so a new kind needs no change here.
+// The two operations take DIFFERENT kind vocabularies, and this host
+// keeps them apart rather than deriving one from the other.
 //
-// A multi-step operation is a loop, not a special case: `solidClientRequest`
-// may answer `{ ok, done: true, ... }` instead of a request, or answer a
-// request together with a `state` that the next call is given. Discovery
-// walking from a resource up to its storage root is the case that needs
-// it. When the Lean side answers a single request with no `state`, the
-// loop runs once.
+//   request kinds:        read, create, replace, patch, delete,
+//                         discoverStorage, readProfile
+//   interpretation kinds: storage, containment, auxiliaries, profile,
+//                         wacAllow
+//
+// Which interpretation a reply wants is a protocol decision, so this
+// file never picks one. It uses, in order: the `interpret` member the
+// request envelope named, then the `interpret` the caller passed. With
+// neither, the reply is returned uninterpreted and `interpretation` is
+// null -- the raw record, never a host reading of it.
+//
+// A multi-step operation is a loop, not a special case: an
+// interpretation that answers `{ continue: true, state }` sends the
+// state back into the next `solidClientRequest`. Walking from a resource
+// up to its storage root is the case that needs it. A single-request
+// operation runs the loop once, and the loop is capped so a state that
+// never settles is a reported failure rather than a hang.
 //
 // This file shares no code with `../server/index.mjs` beyond the engine
 // loader.
@@ -41,6 +51,17 @@ import { loadEngine } from '../../bin/engine.mjs'
 
 /** The ops this host needs from the engine. */
 export const SOLID_CLIENT_OPS = ['solidClientRequest', 'solidClientResponse']
+
+/** The request kinds the ABI names. Listed so a caller can be checked
+ *  against the contract; this host attaches no meaning to any of them. */
+export const SOLID_REQUEST_KINDS = [
+  'read', 'create', 'replace', 'patch', 'delete', 'discoverStorage', 'readProfile'
+]
+
+/** The interpretation kinds the ABI names. */
+export const SOLID_INTERPRETATION_KINDS = [
+  'storage', 'containment', 'auxiliaries', 'profile', 'wacAllow'
+]
 
 /** An error raised by the Solid client host. `unknownOp` is set when the
  *  loaded WebAssembly module does not carry the operation at all. */
@@ -65,7 +86,7 @@ function isUnknownOp (error) {
  */
 export async function solidClientOpsAvailable (engine) {
   try {
-    engine.call('solidClientRequest', ['get', JSON.stringify({ probe: true })])
+    engine.call('solidClientRequest', ['read', JSON.stringify({ target: '/' })])
     return { available: true, reason: 'solidClientRequest answered' }
   } catch (error) {
     if (isUnknownOp(error)) {
@@ -83,7 +104,6 @@ function requestOf (envelope) {
   if (envelope === null || typeof envelope !== 'object') {
     throw new SolidClientHostError('solidClientRequest answered with no envelope')
   }
-  if (envelope.done === true) return null
   const record = (envelope.request !== null && typeof envelope.request === 'object')
     ? envelope.request
     : envelope
@@ -99,15 +119,20 @@ function requestOf (envelope) {
   }
 }
 
+function interpretationOf (envelope) {
+  if (envelope === null || typeof envelope !== 'object') {
+    throw new SolidClientHostError('solidClientResponse answered with no envelope')
+  }
+  return (envelope.interpretation !== null && typeof envelope.interpretation === 'object')
+    ? envelope.interpretation
+    : envelope
+}
+
 /** The reply as the JSON response record the contract states. */
 async function recordOfReply (reply) {
   const headers = []
   reply.headers.forEach((value, name) => { headers.push([name, value]) })
-  return {
-    status: reply.status,
-    headers,
-    body: await reply.text()
-  }
+  return { status: reply.status, headers, body: await reply.text() }
 }
 
 /**
@@ -116,10 +141,9 @@ async function recordOfReply (reply) {
  * @param {object} [options]
  * @param {object} [options.engine] an engine handle to reuse
  * @param {Function} [options.fetch] the fetch to use (default `globalThis.fetch`)
+ * @param {string} [options.baseIri] prefixed to a request target that is a path
  * @param {number} [options.maxSteps] the loop cap for a multi-step operation
- * @returns {Promise<{run: Function, get: Function, put: Function,
- *                    post: Function, delete: Function, discover: Function,
- *                    engine: object}>}
+ * @returns {Promise<object>} the client
  */
 export async function createSolidClient (options = {}) {
   const engine = options.engine !== undefined ? options.engine : await loadEngine()
@@ -128,32 +152,63 @@ export async function createSolidClient (options = {}) {
     throw new SolidClientHostError('no fetch is available in this runtime')
   }
   const maxSteps = typeof options.maxSteps === 'number' ? options.maxSteps : 16
+  const baseIri = typeof options.baseIri === 'string' ? options.baseIri : null
+
+  /** Where to send a request whose target the engine wrote as a path.
+   *  This is address resolution, not IRI construction: the engine's
+   *  target is used verbatim when it is already absolute. */
+  function endpoint (target) {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(target)) return target
+    if (baseIri === null) {
+      throw new SolidClientHostError(
+        `the engine answered the path "${target}" and this client has no ` +
+        'baseIri to send it to; pass baseIri to createSolidClient')
+    }
+    return baseIri.replace(/\/$/, '') + target
+  }
+
+  function callRequest (kind, args) {
+    try {
+      return engine.call('solidClientRequest', [kind, JSON.stringify(args)])
+    } catch (error) {
+      if (isUnknownOp(error)) {
+        throw new SolidClientHostError(
+          'the loaded l4factoidal WebAssembly module does not carry ' +
+          'solidClientRequest', { unknownOp: true })
+      }
+      throw error
+    }
+  }
+
+  function callResponse (kind, record) {
+    try {
+      return engine.call('solidClientResponse', [kind, JSON.stringify(record)])
+    } catch (error) {
+      if (isUnknownOp(error)) {
+        throw new SolidClientHostError(
+          'the loaded l4factoidal WebAssembly module does not carry ' +
+          'solidClientResponse', { unknownOp: true })
+      }
+      throw error
+    }
+  }
 
   /**
    * Run one client operation to its end.
    *
-   * @param {string} kind the operation name the engine dispatches on
+   * @param {string} kind a request kind from `SOLID_REQUEST_KINDS`
    * @param {object} args the operation's arguments, passed unread
-   * @returns {Promise<object>} whatever `solidClientResponse` answered
+   * @param {object} [extra] `interpret`: an interpretation kind to use
+   *   when the request envelope names none
+   * @returns {Promise<{kind: string, request: object, response: object,
+   *                    interpret: string|null, interpretation: object|null,
+   *                    steps: number}>}
    */
-  async function run (kind, args) {
+  async function run (kind, args, extra = {}) {
     let state = null
-    let interpretation = null
-    for (let step = 0; step < maxSteps; step += 1) {
-      const call = state === null ? { ...args } : { ...args, state }
-      let built
-      try {
-        built = engine.call('solidClientRequest', [kind, JSON.stringify(call)])
-      } catch (error) {
-        if (isUnknownOp(error)) {
-          throw new SolidClientHostError(
-            'the loaded l4factoidal WebAssembly module does not carry ' +
-            'solidClientRequest', { unknownOp: true })
-        }
-        throw error
-      }
+    for (let step = 1; step <= maxSteps; step += 1) {
+      const built = callRequest(kind, state === null ? args : { ...args, state })
       const request = requestOf(built)
-      if (request === null) return built
       const headers = {}
       for (const pair of request.headers) {
         if (!Array.isArray(pair) || pair.length < 2) continue
@@ -161,30 +216,28 @@ export async function createSolidClient (options = {}) {
           ? String(pair[1])
           : `${headers[pair[0]]}, ${String(pair[1])}`
       }
-      const reply = await wire(request.target, {
+      const reply = await wire(endpoint(request.target), {
         method: request.method,
         headers,
         body: request.body === null ? undefined : request.body,
         redirect: 'manual'
       })
       const record = await recordOfReply(reply)
-      record.target = request.target
-      record.method = request.method
-      if (built.state !== undefined) record.state = built.state
-      try {
-        interpretation = engine.call('solidClientResponse', [kind, JSON.stringify(record)])
-      } catch (error) {
-        if (isUnknownOp(error)) {
-          throw new SolidClientHostError(
-            'the loaded l4factoidal WebAssembly module does not carry ' +
-            'solidClientResponse', { unknownOp: true })
-        }
-        throw error
+      const interpretKind = typeof built.interpret === 'string'
+        ? built.interpret
+        : (typeof extra.interpret === 'string' ? extra.interpret : null)
+      const answer = {
+        kind,
+        request,
+        response: record,
+        interpret: interpretKind,
+        interpretation: null,
+        steps: step
       }
-      if (interpretation === null || typeof interpretation !== 'object') {
-        throw new SolidClientHostError('solidClientResponse answered with no envelope')
-      }
-      if (interpretation.continue !== true) return interpretation
+      if (interpretKind === null) return answer
+      const interpretation = interpretationOf(callResponse(interpretKind, record))
+      answer.interpretation = interpretation
+      if (interpretation.continue !== true) return answer
       state = interpretation.state === undefined ? null : interpretation.state
     }
     throw new SolidClientHostError(
@@ -194,12 +247,20 @@ export async function createSolidClient (options = {}) {
   return {
     engine,
     run,
-    discover: (url, extra = {}) => run('discover', { url, ...extra }),
-    get: (url, extra = {}) => run('get', { url, ...extra }),
-    put: (url, body, extra = {}) => run('put', { url, body, ...extra }),
-    post: (url, body, extra = {}) => run('post', { url, body, ...extra }),
-    delete: (url, extra = {}) => run('delete', { url, ...extra }),
-    patch: (url, body, extra = {}) => run('patch', { url, body, ...extra }),
-    profile: (webid, extra = {}) => run('profile', { url: webid, ...extra })
+    /** Named wrappers over `run`. Each one passes its arguments through;
+     *  none of them adds a header, a media type or a URL. */
+    read: (target, extra = {}) => run('read', { target, ...extra }),
+    create: (target, body, contentType, extra = {}) =>
+      run('create', { target, body, contentType, ...extra }),
+    replace: (target, body, contentType, extra = {}) =>
+      run('replace', { target, body, contentType, ...extra }),
+    patch: (target, body, contentType, extra = {}) =>
+      run('patch', { target, body, contentType, ...extra }),
+    delete: (target, extra = {}) => run('delete', { target, ...extra }),
+    discoverStorage: (target, extra = {}) =>
+      run('discoverStorage', { target, interpret: 'storage', ...extra },
+        { interpret: 'storage' }),
+    readProfile: (target, extra = {}) =>
+      run('readProfile', { target, ...extra }, { interpret: 'profile' })
   }
 }

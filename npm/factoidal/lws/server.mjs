@@ -17,12 +17,24 @@
 // failure of this host itself.
 //
 // THE WASM CONTRACT
-//   lwsOpen  [configJson]            -> { ok, handle }
+// Fixed in docs/lws-solid-conformance.md, section "wasm ABI".
+//   lwsOpen  [configJson]            -> { ok, handle, root }
 //   lwsStep  [handle, requestJson]   -> { ok, response }
 //   lwsClose [handle]                -> { ok }
 //
 //   request  { method, target, headers: [[name, value]], body }
 //   response { status, headers: [[name, value]], body }
+//
+// The config members are `baseIri`, `now`, `owner` and `agent`, all
+// optional. `target` is a path within the storage, so this host passes
+// Node's `request.url` through unchanged and never composes an absolute
+// IRI: `baseIri` tells the engine what the root maps to.
+//
+// A request may carry `now` and `agent` beside `method` to override the
+// handle's clock and agent for one step. That is how a host with a real
+// clock and a real token verifier feeds both in; this host sets `now`
+// from its own clock only when the caller asked for it, so a test can
+// keep the engine's deterministic clock.
 //
 // `headers` is a list of pairs rather than an object because HTTP allows
 // a field name to repeat and the order of repeated fields is
@@ -115,20 +127,25 @@ function responseOf (envelope) {
  * Open one LWS storage on the engine and return the handle plus the two
  * calls a host makes against it.
  *
- * `configJson` is passed to the engine unread. The storage root
- * directory, if the engine takes one, goes in it.
+ * The config members are the ABI's own: `baseIri`, `now`, `owner`,
+ * `agent`. Nothing else is sent.
  *
  * @param {object} options
- * @param {string} [options.root] a directory the engine may use for state
- * @param {string} [options.baseUrl] the origin the storage is served at
+ * @param {string} [options.baseIri] the absolute IRI the storage root maps to
+ * @param {number} [options.now] the engine clock, seconds since the epoch
+ * @param {string} [options.owner] the WebID the storage advertises
+ * @param {string} [options.agent] the WebID of the requesting agent
+ * @param {boolean} [options.realClock] stamp each request with this host's clock
  * @param {object} [options.engine] an engine handle to reuse
  * @returns {Promise<{step: Function, close: Function, handle: string, engine: object}>}
  */
 export async function openLwsStorage (options = {}) {
   const engine = options.engine !== undefined ? options.engine : await loadEngine()
   const config = {}
-  if (typeof options.root === 'string') config.root = options.root
-  if (typeof options.baseUrl === 'string') config.baseUrl = options.baseUrl
+  if (typeof options.baseIri === 'string') config.baseIri = options.baseIri
+  if (typeof options.now === 'number') config.now = options.now
+  if (typeof options.owner === 'string') config.owner = options.owner
+  if (typeof options.agent === 'string') config.agent = options.agent
   let opened
   try {
     opened = engine.call('lwsOpen', [JSON.stringify(config)])
@@ -154,7 +171,10 @@ export async function openLwsStorage (options = {}) {
      * @returns {{status: number, headers: Array<[string, string]>, body: string}}
      */
     step (request) {
-      return responseOf(engine.call('lwsStep', [handle, JSON.stringify(request)]))
+      const record = options.realClock === true
+        ? { ...request, now: Math.floor(Date.now() / 1000) }
+        : request
+      return responseOf(engine.call('lwsStep', [handle, JSON.stringify(record)]))
     },
     close () {
       try { engine.call('lwsClose', [handle]) } catch (_error) { /* already gone */ }
@@ -185,18 +205,33 @@ function headerPairs (raw) {
  * A Node `http.Server` that answers every request through `lwsStep`.
  *
  * The server is returned unlistened: the caller chooses the port, which
- * is what lets a test take an ephemeral one.
+ * is what lets a test take an ephemeral one. The storage handle is
+ * opened on demand rather than here, because with an ephemeral port the
+ * origin `baseIri` maps the storage root to is not known until the
+ * socket is bound.
  *
  * @param {object} options as `openLwsStorage`, plus `onError`
  * @returns {Promise<{server: import('node:http').Server,
- *                    storage: object, close: Function}>}
+ *                    storage: Function, close: Function,
+ *                    setBaseIri: Function}>}
  */
 export async function createLwsServer (options = {}) {
   const http = await import('node:http')
-  const storage = await openLwsStorage(options)
   const onError = typeof options.onError === 'function'
     ? options.onError
     : (error) => { console.error(`lws-serve: ${error.message}`) }
+
+  let settings = { ...options }
+  let opening = null
+  let opened = null
+
+  /** The storage handle, opened once. */
+  function storage () {
+    if (opening === null) {
+      opening = openLwsStorage(settings).then((value) => { opened = value; return value })
+    }
+    return opening
+  }
 
   const server = http.createServer(async (request, response) => {
     let record
@@ -215,7 +250,7 @@ export async function createLwsServer (options = {}) {
     }
     let answer
     try {
-      answer = storage.step(record)
+      answer = (await storage()).step(record)
     } catch (error) {
       // A failure of this host or of the engine, not a protocol answer.
       // The engine's own words are kept; nothing is invented.
@@ -224,17 +259,7 @@ export async function createLwsServer (options = {}) {
       response.end(`lws-serve: ${error.message}\n`)
       return
     }
-    for (const pair of answer.headers) {
-      if (!Array.isArray(pair) || pair.length < 2) continue
-      const existing = response.getHeader(pair[0])
-      if (existing === undefined) {
-        response.setHeader(pair[0], String(pair[1]))
-      } else if (Array.isArray(existing)) {
-        response.setHeader(pair[0], existing.concat([String(pair[1])]))
-      } else {
-        response.setHeader(pair[0], [String(existing), String(pair[1])])
-      }
-    }
+    writeHeaders(response, answer.headers)
     response.statusCode = answer.status
     response.end(answer.body)
   })
@@ -242,19 +267,47 @@ export async function createLwsServer (options = {}) {
   return {
     server,
     storage,
+    /** Set the storage root's absolute IRI, before the first request. */
+    setBaseIri (value) {
+      if (opening !== null) {
+        throw new LwsHostError('the storage is already open; set baseIri first')
+      }
+      settings = { ...settings, baseIri: value }
+    },
     close () {
       return new Promise((resolve) => {
-        server.close(() => { storage.close(); resolve() })
+        server.close(() => {
+          if (opened !== null) opened.close()
+          resolve()
+        })
       })
     }
   }
 }
 
+/** Write one response record's header pairs, keeping repeats. */
+function writeHeaders (response, pairs) {
+  for (const pair of pairs) {
+    if (!Array.isArray(pair) || pair.length < 2) continue
+    const existing = response.getHeader(pair[0])
+    if (existing === undefined) {
+      response.setHeader(pair[0], String(pair[1]))
+    } else if (Array.isArray(existing)) {
+      response.setHeader(pair[0], existing.concat([String(pair[1])]))
+    } else {
+      response.setHeader(pair[0], [String(existing), String(pair[1])])
+    }
+  }
+}
+
 /**
- * Start a server and resolve once it is listening.
+ * Start a server and resolve once it is listening and the storage is
+ * open. The storage is opened here rather than on the first request so
+ * that a module without the LWS ops is reported by the command that
+ * started the server, not by a later request.
  *
  * @param {object} options as `createLwsServer`, plus `port` and `host`
- * @returns {Promise<{server: object, storage: object, port: number,
+ * @returns {Promise<{server: object, storage: Function, port: number,
  *                    origin: string, close: Function}>}
  */
 export async function listen (options = {}) {
@@ -266,9 +319,13 @@ export async function listen (options = {}) {
     created.server.listen(port, host, resolve)
   })
   const bound = created.server.address()
-  return {
-    ...created,
-    port: bound.port,
-    origin: `http://${host}:${bound.port}`
+  const origin = `http://${host}:${bound.port}`
+  if (typeof options.baseIri !== 'string') created.setBaseIri(`${origin}/`)
+  try {
+    await created.storage()
+  } catch (error) {
+    await new Promise((resolve) => created.server.close(resolve))
+    throw error
   }
+  return { ...created, port: bound.port, origin }
 }

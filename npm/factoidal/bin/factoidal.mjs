@@ -289,10 +289,16 @@ options:
 usage: factoidal lws-serve DIR [--port N] [--host ADDRESS]
 
 Starts a Node HTTP server that answers every request through the engine's
-lwsStep operation. DIR is where the engine keeps its state.
+lwsStep operation.
+
+DIR names the storage directory. The first slice keeps the resource tree
+in the engine handle, so DIR is not read or written yet; it is the place
+a later snapshot goes (design record, section 2).
 
   --port N        the port to bind; 0 takes an ephemeral one (default 3000)
   --host ADDRESS  the address to bind (default 127.0.0.1)
+  --base IRI      the absolute IRI the storage root maps to
+                  (default: the bound origin)
 
 The server makes no protocol decision: status codes, Link relations,
 Last-Modified and the PATCH blank-node refusal are all answered by
@@ -306,10 +312,17 @@ Specification: https://w3c.github.io/lws-protocol/lws10-core/`,
 usage: factoidal solid-serve DIR [--port N] [--host ADDRESS]
 
 Starts a Node HTTP server that answers every request through the engine's
-solidStep operation. DIR is the storage root the engine keeps state under.
+solidStep operation.
+
+DIR names the storage directory. The first slice keeps the resource tree
+in the engine handle, so DIR is not read or written yet; it is the place
+a later snapshot goes (design record, section 2).
 
   --port N        the port to bind; 0 takes an ephemeral one (default 3000)
   --host ADDRESS  the address to bind (default 127.0.0.1)
+  --base IRI      the absolute IRI the storage root maps to
+                  (default: the bound origin)
+  --owner WEBID   the WebID the storage advertises as its owner
 
 The server makes no protocol decision. Storage discovery, containment
 triples, slash semantics, the Allow and Accept-* headers, the PUT/POST/
@@ -328,9 +341,18 @@ Every request is built by the engine's solidClientRequest operation and
 every response is read by solidClientResponse. This command supplies a
 socket and prints what the engine answered.
 
-  --body TEXT     the request body for put and post
-  --file PATH     read the request body from a file
-  --json          print the engine's interpretation as JSON (the default)
+The five verbs are aliases for the operation kinds of the wasm ABI; the
+kind names are accepted directly as well.
+
+  get       read              put     replace          post   create
+  delete    delete            discover discoverStorage
+  (also: patch, readProfile)
+
+  --body TEXT       the request body for put, post and patch
+  --file PATH       read the request body from a file
+  --content-type M  the body's media type
+  --interpret KIND  one of storage, containment, auxiliaries, profile,
+                    wacAllow, used when the engine names none
 
 Specification: https://solidproject.org/TR/protocol`
 }
@@ -388,9 +410,9 @@ const VALUE_OPTIONS = {
   activate: new Set([]),
   update: new Set(['update', 'file']),
   compact: new Set([]),
-  'lws-serve': new Set(['port', 'host']),
-  'solid-serve': new Set(['port', 'host']),
-  'solid-client': new Set(['body', 'file'])
+  'lws-serve': new Set(['port', 'host', 'base']),
+  'solid-serve': new Set(['port', 'host', 'base', 'owner']),
+  'solid-client': new Set(['body', 'file', 'content-type', 'interpret'])
 }
 
 // ------------------------------------------------------------- commands
@@ -1009,9 +1031,10 @@ async function commandLwsServe (positional, options) {
   let running
   try {
     running = await listen({
-      root: positional[0],
       port: servePort(options, 3000),
-      host: serveHost(options)
+      host: serveHost(options),
+      ...(typeof options.base === 'string' ? { baseIri: options.base } : {}),
+      realClock: true
     })
   } catch (error) {
     if (error instanceof LwsHostError && error.unknownOp) {
@@ -1031,9 +1054,11 @@ async function commandSolidServe (positional, options) {
   let running
   try {
     running = await listen({
-      root: positional[0],
       port: servePort(options, 3000),
-      host: serveHost(options)
+      host: serveHost(options),
+      ...(typeof options.base === 'string' ? { baseIri: options.base } : {}),
+      ...(typeof options.owner === 'string' ? { owner: options.owner } : {}),
+      realClock: true
     })
   } catch (error) {
     if (error instanceof SolidServerHostError && error.unknownOp) {
@@ -1046,34 +1071,52 @@ async function commandSolidServe (positional, options) {
   return untilInterrupted(running, quiet)
 }
 
-const SOLID_CLIENT_OPERATIONS = ['get', 'put', 'post', 'delete', 'discover']
+// The command's verbs, as aliases for the wasm ABI's request kinds. A
+// kind name is accepted directly too, so this table adds a spelling and
+// hides nothing.
+const SOLID_CLIENT_ALIASES = {
+  get: 'read',
+  put: 'replace',
+  post: 'create',
+  delete: 'delete',
+  discover: 'discoverStorage'
+}
 
 async function commandSolidClient (positional, options) {
   if (positional.length !== 2) {
     throw new UsageError('solid-client needs an operation and a URL')
   }
-  const [operation, url] = positional
-  if (!SOLID_CLIENT_OPERATIONS.includes(operation)) {
-    throw new UsageError(
-      `unknown operation "${operation}"; one of ${SOLID_CLIENT_OPERATIONS.join(', ')}`)
-  }
-  let body
-  if (typeof options.file === 'string') {
-    body = new TextDecoder('utf-8', { fatal: true }).decode(readWhole(options.file))
-  } else if (typeof options.body === 'string') {
-    body = options.body
-  }
-  if ((operation === 'put' || operation === 'post') && body === undefined) {
-    throw new UsageError(`${operation} needs --body or --file`)
-  }
-  const { createSolidClient, SolidClientHostError } =
+  const [verb, target] = positional
+  const { createSolidClient, SolidClientHostError, SOLID_REQUEST_KINDS } =
     await import('../solid/client/index.mjs')
+  const kind = Object.prototype.hasOwnProperty.call(SOLID_CLIENT_ALIASES, verb)
+    ? SOLID_CLIENT_ALIASES[verb]
+    : verb
+  if (!SOLID_REQUEST_KINDS.includes(kind)) {
+    throw new UsageError(
+      `unknown operation "${verb}"; one of ` +
+      `${Object.keys(SOLID_CLIENT_ALIASES).join(', ')} or ` +
+      `${SOLID_REQUEST_KINDS.join(', ')}`)
+  }
+  const args = { target }
+  if (typeof options.file === 'string') {
+    args.body = new TextDecoder('utf-8', { fatal: true }).decode(readWhole(options.file))
+  } else if (typeof options.body === 'string') {
+    args.body = options.body
+  }
+  if (typeof options['content-type'] === 'string') {
+    args.contentType = options['content-type']
+  }
+  if (['create', 'replace', 'patch'].includes(kind) && args.body === undefined) {
+    throw new UsageError(`${verb} needs --body or --file`)
+  }
+  const extra = typeof options.interpret === 'string'
+    ? { interpret: options.interpret }
+    : {}
   let answer
   try {
     const client = await createSolidClient()
-    answer = body === undefined
-      ? await client.run(operation, { url })
-      : await client.run(operation, { url, body })
+    answer = await client.run(kind, args, extra)
   } catch (error) {
     if (error instanceof SolidClientHostError && error.unknownOp) {
       return notWired('solid-client', error.message)

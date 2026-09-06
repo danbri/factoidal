@@ -26,7 +26,7 @@ host or the engine failed rather than answered.
 
 | op | arguments | answer |
 | --- | --- | --- |
-| `lwsOpen` | `[configJson]` | `{ ok, handle }` |
+| `lwsOpen` | `[configJson]` | `{ ok, handle, root }` |
 | `lwsStep` | `[handle, requestJson]` | `{ ok, response }` |
 | `lwsClose` | `[handle]` | `{ ok }` |
 
@@ -36,7 +36,19 @@ response { status, headers: [[name, value]], body }
 ```
 
 `headers` is a list of pairs, not an object: HTTP allows a field name to
-repeat and the order of repeated fields carries meaning.
+repeat and the order of repeated fields carries meaning. `target` is a
+path within the storage, so Node's `request.url` is passed through
+unchanged and this host composes no IRI.
+
+`configJson` members, all optional: `baseIri` (the absolute IRI the
+storage root maps to), `now` (the engine clock in seconds, which advances
+by one second per mutation so a write sequence has increasing
+`Last-Modified` values with no real clock), `owner`, `agent`. A request
+may carry `now` and `agent` of its own to override the handle's for one
+step; `listen({realClock: true})` is how a server with a real clock feeds
+one in, and a test leaves it off to keep the engine's deterministic
+clock. The full contract is `docs/lws-solid-conformance.md`, section
+"wasm ABI".
 
 A WebAssembly module built before these ops landed answers `unknown op`.
 `lwsOpsAvailable(engine)` reports that as `{available: false, reason}`,
@@ -48,7 +60,7 @@ passing on an engine that cannot answer.
 ```js
 import { listen } from '@factoidal/core/lws'
 
-const running = await listen({ root: '/var/lib/lws', port: 3000 })
+const running = await listen({ port: 3000, baseIri: 'https://storage.example/' })
 console.log(running.origin)
 await running.close()
 ```
@@ -59,8 +71,11 @@ From the command:
 factoidal lws-serve /var/lib/lws --port 3000
 ```
 
-`DIR` is where the engine keeps its state. `--port 0` takes an ephemeral
-port and the command prints the one it got.
+`--port 0` takes an ephemeral port and the command prints the one it got;
+`--base IRI` sets `baseIri`, which defaults to the bound origin. `DIR`
+names the storage directory, but the first slice keeps the resource tree
+in the engine handle, so nothing is read from it or written to it yet
+(design record, section 2).
 
 ## Exports
 
@@ -69,6 +84,7 @@ port and the command prints the one it got.
 | `listen(options)` | start a server, resolve when it is listening |
 | `createLwsServer(options)` | build the server without listening |
 | `openLwsStorage(options)` | open a handle and get `step` / `close` |
+| `createLwsServer(...).setBaseIri(iri)` | set `baseIri` before the first request |
 | `lwsOpsAvailable(engine)` | probe the loaded module for the ops |
 | `LWS_OPS` | the three op names |
 | `LwsHostError` | a host failure, with `unknownOp` set when the op is absent |

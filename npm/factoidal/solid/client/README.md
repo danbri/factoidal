@@ -27,36 +27,48 @@ It shares no code with the server host beyond the engine loader.
 
 | op | arguments | answer |
 | --- | --- | --- |
-| `solidClientRequest` | `[kind, argsJson]` | `{ ok, request }` or `{ ok, done: true, ... }` |
-| `solidClientResponse` | `[kind, responseJson]` | `{ ok, ... }`, the operation's own shape |
+| `solidClientRequest` | `[kind, argsJson]` | `{ ok, request }` |
+| `solidClientResponse` | `[kind, responseJson]` | `{ ok, interpretation }` |
 
-`kind` is `discover`, `get`, `put`, `post`, `delete`, `patch` or
-`profile`. A new kind needs no change to this file: the interpretation
-is passed through unread.
+The two operations take different kind vocabularies and this host keeps
+them apart rather than deriving one from the other:
 
-A multi-step operation is a loop, not a special case. `solidClientRequest`
-may answer a `state` alongside its request, and `solidClientResponse` may
-answer `{ continue: true, state }`; the host then asks for the next
-request with that state. Walking from a resource up to its storage root
-is the case that needs it. A single-request operation runs the loop
-once. The loop is capped (`maxSteps`, default 16) so a state that never
-settles is a reported failure rather than a hang.
+* request kinds — `read`, `create`, `replace`, `patch`, `delete`,
+  `discoverStorage`, `readProfile`;
+* interpretation kinds — `storage`, `containment`, `auxiliaries`,
+  `profile`, `wacAllow`.
+
+Which interpretation a reply wants is a protocol decision, so this file
+never picks one. It uses the `interpret` member the request envelope
+named, then the `interpret` the caller passed. With neither, the reply is
+returned uninterpreted and `interpretation` is `null` — the raw record,
+never a host reading of it.
+
+A multi-step operation is a loop, not a special case. An interpretation
+that answers `{ continue: true, state }` sends the state back into the
+next `solidClientRequest`; walking from a resource up to its storage root
+is the case that needs it. A single-request operation runs the loop once.
+The loop is capped (`maxSteps`, default 16) so a state that never settles
+is a reported failure rather than a hang.
+
+The full contract is `docs/lws-solid-conformance.md`, section "wasm ABI".
 
 ## Use
 
 ```js
 import { createSolidClient } from '@factoidal/core/solid/client'
 
-const client = await createSolidClient()
-const storage = await client.discover('https://pod.example/alice/notes/one')
-await client.put('https://pod.example/alice/notes/one', '<#a> <#b> <#c> .')
-const read = await client.get('https://pod.example/alice/notes/one')
-await client.delete('https://pod.example/alice/notes/one')
+const client = await createSolidClient({ baseIri: 'https://pod.example/' })
+const storage = await client.discoverStorage('/alice/notes/one')
+await client.replace('/alice/notes/one', '<#a> <#b> <#c> .', 'text/turtle')
+const read = await client.read('/alice/notes/one')
+await client.delete('/alice/notes/one')
 ```
 
 ```
 factoidal solid-client get https://pod.example/alice/notes/one
-factoidal solid-client put https://pod.example/alice/notes/one --file note.ttl
+factoidal solid-client put https://pod.example/alice/notes/one \
+  --file note.ttl --content-type text/turtle
 factoidal solid-client discover https://pod.example/alice/notes/one
 ```
 
@@ -67,10 +79,18 @@ factoidal solid-client discover https://pod.example/alice/notes/one
 | `createSolidClient(options)` | a client bound to one engine and one `fetch` |
 | `solidClientOpsAvailable(engine)` | probe the loaded module for the ops |
 | `SOLID_CLIENT_OPS` | the two op names |
+| `SOLID_REQUEST_KINDS` | the seven request kinds the ABI names |
+| `SOLID_INTERPRETATION_KINDS` | the five interpretation kinds |
 | `SolidClientHostError` | a host failure, with `unknownOp` |
 
 `options.fetch` replaces the platform `fetch`, which is how a test drives
-the client at an in-process server without a proxy.
+the client at an in-process server without a proxy. `options.baseIri`
+says where to send a request whose target the engine wrote as a path;
+an absolute target is used verbatim.
+
+The command's five verbs are aliases for the request kinds — `get`→`read`,
+`put`→`replace`, `post`→`create`, `delete`→`delete`,
+`discover`→`discoverStorage` — and a kind name is accepted directly.
 
 ## Tests and interop
 
