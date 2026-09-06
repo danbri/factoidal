@@ -42,6 +42,7 @@ open L4Factoidal.RDF
 open L4Factoidal.SPARQL
 open L4Factoidal.SPARQL.StoreBackend
 open L4Factoidal.SPARQL.StorePlan
+open L4Factoidal.SPARQL.StoreFastPath
 open L4Factoidal.SPARQL.StoreDataset
 
 /-! ## 1. Filter algebra
@@ -379,5 +380,370 @@ theorem evalBgpFromMuFuel_nil :
 theorem evalBgpBackend_nil {ps : Bgp} (h : ps ≠ []) :
     evalBgpBackend ps (indexedGraphBackend []) = [] :=
   evalBgpFromMuFuel_nil (ps.length + 1) ps Binding.empty h (Nat.succ_pos _)
+
+
+/-! ## 8. The fragment
+
+`plannerFragment` is the shape the induction below covers, and — after
+the narrowing that lands with it — the shape all three collectors of
+`Storage/ShardManifest.lean` admit. Three exclusions carry a reason
+beyond "the induction does not reach it":
+
+* **A nested `GRAPH`.** §18.6 gives `GRAPH <n> { P }` no solutions when
+  the dataset does not name `n`, WHATEVER `P` is. An entry set that
+  drops every entry of graph `n` therefore changes the answer of
+  `GRAPH <n> { GRAPH <m> { ?s :p ?o } }`, because the inner pattern
+  reads graph `m` and never touches `n`. The body of a `GRAPH` must be
+  `graphFree`.
+* **An empty BGP**, for the same reason one level down: it answers one
+  solution without reading the active graph.
+* **A `FILTER` or `OPTIONAL` condition that is not `Expr.backendLocal`.**
+  `evalPatternBackend` materialises the whole dataset for those and runs
+  the algebra evaluator, which is a second evaluator this induction does
+  not cover.
+
+Refusing a shape only makes the planner read more entries. -/
+
+/-- No `GRAPH` anywhere inside. -/
+def graphFree : QueryPattern → Bool
+  | .bgp _ => true
+  | .empty => true
+  | .values _ _ => true
+  | .propertyPath _ _ _ => true
+  | .join a b | .union a b | .minus a b | .lateral a b => graphFree a && graphFree b
+  | .leftJoin a b _ => graphFree a && graphFree b
+  | .filter _ p | .bind _ _ p => graphFree p
+  | .graph _ _ => false
+  | .service _ _ _ | .serviceVar _ _ _ => false
+  | .subSelect _ => false
+
+/-- The shape the restriction theorem covers. -/
+def plannerFragment : QueryPattern → Bool
+  | .bgp ps => !ps.isEmpty
+  | .join a b | .union a b | .minus a b => plannerFragment a && plannerFragment b
+  | .leftJoin a b c => c.backendLocal && plannerFragment a && plannerFragment b
+  | .filter c p => c.backendLocal && plannerFragment p
+  | .graph (.iri _) p => graphFree p && plannerFragment p
+  | _ => false
+
+/-- The constant graph names the fragment reads. -/
+def graphNamesIn : QueryPattern → List WfIri
+  | .join a b | .union a b | .minus a b => graphNamesIn a ++ graphNamesIn b
+  | .leftJoin a b _ => graphNamesIn a ++ graphNamesIn b
+  | .filter _ p => graphNamesIn p
+  | .graph (.iri i) p => i :: graphNamesIn p
+  | _ => []
+
+/-- Every bound the pattern's triple patterns can present survives the
+restriction. -/
+def PatternKept (keep : Triple → Bool) : QueryPattern → Prop
+  | .bgp ps => ∀ tp ∈ ps, TpKept keep tp
+  | .join a b | .union a b | .minus a b =>
+      PatternKept keep a ∧ PatternKept keep b
+  | .leftJoin a b _ => PatternKept keep a ∧ PatternKept keep b
+  | .filter _ p => PatternKept keep p
+  | .graph _ p => PatternKept keep p
+  | _ => True
+
+/-! ## 9. The dataset relation
+
+`indexedDatasetBackend` keys its named backends by the raw `Iri` of the
+graph name, so the relation is stated over the same key. -/
+
+def ngKey (ng : NamedGraph) : Iri :=
+  match ng.name with
+  | .iri i => i.val
+  | .bnode b => b
+
+def lookupGraph : List NamedGraph → Iri → Option Graph
+  | [], _ => none
+  | ng :: rest, n => if ngKey ng == n then some ng.graph else lookupGraph rest n
+
+theorem lookupNamedBackend_indexed (d : Dataset) (n : Iri) :
+    lookupNamedBackend n (indexedDatasetBackend d).named
+      = (lookupGraph d.named n).map indexedGraphBackend := by
+  simp only [indexedDatasetBackend]
+  induction d.named with
+  | nil => rfl
+  | cons ng rest ih =>
+      obtain ⟨nm, gr⟩ := ng
+      simp only [List.map_cons, lookupNamedBackend, lookupGraph, ngKey]
+      cases nm with
+      | iri i => by_cases h : (i.val == n) = true <;> simp [h, ih]
+      | bnode b => by_cases h : (b == n) = true <;> simp [h, ih]
+
+/-- What the planner leaves behind. The default graph is filtered by
+`keep`. A named graph the pattern can read is either filtered by `keep`
+as well, or gone — and gone only when `keep` empties it, which is what
+`datasetOfQuads` does with a graph whose every row the planner dropped.
+
+A graph the pattern CANNOT read is unconstrained: the graph-name
+collector may have dropped its entries outright. -/
+structure DatasetRestricted (keep : Triple → Bool) (readable : List WfIri)
+    (d dr : Dataset) : Prop where
+  dflt : dr.default = d.default.filter keep
+  named : ∀ i : WfIri, i ∈ readable →
+    lookupGraph dr.named i.val = (lookupGraph d.named i.val).map (fun g => g.filter keep)
+    ∨ (lookupGraph dr.named i.val = none ∧
+       ∀ g, lookupGraph d.named i.val = some g → g.filter keep = [])
+
+/-! ## 10. A graph-free fragment over the empty active graph -/
+
+theorem evalPatternBackend_nil (env : EvalEnv) (dsb : DatasetBackend) :
+    ∀ p : QueryPattern, plannerFragment p = true → graphFree p = true →
+      evalPatternBackend env dsb p (indexedGraphBackend []) = []
+  | .bgp ps, hf, _ => by
+      simp only [plannerFragment, Bool.not_eq_true'] at hf
+      have hne : ps ≠ [] := by
+        intro h; rw [h] at hf; simp at hf
+      simpa [evalPatternBackend] using evalBgpBackend_nil hne
+  | .join a b, hf, hg => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [graphFree, Bool.and_eq_true] at hg
+      simp only [evalPatternBackend,
+        evalPatternBackend_nil env dsb a hf.1 hg.1,
+        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.hashJoin]
+      rfl
+  | .union a b, hf, hg => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [graphFree, Bool.and_eq_true] at hg
+      simp only [evalPatternBackend,
+        evalPatternBackend_nil env dsb a hf.1 hg.1,
+        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.union]
+      rfl
+  | .minus a b, hf, hg => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [graphFree, Bool.and_eq_true] at hg
+      simp only [evalPatternBackend,
+        evalPatternBackend_nil env dsb a hf.1 hg.1,
+        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.minus, List.filter_nil]
+  | .leftJoin a b c, hf, hg => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [graphFree, Bool.and_eq_true] at hg
+      simp only [evalPatternBackend, hf.1.1, if_pos,
+        evalPatternBackend_nil env dsb a hf.1.2 hg.1,
+        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.hashLeftJoin]
+      rfl
+  | .filter c p, hf, hg => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [graphFree] at hg
+      simp only [evalPatternBackend, hf.1, if_pos,
+        evalPatternBackend_nil env dsb p hf.2 hg, List.filter_nil]
+  | .graph _ _, _, hg => by simp [graphFree] at hg
+  | .lateral _ _, hf, _ => by simp [plannerFragment] at hf
+  | .bind _ _ _, hf, _ => by simp [plannerFragment] at hf
+  | .values _ _, hf, _ => by simp [plannerFragment] at hf
+  | .service _ _ _, hf, _ => by simp [plannerFragment] at hf
+  | .serviceVar _ _ _, hf, _ => by simp [plannerFragment] at hf
+  | .subSelect _, hf, _ => by simp [plannerFragment] at hf
+  | .propertyPath _ _ _, hf, _ => by simp [plannerFragment] at hf
+  | .empty, hf, _ => by simp [plannerFragment] at hf
+
+/-! ## 11. The pattern induction
+
+The statement is an equality of LISTS: same rows, same order. -/
+
+theorem evalPatternBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset}
+    (hd : DatasetRestricted keep readable d dr) :
+    ∀ (p : QueryPattern) (g : Graph), plannerFragment p = true → PatternKept keep p →
+      (∀ i ∈ graphNamesIn p, i ∈ readable) →
+      evalPatternBackend env (indexedDatasetBackend dr) p
+          (indexedGraphBackend (g.filter keep))
+        = evalPatternBackend env (indexedDatasetBackend d) p (indexedGraphBackend g)
+  | .bgp ps, g, _, hk, _ => by
+      simp only [evalPatternBackend]
+      exact evalBgpBackend_restrict hk g
+  | .join a b, g, hf, hk, hn => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      simp only [graphNamesIn, List.mem_append] at hn
+      simp only [evalPatternBackend,
+        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
+  | .union a b, g, hf, hk, hn => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      simp only [graphNamesIn, List.mem_append] at hn
+      simp only [evalPatternBackend,
+        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
+  | .minus a b, g, hf, hk, hn => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      simp only [graphNamesIn, List.mem_append] at hn
+      simp only [evalPatternBackend,
+        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
+  | .leftJoin a b c, g, hf, hk, hn => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      simp only [graphNamesIn, List.mem_append] at hn
+      simp only [evalPatternBackend, hf.1.1, if_pos,
+        evalPatternBackend_restrict env hd a g hf.1.2 hk.1 (fun i hi => hn i (Or.inl hi)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
+  | .filter c p, g, hf, hk, hn => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      simp only [graphNamesIn] at hn
+      simp only [evalPatternBackend, hf.1, if_pos,
+        evalPatternBackend_restrict env hd p g hf.2 hk hn]
+  | .graph (.iri i) p, g, hf, hk, hn => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      have hi : i ∈ readable := hn i (by simp [graphNamesIn])
+      have hn' : ∀ j ∈ graphNamesIn p, j ∈ readable := by
+        intro j hj
+        exact hn j (by simp [graphNamesIn, hj])
+      simp only [evalPatternBackend, lookupNamedBackend_indexed]
+      rcases hd.named i hi with h | ⟨h1, h2⟩
+      · rw [h]
+        cases hl : lookupGraph d.named i.val with
+        | none => simp only [Option.map_none]
+        | some g' =>
+            simp only [Option.map_some]
+            exact evalPatternBackend_restrict env hd p g' hf.2 hk hn'
+      · rw [h1]
+        cases hl : lookupGraph d.named i.val with
+        | none => simp only [Option.map_none]
+        | some g' =>
+            simp only [Option.map_none, Option.map_some]
+            have hz : g'.filter keep = [] := h2 g' hl
+            have hres := evalPatternBackend_restrict env hd p g' hf.2 hk hn'
+            rw [hz] at hres
+            rw [← hres]
+            exact (evalPatternBackend_nil env (indexedDatasetBackend dr) p hf.2 hf.1).symm
+  | .graph (.var _) _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .graph (.bnode _) _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .graph (.literal _) _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .graph (.tripleTerm _ _ _) _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .lateral _ _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .bind _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .values _ _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .service _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .serviceVar _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .subSelect _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .propertyPath _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
+  | .empty, _, hf, _, _ => by simp [plannerFragment] at hf
+
+/-! ## 12. The fast paths
+
+`evalSelectBackendOnGraph` tries three detectors before the pattern
+evaluator, and `evalSelectBackendDataset` a fourth. Each detector is a
+function of the QUERY alone, so both sides take the same branch; what
+is left is one invariance argument per branch. Two branches close
+outright: the GROUP BY ?g detector needs `GRAPH ?v`, which the fragment
+refuses, and the GROUP BY ?p resolver needs a backend with a
+`distinctPredicates` capability, which the in-memory index does not
+have. -/
+
+theorem detectStreamingCountGroupByGraph_none (q : Query)
+    (h : plannerFragment q.pattern = true) :
+    detectStreamingCountGroupByGraph q = none := by
+  cases hqp : q.pattern <;>
+    simp only [detectStreamingCountGroupByGraph, hqp] <;>
+    repeat' split
+  all_goals (try rfl)
+  all_goals simp_all [plannerFragment]
+
+theorem distinctPredicates_indexed (g : Graph) :
+    (capsOfBackend (indexedGraphBackend g)).distinctPredicates = none := rfl
+
+theorem resolveStreamingCountGroupByPredicate_none (q : Query) (gb : GraphBackend)
+    (dsb : DatasetBackend)
+    (h1 : (capsOfBackend gb).distinctPredicates = none)
+    (h2 : ∀ n t, lookupNamedBackend n dsb.named = some t →
+      (capsOfBackend t).distinctPredicates = none) :
+    resolveStreamingCountGroupByPredicate q gb dsb = none := by
+  simp only [resolveStreamingCountGroupByPredicate]
+  split
+  · rfl
+  · rename_i predVar countAlias scope _
+    split
+    · rfl
+    · rename_i target heq2
+      have hnone : (capsOfBackend target).distinctPredicates = none := by
+        cases scope with
+        | none =>
+            simp only [Option.some.injEq] at heq2
+            subst heq2
+            exact h1
+        | some gn => exact h2 _ _ heq2
+      rw [hnone]
+
+theorem lookupNamedBackend_indexed_distinct (d : Dataset) (n : Iri)
+    (t : GraphBackend) (h : lookupNamedBackend n (indexedDatasetBackend d).named = some t) :
+    (capsOfBackend t).distinctPredicates = none := by
+  rw [lookupNamedBackend_indexed] at h
+  cases hl : lookupGraph d.named n with
+  | none => rw [hl] at h; simp at h
+  | some g' =>
+      rw [hl] at h
+      simp only [Option.map_some, Option.some.injEq] at h
+      subst h
+      exact distinctPredicates_indexed g'
+
+theorem resolveStreamingCountGroupByPredicate_indexed (q : Query) (d : Dataset)
+    (g : Graph) :
+    resolveStreamingCountGroupByPredicate q (indexedGraphBackend g)
+      (indexedDatasetBackend d) = none :=
+  resolveStreamingCountGroupByPredicate_none q _ _ (distinctPredicates_indexed g)
+    (lookupNamedBackend_indexed_distinct d)
+
+theorem extractSingleTpBgpScoped_bare {p : QueryPattern} {tp : TriplePattern} :
+    extractSingleTpBgpScoped p = some (tp, none) → p = .bgp [tp] := by
+  intro h
+  unfold extractSingleTpBgpScoped at h
+  split at h <;> simp_all
+
+theorem extractSingleTpBgpScoped_scoped {p : QueryPattern} {tp : TriplePattern}
+    {gname : WfIri} :
+    extractSingleTpBgpScoped p = some (tp, some gname) →
+    p = .graph (.iri gname) (.bgp [tp]) := by
+  intro h
+  unfold extractSingleTpBgpScoped at h
+  split at h <;> simp_all
+
+theorem detectStreamingCountStar_extract {q : Query} {v : VarName}
+    {tp : TriplePattern} {scope : Option WfIri} :
+    detectStreamingCountStar q = some (v, tp, scope) →
+    extractSingleTpBgpScoped q.pattern = some (tp, scope) := by
+  intro hh
+  unfold detectStreamingCountStar at hh
+  repeat' split at hh
+  all_goals simp_all
+
+theorem detectLimitSingleTpScoped_extract {q : Query} {tp : TriplePattern}
+    {scope : LimitScope} {k : Nat} :
+    detectLimitSingleTpScoped q = some (tp, scope, k) →
+    extractSingleTpBgpLimitScope q.pattern = some (tp, scope) := by
+  intro hh
+  unfold detectLimitSingleTpScoped at hh
+  repeat' split at hh
+  all_goals simp_all
+
+theorem extractSingleTpBgpLimitScope_active {p : QueryPattern} {tp : TriplePattern} :
+    extractSingleTpBgpLimitScope p = some (tp, .active) → p = .bgp [tp] := by
+  intro h
+  unfold extractSingleTpBgpLimitScope at h
+  split at h <;> simp_all
+
+theorem extractSingleTpBgpLimitScope_named {p : QueryPattern} {tp : TriplePattern}
+    {gname : WfIri} :
+    extractSingleTpBgpLimitScope p = some (tp, .named gname) →
+    p = .graph (.iri gname) (.bgp [tp]) := by
+  intro h
+  unfold extractSingleTpBgpLimitScope at h
+  split at h <;> simp_all
+
+/-- `GRAPH ?v { tp }` is outside the fragment, so the LIMIT push-down's
+every-named-graph scope is unreachable here. -/
+theorem extractSingleTpBgpLimitScope_everyNamed {p : QueryPattern}
+    {tp : TriplePattern} {v : VarName} :
+    extractSingleTpBgpLimitScope p = some (tp, .everyNamed v) →
+    p = .graph (.var v) (.bgp [tp]) := by
+  intro h
+  unfold extractSingleTpBgpLimitScope at h
+  split at h <;> simp_all
 
 end L4Factoidal.SPARQL.DatasetRestriction
