@@ -402,10 +402,10 @@ beyond "the induction does not reach it":
   `graphFree`.
 * **An empty BGP**, for the same reason one level down: it answers one
   solution without reading the active graph.
-* **A `FILTER` or `OPTIONAL` condition that is not `Expr.backendLocal`.**
-  `evalPatternBackend` materialises the whole dataset for those and runs
-  the algebra evaluator, which is a second evaluator this induction does
-  not cover.
+* **A `FILTER`, `OPTIONAL` or `BIND` expression that is not
+  `Expr.backendLocal`.** `evalPatternBackend` materialises the whole
+  dataset for those and runs the algebra evaluator, which is a second
+  evaluator this induction does not cover.
 
 Refusing a shape only makes the planner read more entries. -/
 
@@ -429,6 +429,7 @@ def plannerFragment : QueryPattern → Bool
   | .join a b | .union a b | .minus a b => plannerFragment a && plannerFragment b
   | .leftJoin a b c => c.backendLocal && plannerFragment a && plannerFragment b
   | .filter c p => c.backendLocal && plannerFragment p
+  | .bind e _ p => e.backendLocal && plannerFragment p
   | .graph (.iri _) p | .graph (.var _) p => graphFree p && plannerFragment p
   | _ => false
 
@@ -436,7 +437,7 @@ def plannerFragment : QueryPattern → Bool
 def graphNamesIn : QueryPattern → List WfIri
   | .join a b | .union a b | .minus a b => graphNamesIn a ++ graphNamesIn b
   | .leftJoin a b _ => graphNamesIn a ++ graphNamesIn b
-  | .filter _ p => graphNamesIn p
+  | .filter _ p | .bind _ _ p => graphNamesIn p
   | .graph (.iri i) p => i :: graphNamesIn p
   | _ => []
 
@@ -445,7 +446,7 @@ no graph-name selection may have been made when it does. -/
 def graphVarIn : QueryPattern → Bool
   | .join a b | .union a b | .minus a b => graphVarIn a || graphVarIn b
   | .leftJoin a b _ => graphVarIn a || graphVarIn b
-  | .filter _ p => graphVarIn p
+  | .filter _ p | .bind _ _ p => graphVarIn p
   | .graph (.var _) _ => true
   | .graph _ p => graphVarIn p
   | _ => false
@@ -459,7 +460,7 @@ def PatternKept (keep : Triple → Bool) : QueryPattern → Prop
   | .join a b | .union a b | .minus a b =>
       PatternKept keep a ∧ PatternKept keep b
   | .leftJoin a b _ => PatternKept keep a ∧ PatternKept keep b
-  | .filter _ p => PatternKept keep p
+  | .filter _ p | .bind _ _ p => PatternKept keep p
   | .graph _ p => PatternKept keep p
   | _ => True
 
@@ -598,7 +599,14 @@ theorem evalPatternBackend_nil (env : EvalEnv) (dsb : DatasetBackend)
       · exact Or.inr ha
   | .graph _ _, _, hg, _ => by simp [graphFree] at hg
   | .lateral _ _, hf, _, _ => by simp [plannerFragment] at hf
-  | .bind _ _ _, hf, _, _ => by simp [plannerFragment] at hf
+  | .bind e v p, hf, hg, hk => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [graphFree] at hg
+      simp only [PatternKept] at hk
+      rcases evalPatternBackend_nil env dsb keep p hf.2 hg hk with h | h
+      · exact Or.inl (by
+          simp only [evalPatternBackend, hf.1, if_pos, h, bindRowsFresh])
+      · exact Or.inr h
   | .values _ _, hf, _, _ => by simp [plannerFragment] at hf
   | .service _ _ _, hf, _, _ => by simp [plannerFragment] at hf
   | .serviceVar _ _ _, hf, _, _ => by simp [plannerFragment] at hf
@@ -800,7 +808,13 @@ theorem evalPatternBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
   | .graph (.literal _) _, _, hf, _, _, _ => by simp [plannerFragment] at hf
   | .graph (.tripleTerm _ _ _) _, _, hf, _, _, _ => by simp [plannerFragment] at hf
   | .lateral _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
-  | .bind _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .bind e v p, g, hf, hk, hn, hv => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      simp only [graphNamesIn] at hn
+      simp only [graphVarIn] at hv
+      simp only [evalPatternBackend, hf.1, if_pos,
+        evalPatternBackend_restrict env hd p g hf.2 hk hn hv]
   | .values _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
   | .service _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
   | .serviceVar _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
@@ -1294,6 +1308,7 @@ theorem runAskQueryBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bo
   simp only [runAskQueryBackendDataset]
   exact evalAskBackend_restrict env hd _ hf hk hn hv
 
+#print axioms evalPatternBackend_nil
 #print axioms evalPatternBackend_restrict
 #print axioms runSelectQueryBackendDataset_restrict
 #print axioms runAskQueryBackendDataset_restrict

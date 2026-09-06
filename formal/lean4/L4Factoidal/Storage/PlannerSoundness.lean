@@ -224,9 +224,9 @@ theorem PatternKept_mono {keep keep' : Triple → Bool}
   | .leftJoin a b _, hk =>
       ⟨PatternKept_mono h a hk.1, PatternKept_mono h b hk.2⟩
   | .filter _ p, hk => PatternKept_mono h p hk
+  | .bind _ _ p, hk => PatternKept_mono h p hk
   | .graph _ p, hk => PatternKept_mono h p hk
   | .lateral _ _, _ => trivial
-  | .bind _ _ _, _ => trivial
   | .values _ _, _ => trivial
   | .service _ _ _, _ => trivial
   | .serviceVar _ _ _, _ => trivial
@@ -374,7 +374,11 @@ theorem patternKept_of_quadPredicates :
       split at h
       · exact patternKept_of_quadPredicates p P h
       · simp at h
-  | .bind _ _ _, _, _ => trivial
+  | .bind _ _ p, P, h => by
+      simp only [ShardManifest.quadNativeConstantPredicates?] at h
+      split at h
+      · exact patternKept_of_quadPredicates p P h
+      · simp at h
   | .graph n p, P, h => by
       simp only [ShardManifest.quadNativeConstantPredicates?] at h
       exact patternKept_of_quadPredicates p P h
@@ -395,6 +399,8 @@ theorem patternKept_of_queryPredicates (q : Query) (P : List WfIri)
   · exact patternKept_of_quadPredicates _ P h
   · simp at h
 
+#print axioms PatternKept_mono
+#print axioms patternKept_of_quadPredicates
 #print axioms patternKept_of_queryPredicates
 #print axioms plannerSoundnessSelect
 #print axioms plannerSoundnessAsk

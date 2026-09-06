@@ -205,6 +205,30 @@ def evalPatternBackend (env : EvalEnv) (dsb : DatasetBackend) :
         | some i =>
             (evalPatternBackend env dsb p ngb.backend).filterMap (fun mu =>
               mu.bindIfCompatible v (.iri i)))
+  -- BIND with a `backendLocal` expression stays on the backend path, for
+  -- the same reason the `.filter` arm does: the binder reads only the row
+  -- and `EvalEnv`, so existential substitution is a no-op and the active
+  -- graph the reference binder receives is never consulted. The row list,
+  -- the freshness context and the already-bound-variable rule are the
+  -- reference's own `bindRowsFresh`, applied to the rows this evaluator
+  -- produced, so only the SOURCE of the rows differs from
+  -- `QueryPattern.lowerWith`'s `.bind` arm.
+  --
+  -- Without this arm the shape fell to the materialise-and-delegate case
+  -- below, which rebuilds the whole dataset as lists for every such query,
+  -- and — because the pattern then leaves
+  -- `SPARQL.DatasetRestriction.plannerFragment` — made all four collectors
+  -- of `Storage/ShardManifest.lean` keep every entry.
+  | .bind expression v pattern, gb =>
+      if expression.backendLocal then
+        bindRowsFresh (fun _ row => (Expr.evalIn env row expression).toTerm?)
+          [] v (evalPatternBackend env dsb pattern gb) 0
+      else
+        let ds0 := materialiseDatasetBackend dsb
+        let gCurrent := backendSearch gb patternBoundAll
+        let ds := { ds0 with default := gCurrent }
+        (QueryPattern.bind expression v pattern).lowerWith env Binding.empty
+          |>.evalIn ds gCurrent
   | .empty, _ => [Binding.empty]
   | p, gb =>
       -- Materialise and delegate. The active graph is this backend's
@@ -886,6 +910,35 @@ private def bindFirstLetter : QueryPattern :=
 #guard (chainBackendRows bindFirstLetter).length == 2
 #guard (chainBackendRows bindFirstLetter).all
   (fun mu => (Binding.lookup "first" mu).isSome) == true
+
+/-! The backend-native `.bind` arm against the reference, on the three cases
+that separate it from a plain map: an expression that ERRORS on every row
+(`?missing` is unbound, so §18.6 leaves the variable unbound rather than
+dropping the row), an expression that errors on SOME rows only, and a
+variable the row already binds (§18.6 keeps the row's own value). -/
+private def bindErrors : QueryPattern :=
+  .bind (.strLen (.str (.var "missing"))) "n" (.bgp [tpSPO])
+private def bindPartial : QueryPattern :=
+  .bind (.strLen (.str (.var "o"))) "n"
+    (.bind (.arith .add (.var "o") (.numericLit 1)) "sum" (.bgp [tpSPO]))
+private def bindRebound : QueryPattern :=
+  .bind (.iri iA) "o" (.bgp [tpSPO])
+
+#guard chainBackendRows bindErrors == chainReferenceRows bindErrors
+#guard (chainBackendRows bindErrors).all
+  (fun mu => (Binding.lookup "n" mu).isNone) == true
+#guard chainBackendRows bindPartial == chainReferenceRows bindPartial
+#guard chainBackendRows bindRebound == chainReferenceRows bindRebound
+#guard (chainBackendRows bindRebound).all
+  (fun mu => (Binding.lookup "o" mu) != some (Term.iri iA)) == true
+
+/-! A BIND whose expression is NOT `backendLocal` still delegates, and still
+agrees with the reference. `NOW()` reads `EvalEnv`, which the admission
+excludes. -/
+private def bindNotLocal : QueryPattern := .bind .now "t" (.bgp [tpSPO])
+
+#guard Expr.backendLocal .now == false
+#guard chainBackendRows bindNotLocal == chainReferenceRows bindNotLocal
 
 /-! A sequence of two constant-IRI steps: one pair, `a` to `g`. -/
 private def pathSequence : QueryPattern :=
