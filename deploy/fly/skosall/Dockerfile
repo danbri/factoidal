@@ -12,7 +12,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && git lfs install --system
 
-ARG FACTOIDAL_CORE_VERSION=0.7.1
+# The newest 0.7.x at image build time; 0.7.1 adds --batch-bytes and the
+# script falls back to the engine default under 0.7.0.
+ARG FACTOIDAL_CORE_VERSION=^0.7.0
 RUN npm install -g "@factoidal/core@${FACTOIDAL_CORE_VERSION}" \
  && factoidal version
 

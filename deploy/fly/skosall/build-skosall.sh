@@ -93,6 +93,14 @@ if ! done_step pack; then
   rm -rf "$STORE/$GEN"
   rc=0; factoidal pack "$ALL" "$STORE/$GEN" --layout ibk5 --batch-bytes "$BATCH" \
     2>&1 | tee "$LOGS/pack.log" || rc=$?
+  if [ "$rc" -eq 2 ]; then
+    # 0.7.0 documents --batch-bytes and refuses it (usage, exit 2); 0.7.1
+    # accepts it. Fall back to the engine's default batch (64 MiB in the
+    # module), which bounds memory the same way with more, smaller blocks.
+    log "pack: this @factoidal/core refuses --batch-bytes; packing at the engine default"
+    rm -rf "$STORE/$GEN"
+    rc=0; factoidal pack "$ALL" "$STORE/$GEN" --layout ibk5 2>&1 | tee "$LOGS/pack.log" || rc=$?
+  fi
   [ "$rc" -eq 0 ] || fail "factoidal pack rc=$rc"
   log "pack: $(du -sh "$STORE/$GEN" | cut -f1) in $(ls "$STORE/$GEN" | wc -l) files"
   mark pack
