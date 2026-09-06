@@ -109,12 +109,15 @@ fi
 
 # 6 sync to R2. rclone is configured from the environment: no config file,
 # and the secret never appears on a command line.
+# R2_JURISDICTION selects the jurisdiction-specific endpoint: empty for the
+# default, `eu` for a bucket created under the European Union jurisdiction
+# (skosdex001 is one), giving `<account>.eu.r2.cloudflarestorage.com`.
 if ! done_step sync; then
   : "${R2_ACCOUNT_ID:?set with fly secrets}" "${R2_ACCESS_KEY_ID:?}" "${R2_SECRET_ACCESS_KEY:?}" "${R2_BUCKET:?}"
   export RCLONE_CONFIG_R2_TYPE=s3 RCLONE_CONFIG_R2_PROVIDER=Cloudflare \
          RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
-         RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+         RCLONE_CONFIG_R2_ENDPOINT="https://${R2_ACCOUNT_ID}${R2_JURISDICTION:+.$R2_JURISDICTION}.r2.cloudflarestorage.com" \
          RCLONE_CONFIG_R2_ACL=private
   dest="r2:${R2_BUCKET}/${R2_PREFIX:-skosall}"
   rc=0; rclone sync "$STORE" "$dest" --transfers 16 --checkers 16 --s3-chunk-size 64M --stats 60s --stats-one-line \

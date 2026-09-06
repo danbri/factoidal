@@ -18,6 +18,8 @@ primary_region = "lhr"
   FACTOIDAL_BATCH_BYTES = "268435456"
   # Where the generation lands in the bucket.
   R2_PREFIX = "skosall"
+  # The bucket was created under the EU jurisdiction (owner, 2026-09-06).
+  R2_JURISDICTION = "eu"
   # Git ref of danbri/skosdex to build from.
   SKOSDEX_REF = "claude/main"
 

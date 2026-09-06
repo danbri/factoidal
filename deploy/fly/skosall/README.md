@@ -47,5 +47,6 @@ disk for it and opened locally.
 |---|---|
 | volume, 150 GB | about $22 per month, deleted after the sync |
 | machine, performance-2x 8 GB, about 30 hours | a few dollars |
+| R2 endpoint | EU jurisdiction: `<account>.eu.r2.cloudflarestorage.com` (`R2_JURISDICTION=eu`) |
 | R2 storage, 42 GB | about $0.60 per month; no egress charge |
 | GitHub LFS bandwidth, 3.9 GB | metered on the repository owner's account |
