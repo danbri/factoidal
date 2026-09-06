@@ -5,6 +5,7 @@ import L4Factoidal.Storage.BlockArtifact
 import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.SPARQL.Query
+import L4Factoidal.SPARQL.DatasetRestriction
 
 namespace L4Factoidal.Storage.ShardManifest
 
@@ -856,6 +857,41 @@ def graphsReadFrom (active : GraphName) : QueryPattern → Option (List GraphNam
       some (if inner.contains (.iri name) then inner else .iri name :: inner)
   | _ => none
 
+/-! ### The fragment guard
+
+All four collectors below read `query.pattern.rewriteBnodes` — the pattern the
+evaluator actually runs (`SPARQL/StoreDataset.lean`'s
+`runSelectQueryBackendDataset` rewrites the pattern's blank nodes at the entry
+point) — and all four refuse a pattern outside
+`SPARQL.DatasetRestriction.plannerFragment`. That is the shape
+`evalPatternBackend_restrict` covers, so the run-time guard and the theorem's
+hypothesis are ONE expression, which is the rule section 4 of
+`docs/designissues/2026-09-06-planner-soundness-theorem.md` states.
+
+Two shapes the collectors used to admit are now refused because admitting them
+is UNSOUND, not merely unproved:
+
+* a `GRAPH` inside a `GRAPH`. Section 18.6 gives `GRAPH <n> { P }` no solutions
+  when the dataset does not name `n`, whatever `P` is. An entry set that drops
+  every entry of graph `n` — which the predicate collector does when no row of
+  `n` carries a predicate the query names — changes the answer of
+  `GRAPH <n> { GRAPH <m> { ?s :p ?o } }`, because the inner pattern reads graph
+  `m` and never touches `n`.
+* a language-tagged or `rdf:XMLLiteral` constant object, in `constantObjectOf`
+  above.
+
+The rest of the narrowing is unproved rather than unsound, and each costs only
+the entries the planner now reads: `BIND`, a property path, a sub-SELECT,
+`VALUES`, `SERVICE`, `LATERAL`, and a
+`FILTER` or `OPTIONAL` whose condition is not `Expr.backendLocal` — which is
+where the extension-function `FILTER` of
+<https://github.com/danbri/factoidal/issues/656> lands. `GRAPH ?v` IS covered:
+`evalPatternBackend_restrict` walks the named-graph list, and a graph the
+restriction empties contributes nothing on either side. -/
+
+def plannerFragmentQuery (query : Query) : Bool :=
+  SPARQL.DatasetRestriction.plannerFragment query.pattern.rewriteBnodes
+
 /-- The graph names a whole query reads. Outside a `GRAPH` clause the active
     graph is the default graph, so that is the seed.
 
@@ -870,8 +906,9 @@ def graphsReadFrom (active : GraphName) : QueryPattern → Option (List GraphNam
     that here would duplicate `applyDataset`; refusing the selection costs
     only the reads it would have skipped. -/
 def queryGraphNames? (query : Query) : Option (List GraphName) :=
-  if query.expressionsOutsidePatternExistsFree && query.dataset.isEmpty then
-    graphsReadFrom .defaultGraph query.pattern
+  if query.expressionsOutsidePatternExistsFree && query.dataset.isEmpty
+     && plannerFragmentQuery query then
+    graphsReadFrom .defaultGraph query.pattern.rewriteBnodes
   else none
 
 /-- `nativeConstantPredicates?` widened for IBK4. It descends through a
@@ -918,8 +955,8 @@ def quadNativeConstantPredicates? : QueryPattern → Option (List WfIri)
 /-- The query-level form, under the same EXISTS guard as
     `queryNativeConstantPredicates?`. -/
 def queryQuadConstantPredicates? (query : Query) : Option (List WfIri) :=
-  if query.expressionsOutsidePatternExistsFree then
-    quadNativeConstantPredicates? query.pattern
+  if query.expressionsOutsidePatternExistsFree && plannerFragmentQuery query then
+    quadNativeConstantPredicates? query.pattern.rewriteBnodes
   else none
 
 /-! ## SBM10 entry selection: the zone maps
@@ -944,7 +981,17 @@ def constantSubjectOf : PatternSubject → Option Term
     constants; a variable, a pattern blank node and a triple term are not. -/
 def constantObjectOf : PatternTerm → Option Term
   | .iri value => some (.iri value)
-  | .literal value => some (.literal value)
+  | .literal value =>
+      -- A language-tagged literal and an `rdf:XMLLiteral` are compared by
+      -- `Term.eqb`, which folds language-tag CASE and canonicalises XML, while
+      -- a zone bound is the version-2 wire key, which does neither. `"chat"@en-US`
+      -- and `"chat"@en-us` are one value with two keys, so a zone test on the
+      -- query's key can drop a block that holds a matching row. This is the
+      -- same condition `RDF/StoreCapabilities.lean`'s `exactObjectIndexKeySafe`
+      -- puts on the in-memory object index, for the same reason.
+      if L4Factoidal.RDF.exactObjectIndexKeySafe (.literal value) then
+        some (.literal value)
+      else none
   | _ => none
 
 /-- The constant terms one position of a pattern reads, or `none` when any
@@ -989,13 +1036,15 @@ def quadConstantTerms? (positionOf : TriplePattern → Option Term) :
     a HAVING condition or an ORDER BY condition against the active graph, and
     this collector reads only `query.pattern`. -/
 def queryQuadConstantSubjects? (query : Query) : Option (List Term) :=
-  if query.expressionsOutsidePatternExistsFree then
-    quadConstantTerms? (fun pattern => constantSubjectOf pattern.s) query.pattern
+  if query.expressionsOutsidePatternExistsFree && plannerFragmentQuery query then
+    quadConstantTerms? (fun pattern => constantSubjectOf pattern.s)
+      query.pattern.rewriteBnodes
   else none
 
 def queryQuadConstantObjects? (query : Query) : Option (List Term) :=
-  if query.expressionsOutsidePatternExistsFree then
-    quadConstantTerms? (fun pattern => constantObjectOf pattern.o) query.pattern
+  if query.expressionsOutsidePatternExistsFree && plannerFragmentQuery query then
+    quadConstantTerms? (fun pattern => constantObjectOf pattern.o)
+      query.pattern.rewriteBnodes
   else none
 
 /-- Whether one zone map keeps an entry, given the constant keys of that
@@ -2049,20 +2098,27 @@ private def sampleVarTp : TriplePattern :=
 #guard queryGraphNames? (mkQuery (.select .all) (.bgp [sampleVarTp]))
   == some [GraphName.defaultGraph]
 
-/-! `GRAPH <g1> { ... }` reads `g1` and nothing else; a nested `GRAPH` adds
-its own name; a union of two `GRAPH` clauses reads both. -/
+/-! `GRAPH <g1> { ... }` reads `g1` and nothing else; a union of two `GRAPH`
+clauses reads both. -/
 #guard queryGraphNames? (mkQuery (.select .all)
   (.graph (.iri sampleG1) (.bgp [sampleVarTp]))) == some [GraphName.iri sampleG1]
-#guard queryGraphNames? (mkQuery (.select .all)
-  (.graph (.iri sampleG1) (.graph (.iri sampleG2) (.bgp [sampleVarTp]))))
-  == some [GraphName.iri sampleG1, GraphName.iri sampleG2]
 #guard queryGraphNames? (mkQuery (.select .all)
   (.union (.graph (.iri sampleG1) (.bgp [sampleVarTp]))
           (.graph (.iri sampleG2) (.bgp [sampleVarTp]))))
   == some [GraphName.iri sampleG1, GraphName.iri sampleG2]
 
+/-! A `GRAPH` inside a `GRAPH` establishes nothing. Section 18.6 gives
+`GRAPH <g1> { P }` no solutions when the dataset does not name `g1`, whatever
+`P` is, so a selection that drops every entry of `g1` changes the answer here
+even though the inner pattern reads only `g2`. This is a correctness
+narrowing, not a proof convenience. -/
+#guard (queryGraphNames? (mkQuery (.select .all)
+  (.graph (.iri sampleG1) (.graph (.iri sampleG2) (.bgp [sampleVarTp]))))).isNone
+
 /-! `GRAPH <g1> { }` still needs `g1` in the dataset — section 18.6 gives it
-one solution exactly when the dataset names that graph. -/
+one solution exactly when the dataset names that graph. The graph-name
+collector keeps that entry; the predicate and zone collectors refuse the empty
+group pattern, so nothing else may drop it. -/
 #guard queryGraphNames? (mkQuery (.select .all)
   (.graph (.iri sampleG1) .empty)) == some [GraphName.iri sampleG1]
 
@@ -2075,7 +2131,7 @@ one solution exactly when the dataset names that graph. -/
   [DatasetClause.default sampleG1])).isNone
 
 /-! The quad predicate collector descends through both `GRAPH` forms, and
-refuses the two patterns that observe a graph name without reading a row. -/
+refuses the patterns that observe a graph name without reading a row. -/
 #guard queryQuadConstantPredicates? (mkQuery (.select .all)
   (.graph (.iri sampleG1) (.bgp [sampleTp]))) == some [samplePredicate]
 #guard queryQuadConstantPredicates? (mkQuery (.select .all)
@@ -2142,21 +2198,25 @@ row. -/
   (mkQuery (.select .all) (.bgp [sampleTp]) [] none []
     { orderBy := some [.asc (.existsPat (.bgp [sampleOtherTp]))] })).length == 2
 
-/-! https://github.com/danbri/factoidal/issues/656 — a FILTER may narrow a
-plan or leave it unchanged, and must never widen it. A §17.6 extension
-function reads no triple, so the bound predicate still selects its one
-entry. The same holds for REGEX, which is likewise not `Expr.backendLocal`. -/
+/-! https://github.com/danbri/factoidal/issues/656 — a FILTER may leave a plan
+unchanged or narrow it, and must never change the answer. A §17.6 extension
+function and REGEX read no triple, but neither is `Expr.backendLocal`, so
+`evalPatternBackend` materialises the dataset and delegates them to the
+algebra evaluator, which the restriction theorem does not cover. The collector
+therefore refuses both and every entry is kept: the widening issue 656
+recorded is back, deliberately, and costs reads rather than answers. Removing
+it again means extending `evalPatternBackend_restrict` to the delegating arms
+(<https://github.com/danbri/factoidal/issues/614>). -/
 private def sampleExtFn : WfIri := ⟨"https://example.test/z", by decide⟩
 
 #guard (quadEntriesForQuery sampleQuadManifest
   (mkQuery (.select .all)
-    (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp])))).map
-  Entry.predicate == [samplePredicate]
+    (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp])))).length == 2
 
 #guard (quadEntriesForQuery sampleQuadManifest
   (mkQuery (.select .all)
     (.filter (.regex (.var "o") (.var "pat") none)
-      (.bgp [sampleTp])))).map Entry.predicate == [samplePredicate]
+      (.bgp [sampleTp])))).length == 2
 
 /-! An EXISTS inside the FILTER still widens the plan: it reads triples the
 enclosing pattern never names. -/

@@ -424,11 +424,12 @@ def graphFree : QueryPattern → Bool
 
 /-- The shape the restriction theorem covers. -/
 def plannerFragment : QueryPattern → Bool
-  | .bgp ps => !ps.isEmpty
+  | .bgp _ => true
+  | .empty => true
   | .join a b | .union a b | .minus a b => plannerFragment a && plannerFragment b
   | .leftJoin a b c => c.backendLocal && plannerFragment a && plannerFragment b
   | .filter c p => c.backendLocal && plannerFragment p
-  | .graph (.iri _) p => graphFree p && plannerFragment p
+  | .graph (.iri _) p | .graph (.var _) p => graphFree p && plannerFragment p
   | _ => false
 
 /-- The constant graph names the fragment reads. -/
@@ -439,10 +440,22 @@ def graphNamesIn : QueryPattern → List WfIri
   | .graph (.iri i) p => i :: graphNamesIn p
   | _ => []
 
+/-- Whether a `GRAPH ?v` occurs. Such a pattern reads EVERY named graph, so
+no graph-name selection may have been made when it does. -/
+def graphVarIn : QueryPattern → Bool
+  | .join a b | .union a b | .minus a b => graphVarIn a || graphVarIn b
+  | .leftJoin a b _ => graphVarIn a || graphVarIn b
+  | .filter _ p => graphVarIn p
+  | .graph (.var _) _ => true
+  | .graph _ p => graphVarIn p
+  | _ => false
+
 /-- Every bound the pattern's triple patterns can present survives the
 restriction. -/
 def PatternKept (keep : Triple → Bool) : QueryPattern → Prop
+  | .bgp [] => ∀ t, keep t = true
   | .bgp ps => ∀ tp ∈ ps, TpKept keep tp
+  | .empty => ∀ t, keep t = true
   | .join a b | .union a b | .minus a b =>
       PatternKept keep a ∧ PatternKept keep b
   | .leftJoin a b _ => PatternKept keep a ∧ PatternKept keep b
@@ -464,6 +477,16 @@ def lookupGraph : List NamedGraph → Iri → Option Graph
   | [], _ => none
   | ng :: rest, n => if ngKey ng == n then some ng.graph else lookupGraph rest n
 
+theorem lookupGraph_mem : ∀ (l : List NamedGraph) (n : Iri) (g : Graph),
+    lookupGraph l n = some g → ∃ ng ∈ l, ng.graph = g
+  | [], _, _, h => by simp [lookupGraph] at h
+  | ng :: rest, n, g, h => by
+      simp only [lookupGraph] at h
+      split at h
+      · exact ⟨ng, List.mem_cons_self, by simpa using h⟩
+      · obtain ⟨x, hx, hxg⟩ := lookupGraph_mem rest n g h
+        exact ⟨x, List.mem_cons_of_mem _ hx, hxg⟩
+
 theorem lookupNamedBackend_indexed (d : Dataset) (n : Iri) :
     lookupNamedBackend n (indexedDatasetBackend d).named
       = (lookupGraph d.named n).map indexedGraphBackend := by
@@ -477,127 +500,228 @@ theorem lookupNamedBackend_indexed (d : Dataset) (n : Iri) :
       | iri i => by_cases h : (i.val == n) = true <;> simp [h, ih]
       | bnode b => by_cases h : (b == n) = true <;> simp [h, ih]
 
-/-- What the planner leaves behind. The default graph is filtered by
-`keep`. A named graph the pattern can read is either filtered by `keep`
-as well, or gone — and gone only when `keep` empties it, which is what
-`datasetOfQuads` does with a graph whose every row the planner dropped.
+/-- The named graphs a query may read: `none` when the graph-name collector
+established nothing, so every named graph is readable. -/
+def readableName : Option (List WfIri) → WfIri → Prop
+  | none, _ => True
+  | some names, i => i ∈ names
 
-A graph the pattern CANNOT read is unconstrained: the graph-name
-collector may have dropped its entries outright. -/
-structure DatasetRestricted (keep : Triple → Bool) (readable : List WfIri)
+/-- The named-graph list a restriction leaves: each graph filtered, and the
+graphs `keep` empties gone. This is what `Storage/QuadDataset.lean`'s
+`datasetOfQuads` produces from the shorter quad sequence — a graph with no
+surviving row is absent, not empty. -/
+def restrictNamed (keep : Triple → Bool) : List NamedGraph → List NamedGraph
+  | [] => []
+  | ng :: rest =>
+      if (ng.graph.filter keep).isEmpty then restrictNamed keep rest
+      else { ng with graph := ng.graph.filter keep } :: restrictNamed keep rest
+
+/-- What the planner leaves behind. The default graph is filtered by `keep`.
+A named graph the pattern can read is either filtered by `keep` as well, or
+gone — and gone only when `keep` empties it. A graph the pattern CANNOT read
+is unconstrained by `named`: the graph-name collector may have dropped its
+entries outright.
+
+`namedList` is the stronger statement `GRAPH ?v` needs, and is required only
+when no graph-name selection was made (`readable = none`), which is exactly
+when a `GRAPH ?v` may occur. `noEmpty` says the dataset carries no empty named
+graph, which `datasetOfQuads` guarantees: a graph exists because a row put it
+there. -/
+structure DatasetRestricted (keep : Triple → Bool) (readable : Option (List WfIri))
     (d dr : Dataset) : Prop where
   dflt : dr.default = d.default.filter keep
-  named : ∀ i : WfIri, i ∈ readable →
+  named : ∀ i : WfIri, readableName readable i →
     lookupGraph dr.named i.val = (lookupGraph d.named i.val).map (fun g => g.filter keep)
     ∨ (lookupGraph dr.named i.val = none ∧
        ∀ g, lookupGraph d.named i.val = some g → g.filter keep = [])
+  namedList : readable = none → dr.named = restrictNamed keep d.named
+  noEmpty : ∀ ng ∈ d.named, ng.graph ≠ []
+
+theorem filter_all {keep : Triple → Bool} (h : ∀ t, keep t = true) :
+    ∀ l : List Triple, l.filter keep = l
+  | [] => rfl
+  | t :: rest => by simp [List.filter_cons, h t, filter_all h rest]
 
 /-! ## 10. A graph-free fragment over the empty active graph -/
 
-theorem evalPatternBackend_nil (env : EvalEnv) (dsb : DatasetBackend) :
-    ∀ p : QueryPattern, plannerFragment p = true → graphFree p = true →
-      evalPatternBackend env dsb p (indexedGraphBackend []) = []
-  | .bgp ps, hf, _ => by
-      simp only [plannerFragment, Bool.not_eq_true'] at hf
-      have hne : ps ≠ [] := by
-        intro h; rw [h] at hf; simp at hf
-      simpa [evalPatternBackend] using evalBgpBackend_nil hne
-  | .join a b, hf, hg => by
+theorem evalPatternBackend_nil (env : EvalEnv) (dsb : DatasetBackend)
+    (keep : Triple → Bool) :
+    ∀ p : QueryPattern, plannerFragment p = true → graphFree p = true → PatternKept keep p →
+      evalPatternBackend env dsb p (indexedGraphBackend []) = [] ∨ (∀ t, keep t = true)
+  | .bgp [], _, _, hk => Or.inr hk
+  | .bgp (tp :: rest), _, _, hk => by
+      refine Or.inl ?_
+      simpa [evalPatternBackend] using evalBgpBackend_nil (ps := tp :: rest) (by simp)
+  | .empty, _, _, hk => Or.inr hk
+  | .join a b, hf, hg, hk => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [graphFree, Bool.and_eq_true] at hg
-      simp only [evalPatternBackend,
-        evalPatternBackend_nil env dsb a hf.1 hg.1,
-        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.hashJoin]
-      rfl
-  | .union a b, hf, hg => by
+      simp only [PatternKept] at hk
+      rcases evalPatternBackend_nil env dsb keep a hf.1 hg.1 hk.1 with ha | ha
+      · rcases evalPatternBackend_nil env dsb keep b hf.2 hg.2 hk.2 with hb | hb
+        · exact Or.inl (by simp only [evalPatternBackend, ha, hb, SPARQL.hashJoin]; rfl)
+        · exact Or.inr hb
+      · exact Or.inr ha
+  | .union a b, hf, hg, hk => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [graphFree, Bool.and_eq_true] at hg
-      simp only [evalPatternBackend,
-        evalPatternBackend_nil env dsb a hf.1 hg.1,
-        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.union]
-      rfl
-  | .minus a b, hf, hg => by
+      simp only [PatternKept] at hk
+      rcases evalPatternBackend_nil env dsb keep a hf.1 hg.1 hk.1 with ha | ha
+      · rcases evalPatternBackend_nil env dsb keep b hf.2 hg.2 hk.2 with hb | hb
+        · refine Or.inl ?_
+          simp only [evalPatternBackend, ha, hb, SPARQL.union]
+          rfl
+        · exact Or.inr hb
+      · exact Or.inr ha
+  | .minus a b, hf, hg, hk => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [graphFree, Bool.and_eq_true] at hg
-      simp only [evalPatternBackend,
-        evalPatternBackend_nil env dsb a hf.1 hg.1,
-        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.minus, List.filter_nil]
-  | .leftJoin a b c, hf, hg => by
+      simp only [PatternKept] at hk
+      rcases evalPatternBackend_nil env dsb keep a hf.1 hg.1 hk.1 with ha | ha
+      · exact Or.inl (by simp only [evalPatternBackend, ha, SPARQL.minus, List.filter_nil])
+      · exact Or.inr ha
+  | .leftJoin a b c, hf, hg, hk => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [graphFree, Bool.and_eq_true] at hg
-      simp only [evalPatternBackend, hf.1.1, if_pos,
-        evalPatternBackend_nil env dsb a hf.1.2 hg.1,
-        evalPatternBackend_nil env dsb b hf.2 hg.2, SPARQL.hashLeftJoin]
-      rfl
-  | .filter c p, hf, hg => by
+      simp only [PatternKept] at hk
+      rcases evalPatternBackend_nil env dsb keep a hf.1.2 hg.1 hk.1 with ha | ha
+      · refine Or.inl ?_
+        simp only [evalPatternBackend, hf.1.1, if_pos, ha, SPARQL.hashLeftJoin]
+        rfl
+      · exact Or.inr ha
+  | .filter c p, hf, hg, hk => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [graphFree] at hg
-      simp only [evalPatternBackend, hf.1, if_pos,
-        evalPatternBackend_nil env dsb p hf.2 hg, List.filter_nil]
-  | .graph _ _, _, hg => by simp [graphFree] at hg
-  | .lateral _ _, hf, _ => by simp [plannerFragment] at hf
-  | .bind _ _ _, hf, _ => by simp [plannerFragment] at hf
-  | .values _ _, hf, _ => by simp [plannerFragment] at hf
-  | .service _ _ _, hf, _ => by simp [plannerFragment] at hf
-  | .serviceVar _ _ _, hf, _ => by simp [plannerFragment] at hf
-  | .subSelect _, hf, _ => by simp [plannerFragment] at hf
-  | .propertyPath _ _ _, hf, _ => by simp [plannerFragment] at hf
-  | .empty, hf, _ => by simp [plannerFragment] at hf
+      simp only [PatternKept] at hk
+      rcases evalPatternBackend_nil env dsb keep p hf.2 hg hk with ha | ha
+      · exact Or.inl (by simp only [evalPatternBackend, hf.1, if_pos, ha, List.filter_nil])
+      · exact Or.inr ha
+  | .graph _ _, _, hg, _ => by simp [graphFree] at hg
+  | .lateral _ _, hf, _, _ => by simp [plannerFragment] at hf
+  | .bind _ _ _, hf, _, _ => by simp [plannerFragment] at hf
+  | .values _ _, hf, _, _ => by simp [plannerFragment] at hf
+  | .service _ _ _, hf, _, _ => by simp [plannerFragment] at hf
+  | .serviceVar _ _ _, hf, _, _ => by simp [plannerFragment] at hf
+  | .subSelect _, hf, _, _ => by simp [plannerFragment] at hf
+  | .propertyPath _ _ _, hf, _, _ => by simp [plannerFragment] at hf
+
+/-- `indexedDatasetBackend`'s named list, in the shape the `GRAPH ?v` arm
+walks. -/
+theorem indexedDatasetBackend_named (d : Dataset) :
+    (indexedDatasetBackend d).named
+      = d.named.map (fun ng => (⟨ngKey ng, indexedGraphBackend ng.graph⟩ : NamedGraphBackend)) :=
+  rfl
+
+theorem ngKey_graph (ng : NamedGraph) (g : Graph) :
+    ngKey { ng with graph := g } = ngKey ng := rfl
+
+theorem restrictNamed_cons (keep : Triple → Bool) (ng : NamedGraph) (rest : List NamedGraph) :
+    restrictNamed keep (ng :: rest)
+      = (if (ng.graph.filter keep).isEmpty then restrictNamed keep rest
+         else { ng with graph := ng.graph.filter keep } :: restrictNamed keep rest) := by
+  simp only [restrictNamed]
+
+/-- The `GRAPH ?v` arm walks the whole named list. A graph the restriction
+empties contributes nothing on either side, so dropping it from the list
+changes neither the rows nor their order. -/
+theorem graphVar_flatMap_restrict {keep : Triple → Bool}
+    (F G : NamedGraphBackend → SolutionSeq)
+    (hkeepG : ∀ ng : NamedGraph,
+        F ⟨ngKey ng, indexedGraphBackend (ng.graph.filter keep)⟩
+          = G ⟨ngKey ng, indexedGraphBackend ng.graph⟩)
+    (hdropG : ∀ ng : NamedGraph, ng.graph ≠ [] → ng.graph.filter keep = [] →
+        G ⟨ngKey ng, indexedGraphBackend ng.graph⟩ = []) :
+    ∀ l : List NamedGraph, (∀ ng ∈ l, ng.graph ≠ []) →
+      ((restrictNamed keep l).map
+        (fun ng => (⟨ngKey ng, indexedGraphBackend ng.graph⟩ : NamedGraphBackend))).flatMap F
+      = (l.map
+          (fun ng => (⟨ngKey ng, indexedGraphBackend ng.graph⟩ : NamedGraphBackend))).flatMap G := by
+  intro l
+  induction l with
+  | nil => intro _; rfl
+  | cons ng rest ih =>
+      intro hne
+      rw [restrictNamed_cons]
+      by_cases hz : (ng.graph.filter keep).isEmpty = true
+      · rw [if_pos hz, List.map_cons, List.flatMap_cons,
+            hdropG ng (hne ng List.mem_cons_self) (List.isEmpty_iff.mp hz), List.nil_append,
+            ih (fun x hx => hne x (List.mem_cons_of_mem _ hx))]
+      · rw [if_neg hz, List.map_cons, List.map_cons, List.flatMap_cons, List.flatMap_cons,
+            ngKey_graph, hkeepG ng, ih (fun x hx => hne x (List.mem_cons_of_mem _ hx))]
 
 /-! ## 11. The pattern induction
 
 The statement is an equality of LISTS: same rows, same order. -/
 
 theorem evalPatternBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset}
+    {readable : Option (List WfIri)} {d dr : Dataset}
     (hd : DatasetRestricted keep readable d dr) :
     ∀ (p : QueryPattern) (g : Graph), plannerFragment p = true → PatternKept keep p →
-      (∀ i ∈ graphNamesIn p, i ∈ readable) →
+      (∀ i ∈ graphNamesIn p, readableName readable i) →
+      (graphVarIn p = true → readable = none) →
       evalPatternBackend env (indexedDatasetBackend dr) p
           (indexedGraphBackend (g.filter keep))
         = evalPatternBackend env (indexedDatasetBackend d) p (indexedGraphBackend g)
-  | .bgp ps, g, _, hk, _ => by
+  | .bgp [], g, _, _, _, _ => by
+      simp only [evalPatternBackend]
+      exact evalBgpBackend_restrict (ps := []) (by intro tp htp; simp at htp) g
+  | .bgp (tp :: rest), g, _, hk, _, _ => by
       simp only [evalPatternBackend]
       exact evalBgpBackend_restrict hk g
-  | .join a b, g, hf, hk, hn => by
+  | .empty, _, _, _, _, _ => by simp only [evalPatternBackend]
+  | .join a b, g, hf, hk, hn, hv => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [PatternKept] at hk
       simp only [graphNamesIn, List.mem_append] at hn
+      simp only [graphVarIn, Bool.or_eq_true] at hv
       simp only [evalPatternBackend,
-        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi)),
-        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
-  | .union a b, g, hf, hk, hn => by
+        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi))
+          (fun h => hv (Or.inl h)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))
+          (fun h => hv (Or.inr h))]
+  | .union a b, g, hf, hk, hn, hv => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [PatternKept] at hk
       simp only [graphNamesIn, List.mem_append] at hn
+      simp only [graphVarIn, Bool.or_eq_true] at hv
       simp only [evalPatternBackend,
-        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi)),
-        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
-  | .minus a b, g, hf, hk, hn => by
+        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi))
+          (fun h => hv (Or.inl h)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))
+          (fun h => hv (Or.inr h))]
+  | .minus a b, g, hf, hk, hn, hv => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [PatternKept] at hk
       simp only [graphNamesIn, List.mem_append] at hn
+      simp only [graphVarIn, Bool.or_eq_true] at hv
       simp only [evalPatternBackend,
-        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi)),
-        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
-  | .leftJoin a b c, g, hf, hk, hn => by
+        evalPatternBackend_restrict env hd a g hf.1 hk.1 (fun i hi => hn i (Or.inl hi))
+          (fun h => hv (Or.inl h)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))
+          (fun h => hv (Or.inr h))]
+  | .leftJoin a b c, g, hf, hk, hn, hv => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [PatternKept] at hk
       simp only [graphNamesIn, List.mem_append] at hn
+      simp only [graphVarIn, Bool.or_eq_true] at hv
       simp only [evalPatternBackend, hf.1.1, if_pos,
-        evalPatternBackend_restrict env hd a g hf.1.2 hk.1 (fun i hi => hn i (Or.inl hi)),
-        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))]
-  | .filter c p, g, hf, hk, hn => by
+        evalPatternBackend_restrict env hd a g hf.1.2 hk.1 (fun i hi => hn i (Or.inl hi))
+          (fun h => hv (Or.inl h)),
+        evalPatternBackend_restrict env hd b g hf.2 hk.2 (fun i hi => hn i (Or.inr hi))
+          (fun h => hv (Or.inr h))]
+  | .filter c p, g, hf, hk, hn, hv => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [PatternKept] at hk
       simp only [graphNamesIn] at hn
+      simp only [graphVarIn] at hv
       simp only [evalPatternBackend, hf.1, if_pos,
-        evalPatternBackend_restrict env hd p g hf.2 hk hn]
-  | .graph (.iri i) p, g, hf, hk, hn => by
+        evalPatternBackend_restrict env hd p g hf.2 hk hn hv]
+  | .graph (.iri i) p, g, hf, hk, hn, hv => by
       simp only [plannerFragment, Bool.and_eq_true] at hf
       simp only [PatternKept] at hk
-      have hi : i ∈ readable := hn i (by simp [graphNamesIn])
-      have hn' : ∀ j ∈ graphNamesIn p, j ∈ readable := by
+      simp only [graphVarIn] at hv
+      have hi : readableName readable i := hn i (by simp [graphNamesIn])
+      have hn' : ∀ j ∈ graphNamesIn p, readableName readable j := by
         intro j hj
         exact hn j (by simp [graphNamesIn, hj])
       simp only [evalPatternBackend, lookupNamedBackend_indexed]
@@ -607,29 +731,81 @@ theorem evalPatternBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
         | none => simp only [Option.map_none]
         | some g' =>
             simp only [Option.map_some]
-            exact evalPatternBackend_restrict env hd p g' hf.2 hk hn'
+            exact evalPatternBackend_restrict env hd p g' hf.2 hk hn' hv
       · rw [h1]
         cases hl : lookupGraph d.named i.val with
         | none => simp only [Option.map_none]
         | some g' =>
             simp only [Option.map_none, Option.map_some]
             have hz : g'.filter keep = [] := h2 g' hl
-            have hres := evalPatternBackend_restrict env hd p g' hf.2 hk hn'
+            have hres := evalPatternBackend_restrict env hd p g' hf.2 hk hn' hv
             rw [hz] at hres
             rw [← hres]
-            exact (evalPatternBackend_nil env (indexedDatasetBackend dr) p hf.2 hf.1).symm
-  | .graph (.var _) _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .graph (.bnode _) _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .graph (.literal _) _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .graph (.tripleTerm _ _ _) _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .lateral _ _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .bind _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .values _ _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .service _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .serviceVar _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .subSelect _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .propertyPath _ _ _, _, hf, _, _ => by simp [plannerFragment] at hf
-  | .empty, _, hf, _, _ => by simp [plannerFragment] at hf
+            rcases evalPatternBackend_nil env (indexedDatasetBackend dr) keep p hf.2 hf.1 hk
+              with hn0 | htrue
+            · exact hn0.symm
+            · exfalso
+              have hgg : g'.filter keep = g' := filter_all htrue g'
+              have hg'nil : g' = [] := by rw [← hgg, hz]
+              obtain ⟨ng, hng, hngg⟩ := lookupGraph_mem d.named i.val g' hl
+              exact hd.noEmpty ng hng (by rw [hngg, hg'nil])
+  | .graph (.var v) p, g, hf, hk, hn, hv => by
+      simp only [plannerFragment, Bool.and_eq_true] at hf
+      simp only [PatternKept] at hk
+      have hnone : readable = none := hv (by simp [graphVarIn])
+      have hn' : ∀ j ∈ graphNamesIn p, readableName readable j := by
+        intro j _
+        rw [hnone]
+        trivial
+      have hv' : graphVarIn p = true → readable = none := fun _ => hnone
+      have hkeepG : ∀ ng : NamedGraph,
+          (match wfIriOf? (ngKey ng) with
+           | none => []
+           | some i =>
+               (evalPatternBackend env (indexedDatasetBackend dr) p
+                 (indexedGraphBackend (ng.graph.filter keep))).filterMap
+                 (fun mu => Binding.bindIfCompatible v (Term.iri i) mu))
+          = (match wfIriOf? (ngKey ng) with
+             | none => []
+             | some i =>
+                 (evalPatternBackend env (indexedDatasetBackend d) p
+                   (indexedGraphBackend ng.graph)).filterMap
+                   (fun mu => Binding.bindIfCompatible v (Term.iri i) mu)) := by
+        intro ng
+        simp only [evalPatternBackend_restrict env hd p ng.graph hf.2 hk hn' hv']
+      have hdropG : ∀ ng : NamedGraph, ng.graph ≠ [] → ng.graph.filter keep = [] →
+          (match wfIriOf? (ngKey ng) with
+           | none => []
+           | some i =>
+               (evalPatternBackend env (indexedDatasetBackend d) p
+                 (indexedGraphBackend ng.graph)).filterMap
+                 (fun mu => Binding.bindIfCompatible v (Term.iri i) mu)) = [] := by
+        intro ng hgne hz
+        have hres := evalPatternBackend_restrict env hd p ng.graph hf.2 hk hn' hv'
+        rw [hz] at hres
+        rcases evalPatternBackend_nil env (indexedDatasetBackend dr) keep p hf.2 hf.1 hk
+          with hn0 | htrue
+        · rw [← hres, hn0]
+          cases wfIriOf? (ngKey ng) <;> rfl
+        · exact absurd (by rw [← filter_all htrue ng.graph, hz]) hgne
+      simp only [evalPatternBackend, indexedDatasetBackend_named, hd.namedList hnone]
+      refine graphVar_flatMap_restrict _ _ ?_ ?_ d.named hd.noEmpty
+      · intro ng
+        simp only []
+        exact hkeepG ng
+      · intro ng hgne hz
+        simp only []
+        exact hdropG ng hgne hz
+  | .graph (.bnode _) _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .graph (.literal _) _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .graph (.tripleTerm _ _ _) _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .lateral _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .bind _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .values _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .service _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .serviceVar _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .subSelect _, _, hf, _, _, _ => by simp [plannerFragment] at hf
+  | .propertyPath _ _ _, _, hf, _, _, _ => by simp [plannerFragment] at hf
 
 /-! ## 12. The fast paths
 
@@ -642,14 +818,57 @@ refuses, and the GROUP BY ?p resolver needs a backend with a
 `distinctPredicates` capability, which the in-memory index does not
 have. -/
 
-theorem detectStreamingCountGroupByGraph_none (q : Query)
-    (h : plannerFragment q.pattern = true) :
-    detectStreamingCountGroupByGraph q = none := by
-  cases hqp : q.pattern <;>
-    simp only [detectStreamingCountGroupByGraph, hqp] <;>
-    repeat' split
-  all_goals (try rfl)
-  all_goals simp_all [plannerFragment]
+theorem extractSingleTpBgp_eq {p : QueryPattern} {tp : TriplePattern} :
+    extractSingleTpBgp p = some tp → p = .bgp [tp] := by
+  intro h
+  unfold extractSingleTpBgp at h
+  split at h <;> simp_all
+
+/-- What `SELECT ?g (COUNT(*) AS ?n) … GROUP BY ?g` needs: `GRAPH ?g` over a
+triple pattern whose three positions are all variables. -/
+theorem detectStreamingCountGroupByGraph_shape {q : Query} {gv nv : VarName}
+    (hh : detectStreamingCountGroupByGraph q = some (gv, nv)) :
+    ∃ w tp sv pv ov, q.pattern = .graph (.var w) (.bgp [tp])
+      ∧ tp.s = .var sv ∧ tp.p = .var pv ∧ tp.o = .var ov := by
+  unfold detectStreamingCountGroupByGraph at hh
+  repeat' split at hh
+  all_goals simp_all
+  all_goals
+    (rename_i h1 h2 h3 h4 h5 h6 h7 h8
+     exact ⟨gv, _, ⟨rfl, extractSingleTpBgp_eq h3⟩, ⟨_, h4⟩, ⟨_, h5⟩, ⟨_, h6⟩⟩)
+
+/-- A restriction that keeps every triple, over a dataset with no empty named
+graph, is the identity. -/
+theorem restrictNamed_trivial {keep : Triple → Bool} (h : ∀ t, keep t = true) :
+    ∀ l : List NamedGraph, (∀ ng ∈ l, ng.graph ≠ []) → restrictNamed keep l = l := by
+  intro l
+  induction l with
+  | nil => intro _; rfl
+  | cons ng rest ih =>
+      intro hne
+      have hg : ng.graph.filter keep = ng.graph := filter_all h ng.graph
+      have hgne : ng.graph ≠ [] := hne ng List.mem_cons_self
+      have hemp : (ng.graph.filter keep).isEmpty = false := by
+        rw [hg]
+        cases hgg : ng.graph with
+        | nil => exact absurd hgg hgne
+        | cons a b => rfl
+      have h2 : ng.graph.isEmpty = false := by rw [← hg]; exact hemp
+      simp only [restrictNamed, hg, h2, Bool.false_eq_true, if_false,
+        ih (fun x hx => hne x (List.mem_cons_of_mem _ hx))]
+
+theorem DatasetRestricted.trivial_eq {keep : Triple → Bool}
+    {readable : Option (List WfIri)} {d dr : Dataset}
+    (hd : DatasetRestricted keep readable d dr) (h : ∀ t, keep t = true)
+    (hnone : readable = none) : dr = d := by
+  have hdef : dr.default = d.default := by
+    rw [hd.dflt]
+    exact filter_all h d.default
+  have hnam : dr.named = d.named := by
+    rw [hd.namedList hnone]
+    exact restrictNamed_trivial h d.named hd.noEmpty
+  cases dr; cases d
+  simp_all
 
 theorem distinctPredicates_indexed (g : Graph) :
     (capsOfBackend (indexedGraphBackend g)).distinctPredicates = none := rfl
@@ -763,8 +982,8 @@ planner has run: the graph is there and filtered, it is absent from
 both datasets, or it is absent from the restricted one because `keep`
 emptied it. -/
 theorem lookupNamedBackend_restrict_cases {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset}
-    (hd : DatasetRestricted keep readable d dr) {gname : WfIri} (hi : gname ∈ readable) :
+    {readable : Option (List WfIri)} {d dr : Dataset}
+    (hd : DatasetRestricted keep readable d dr) {gname : WfIri} (hi : readableName readable gname) :
     (∃ g', lookupNamedBackend gname.val (indexedDatasetBackend dr).named
              = some (indexedGraphBackend (g'.filter keep))
            ∧ lookupNamedBackend gname.val (indexedDatasetBackend d).named
@@ -811,12 +1030,68 @@ theorem evalLimitSingleTp_nil (sel : SelectClause) (tp : TriplePattern) (k : Nat
   | vars items => simp [projectSolutions]
   | all => rfl
 
+theorem backendSearchLimited_indexed_nil (b : PatternBound) (n : Nat) :
+    backendSearchLimited (indexedGraphBackend []) b n = [] := by
+  simp only [backendSearchLimited, indexedGraphBackend, capsOfBackend, capsOfIndexed,
+    backendSearch_indexed_nil_aux, capsTakeN, List.take_nil]
+
+/-- Once the accumulator holds the limit, no further graph is read. -/
+theorem limitGraphVarAcc_done (v : VarName) (tp : TriplePattern) (limit : Nat) :
+    ∀ (l : List NamedGraphBackend) (acc : SolutionSeq), limit ≤ acc.length →
+      limitGraphVarAcc v tp limit l acc = acc.reverse
+  | [], _, _ => rfl
+  | _ :: _, acc, h => by simp only [limitGraphVarAcc, if_pos h]
+
+/-- The LIMIT push-down under `GRAPH ?v` walks the named list. A graph the
+restriction empties returns no candidate, so it neither adds a row nor moves
+the early stop. -/
+theorem limitGraphVarAcc_restrict {keep : Triple → Bool} {tp : TriplePattern}
+    (htp : TpKept keep tp) (v : VarName) (limit : Nat) :
+    ∀ (l : List NamedGraph) (acc : SolutionSeq),
+      limitGraphVarAcc v tp limit
+          ((restrictNamed keep l).map
+            (fun ng => (⟨ngKey ng, indexedGraphBackend ng.graph⟩ : NamedGraphBackend))) acc
+        = limitGraphVarAcc v tp limit
+            (l.map (fun ng => (⟨ngKey ng, indexedGraphBackend ng.graph⟩ : NamedGraphBackend)))
+            acc := by
+  intro l
+  induction l with
+  | nil => intro acc; rfl
+  | cons ng rest ih =>
+      intro acc
+      rw [restrictNamed_cons, List.map_cons]
+      by_cases hlim : limit ≤ acc.length
+      · rw [limitGraphVarAcc_done v tp limit _ acc hlim,
+            limitGraphVarAcc_done v tp limit _ acc hlim]
+      · by_cases hz : (ng.graph.filter keep).isEmpty = true
+        · have hz' : ng.graph.filter keep = [] := List.isEmpty_iff.mp hz
+          have hsearch : backendSearchLimited (indexedGraphBackend ng.graph)
+              (patternBoundFor tp Binding.empty) (limit - acc.length) = [] := by
+            rw [← backendSearchLimited_indexed_filter (htp Binding.empty) ng.graph
+                  (limit - acc.length), hz', backendSearchLimited_indexed_nil]
+          rw [if_pos hz, limitGraphVarAcc, if_neg hlim]
+          cases wfIriOf? (ngKey ng) with
+          | none => exact ih acc
+          | some i =>
+              simp only [hsearch, List.filterMap_nil, capsTakeN, List.take_nil,
+                List.reverseAux]
+              exact ih acc
+        · have hkey : ngKey { ng with graph := ng.graph.filter keep } = ngKey ng := rfl
+          rw [if_neg hz, List.map_cons, limitGraphVarAcc, limitGraphVarAcc,
+            if_neg hlim, if_neg hlim, hkey,
+            backendSearchLimited_indexed_filter (htp Binding.empty) ng.graph
+              (limit - acc.length)]
+          cases wfIriOf? (ngKey ng) with
+          | none => exact ih acc
+          | some i => exact ih _
+
 /-! ## 15. SELECT and ASK -/
 
 theorem evalSelectBackendOnGraph_restrict (env : EvalEnv) {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    {readable : Option (List WfIri)} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
     (q : Query) (hf : plannerFragment q.pattern = true) (hk : PatternKept keep q.pattern)
-    (hn : ∀ i ∈ graphNamesIn q.pattern, i ∈ readable) :
+    (hn : ∀ i ∈ graphNamesIn q.pattern, readableName readable i)
+    (hv : graphVarIn q.pattern = true → readable = none) :
     evalSelectBackendOnGraph env q (indexedGraphBackend dr.default) (indexedDatasetBackend dr)
       = evalSelectBackendOnGraph env q (indexedGraphBackend d.default)
           (indexedDatasetBackend d) := by
@@ -840,7 +1115,7 @@ theorem evalSelectBackendOnGraph_restrict (env : EvalEnv) {keep : Triple → Boo
             rw [hp] at hk
             simp only [PatternKept] at hk
             exact hk tp (List.mem_cons_self)
-          have hi : gname ∈ readable := by
+          have hi : readableName readable gname := by
             refine hn gname ?_
             rw [hp]
             simp [graphNamesIn]
@@ -859,7 +1134,7 @@ theorem evalSelectBackendOnGraph_restrict (env : EvalEnv) {keep : Triple → Boo
             resolveStreamingCountGroupByPredicate_indexed]
           cases q.form with
           | select _ =>
-              simp only [evalPatternBackend_restrict env hd q.pattern d.default hf hk hn]
+              simp only [evalPatternBackend_restrict env hd q.pattern d.default hf hk hn hv]
           | construct _ => rfl
           | ask => rfl
           | describe _ => rfl
@@ -889,7 +1164,7 @@ theorem evalSelectBackendOnGraph_restrict (env : EvalEnv) {keep : Triple → Boo
                     rw [hp] at hk
                     simp only [PatternKept] at hk
                     exact hk tp (List.mem_cons_self)
-                  have hi : gname ∈ readable := by
+                  have hi : readableName readable gname := by
                     refine hn gname ?_
                     rw [hp]
                     simp [graphNamesIn]
@@ -901,29 +1176,59 @@ theorem evalSelectBackendOnGraph_restrict (env : EvalEnv) {keep : Triple → Boo
                   · have hc := evalLimitSingleTp_restrict htp sel g' k
                     rw [hz, evalLimitSingleTp_nil] at hc
                     simp only [hr, hl, ← hc]
-              | everyNamed v =>
-                  exfalso
-                  have hp : q.pattern = .graph (.var v) (.bgp [tp]) :=
+              | everyNamed w =>
+                  have hp : q.pattern = .graph (.var w) (.bgp [tp]) :=
                     extractSingleTpBgpLimitScope_everyNamed hex
-                  rw [hp] at hf
-                  simp [plannerFragment] at hf
+                  have htp : TpKept keep tp := by
+                    rw [hp] at hk
+                    simp only [PatternKept] at hk
+                    exact hk tp List.mem_cons_self
+                  have hnone : readable = none := by
+                    refine hv ?_
+                    rw [hp]
+                    simp [graphVarIn]
+                  simp only [indexedDatasetBackend_named, hd.namedList hnone,
+                    limitGraphVarAcc_restrict htp w k d.named []]
 
 theorem evalSelectBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    {readable : Option (List WfIri)} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
     (q : Query) (hf : plannerFragment q.pattern = true) (hk : PatternKept keep q.pattern)
-    (hn : ∀ i ∈ graphNamesIn q.pattern, i ∈ readable) :
+    (hn : ∀ i ∈ graphNamesIn q.pattern, readableName readable i)
+    (hv : graphVarIn q.pattern = true → readable = none) :
     evalSelectBackendDataset env q (indexedDatasetBackend dr)
       = evalSelectBackendDataset env q (indexedDatasetBackend d) := by
-  simp only [evalSelectBackendDataset, detectStreamingCountGroupByGraph_none q hf]
-  exact evalSelectBackendOnGraph_restrict env hd q hf hk hn
+  cases hg : detectStreamingCountGroupByGraph q with
+  | none =>
+      simp only [evalSelectBackendDataset, hg]
+      exact evalSelectBackendOnGraph_restrict env hd q hf hk hn hv
+  | some pair =>
+      obtain ⟨graphVar, countAlias⟩ := pair
+      obtain ⟨w, tp, sv, pv, ov, hp, hs, hpp, ho⟩ :=
+        detectStreamingCountGroupByGraph_shape hg
+      have htp : TpKept keep tp := by
+        rw [hp] at hk
+        simp only [PatternKept] at hk
+        exact hk tp List.mem_cons_self
+      have hall : ∀ t, keep t = true := by
+        intro t
+        refine htp Binding.empty t ?_
+        simp only [patternBoundFor, boundSubjectOfPattern, boundPredicateOfPattern,
+          boundObjectOfPattern, hs, hpp, ho, Binding.lookup, Binding.empty, boundMatches]
+        rfl
+      have hnone : readable = none := by
+        refine hv ?_
+        rw [hp]
+        simp [graphVarIn]
+      rw [hd.trivial_eq hall hnone]
 
 theorem backendDecodeFailure_indexed (g : Graph) :
     backendDecodeFailure (indexedGraphBackend g) = false := rfl
 
 theorem evalAskBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    {readable : Option (List WfIri)} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
     (q : Query) (hf : plannerFragment q.pattern = true) (hk : PatternKept keep q.pattern)
-    (hn : ∀ i ∈ graphNamesIn q.pattern, i ∈ readable) :
+    (hn : ∀ i ∈ graphNamesIn q.pattern, readableName readable i)
+    (hv : graphVarIn q.pattern = true → readable = none) :
     evalAskBackend env q (indexedDatasetBackend dr)
       = evalAskBackend env q (indexedDatasetBackend d) := by
   have hall : ∀ (x : Dataset), ∀ ngb ∈ (indexedDatasetBackend x).named,
@@ -954,7 +1259,7 @@ theorem evalAskBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
         show evalPatternBackend env (indexedDatasetBackend dr) q.pattern
               (indexedGraphBackend dr.default) = _
         rw [hd.dflt]
-        exact evalPatternBackend_restrict env hd q.pattern d.default hf hk hn
+        exact evalPatternBackend_restrict env hd q.pattern d.default hf hk hn hv
       simp only [evalAskBackend, hqf, heval, hdf dr, hdf d]
 
 /-! ## 16. The two query entry points
@@ -966,26 +1271,28 @@ REWRITTEN pattern — which is what the collectors of
 the theorem's hypothesis are one expression. -/
 
 theorem runSelectQueryBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    {readable : Option (List WfIri)} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
     (q : Query)
     (hf : plannerFragment q.pattern.rewriteBnodes = true)
     (hk : PatternKept keep q.pattern.rewriteBnodes)
-    (hn : ∀ i ∈ graphNamesIn q.pattern.rewriteBnodes, i ∈ readable) :
+    (hn : ∀ i ∈ graphNamesIn q.pattern.rewriteBnodes, readableName readable i)
+    (hv : graphVarIn q.pattern.rewriteBnodes = true → readable = none) :
     runSelectQueryBackendDataset env q (indexedDatasetBackend dr)
       = runSelectQueryBackendDataset env q (indexedDatasetBackend d) := by
   simp only [runSelectQueryBackendDataset]
-  exact evalSelectBackendDataset_restrict env hd _ hf hk hn
+  exact evalSelectBackendDataset_restrict env hd _ hf hk hn hv
 
 theorem runAskQueryBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bool}
-    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    {readable : Option (List WfIri)} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
     (q : Query)
     (hf : plannerFragment q.pattern.rewriteBnodes = true)
     (hk : PatternKept keep q.pattern.rewriteBnodes)
-    (hn : ∀ i ∈ graphNamesIn q.pattern.rewriteBnodes, i ∈ readable) :
+    (hn : ∀ i ∈ graphNamesIn q.pattern.rewriteBnodes, readableName readable i)
+    (hv : graphVarIn q.pattern.rewriteBnodes = true → readable = none) :
     runAskQueryBackendDataset env q (indexedDatasetBackend dr)
       = runAskQueryBackendDataset env q (indexedDatasetBackend d) := by
   simp only [runAskQueryBackendDataset]
-  exact evalAskBackend_restrict env hd _ hf hk hn
+  exact evalAskBackend_restrict env hd _ hf hk hn hv
 
 #print axioms evalPatternBackend_restrict
 #print axioms runSelectQueryBackendDataset_restrict
