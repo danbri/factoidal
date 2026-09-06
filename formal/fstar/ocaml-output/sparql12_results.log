@@ -8,7 +8,7 @@
   [8/8] codepoint-escapes/codepoint-esc-08.rq ok
   [1/41] eval-triple-terms/Triple terms - all graph triples (JSON results) ok
   [2/41] eval-triple-terms/Triple terms - all graph triples (XML results) ok
-  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (21ms)
+  [3/41] eval-triple-terms/Reified triples - all graph triples (JSON results) ok (22ms)
   [4/41] eval-triple-terms/Reified triples - all graph triples (XML results) ok (23ms)
   [5/41] eval-triple-terms/Reified triples - match constant reified triple ok
   [6/41] eval-triple-terms/Reified triples - match reified triple, var subject ok
@@ -270,7 +270,7 @@ Test base: third_party/testing/w3c/sparql/sparql12
 --- eval-triple-terms ---
   PASS: Triple terms - all graph triples (JSON results)
   PASS: Triple terms - all graph triples (XML results)
-  PASS: Reified triples - all graph triples (JSON results) (21ms)
+  PASS: Reified triples - all graph triples (JSON results) (22ms)
   PASS: Reified triples - all graph triples (XML results) (23ms)
   PASS: Reified triples - match constant reified triple
   PASS: Reified triples - match reified triple, var subject
