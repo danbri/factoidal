@@ -219,7 +219,10 @@ export async function createSolidClient (options = {}) {
       const reply = await wire(endpoint(request.target), {
         method: request.method,
         headers,
-        body: request.body === null ? undefined : request.body,
+        // fetch refuses any body on GET and HEAD, even an empty string; the
+        // engine's record carries "" there, which is the same message.
+        body: (request.body === null || request.method === 'GET' || request.method === 'HEAD')
+          ? undefined : request.body,
         redirect: 'manual'
       })
       const record = await recordOfReply(reply)
