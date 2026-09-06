@@ -107,6 +107,19 @@ def aclGraphOf (body : String) : List Triple :=
   | .ok g    => g
   | .error _ => []
 
+/-- Parse a request body or a stored representation as Turtle, resolving
+relative references against `base`.
+
+RFC 3986 §5.1.3: the base IRI of a retrieved representation is the URI of
+the resource it was retrieved from. For a PUT or a PATCH that is the request
+target, so `<>` in the body denotes the target and `<#it>` a fragment of it.
+Parsing with no base makes both a parse error, which is how a body that
+edits a containment triple slipped past the §5.3 refusal. -/
+def graphOf (base : Option String) (body : String) : List Triple :=
+  match parseTurtle body base .rdf11 with
+  | .ok g    => g
+  | .error _ => []
+
 /-- Does this path name an ACL resource? Access to one needs `acl:Control`
 rather than the mode the method would otherwise need. -/
 def targetsAcl (p : String) : Bool := p.endsWith ".acl"
@@ -135,8 +148,8 @@ variable {σ : Type}
 /-- Does this body, read as Turtle, carry a containment triple? §5.3:
 "Servers MUST NOT allow HTTP PUT or PATCH on a container to update its
 containment triples". -/
-def bodyEditsContainment (body : String) : Bool :=
-  (aclGraphOf body).any (fun t => t.p == ldpContains)
+def bodyEditsContainment (baseIri target body : String) : Bool :=
+  (graphOf (some (iriOfPath baseIri target)) body).any (fun t => t.p == ldpContains)
 
 /-- One Solid request. Total, like the LWS `step` it refines. -/
 def step (S : Store σ) (cfg : ServerConfig) (r : Request) (st : σ) :
@@ -158,12 +171,24 @@ def step (S : Store σ) (cfg : ServerConfig) (r : Request) (st : σ) :
     | some other => (withCors r ⟨301, [("location", other)], ""⟩, st)
     | none =>
         let (resp, st') := solidStep S cfg r st target
+        let resp := withInboxLink cfg r.path resp
         let resp := if r.method == "GET" || r.method == "HEAD" then
             { resp with headers := resp.headers ++
                 [("wac-allow", wacAllowFor S cfg st target who)] }
           else resp
         (withCors r resp, st')
 where
+  /-- Add the LDN inbox link to the storage root's `Link` field. RFC 8288
+  allows several link-values in one field, comma separated, which is what
+  `LWS.renderLinks` already builds. -/
+  withInboxLink (cfg : ServerConfig) (target : String) (resp : Response) : Response :=
+    if target != rootPath then resp
+    else
+      { resp with headers := resp.headers.map (fun (k, v) =>
+          if k == "link" then
+            (k, if v == "" then renderLinks (inboxLinks cfg.lws.baseIri true)
+                else v ++ ", " ++ renderLinks (inboxLinks cfg.lws.baseIri true))
+          else (k, v)) }
   /-- The `WAC-Allow` field value for a target. Computed whether or not the
   decision is enforced, so a client always learns its privileges. -/
   wacAllowFor (S : Store σ) (cfg : ServerConfig) (st : σ) (target : String)
@@ -195,7 +220,8 @@ where
     | "PUT" =>
         if hasContent r && (r.header? "content-type").isNone then
           (refuse 400 "PUT with content requires a Content-Type header field", st)
-        else if pathIsContainer target && bodyEditsContainment r.body then
+        else if pathIsContainer target &&
+                bodyEditsContainment cfg.lws.baseIri target r.body then
           (refuse 409 "a container's containment triples cannot be edited", st)
         else LWS.step S cfg.lws r st
     | "POST" =>
@@ -213,10 +239,11 @@ where
           (refuse 409 "a container's containment triples cannot be edited", st)
         else
           let existing := S.lookup st target
+          let targetIri := iriOfPath cfg.lws.baseIri target
           let current := match existing with
-            | some e => aclGraphOf e.body
+            | some e => graphOf (some targetIri) e.body
             | none   => []
-          match applyN3Patch r.body current with
+          match applyN3Patch r.body current (some targetIri) with
           | .error e => (refuse e.status e.message, st)
           | .ok g' =>
               let st1 := ensureAncestors S (ancestors target) st

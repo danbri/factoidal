@@ -74,7 +74,12 @@ def solidOpen (configJson : String) : IO String := do
   | .ok (cfg, now, rootAcl) =>
       let n ← solidCounter.modifyGet fun n => (n + 1, n + 1)
       let h := s!"solid{n}"
-      solidTable.modify (·.insert h { cfg, mem := initialStorage now rootAcl })
+      -- The storage root advertises an LDN inbox (Solid Protocol §6, LDN
+      -- §3.1), so the storage has to hold one: a Receiver answers a POST to
+      -- its inbox with 201, and a container with no representation answers
+      -- 404 (Solid Protocol §5.3).
+      let mem := memPut (initialStorage now rootAcl) (inboxEntry now)
+      solidTable.modify (·.insert h { cfg, mem })
       pure (okWith [ ("handle", .string h)
                    , ("root", .string rootPath)
                    , ("storage", .string cfg.lws.baseIri) ])

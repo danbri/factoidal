@@ -58,16 +58,29 @@ private def trimWs (s : String) : String :=
     (((s.toList.dropWhile (fun c => c == ' ' || c == '\t')).reverse.dropWhile
         (fun c => c == ' ' || c == '\t')).reverse)
 
+/-- Where the splitter is: inside `<…>`, inside a quoted parameter value, or
+neither. RFC 8288 §3 separates link-values with commas and parameters with
+semicolons, and both characters may appear inside a URI-Reference or inside
+a quoted-string, so a plain `splitOn ","` cuts a field value in the wrong
+place. -/
+private inductive SplitState where
+  | plain | inAngle | inQuote
+
 /-- Split a `Link` field value on the commas that separate link-values,
-leaving commas inside `<…>` alone. -/
-private def splitLinksGo : Bool → List Char → List Char → List String
+leaving commas inside `<…>` and inside a quoted parameter value alone. -/
+private def splitLinksGo : SplitState → List Char → List Char → List String
   | _, [], acc => [String.ofList acc.reverse]
-  | inAngle, c :: rest, acc =>
-      if c == '<' then splitLinksGo true rest (c :: acc)
-      else if c == '>' then splitLinksGo false rest (c :: acc)
-      else if c == ',' && !inAngle then
-        String.ofList acc.reverse :: splitLinksGo false rest []
-      else splitLinksGo inAngle rest (c :: acc)
+  | .plain, c :: rest, acc =>
+      if c == '<' then splitLinksGo .inAngle rest (c :: acc)
+      else if c == '"' then splitLinksGo .inQuote rest (c :: acc)
+      else if c == ',' then String.ofList acc.reverse :: splitLinksGo .plain rest []
+      else splitLinksGo .plain rest (c :: acc)
+  | .inAngle, c :: rest, acc =>
+      if c == '>' then splitLinksGo .plain rest (c :: acc)
+      else splitLinksGo .inAngle rest (c :: acc)
+  | .inQuote, c :: rest, acc =>
+      if c == '"' then splitLinksGo .plain rest (c :: acc)
+      else splitLinksGo .inQuote rest (c :: acc)
 
 /-- The target inside `<…>`. -/
 private def angleTarget (s : String) : Option String :=
@@ -75,27 +88,56 @@ private def angleTarget (s : String) : Option String :=
   | '<' :: rest => some (String.ofList (rest.takeWhile (fun c => c != '>')))
   | _ => none
 
-/-- The value of the `rel` parameter, with or without quotes. -/
+/-- Split a link-value on the semicolons that separate its parameters,
+leaving semicolons inside `<…>` and inside a quoted value alone. -/
+private def splitParamsGo : SplitState → List Char → List Char → List String
+  | _, [], acc => [String.ofList acc.reverse]
+  | .plain, c :: rest, acc =>
+      if c == '<' then splitParamsGo .inAngle rest (c :: acc)
+      else if c == '"' then splitParamsGo .inQuote rest (c :: acc)
+      else if c == ';' then String.ofList acc.reverse :: splitParamsGo .plain rest []
+      else splitParamsGo .plain rest (c :: acc)
+  | .inAngle, c :: rest, acc =>
+      if c == '>' then splitParamsGo .plain rest (c :: acc)
+      else splitParamsGo .inAngle rest (c :: acc)
+  | .inQuote, c :: rest, acc =>
+      if c == '"' then splitParamsGo .plain rest (c :: acc)
+      else splitParamsGo .inQuote rest (c :: acc)
+
+/-- The value of the `rel` parameter, with or without quotes.
+
+RFC 8288 §3: "Note that link-param names are case-insensitive", so `Rel=` is
+`rel=`. The value of `rel` is a whitespace-separated list of relation types;
+the first is taken, which is what every relation this client looks for
+carries. -/
 private def relValue (s : String) : Option String :=
-  ((s.splitOn ";").drop 1).findSome? (fun param =>
+  ((splitParamsGo .plain s.toList []).drop 1).findSome? (fun param =>
     let p := trimWs param
-    if p.startsWith "rel=" then
+    if p.toLower.startsWith "rel=" then
       let v := trimWs (String.ofList (p.toList.drop 4))
-      some (String.ofList (v.toList.filter (fun c => c != '"')))
+      let unquoted := String.ofList (v.toList.filter (fun c => c != '"'))
+      ((trimWs unquoted).splitOn " ").head?
     else none)
 
 /-- Parse one `Link` header field value into links. -/
 def parseLinkValue (v : String) : List Link :=
-  (splitLinksGo false v.toList []).filterMap (fun part =>
+  (splitLinksGo .plain v.toList []).filterMap (fun part =>
     match angleTarget part, relValue part with
     | some t, some r => some { target := t, rel := r }
     | _, _ => none)
 
 /-- Every link of every `Link` field of a response. RFC 8288 allows the
-field to be repeated, so all of them are read. -/
+field to be repeated, so all of them are read; a host that joined the
+repeats into one comma-separated value (which is what the Fetch standard's
+`Headers.get` does) is read the same way, because the splitter above is the
+one RFC 8288 §3 describes.
+
+The field name is compared case-insensitively: RFC 9110 §5.1, "Field names
+are case-insensitive". A host that hands the engine `Link` rather than
+`link` therefore reaches the same links. -/
 def linksOf (resp : Response) : List Link :=
   (resp.headers.filterMap (fun (k, v) =>
-    if k == "link" then some v else none)).flatMap parseLinkValue
+    if k.toLower == "link" then some v else none)).flatMap parseLinkValue
 
 /-! ## What the links say -/
 

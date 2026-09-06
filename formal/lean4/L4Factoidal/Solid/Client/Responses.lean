@@ -50,8 +50,11 @@ private def trim2 (s : String) : String :=
     (((s.toList.dropWhile (fun c => c == ' ' || c == '\t')).reverse.dropWhile
         (fun c => c == ' ' || c == '\t')).reverse)
 
+/-- Look a header field up by name. RFC 9110 §5.1: "Field names are
+case-insensitive", so a host that reports `Last-Modified` and one that
+reports `last-modified` are read the same way. -/
 def headerOf (resp : Response) (name : String) : Option String :=
-  (resp.headers.find? (fun (k, _) => k == name)).map (·.2)
+  (resp.headers.find? (fun (k, _) => k.toLower == name.toLower)).map (·.2)
 
 /-! ## Status -/
 

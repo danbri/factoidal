@@ -55,6 +55,7 @@ def checks : List (String × Bool) :=
   , ("solid-05-14", Tests.solidGuardN3PatchAcceptPatch)
   , ("solid-05-15", Tests.solidGuardN3PatchBlankNode422)
   , ("solid-05-16", Tests.solidGuardPatchMediaType415)
+  , ("solid-05-30", Tests.solidGuardN3PatchRelativeIri)
   , ("solid-05-17", _root_.L4Factoidal.LWS.Tests.lwsGuardInsertionsRefuseBlankNodes)
   , ("solid-05-18", Tests.solidGuardN3PatchBlankNode422)
   , ("solid-05-19", Tests.solidGuardN3PatchBlankNode422)
@@ -67,7 +68,8 @@ def checks : List (String × Bool) :=
   , ("solid-05-25", Tests.solidGuardDeleteRemovesContainment)
   , ("solid-05-26", Tests.solidGuardDeleteRemovesAuxiliaries)
   , ("solid-05-27", Tests.solidGuardDeleteNonEmptyContainer409)
-  , ("solid-06-01", Tests.solidGuardInboxAcceptsPost)
+  , ("solid-06-01", Tests.solidGuardInboxAcceptsPost && Tests.solidGuardInboxAdvertised)
+  , ("solid-06-03", Tests.solidGuardInboxAdvertised)
   , ("solid-06-02", Tests.solidGuardClientReadsLinks)
   , ("solid-08-01", Tests.solidGuardCorsHeaders)
   , ("solid-08-02", Tests.solidGuardCorsHeaders)
@@ -83,6 +85,7 @@ def checks : List (String × Bool) :=
   , ("solid-wac-07", Tests.solidGuardWacAllowHeader)
   , ("solid-wac-08", Tests.solidGuardClientWacAllowParsing)
   , ("solid-wac-09", Tests.solidGuardClientReadsLinks)
+  , ("solid-cl-02", Tests.solidGuardClientLinkFieldShapes)
   , ("solid-cl-01", Tests.solidGuardClientStorageWalk) ]
 
 def check? (id : String) : Option Bool :=

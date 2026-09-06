@@ -255,6 +255,11 @@ def registry : List Requirement :=
   , statement := "If the set of triples resulting from ?deletions is non-empty and the dataset does not contain all of these triples, the server MUST respond with a 409 status code."
   , module := "L4Factoidal.LWS.Patch.applyPatch"
   , status := .guarded "solidGuardN3PatchDeletionsAbsent409" }
+, { id := "solid-05-30"
+  , section_ := "Solid Protocol §5.3.1 Modifying Resources Using N3 Patches, with RFC 3986 §5.1.3"
+  , statement := "The base URI of a representation is the URI used to retrieve it. (RFC 3986 §5.1.3 Base URI from the Retrieval URI; the Solid Protocol states no base of its own, and its own N3 Patch examples and every client use relative references such as <> and <#it>.)"
+  , module := "L4Factoidal.Solid.Server.N3Patch.parseFormula"
+  , status := .guarded "solidGuardN3PatchRelativeIri" }
   -- §5.4 Deleting Resources
 , { id := "solid-05-23"
   , section_ := "Solid Protocol §5.4 Deleting Resources"
@@ -303,6 +308,11 @@ def registry : List Requirement :=
   , statement := "A Solid client MUST conform to the LDN specification by implementing the Sender or Consumer parts to send or read notifications."
   , module := "L4Factoidal.Solid.Client.Discovery.inboxOf?"
   , status := .guarded "solidGuardClientReadsLinks" }
+, { id := "solid-06-03"
+  , section_ := "Linked Data Notifications §3.1 Discovery"
+  , statement := "make an HTTP HEAD or GET request on the target URL, and use the Link header with a rel value of http://www.w3.org/ns/ldp#inbox […] A resource MUST advertise only one Inbox."
+  , module := "L4Factoidal.Solid.Server.Ldn.inboxLinks"
+  , status := .guarded "solidGuardInboxAdvertised" }
   -- §7.1 Solid Notifications Protocol
 , { id := "solid-07-01"
   , section_ := "Solid Protocol §7.1 Solid Notifications Protocol"
@@ -403,6 +413,11 @@ def registry : List Requirement :=
   , statement := "Clients can determine the storage of a resource by moving up the URI path hierarchy until the response includes a Link header field with rel=\"type\" targeting http://www.w3.org/ns/pim/space#Storage."
   , module := "L4Factoidal.Solid.Client.Discovery.storageWalk"
   , status := .guarded "solidGuardClientStorageWalk" }
+, { id := "solid-cl-02"
+  , section_ := "RFC 9110 §5.1 Field Names, RFC 8288 §3 Link Serialisation in HTTP Headers"
+  , statement := "Field names are case-insensitive. […] The Link header field provides a means for serialising one or more links into HTTP headers, [where] each link-value is separated by a comma and the parameters of a link-value by a semicolon; a comma or semicolon inside a URI-Reference or a quoted-string is not a separator."
+  , module := "L4Factoidal.Solid.Client.Discovery.linksOf, Responses.headerOf"
+  , status := .guarded "solidGuardClientLinkFieldShapes" }
 ]
 
 def counts : Nat × Nat × Nat × Nat :=

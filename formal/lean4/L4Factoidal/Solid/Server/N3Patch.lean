@@ -241,20 +241,27 @@ def insertDeletePatchCount (doc : String) : Nat :=
 
 /-- Parse one formula into a Basic Graph Pattern. An absent formula is the
 empty one: "When not present, they are presumed to be the empty formula
-{}." -/
-def parseFormula (prefixes : String) (doc : List Char) (which : String) :
-    Except N3PatchError Bgp :=
+{}."
+
+`base` is the IRI of the resource the patch targets. A patch document is
+retrieved-with the request whose target is that resource, so RFC 3986 §5.1.3
+makes that IRI the base against which every relative reference in the
+document resolves — including `<>` and `<#it>`, which the specification's own
+examples use. Without it a patch that names its own target cannot parse. -/
+def parseFormula (prefixes : String) (doc : List Char) (which : String)
+    (base : Option String) : Except N3PatchError Bgp :=
   match formulaForPredicate doc which with
   | none => .ok []
   | some body =>
       let text := prefixes ++ "\n" ++ substituteVariables (String.ofList body)
-      match parseTurtle text none .rdf11 with
+      match parseTurtle text base .rdf11 with
       | .error e => .error (.formulaNotTurtle which (toString e))
       | .ok g    => .ok (g.map patternOfTriple)
 
 /-- Parse an N3 Patch document into a `LWS.Patch`, applying every constraint
 of §5.3.1. -/
-def parseN3Patch (doc : String) : Except N3PatchError LWS.Patch := do
+def parseN3Patch (doc : String) (base : Option String := none) :
+    Except N3PatchError LWS.Patch := do
   let cs := doc.toList
   let n := insertDeletePatchCount doc
   if n == 0 then .error .notInsertDeletePatch
@@ -272,9 +279,9 @@ def parseN3Patch (doc : String) : Except N3PatchError LWS.Patch := do
       check "where"
       check "inserts"
       check "deletes"
-      let conditions ← parseFormula prefixes cs "where"
-      let insertions ← parseFormula prefixes cs "inserts"
-      let deletions  ← parseFormula prefixes cs "deletes"
+      let conditions ← parseFormula prefixes cs "where" base
+      let insertions ← parseFormula prefixes cs "inserts" base
+      let deletions  ← parseFormula prefixes cs "deletes" base
       let p : LWS.Patch := { conditions, insertions, deletions }
       match LWS.wellFormed p with
       | some e => .error (.constraint e)
@@ -282,9 +289,9 @@ def parseN3Patch (doc : String) : Except N3PatchError LWS.Patch := do
 
 /-- Parse and apply, in one step: the whole of "Servers MUST process a patch
 resource against the target document as follows". -/
-def applyN3Patch (doc : String) (g : List Triple) :
+def applyN3Patch (doc : String) (g : List Triple) (base : Option String := none) :
     Except N3PatchError (List Triple) :=
-  match parseN3Patch doc with
+  match parseN3Patch doc base with
   | .error e => .error e
   | .ok p =>
       match LWS.applyPatch p g with

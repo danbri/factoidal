@@ -1190,6 +1190,29 @@ seq = [
                                headers=[["content-type", "text/n3"]], body=patch)]],
   ["solidStep", ["solid1", req(method="GET", target="/p/claudia")]],
   ["solidStep", ["solid1", req(method="DELETE", target="/")]],
+  # A patch whose formulae use relative references: RFC 3986 5.1.3 makes
+  # the request target the base, so <> and <#it> resolve against it.
+  ["solidStep", ["solid1", req(method="PUT", target="/notes/three",
+                               headers=[["content-type", "text/turtle"]],
+                               body='<#it> <http://www.w3.org/2000/01/rdf-schema#label> "one" .')]],
+  ["solidStep", ["solid1", req(method="PATCH", target="/notes/three",
+                               headers=[["content-type", "text/n3"]],
+                               body='@prefix solid: <http://www.w3.org/ns/solid/terms#> .\n'
+                                    '<> a solid:InsertDeletePatch ;\n'
+                                    '   solid:inserts { <#it> '
+                                    '<http://www.w3.org/2000/01/rdf-schema#comment> "added" . } .')]],
+  ["solidStep", ["solid1", req(method="GET", target="/notes/three")]],
+  # A PUT whose body edits a containment triple, written with the empty
+  # relative reference as a client writes it (Solid Protocol 5.3).
+  ["solidStep", ["solid1", req(method="PUT", target="/notes/",
+                               headers=[["content-type", "text/turtle"]],
+                               body='<> <http://www.w3.org/ns/ldp#contains> </notes/three> .')]],
+  # The storage advertises an LDN inbox, so it holds one and a Receiver
+  # answers a notification POST with 201 (LDN 3.1 and 3.3.1).
+  ["solidStep", ["solid1", req(method="POST", target="/inbox/",
+                               headers=[["content-type", "application/ld+json"]],
+                               body='{"@id":"","https://www.w3.org/ns/activitystreams#actor":'
+                                    '{"@id":"https://example.org/alice"}}')]],
   ["solidClose", ["solid1"]],
 ]
 json.dump(seq, open(sys.argv[1], "w"))
@@ -1205,7 +1228,13 @@ checkseq "solidStep serves a storage, a container and an N3 Patch" "$TMP/solid-c
    and "Alex" in rs[5]["response"]["body"]
    and "Claudia" not in rs[5]["response"]["body"]
    and rs[6]["response"]["status"] == 405
-   and "DELETE" not in dict(rs[6]["response"]["headers"])["allow"]'
+   and "DELETE" not in dict(rs[6]["response"]["headers"])["allow"]
+   and rs[8]["response"]["status"] == 204
+   and "added" in rs[9]["response"]["body"]
+   and rs[10]["response"]["status"] == 409
+   and "ldp#inbox" in dict(rs[1]["response"]["headers"])["link"]
+   and rs[11]["response"]["status"] == 201
+   and dict(rs[11]["response"]["headers"])["location"].startswith("/inbox/")'
 
 # WAC-Allow is reported whether or not the decision is enforced, so a
 # client always learns its privileges (Web Access Control §5.3.4).

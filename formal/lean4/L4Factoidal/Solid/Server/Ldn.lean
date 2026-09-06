@@ -54,6 +54,20 @@ also accepts the RDF syntaxes its own parser reads. -/
 def acceptedNotificationTypes : List String :=
   ["application/ld+json", "text/turtle", "application/n-triples"]
 
+/-- The inbox links a response carries. Only the storage root advertises the
+inbox, which is what "A resource MUST advertise only one Inbox" allows and
+what a client's storage walk can always reach. -/
+def inboxLinks (baseIri : String) (isRoot : Bool) : List LWS.Link :=
+  if isRoot then [inboxLink baseIri] else []
+
+/-- The inbox container itself, as a storage holds it. A server that
+advertises an inbox has to have one: LDN §3.3.1 requires a Receiver to
+answer a POST to it with 201 and a `Location`, and a container that does not
+exist answers 404 (Solid Protocol §5.3). -/
+def inboxEntry (now : Nat) : Entry :=
+  { path := inboxPath, kind := .container, contentType := "text/turtle",
+    body := "", mtime := now }
+
 /-- Is this a notification POST to the inbox? -/
 def isNotificationPost (r : Request) : Bool :=
   r.method == "POST" && r.path == inboxPath

@@ -216,10 +216,20 @@ def solidGuardPostMissingTarget404 : Bool :=
 containment triples; if the server receives such a request, it MUST respond
 with a 409 status code." -/
 def solidGuardPutRefusesContainmentEdit409 : Bool :=
-  let bodyWithContainment :=
+  let absolute :=
     "<http://example.org/alice/> <http://www.w3.org/ns/ldp#contains> <http://example.org/alice/x> ."
-  (run cfg (req "PUT" "/alice/" turtle bodyWithContainment) populated).1.status == 409 &&
-  (run cfg (req "PATCH" "/alice/" n3 "") populated).1.status == 409
+  -- The same statement written with the empty relative reference, which is
+  -- what a client sends: RFC 3986 §5.1.3 resolves `<>` against the request
+  -- target. Parsed with no base it is a parse error, and the refusal was
+  -- silently skipped.
+  let relative := "<> <http://www.w3.org/ns/ldp#contains> </alice/x> ."
+  (run cfg (req "PUT" "/alice/" turtle absolute) populated).1.status == 409 &&
+  (run cfg (req "PUT" "/alice/" turtle relative) populated).1.status == 409 &&
+  (run cfg (req "PATCH" "/alice/" n3 "") populated).1.status == 409 &&
+  -- A body with no containment triple is still accepted, so the guard is
+  -- not passing because every PUT on a container is refused.
+  (run cfg (req "PUT" "/alice/notes/" turtle "<> <http://example.org/p> \"v\" .")
+     populated).1.status == 204
 
 /-- "When a PUT or PATCH request targets an auxiliary resource, the server
 MUST create or update it." -/
@@ -330,6 +340,31 @@ def solidGuardN3PatchOperations : Bool :=
       let ops := LWS.patchOperations p
       ops.read && ops.append && ops.write
 
+/-- A patch whose formulae use relative references resolves them against the
+target resource's IRI — RFC 3986 §5.1.3, the base of a retrieved
+representation is the URI it was retrieved from. `<>` denotes the target and
+`<#it>` a fragment of it, which is the form the specification's own examples
+and every client use. -/
+def solidGuardN3PatchRelativeIri : Bool :=
+  let note := "<#it> <http://www.w3.org/2000/01/rdf-schema#label> \"one\" ."
+  let doc :=
+"@prefix solid: <http://www.w3.org/ns/solid/terms#> .
+<> a solid:InsertDeletePatch ;
+   solid:inserts { <#it> <http://www.w3.org/2000/01/rdf-schema#comment> \"added\" . } ."
+  let (_, st) := run cfg (req "PUT" "/notes/three" turtle note) emptyStorage
+  let (resp, st') := run cfg (req "PATCH" "/notes/three" n3 doc) st
+  match memLookup st' "/notes/three" with
+  | none => false
+  | some e =>
+      resp.status == 204 &&
+      (e.body.splitOn "added").length > 1 &&
+      (e.body.splitOn "one").length > 1 &&
+      -- The fragment resolved against the target, not against nothing. The
+      -- stored body is read back through the Turtle parser, because the
+      -- serialiser writes the IRI with a prefix.
+      (graphOf none e.body).all (fun t =>
+        t.s == Subject.iri ⟨"http://example.org/notes/three#it", by rfl⟩)
+
 /-- A PATCH body that is not `text/n3` is refused. -/
 def solidGuardPatchMediaType415 : Bool :=
   (run cfg (req "PATCH" "/alice/card" turtle "x") populated).1.status == 415
@@ -342,6 +377,7 @@ def solidGuardPatchMediaType415 : Bool :=
 #guard solidGuardN3PatchDeletionsAbsent409
 #guard solidGuardN3PatchOperations
 #guard solidGuardPatchMediaType415
+#guard solidGuardN3PatchRelativeIri
 
 /-! ## §5.4 — deleting resources -/
 
@@ -532,7 +568,21 @@ def solidGuardInboxAcceptsPost : Bool :=
   let (bad, _) := run cfg (req "POST" "/inbox/" [("content-type", "text/plain")] "hi") st
   ok.status == 201 && bad.status == 415
 
+/-- LDN §3.1: a consumer finds the inbox by "the Link header with a rel
+value of http://www.w3.org/ns/ldp#inbox", and "A resource MUST advertise
+only one Inbox." The storage root advertises it; a resource below it does
+not, so exactly one resource of the storage advertises exactly one inbox. -/
+def solidGuardInboxAdvertised : Bool :=
+  let st := (run cfg (req "PUT" "/inbox/" turtle "") populated).2
+  let (root, _) := run cfg (req "GET" "/") st
+  let (other, _) := run cfg (req "GET" "/alice/card") st
+  has root "link" "rel=\"http://www.w3.org/ns/ldp#inbox\"" &&
+  has root "link" "<http://example.org/inbox/>" &&
+  !has other "link" "rel=\"http://www.w3.org/ns/ldp#inbox\"" &&
+  (((hdr root "link").getD "").splitOn "ldp#inbox").length == 2
+
 #guard solidGuardInboxAcceptsPost
+#guard solidGuardInboxAdvertised
 #guard (inboxLink base).rel == "http://www.w3.org/ns/ldp#inbox"
 #guard (inboxLink base).target == "http://example.org/inbox/"
 
@@ -580,7 +630,48 @@ def solidGuardClientProfile : Bool :=
   p.names == ["Alice"] && p.storages == ["http://example.org/"] &&
   p.inbox == some "http://example.org/inbox/"
 
+/-- RFC 9110 §5.1: "Field names are case-insensitive". A host that reports
+`Link` and `Last-Modified` reaches the same links and the same fields as one
+that lower-cases them. RFC 8288 §3: several link-values in ONE field value,
+comma separated, and a comma inside a quoted parameter value is not a
+separator. -/
+def solidGuardClientLinkFieldShapes : Bool :=
+  let joined :=
+    "<http://www.w3.org/ns/pim/space#Storage>; rel=\"type\", " ++
+    "<http://www.w3.org/ns/ldp#BasicContainer>; rel=\"type\", " ++
+    "<http://127.0.0.1:9999/x.acl>; rel=\"acl\", " ++
+    "<http://127.0.0.1:9999/.well-known/solid>; " ++
+    "rel=\"http://www.w3.org/ns/solid/terms#storageDescription\", " ++
+    "<https://example.org/alice#me>; rel=\"http://www.w3.org/ns/solid/terms#owner\""
+  -- Upper-case field names, one joined Link value: what Node's fetch gives.
+  let upper : Response :=
+    { status := 200, headers := [("Link", joined),
+                                 ("Last-Modified", "Thu, 01 Jan 1970 00:00:00 GMT"),
+                                 ("Allow", "GET, HEAD, OPTIONS")], body := "" }
+  -- The same links in repeated fields, lower-cased.
+  let repeated : Response :=
+    { status := 200
+    , headers := [ ("link", "<http://www.w3.org/ns/pim/space#Storage>; rel=\"type\"")
+                 , ("link", "<http://127.0.0.1:9999/x.acl>; rel=\"acl\"") ]
+    , body := "" }
+  -- A quoted parameter value carrying a comma and a semicolon is not a
+  -- separator (RFC 8288 §3).
+  let quoted : Response :=
+    { status := 200
+    , headers := [("link", "<http://ex/a>; title=\"one, two; three\"; rel=\"acl\"")]
+    , body := "" }
+  let f := resourceFacts upper
+  f.isStorage && f.acl == some "http://127.0.0.1:9999/x.acl" &&
+  f.storageDescription == some "http://127.0.0.1:9999/.well-known/solid" &&
+  f.owner == some "https://example.org/alice#me" &&
+  f.lastModified == some "Thu, 01 Jan 1970 00:00:00 GMT" &&
+  f.allow == ["GET", "HEAD", "OPTIONS"] &&
+  (linksOf upper).length == 5 &&
+  isStorage repeated && aclOf? repeated == some "http://127.0.0.1:9999/x.acl" &&
+  (linksOf quoted).length == 1 && aclOf? quoted == some "http://ex/a"
+
 #guard solidGuardClientReadsLinks
+#guard solidGuardClientLinkFieldShapes
 #guard solidGuardClientStorageWalk
 #guard solidGuardClientWacAllowParsing
 #guard solidGuardClientProfile
