@@ -2229,4 +2229,69 @@ enclosing pattern never names. -/
   (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp]))
   == some [samplePredicate])
 
+/-! ## The planner-soundness gate
+
+`docs/designissues/2026-09-06-planner-soundness-theorem.md` section 5. The
+first block pins what each collector admits, so a widening cannot land without
+extending `SPARQL.DatasetRestriction.plannerFragment` and its theorem. -/
+
+#guard L4Factoidal.SPARQL.DatasetRestriction.plannerFragment (.bgp [sampleTp])
+#guard L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.graph (.iri sampleG1) (.bgp [sampleTp]))
+#guard L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.graph (.var "g") (.bgp [sampleTp]))
+#guard L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.filter (.compare .lt (.var "o") (.numericLit 3)) (.bgp [sampleTp]))
+#guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.graph (.iri sampleG1) (.graph (.iri sampleG2) (.bgp [sampleTp])))
+#guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp]))
+#guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.bind (.var "o") "x" (.bgp [sampleTp]))
+#guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.subSelect (mkQuery (.select .all) (.bgp [sampleTp])))
+
+/-! A two-entry manifest, a query the predicate collector narrows to ONE entry,
+and the answer over the entries the planner keeps equal to the answer over
+every entry. This is `plannerSoundness` on a concrete instance. -/
+
+private def gateSubjA : Subject := .iri ⟨"https://example.test/a", by decide⟩
+private def gateSubjB : Subject := .iri ⟨"https://example.test/b", by decide⟩
+private def gateObj : Term := .iri ⟨"https://example.test/o", by decide⟩
+
+/-- The rows of entry 0 (`samplePredicate`) and of entry 1
+(`sampleOtherPredicate`), as a dataset with one named graph each. -/
+private def gateRowsA : Graph := [{ s := gateSubjA, p := samplePredicate, o := gateObj }]
+private def gateRowsB : Graph := [{ s := gateSubjB, p := sampleOtherPredicate, o := gateObj }]
+
+private def gateDatasetAll : L4Factoidal.RDF.Dataset :=
+  { default := gateRowsA ++ gateRowsB, named := [] }
+private def gateDatasetKept : L4Factoidal.RDF.Dataset :=
+  { default := gateRowsA, named := [] }
+
+private def gateQuery : Query := mkQuery (.select .all) (.bgp [sampleTp])
+
+/-! The planner keeps one of the two entries. -/
+#guard (quadEntriesForQuery sampleQuadManifest gateQuery).length == 1
+
+/-! ... and the answer is the same as over both. -/
+#guard L4Factoidal.SPARQL.StoreDataset.runSelectQueryBackendDataset {} gateQuery
+    (L4Factoidal.SPARQL.StoreDataset.indexedDatasetBackend gateDatasetKept)
+  == L4Factoidal.SPARQL.StoreDataset.runSelectQueryBackendDataset {} gateQuery
+    (L4Factoidal.SPARQL.StoreDataset.indexedDatasetBackend gateDatasetAll)
+
+/-! ASK too. -/
+#guard L4Factoidal.SPARQL.StoreDataset.runAskQueryBackendDataset {}
+    (mkQuery .ask (.bgp [sampleTp]))
+    (L4Factoidal.SPARQL.StoreDataset.indexedDatasetBackend gateDatasetKept)
+  == L4Factoidal.SPARQL.StoreDataset.runAskQueryBackendDataset {}
+    (mkQuery .ask (.bgp [sampleTp]))
+    (L4Factoidal.SPARQL.StoreDataset.indexedDatasetBackend gateDatasetAll)
+
+/-! The answer is not empty, so the guard above is not vacuous. -/
+#guard (match L4Factoidal.SPARQL.StoreDataset.runSelectQueryBackendDataset {} gateQuery
+    (L4Factoidal.SPARQL.StoreDataset.indexedDatasetBackend gateDatasetAll) with
+  | some rows => rows.length
+  | none => 0) == 1
+
 end L4Factoidal.Storage.ShardManifest
