@@ -45,6 +45,8 @@ import Wasm.Ops.Proof
 import Wasm.Ops.Handles
 import Wasm.Ops.Pack
 import Wasm.Ops.ExtFns
+import Wasm.Ops.Lws
+import Wasm.Ops.Solid
 
 namespace L4Wasm
 
@@ -216,6 +218,24 @@ def packOpNames : List String :=
   , "packFinish"
   , "packClose" ]
 
+/-- The Linked Web Storage 1.0 and Solid Protocol op names
+(`Wasm/Ops/Lws.lean`, `Wasm/Ops/Solid.lean`), served ONLY by `callIO`: the
+server operations hold a storage in a handle table, which the pure `call`
+cannot reach. The two client operations are pure but are listed here so a
+host finds the whole protocol surface under one entry.
+
+The request and response documents are stated in
+`docs/lws-solid-conformance.md` § "wasm ABI". -/
+def lwsSolidOpNames : List String :=
+  [ "lwsOpen"
+  , "lwsStep"
+  , "lwsClose"
+  , "solidOpen"
+  , "solidStep"
+  , "solidClose"
+  , "solidClientRequest"
+  , "solidClientResponse" ]
+
 /-- `{"ok":true,"abiVersion":"…","ops":[…],"blobOps":[…],"blobIoOps":[…]}`. -/
 private def opsReflectionFor (names : List String) : String :=
   (Json.object
@@ -347,6 +367,26 @@ def callIO (op : String) (argsJson : String) : IO String :=
   | "storeOpen"        => withArgs (arityIO2 op (fun a b => Ops.storeOpen a b ByteArray.empty))
   | "storeHandleQuery" => withArgs (arityIO2 op Ops.storeHandleQuery)
   | "storeHandleClose" => withArgs (arityIO1 op Ops.storeHandleClose)
+  -- Linked Web Storage 1.0 and the Solid Protocol
+  -- (https://github.com/danbri/factoidal/issues/659). `lwsOpen`,
+  -- `solidOpen`, `solidClientRequest` and `solidClientResponse` take their
+  -- arguments as strings and answer one envelope, like every other op.
+  | "lwsOpen"          => withArgs (arityIO1 op Ops.lwsOpen)
+  | "lwsStep"          => withArgs (arityIO2 op Ops.lwsStep)
+  | "lwsClose"         => withArgs (arityIO1 op Ops.lwsClose)
+  | "solidOpen"        => withArgs (arityIO1 op Ops.solidOpen)
+  | "solidStep"        => withArgs (arityIO2 op Ops.solidStep)
+  | "solidClose"       => withArgs (arityIO1 op Ops.solidClose)
+  | "solidClientRequest" =>
+      withArgs (fun args =>
+        match args with
+        | [a, b] => pure (Ops.solidClientRequest a b)
+        | args => pure (errJson s!"solidClientRequest expects 2 arguments, got {args.length}"))
+  | "solidClientResponse" =>
+      withArgs (fun args =>
+        match args with
+        | [a, b] => pure (Ops.solidClientResponse a b)
+        | args => pure (errJson s!"solidClientResponse expects 2 arguments, got {args.length}"))
   | "storeHandleList" =>
       withArgs (fun args =>
         match args with
@@ -354,7 +394,7 @@ def callIO (op : String) (argsJson : String) : IO String :=
         | args => pure (errJson s!"storeHandleList expects 0 arguments, got {args.length}"))
   | "ops"              => pure (opsReflectionFor
                                  (opNames ++ handleOpNames ++ storeHandleOpNames ++ packOpNames
-                                    ++ extOpNames))
+                                    ++ extOpNames ++ lwsSolidOpNames))
   | _                  => pure (call op argsJson)
 
 /-- The dispatch entry the `l4_call_blob_io` C export serves: the string

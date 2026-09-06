@@ -1126,6 +1126,177 @@ args "$TMP/proof-arity.json"
 check "proofCheck wrong arity -> error" proofCheck "$TMP/proof-arity.json" \
   'r["ok"] is False and "expects 1 argument" in r["error"]'
 
+# --- Linked Web Storage 1.0 + Solid Protocol --------------------------
+# https://github.com/danbri/factoidal/issues/659. The server ops hold a
+# storage in a handle table, so a CRUD sequence must run in ONE process:
+# `callseq`, like the dataset-handle ops above. The request and response
+# documents are docs/lws-solid-conformance.md, section "wasm ABI".
+
+python3 - "$TMP/lws-crud.json" <<'EOF'
+import json, sys
+req = lambda **kw: json.dumps(kw)
+seq = [
+  ["lwsOpen",  [json.dumps({"baseIri": "http://example.org/", "now": 1000000000})]],
+  ["lwsStep",  ["lws1", req(method="PUT", target="/alice/card",
+                            headers=[["content-type", "text/turtle"]],
+                            body="<http://example.org/a> <http://example.org/b> \"v\" .")]],
+  ["lwsStep",  ["lws1", req(method="GET", target="/alice/card")]],
+  ["lwsStep",  ["lws1", req(method="HEAD", target="/alice/card")]],
+  ["lwsStep",  ["lws1", req(method="PUT", target="/alice/card",
+                            headers=[["content-type", "text/turtle"]],
+                            body="<http://example.org/a> <http://example.org/b> \"w\" .")]],
+  ["lwsStep",  ["lws1", req(method="DELETE", target="/alice/card")]],
+  ["lwsStep",  ["lws1", req(method="GET", target="/alice/card")]],
+  ["lwsClose", ["lws1"]],
+  ["lwsStep",  ["lws1", req(method="GET", target="/")]],
+]
+json.dump(seq, open(sys.argv[1], "w"))
+EOF
+
+checkseq "lwsStep drives create, read, update and delete" "$TMP/lws-crud.json" \
+  'rs[0]["ok"] is True and rs[0]["handle"] == "lws1" and rs[0]["root"] == "/"
+   and [r["response"]["status"] for r in rs[1:7]] == [201, 200, 200, 204, 204, 404]
+   and dict(rs[2]["response"]["headers"])["last-modified"]
+       == "Sun, 09 Sep 2001 01:46:42 GMT"
+   and dict(rs[3]["response"]["headers"])["last-modified"]
+       == "Sun, 09 Sep 2001 01:46:42 GMT"
+   and rs[3]["response"]["body"] == ""
+   and rs[2]["response"]["body"].endswith("\"v\" .")
+   and rs[7]["ok"] is True
+   and rs[8]["ok"] is False and "unknown LWS handle" in rs[8]["error"]'
+
+# The Solid server refines the LWS one: the storage root advertises
+# pim:Storage, a container answers containment triples, and an N3 Patch
+# applies. Same handle discipline.
+python3 - "$TMP/solid-crud.json" <<'EOF'
+import json, sys
+req = lambda **kw: json.dumps(kw)
+patch = """@prefix solid: <http://www.w3.org/ns/solid/terms#>.
+@prefix ex: <http://www.example.org/terms#>.
+_:rename a solid:InsertDeletePatch;
+  solid:where   { ?person ex:familyName "Garcia". };
+  solid:inserts { ?person ex:givenName "Alex". };
+  solid:deletes { ?person ex:givenName "Claudia". }."""
+seq = [
+  ["solidOpen", [json.dumps({"baseIri": "http://example.org/", "now": 0})]],
+  ["solidStep", ["solid1", req(method="GET", target="/")]],
+  ["solidStep", ["solid1", req(method="PUT", target="/p/claudia",
+                               headers=[["content-type", "text/turtle"]],
+                               body='@prefix ex: <http://www.example.org/terms#>.\n'
+                                    '<http://example.org/p/claudia> ex:familyName "Garcia"; '
+                                    'ex:givenName "Claudia".')]],
+  ["solidStep", ["solid1", req(method="GET", target="/p/")]],
+  ["solidStep", ["solid1", req(method="PATCH", target="/p/claudia",
+                               headers=[["content-type", "text/n3"]], body=patch)]],
+  ["solidStep", ["solid1", req(method="GET", target="/p/claudia")]],
+  ["solidStep", ["solid1", req(method="DELETE", target="/")]],
+  ["solidClose", ["solid1"]],
+]
+json.dump(seq, open(sys.argv[1], "w"))
+EOF
+
+checkseq "solidStep serves a storage, a container and an N3 Patch" "$TMP/solid-crud.json" \
+  'rs[0]["ok"] is True and rs[0]["storage"] == "http://example.org/"
+   and "<http://www.w3.org/ns/pim/space#Storage>; rel=\"type\""
+       in dict(rs[1]["response"]["headers"])["link"]
+   and rs[2]["response"]["status"] == 201
+   and "contains" in rs[3]["response"]["body"]
+   and rs[4]["response"]["status"] == 204
+   and "Alex" in rs[5]["response"]["body"]
+   and "Claudia" not in rs[5]["response"]["body"]
+   and rs[6]["response"]["status"] == 405
+   and "DELETE" not in dict(rs[6]["response"]["headers"])["allow"]'
+
+# WAC-Allow is reported whether or not the decision is enforced, so a
+# client always learns its privileges (Web Access Control §5.3.4).
+python3 - "$TMP/solid-wac.json" <<'EOF'
+import json, sys
+req = lambda **kw: json.dumps(kw)
+acl = """@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+<http://example.org/acl#owner> a acl:Authorization;
+  acl:agent <http://example.org/alice/card#me>;
+  acl:accessTo <http://example.org/alice/card>;
+  acl:mode acl:Read, acl:Write, acl:Control."""
+seq = [
+  ["solidOpen", [json.dumps({"baseIri": "http://example.org/", "now": 0})]],
+  ["solidStep", ["solid1", req(method="PUT", target="/alice/card",
+                               headers=[["content-type", "text/turtle"]],
+                               body="<http://example.org/a> <http://example.org/b> \"v\" .")]],
+  ["solidStep", ["solid1", req(method="PUT", target="/alice/card.acl",
+                               headers=[["content-type", "text/turtle"]], body=acl)]],
+  ["solidStep", ["solid1", req(method="GET", target="/alice/card")]],
+  ["solidStep", ["solid1", req(method="GET", target="/alice/card",
+                               agent="http://example.org/alice/card#me")]],
+]
+json.dump(seq, open(sys.argv[1], "w"))
+EOF
+
+checkseq "solidStep reports WAC-Allow per agent" "$TMP/solid-wac.json" \
+  'dict(rs[3]["response"]["headers"])["wac-allow"] == "user=\"\",public=\"\""
+   and dict(rs[4]["response"]["headers"])["wac-allow"]
+       == "user=\"read write append control\",public=\"\""'
+
+# Web Access Control, enforced. The root ACL is a PROVISIONING input
+# (`rootAcl` in the open configuration): under enforcement the request that
+# would write it is the first request it would authorize, so a storage
+# cannot bootstrap it. Each `callseq` runs in its own process, so the handle
+# counter starts at one again and every sequence names "solid1".
+python3 - "$TMP/solid-deny.json" <<'EOF'
+import json, sys
+req = lambda **kw: json.dumps(kw)
+acl = """@prefix acl: <http://www.w3.org/ns/auth/acl#>.
+<http://example.org/acl#owner> a acl:Authorization;
+  acl:agent <http://example.org/alice/card#me>;
+  acl:accessTo <http://example.org/>;
+  acl:default <http://example.org/>;
+  acl:mode acl:Read, acl:Write, acl:Control."""
+seq = [
+  ["solidOpen", [json.dumps({"baseIri": "http://example.org/", "now": 0,
+                             "enforceWac": True, "rootAcl": acl})]],
+  ["solidStep", ["solid1", req(method="PUT", target="/alice/card",
+                               headers=[["content-type", "text/turtle"]],
+                               body="<http://example.org/a> <http://example.org/b> \"v\" .",
+                               agent="http://example.org/alice/card#me")]],
+  ["solidStep", ["solid1", req(method="GET", target="/alice/card")]],
+  ["solidStep", ["solid1", req(method="GET", target="/alice/card",
+                               agent="http://example.org/bob/card#me")]],
+  ["solidStep", ["solid1", req(method="GET", target="/alice/card",
+                               agent="http://example.org/alice/card#me")]],
+]
+json.dump(seq, open(sys.argv[1], "w"))
+EOF
+
+checkseq "solidStep denies an unauthorized agent when WAC is enforced" "$TMP/solid-deny.json" \
+  'rs[1]["response"]["status"] == 201
+   and rs[2]["response"]["status"] == 401
+   and rs[3]["response"]["status"] == 403
+   and rs[4]["response"]["status"] == 200'
+
+
+# The client ops are stateless: one builds a request, the other reads a
+# response. They answer through `call` like any other op.
+args "$TMP/solid-client-req.json" "create" '{"target":"/alice/","body":"<a> <b> <c> .","contentType":"text/turtle","slug":"note"}'
+check "solidClientRequest builds a POST with Slug and Content-Type" solidClientRequest \
+  "$TMP/solid-client-req.json" \
+  'r["ok"] is True and r["request"]["method"] == "POST"
+   and r["request"]["target"] == "/alice/"
+   and dict([tuple(h) for h in r["request"]["headers"]])["slug"] == "note"
+   and dict([tuple(h) for h in r["request"]["headers"]])["content-type"] == "text/turtle"'
+
+args "$TMP/solid-client-resp.json" "wacAllow" '{"status":200,"headers":[["wac-allow","user=\"read write frobnicate\",public=\"read\""]],"body":""}'
+check "solidClientResponse drops an unrecognised access mode" solidClientResponse \
+  "$TMP/solid-client-resp.json" \
+  'r["ok"] is True and r["interpretation"] == {"user": ["read", "write"], "public": ["read"]}'
+
+args "$TMP/solid-client-bad.json" "notAKind" '{"status":200}'
+check "solidClientResponse unknown kind -> error" solidClientResponse \
+  "$TMP/solid-client-bad.json" \
+  'r["ok"] is False and "unknown kind" in r["error"]'
+
+args "$TMP/lws-unknown.json" "lws999" '{"method":"GET","target":"/"}'
+check "lwsStep on an unknown handle -> error" lwsStep "$TMP/lws-unknown.json" \
+  'r["ok"] is False and "unknown LWS handle" in r["error"]'
+
 # --- Dispatch reflection + unknown op ---------------------------------
 args "$TMP/empty.json"
 check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
@@ -1143,7 +1314,10 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "datasetSerialize","datasetClose",
             "activateVerify",
             "packBegin","packFeed","packEndPass",
-            "packNext","packFinish","packClose"]) <= set(r["ops"])
+            "packNext","packFinish","packClose",
+            "lwsOpen","lwsStep","lwsClose",
+            "solidOpen","solidStep","solidClose",
+            "solidClientRequest","solidClientResponse"]) <= set(r["ops"])
    and r["blobOps"] == ["storeQuery","activateVerify"]
    and r["blobIoOps"] == ["blobEcho","packFeed","packNext"]'
 
