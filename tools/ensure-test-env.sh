@@ -78,6 +78,7 @@ check third_party/testing/xml/xmlconf                "xml-conformance"    "xml_r
 check third_party/testing/xslt/manifest.json         "xslt"               "xslt_runner (default slice-1 subset)"
 check third_party/testing/xslt1-xalan/xalan-test-src/tests/conf/axes/axes01.xsl "xslt1-xalan (Apache)" "xslt_runner --base xslt1-xalan (XSLT 1.0 conformance mirror)"
 check third_party/testing/owl                        "owl"                "owl_runner"
+check third_party/testing/wycheproof/testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json "wycheproof (C2SP)" "l4jose-probe: the ECDSA and RSA signature corpora"
 check third_party/testing/hdt/rml-core-ontology.hdt  "hdt"                "hdt parity, hub post24, npm hdt tests"
 check third_party/testing/solid-crud-tests/package.json          "solid-crud"         "tools/solid-server-interop.sh (Solid CRUD surface tests)"
 check third_party/testing/web-access-control-tests/package.json  "solid-wac"          "tools/solid-server-interop.sh (Web Access Control tests)"

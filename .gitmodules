@@ -53,3 +53,6 @@
 [submodule "third_party/testing/solid-specification-tests"]
 	path = third_party/testing/solid-specification-tests
 	url = https://github.com/solid-contrib/specification-tests.git
+[submodule "third_party/testing/wycheproof"]
+	path = third_party/testing/wycheproof
+	url = https://github.com/C2SP/wycheproof.git

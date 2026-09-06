@@ -345,6 +345,13 @@ extern_lib libl4exthost pkg := do
 -- test vectors end to end (JSON-LD -> RDFC-1.0 -> SHA-256 -> Ed25519).
 @[default_target] lean_exe «l4vc-probe» where root := `Harness.VcProbe
 
+-- JOSE / Solid-OIDC probe (Harness/JoseProbe.lean, L4Factoidal/JOSE/).
+-- The RFC 7515, 7520 and 9449 fixtures and the Wycheproof ECDSA and RSA
+-- corpora, through the HACL* P-256 and RSA primitives. Everything the
+-- pure JOSE layers decide is a build-time `#guard` in those modules;
+-- this binary exists for the part that needs an extern.
+@[default_target] lean_exe «l4jose-probe» where root := `Harness.JoseProbe
+
 -- SHACL Core probe over the W3C shacl test suite (Harness/ShaclProbe.lean).
 @[default_target] lean_exe «l4shacl» where root := `Harness.ShaclProbe
 
