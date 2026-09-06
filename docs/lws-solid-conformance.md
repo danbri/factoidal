@@ -160,3 +160,121 @@ not carry these operations: `tests/lws/server.mjs` 0 pass, 0 fail, 8
 skipped (out of 8); `tests/solid/server/protocol.mjs` 0 pass, 0 fail, 12
 skipped (out of 12); `tests/solid/client/against-own-server.mjs` 0 pass,
 0 fail, 7 skipped (out of 7); all three interop scripts exit 2.
+
+## F* statement list
+
+The F* tree states the same requirement identifiers over an abstract
+resource store: [`formal/fstar/LWS.Core.Spec.fsti`](../formal/fstar/LWS.Core.Spec.fsti)
+with its model and proofs in `LWS.Core.Spec.fst`, and
+[`formal/fstar/Solid.Protocol.Spec.fsti`](../formal/fstar/Solid.Protocol.Spec.fsti)
+which imports it and adds the Solid layer, its server statements in Part 8
+and its client statements in Part 9. The list below is generated from
+[`formal/fstar/LWS.Solid.Registry.fst`](../formal/fstar/LWS.Solid.Registry.fst),
+whose rows carry the same identifiers and the same verbatim statements as the
+Lean registries, and which proves that no identifier appears twice.
+
+The F* modules are specifications, not an engine: each one declares the
+operations over an abstract store and states the requirement as a `val` or a
+lemma, and the accompanying `.fst` gives one model that discharges every law.
+The engine is the Lean tree. A row with no F* statement is one the F* side
+does not state yet; the Lean rows above say how that row is decided.
+
+Verified with z3 4.13.3, no `--lax` and no `--admit_smt_queries`:
+`fstar.exe --z3version 4.13.3 --cache_checked_modules <module>`.
+
+51 of the 91 rows carry an F* statement (18 LWS rows: 10 stated;
+73 Solid rows: 41 stated).
+
+| requirement | source | section | F* statement |
+|---|---|---|---|
+| `lws-core-01` | LWS | Resource Access | - |
+| `lws-core-02` | LWS | Resource Access | - |
+| `lws-core-03` | LWS | For Editors (CG-to-ED delta) | `LWS.Core.Spec.lws_core_03_last_modified_on_get`, `LWS.Core.Spec.lws_core_03_last_modified_on_head` |
+| `lws-core-04` | LWS | For Editors (CG-to-ED delta) | `LWS.Core.Spec.lws_core_04_insertions_no_blank_nodes`, `LWS.Core.Spec.lws_core_04_ill_formed_patch_refused` |
+| `lws-core-05` | LWS | Terminology | `LWS.Core.Spec.lws_core_05_create_updates_containment`, `LWS.Core.Spec.lws_core_05_delete_updates_containment`, `LWS.Core.Spec.contained_are_children` |
+| `lws-core-06` | LWS | Terminology | `LWS.Core.Spec.lws_core_06_root_has_no_parent`, `LWS.Core.Spec.lws_core_06_only_root_has_no_parent`, `LWS.Core.Spec.containment_acyclic`, `LWS.Core.Spec.containment_single_parent`, `LWS.Core.Spec.lws_core_root_not_deleted` |
+| `lws-core-07` | LWS | Terminology | `Solid.Protocol.Spec.solid_04_11_auxiliaries_deleted_with_subject` |
+| `lws-core-08` | LWS | Terminology | `LWS.Core.Spec.lws_core_08_auxiliary_links_advertised` |
+| `lws-core-09` | LWS | Terminology | - |
+| `lws-core-10` | LWS | Terminology | - |
+| `lws-core-11` | LWS | Resource Access | `LWS.Core.Spec.lws_core_11_four_operations` |
+| `lws-core-12` | LWS | Resource Access | `LWS.Core.Spec.lws_core_12_created_is_not_success` |
+| `lws-core-13` | LWS | Resource Access | `Solid.Protocol.Spec.solid_wac_01_no_acl_denies` |
+| `lws-core-14` | LWS | Resource Access | - |
+| `lws-core-15` | LWS | Authentication | - |
+| `lws-core-16` | LWS | Notifications | - |
+| `lws-core-17` | LWS | Access Requests and Grants | - |
+| `lws-core-18` | LWS | Terminology | `LWS.Core.Spec.lws_core_18_storage_description_link` |
+| `solid-02-01` | Solid | Solid Protocol §2.1 HTTP Server | - |
+| `solid-02-02` | Solid | Solid Protocol §2.1 HTTP Server | `Solid.Protocol.Spec.solid_02_02_content_type_required` |
+| `solid-02-03` | Solid | Solid Protocol §2.1 HTTP Server | - |
+| `solid-02-04` | Solid | Solid Protocol §2.1 HTTP Server | - |
+| `solid-02-05` | Solid | Solid Protocol §2.1 HTTP Server | - |
+| `solid-02-06` | Solid | Solid Protocol §2.2 HTTP Client | `Solid.Protocol.Spec.solid_02_06_client_content_type` |
+| `solid-03-01` | Solid | Solid Protocol §3.1 URI Slash Semantics | `Solid.Protocol.Spec.solid_03_01_slash_denotes_container` |
+| `solid-03-02` | Solid | Solid Protocol §3.1 URI Slash Semantics | `Solid.Protocol.Spec.solid_03_02_slash_pair_distinct` |
+| `solid-03-03` | Solid | Solid Protocol §3.1 URI Slash Semantics | - |
+| `solid-04-01` | Solid | Solid Protocol §4.1 Storage Resource | - |
+| `solid-04-02` | Solid | Solid Protocol §4.1 Storage Resource | - |
+| `solid-04-03` | Solid | Solid Protocol §4.1 Storage Resource | `Solid.Protocol.Spec.solid_04_03_storage_type_link` |
+| `solid-04-04` | Solid | Solid Protocol §4.1 Storage Resource | `Solid.Protocol.Spec.solid_04_04_storage_description_link` |
+| `solid-04-05` | Solid | Solid Protocol §4.1 Storage Resource | - |
+| `solid-04-06` | Solid | Solid Protocol §4.1 Storage Resource | - |
+| `solid-04-07` | Solid | Solid Protocol §4.1 Storage Resource | `Solid.Protocol.Spec.solid_04_07_owner_link` |
+| `solid-04-08` | Solid | Solid Protocol §4.2 Resource Containment | `Solid.Protocol.Spec.solid_04_08_containment_iff_enumerated`, `Solid.Protocol.Spec.solid_04_08_containment_is_hierarchy` |
+| `solid-04-09` | Solid | Solid Protocol §4.2 Resource Containment | - |
+| `solid-04-10` | Solid | Solid Protocol §4.2.1 Contained Resource Metadata | - |
+| `solid-04-11` | Solid | Solid Protocol §4.3 Auxiliary Resources | `Solid.Protocol.Spec.solid_04_11_auxiliaries_deleted_with_subject` |
+| `solid-04-12` | Solid | Solid Protocol §4.3 Auxiliary Resources | `Solid.Protocol.Spec.solid_04_12_auxiliary_links_advertised` |
+| `solid-04-13` | Solid | Solid Protocol §4.3.2 Description Resource | `Solid.Protocol.Spec.solid_04_13_at_most_one_description` |
+| `solid-04-14` | Solid | Solid Protocol §4.3.2 Description Resource | `Solid.Protocol.Spec.solid_04_14_description_authorized_as_subject` |
+| `solid-05-01` | Solid | Solid Protocol §5 Reading and Writing Resources | `Solid.Protocol.Spec.solid_05_01_unsupported_method_405` |
+| `solid-05-02` | Solid | Solid Protocol §5.1 Resource Type Heuristics | `Solid.Protocol.Spec.solid_05_02_post_assigns_uri` |
+| `solid-05-03` | Solid | Solid Protocol §5.2 Reading Resources | - |
+| `solid-05-04` | Solid | Solid Protocol §5.2 Reading Resources | `Solid.Protocol.Spec.solid_05_04_allow_header` |
+| `solid-05-05` | Solid | Solid Protocol §5.2 Reading Resources | `Solid.Protocol.Spec.solid_05_05_accept_headers` |
+| `solid-05-06` | Solid | Solid Protocol §5.3 Writing Resources | - |
+| `solid-05-07` | Solid | Solid Protocol §5.3 Writing Resources | `Solid.Protocol.Spec.solid_05_07_intermediate_container` |
+| `solid-05-08` | Solid | Solid Protocol §5.3 Writing Resources | `Solid.Protocol.Spec.solid_05_02_post_assigns_uri` |
+| `solid-05-09` | Solid | Solid Protocol §5.3 Writing Resources | `Solid.Protocol.Spec.solid_05_09_post_missing_target_404` |
+| `solid-05-10` | Solid | Solid Protocol §5.3 Writing Resources | - |
+| `solid-05-11` | Solid | Solid Protocol §5.3 Writing Resources | `Solid.Protocol.Spec.solid_05_11_containment_edit_409` |
+| `solid-05-12` | Solid | Solid Protocol §5.3 Writing Resources | - |
+| `solid-05-13` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `Solid.Protocol.Spec.solid_05_13_n3_patch_accepted`, `LWS.Core.Spec.lws_patch_not_refused`, `LWS.Core.Spec.lws_patch_applied` |
+| `solid-05-14` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `Solid.Protocol.Spec.solid_05_05_accept_headers` |
+| `solid-05-15` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | - |
+| `solid-05-16` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `Solid.Protocol.Spec.solid_05_19_ill_formed_patch_422` |
+| `solid-05-17` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `Solid.Protocol.Spec.solid_05_19_ill_formed_patch_422` |
+| `solid-05-18` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `LWS.Core.Spec.lws_core_04_insertions_no_blank_nodes` |
+| `solid-05-19` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `Solid.Protocol.Spec.solid_05_19_ill_formed_patch_422` |
+| `solid-05-20` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | `Solid.Protocol.Spec.solid_05_20_patch_operations` |
+| `solid-05-21` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | - |
+| `solid-05-22` | Solid | Solid Protocol §5.3.1 Modifying Resources Using N3 Patches | - |
+| `solid-05-23` | Solid | Solid Protocol §5.4 Deleting Resources | `Solid.Protocol.Spec.solid_05_25_delete_removes_containment` |
+| `solid-05-24` | Solid | Solid Protocol §5.4 Deleting Resources | `Solid.Protocol.Spec.solid_05_24_delete_root_405` |
+| `solid-05-25` | Solid | Solid Protocol §5.4 Deleting Resources | `Solid.Protocol.Spec.solid_05_25_delete_removes_containment` |
+| `solid-05-26` | Solid | Solid Protocol §5.4 Deleting Resources | `Solid.Protocol.Spec.solid_04_11_auxiliaries_deleted_with_subject` |
+| `solid-05-27` | Solid | Solid Protocol §5.4 Deleting Resources | `Solid.Protocol.Spec.solid_05_27_delete_non_empty_container_409` |
+| `solid-05-28` | Solid | Solid Protocol §5.5 Resource Representations | - |
+| `solid-05-29` | Solid | Solid Protocol §5.5 Resource Representations | - |
+| `solid-06-01` | Solid | Solid Protocol §6 Linked Data Notifications | - |
+| `solid-06-02` | Solid | Solid Protocol §6 Linked Data Notifications | - |
+| `solid-07-01` | Solid | Solid Protocol §7.1 Solid Notifications Protocol | - |
+| `solid-08-01` | Solid | Solid Protocol §8.1 CORS Server | - |
+| `solid-08-02` | Solid | Solid Protocol §8.1 CORS Server | - |
+| `solid-08-03` | Solid | Solid Protocol §8.1 CORS Server | - |
+| `solid-08-04` | Solid | Solid Protocol §8.1 CORS Server | - |
+| `solid-09-01` | Solid | Solid Protocol §9.1 WebID | - |
+| `solid-10-01` | Solid | Solid Protocol §10.1 Solid-OIDC | - |
+| `solid-11-01` | Solid | Solid Protocol §11 Authorization | `Solid.Protocol.Spec.solid_wac_01_no_acl_denies` |
+| `solid-wac-01` | Solid | Web Access Control §5.3 Authorization Evaluation | `Solid.Protocol.Spec.solid_wac_01_no_acl_denies` |
+| `solid-wac-02` | Solid | Web Access Control §5.3.3 Authorization Matching | `Solid.Protocol.Spec.solid_wac_02_match_resource_agent_mode` |
+| `solid-wac-03` | Solid | Web Access Control §5.3.3 Authorization Matching | `Solid.Protocol.Spec.solid_wac_03_default_is_inherited` |
+| `solid-wac-04` | Solid | Web Access Control §5.3.3 Authorization Matching | `Solid.Protocol.Spec.solid_wac_04_agent_group` |
+| `solid-wac-05` | Solid | Web Access Control §5.1 Effective ACL Resource Algorithm | - |
+| `solid-wac-06` | Solid | Web Access Control §5.3.2 Web Origin Authorization | - |
+| `solid-wac-07` | Solid | Web Access Control §5.3.4 Access Privileges | `Solid.Protocol.Spec.solid_wac_07_wac_allow_header` |
+| `solid-wac-08` | Solid | Web Access Control §5.3.4 Access Privileges | `Solid.Protocol.Spec.solid_wac_08_client_reads_wac_allow` |
+| `solid-wac-09` | Solid | Web Access Control §3.1 ACL Resource Discovery | `Solid.Protocol.Spec.solid_wac_09_client_acl_from_links` |
+| `solid-wac-10` | Solid | Web Access Control §3.2 ACL Resource Representation | - |
+| `solid-cl-01` | Solid | Solid Protocol §4.1 Storage Resource | `Solid.Protocol.Spec.solid_cl_01_storage_walk_sound` |
