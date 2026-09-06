@@ -45,9 +45,62 @@ C sources (`src/`):
 
 Headers (`include/`, `include/internal/`, `include/krml/`): the 26
 public + internal HACL\* headers and the KaRaMeL runtime headers those
-three units transitively require. No `.c` other than the three above.
+three units transitively require.
 
-## How it is wired in
+### JOSE addition, 2026-09-06 — P-256 and the bignum field
+
+Added for the Solid-OIDC / JOSE token layer (`formal/lean4/L4Factoidal/
+JOSE/`, design record `docs/designissues/2026-09-06-jose-dpop-over-hacl.md`):
+JWS `ES256` needs ECDSA over NIST P-256, and JWS `RS256` needs the RSA
+PUBLIC operation `s^e mod n`. Both come from the SAME pinned commit as
+the files above; nothing was taken from a different release.
+
+`Hacl_Bignum4096.c` was NOT vendored. The generic 64-bit field
+(`Hacl_Bignum64.c`, over `Hacl_Bignum.c`) takes the limb count at run
+time, so one translation unit serves 2048-, 3072- and 4096-bit moduli,
+where `Hacl_Bignum4096.c` serves only the largest. Fewer files, one
+code path, same verified arithmetic.
+
+| Path | SHA-256 |
+|---|---|
+| `src/Hacl_P256.c` | `876b7bcc7824e2dae453466e782275e369f0ac561af8f769577e215ae715dae1` |
+| `src/Hacl_Bignum64.c` | `a6b5f901bd08bd0317edb89c899e387e26baca3dfbadc3a4d4116dd30d81e04e` |
+| `src/Hacl_Bignum.c` | `1648d0c094b52bd9c7a0aad74a38e8709ce68fb705d1604a9c58fbca7c5230d4` |
+| `include/Hacl_P256.h` | `6d0114e328b20bad0866eb27949c18927bbbdd026b2449584307dedde63e83d2` |
+| `include/Hacl_Bignum64.h` | `661a747cba13a7728ad52c6bd78f2fd8abe8dfce971d3716521856b7f369d882` |
+| `include/Hacl_Bignum.h` | `cfd8124251d693be57b55d604eb466f687edf80b8c5abe49e4807bc61d5e562b` |
+| `include/internal/Hacl_P256.h` | `379829b1d137348fb2ae1649db7a6457a9aea1bbab3e0dd47e35fca964a13e8b` |
+| `include/internal/Hacl_P256_PrecompTable.h` | `33a88a31a8d43bfe0906ac4a28e49038dc43f16d0f9e0cd53b18b4a8d8be0aed` |
+| `include/internal/Hacl_Bignum.h` | `d1413655685a20fda4368bd4f006d65595b7407f6b845ca666843e312d42505a` |
+
+Reproduce: `git clone https://github.com/cryspen/hacl-packages.git`,
+`git checkout 05c3d8fb321ed65e3db3a6a8b853019e86fb40a2`, then
+`shasum -a 256` the same nine paths under `src/` and `include/`. The
+three headers those units also need — `include/internal/Hacl_Bignum_Base.h`,
+`include/Hacl_Krmllib.h`, `include/internal/Hacl_Krmllib.h` — were
+already vendored for Ed25519 and were checked byte-identical to the same
+commit when the P-256 files were added.
+
+Still NOT vendored: Blake2, HPKE, MD5, SHA-1, SHA-3, the vectorized
+variants, the EverCrypt agile layer, and every fixed-width bignum
+(`Hacl_Bignum256*`, `Hacl_Bignum4096*`, `Hacl_Bignum32`).
+
+## How it is wired in — Lean 4 tree (`formal/lean4/`)
+
+- `ffi/hacl_ed25519.c` — Ed25519 and SHA-256 (`@[extern]` of
+  `L4Factoidal/Crypto/Ed25519.lean`, `Crypto/SHA2Native.lean`).
+- `ffi/hacl_p256.c` — P-256 ECDSA verification and public-key validity
+  (`Crypto/P256Native.lean`). Two length checks and one pointer offset:
+  the JWS `r || s` signature split.
+- `ffi/hacl_rsa.c` — the RSA public operation only (`Crypto/RsaNative.lean`).
+  No private operation, no padding logic; EMSA-PKCS1-v1_5 lives in
+  `L4Factoidal/JOSE/Pkcs1.lean` in pure Lean, with theorems.
+- `lakefile.lean`, `extern_lib libl4hacl` — compiles the six HACL\*
+  translation units and the three shims into `libl4hacl.a`.
+- `Wasm/build-wasm.sh` — the same six units and three shims, compiled for
+  wasm32 by Emscripten. Crypto policy: every target links the same HACL\*.
+
+## How it is wired in — F\* tree (`formal/fstar/`)
 
 - `formal/fstar/experimental_ocaml_glue/hacl_stubs.c` — hand-written
   OCaml <-> C FFI (`CAMLprim`), hex-string boundary (same shape as

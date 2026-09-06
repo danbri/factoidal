@@ -282,10 +282,12 @@ while IFS= read -r f; do
 done < <(find "$LEAN_DIR/.lake/build/ir" -name '*.c')
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_shim.c"  -o "$LIB_OBJ/l4_shim.o"
 emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_stubs.c" -o "$LIB_OBJ/l4_stubs.o"
-# HACL* Ed25519 + SHA-256 — the library's `@[extern]` crypto family
-# (L4Factoidal/Crypto/Ed25519.lean and Crypto/SHA2Native.lean, both
-# realised by ffi/hacl_ed25519.c over the vendored, unmodified
-# third_party/hacl C). Native builds get the same four units from the
+# HACL* Ed25519 + SHA-256 + P-256 + bignum — the library's `@[extern]`
+# crypto family (L4Factoidal/Crypto/Ed25519.lean, Crypto/SHA2Native.lean,
+# Crypto/P256Native.lean and Crypto/RsaNative.lean, realised by
+# ffi/hacl_ed25519.c, ffi/hacl_p256.c and ffi/hacl_rsa.c over the
+# vendored, unmodified third_party/hacl C). Native builds get the same
+# units from the
 # lakefile's extern_lib; the wasm module needs them compiled for wasm32
 # here, or the link fails on the three l4_hacl_ed25519_* symbols and on
 # l4_hacl_sha256. Crypto policy: HACL* on every target, never
@@ -293,11 +295,18 @@ emcc $CFLAGS -c "$LEAN_DIR/Wasm/l4_stubs.c" -o "$LIB_OBJ/l4_stubs.o"
 # The shim's object is named l4_hacl_shim.o, NOT hacl_ed25519.o: on a
 # case-insensitive filesystem that name collides with Hacl_Ed25519.o.
 HACL_DIR="$REPO_ROOT/third_party/hacl"
+# Hacl_P256.c (JWS ES256, L4Factoidal/Crypto/P256Native.lean) and
+# Hacl_Bignum64.c + Hacl_Bignum.c (the RS256 public operation,
+# Crypto/RsaNative.lean) joined the list on 2026-09-06.  Omitting one
+# fails the link on l4_hacl_p256_verify_sha256 or l4_hacl_rsa_public_op.
 for f in "$HACL_DIR/src/Hacl_Ed25519.c" "$HACL_DIR/src/Hacl_Curve25519_51.c" \
-         "$HACL_DIR/src/Hacl_Hash_SHA2.c"; do
+         "$HACL_DIR/src/Hacl_Hash_SHA2.c" "$HACL_DIR/src/Hacl_P256.c" \
+         "$HACL_DIR/src/Hacl_Bignum64.c" "$HACL_DIR/src/Hacl_Bignum.c"; do
   emcc $CFLAGS -I "$HACL_DIR/include" -c "$f" -o "$LIB_OBJ/$(basename "${f%.c}").o"
 done
 emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_ed25519.c" -o "$LIB_OBJ/l4_hacl_shim.o"
+emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_p256.c" -o "$LIB_OBJ/l4_hacl_p256_shim.o"
+emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_rsa.c" -o "$LIB_OBJ/l4_hacl_rsa_shim.o"
 # The SPARQL 1.1 section 17.6 extension-function host call-out
 # (Wasm/ExtHost.lean's `@[extern "l4_ext_call"]`).  Under Emscripten the
 # body is an EM_JS thunk onto globalThis.__factoidalExtCall, which the

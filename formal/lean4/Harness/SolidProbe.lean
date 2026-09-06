@@ -77,6 +77,7 @@ def checks : List (String × Bool) :=
   , ("solid-08-03", Tests.solidGuardCorsHeaders)
   , ("solid-08-04", Tests.solidGuardCorsPreflight)
   , ("solid-09-01", Tests.solidGuardClientProfile)
+  , ("solid-10-01", Tests.solidGuardSolidOidcDpop)
   , ("solid-11-01", Tests.solidGuardWacEnforced)
   , ("solid-wac-01", Tests.solidGuardWacDenies)
   , ("solid-wac-02", Tests.solidGuardWacAccessToAgentMode)

@@ -2888,3 +2888,104 @@ tracking [#658](https://github.com/danbri/factoidal/issues/658) and
 | A language-tagged or `rdf:XMLLiteral` constant object was UNSOUND to zone-test on — `Term.eqb` folds language-tag case and canonicalises XML, a zone bound is the version-2 wire key | `Storage/ShardManifest.lean` (`constantObjectOf`) | `RDF.exactObjectIndexKeySafe` | ✅ REPAIRED (2026-09-06) | — |
 | `restrictDataset keep (D S) = restrictDataset keep (D E)` — the storage obligation. Needs an `Index.Wf`-style characterisation of `datasetOfQuads` (a `foldl` over `Std.HashMap`) plus the entry-level facts under the activation invariants | `Storage/QuadDataset.lean`, `Storage/PlannerSoundness.lean` | `Storage.QuadDataset.datasetOfQuads` | ⬜ OPEN (2026-09-06) — recorded with its route | — |
 | The DELEGATING arms of `evalPatternBackend` (`FILTER` / `OPTIONAL` / `BIND` with an expression that is not `Expr.backendLocal`, property paths, sub-SELECT, `VALUES`, `SERVICE`, `LATERAL`) — they materialise the dataset and run the algebra evaluator, a second evaluator the induction does not reach | `SPARQL/DatasetRestriction.lean` module header | `QueryPattern.lowerWith` / `GraphPattern.evalIn` | ⬜ OPEN (2026-09-06) — the collectors refuse them, so the planner reads more | — |
+## 10. JOSE, DPoP and Solid-OIDC over HACL\* — Lean tree
+
+Landed 2026-09-06. Design record:
+[`designissues/2026-09-06-jose-dpop-over-hacl.md`](designissues/2026-09-06-jose-dpop-over-hacl.md).
+
+The trust split, stated once for the whole section. HACL\* is trusted for
+the arithmetic — SHA-256, Ed25519, ECDSA over NIST P-256, and modular
+exponentiation over a 2048-, 3072- or 4096-bit modulus — through four
+`opaque` declarations realised by three length-checking shims over
+vendored, unmodified extracted C
+([`third_party/hacl/PROVENANCE.md`](../third_party/hacl/PROVENANCE.md)).
+Lean decides everything else: the byte encodings, the algorithm
+allowlist, the key-type match, the claims policy and the DPoP binding.
+
+**No theorem below depends on an opaque.** The three signature
+primitives arrive in a `JOSE.Verifiers` record and the RSA public
+operation as a `Pkcs1.PublicOp` parameter, so every statement is
+universally quantified over them and holds whatever HACL\* returns.
+`#print axioms` on all 49 reports only `propext`, `Classical.choice`,
+`Quot.sound`. What HACL\* actually computes is MEASURED, not assumed:
+`lake exe l4jose-probe` (1077 pass, 0 fail, 3 acceptable, out of 1080)
+and `node tests/jose/webcrypto-differential.mjs` (ES256 400 pass, 0
+fail out of 400; RS256 400 pass, 0 fail out of 400).
+
+| statement | module | source | status |
+|---|---|---|---|
+| `decode (encode x) = some x` for every octet string | `JOSE/Base64Url.lean` `decode_encode` | RFC 7515 §2 | ✅ proved |
+| every accepted base64url string re-encodes to itself, so an octet string has one spelling | `JOSE/Base64Url.lean` `encode_decode` | RFC 7515 §2 | ✅ proved |
+| distinct octets give distinct strings | `JOSE/Base64Url.lean` `encodeChars_injective` | RFC 7515 §2 | ✅ proved |
+| every accepted character is in the RFC 4648 §5 alphabet | `JOSE/Base64Url.lean` `digitsOf_alphabet` | RFC 4648 §5 | ✅ proved |
+| a string containing `=` never decodes | `JOSE/Base64Url.lean` `decode_refuses_padding` | RFC 7515 §2 | ✅ proved |
+| a string containing any non-alphabet character never decodes | `JOSE/Base64Url.lean` `decode_refuses_non_alphabet` | RFC 7515 §2 | ✅ proved |
+| the encoded message is exactly `k` octets | `JOSE/Pkcs1.lean` `emsaEncode_length` | RFC 8017 §9.2 | ✅ proved |
+| it begins `00 01` | `JOSE/Pkcs1.lean` `emsaEncode_prefix` | RFC 8017 §9.2 | ✅ proved |
+| the padding is `k-54` octets of `FF` at offset 2 | `JOSE/Pkcs1.lean` `emsaEncode_padding` | RFC 8017 §9.2 | ✅ proved |
+| the padding is at least eight octets | `JOSE/Pkcs1.lean` `emsaEncode_padding_min` | RFC 8017 §9.2 step 3 | ✅ proved |
+| the tail is `00 \|\| DigestInfo(SHA-256) \|\| digest`, with no room after it | `JOSE/Pkcs1.lean` `emsaEncode_tail` | RFC 8017 §9.2 note 1 | ✅ proved |
+| one digest, one encoded message | `JOSE/Pkcs1.lean` `emsaEncode_injective` | RFC 8017 §9.2 | ✅ proved |
+| **RS256 accepts IFF the recovered block equals the generated template** — the Bleichenbacher 2006 class excluded by construction, stated in both directions so no other accepting path can be added | `JOSE/Pkcs1.lean` `rs256Verify_iff_template` | RFC 8017 §8.2.2 note 2 | ✅ proved |
+| an accepted signature recovered exactly `n.size` octets | `JOSE/Pkcs1.lean` `rs256Verify_recovers_full_length` | RFC 8017 §8.2.2 | ✅ proved |
+| a refused public operation is a rejection, never a degradation to acceptance | `JOSE/Pkcs1.lean` `rs256Verify_refusal_rejects` | RFC 8017 §5.2.2 | ✅ proved |
+| a parsed key's type is the one its `kty` named | `JOSE/Jwk.lean` `parseJwk_kty` | RFC 7517 §4.1 | ✅ proved |
+| every EC key is 32+32 octets, so the raw key is always 64 | `JOSE/Jwk.lean` `parseJwk_ec_sizes`, `ecPublicRaw_size` | RFC 7518 §6.2.1 | ✅ proved |
+| every RSA key has a modulus the public operation accepts (2048, 3072 or 4096 bits) | `JOSE/Jwk.lean` `parseJwk_rsa_size` | RFC 7518 §3.3 | ✅ proved |
+| **a JWK carrying private key material is never accepted as a public key** | `JOSE/Jwk.lean` `parsePublicJwk_no_private` | RFC 9449 §4.2 | ✅ proved |
+| the public parse only refuses; it never loosens | `JOSE/Jwk.lean` `parsePublicJwk_le_parseJwk` | RFC 9449 §4.2 | ✅ proved |
+| a refusal decided before the key is the outcome | `JOSE/Jws.lean` `verify_refuses_at_pre_key_stage` | RFC 7515 §5.2 | ✅ proved |
+| **a token refused before the key stage gives the same outcome for EVERY key and EVERY verifier** — the precise sense of "never reaches the EC, RSA or Ed25519 verifier" | `JOSE/Jws.lean` `verify_independent_of_key_before_key_stage` | RFC 7515 §5.2 | ✅ proved |
+| an `alg` outside the allowlist stops the token before the key | `JOSE/Jws.lean` `alg_not_allowed_stops_before_key` | RFC 7518 §3.1 | ✅ proved |
+| **no HMAC algorithm is in the allowlist** — algorithm confusion | `JOSE/Jws.lean` `hmacFamily_not_allowed` | RFC 7518 §3.2 | ✅ proved |
+| **`alg: none` is not in the allowlist**, in every spelling | `JOSE/Jws.lean` `alg_none_not_allowed` | RFC 7518 §3.6 | ✅ proved |
+| the other RFC 7518 algorithms this project cannot check are refused, not silently accepted | `JOSE/Jws.lean` `unsupported_algs_not_allowed` | RFC 7518 §3.1 | ✅ proved |
+| the allowlist maps each accepted name to the algorithm whose name it is | `JOSE/Jws.lean` `algOfString_roundTrip` | RFC 7518 §3.1 | ✅ proved |
+| **a verification only happens when the key type matches the algorithm** | `JOSE/Jws.lean` `verifyWith_kty_matches`, `verified_kty_matches` | RFC 7518 §3.3, §3.4, RFC 8037 §3.1 | ✅ proved |
+| a `crit` header is a rejection | `JOSE/Jws.lean` `crit_refused` | RFC 7515 §4.1.11 | ✅ proved |
+| a token that is not three parts reaches nothing | `JOSE/Jws.lean` `not_three_parts_refused` | RFC 7515 §3.1 | ✅ proved |
+| the claims diagnosis cannot accept, so `validate` has one accepting path | `JOSE/Jwt.lean` `diagnose_ne_ok` | — | ✅ proved |
+| **the whole claims-acceptance condition, in both directions** | `JOSE/Jwt.lean` `validate_ok_iff` | RFC 7519 §4.1 | ✅ proved |
+| an accepted token was minted by the pinned issuer | `JOSE/Jwt.lean` `validate_ok_issuer_pinned` | RFC 7519 §4.1.1 | ✅ proved |
+| an accepted token names this verifier in its audience | `JOSE/Jwt.lean` `validate_ok_audience_pinned` | RFC 7519 §4.1.3 | ✅ proved |
+| an accepted token has an expiry and has not reached it | `JOSE/Jwt.lean` `validate_ok_unexpired` | RFC 7519 §4.1.4 | ✅ proved |
+| a token with no expiry is never accepted | `JOSE/Jwt.lean` `validate_no_exp_refused` | RFC 7519 §4.1.4 | ✅ proved |
+| a token from another issuer is never accepted | `JOSE/Jwt.lean` `validate_wrong_issuer_refused` | RFC 7519 §4.1.1 | ✅ proved |
+| moving the clock past the expiry turns an accepted token into a refused one | `JOSE/Jwt.lean` `validate_expires` | RFC 7519 §4.1.4 | ✅ proved |
+| the `htu` comparison is exactly the comparison of the query- and fragment-stripped forms | `JOSE/DPoP.lean` `htuMatches_iff`, `strip_takeWhile` | RFC 9449 §4.3 item 9 | ✅ proved |
+| a query is ignored; a fragment is ignored | `JOSE/DPoP.lean` `htu_query_ignored`, `htu_fragment_ignored`, with `takeWhile_all`, `takeWhile_append_neg` | RFC 9449 §4.3 item 9 | ✅ proved |
+| a difference in scheme, authority or path is refused | `JOSE/DPoP.lean` `htu_refuses_difference` | RFC 9449 §4.3 item 9 | ✅ proved |
+| the proof diagnosis cannot accept, so `validateProof` has one accepting path | `JOSE/DPoP.lean` `diagnoseProof_ne_ok`, `validateProof_ok_iff`, `proofAccepts_parts` | RFC 9449 §4.3 | ✅ proved |
+| **an accepted proof's key has the thumbprint the access token's `cnf.jkt` names** | `JOSE/DPoP.lean` `proof_ok_thumbprint_bound` | RFC 9449 §6.1 | ✅ proved |
+| **an accepted proof carries the `ath` of the token presented with it** | `JOSE/DPoP.lean` `proof_ok_ath_bound` | RFC 9449 §4.3 item 10 | ✅ proved |
+| a token bound to no key is refused, not treated as a bearer token | `JOSE/DPoP.lean` `proof_unbound_token_refused` | RFC 9449 §6.1 | ✅ proved |
+| a JWS refusal stops a proof | `JOSE/DPoP.lean` `proof_jws_refusal` | RFC 9449 §4.3 item 2 | ✅ proved |
+| Solid-OIDC authentication is off by default, and off changes nothing | `Solid/Server/Auth.lean` `authenticate_disabled`, `requesterOf_unchanged_when_auth_off` | — | ✅ proved |
+| a request with no `Authorization` is anonymous, never authenticated | `Solid/Server/Auth.lean` `authenticate_no_credential` | Solid Protocol §10.1 | ✅ proved |
+| **a `Bearer` credential is refused, not accepted** — a key-bound token presented without its proof | `Solid/Server/Auth.lean` `authenticate_bearer_refused` | RFC 9449 §7.1 | ✅ proved |
+| a DPoP credential with no proof is refused | `Solid/Server/Auth.lean` `authenticate_missing_proof` | RFC 9449 §7.1 | ✅ proved |
+| an authenticated request's proof validated for this method and this URI against this token | `Solid/Server/Auth.lean` `checkCredential_authenticated_proof_ok` | RFC 9449 §4.3 | ✅ proved |
+| an authenticated request's token passed the claims policy | `Solid/Server/Auth.lean` `checkCredential_authenticated_claims_ok` | RFC 7519 §4.1 | ✅ proved |
+| an authenticated request's token was bound to a key | `Solid/Server/Auth.lean` `checkCredential_authenticated_bound` | RFC 7800 §3.1 | ✅ proved |
+| an authenticated request's WebID came from the token; it is never invented | `Solid/Server/Auth.lean` `checkCredential_authenticated_webid` | Solid-OIDC §6 | ✅ proved |
+| a key that does not verify the token never authenticates | `Solid/Server/Auth.lean` `checkCredential_no_key_refused` | Solid Protocol §10.1 | ✅ proved |
+| **no configured identity-provider key refuses every credential; it does not fall open** | `Solid/Server/Auth.lean` `checkCredential_no_keys` | Solid Protocol §10.1 | ✅ proved |
+
+### Trust surface added by this section
+
+| what | who guarantees it | how it is checked here |
+|---|---|---|
+| SHA-256, Ed25519 (FIPS 180-4, RFC 8032) | HACL\*, Project Everest | `lake exe l4vc-probe` (119 pass, 0 fail) |
+| ECDSA over NIST P-256 with SHA-256 | HACL\* `Hacl_P256_ecdsa_verif_p256_sha2` | Wycheproof `ecdsa_secp256r1_sha256_p1363` (262 pass, 0 fail), the WebCrypto differential (400 pass, 0 fail) |
+| `s^e mod n` over 2048/3072/4096-bit moduli | HACL\* `Hacl_Bignum64_mod_exp_vartime` | Wycheproof `rsa_signature_{2048,3072,4096}_sha256` (773 pass, 0 fail, 3 acceptable), the WebCrypto differential (400 pass, 0 fail) |
+| `ffi/hacl_p256.c`, `ffi/hacl_rsa.c` | this repository, reviewable by eye | length checks, one pointer offset and one `memcpy`; no arithmetic beyond a big-endian bit count over the PUBLIC exponent |
+| the Lean C FFI convention | Lean 4 | — |
+
+### Not proved, and where it is stated instead
+
+| gap | why | where it is recorded |
+|---|---|---|
+| ECDSA signature malleability (`s` and `n-s` both verify) | ECDSA is malleable by design and JWS does not require a low-`s` form, so refusing it would be non-conformant | `Crypto/P256Native.lean` module header |
+| that `n` is a genuine RSA modulus | key trust is the issuer-pinning layer's, not the primitive's | `Crypto/RsaNative.lean` module header |
+| that HACL\* computes what its specification says | it is `opaque`; no theorem depends on it | measured by `l4jose-probe` and the WebCrypto differential |
+| replay detection | the store is the host's; freshness is a `String → Bool` parameter | `JOSE/DPoP.lean` `ProofPolicy.jtiFresh` |

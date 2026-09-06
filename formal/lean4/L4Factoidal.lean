@@ -204,6 +204,16 @@ import L4Factoidal.Testing.Gen
 import L4Factoidal.Testing.Props
 import L4Factoidal.Testing.GenTests
 import L4Factoidal.Crypto.Ed25519
+import L4Factoidal.JOSE.Base64Url
+import L4Factoidal.JOSE.Pkcs1
+import L4Factoidal.JOSE.Jwk
+import L4Factoidal.JOSE.Jws
+import L4Factoidal.JOSE.Jwt
+import L4Factoidal.JOSE.DPoP
+import L4Factoidal.Solid.Server.AuthConfig
+import L4Factoidal.Solid.Server.Auth
+import L4Factoidal.Crypto.P256Native
+import L4Factoidal.Crypto.RsaNative
 import L4Factoidal.VC.Multibase
 import L4Factoidal.VC.DidKey
 import L4Factoidal.VC.Context
