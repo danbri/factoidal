@@ -1846,6 +1846,98 @@
    ]
   },
   {
+   "module": "LWS.Core.Spec",
+   "files": [
+    "formal/fstar/LWS.Core.Spec.fst",
+    "formal/fstar/LWS.Core.Spec.fsti"
+   ],
+   "loc": 803,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "not-in-build-list",
+   "extraction_oracle_available": false,
+   "extracted_ml": null,
+   "in_build_module_list": false,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 1,
+   "unclassified_definition_count": 98,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 28,
+   "local_refinement_lemma_names": [
+    "init_segs_shorter",
+    "lookup_after_remove",
+    "not_contained_after_remove",
+    "lookup_filter_other",
+    "contained_are_children_aux",
+    "lws_core_06_root_has_no_parent",
+    "lws_core_06_only_root_has_no_parent",
+    "containment_acyclic",
+    "containment_single_parent",
+    "lws_core_03_last_modified_on_get",
+    "lws_core_03_last_modified_on_head",
+    "lws_core_05_create_updates_containment",
+    "lws_core_05_delete_updates_containment",
+    "lws_core_root_not_deleted",
+    "create_preserves_others",
+    "update_preserves_others",
+    "delete_preserves_others",
+    "contained_are_children",
+    "lws_core_08_auxiliary_links_advertised",
+    "lws_core_18_storage_description_link",
+    "root_storage_type_link",
+    "root_owner_link",
+    "lws_core_04_insertions_no_blank_nodes",
+    "lws_core_04_ill_formed_patch_refused",
+    "lws_patch_not_refused",
+    "lws_patch_applied",
+    "lws_core_11_four_operations",
+    "lws_core_12_created_is_not_success"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "unclassified",
+   "suites": []
+  },
+  {
+   "module": "LWS.Solid.Registry",
+   "files": [
+    "formal/fstar/LWS.Solid.Registry.fst"
+   ],
+   "loc": 526,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "not-in-build-list",
+   "extraction_oracle_available": false,
+   "extracted_ml": null,
+   "in_build_module_list": false,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 12,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 0,
+   "local_refinement_lemma_names": [],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "unclassified",
+   "suites": []
+  },
+  {
    "module": "Math.Diff",
    "files": [
     "formal/fstar/Math.Diff.fst"
@@ -28128,6 +28220,82 @@
    ]
   },
   {
+   "module": "Solid.Protocol.Spec",
+   "files": [
+    "formal/fstar/Solid.Protocol.Spec.fst",
+    "formal/fstar/Solid.Protocol.Spec.fsti"
+   ],
+   "loc": 1175,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "not-in-build-list",
+   "extraction_oracle_available": false,
+   "extracted_ml": null,
+   "in_build_module_list": false,
+   "foundational_path": false,
+   "shipping_function_count": 0,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 124,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": false,
+   "local_refinement_lemma_count": 43,
+   "local_refinement_lemma_names": [
+    "mem_map_containment",
+    "acl_lookup_after_remove",
+    "meta_lookup_after_remove",
+    "init_segs_append",
+    "agent_in_any_group_intro",
+    "mem_names_append",
+    "header_value_append",
+    "link_target_present",
+    "storage_walk_sound_aux",
+    "solid_02_02_content_type_required",
+    "solid_03_01_slash_denotes_container",
+    "solid_03_02_slash_pair_distinct",
+    "solid_04_03_storage_type_link",
+    "solid_04_07_owner_link",
+    "solid_04_04_storage_description_link",
+    "solid_04_08_containment_iff_enumerated",
+    "solid_04_08_containment_is_hierarchy",
+    "solid_04_11_auxiliaries_deleted_with_subject",
+    "solid_04_12_auxiliary_links_advertised",
+    "solid_04_13_at_most_one_description",
+    "solid_04_14_description_authorized_as_subject",
+    "solid_05_01_unsupported_method_405",
+    "solid_05_02_post_assigns_uri",
+    "solid_05_04_allow_header",
+    "solid_05_05_accept_headers",
+    "solid_05_07_intermediate_container",
+    "solid_05_09_post_missing_target_404",
+    "solid_05_11_containment_edit_409",
+    "solid_05_13_n3_patch_accepted",
+    "solid_05_19_ill_formed_patch_422",
+    "solid_05_20_patch_operations",
+    "solid_05_24_delete_root_405",
+    "solid_05_25_delete_removes_containment",
+    "solid_05_27_delete_non_empty_container_409",
+    "solid_wac_01_no_acl_denies",
+    "solid_wac_02_match_resource_agent_mode",
+    "solid_wac_03_default_is_inherited",
+    "solid_wac_04_agent_group",
+    "solid_wac_07_wac_allow_header",
+    "solid_02_06_client_content_type",
+    "solid_wac_09_client_acl_from_links",
+    "solid_wac_08_client_reads_wac_allow",
+    "solid_cl_01_storage_walk_sound"
+   ],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "unclassified",
+   "suites": []
+  },
+  {
    "module": "Tableau",
    "files": [
     "formal/fstar/Tableau.fst"
@@ -28926,6 +29094,470 @@
    "independent_formalisation_modules": [],
    "ambiguous_identifiers": [],
    "class": "algorithm_correctness"
+  },
+  {
+   "name": "init_segs_shorter",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fst",
+   "line": 26,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lookup_after_remove",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fst",
+   "line": 93,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "not_contained_after_remove",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fst",
+   "line": 101,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lookup_filter_other",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fst",
+   "line": 187,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "contained_are_children_aux",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fst",
+   "line": 202,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_06_root_has_no_parent",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 69,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_06_only_root_has_no_parent",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 74,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "containment_acyclic",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 81,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "containment_single_parent",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 87,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_03_last_modified_on_get",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 246,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_03_last_modified_on_head",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 254,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_05_create_updates_containment",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 268,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_05_delete_updates_containment",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 275,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_root_not_deleted",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 286,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "create_preserves_others",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 291,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "update_preserves_others",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 296,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "delete_preserves_others",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 301,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "contained_are_children",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 309,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_08_auxiliary_links_advertised",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 319,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_18_storage_description_link",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 332,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "root_storage_type_link",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 339,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "root_owner_link",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 346,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_04_insertions_no_blank_nodes",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 412,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_04_ill_formed_patch_refused",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 450,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_patch_not_refused",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 459,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_patch_applied",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 470,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_11_four_operations",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 497,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "lws_core_12_created_is_not_success",
+   "host_module": "LWS.Core.Spec",
+   "file": "formal/fstar/LWS.Core.Spec.fsti",
+   "line": 516,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
   },
   {
    "name": "rect_index_lemma",
@@ -63900,6 +64532,624 @@
    "class": "local_refinement"
   },
   {
+   "name": "mem_map_containment",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 22,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "acl_lookup_after_remove",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 29,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "meta_lookup_after_remove",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 36,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "init_segs_append",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 43,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "agent_in_any_group_intro",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 127,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "mem_names_append",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 138,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "header_value_append",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 146,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "link_target_present",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 166,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "storage_walk_sound_aux",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fst",
+   "line": 179,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_02_02_content_type_required",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 485,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_03_01_slash_denotes_container",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 494,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_03_02_slash_pair_distinct",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 505,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_03_storage_type_link",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 514,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_07_owner_link",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 525,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_04_storage_description_link",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 536,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_08_containment_iff_enumerated",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 546,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_08_containment_is_hierarchy",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 555,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_11_auxiliaries_deleted_with_subject",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 565,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_12_auxiliary_links_advertised",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 576,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [
+    "store"
+   ],
+   "declarative_modules": [
+    "LWS.Core.Spec"
+   ],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_13_at_most_one_description",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 586,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_04_14_description_authorized_as_subject",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 597,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_01_unsupported_method_405",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 605,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_02_post_assigns_uri",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 615,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_04_allow_header",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 629,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_05_accept_headers",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 642,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_07_intermediate_container",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 655,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_09_post_missing_target_404",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 668,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_11_containment_edit_409",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 679,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_13_n3_patch_accepted",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 691,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_19_ill_formed_patch_422",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 706,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_20_patch_operations",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 718,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_24_delete_root_405",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 730,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_25_delete_removes_containment",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 741,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_05_27_delete_non_empty_container_409",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 751,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_01_no_acl_denies",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 764,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_02_match_resource_agent_mode",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 772,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_03_default_is_inherited",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 782,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_04_agent_group",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 791,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_07_wac_allow_header",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 800,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_02_06_client_content_type",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 861,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_09_client_acl_from_links",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 874,
+   "unconditional": true,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_wac_08_client_reads_wac_allow",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 884,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
+   "name": "solid_cl_01_storage_walk_sound",
+   "host_module": "Solid.Protocol.Spec",
+   "file": "formal/fstar/Solid.Protocol.Spec.fsti",
+   "line": 895,
+   "unconditional": false,
+   "shipping_functions_named": [],
+   "shipping_modules": [],
+   "declarative_relations_named": [],
+   "declarative_modules": [],
+   "independent_formalisation_modules": [],
+   "ambiguous_identifiers": [],
+   "class": "local_refinement"
+  },
+  {
    "name": "zeros_len",
    "host_module": "Tableau.CountingOracle",
    "file": "formal/fstar/Tableau.CountingOracle.fst",
@@ -64158,8 +65408,8 @@
   }
  ],
  "totals": {
-  "modules": 221,
-  "files": 231,
+  "modules": 224,
+  "files": 236,
   "assume_val_active": 81,
   "assume_other_active": 4,
   "admissions_active": 0,
@@ -64191,16 +65441,16 @@
    "SPARQL11.Algebra.Refinement",
    "SPARQL11.Algebra.Spec"
   ],
-  "lemma_count": 1696,
+  "lemma_count": 1767,
   "tiers": {
    "algorithm-correctness": 29,
    "internal-refinement": 13,
    "local-lemmas-only": 13,
    "merely-tot": 122,
    "specification-and-proof": 17,
-   "unclassified": 16,
+   "unclassified": 19,
    "w3c-refinement": 11
   }
  },
- "commit": "030cd2043"
+ "commit": "c618f71d2"
 }
