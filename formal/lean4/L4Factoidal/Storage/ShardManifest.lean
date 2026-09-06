@@ -881,9 +881,9 @@ is UNSOUND, not merely unproved:
   above.
 
 The rest of the narrowing is unproved rather than unsound, and each costs only
-the entries the planner now reads: `BIND`, a property path, a sub-SELECT,
-`VALUES`, `SERVICE`, `LATERAL`, and a
-`FILTER` or `OPTIONAL` whose condition is not `Expr.backendLocal` — which is
+the entries the planner now reads: a property path, a sub-SELECT, `VALUES`,
+`SERVICE`, `LATERAL`, and a `FILTER`, `OPTIONAL` or `BIND` whose expression is
+not `Expr.backendLocal` — which is
 where the extension-function `FILTER` of
 <https://github.com/danbri/factoidal/issues/656> lands. `GRAPH ?v` IS covered:
 `evalPatternBackend_restrict` walks the named-graph list, and a graph the
@@ -2246,8 +2246,12 @@ extending `SPARQL.DatasetRestriction.plannerFragment` and its theorem. -/
   (.graph (.iri sampleG1) (.graph (.iri sampleG2) (.bgp [sampleTp])))
 #guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
   (.filter (.functionCall sampleExtFn [.var "o"]) (.bgp [sampleTp]))
+#guard L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.bind (.strLen (.str (.var "o"))) "n" (.bgp [sampleTp]))
 #guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
-  (.bind (.var "o") "x" (.bgp [sampleTp]))
+  (.bind (.existsPat (.bgp [sampleOtherTp])) "x" (.bgp [sampleTp]))
+#guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
+  (.bind (.functionCall sampleExtFn [.var "o"]) "x" (.bgp [sampleTp]))
 #guard !L4Factoidal.SPARQL.DatasetRestriction.plannerFragment
   (.subSelect (mkQuery (.select .all) (.bgp [sampleTp])))
 
