@@ -37,6 +37,10 @@ mark() { date -u +%FT%TZ > "$STATE/$1.done"; }
 fail() { log "FAILED: $*"; exit 1; }
 
 log "build-skosall start data=$DATA ref=$SKOSDEX_REF batch=$BATCH only='${ONLY}'"
+# HOLD=1 keeps the machine up without running the pipeline, so the volume
+# can be inspected over `fly ssh console` (a failed pack leaves /data/logs
+# and all.nq in place; the machine otherwise stops on exit).
+if [ -n "${HOLD:-}" ]; then log "HOLD is set: sleeping, no pipeline step runs"; exec sleep infinity; fi
 df -h "$DATA" | tail -1
 
 # 1 clone + LFS
