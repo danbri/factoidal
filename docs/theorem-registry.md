@@ -2866,3 +2866,23 @@ Public version, with the ρdf closure, Finding C-1's separating pair and
 an OWL 2 RL row computed live beside the theorems that cover them: hub
 post 43, `docs/web/hub/43-one-model-theory-under-all-of-it.md`
 (cells pinned by `tests/hub/post43_test.mjs`).
+
+## Planner soundness (Lean 4, 2026-09-06)
+
+A skipped manifest entry cannot contribute a row. Design record:
+[`designissues/2026-09-06-planner-soundness-theorem.md`](designissues/2026-09-06-planner-soundness-theorem.md);
+tracking [#658](https://github.com/danbri/factoidal/issues/658) and
+[#614](https://github.com/danbri/factoidal/issues/614).
+
+| Theorem | Module | Native anchor | Status | Fragment / hypotheses |
+|---|---|---|---|---|
+| `igSearch_ofGraph_filter` — a bound whose every match survives a Boolean `keep` reads the same rows, in the same order, from the restricted graph as from the whole one. Reduces the hash index to `List.filter` through `OWL.RL.Index.Wf` | `SPARQL/DatasetRestriction.lean` | `RDF.igSearch` (`RDF/StoreCapabilities.lean`) | ✅ PROVED (2026-09-06) — list equality | `BoundKept keep b` |
+| `evalBgpBackend_restrict` — the BGP evaluator including the planner: equal estimates give the same plan in the same order | `SPARQL/DatasetRestriction.lean` | `StorePlan.evalBgpBackend` | ✅ PROVED (2026-09-06) — list equality | every triple pattern's bounds kept |
+| `evalPatternBackend_restrict` — the pattern induction | `SPARQL/DatasetRestriction.lean` | `StoreDataset.evalPatternBackend` | ✅ PROVED (2026-09-06) — list equality | `plannerFragment`, `PatternKept`, graph names readable, `GRAPH ?v` only when no graph-name selection was made |
+| `runSelectQueryBackendDataset_restrict` / `runAskQueryBackendDataset_restrict` — the two query entry points, covering the four fast paths (`COUNT(*)`, the two streaming GROUP BYs, the LIMIT push-down) | `SPARQL/DatasetRestriction.lean` | `StoreDataset.runSelectQueryBackendDataset`, `runAskQueryBackendDataset` | ✅ PROVED (2026-09-06) | same, over `q.pattern.rewriteBnodes`; a FIXED `env` |
+| `datasetRestricted_restrictDataset` — the canonical restriction satisfies the relation | `Storage/PlannerSoundness.lean` | `DatasetRestriction.DatasetRestricted` | ✅ PROVED (2026-09-06) | distinct named-graph keys, no empty named graph |
+| `plannerSoundnessSelect` / `plannerSoundnessAsk` — the composed statement of the design record's section 2 | `Storage/PlannerSoundness.lean` | `ShardManifest.quadEntriesForQueryWithKeys` | ✅ PROVED (2026-09-06) — modulo the dataset obligation below | `restrictDataset keep (D S) = restrictDataset keep (D E)` |
+| A `GRAPH` inside a `GRAPH` was UNSOUND to select on — section 18.6 gives `GRAPH <n> { P }` no solutions when the dataset does not name `n`, whatever `P` is | `Storage/ShardManifest.lean` (`plannerFragmentQuery`) | SPARQL 1.1 §18.6 | ✅ REPAIRED (2026-09-06) — collectors refuse it, `#guard` pins the refusal | — |
+| A language-tagged or `rdf:XMLLiteral` constant object was UNSOUND to zone-test on — `Term.eqb` folds language-tag case and canonicalises XML, a zone bound is the version-2 wire key | `Storage/ShardManifest.lean` (`constantObjectOf`) | `RDF.exactObjectIndexKeySafe` | ✅ REPAIRED (2026-09-06) | — |
+| `restrictDataset keep (D S) = restrictDataset keep (D E)` — the storage obligation. Needs an `Index.Wf`-style characterisation of `datasetOfQuads` (a `foldl` over `Std.HashMap`) plus the entry-level facts under the activation invariants | `Storage/QuadDataset.lean`, `Storage/PlannerSoundness.lean` | `Storage.QuadDataset.datasetOfQuads` | ⬜ OPEN (2026-09-06) — recorded with its route | — |
+| The DELEGATING arms of `evalPatternBackend` (`FILTER` / `OPTIONAL` with a condition that is not `Expr.backendLocal`, `BIND`, property paths, sub-SELECT, `VALUES`, `SERVICE`, `LATERAL`) — they materialise the dataset and run the algebra evaluator, a second evaluator the induction does not reach | `SPARQL/DatasetRestriction.lean` module header | `QueryPattern.lowerWith` / `GraphPattern.evalIn` | ⬜ OPEN (2026-09-06) — the collectors refuse them, so the planner reads more | — |
