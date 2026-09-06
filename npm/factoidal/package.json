@@ -91,6 +91,9 @@
     },
     "./engine": {
       "default": "./bin/engine.mjs"
+    },
+    "./lws": {
+      "default": "./lws/server.mjs"
     }
   },
   "files": [
@@ -111,6 +114,7 @@
     "select.d.ts",
     "lib/",
     "bin/",
+    "lws/",
     "store-host/",
     "browser.js",
     "browser.d.ts",

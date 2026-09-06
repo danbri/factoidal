@@ -109,6 +109,7 @@ commands:
   activate STORE GENERATION   make one generation the activated generation
   update   STORE [UPDATE]     apply a SPARQL Update through the delta log
   compact  STORE GENERATION   fold the delta log into a new generation
+  lws-serve DIR               serve Linked Web Storage 1.0 over HTTP
 
 global options:
   -h, --help                  print this text, or a command's own help
@@ -279,7 +280,24 @@ compacted epoch. It does not activate unless --activate is given.
 
 options:
   --activate         activate the new generation when it verifies
-  --json             emit one JSON object`
+  --json             emit one JSON object`,
+
+  'lws-serve': `factoidal lws-serve - serve Linked Web Storage 1.0 over HTTP
+
+usage: factoidal lws-serve DIR [--port N] [--host ADDRESS]
+
+Starts a Node HTTP server that answers every request through the engine's
+lwsStep operation. DIR is where the engine keeps its state.
+
+  --port N        the port to bind; 0 takes an ephemeral one (default 3000)
+  --host ADDRESS  the address to bind (default 127.0.0.1)
+
+The server makes no protocol decision: status codes, Link relations,
+Last-Modified and the PATCH blank-node refusal are all answered by
+formal/lean4/L4Factoidal/LWS/. A WebAssembly module built before those
+operations landed makes this command exit 3 and say so.
+
+Specification: https://w3c.github.io/lws-protocol/lws10-core/`
 }
 
 // ------------------------------------------------------------- arguments
@@ -334,7 +352,8 @@ const VALUE_OPTIONS = {
   pack: new Set(['layout', 'syntax', 'chunk-bytes', 'base', 'batch-bytes']),
   activate: new Set([]),
   update: new Set(['update', 'file']),
-  compact: new Set([])
+  compact: new Set([]),
+  'lws-serve': new Set(['port', 'host'])
 }
 
 // ------------------------------------------------------------- commands
@@ -906,6 +925,68 @@ function commandCompact (positional, _options) {
   return notWired('compact', 'Compaction is stage 4 of the milestone.')
 }
 
+// ------------------------------------------------- the protocol servers
+// These commands hand a socket to a host module and print where it is
+// listening. They decide nothing about the protocol they serve; see
+// npm/factoidal/lws/README.md and npm/factoidal/solid/*/README.md.
+// https://github.com/danbri/factoidal/issues/659
+
+function servePort (options, fallback) {
+  if (options.port === undefined) return fallback
+  const port = Number(options.port)
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new UsageError(`--port must be an integer from 0 to 65535, not "${options.port}"`)
+  }
+  return port
+}
+
+function serveHost (options) {
+  if (options.host === undefined) return '127.0.0.1'
+  if (typeof options.host !== 'string' || options.host.length === 0) {
+    throw new UsageError('--host needs an address')
+  }
+  return options.host
+}
+
+/** Keep the process alive until the runtime is interrupted. */
+function untilInterrupted (running, quiet) {
+  return new Promise((resolve) => {
+    const stop = async () => {
+      if (!quiet) err('')
+      await running.close()
+      resolve(EXIT_OK)
+    }
+    if (isDeno) {
+      globalThis.Deno.addSignalListener('SIGINT', stop)
+    } else {
+      process.on('SIGINT', stop)
+      process.on('SIGTERM', stop)
+    }
+  })
+}
+
+async function commandLwsServe (positional, options) {
+  if (positional.length !== 1) throw new UsageError('lws-serve needs one DIR')
+  const quiet = options.quiet === true
+  const { listen, LwsHostError } = await import('../lws/server.mjs')
+  let running
+  try {
+    running = await listen({
+      root: positional[0],
+      port: servePort(options, 3000),
+      host: serveHost(options)
+    })
+  } catch (error) {
+    if (error instanceof LwsHostError && error.unknownOp) {
+      return notWired('lws-serve', error.message)
+    }
+    throw error
+  }
+  if (!quiet) err(`lws-serve: listening on ${running.origin} for ${positional[0]}`)
+  out(running.origin)
+  return untilInterrupted(running, quiet)
+}
+
 const COMMANDS = {
   version: (positional, options) => commandVersion(options),
   'sample-store': (positional, options) => commandSampleStore(options),
@@ -914,7 +995,8 @@ const COMMANDS = {
   pack: commandPack,
   activate: commandActivate,
   update: commandUpdate,
-  compact: commandCompact
+  compact: commandCompact,
+  'lws-serve': commandLwsServe
 }
 
 // ----------------------------------------------------------------- main
