@@ -152,6 +152,7 @@ Landed on branch `wt/planner-soundness`. `lake build` clean (1002 jobs),
 |---|---|
 | `datasetRestricted_restrictDataset` | The canonical restriction `restrictDataset keep d` satisfies `DatasetRestricted`, for a dataset whose named-graph keys are distinct and whose named graphs are non-empty — both of which `datasetOfQuads` gives. |
 | `plannerSoundnessSelect`, `plannerSoundnessAsk` | Section 2's equality, with the storage side reduced to `restrictDataset keep (D S) = restrictDataset keep (D E)`. |
+| `patternKept_of_queryPredicates` | `queryQuadConstantPredicates? q = some P` implies `PatternKept (keepPred P) q.pattern.rewriteBnodes` — the predicate collector establishes the evaluator theorem's hypothesis. The two zone collectors have the same shape and are not written. |
 
 `#print axioms` of every theorem above: `propext`, `Classical.choice`,
 `Quot.sound`.
@@ -253,10 +254,13 @@ evaluator in it.
    equal `BlockV5Plan.zones?`, `predicate` equals the block's predicate
    — plus `zoneMap_sound` (`Storage/ShardManifestTheorems.lean`), which
    turns the packer's bounds into `zoneMayContain`.
-2. **The collector-to-`PatternKept` correspondence.**
-   `queryQuadConstantPredicates? q = some P → PatternKept (keepPred P)
-   q.pattern.rewriteBnodes`, and the two zone analogues. Straightforward
-   inductions; not written.
+2. **The two ZONE collectors' correspondence.** The predicate one is
+   `patternKept_of_queryPredicates`. The subject and object analogues
+   need one extra step each: the evaluator's `keep` compares terms with
+   `Subject.eqb` / `Term.eqb` while a zone compares wire keys, so the
+   bridge is that an `exactObjectIndexKeySafe` constant which is
+   `Term.eqb`-equal to a row's object is EQUAL to it. That is why
+   `constantObjectOf` now carries that test (6.3, defect 2).
 3. **The delegating arms**, per 6.4.
 4. **`env.dataset`.** The theorem is stated for a FIXED `env`, so it
    says nothing about a caller that builds `env.dataset` from the
