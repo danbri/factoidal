@@ -639,6 +639,12 @@ session.
   review the Lean-generated RDF block engine: landed Cottas/SPARQL reuse,
   term and graph IDs, block denotation, physical plans, PushIR, bitmap
   indexes, PostgreSQL/TiKV adapters, and refinement gates.
+- [`lws-solid`](skills/lws-solid/SKILL.md) — the W3C Linked Web Storage
+  Protocol 1.0 core and the Solid Protocol (server and client): the Lean
+  modules, the wasm ABI the Node hosts call, `factoidal lws-serve` /
+  `solid-serve` / `solid-client`, the three host test suites, the three
+  community interop scripts with what makes each exit 2, the conformance
+  ledger, and the authentication boundary.
 - [`shardborough-storage`](skills/shardborough-storage/SKILL.md) — operate
   the Lean persisted store: pack → activate → query the collection root →
   update through the delta log → compact, the `l4block-*` CLI table, what a

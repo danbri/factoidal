@@ -704,6 +704,54 @@ stack, which needs `--allow-run` and `--allow-env`. `--no-worker` turns
 the retry off. See
 [issue 653](https://github.com/danbri/factoidal/issues/653).
 
+## Linked Web Storage 1.0 and the Solid Protocol
+
+Three new entry points serve two storage protocols over HTTP. Each is a
+socket and nothing more: every protocol decision — status codes, `Link`
+relations, `Last-Modified`, containment triples, the PATCH blank-node
+refusal, Web Access Control, CORS — is made by the Lean engine and
+reaches the host as a `{status, headers, body}` record.
+
+| entry point | what it serves |
+| --- | --- |
+| `@factoidal/core/lws` | [Linked Web Storage 1.0 core](https://w3c.github.io/lws-protocol/lws10-core/), a Node `http` server |
+| `@factoidal/core/solid/server` | [Solid Protocol v0.11.0](https://solidproject.org/TR/protocol) server conformance class |
+| `@factoidal/core/solid/client` | Solid Protocol client conformance class, over `fetch` |
+
+```js
+import { listen } from '@factoidal/core/solid/server'
+import { createSolidClient } from '@factoidal/core/solid/client'
+
+const running = await listen({ port: 3000 })
+const client = await createSolidClient({ baseIri: running.origin })
+await client.replace('/notes/one', '<#it> <#p> "v" .', 'text/turtle')
+const read = await client.read('/notes/one')
+await running.close()
+```
+
+From the command:
+
+```
+factoidal lws-serve   DIR [--port N] [--base IRI]
+factoidal solid-serve DIR [--port N] [--base IRI] [--owner WEBID]
+factoidal solid-client <get|put|post|delete|discover> URL [--file PATH]
+```
+
+**State today.** The protocol operations live in the Lean engine and
+reach this package through the WebAssembly dispatch ABI
+(`lwsOpen`/`lwsStep`/`lwsClose`, `solidOpen`/`solidStep`/`solidClose`,
+`solidClientRequest`/`solidClientResponse`). A module built before those
+operations landed answers `unknown op`; each entry point reports that
+through its `…OpsAvailable(engine)` probe and the commands exit 3 with
+the reason. `DIR` is the storage directory and is not read or written
+yet: the first slice keeps the resource tree in the engine handle.
+Solid-OIDC token verification is a host job that is not built, so the
+first slice serves public resources and unauthenticated writes.
+
+Details: `lws/README.md`, `solid/server/README.md`,
+`solid/client/README.md`, and the conformance ledger at
+[`docs/lws-solid-conformance.md`](https://github.com/danbri/factoidal/blob/main/docs/lws-solid-conformance.md).
+
 ## API (draft)
 
 The `factoidal` CLI (`bin/factoidal-cli/factoidal_cli.ml`, built to

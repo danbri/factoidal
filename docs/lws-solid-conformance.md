@@ -121,3 +121,42 @@ Source: <https://solidproject.org/TR/protocol>, version 0.11.0, modified
 
 (Table generated from `L4Factoidal.Solid.Conformance.registry`; run
 `lake exe l4solid-probe`.)
+
+## Host tests
+
+The host side of both protocols is `npm/factoidal/lws/`,
+`npm/factoidal/solid/server/` and `npm/factoidal/solid/client/`. Those
+files decide nothing: they accept a socket, turn one request into the
+JSON record above, call one operation, and write the answer back. What
+the suites below gate is therefore the ROUND TRIP — that a request
+reaching a socket arrives at the engine as the record this ABI states,
+and that the engine's answer reaches the wire with its status, its
+repeated headers and its body intact. The engine's decisions in
+isolation are the `#guard`s of `Tests.lean`.
+
+Scores are "N pass, M fail, S skipped (out of T)". The WebAssembly module
+is rebuilt by whoever owns the Lean side; a module without these
+operations answers `unknown op`, and every suite then probes once and
+SKIPS each check by name with that reason printed. A skip is never a pass.
+
+| file | runtimes | what it covers |
+|---|---|---|
+| `tests/lws/server.mjs` | Node, Deno | the server binds an ephemeral port; PUT creates a data resource; GET reads it back with `Last-Modified`; HEAD carries `Last-Modified` and no body; PUT updates it and `Last-Modified` moves; DELETE removes it; GET after DELETE answers 404; a PATCH whose insertion formula holds a blank node is refused with a 4xx |
+| `tests/solid/server/protocol.mjs` | Node, Deno | the storage root advertises `pim:Storage` by `Link rel=type` (§4.1); OPTIONS reports `Allow`, `Accept-Post`, `Accept-Patch`, `Accept-Put` (§4.3); PUT creates a resource and its container gains the containment triple (§5.3); POST assigns a name and reports it in `Location` (§5.4); a PUT that edits a containment triple is refused with 409 (§5.3); DELETE on the storage root is refused with 405 (§5.5); a resource advertises its `describedby` auxiliary and the auxiliary dies with its subject (§4.2); PATCH applies an N3 Patch (§5.6); a CORS preflight is answered with the allow headers (§6); the LDN inbox is advertised and accepts a notification (§7) |
+| `tests/solid/client/against-own-server.mjs` | Node, Deno | our client at an in-process instance of our server: `discoverStorage`, `replace`, `read`, `create` with a `Location`, `delete`, that a deleted resource is gone while its POSTed sibling survives, and that every request reached the socket through the engine |
+| `tests/solid/client/against-community-server.mjs` | Node | the same five operations with the far end replaced by Community Solid Server, so a misreading our own two sides share cannot pass. Driven by `tools/solid-client-interop.sh` |
+
+Interop scripts, all three exiting `0` passed, `1` failed, `2` could not
+run here with the reason printed — never a green skip:
+
+| script | suite | condition it needs |
+|---|---|---|
+| `tools/solid-server-interop.sh` | `solid-crud-tests`, `web-access-control-tests` | the Solid server operations; `npm ci` for each suite; the access-control suite additionally logs in through an external Solid-OIDC issuer before its first request |
+| `tools/solid-client-interop.sh` | our client against Community Solid Server | the Solid client operations; `npx`; 2 GB free for the ~250 MB download |
+| `tools/solid-conformance-harness.sh` | `solid-specification-tests` | a Docker daemon and a `SOLID_HARNESS_ENV` credentials file |
+
+Measured 2026-09-06 against the committed WebAssembly module, which does
+not carry these operations: `tests/lws/server.mjs` 0 pass, 0 fail, 8
+skipped (out of 8); `tests/solid/server/protocol.mjs` 0 pass, 0 fail, 12
+skipped (out of 12); `tests/solid/client/against-own-server.mjs` 0 pass,
+0 fail, 7 skipped (out of 7); all three interop scripts exit 2.

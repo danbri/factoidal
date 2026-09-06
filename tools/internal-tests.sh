@@ -234,9 +234,20 @@ if command -v node >/dev/null 2>&1; then
   else
     skip_suite "node-npm-tests" "no npm/factoidal/test/*.test.js in this checkout"
   fi
+  # The LWS and Solid host suites (issue 659). Each one prints its own
+  # "N pass, M fail, S skipped (out of T)" line and exits 0 when nothing
+  # failed, so a WebAssembly module without the new ops skips every check
+  # by name rather than failing the run.
+  for f in "$REPO_ROOT"/tests/lws/*.mjs "$REPO_ROOT"/tests/solid/server/*.mjs \
+           "$REPO_ROOT"/tests/solid/client/against-own-server.mjs; do
+    [ -f "$f" ] || continue
+    rel="${f#"$REPO_ROOT"/}"
+    run_suite "node-${rel%.mjs}" "$FULL_BUDGET" node "$f" --no-deno
+  done
 else
   skip_suite "node-hub-tests" "node not on PATH"
   skip_suite "node-npm-tests" "node not on PATH"
+  skip_suite "node-lws-solid-tests" "node not on PATH"
 fi
 
 echo "=== Block engine (tools/blockengine-*-smoke.sh) ==="

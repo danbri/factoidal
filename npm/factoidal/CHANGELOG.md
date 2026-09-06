@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+Three new entry points, for two storage protocols:
+
+* `@factoidal/core/lws` — a Node `http` server for the
+  [Linked Web Storage Protocol 1.0 core](https://w3c.github.io/lws-protocol/lws10-core/);
+* `@factoidal/core/solid/server` — the same shape for the
+  [Solid Protocol v0.11.0](https://solidproject.org/TR/protocol) server
+  conformance class, including the CORS preflight and the storage root;
+* `@factoidal/core/solid/client` — the client conformance class over
+  `fetch`, whose every request is built by the engine and whose every
+  response is read by it.
+
+Three commands: `factoidal lws-serve DIR`, `factoidal solid-serve DIR`
+and `factoidal solid-client <get|put|post|delete|discover> URL`.
+
+Every protocol decision is the Lean engine's; the hosts move bytes. The
+operations are `lwsOpen`/`lwsStep`/`lwsClose`,
+`solidOpen`/`solidStep`/`solidClose` and
+`solidClientRequest`/`solidClientResponse` on the WebAssembly dispatch
+ABI. **A module built before they landed answers `unknown op`**: the
+entry points report it through their `…OpsAvailable(engine)` probe and
+the commands exit 3. `DIR` is not read or written yet — the resource tree
+lives in the engine handle — and Solid-OIDC token verification is not
+built, so the first slice serves public resources and unauthenticated
+writes. Issue
+[659](https://github.com/danbri/factoidal/issues/659).
+
 ## 0.7.1 — 2026-09-06
 
 `factoidal pack --batch-bytes N` was documented in 0.7.0 and refused by the
