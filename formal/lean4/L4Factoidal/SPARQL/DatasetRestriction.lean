@@ -217,6 +217,11 @@ theorem backendSearch_indexed_nil (b : PatternBound) :
          · rw [hob]; rfl
          · rw [hall]; rfl)
 
+theorem backendSearch_indexed_nil_aux (b : PatternBound) :
+    L4Factoidal.RDF.igSearch (L4Factoidal.OWL.RL.Index.ofGraph []) b = [] := by
+  have := backendSearch_indexed_nil b
+  simpa [backendSearch, indexedGraphBackend, capsOfBackend, capsOfIndexed] using this
+
 theorem backendEstimate_indexed_nil (b : PatternBound) :
     backendEstimate (indexedGraphBackend []) b = 0 := by
   have := backendSearch_indexed_nil b
@@ -745,5 +750,245 @@ theorem extractSingleTpBgpLimitScope_everyNamed {p : QueryPattern}
   intro h
   unfold extractSingleTpBgpLimitScope at h
   split at h <;> simp_all
+
+/-! ## 13. The graph a constant `GRAPH` scope selects
+
+Both scoped fast paths and the `GRAPH <iri>` arm need the same case
+analysis: the restricted dataset either names the graph with its
+`keep`-filter, or does not name it at all — and then `keep` had emptied
+it. -/
+
+/-- The three shapes a constant `GRAPH` scope can take after the
+planner has run: the graph is there and filtered, it is absent from
+both datasets, or it is absent from the restricted one because `keep`
+emptied it. -/
+theorem lookupNamedBackend_restrict_cases {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset}
+    (hd : DatasetRestricted keep readable d dr) {gname : WfIri} (hi : gname ∈ readable) :
+    (∃ g', lookupNamedBackend gname.val (indexedDatasetBackend dr).named
+             = some (indexedGraphBackend (g'.filter keep))
+           ∧ lookupNamedBackend gname.val (indexedDatasetBackend d).named
+             = some (indexedGraphBackend g'))
+    ∨ (lookupNamedBackend gname.val (indexedDatasetBackend dr).named = none
+       ∧ lookupNamedBackend gname.val (indexedDatasetBackend d).named = none)
+    ∨ (∃ g', g'.filter keep = []
+         ∧ lookupNamedBackend gname.val (indexedDatasetBackend dr).named = none
+         ∧ lookupNamedBackend gname.val (indexedDatasetBackend d).named
+           = some (indexedGraphBackend g')) := by
+  simp only [lookupNamedBackend_indexed]
+  rcases hd.named gname hi with h | ⟨h1, h2⟩
+  · rw [h]
+    cases hl : lookupGraph d.named gname.val with
+    | none => exact Or.inr (Or.inl ⟨rfl, rfl⟩)
+    | some g' => exact Or.inl ⟨g', rfl, rfl⟩
+  · rw [h1]
+    cases hl : lookupGraph d.named gname.val with
+    | none => exact Or.inr (Or.inl ⟨rfl, rfl⟩)
+    | some g' => exact Or.inr (Or.inr ⟨g', h2 g' hl, rfl, rfl⟩)
+
+theorem backendCountExact_indexed_nil (b : PatternBound) :
+    backendCountExact (indexedGraphBackend []) b = 0 := by
+  simp only [backendCountExact, indexedGraphBackend, capsOfBackend, capsOfIndexed,
+    igEstimate, backendSearch_indexed_nil_aux, List.length_nil]
+
+/-! ## 14. The LIMIT push-down -/
+
+theorem evalLimitSingleTp_restrict {keep : Triple → Bool} {tp : TriplePattern}
+    (h : TpKept keep tp) (sel : SelectClause) (g : Graph) (k : Nat) :
+    evalLimitSingleTp sel tp (indexedGraphBackend (g.filter keep)) k
+      = evalLimitSingleTp sel tp (indexedGraphBackend g) k := by
+  simp only [evalLimitSingleTp,
+    backendSearchLimited_indexed_filter (h Binding.empty) g k]
+
+theorem evalLimitSingleTp_nil (sel : SelectClause) (tp : TriplePattern) (k : Nat) :
+    evalLimitSingleTp sel tp (indexedGraphBackend []) k = [] := by
+  have hs : backendSearchLimited (indexedGraphBackend []) (patternBoundFor tp Binding.empty) k
+      = [] := by
+    simp only [backendSearchLimited, indexedGraphBackend, capsOfBackend, capsOfIndexed,
+      backendSearch_indexed_nil_aux, capsTakeN, List.take_nil]
+  simp only [evalLimitSingleTp, hs, List.filterMap_nil, capsTakeN, List.take_nil]
+  cases sel with
+  | vars items => simp [projectSolutions]
+  | all => rfl
+
+/-! ## 15. SELECT and ASK -/
+
+theorem evalSelectBackendOnGraph_restrict (env : EvalEnv) {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    (q : Query) (hf : plannerFragment q.pattern = true) (hk : PatternKept keep q.pattern)
+    (hn : ∀ i ∈ graphNamesIn q.pattern, i ∈ readable) :
+    evalSelectBackendOnGraph env q (indexedGraphBackend dr.default) (indexedDatasetBackend dr)
+      = evalSelectBackendOnGraph env q (indexedGraphBackend d.default)
+          (indexedDatasetBackend d) := by
+  rw [hd.dflt]
+  cases hcs : detectStreamingCountStar q with
+  | some triple =>
+      obtain ⟨alias, tp, scope⟩ := triple
+      have hex := detectStreamingCountStar_extract hcs
+      cases scope with
+      | none =>
+          have hp : q.pattern = .bgp [tp] := extractSingleTpBgpScoped_bare hex
+          have htp : TpKept keep tp := by
+            rw [hp] at hk
+            exact hk tp (List.mem_cons_self)
+          simp only [evalSelectBackendOnGraph, hcs,
+            backendCountExact_indexed_filter (htp Binding.empty) d.default]
+      | some gname =>
+          have hp : q.pattern = .graph (.iri gname) (.bgp [tp]) :=
+            extractSingleTpBgpScoped_scoped hex
+          have htp : TpKept keep tp := by
+            rw [hp] at hk
+            simp only [PatternKept] at hk
+            exact hk tp (List.mem_cons_self)
+          have hi : gname ∈ readable := by
+            refine hn gname ?_
+            rw [hp]
+            simp [graphNamesIn]
+          simp only [evalSelectBackendOnGraph, hcs]
+          rcases lookupNamedBackend_restrict_cases hd hi with
+            ⟨g', hr, hl⟩ | ⟨hr, hl⟩ | ⟨g', hz, hr, hl⟩
+          · simp only [hr, hl, backendCountExact_indexed_filter (htp Binding.empty) g']
+          · simp only [hr, hl]
+          · have hc := backendCountExact_indexed_filter (htp Binding.empty) g'
+            rw [hz, backendCountExact_indexed_nil] at hc
+            simp only [hr, hl, ← hc]
+  | none =>
+      cases hcl : detectLimitSingleTpScoped q with
+      | none =>
+          simp only [evalSelectBackendOnGraph, hcs, hcl,
+            resolveStreamingCountGroupByPredicate_indexed]
+          cases q.form with
+          | select _ =>
+              simp only [evalPatternBackend_restrict env hd q.pattern d.default hf hk hn]
+          | construct _ => rfl
+          | ask => rfl
+          | describe _ => rfl
+      | some tr =>
+          obtain ⟨tp, scope, k⟩ := tr
+          have hex := detectLimitSingleTpScoped_extract hcl
+          simp only [evalSelectBackendOnGraph, hcs, hcl,
+            resolveStreamingCountGroupByPredicate_indexed]
+          cases q.form with
+          | construct _ => rfl
+          | ask => rfl
+          | describe _ => rfl
+          | select sel =>
+              simp only [evalLimitSingleTpScoped]
+              cases scope with
+              | active =>
+                  have hp : q.pattern = .bgp [tp] :=
+                    extractSingleTpBgpLimitScope_active hex
+                  have htp : TpKept keep tp := by
+                    rw [hp] at hk
+                    exact hk tp (List.mem_cons_self)
+                  simp only [evalLimitSingleTp_restrict htp sel d.default k]
+              | named gname =>
+                  have hp : q.pattern = .graph (.iri gname) (.bgp [tp]) :=
+                    extractSingleTpBgpLimitScope_named hex
+                  have htp : TpKept keep tp := by
+                    rw [hp] at hk
+                    simp only [PatternKept] at hk
+                    exact hk tp (List.mem_cons_self)
+                  have hi : gname ∈ readable := by
+                    refine hn gname ?_
+                    rw [hp]
+                    simp [graphNamesIn]
+                  simp only []
+                  rcases lookupNamedBackend_restrict_cases hd hi with
+                    ⟨g', hr, hl⟩ | ⟨hr, hl⟩ | ⟨g', hz, hr, hl⟩
+                  · simp only [hr, hl, evalLimitSingleTp_restrict htp sel g' k]
+                  · simp only [hr, hl]
+                  · have hc := evalLimitSingleTp_restrict htp sel g' k
+                    rw [hz, evalLimitSingleTp_nil] at hc
+                    simp only [hr, hl, ← hc]
+              | everyNamed v =>
+                  exfalso
+                  have hp : q.pattern = .graph (.var v) (.bgp [tp]) :=
+                    extractSingleTpBgpLimitScope_everyNamed hex
+                  rw [hp] at hf
+                  simp [plannerFragment] at hf
+
+theorem evalSelectBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    (q : Query) (hf : plannerFragment q.pattern = true) (hk : PatternKept keep q.pattern)
+    (hn : ∀ i ∈ graphNamesIn q.pattern, i ∈ readable) :
+    evalSelectBackendDataset env q (indexedDatasetBackend dr)
+      = evalSelectBackendDataset env q (indexedDatasetBackend d) := by
+  simp only [evalSelectBackendDataset, detectStreamingCountGroupByGraph_none q hf]
+  exact evalSelectBackendOnGraph_restrict env hd q hf hk hn
+
+theorem backendDecodeFailure_indexed (g : Graph) :
+    backendDecodeFailure (indexedGraphBackend g) = false := rfl
+
+theorem evalAskBackend_restrict (env : EvalEnv) {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    (q : Query) (hf : plannerFragment q.pattern = true) (hk : PatternKept keep q.pattern)
+    (hn : ∀ i ∈ graphNamesIn q.pattern, i ∈ readable) :
+    evalAskBackend env q (indexedDatasetBackend dr)
+      = evalAskBackend env q (indexedDatasetBackend d) := by
+  have hall : ∀ (x : Dataset), ∀ ngb ∈ (indexedDatasetBackend x).named,
+      backendDecodeFailure ngb.backend = false := by
+    intro x ngb hmem
+    simp only [indexedDatasetBackend, List.mem_map] at hmem
+    obtain ⟨ng, _, rfl⟩ := hmem
+    exact backendDecodeFailure_indexed ng.graph
+  have hdf : ∀ (x : Dataset),
+      (backendDecodeFailure (indexedDatasetBackend x).default
+        || (indexedDatasetBackend x).named.any
+            (fun ngb => backendDecodeFailure ngb.backend)) = false := by
+    intro x
+    rw [show backendDecodeFailure (indexedDatasetBackend x).default = false from
+      backendDecodeFailure_indexed _, Bool.false_or]
+    simp only [List.any_eq_false]
+    intro a ha
+    simp [hall x a ha]
+  cases hqf : q.form with
+  | select _ => simp only [evalAskBackend, hqf]
+  | construct _ => simp only [evalAskBackend, hqf]
+  | describe _ => simp only [evalAskBackend, hqf]
+  | ask =>
+      have heval : evalPatternBackend env (indexedDatasetBackend dr) q.pattern
+            (indexedDatasetBackend dr).default
+          = evalPatternBackend env (indexedDatasetBackend d) q.pattern
+            (indexedDatasetBackend d).default := by
+        show evalPatternBackend env (indexedDatasetBackend dr) q.pattern
+              (indexedGraphBackend dr.default) = _
+        rw [hd.dflt]
+        exact evalPatternBackend_restrict env hd q.pattern d.default hf hk hn
+      simp only [evalAskBackend, hqf, heval, hdf dr, hdf d]
+
+/-! ## 16. The two query entry points
+
+Both rewrite the pattern's blank nodes before they evaluate anything
+(`QueryPattern.rewriteBnodes`), so the hypotheses are about the
+REWRITTEN pattern — which is what the collectors of
+`Storage/ShardManifest.lean` also read, so that the run-time guard and
+the theorem's hypothesis are one expression. -/
+
+theorem runSelectQueryBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    (q : Query)
+    (hf : plannerFragment q.pattern.rewriteBnodes = true)
+    (hk : PatternKept keep q.pattern.rewriteBnodes)
+    (hn : ∀ i ∈ graphNamesIn q.pattern.rewriteBnodes, i ∈ readable) :
+    runSelectQueryBackendDataset env q (indexedDatasetBackend dr)
+      = runSelectQueryBackendDataset env q (indexedDatasetBackend d) := by
+  simp only [runSelectQueryBackendDataset]
+  exact evalSelectBackendDataset_restrict env hd _ hf hk hn
+
+theorem runAskQueryBackendDataset_restrict (env : EvalEnv) {keep : Triple → Bool}
+    {readable : List WfIri} {d dr : Dataset} (hd : DatasetRestricted keep readable d dr)
+    (q : Query)
+    (hf : plannerFragment q.pattern.rewriteBnodes = true)
+    (hk : PatternKept keep q.pattern.rewriteBnodes)
+    (hn : ∀ i ∈ graphNamesIn q.pattern.rewriteBnodes, i ∈ readable) :
+    runAskQueryBackendDataset env q (indexedDatasetBackend dr)
+      = runAskQueryBackendDataset env q (indexedDatasetBackend d) := by
+  simp only [runAskQueryBackendDataset]
+  exact evalAskBackend_restrict env hd _ hf hk hn
+
+#print axioms evalPatternBackend_restrict
+#print axioms runSelectQueryBackendDataset_restrict
+#print axioms runAskQueryBackendDataset_restrict
 
 end L4Factoidal.SPARQL.DatasetRestriction
