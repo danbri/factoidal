@@ -105,6 +105,13 @@ def Value.toBool (v : Value) : Bool :=
 
 /-! ## Name tests -/
 
+/-- A prefix used in the document with no `xmlns` declaration in scope
+    to resolve it. `Parser.XML` does no namespace resolution — a
+    prefixed tag such as `ns:tagged` is stored as one opaque string —
+    so an undeclared prefix here is not an error, it is the ordinary
+    case for a document that never declares namespaces at all. -/
+private def unboundNs (pfx : String) : String := " unbound:" ++ pfx
+
 /-- The expanded name of an item: `(namespace URI, local part)`.
 
     An unprefixed ATTRIBUTE name is in no namespace even when a
@@ -122,10 +129,14 @@ def expandedName (d : Doc) (it : Item) : String × String :=
       else
         let owner := itemAt d { path := it.loc.path }
         let nss := (owner.map (namespacesOf d)).getD []
-        (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD "", loc)
+        (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD (unboundNs pfx), loc)
   | .element | .pi =>
       let nss := namespacesOf d it
-      (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD "", loc)
+      -- An UNPREFIXED element with no default namespace declared is in
+      -- no namespace, not "unbound" — only a genuine prefix falls back
+      -- to the opaque-match sentinel below.
+      let fallback := if pfx == "" then "" else unboundNs pfx
+      (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD fallback, loc)
   | _ => ("", loc)
 
 /-- Expand a name written in an EXPRESSION. An unprefixed name has no
@@ -135,7 +146,7 @@ def expandedName (d : Doc) (it : Item) : String × String :=
 def expandTestName (nsctx : List (String × String)) (q : String) : String × String :=
   let pfx := prefixOf q
   if pfx == "" then ("", q)
-  else (((nsctx.find? (fun (p, _) => p == pfx)).map (·.2)).getD " unbound", localOf q)
+  else (((nsctx.find? (fun (p, _) => p == pfx)).map (·.2)).getD (unboundNs pfx), localOf q)
 
 /-- The node type an axis selects by default (§2.3). -/
 def principalKind : Ax → Kind
