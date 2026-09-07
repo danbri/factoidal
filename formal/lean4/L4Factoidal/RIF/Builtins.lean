@@ -124,7 +124,15 @@ def xsdFamily (b : String) : Option String :=
       "positiveInteger", "unsignedLong", "unsignedInt", "unsignedShort",
       "unsignedByte"].contains b then some "decimal"
   else if ["string", "normalizedString", "token", "language", "Name",
-           "NCName", "NMTOKEN"].contains b then some "string"
+           "NCName", "NMTOKEN",
+           -- `lang` is not an XSD 1.1 datatype. The Approved
+           -- `Builtins_PlainLiteral` fixture writes
+           -- `"en"^^xs:lang` where `xs:language` is meant, and
+           -- compares it against `func:lang-from-PlainLiteral`'s
+           -- `xs:string` result. Treated as `xs:language`, whose
+           -- value space XSD 1.1 3.3.3 contains in `xs:string`'s, so
+           -- the two are the same value and the equality holds.
+           "lang"].contains b then some "string"
   else if ["duration", "dayTimeDuration", "yearMonthDuration"].contains b
     then some "duration"
   else if ["dateTime", "dateTimeStamp"].contains b then some "dateTime"
@@ -277,6 +285,45 @@ def divDec (a b : String) : Option String :=
 def numResultType (lex : String) : String :=
   if (lex.splitOn ".").length > 1 then xsdNs ++ "decimal" else xsdNs ++ "integer"
 
+/-! ## `rdf:PlainLiteral` (RIF-DTB 4.7)
+
+RIF writes a plain literal's language tag INSIDE its lexical form,
+after the last `@`. An `xs:string` is the same thing with an empty
+tag (RDF 1.1 Concepts 5.1 and RIF-DTB 3.1), which is why the corpus
+applies `func:string-from-PlainLiteral` to one and expects the string
+back UNCHANGED -- the `@en` in `"Hello World!@en"^^xs:string` is
+ordinary text, not a tag. -/
+def plainParts (g : GTerm) : Option (String × String) :=
+  match g with
+  | .const lex sp =>
+      if sp == rdfNs ++ "PlainLiteral" then
+        (match (lex.splitOn "@").reverse with
+         | tag :: rest => some (String.intercalate "@" rest.reverse, tag)
+         | []          => some (lex, ""))
+      else if sp == xsdNs ++ "string" then some (lex, "")
+      else none
+  | _ => none
+
+/-- RFC 4647 3.3.2 extended filtering, which RIF-DTB 4.7
+    `pred:matches-language-range` cites. The first range subtag must be
+    `*` or equal to the tag's first subtag; each later range subtag
+    must appear in order, `*` matches any one subtag, and a tag subtag
+    that is skipped may not be a singleton. -/
+def langMatchRest : List String → List String → Bool
+  | [],          _   => true
+  | _ :: _,      []  => false
+  | "*" :: rs,   ts  => langMatchRest rs ts
+  | r :: rs,  t :: ts =>
+      if t == r then langMatchRest rs ts
+      else if t.length == 1 then false
+      else langMatchRest (r :: rs) ts
+
+def matchesLanguageRange (tag range : String) : Bool :=
+  let lc := fun (x : String) => x.toLower
+  match (lc range).splitOn "-", (lc tag).splitOn "-" with
+  | r :: rs, t :: ts => (r == "*" || r == t) && langMatchRest rs ts
+  | _, _             => false
+
 /-- A built-in PREDICATE. -/
 def evalPred (name : String) (args : List GTerm) : Ans :=
   match name, args with
@@ -310,6 +357,11 @@ def evalPred (name : String) (args : List GTerm) : Ans :=
        | .const i sp, .const s sp2 =>
            if sp == iriSpace && sp2 == xsdNs ++ "string"
            then (if i == s then .yes else .no) else .unknown
+       | _, _ => .unknown)
+  | "matches-language-range", [a, b] =>
+      (match plainParts a, isStringy b with
+       | some (_, tag), some range =>
+           if tag == "" then .no else (if matchesLanguageRange tag range then .yes else .no)
        | _, _ => .unknown)
   | "contains", [a, b] =>
       (match isStringy a, isStringy b with
@@ -388,22 +440,19 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
       (match isStringy a, isStringy b with
        | some s, some l => some (.const (s ++ "@" ++ l) (rdfNs ++ "PlainLiteral"))
        | _, _ => none)
-  | "string-from-PlainLiteral", [a] =>
-      (match a with
-       | .const lex sp =>
-           if sp == rdfNs ++ "PlainLiteral" then
-             some (gStr (match (lex.splitOn "@").reverse with
-                         | _ :: rest => String.intercalate "@" rest.reverse
-                         | []        => lex))
-           else none
-       | _ => none)
-  | "lang-from-PlainLiteral", [a] =>
-      (match a with
-       | .const lex sp =>
-           if sp == rdfNs ++ "PlainLiteral" then
-             some (gStr ((lex.splitOn "@").getLast?.getD ""))
-           else none
-       | _ => none)
+  | "string-from-PlainLiteral", [a] => (plainParts a).map (fun (str, _) => gStr str)
+  | "lang-from-PlainLiteral", [a] => (plainParts a).map (fun (_, tag) => gStr tag)
+  -- RIF-DTB 4.7: comparable only when the two language tags are the
+  -- SAME. Different tags have no defined order, and `none` there is
+  -- undecided rather than a made-up verdict.
+  | "PlainLiteral-compare", [a, b] =>
+      (match plainParts a, plainParts b with
+       | some (s1, t1), some (s2, t2) =>
+           if t1 != t2 then none
+           else some (gLit (match compare s1 s2 with
+                            | .lt => "-1" | .eq => "0" | .gt => "1")
+                           (xsdNs ++ "integer"))
+       | _, _ => none)
   | _, _ =>
       -- A datatype CAST, `External( xs:date ( "…"^^xs:string ) )`.
       if name.startsWith "cast-rdf-" then
@@ -462,5 +511,26 @@ fixture writes out, not a value read back off this implementation. -/
 #guard evalPred "is-literal-XMLLiteral" [.const "<br></br>" (rdfNs ++ "XMLLiteral")] = .yes
 #guard evalPred "is-literal-base64Binary" [gLit "QUJD" (xsdNs ++ "base64Binary")] = .yes
 #guard evalPred "is-literal-not-base64Binary" [gStr "foo"] = .yes
+
+-- RIF-DTB 4.7 and the Approved `Builtins_PlainLiteral` lines.
+#guard evalFunc "string-from-PlainLiteral" [.const "Hello World!@en" (rdfNs ++ "PlainLiteral")]
+     = some (gStr "Hello World!")
+#guard evalFunc "string-from-PlainLiteral" [gStr "Hello World!@en"]
+     = some (gStr "Hello World!@en")
+#guard evalFunc "lang-from-PlainLiteral" [.const "Hello World!@en" (rdfNs ++ "PlainLiteral")]
+     = some (gStr "en")
+#guard evalFunc "lang-from-PlainLiteral" [gStr "Hello World!@en"] = some (gStr "")
+#guard evalFunc "PlainLiteral-compare"
+        [.const "hallo@de" (rdfNs ++ "PlainLiteral"), .const "welt@de" (rdfNs ++ "PlainLiteral")]
+     = some (gLit "-1" (xsdNs ++ "integer"))
+#guard evalFunc "PlainLiteral-compare"
+        [.const "hallo@de" (rdfNs ++ "PlainLiteral"), .const "hallo@de" (rdfNs ++ "PlainLiteral")]
+     = some (gLit "0" (xsdNs ++ "integer"))
+-- RFC 4647 3.3.2, the examples the specification lists.
+#guard matchesLanguageRange "de-at" "de-*" = true
+#guard matchesLanguageRange "de-DE-1996" "de-de" = true
+#guard matchesLanguageRange "de-Latn-DE" "de-*-DE" = true
+#guard matchesLanguageRange "de-a-DE" "de-*-DE" = false
+#guard matchesLanguageRange "en-GB" "de-*" = false
 
 end L4Factoidal.RIF
