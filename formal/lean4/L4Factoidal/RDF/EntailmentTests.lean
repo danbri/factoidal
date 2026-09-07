@@ -354,6 +354,74 @@ def opaqueIriResult : Graph :=
 #guard dtValueLeq D0 (plainLit "1E400" xsdFloat) (plainLit "1E401" xsdFloat) == true
 #guard dtValueLeq D0 (plainLit "1E400" xsdDouble) (plainLit "1E401" xsdDouble) == true
 
+-- ## The triple-term interior: `opaque-language-string` vs
+-- `opaque-dir-language-string`
+--
+-- Both fixtures are `mf:entailmentRegime "simple"` with
+-- `mf:recognizedDatatypes ()`, identical in shape, and OPPOSITE in
+-- polarity — they differ only by the `--ltr` base direction. The pair
+-- is the tight test case of
+-- `docs/designissues/2026-09-07-rdf12-sparql12-semantics.md` § 3, and
+-- both readings are pinned here so neither can be flipped unseen.
+--
+-- Reading 1 (implemented, and what the suite requires): inside a
+-- triple term a directional language tag compares case-SENSITIVELY.
+-- Reading 2 (RDF 1.2 Concepts §3.3 as written): the language-tag
+-- component of BOTH `rdf:langString` and `rdf:dirLangString` compares
+-- without regard to ASCII case, in every position.
+
+def dirLangLit (lex tag : String) (d : TextDirection) : Literal :=
+  (Literal.dirLangString lex tag d).val
+def langLit (lex tag : String) : Literal :=
+  (Literal.langString lex tag).val
+
+-- `opaque-language-string-control` / `opaque-dir-language-string-control`:
+-- OUTSIDE a triple term, tag case does not matter for either datatype.
+-- These are the two fixtures that force `.simple` off `literalStrictEq`.
+#guard Regime.literalEq .simple D0 (langLit "hello" "en-us")
+                                   (langLit "hello" "en-US") == true
+#guard Regime.literalEq .simple D0 (dirLangLit "hello" "en-us" .ltr)
+                                   (dirLangLit "hello" "en-US" .ltr) == true
+
+-- `opaque-language-string` (POSITIVE): a plain language-tagged string
+-- inside a triple term still matches across tag case.
+#guard regimeEntails .simple D0
+  [⟨.iri exA, exB, .tripleTerm (.iri exA) exB (.literal (Literal.langString "hello" "en-us"))⟩]
+  [⟨.iri exA, exB, .tripleTerm (.iri exA) exB (.literal (Literal.langString "hello" "en-US"))⟩]
+  == true
+
+-- `opaque-dir-language-string` (NEGATIVE): the same pair with a base
+-- direction must NOT entail. This is Reading 1. Under Reading 2 this
+-- `#guard` would read `== true` and the W3C fixture would fail.
+#guard regimeEntails .simple D0
+  [⟨.iri exA, exB, .tripleTerm (.iri exA) exB
+      (.literal (Literal.dirLangString "hello" "en-us" .ltr))⟩]
+  [⟨.iri exA, exB, .tripleTerm (.iri exA) exB
+      (.literal (Literal.dirLangString "hello" "en-US" .ltr))⟩]
+  == false
+
+-- The tightening is confined to the triple-term interior and to
+-- `rdf:dirLangString`: it must not leak to a plain language string
+-- inside a triple term (the guard two above), nor to a directional one
+-- outside (the guard four above).
+#guard stricterInTripleTerm (literalValueEq D0)
+  (dirLangLit "hello" "en-us" .ltr) (dirLangLit "hello" "en-US" .ltr) == false
+#guard stricterInTripleTerm (literalValueEq D0)
+  (langLit "hello" "en-us") (langLit "hello" "en-US") == true
+#guard stricterInTripleTerm (literalValueEq D0)
+  (dirLangLit "hello" "en-US" .ltr) (dirLangLit "hello" "en-US" .ltr) == true
+
+-- `opaque-literal` (POSITIVE, regime "simple",
+-- `mf:recognizedDatatypes (xsd:integer)`): a non-empty D makes the
+-- simple regime's comparator recognise the datatype, so "042" and "42"
+-- are the same value inside a triple term.
+#guard Regime.literalEq .simple (withMinimalD [xsdInteger])
+  (plainLit "042" xsdInteger) (plainLit "42" xsdInteger) == true
+-- and with the EMPTY D it does not — the fixture's own control on
+-- whether the recognized-datatype list is being read at all.
+#guard Regime.literalEq .simple D0
+  (plainLit "042" xsdInteger) (plainLit "42" xsdInteger) == false
+
 -- `json-object-unordered` / `json-array-unordered` (arrays stay
 -- ORDERED — the second pair is a NEGATIVE fixture).
 #guard rdfJsonValueEq "{ \"a\":0, \"b\":1 }" "{ \"b\":1, \"a\":0 }" == true

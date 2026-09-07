@@ -125,16 +125,64 @@ def SimpleEntails (g h : Graph) : Prop :=
 
 /-! ## Term matching under a literal comparison -/
 
+/-! ### The triple-term interior
+
+RDF 1.2's triple terms are TRANSPARENT (Concepts §3.3): the terms
+inside `<<( s p o )>>` denote what they denote when asserted, which is
+why `<<( )>>` replaced RDF-star's opaque `<< >>`. The rdf12
+`rdf-semantics` manifest agrees for IRIs (`opaque-iri`, positive:
+`owl:sameAs` substitutes inside a triple term) and for language-tagged
+strings (`opaque-language-string`, positive: `"hello"@en-us` inside a
+triple term matches `"hello"@en-US`) — and then makes ONE exception:
+
+| test | polarity | interior literal pair |
+| --- | --- | --- |
+| `opaque-language-string` | Positive | `"hello"@en-us` vs `"hello"@en-US` |
+| `opaque-dir-language-string` | **Negative** | `"hello"@en-us--ltr` vs `"hello"@en-US--ltr` |
+
+Both are `mf:entailmentRegime "simple"` with `mf:recognizedDatatypes ()`,
+and the fixtures are identical but for the `--ltr`. So the suite asserts
+that a language tag inside a triple term matches without regard to ASCII
+case, and a language tag CARRYING A BASE DIRECTION does not.
+
+That is a divergence from RDF 1.2 Concepts §3.3, which gives the value
+space of `rdf:dirLangString` as triples whose language-tag component is
+compared case-insensitively, with no clause about position. Both
+fixtures are `rdft:approval rdft:NotClassified`. The suite is
+implemented here and the divergence is recorded, with both readings and
+the reasons for this choice, in
+`docs/designissues/2026-09-07-rdf12-sparql12-semantics.md` § 3. The F\*
+tree carries the same clause in `RDF.Entailment.Regime.fst`'s
+`dt_value_leq`.
+
+The choice is the CONSERVATIVE one: it makes entailment strictly less
+permissive inside a triple term, so it cannot manufacture an
+entailment. -/
+
+/-- `leq`, tightened for use INSIDE a triple term: two
+`rdf:dirLangString` literals must additionally agree on their language
+tag exactly, not up to ASCII case. On every other literal pair this is
+`leq` unchanged, so `stricterInTripleTerm leq a b = true → leq a b =
+true` — which is what keeps `termMatch_eq_of_implies_eq` going through
+the triple-term arm. -/
+def stricterInTripleTerm (leq : Literal → Literal → Bool)
+    (a b : Literal) : Bool :=
+  leq a b &&
+  (if a.datatype == rdfDirLangString && b.datatype == rdfDirLangString
+   then a.langTag == b.langTag
+   else true)
+
 /-- Term matching: IRIs and blank nodes by identity, literals by `leq`,
 triple terms componentwise. `u` is the candidate from the premise
-graph, `t` the (instantiated) conclusion term. -/
-def termMatch (leq : Literal → Literal → Bool) : Term → Term → Bool
-  | .iri i,     .iri j     => i == j
-  | .bnode a,   .bnode b   => a == b
-  | .literal l, .literal m => leq l.val m.val
-  | .tripleTerm s1 p1 o1, .tripleTerm s2 p2 o2 =>
-      s1 == s2 && p1 == p2 && termMatch leq o1 o2
-  | _, _ => false
+graph, `t` the (instantiated) conclusion term. Descending into a triple
+term's object tightens the comparator — see the section above. -/
+def termMatch : (Literal → Literal → Bool) → Term → Term → Bool
+  | _,   .iri i,     .iri j     => i == j
+  | _,   .bnode a,   .bnode b   => a == b
+  | leq, .literal l, .literal m => leq l.val m.val
+  | leq, .tripleTerm s1 p1 o1, .tripleTerm s2 p2 o2 =>
+      s1 == s2 && p1 == p2 && termMatch (stricterInTripleTerm leq) o1 o2
+  | _,   _, _ => false
 
 /-- Triple matching: subject and predicate exact, object via `termMatch`. -/
 def tripleMatch (leq : Literal → Literal → Bool) (u t : Triple) : Bool :=
@@ -196,19 +244,23 @@ and the decision procedure answered `false` on entailments that hold.
 `RDF/EntailmentSimpleRefinement.lean` pins the witness. The F* source's
 `match_term` (`RDF.Entailment.Simple.fst:94`) always recursed; this arm
 did not, and the port carried the gap until 2026-08-23. -/
-def matchObject (leq : Literal → Literal → Bool) (bindable : Term → Bool)
-    (m : Mapping) : Term → Term → Option Mapping
-  | .bnode b, go =>
+def matchObject : (Literal → Literal → Bool) → (Term → Bool) →
+    Mapping → Term → Term → Option Mapping
+  | _, bindable, m, .bnode b, go =>
       match m.lookup b with
       | some t => if t == go then some m else none
       | none   => if bindable go then some ((b, go) :: m) else none
-  | .tripleTerm ps pp po, .tripleTerm gs gp go =>
+  | leq, bindable, m, .tripleTerm ps pp po, .tripleTerm gs gp go =>
       if pp == gp then
         match matchSubject m ps gs with
-        | some m1 => matchObject leq bindable m1 po go
+        -- The comparator tightens on the way in, exactly as `termMatch`
+        -- tightens: the search and the check must agree about the
+        -- triple-term interior or the certificate `searchInstance`
+        -- returns will not satisfy `instanceCert`.
+        | some m1 => matchObject (stricterInTripleTerm leq) bindable m1 po go
         | none    => none
       else none
-  | ho, go => if termMatch leq go ho then some m else none
+  | leq, _, m, ho, go => if termMatch leq go ho then some m else none
 
 /-- Backtracking search for an instance mapping: structural on the
 conclusion triples, breadth over the premise triples. -/
@@ -591,8 +643,32 @@ def Regime.closure (r : Regime) (D cmps : List WfIri) (g : Graph) : Graph :=
 
 /-- The literal comparison a regime matches with.
 
-`.simple` matches literals by their SYNTAX (RDF 1.1 Semantics §5.1:
-simple interpretations give a literal no value beyond itself).
+`.simple` matches literals by `literalValueEq D`. It does NOT use
+`literalStrictEq`, and the two rdf12 `rdf-semantics` fixtures that force
+this are worth naming, because "simple" reads as if it should:
+
+* `opaque-language-string-control` (positive, regime "simple",
+  `mf:recognizedDatatypes ()`): `:a :b "hello"@en-us.` entails
+  `:a :b "hello"@en-US.`. These are THE SAME RDF TERM — RDF 1.2
+  Concepts §3.3 compares the language-tag component of a
+  language-tagged string without regard to ASCII case — so this holds
+  at the level of term identity, before any interpretation, and
+  therefore under simple entailment. `literalStrictEq` is `==` on
+  `Literal`, which compares the tag case-SENSITIVELY, so it misses it.
+  `literalValueEq` bottoms out in `Literal.eqb`, which does not.
+* `opaque-literal` (positive, regime "simple",
+  `mf:recognizedDatatypes (xsd:integer)`): `"042"^^xsd:integer` inside
+  a triple term entails `"42"^^xsd:integer` inside one. A non-empty
+  `mf:recognizedDatatypes` is a `D`, and a simple interpretation that
+  recognises `D` is a D-interpretation (RDF 1.2 Semantics §7), so the
+  numeric arm of `literalValueEq D` is the intended comparison. With
+  the empty `D` that arm never fires and the two comparisons coincide
+  on everything except language-tag case.
+
+`simpleEntails` (the standalone decision procedure, not this table)
+still uses `literalStrictEq` and keeps its soundness theorem
+`EntailmentTheorems.simpleEntails_sound`; nothing here touches it.
+
 `.d` uses `literalValueEq D` — D-value equality over the datatypes
 `RDF.Datatypes` models with a `NumVal` value space. `.rdf`, `.rdfs`
 and `.rdfsPlus` use `dtValueLeq D`, which extends that with
@@ -623,7 +699,7 @@ theorem may be widened; `.d` may not, until `entailsWith` is proved
 sound under `dtValueLeq` itself. -/
 def Regime.literalEq (r : Regime) (D : List WfIri) : Literal → Literal → Bool :=
   match r with
-  | .simple                    => literalStrictEq
+  | .simple                    => literalValueEq D
   | .d                         => literalValueEq D
   | .rdf | .rdfs | .rdfsPlus   => dtValueLeq D
 
