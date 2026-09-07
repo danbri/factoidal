@@ -139,6 +139,140 @@ def xsdFamily (b : String) : Option String :=
   else if ["dateTime", "dateTimeStamp"].contains b then some "dateTime"
   else some b
 
+/-! ## The date/time slice (RIF-DTB 4.8)
+
+Only what `EBusiness_Contract` exercises: reading an `xs:date` or
+`xs:dateTime` as a point on the timeline, `func:subtract-dateTimes`,
+and `func:days-from-duration`. The rest of RIF-DTB 4.8 -- about sixty
+built-ins over durations, timezones and field extraction -- is not
+here, and `Builtins_Time` stays undecided for that reason, the same
+place the F* tree leaves it.
+
+Dates carry a four-digit year here. A negative or expanded year is not
+read and gives no value rather than a wrong one. -/
+
+/-- Days from 1970-01-01 to a proleptic Gregorian date (Hinnant's
+    `days_from_civil`). The era is taken with a FLOOR, spelled out
+    because Lean's `Int./` truncates toward zero. -/
+def daysFromCivil (y : Int) (m d : Nat) : Int :=
+  let y := if m ≤ 2 then y - 1 else y
+  let era := if y ≥ 0 then y / 400 else (y - 399) / 400
+  let yoe := (y - era * 400).toNat
+  let mp := (m + 9) % 12
+  let doy := (153 * mp + 2) / 5 + d - 1
+  let doe := yoe * 365 + yoe / 4 - yoe / 100 + doy
+  era * 146097 + Int.ofNat doe - 719468
+
+/-- The timezone offset in seconds. An ABSENT timezone is read as UTC.
+    XSD leaves an untimezoned value partially ordered against a
+    timezoned one; RIF-DTB 4.8 fixes an implicit timezone instead, and
+    UTC is the one chosen here. -/
+def tzOffsetSecs : String → Option Int
+  | ""  => some 0
+  | "Z" => some 0
+  | t   =>
+      (match t.toList with
+       | sign :: rest =>
+           if sign == '+' || sign == '-' then
+             (match (String.ofList rest).splitOn ":" with
+              | [h, m] => (match h.toNat?, m.toNat? with
+                           | some hh, some mm =>
+                               let o := Int.ofNat (hh * 3600 + mm * 60)
+                               some (if sign == '-' then -o else o)
+                           | _, _ => none)
+              | _ => none)
+           else none
+       | [] => none)
+
+/-- Split a trailing timezone designator off a date or dateTime. -/
+def splitTz (s : String) : String × String :=
+  let cs := s.toList
+  if cs.getLast? == some 'Z' then (String.ofList cs.dropLast, "Z")
+  else if cs.length ≥ 6 then
+    let tail := cs.drop (cs.length - 6)
+    match tail with
+    | c :: _ => if c == '+' || c == '-' then (String.ofList (cs.take (cs.length - 6)), String.ofList tail)
+                else (s, "")
+    | []     => (s, "")
+  else (s, "")
+
+/-- Seconds from the 1970-01-01T00:00:00Z epoch. -/
+def dateTimeSecsOfLex (lex : String) : Option Int :=
+  let (body, tz) := splitTz lex
+  let (dpart, tpart) :=
+    match body.splitOn "T" with
+    | [d]    => (d, "00:00:00")
+    | [d, t] => (d, t)
+    | _      => ("", "")
+  match dpart.splitOn "-", tpart.splitOn ":" with
+  | [y, m, d], [hh, mm, ss] =>
+      (match y.toInt?, m.toNat?, d.toNat?, hh.toNat?, mm.toNat?,
+             (((ss.splitOn ".").head?).getD "").toNat?, tzOffsetSecs tz with
+       | some yy, some mo, some dd, some h, some mi, some sec, some off =>
+           if y.length != 4 || mo == 0 || mo > 12 || dd == 0 || dd > 31 || h > 24
+              || mi > 59 || sec > 60 then none
+           else some (daysFromCivil yy mo dd * 86400
+                      + Int.ofNat (h * 3600 + mi * 60 + sec) - off)
+       | _, _, _, _, _, _, _ => none)
+  | _, _ => none
+
+/-- A constant read as a point on the timeline. RIF-DTB 3.2 puts the
+    `xs:date` values inside the `xs:dateTime` value space at midnight,
+    and the Approved `EBusiness_Contract` fixture depends on it: it
+    guards `"2008-07-22Z"^^xs:date` with
+    `pred:is-literal-dateTime` and expects the guard to hold. -/
+def dateTimeSecs (g : GTerm) : Option Int :=
+  match g with
+  | .const lex sp =>
+      (match xsdLocal sp with
+       | some b => if ["date", "dateTime", "dateTimeStamp"].contains b
+                   then dateTimeSecsOfLex lex else none
+       | none   => none)
+  | _ => none
+
+/-- A `xs:dayTimeDuration` lexical form for a signed second count. -/
+def dayTimeDurationLex (total : Int) : String :=
+  let neg := total < 0
+  let a := (if neg then -total else total).toNat
+  let d := a / 86400
+  let h := (a % 86400) / 3600
+  let mi := (a % 3600) / 60
+  let sec := a % 60
+  let timePart :=
+    if h == 0 && mi == 0 && sec == 0 then ""
+    else "T" ++ (if h != 0 then toString h ++ "H" else "")
+             ++ (if mi != 0 then toString mi ++ "M" else "")
+             ++ (if sec != 0 then toString sec ++ "S" else "")
+  if d == 0 && timePart == "" then "PT0S"
+  else (if neg then "-" else "") ++ "P" ++ (if d != 0 then toString d ++ "D" else "") ++ timePart
+
+/-- Seconds of a `xs:dayTimeDuration` lexical form. A `Y` or a month
+    `M` field belongs to `xs:yearMonthDuration`, whose length in
+    seconds is not fixed, so it gives no value here. -/
+def dayTimeDurationSecs (lex : String) : Option Int :=
+  let cs0 := lex.toList
+  let (neg, cs1) := match cs0 with | '-' :: r => (true, r) | _ => (false, cs0)
+  match cs1 with
+  | 'P' :: rest =>
+      (match rest.foldl (fun (acc : Option (Nat × Bool × Nat)) c =>
+          match acc with
+          | none => none
+          | some (num, inT, tot) =>
+            if c.isDigit then some (num * 10 + (c.toNat - 48), inT, tot)
+            else if c == 'T' then some (0, true, tot)
+            else
+              (match (if c == 'D' then some 86400
+                      else if c == 'H' && inT then some 3600
+                      else if c == 'M' && inT then some 60
+                      else if c == 'S' && inT then some 1
+                      else none) with
+               | some u => some (0, inT, tot + num * u)
+               | none   => none))
+          (some ((0, false, 0) : Nat × Bool × Nat)) with
+       | some (0, _, tot) => some (if neg then -(Int.ofNat tot) else Int.ofNat tot)
+       | _                => none)
+  | _ => none
+
 /-- Is this constant a literal of the named XSD type? RIF-DTB's
     `pred:is-literal-T` family. -/
 def isLiteralOf (base : String) (g : GTerm) : Ans :=
@@ -157,7 +291,14 @@ def isLiteralOf (base : String) (g : GTerm) : Ans :=
       else match xsdLocal sp with
         | none => .no
         | some cb =>
-            if xsdFamily cb != xsdFamily base then .no
+            -- RIF-DTB 3.2: an `xs:date` value IS an `xs:dateTime`
+            -- value, at midnight. `EBusiness_Contract` guards
+            -- `"2008-07-22Z"^^xs:date` with `pred:is-literal-dateTime`
+            -- and expects the guard to hold. The containment runs one
+            -- way only: an `xs:dateTime` at noon is not an `xs:date`.
+            if base == "dateTime" && cb == "date" then
+              (match dateTimeSecsOfLex lex with | some _ => .yes | none => .no)
+            else if xsdFamily cb != xsdFamily base then .no
             else match inLexicalSpace base lex with
               | some b => if b then .yes else .no
               | none   => .unknown
@@ -550,6 +691,21 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
                            | .ok out  => some (gStr out)
                            | .error _ => none))
        | _, _, _ => none)
+  | "subtract-dateTimes", [a, b] =>
+      (match dateTimeSecs a, dateTimeSecs b with
+       | some x, some y => some (gLit (dayTimeDurationLex (x - y)) (xsdNs ++ "dayTimeDuration"))
+       | _, _ => none)
+  | "days-from-duration", [a] =>
+      (match a with
+       | .const lex sp =>
+           (match xsdLocal sp with
+            | some b =>
+                if ["duration", "dayTimeDuration"].contains b then
+                  (dayTimeDurationSecs lex).map
+                    (fun t => gLit (toString (t / 86400)) (xsdNs ++ "integer"))
+                else none
+            | none => none)
+       | _ => none)
   | "string-length", [a] =>
       (isStringy a).map (fun s => gLit (toString s.toList.length) (xsdNs ++ "integer"))
   | "upper-case", [a] => (isStringy a).map (fun s => gStr s.toUpper)
@@ -681,5 +837,24 @@ fixture writes out, not a value read back off this implementation. -/
 #guard evalPred "matches" [gStr "abracadabra", gStr "^a.*a$"] = .yes
 #guard evalFunc "replace" [gStr "abcd", gStr "(ab)|(a)", gStr "[1=$1][2=$2]"]
      = some (gStr "[1=ab][2=]cd")
+
+-- RIF-DTB 4.8, the slice `EBusiness_Contract` exercises.
+#guard daysFromCivil 1970 1 1 = 0
+#guard daysFromCivil 2008 7 22 - daysFromCivil 2008 7 11 = 11
+#guard dateTimeSecsOfLex "2008-07-22Z" = some (daysFromCivil 2008 7 22 * 86400)
+#guard dateTimeSecsOfLex "2008-07-22T12:00:00Z" = some (daysFromCivil 2008 7 22 * 86400 + 43200)
+#guard dateTimeSecsOfLex "2008-07-22T00:00:00+01:00"
+     = some (daysFromCivil 2008 7 22 * 86400 - 3600)
+#guard dayTimeDurationLex 950400 = "P11D"
+#guard dayTimeDurationLex 0 = "PT0S"
+#guard dayTimeDurationLex (-3661) = "-PT1H1M1S"
+#guard dayTimeDurationSecs "P11D" = some 950400
+#guard dayTimeDurationSecs "P1Y" = none
+#guard evalPred "is-literal-dateTime" [gLit "2008-07-22Z" (xsdNs ++ "date")] = .yes
+#guard evalFunc "subtract-dateTimes"
+        [gLit "2008-07-22Z" (xsdNs ++ "date"), gLit "2008-07-11Z" (xsdNs ++ "date")]
+     = some (gLit "P11D" (xsdNs ++ "dayTimeDuration"))
+#guard evalFunc "days-from-duration" [gLit "P11D" (xsdNs ++ "dayTimeDuration")]
+     = some (gLit "11" (xsdNs ++ "integer"))
 
 end L4Factoidal.RIF
