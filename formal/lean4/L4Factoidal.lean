@@ -317,6 +317,7 @@ import L4Factoidal.Fn.Boolean
 import L4Factoidal.Fn.List
 import L4Factoidal.Fn.Duration
 import L4Factoidal.Fn.DateTime
+import L4Factoidal.Fn.Casting
 import L4Factoidal.XSD.SchemaReader
 import L4Factoidal.XSD.SimpleType
 import L4Factoidal.XSD.DatatypesTests
@@ -532,3 +533,4 @@ import L4Factoidal.XMPP.Scram
 import L4Factoidal.XMPP.Framing
 import L4Factoidal.XMPP.Server
 import L4Factoidal.XMPP.Gc3
+import L4Factoidal.Fn.Theorems
