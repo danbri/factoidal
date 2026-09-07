@@ -277,4 +277,139 @@ theorem refuted_not_consistent {R : RoleAxioms} {A : List Assertion}
   intro ⟨δ, I, ν, hR, hM⟩
   exact refuted_sound h I ν hR hM
 
+/-! ## Negation-goal laws (2026-09-07)
+
+`OWL/NegationGoals.lean` turns each content assertion of a
+PositiveEntailment conclusion into refutation goals, on the contract
+`P ⊨ A  ⟺  P ∪ ¬A unsatisfiable` (that module's header). The
+builders added on 2026-09-07 — `owl:disjointWith`,
+`owl:propertyDisjointWith`, `rdfs:domain`, `rdfs:range`,
+`owl:differentFrom`, `owl:sameAs` — each rest on one law: an
+interpretation REFUTES the conclusion form exactly when it MODELS the
+goal form. Those laws are stated and proved here, over the same
+`Interp`/`Interp.sem` Direct-Semantics model notion the clash calculus
+above uses (OWL 2 Direct Semantics, https://www.w3.org/TR/owl2-direct-semantics/
+Tables 5 and 6).
+
+What these theorems do NOT say: they are laws about the FORM of the
+axiom and its goal, not a soundness proof of the RDF-graph builder.
+Closing that gap needs a Direct-Semantics satisfaction relation on RDF
+graphs, which this tree does not have; § 11 of
+`docs/designissues/2026-09-07-lean-owl-corpus-gap.md` records it as an
+open obligation rather than an assumption. -/
+
+/-- `DisjointClasses(C D)` fails in `I` exactly when some element is
+    in both — which is what the goal graph asserts of a fresh
+    individual. -/
+theorem disjointGoal_iff {δ : Type} (I : Interp δ) (c d : Concept) :
+    (¬ ∀ x, I.sem c x → ¬ I.sem d x) ↔ ∃ x, I.sem c x ∧ I.sem d x := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn => h (fun x hc hd => hn ⟨x, hc, hd⟩))
+  · intro ⟨x, hc, hd⟩ h
+    exact h x hc hd
+
+/-- `DisjointObjectProperties(P Q)` fails exactly when some pair is in
+    both extensions — the goal's fresh edge pair. -/
+theorem propDisjointGoal_iff {δ : Type} (I : Interp δ) (p q : Role) :
+    (¬ ∀ x y, I.role p x y → ¬ I.role q x y)
+      ↔ ∃ x y, I.role p x y ∧ I.role q x y := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn => h (fun x y hp hq => hn ⟨x, y, hp, hq⟩))
+  · intro ⟨x, y, hp, hq⟩ h
+    exact h x y hp hq
+
+/-- `ObjectPropertyRange(P C)` fails exactly when some `P`-edge has an
+    object outside `C` — the goal's `a P b` with `b : ¬C`. -/
+theorem rangeGoal_iff {δ : Type} (I : Interp δ) (r : Role) (c : Concept) :
+    (¬ ∀ x y, I.role r x y → I.sem c y)
+      ↔ ∃ x y, I.role r x y ∧ I.sem (.neg c) y := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn =>
+      h (fun x y hr => Classical.byContradiction (fun hc => hn ⟨x, y, hr, hc⟩)))
+  · intro ⟨x, y, hr, hc⟩ h
+    exact hc (h x y hr)
+
+/-- `ObjectPropertyDomain(P C)` fails exactly when some `P`-edge has a
+    subject outside `C` — the goal's `a P b` with `a : ¬C`. -/
+theorem domainGoal_iff {δ : Type} (I : Interp δ) (r : Role) (c : Concept) :
+    (¬ ∀ x y, I.role r x y → I.sem c x)
+      ↔ ∃ x y, I.role r x y ∧ I.sem (.neg c) x := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn =>
+      h (fun x y hr => Classical.byContradiction (fun hc => hn ⟨x, y, hr, hc⟩)))
+  · intro ⟨x, y, hr, hc⟩ h
+    exact hc (h x y hr)
+
+/-- `DifferentIndividuals(a b)` fails exactly when the two names
+    denote one element — which is what `a owl:sameAs b` asserts. The
+    goal builder for a `owl:differentFrom` conclusion emits exactly
+    that triple. -/
+theorem diffGoal_iff {δ : Type} (I : Interp δ) (ν : Ind → δ) (a b : Ind) :
+    ¬ Satisfies I ν (.diff a b) ↔ ν a = ν b := by
+  simp [Satisfies]
+
+/-- The other direction, for a `owl:sameAs` conclusion: identity fails
+    exactly when the two names are different individuals. -/
+theorem sameGoal_iff {δ : Type} (I : Interp δ) (ν : Ind → δ) (a b : Ind) :
+    ¬ (ν a = ν b) ↔ Satisfies I ν (.diff a b) := by
+  simp [Satisfies]
+
+/-! ## Model existence for a clash-free literal label set (2026-09-07)
+
+Every tableau COMPLETENESS argument has the same leaf: a branch that
+saturated without a clash is turned into a model, and the turn starts
+from the literal (atom / negated atom) part of a node's label set. That
+leaf is proved here. It is the only part of completeness this tree
+proves today; § 11 of
+`docs/designissues/2026-09-07-lean-owl-corpus-gap.md` states what the
+rest of the argument needs and why it is not claimed.
+
+The canonical interpretation is the one-element model that reads the
+label set literally: an atom holds exactly when the set carries it. -/
+
+/-- The literal concepts: an atom, a negated atom, or `owl:Thing`. -/
+inductive LiteralConcept : Concept → Prop where
+  | atom (a : String) : LiteralConcept (.atom a)
+  | negAtom (a : String) : LiteralConcept (.neg (.atom a))
+  | top : LiteralConcept .top
+
+/-- No atom occurs both plainly and negated — exactly the condition
+    `Refuted.clash` looks for on a node's labels. -/
+def NoLiteralClash (ls : List Concept) : Prop :=
+  ∀ a : String, Concept.atom a ∈ ls → Concept.neg (.atom a) ∉ ls
+
+/-- One domain element; an atom holds of it exactly when `ls` carries
+    that atom; no role edges. -/
+def canonInterp (ls : List Concept) : Interp Unit where
+  concept a _ := Concept.atom a ∈ ls
+  role _ _ _ := False
+
+/-- MODEL EXISTENCE, literal fragment: a label set of literals with no
+    atom clash is satisfied, at the single domain element, by its own
+    canonical interpretation. A clash-free literal branch therefore has
+    a model — the leaf case of completeness, and the converse direction
+    to `refuted_sound` above. -/
+theorem canon_models_all (ls : List Concept)
+    (hlit : ∀ c ∈ ls, LiteralConcept c) (h : NoLiteralClash ls) :
+    ∀ c ∈ ls, (canonInterp ls).sem c () := by
+  intro c hc
+  cases hlit c hc with
+  | atom a => exact hc
+  | negAtom a => intro hmem; exact (h a hmem) hc
+  | top => trivial
+
+/-- The other half of the leaf: `owl:Nothing` is in no model, so a
+    label set carrying it is never satisfied. Together with
+    `canon_models_all` this says the two clash conditions
+    `Refuted.clash` and `Refuted.botClash` are exactly the obstructions
+    to a model in the literal fragment. -/
+theorem canon_rejects_bot (ls : List Concept) :
+    ¬ (canonInterp ls).sem .bot () := by
+  intro hb
+  exact hb
+
 end L4Factoidal.OWL

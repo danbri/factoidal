@@ -548,3 +548,426 @@ patterns, disjoint data properties) and the `WebOnt-description-logic`
 tableau family, two of which (`-909`, `-910`) are not clean F\* passes
 either.
 
+
+## 10. The 92 `--dl` failures by mechanism, 2026-09-07 night
+
+Method: `lake exe l4owl-probe --dl type-inconsistency.rdf
+type-positive-entailment.rdf type-consistency.rdf` from
+`formal/lean4/`, default budgets. Every `FAIL` line carries the FIRST
+conclusion triple the closure did not contain, or the clash-row
+message; the grouping below is by the reasoning step that triple
+needs, read against `OWL/Refute.lean` and
+`OWL/NegationGoals.lean`. The F\* verdict column is the committed log
+`formal/fstar/ocaml-output/owl_type_*_results.log`.
+
+**The 92 units are 52 distinct ids.** A `PositiveEntailmentTest` id
+appears in BOTH `type-positive-entailment.rdf` and
+`type-consistency.rdf`, so each PE id costs 2 units; the 11
+`InconsistencyTest` ids and the 1 `ConsistencyTest` id cost 1 each.
+40 PE ids × 2 + 11 + 1 = 92. Any repair of a PE id is therefore worth
+two units.
+
+### 10.1 Where the refuter is never asked (28 PE ids, 56 units)
+
+`negationGoals` answers `none` for these, so `--dl` falls back to the
+closure verdict and the tableau is not run at all. `none` has two
+causes, and they are different repairs.
+
+**(a) The conclusion's content predicate has no goal builder — 6 ids,
+12 units.** `negateContentTriple` covers class membership,
+`rdfs:subClassOf`, `owl:equivalentClass`, `rdfs:subPropertyOf`,
+`owl:equivalentProperty`, a named-subject `owl:complementOf` /
+`owl:unionOf` / `owl:intersectionOf`, and a plain property assertion.
+Everything else falls through to `none`.
+
+| test id | conclusion predicate | F\* |
+|---|---|---|
+| `WebOnt-AllDifferent-001` | `owl:differentFrom` | PASS |
+| `WebOnt-distinctMembers-001` | `owl:differentFrom` | PASS |
+| `WebOnt-differentFrom-002` | `owl:differentFrom` | PASS |
+| `rdfbased-sem-restrict-maxqcr-inst-obj-one` | `owl:sameAs` | PASS |
+| `WebOnt-I5.21-002` | `owl:disjointWith` | PASS |
+| `WebOnt-I5.24-004` | `rdfs:range` | PASS |
+
+**(b) The conclusion has NO content triple at all — 12 ids, 24 units.**
+`isStructuralTriple` classifies `rdf:type <meta type>` as scaffolding,
+`isMetaTypeIri` lists the property characteristics and `owl:Thing`,
+and `isStructuralPredicate` lists every class-expression builder. A
+conclusion made only of such triples yields `contentTriples = []` and
+`negationGoals = none`.
+
+| test id | conclusion | F\* |
+|---|---|---|
+| `WebOnt-FunctionalProperty-004` | `prop rdf:type owl:FunctionalProperty` | PASS |
+| `WebOnt-InverseFunctionalProperty-004` | `prop rdf:type owl:InverseFunctionalProperty` | PASS |
+| `WebOnt-SymmetricProperty-002` | `p rdf:type owl:SymmetricProperty` | PASS |
+| `WebOnt-I5.8-004` | `john rdf:type owl:Thing` | PASS |
+| `WebOnt-I5.8-010` | `john rdf:type owl:Thing` | PASS |
+| `WebOnt-AnnotationProperty-002` | `_:b1 rdf:type owl:Thing` | PASS |
+| `WebOnt-Class-001` | `rdfs:Class rdf:type owl:Class` | FAIL |
+| `WebOnt-Class-003` | `ex rdf:type rdfs:Class` | FAIL |
+| `WebOnt-I5.5-001` | `rdf:first rdf:type owl:FunctionalProperty` | PASS |
+| `WebOnt-I5.5-002` | `rdf:rest rdf:type owl:FunctionalProperty` | PASS |
+| `WebOnt-imports-010` | `owl:imports rdf:type rdf:Property` | PASS |
+| `WebOnt-Nothing-002` | `_:b0 owl:oneOf rdf:nil` | PASS |
+
+The last six are RDF-Based-semantics claims about the OWL and RDF
+vocabularies themselves, not Direct-Semantics axioms: a Direct
+Semantics reasoner has no `rdf:first` to type. F\* answers them from
+its RDF-vocabulary axiom table, not from its tableau. `WebOnt-Class-001`
+and `-003` neither engine passes.
+
+**(c) The conclusion asserts an ANONYMOUS class expression or list
+cell the premise never writes — 10 ids, 20 units.** Same shape as § 7's
+cluster C3 (comprehension), but in the DL regime; `negationGoals` sees
+only structural triples again.
+
+| test id | first missing triple | F\* |
+|---|---|---|
+| `WebOnt-description-logic-901` | `_:b1 owl:intersectionOf _:b3` | PASS |
+| `WebOnt-description-logic-903` | `_:b1 owl:intersectionOf _:b3` | PASS |
+| `WebOnt-I5.24-002` | `_:b0 owl:intersectionOf _:b1` | PASS |
+| `WebOnt-I5.24-003` | `_:b1 owl:allValuesFrom A` | PASS |
+| `WebOnt-unionOf-003` | `A-and-B owl:unionOf _:b1` | PASS |
+| `WebOnt-unionOf-004` | `A-and-B owl:oneOf _:b1` | PASS |
+| `WebOnt-cardinality-006` | `_:b0 owl:cardinality "1"^^xsd:nonNegativeInteger` | PASS |
+| `WebOnt-extra-credit-003` | `_:b1 rdf:first N` | FAIL |
+| `WebOnt-extra-credit-004` | `_:b1 rdf:first N` | FAIL |
+| `WebOnt-someValuesFrom-003` | no single blank-node mapping serves every conclusion triple | PASS |
+
+### 10.2 Where the refuter is asked and does not close (12 PE ids, 24 units)
+
+`negationGoals` builds goals; `tableauConsistent` answers `some true`
+or `none` on at least one of them. These are the tableau's own
+incompleteness, and each names a rule.
+
+| test id | conclusion | rule it needs | F\* |
+|---|---|---|---|
+| `Consistent-but-all-unsat` | `2a rdfs:subClassOf owl:Nothing` | nominals + counting (`owl:oneOf` size against inverse-functional chains) | PASS |
+| `New-Feature-DisjointUnion-001` | `Stewie rdf:type Boy` | `owl:disjointUnionOf` — no axiom builder reads it | PASS |
+| `WebOnt-unionOf-002` | `John rdf:type B` | union branching over a named class, with the disjunct closed by a nominal | PASS |
+| `WebOnt-oneOf-003` | `myT rdf:type T2` | nominal (`owl:oneOf`) branching | PASS |
+| `WebOnt-oneOf-004` | `i p "4"^^xsd:integer` | nominal branching over a data range | PASS |
+| `WebOnt-complementOf-001` | `B owl:complementOf A` | the coverage half `¬A ⊑ B` — needs a nominal-free universal witness | PASS |
+| `WebOnt-equivalentProperty-004` | `p owl:equivalentProperty q` | role inclusion both ways from `rdfs:subPropertyOf` pairs; the `¬q(a,b)` encoding needs a role successor the search does not build | PASS |
+| `WebOnt-equivalentProperty-005` | as above | as above | PASS |
+| `WebOnt-I5.3-014` | `x rdfs:subClassOf y` | subsumption through an `owl:imports` chain | FAIL |
+| `WebOnt-I5.3-015` | `p rdfs:subPropertyOf q` | as above | FAIL |
+| `WebOnt-I5.8-017` | `xx yy "1"^^xsd:decimal` | datatype VALUE equality on literals (`"1"^^xsd:decimal` vs `"1.0"`) | FAIL |
+| `WebOnt-extra-credit-002` | `N-times-M owl:sameAs "345"^^xsd:int` | arithmetic over datatype values | FAIL |
+
+### 10.3 InconsistencyTest, 11 ids, 11 units
+
+| test id | mechanism | F\* |
+|---|---|---|
+| `Inconsistent Disjoint Dataproperties` | datatype facets: `>= 10` and `<= 10` force one value into two disjoint data properties | PASS |
+| `Inconsistent String Pattern with Disjoint Dataproperties` | datatype facets: `xsd:pattern a(b\|c)` against disjoint data properties | PASS |
+| `Minus Infinity is not in owl:real` | `owl:real` excludes the infinities; negative property assertion excludes 0 | PASS |
+| `one=two` | nominals + inverse-functional counting (the class `a` is `{i,j,k}`, and a 1:1/2:1 chain over it) | PASS |
+| `WebOnt-description-logic-035` | SHIQ ≤-rule over NAMED individuals | PASS |
+| `WebOnt-description-logic-040` | as above, 1537 triples | PASS |
+| `WebOnt-description-logic-108` | as above | PASS |
+| `WebOnt-description-logic-502` | as above, 1114 triples | PASS |
+| `WebOnt-description-logic-504` | as above, 1336 triples | PASS |
+| `WebOnt-description-logic-909` | disputed fixture, <https://github.com/danbri/factoidal/issues/299> | pending |
+| `WebOnt-description-logic-910` | the one F\* `refuter_escapes` case | FAIL |
+
+### 10.4 ConsistencyTest, 1 unit
+
+`type-consistency.rdf` carries one ConsistencyTest failure, unchanged
+from § 9; it is a cap escape, not a wrong verdict.
+
+### 10.5 The mechanism ledger, largest first
+
+| mechanism | PE ids | Inc ids | units | where the repair goes |
+|---|---|---|---|---|
+| missing goal builder (§ 10.1a) | 6 | 0 | 12 | `OWL/NegationGoals.lean` |
+| comprehension in a conclusion (§ 10.1c) | 10 | 0 | 20 | a PE-only materialisation pass |
+| RDF-vocabulary meta claims (§ 10.1b) | 12 | 0 | 24 | an RDF/OWL vocabulary axiom table |
+| nominals + counting | 4 | 2 | 10 | `OWL/Refute.lean` + `OWL/CountingOracle.lean` |
+| SHIQ ≤-rule over named individuals | 0 | 5 | 5 | `OWL/Refute.lean` `isMergeableTerm` |
+| datatype facets and value equality | 2 | 3 | 7 | `OWL/Refute.lean` + `XSD/Datatypes.lean` |
+| role inclusion / imports subsumption | 4 | 0 | 8 | `OWL/Refute.lean` |
+| arithmetic, disputed, cap | 2 | 1 | 6 | not planned |
+
+Two of the eight rows are not Lean gaps against F\*: F\* also fails
+`WebOnt-Class-001`, `-003`, `-extra-credit-002`, `-003`, `-004`,
+`WebOnt-I5.3-014`, `-015`, `WebOnt-I5.8-017` and
+`WebOnt-description-logic-910`, and `-909` is disputed. That is
+9 ids — 17 units — where neither engine answers.
+
+## 11. Completeness: what is proved, what is stated, what is open
+
+Full SROIQ(D) completeness with a machine-checked proof is not
+claimed, and nothing below should be read as claiming it.
+
+### 11.1 The tableau has no blocking condition
+
+`OWL/Refute.lean`'s `search` terminates on three caps, not on a
+blocking condition:
+
+* `maxWitnessDepth = 3` — the ∃-rule mints no successor below depth 3;
+* `maxGeneratedWitnesses = 6` — at most six witnesses per node;
+* the threaded `budget` (`--refute-budget`, default 64), plus the
+  harness wall clock `--refute-ms`.
+
+A cap and a blocking condition are different objects. Subset blocking
+(Horrocks, Kutz and Sattler, *The Even More Irresistible SROIQ*, KR
+2006, § 3; the pairwise / equality-blocking refinement for SHOIQ) stops
+expansion when a node's label set is contained in an ancestor's, and
+the argument that the branch still yields a model is what makes the
+procedure a DECISION procedure: the blocked node is unravelled into an
+infinite or cyclic model. A depth cap stops expansion at depth 3
+whether or not the label set repeated, and the state left behind
+witnesses nothing.
+
+The consequence is already in the module header and is restated here
+as a completeness statement: `tableauConsistent = some true` is NOT a
+satisfiability claim, and no completeness claim follows from
+termination. The engine is a SOUND REFUTATION procedure with an
+INCOMPLETE search, and the corpus scores are scores of that.
+
+### 11.2 The fragment a completeness proof is available for
+
+The caps do not bite on
+
+> **ALC ABox consistency with an acyclic (unfoldable) TBox**, where
+> every concept has role-nesting depth ≤ 3 and no node carries more
+> than 6 existential restrictions.
+
+In that fragment the ∃-rule never reaches either cap, an acyclic TBox
+unfolds in finitely many steps with no cycle for a blocking condition
+to catch, and the search space is finite for a reason that is stated
+rather than imposed. This is the fragment for which a completeness
+theorem is worth attempting, and it is the smallest one that covers
+any of the corpus ids in § 10.
+
+### 11.3 What is proved
+
+The LEAF of the completeness argument, in `OWL/TableauTheorems.lean`:
+
+* `canon_models_all` — a label set of literals (atom, negated atom,
+  `owl:Thing`) with no atom clash is satisfied, at a single domain
+  element, by its own canonical interpretation. Depends on no axioms.
+* `canon_rejects_bot` — `owl:Nothing` is in no model. Depends on no
+  axioms.
+
+Together they say the two clash conditions `Refuted.clash` and
+`Refuted.botClash` are EXACTLY the obstructions to a model in the
+literal fragment: clash-free means a model exists, and a model exists
+means clash-free. That is the converse direction to `refuted_sound`,
+restricted to the leaf.
+
+### 11.4 The theorem still to prove, and what blocks it
+
+    theorem search_complete_ALC
+        (R : RoleAxioms) (A : List Assertion)
+        (hFrag : InALC A) (hAcyclic : AcyclicTBox tb)
+        (hDepth : RoleDepth A ≤ 3) (hEx : ExCount A ≤ 6) :
+        ¬ Consistent R A → Refuted R A
+
+Two things block it, and they are work items, not unknowns.
+
+1. **The inductive lift.** `canon_models_all` covers the literal leaf.
+   The lift needs the ⊓ / ⊔ decomposition cases and the ∀ / ∃
+   successor construction — the canonical interpretation grows from
+   one element to the expansion tree, and the role extension stops
+   being `False`. This is ordinary structural induction over
+   `Concept`; it is bounded work, not research.
+2. **`search` is a `partial def`.** A completeness theorem about the
+   EXECUTABLE engine needs an induction principle for it, and a
+   `partial def` has none. The prerequisite is a fuel-indexed
+   reformulation with a proof that the fuel-indexed and the partial
+   versions agree — the same move `RLClosureIndexed.indexedClosure_eq`
+   already made for the closure. The repository's no-new-`partial def`
+   rule points the same way.
+
+Until both land, the statement above stays an OBLIGATION in this
+record, not a lemma with a hypothesis arranged to make it provable.
+
+### 11.5 Features whose completeness is open, with the ids that need them
+
+| feature | status | corpus ids that depend on it |
+|---|---|---|
+| blocking (subset / equality) | absent; replaced by a depth cap | every cyclic-TBox fixture; none of the § 10 ids is decided by it today |
+| nominals (`owl:oneOf`) beyond the two size rules | partial | `one=two`, `WebOnt-oneOf-003`, `WebOnt-oneOf-004`, `WebOnt-unionOf-002`, `Consistent-but-all-unsat` |
+| the counting oracle, wired into the search | `OWL/CountingOracle.lean` exists with a proved Farkas validator; `search` does not consult it | `one=two`, `Consistent-but-all-unsat` |
+| SHIQ ≤-rule over named individuals | landed 2026-09-07 (§ 11.6); no id moved | `WebOnt-description-logic-035`, `-040`, `-108`, `-502`, `-504` |
+| datatype facets in the clash rules | partial (`XSD/Facets.lean` value spaces; no pattern facet, no `owl:real`) | `Inconsistent Disjoint Dataproperties`, `Inconsistent String Pattern with Disjoint Dataproperties`, `Minus Infinity is not in owl:real`, `WebOnt-I5.8-017` |
+| disjoint DATA properties | absent | the first two of the row above |
+| role chains (`owl:propertyChainAxiom`) in the tableau | absent | none of the § 10 ids |
+| `owl:disjointUnionOf` as an axiom source | absent | `New-Feature-DisjointUnion-001` |
+| self restrictions (`owl:hasSelf`) as a labelled concept | graph-level only | `New-Feature-SelfRestriction-002` (profile-EL) |
+| keys (`owl:hasKey`) beyond the graph-level rule | partial | `New-Feature-Keys-001` (profile-EL) |
+| the RDF and OWL vocabulary axiom table | absent | § 10.1b, 12 ids |
+| comprehension in a CONCLUSION under the DL regime | absent | § 10.1c, 10 ids |
+
+### 11.6 A coverage defect in the ≤-rule, repaired
+
+`isMergeableTerm` admitted blank nodes only, on the argument that a
+named individual's graph-asserted edges cannot be rewritten. That
+argument describes a rewriting merge the module no longer has:
+`mergeInto` records an identification pair and `labelsOf` /
+`successorsOf` pool the group through `identifiedWith`, over the input
+graph as well as the expansion edges.
+
+The exclusion was also unsound in the direction that matters. The
+≤-rule refutes a node only when EVERY offered merge closes, and that is
+an argument only if the offered merges COVER every coincidence a model
+could choose. With `≤ k p` and more than `k` successors, pigeonhole
+forces some two successor TERMS to denote one element; a pair the model
+picks that was never offered breaks the cover. Offering only blank
+nodes left every pair involving a named successor uncovered.
+
+Named individuals are now offered. Literals stay out: a literal and an
+IRI denote in disjoint domains (OWL 2 Direct Semantics § 2.2) and two
+literals with different values are already `provablyDistinct`. The
+residual, stated rather than hidden: a cardinality bound measured over
+a LITERAL successor of an object property is outside this argument and
+its cover is still incomplete.
+
+Measured effect, `--dl type-inconsistency.rdf`: 116 pass, 11 fail
+(1 skip, out of 128) before and after — the change closes no id. It is
+landed as a soundness repair, not as a score move; the five
+`WebOnt-description-logic` ≤-rule ids need the max-cardinality label to
+reach the node first, which is a separate gap.
+
+## 12. Status — 2026-09-07 night, after the negation-goal builders and the ≤-rule cover
+
+**Scores.** `lake exe l4owl-probe --dl --refute-ms 3000` from
+`formal/lean4/`, one process per catalog.
+
+| catalog / unit | § 9 (before) | now |
+|---|---|---|
+| `type-inconsistency.rdf` Inconsistency | 116 pass, 11 fail | 116 pass, 11 fail (1 skip, of 128) |
+| `type-positive-entailment.rdf` PE | 164 pass, 40 fail | **168 pass, 36 fail** (2 unsupported, of 206) |
+| `type-positive-entailment.rdf` Consistency | 204 pass, 0 fail | 204 pass, 0 fail (2 unsupported, of 206) |
+| `type-consistency.rdf` PE | 164 pass, 40 fail | **168 pass, 36 fail** (of 206) |
+| `type-consistency.rdf` NE | 23 pass, 0 fail | 23 pass, 0 fail (of 23) |
+| `type-consistency.rdf` Consistency | 351 pass, 1 fail | 351 pass, 1 fail (2 unsupported, of 354) |
+| all three catalogs | 1022 pass, 92 fail | **1030 pass, 84 fail** (1 skip, 8 unsupported, of 1123) |
+
+`refuter_flips_to_fail=0` on every catalog: no unit asserted consistent
+was turned by the new goals.
+
+**The default RL regime is unchanged**, as it must be — the refuter is
+not consulted there. `lake exe l4owl-probe` (all six catalogs):
+1229 pass, 218 fail, 2 skip, 8 unsupported (out of 1457), with
+`profile-RL.rdf` 126 of 126, `profile-QL.rdf` 87 of 87, `profile-EL.rdf`
+118 pass, 2 fail (1 skip, of 121). 2 min 28 s.
+
+**Wall clock, and it went the wrong way.** The three `--dl` catalogs
+now take 6 s + 5 min 32 s + 9 min 35 s = **15 min 13 s** at
+`--refute-ms 3000`, against § 9's 8 min 37 s at the default
+`--refute-ms 20000`. The cause is named rather than absorbed: the six
+new builders take `pe_no_negation_goal` down to 11, so about thirty
+units that used to return `.noGoals` in microseconds now run a tableau
+per conclusion conjunct, and `WebOnt-I5.21-002` alone runs 66 goals
+over a 518-triple closure. `pe_refuter_budget=0` on every catalog, so
+none of that time is a timeout — it is work. Two mitigations are
+available and neither is taken here: hoisting the premise closure out
+of the per-goal `closure ++ goal` concatenation, and deciding a
+conclusion's goals against one shared saturation instead of one per
+goal. Both are performance work with a fixed verdict, measurable
+against these numbers.
+
+**Closed.** Four ids, eight units, all `DECIDED-BY-REFUTER`:
+`WebOnt-AllDifferent-001`, `WebOnt-differentFrom-002`,
+`WebOnt-distinctMembers-001` (the `owl:differentFrom` builder against
+the `owl:AllDifferent` graph violation) and `WebOnt-I5.21-002` (the
+`owl:disjointWith` builder, 66 goals, every one refuted).
+
+**Open, unchanged.** The § 10.5 ledger stands with 84 units in place of
+92; the two § 10.1a ids the new builders did not close are
+`rdfbased-sem-restrict-maxqcr-inst-obj-one` — the premise puts the
+`owl:maxQualifiedCardinality` triples on a NAMED class with no
+`rdfs:subClassOf` to carry them, so `parseClassExpr` reads the type as
+`.named z` and the bound never becomes a label — and `WebOnt-I5.24-004`,
+whose `rdfs:range` goal builds but does not close.
+
+**Gates, this landing.** `lake build` 1137 jobs green;
+`tools/lean-hygiene-audit.py` clean (0 `sorry`, 0 user `axiom`, 0
+`native_decide`, 0 `unsafe`, 0 `@[implemented_by]`, 172 `partial def`
+against a baseline of 172); `l4rdfs-semi` 6 of 6; SHACL 1.0 core 98
+pass, 0 fail (out of 98); SHACL 1.2 rules 88 pass, 0 fail (out of 88);
+`#print axioms` on all eight new theorems.
+
+## 13. Status — 2026-09-07, after the named-restriction TBox entry
+
+`collectAxiomsS` read axioms off `rdfs:subClassOf`,
+`owl:equivalentClass`, `owl:disjointWith` and `owl:complementOf`
+triples only. A restriction written DIRECTLY on a named class, with no
+axiom triple beside it, produced no TBox entry: the node typed `z`
+took the label `.named z` from `initState`, the bound never became a
+label, and no cardinality rule could fire. That is
+`rdfbased-sem-restrict-maxqcr-inst-obj-one`, whose premise is
+`w rdf:type z` with `z owl:maxQualifiedCardinality 1`,
+`z owl:onProperty p`, `z owl:onClass c` on the IRI `z` itself.
+
+`Refute.namedRestrictionAxioms` adds, for every IRI subject carrying
+`owl:onProperty`, the two inclusions between that class name and the
+restriction it writes. The OWL 2 mapping to RDF (Table 13) reads the
+markers as the class expression whatever the subject is; when the
+subject is an IRI the triples say the named class IS that restriction,
+so both inclusions hold. Only `owl:onProperty` subjects are read: a
+named-subject `owl:unionOf` / `owl:intersectionOf` / `owl:oneOf` /
+`owl:complementOf` marker is left to the arms that already decide it.
+
+### Final scores, `--dl`, DEFAULT budgets
+
+`lake exe l4owl-probe --dl type-inconsistency.rdf
+type-positive-entailment.rdf type-consistency.rdf` from
+`formal/lean4/`, one process, `--cap-ms 30000`, `--refute-budget 64`,
+`--refute-ms 20000`.
+
+| catalog | § 9 (start) | now |
+|---|---|---|
+| `type-inconsistency.rdf` | 116 pass, 11 fail | 116 pass, 11 fail (1 skip, of 128) |
+| `type-positive-entailment.rdf` | 368 pass, 40 fail | **373 pass, 35 fail** (4 unsupported, of 412) |
+| `type-consistency.rdf` | 538 pass, 41 fail | **543 pass, 36 fail** (4 unsupported, of 583) |
+| all three | 1022 pass, 92 fail | **1032 pass, 82 fail** (1 skip, 8 unsupported, of 1123) |
+| closure alone | 905 pass, 209 fail | 905 pass, 209 fail (unchanged, as it must be) |
+
+`refuter_flips_to_fail=0` on every catalog and on the total. Five ids
+closed, ten units: `WebOnt-AllDifferent-001`,
+`WebOnt-differentFrom-002`, `WebOnt-distinctMembers-001`,
+`WebOnt-I5.21-002`, `rdfbased-sem-restrict-maxqcr-inst-obj-one`.
+
+**Default RL regime, all six catalogs:** 1229 pass, 218 fail, 2 skip,
+8 unsupported (out of 1457) — unchanged, and it must be: the refuter
+is not consulted there.
+
+### Wall clock, stated plainly
+
+| tree | `--dl`, three catalogs, default budgets |
+|---|---|
+| § 9, start of this work | 8 min 37 s |
+| after the six goal builders and the ≤-rule cover | 15 min 49 s |
+| after the named-restriction TBox entry | **19 min 56 s** |
+
+**This is over the fifteen-minute target and the cause is the work
+itself, not a timeout.** `pe_refuter_budget=0` on every catalog: no
+goal hit `--refute-ms`. `pe_no_negation_goal` fell from 33 to 22, so
+about thirty units that used to return `.noGoals` in microseconds now
+run one tableau per conclusion conjunct, and `WebOnt-I5.21-002` alone
+runs 66 goals over a 518-triple closure; the named-restriction entry
+then grew the TBox that `onePass` folds over per node and per label.
+A smaller `--refute-ms` does not buy the time back for free and was
+not measured as a whole-run figure on this tree: the per-catalog runs
+at `--refute-ms 3000` gave `type-inconsistency.rdf` 4 s and
+`type-positive-entailment.rdf` 4 min 39 s with the same scores, and
+`type-consistency.rdf` was not re-measured at that setting.
+
+Two mitigations are available and neither is taken here, so that the
+score and the speed stay separate measurements:
+
+1. hoist the premise closure out of the per-goal `closure ++ goal`
+   concatenation — `initState`, `collectAxioms` and
+   `immediateInconsistency` are recomputed over the whole closure once
+   per goal, and the closure part of each is identical across the
+   goals of one unit;
+2. decide a conclusion's goals against one shared saturation of the
+   closure instead of one per goal.
+
+Both are performance work against a fixed verdict, measurable against
+the table above.
