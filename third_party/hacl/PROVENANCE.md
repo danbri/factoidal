@@ -132,7 +132,7 @@ this release.
 Taking the AES-NI variant was refused: it does not build for wasm32 and does
 not build on arm64 without intrinsics, so it would break the crypto policy's
 wasm compatibility gate. Per the shortfall rule the gap carries an open issue
-and an expected-failure case in `lake exe l4crypto-probe`
+(https://github.com/danbri/factoidal/issues/677) and an expected-failure case in `lake exe l4crypto-probe`
 (section `aes-gcm`), which reports the Wycheproof `aes_gcm_test.json` corpus
 as NOT RUN rather than as passing.
 
