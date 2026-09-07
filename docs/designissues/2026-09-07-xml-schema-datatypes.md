@@ -275,3 +275,11 @@ them:
 * Part 1 Structures — schema components, PSVI, identity constraints,
   conditional type assignment, assertions — is the next slice, on
   <https://github.com/danbri/factoidal/issues/666>.
+
+## The cross-tree audit
+
+The consumer list above is incomplete. A read-only audit of both trees on the
+same day measured ten duplicate lexical/value implementations in the Lean tree
+and eight in the F\* tree, the F\*-versus-Lean agreement on the datatypes both
+implement, and the F\* coverage gap:
+[2026-09-07 XML Schema datatypes across the two trees](2026-09-07-xsd-datatypes-audit.md).
