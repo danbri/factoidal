@@ -90,6 +90,25 @@ module.exports = function(eleventyConfig) {
   // so it can also be reused by non-notebook documentation pages.
   eleventyConfig.addPassthroughCopy("web/hub/assets/sparql-result-elements.mjs");
 
+  // Pass-through the store-over-HTTP host of @factoidal/core (hub post
+  // 54's fn.openStoreOverHttp target). ONE copy of the file, in the npm
+  // package where it is tested; this puts it under the same
+  // /npm/factoidal/ path the rest of the package mirror uses, so the page
+  // imports it same-origin with no CDN and no second copy in git.
+  eleventyConfig.addPassthroughCopy({
+    "../npm/factoidal/store-http": "npm/factoidal/store-http"
+  });
+
+  // Pass-through the sample Shardborough store the package ships (13
+  // predicate blocks of IPTC NewsCodes SKOS, CC BY 4.0 -- provenance in
+  // npm/factoidal/sample-store.mjs and NOTICE). Post 54 opens it as an
+  // ordinary object store over HTTP, so the notebook's default target is
+  // same-origin and works under the strict page's connect-src 'self'.
+  // Again one copy in git, under npm/, where its tests read it.
+  eleventyConfig.addPassthroughCopy({
+    "../npm/factoidal/sample-store": "web/hub/assets/store/sample"
+  });
+
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs
   // so hub.njk can import it same-origin (no CDN). .mjs isn't an
