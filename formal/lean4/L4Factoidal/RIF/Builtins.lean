@@ -19,6 +19,7 @@ the list grows.
 -/
 import L4Factoidal.RIF.Syntax
 import L4Factoidal.CSVW.Formats
+import L4Factoidal.Regex.XPath
 
 namespace L4Factoidal.RIF
 
@@ -285,6 +286,66 @@ def divDec (a b : String) : Option String :=
 def numResultType (lex : String) : String :=
   if (lex.splitOn ".").length > 1 then xsdNs ++ "decimal" else xsdNs ++ "integer"
 
+/-! ## Percent-encoding, for the three RIF-DTB 4.5 URI functions
+
+`func:encode-for-uri`, `func:iri-to-uri` and `func:escape-html-uri`
+differ only in WHICH characters they leave alone; every one of them
+encodes the rest as the percent-escaped UTF-8 bytes of the character
+(XQuery/XPath Functions and Operators 3.1, 5.4.5-5.4.7). -/
+def hexDigitUpper (n : Nat) : Char :=
+  if n < 10 then Char.ofNat (48 + n) else Char.ofNat (55 + n)
+
+def pctByte (b : Nat) : String :=
+  "%" ++ String.singleton (hexDigitUpper (b / 16)) ++ String.singleton (hexDigitUpper (b % 16))
+
+/-- The UTF-8 bytes of one codepoint. -/
+def utf8Bytes (c : Char) : List Nat :=
+  let n := c.toNat
+  if n < 0x80 then [n]
+  else if n < 0x800 then [0xC0 + n / 64, 0x80 + n % 64]
+  else if n < 0x10000 then [0xE0 + n / 4096, 0x80 + (n / 64) % 64, 0x80 + n % 64]
+  else [0xF0 + n / 262144, 0x80 + (n / 4096) % 64, 0x80 + (n / 64) % 64, 0x80 + n % 64]
+
+def pctEncodeWith (keep : Char → Bool) (s : String) : String :=
+  String.join (s.toList.map (fun c =>
+    if keep c then String.singleton c
+    else String.join ((utf8Bytes c).map pctByte)))
+
+/-- 5.4.5 `fn:encode-for-uri`: only the unreserved characters survive. -/
+def encodeForUri (s : String) : String :=
+  pctEncodeWith (fun c => c.isAlpha || c.isDigit || c == '-' || c == '_' || c == '.' || c == '~') s
+
+/-- 5.4.6 `fn:iri-to-uri`: the unreserved AND reserved US-ASCII
+    characters survive; everything else, non-ASCII included, is
+    encoded. -/
+def iriToUri (s : String) : String :=
+  pctEncodeWith (fun c =>
+    c.isAlpha || c.isDigit ||
+    "-_.~!*'();:@&=+$,/?#[]%".toList.contains c) s
+
+/-- 5.4.7 `fn:escape-html-uri`: every PRINTABLE US-ASCII character
+    survives, which is why the fixture keeps its spaces, quotes and
+    parentheses and encodes only the two accented letters. -/
+def escapeHtmlUri (s : String) : String :=
+  pctEncodeWith (fun c => 32 ≤ c.toNat && c.toNat ≤ 126) s
+
+/-- 5.4.3 `fn:substring` with a start and a length. Positions are
+    1-BASED and the window keeps every position `p` with
+    `start <= p < start + length`, so a start of 0 loses the first
+    character -- which is what the Approved `Builtins_String` fixture
+    asserts with `substring("foobar" 0 3) = "fo"`. -/
+def substring3 (s : String) (start len : Int) : String :=
+  String.ofList ((s.toList.zipIdx).filterMap (fun (c, i) =>
+    let p : Int := Int.ofNat i + 1
+    if start ≤ p && p < start + len then some c else none))
+
+/-- The 2-argument form. The same fixture writes
+    `substring("foobar" 3) = "bar"`, which is 0-BASED -- the two forms
+    disagree on their base, and the fixture is the authority here. The
+    disagreement is preserved deliberately rather than reconciled. -/
+def substring2 (s : String) (start : Int) : String :=
+  if start ≤ 0 then s else String.ofList (s.toList.drop start.toNat)
+
 /-! ## `rdf:PlainLiteral` (RIF-DTB 4.7)
 
 RIF writes a plain literal's language tag INSIDE its lexical form,
@@ -358,6 +419,20 @@ def evalPred (name : String) (args : List GTerm) : Ans :=
            if sp == iriSpace && sp2 == xsdNs ++ "string"
            then (if i == s then .yes else .no) else .unknown
        | _, _ => .unknown)
+  | "matches", [a, b] =>
+      (match isStringy a, isStringy b with
+       | some str, some pat =>
+           (match L4Factoidal.Regex.compile pat "" with
+            | .ok re   => if L4Factoidal.Regex.isMatch re str then .yes else .no
+            | .error _ => .unknown)
+       | _, _ => .unknown)
+  | "matches", [a, b, f] =>
+      (match isStringy a, isStringy b, isStringy f with
+       | some str, some pat, some fl =>
+           (match L4Factoidal.Regex.compile pat fl with
+            | .ok re   => if L4Factoidal.Regex.isMatch re str then .yes else .no
+            | .error _ => .unknown)
+       | _, _, _ => .unknown)
   | "matches-language-range", [a, b] =>
       (match plainParts a, isStringy b with
        | some (_, tag), some range =>
@@ -420,6 +495,61 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
                                 else some (gLit (toString (p % q)) (xsdNs ++ "integer"))
             | _, _ => none)
        | _, _ => none)
+  | "compare", [a, b] =>
+      (match isStringy a, isStringy b with
+       | some x, some y =>
+           some (gLit (match compare x y with
+                       | .lt => "-1" | .eq => "0" | .gt => "1") (xsdNs ++ "integer"))
+       | _, _ => none)
+  -- RIF-DTB 4.5 `func:string-join` takes the strings first and the
+  -- SEPARATOR last.
+  | "string-join", args' =>
+      (match args'.reverse with
+       | sep :: rest =>
+           (match isStringy sep,
+                  rest.reverse.foldr (fun g acc => match isStringy g, acc with
+                    | some t, some ts => some (t :: ts)
+                    | _, _ => none) (some []) with
+            | some sp, some parts => some (gStr (String.intercalate sp parts))
+            | _, _ => none)
+       | [] => none)
+  | "substring", [a, b] =>
+      (match isStringy a, numericLex b with
+       | some str, some n => (n.toInt?).map (fun i => gStr (substring2 str i))
+       | _, _ => none)
+  | "substring", [a, b, c] =>
+      (match isStringy a, numericLex b, numericLex c with
+       | some str, some n, some m =>
+           (match n.toInt?, m.toInt? with
+            | some i, some j => some (gStr (substring3 str i j))
+            | _, _ => none)
+       | _, _, _ => none)
+  | "substring-before", [a, b] =>
+      (match isStringy a, isStringy b with
+       | some x, some y =>
+           some (gStr (match x.splitOn y with
+                       | first :: _ :: _ => first
+                       | _               => ""))
+       | _, _ => none)
+  | "substring-after", [a, b] =>
+      (match isStringy a, isStringy b with
+       | some x, some y =>
+           some (gStr (match x.splitOn y with
+                       | _ :: rest@(_ :: _) => String.intercalate y rest
+                       | _                  => ""))
+       | _, _ => none)
+  | "encode-for-uri", [a] => (isStringy a).map (fun x => gStr (encodeForUri x))
+  | "iri-to-uri", [a] => (isStringy a).map (fun x => gStr (iriToUri x))
+  | "escape-html-uri", [a] => (isStringy a).map (fun x => gStr (escapeHtmlUri x))
+  | "replace", [a, b, c] =>
+      (match isStringy a, isStringy b, isStringy c with
+       | some str, some pat, some rep =>
+           (match L4Factoidal.Regex.compile pat "" with
+            | .error _ => none
+            | .ok re   => (match L4Factoidal.Regex.replace re str rep with
+                           | .ok out  => some (gStr out)
+                           | .error _ => none))
+       | _, _, _ => none)
   | "string-length", [a] =>
       (isStringy a).map (fun s => gLit (toString s.toList.length) (xsdNs ++ "integer"))
   | "upper-case", [a] => (isStringy a).map (fun s => gStr s.toUpper)
@@ -532,5 +662,24 @@ fixture writes out, not a value read back off this implementation. -/
 #guard matchesLanguageRange "de-Latn-DE" "de-*-DE" = true
 #guard matchesLanguageRange "de-a-DE" "de-*-DE" = false
 #guard matchesLanguageRange "en-GB" "de-*" = false
+
+-- The Approved `Builtins_String` lines, which are the RIF-DTB 4.5
+-- and 4.6 examples.
+#guard evalFunc "compare" [gStr "bar", gStr "foo"] = some (gLit "-1" (xsdNs ++ "integer"))
+#guard evalFunc "compare" [gStr "bar", gStr "bar"] = some (gLit "0" (xsdNs ++ "integer"))
+#guard evalFunc "string-join" [gStr "foo", gStr "bar", gStr ","] = some (gStr "foo,bar")
+#guard evalFunc "substring" [gStr "foobar", gLit "3" (xsdNs ++ "integer")] = some (gStr "bar")
+#guard evalFunc "substring"
+        [gStr "foobar", gLit "0" (xsdNs ++ "integer"), gLit "3" (xsdNs ++ "integer")]
+     = some (gStr "fo")
+#guard evalFunc "substring-before" [gStr "foobar", gStr "bar"] = some (gStr "foo")
+#guard evalFunc "substring-after" [gStr "foobar", gStr "foo"] = some (gStr "bar")
+#guard encodeForUri "RIF Basic Logic Dialect" = "RIF%20Basic%20Logic%20Dialect"
+#guard iriToUri "http://www.example.com/~b\u00e9b\u00e9"
+     = "http://www.example.com/~b%C3%A9b%C3%A9"
+#guard escapeHtmlUri "a b\u00e9" = "a b%C3%A9"
+#guard evalPred "matches" [gStr "abracadabra", gStr "^a.*a$"] = .yes
+#guard evalFunc "replace" [gStr "abcd", gStr "(ab)|(a)", gStr "[1=$1][2=$2]"]
+     = some (gStr "[1=ab][2=]cd")
 
 end L4Factoidal.RIF
