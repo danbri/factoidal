@@ -64,13 +64,13 @@ import L4Factoidal.JSON.Parser
 namespace L4Factoidal.RDF
 
 /-- `xsd:int` — XSD 1.1 §3.4.17. -/
-def xsdInt : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#int", rfl⟩
+@[noinline] def xsdInt : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#int", rfl⟩
 
 /-- `xsd:float` — XSD 1.1 §3.3.4 (binary32). -/
-def xsdFloat : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#float", rfl⟩
+@[noinline] def xsdFloat : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#float", rfl⟩
 
 /-- `rdf:JSON` — RDF 1.2 Concepts §5.3. -/
-def rdfJSON : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON", rfl⟩
+@[noinline] def rdfJSON : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON", rfl⟩
 
 /-- The datatype IRIs this module models — see the header. -/
 def modelledDatatypes : List WfIri :=
