@@ -109,11 +109,17 @@ def keq (a b : Expr) : Bool := key a == key b
 def chkSimpl (cat name : String) (ml : Nat) (actual expected : Expr) : Case :=
   chkTrue cat name ml (keq (simplify actual) (simplify expected))
 
-/-- The F* `value_to_string` (`Math.Expr.fst` line 499). -/
+/-- The F* `value_to_string` (`Math.Expr.fst` line 499), extended to
+    the two value cases the Lean tree has and F* does not: a vector and
+    a matrix, written the way `Harness/MathMLRun.lean` writes them. No
+    check in this battery produces one, but leaving them out would make
+    the function partial on its own argument type. -/
 def valueToString : Option Value → String
   | none               => "undef"
   | some (.bool b)     => if b then "true" else "false"
   | some (.num (n, d)) => if d == 1 then toString n else toString n ++ "/" ++ toString d
+  | some (.vecv v)     => showVec v
+  | some (.matv m)     => showMat m
 
 /-- An environment as an association list, the way the `.ml` writes it. -/
 def envOf (ps : List (String × (Int × Int))) : String → Option (Int × Int) :=

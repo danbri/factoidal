@@ -28,7 +28,12 @@ of change that goes unnoticed.
 Every entry is an exact rational, or `none` for undefined. Nothing
 here produces a float, so `1/3 + 1/3 + 1/3` is `1`.
 -/
-import L4Factoidal.MathML.Core
+-- `MathML.Rat`, not `MathML.Core`: this module supplies the linear
+-- algebra that `MathML.Core.eval` routes its `<matrix>` / `<vector>`
+-- cases through, so Core imports THIS and the arrow cannot also point
+-- the other way. Only the exact-rational arithmetic is needed here,
+-- and that is what `MathML.Rat` was split out to carry.
+import L4Factoidal.MathML.Rat
 
 namespace L4Factoidal.Math
 

@@ -12,9 +12,67 @@ floats: MathML content markup means the mathematical value, and
 `1/3 + 1/3 + 1/3` must be `1`.
 -/
 
-import L4Factoidal.MathML.Matrix
+-- The linear algebra lives in `L4Factoidal.Math.Matrix` — the port of
+-- `formal/fstar/Math.Matrix.fst`, which carries the shape theorems.
+-- `MathML/Matrix.lean` was a second copy of the same algebra and is
+-- gone; §4.4.10 evaluation below routes through the one that is
+-- proved.
+import L4Factoidal.Math.Matrix
 
 namespace L4Factoidal.MathML
+
+open L4Factoidal.Math (MEnt matAdd matSub scalarMul transposeM matMul
+  determinant rowDot cross3 outerBuild)
+
+/-! ## Matrix and vector VALUES
+
+The evaluated form: every entry is a defined exact rational, because
+an entry that failed to evaluate leaves the whole literal without a
+value (see `eval`'s `.mat` / `.vec` cases). `Math.Matrix` works over
+`MEnt = Option (Int × Int)`, so the two lifts below move between the
+representations and `lower*` REFUSES a result carrying an undefined
+entry rather than substituting a zero. -/
+
+/-- A matrix of exact rationals, as rows. -/
+abbrev Mat := List (List (Int × Int))
+
+/-- A vector of exact rationals. -/
+abbrev Vec := List (Int × Int)
+
+/-- `true` when every row has the same length as the first, and there
+    is at least one row. A ragged `<matrix>` is not a matrix. -/
+def rectangular (m : Mat) : Bool :=
+  match m with
+  | []      => false
+  | r :: rs => rs.all (fun s => s.length == r.length)
+
+def rows (m : Mat) : Nat := m.length
+def cols (m : Mat) : Nat := (m.head?.map List.length).getD 0
+
+/-- Same shape, entry by entry. -/
+def sameShape (a b : Mat) : Bool :=
+  rectangular a && rectangular b && rows a == rows b && cols a == cols b
+
+/-- `selector` indexes from ONE, per §4.4.10. Index zero and any index
+    past the end are out of range, and out of range is `none`. -/
+def nth1? (i : Int) (l : List α) : Option α :=
+  if i < 1 then none else l[i.toNat - 1]?
+
+def liftMat (m : Mat) : List (List MEnt) := m.map (fun r => r.map some)
+def liftVec (v : Vec) : List MEnt := v.map some
+
+def lowerMat (m : List (List MEnt)) : Option Mat := m.mapM (fun r => r.mapM id)
+def lowerVec (v : List MEnt) : Option Vec := v.mapM id
+
+/-! ## Writing a value the way the corpus writes it -/
+
+def showRat (r : Int × Int) : String :=
+  if r.2 == 1 then toString r.1 else toString r.1 ++ "/" ++ toString r.2
+
+def showVec (v : Vec) : String := "[" ++ String.intercalate "," (v.map showRat) ++ "]"
+
+def showMat (m : Mat) : String :=
+  "[" ++ String.intercalate "," (m.map showVec) ++ "]"
 
 /-- A Content MathML expression. -/
 inductive Expr where
@@ -114,25 +172,51 @@ def asInt (a : Int × Int) : Option Int := if a.2 == 1 then some a.1 else none
     `plus`, `minus` and `times` are shared with the scalar evaluator:
     they reach here only when an argument is a matrix or a vector. -/
 def linAlg (fn : String) (vs : List Value) : Option Value :=
+  -- Each arm CHECKS the shape here and then calls `Math.Matrix` for
+  -- the arithmetic. The check stays on this side because MathML says
+  -- which shapes have a value; the algebra lives on that side because
+  -- that is where it is proved.
   match fn, vs with
-  | "plus",  [.matv a, .matv b] => (addMat a b).map Value.matv
-  | "minus", [.matv a, .matv b] => (subMat a b).map Value.matv
+  | "plus",  [.matv a, .matv b] =>
+      if !sameShape a b then none
+      else (lowerMat (matAdd (liftMat a) (liftMat b))).map Value.matv
+  | "minus", [.matv a, .matv b] =>
+      if !sameShape a b then none
+      else (lowerMat (matSub (liftMat a) (liftMat b))).map Value.matv
+  -- Vector addition is NOT routed through `Math.Matrix.dynAdd`: the F*
+  -- module it ports has no vector case for `add` and answers
+  -- "add-type-mismatch", which is its behaviour and not a gap to patch
+  -- from here. §4.4.10 does add vectors, so the two-line elementwise
+  -- form stays.
   | "plus",  [.vecv a, .vecv b] =>
       if a.length != b.length then none
       else some (.vecv ((a.zip b).map (fun (x, y) => addRat x y)))
   | "minus", [.vecv a, .vecv b] =>
       if a.length != b.length then none
       else some (.vecv ((a.zip b).map (fun (x, y) => subRat x y)))
-  | "times", [.num k, .matv a] => some (.matv (scaleMat k a))
-  | "times", [.matv a, .num k] => some (.matv (scaleMat k a))
+  | "times", [.num k, .matv a] => (lowerMat (scalarMul (some k) (liftMat a))).map Value.matv
+  | "times", [.matv a, .num k] => (lowerMat (scalarMul (some k) (liftMat a))).map Value.matv
   | "times", [.num k, .vecv a] => some (.vecv (a.map (mulRat k)))
   | "times", [.vecv a, .num k] => some (.vecv (a.map (mulRat k)))
-  | "times", [.matv a, .matv b] => (mulMat a b).map Value.matv
-  | "determinant", [.matv a]    => (determinant a).map Value.num
-  | "transpose",   [.matv a]    => (transposeMat a).map Value.matv
-  | "scalarproduct", [.vecv u, .vecv v] => (dot u v).map Value.num
-  | "vectorproduct", [.vecv u, .vecv v] => (cross u v).map Value.vecv
-  | "outerproduct",  [.vecv u, .vecv v] => some (.matv (outer u v))
+  | "times", [.matv a, .matv b] =>
+      if !rectangular a || !rectangular b || cols a != rows b then none
+      else (lowerMat (matMul (cols b) (liftMat a) (liftMat b))).map Value.matv
+  | "determinant", [.matv a] =>
+      if !rectangular a || rows a != cols a then none
+      else (determinant (rows a) (liftMat a)).map Value.num
+  | "transpose", [.matv a] =>
+      if !rectangular a then none
+      else (lowerMat (transposeM (cols a) (liftMat a))).map Value.matv
+  | "scalarproduct", [.vecv u, .vecv v] =>
+      if u.length != v.length then none
+      else (rowDot (liftVec u) (liftVec v)).map Value.num
+  | "vectorproduct", [.vecv u, .vecv v] =>
+      -- `cross3` is defined for 3-vectors; any other length has no
+      -- cross product, so the length is checked before the call.
+      if u.length != 3 || v.length != 3 then none
+      else (lowerVec (cross3 (liftVec u) (liftVec v))).map Value.vecv
+  | "outerproduct",  [.vecv u, .vecv v] =>
+      (lowerMat (outerBuild (liftVec u) (liftVec v))).map Value.matv
   -- `selector` indexes from ONE: (row, column) into a matrix, or a
   -- single index into a vector. Out of range has no value.
   | "selector", [.matv a, .num i, .num j] =>

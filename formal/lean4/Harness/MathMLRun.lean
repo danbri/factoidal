@@ -35,7 +35,7 @@ Usage: `lake exe l4mathml [tests-dir]`
        default corpus: `third_party/testing/mathml`
 -/
 import L4Factoidal.MathML.FromXml
-import L4Factoidal.MathML.Matrix
+import L4Factoidal.MathML.Core
 import L4Factoidal.JSON.Parser
 
 open L4Factoidal.JSON

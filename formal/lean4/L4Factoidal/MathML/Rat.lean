@@ -1,8 +1,11 @@
 /-
 L4Factoidal.MathML.Rat — exact rational arithmetic for Content MathML.
 
-Split out of `MathML.Core` so that `MathML.Matrix` can use it without
-importing the evaluator that itself needs matrices. The names are
+Split out of `MathML.Core` so that the linear-algebra module can use
+it without importing the evaluator that itself needs matrices. That
+module is now `L4Factoidal.Math.Matrix` — the port of
+`formal/fstar/Math.Matrix.fst` — and `MathML/Matrix.lean`, which was a
+second copy of the same algebra, has been deleted. The names here are
 unchanged and stay in the `L4Factoidal.MathML` namespace, so every
 existing reference resolves exactly as before.
 
