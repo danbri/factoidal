@@ -187,7 +187,7 @@ this worktree by running the probe, not quoted from a report.
 | RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | 33 pass, 1 fail (of 34 decided); 11 undecided, 0 not read, 1 local override | 42 pass, 0 fail, 1 local override, 3 skip (of 46) |
 | RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | unchanged | 76 pass (of 76) |
 | RML io | not run | not run | 17 pass, 1 fail, 55 skip (of 73) |
-| CSVW validation | not run | 266 pass, 14 fail, 2 skip (of 282) | 281 pass, 1 fail (of 282) |
+| CSVW validation | not run | **281 pass, 1 fail, 0 skip (of 282)** | 281 pass, 1 fail (of 282) |
 | RDF/XML | 130 pass, 2 fail (of 132 eval-isomorphic) | 132 pass, 0 fail (of 132) | does not run these two |
 | GeoSPARQL | no probe | 37 pass, 0 fail, 0 skip (of 37) | 37 pass (of 37) |
 | rdf-semantics | not run | 22 pass, 10 fail, 0 skip, 15 unsupported (of 47) | 41 pass, 3 fail, 3 skip (of 47) |
@@ -241,15 +241,13 @@ skips do.
 contain a space. The 15 negative cases need a mapping validator; the
 whole rml-io section (84 directories) needs a probe.
 
-**CSVW validation, 14 fails.** `test034` and `test035` (foreign-key
-`schemaReference` resolution), `test094`, `test100`, `test107`,
-`test109`, `test111`, `test124`, `test127`, `test147`, `test148`
-(structural and title-compatibility rules), `test257` and `test258`
-(cross-table foreign-key referential integrity), and `test308` — the
-one the F\* tree also fails, for the reason
-`.github/test-suites/csvw-validation.yaml` records. Two skips,
-`test092` and `test119`, name fixtures the manifest references that
-are not vendored in this checkout.
+**CSVW validation — CLOSED on 2026-09-07.** All 14 fails and both
+skips are resolved; the suite is **281 pass, 1 fail, 0 skip (of 282)**,
+which is parity with the F\* tree. The one fail is `test308`, and it is
+a corpus contradiction rather than an engine gap: see the "16
+undecided tests" section below, and the same finding recorded
+independently in `.github/test-suites/csvw-validation.yaml`. What the
+four landings did is in that section's outcome table.
 
 **rdf-semantics, 10 fails and 15 unsupported.** Fails: `literal-type`,
 `triple-terms-propositions` (both need a literal or triple term in
@@ -454,3 +452,57 @@ compares the values.
 is a corpus contradiction with `test238`, evidenced above and recorded
 independently on the F\* side. The target is therefore **281 pass, 1
 fail (`test308`), 0 skip** — parity with F\*.
+
+### Outcome, 2026-09-07
+
+Four commits on `wt/finish-csvw`, each measured against the run before
+it. `l4csvw-rdf` and `l4csvw-json` stayed at 270 pass of 270 each with
+0 over-strict cross-check reports throughout, and the positive (76 of
+76) and warning (61 of 61) buckets never moved — so the negative score
+was not bought by rejecting documents the suite requires accepted.
+
+| step | what it closed | score after (of 282) |
+| --- | --- | --- |
+| baseline | — | 266 pass, 14 fail, 2 skip |
+| the runner's two skips | `test092`, `test119` | 268 pass, 14 fail, 0 skip |
+| MV §5/§5.1.3/§5.2 structural rules | `test094`, `test100`, `test107`, `test109`, `test111` | 273 pass, 9 fail, 0 skip |
+| DM §5.4.3 per-column compatibility | `test124`, `test127`, `test147`, `test148` | 277 pass, 5 fail, 0 skip |
+| DM §6.6 foreign-key referential integrity | `test034`, `test035`, `test257`, `test258` | **281 pass, 1 fail, 0 skip** |
+
+Three findings worth keeping.
+
+**Neither skip was a missing fixture.** Both files were on disk. The
+runner could not tell "did not parse" from "not present", which turned
+`test092` — a document that is deliberately malformed JSON, and the one
+test that states MV §6.1's stop-processing rule — into a skip; and its
+fallback resolved the CSV action against a URL that already ended in
+that action, so `test119` looked for `test119/test119/action.csv`. A
+skip that names a fixture is a claim about the corpus, and both claims
+were false. Check the file before reporting one.
+
+**The same document carries two duties, and the cross-check had
+conflated them.** `test100`, `test107`, `test109` and `test111` are
+`ToRdfTestWithWarnings` in the csv2rdf manifest and
+`NegativeValidationTest` in the validation manifest: a converter must
+convert them, a validator must reject them. `CsvwRdfRun`/`CsvwJsonRun`
+guard against a validator tightened until it rejects everything, by
+checking it still accepts every positive test — but their notion of
+positive included the WithWarnings class, which is exactly the class a
+validator must reject. Scoping that guard to the plain
+`ToRdfTest`/`ToJsonTest` class is what let the four rules land. Left
+alone it would have reported four over-strict entries for rules the
+validation suite requires, and the obvious reading of that report —
+back out the rules — would have been wrong.
+
+**`test308` is a contradiction in the corpus, and the fix is not
+available.** It is a `NegativeValidationTest` whose `datatype` string is
+`http://example.org/bad/datatype`; `test238` is a
+`WarningValidationTest` that must CONFORM, carrying
+`http://example.org/datatype`. Both are non-built-in absolute URLs and
+they differ only in the URL path, so no rule that ignores the value
+itself can fail one and pass the other. The two entries' own comments
+state the rule differently — `test238` says "one of the built-in
+datatypes … or an absolute URL", `test308` says "it must be one of the
+built-in datatypes". The F\* tree fails this test for the same reason.
+Recording it as a corpus defect with the evidence beside it is the
+verdict, not 281 being short of 282.
