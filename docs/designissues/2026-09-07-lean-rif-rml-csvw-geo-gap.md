@@ -127,7 +127,14 @@ Manifest `third_party/testing/csvw/tests/manifest-validation.jsonld`:
 * **Lean `l4rdfxml-probe`**: parse-positive 132 pass, 0 fail (of 132);
   reject-negative 41 pass, 0 fail (of 41); eval-isomorphic 130 pass,
   2 fail (of 132).
-* **F\***: both failing cases pass.
+* **F\***: does NOT run either case. Both are COMMENTED OUT of the
+  vendored manifest
+  (`third_party/testing/w3c/rdf/rdf11/rdf-xml/manifest.ttl`, lines 166,
+  167 and 1574-1596), so the F\* runner never reaches them. The claim
+  that the F\* tree passes both, written into this record on 2026-09-07
+  from the task brief, was wrong and is corrected here. The Lean probe
+  is directory-driven rather than manifest-driven, which is why it sees
+  them at all.
 
 The 2 failures:
 
@@ -172,14 +179,43 @@ The whole 47 is the gap.
 
 ## Status
 
-Filled in as commits land.
+Updated as commits land. Every score below was measured in this
+worktree.
 
 | area | before | after | closed | open |
 | --- | --- | --- | --- | --- |
-| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | | | |
-| RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | | | |
-| RML io | not run | | | |
-| CSVW validation | not run (282 entries) | | | |
-| RDF/XML | 130 pass, 2 fail (of 132 eval-isomorphic) | | | |
-| GeoSPARQL | no probe (F\* 37 of 37) | | | |
-| rdf-semantics | not run (47 entries) | | | |
+| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | 32 pass, 2 fail (of 34 decided); 11 undecided, 1 not read, 0 not attempted | the 6 ImportRejectionTest cases; OWL_Combination_Vocabulary_Separation_Inconsistency_1 and _2 | the 2 fails (RDF_Combination_Constant_Equivalence_4, EBusiness_Contract); 9 built-in cases; Modeling_Brain_Anatomy and Non-Annotation_Entailment (OWL-Direct closure); RDF_Combination_Constant_Equivalence_Graph_Entailment (graph conclusion) |
+| RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | unchanged | | RMLTC0027b-JSON (fixture writes an IRIREF with a space); the 15 negative cases need a mapping validator |
+| RML io | not run | unchanged | | the whole rml-io section (84 directories) |
+| CSVW validation | not run (282 entries) | see the probe's own report | | |
+| RDF/XML | 130 pass, 2 fail (of 132 eval-isomorphic) | 132 pass, 0 fail (of 132) | rdfms-xml-literal-namespaces/test001 and test002 | none |
+| GeoSPARQL | no probe (F\* 37 of 37) | see the probe's own report | | |
+| rdf-semantics | not run (47 entries) | see the probe's own report | | |
+
+### RDF/XML: what the fix was, and a finding about the fixtures
+
+`L4Factoidal/RDF/XmlCanon.lean` compared `rdf:XMLLiteral` values with
+the xmlns attributes left as written. RDF 1.1 Concepts §5.1 defines
+that value space through Exclusive XML Canonicalization 1.0, whose
+§3.2 renders a namespace declaration only for a prefix the element
+VISIBLY UTILIZES and only when no output ancestor already rendered the
+same prefix with the same URI. Adding the namespace axis to the
+comparison closed both cases with no regression.
+
+The finding worth keeping: the two fixture families state the same rule
+and disagree LEXICALLY — `xml-canon/test001` expects an unused xmlns
+copied into the literal, `rdfms-xml-literal-namespaces` expects unused
+ones dropped. No byte comparison passes both. Only a namespace-aware
+comparison does, which is what the specification asks for anyway.
+
+### Disk
+
+The 2026-09-07 session stopped its parallel builds at 2.7 GB free on
+`/System/Volumes/Data`. The space was not the Lean build caches (the
+five worktrees hold 0.5-0.9 GB each); 13 GB sat in another project's
+agent scratchpad under `/private/tmp/claude-501/` and 4 GB in a
+five-day-old Factoidal session scratchpad. Neither was this session's
+to remove. The rule in CLAUDE.md's Agent Work Strategy assumes the
+worktrees are the consumer; on this machine the agent scratchpads are
+the larger one, and a session that only measures `.lake` will conclude
+it has room when it does not.
