@@ -230,6 +230,18 @@ on 2026-09-07 for the AEADs and the other obvious pieces to be vendored; that
 work is scheduled (not speculative) and is the one item from this record that
 proceeds now.
 
+**DONE the same day**, with one correction to the paragraph above:
+ChaCha20-Poly1305, HMAC-SHA-256, HKDF-SHA-256, X25519 and HPKE base mode
+landed, all from the same pinned release, and the ABI carries `aeadSeal`,
+`aeadOpen`, `hpkeSeal` and `hpkeOpen`. **AES-GCM did NOT**, and is not
+fillable from that release: it has no portable AES-GCM at all, only Vale
+x86-64 assembly the C distribution does not ship. That was an error in the
+sentence above. It blocks OMEMO 0.8 (which specifies AES-128-GCM) and
+nothing else, because MLS ciphersuite 3 and HPKE both use
+ChaCha20-Poly1305. Record:
+[`2026-09-07-crypto-primitives.md`](2026-09-07-crypto-primitives.md); gap
+tracked in <https://github.com/danbri/factoidal/issues/677>.
+
 ## 7. The order, if taken up
 
 1. **Reproducible builds** of the Lean executables and the deployment images,
