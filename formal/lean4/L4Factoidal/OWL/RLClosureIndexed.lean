@@ -1021,8 +1021,48 @@ def clashFromS (s : Store) (d : Triple) : Bool :=
 def detectClashS (s : Store) : Bool :=
   s.graph.any (fun d => clashFromS s d)
 
+/-! ### The three sound extension rows over a store -/
+
+def dtRangeClashAtS (s : Store) (d : Triple) : Bool :=
+  if d.p == rdfsRange then
+    (subjIri d.s).any (fun p =>
+      (asIri d.o).any (fun dr =>
+        (s.withPred p).any (fun u =>
+          (asLit u.o).any (fun l =>
+            xsdValueSpacesDisjoint l.val.datatype dr))))
+  else false
+
+def bottomPropClashAtS (s : Store) (d : Triple) : Bool :=
+  if d.p == owlOnProperty then
+    (asIri d.o).any (fun p =>
+      isBottomProperty p &&
+      (s.graph.any (fun t => t.s == d.s && existentialObligation t.p t.o)) &&
+      (s.graph.any (fun m => m.p == rdfType && m.o == d.s.toTerm)))
+  else false
+
+def clsSvfBotAtS (s : Store) (d : Triple) : Bool :=
+  d.p == owlSomeValuesFrom && d.o == Term.iri owlNothing &&
+  s.graph.any (fun m => m.p == rdfType && m.o == d.s.toTerm)
+
+def extClashRowsS (s : Store) (d : Triple) : List Bool :=
+  [ dtRangeClashAtS s d, bottomPropClashAtS s d, clsSvfBotAtS s d ]
+
+def extClashFromS (s : Store) (d : Triple) : Bool :=
+  (extClashRowsS s d).any (fun b => b)
+
+def detectClashExtS (s : Store) : Bool :=
+  s.graph.any (fun d => extClashFromS s d)
+
+/-- The table rows OR the three sound extension rows, over a store. -/
+def detectClashPlusS (s : Store) : Bool :=
+  detectClashS s || detectClashExtS s
+
 /-- The clash decision over an index. -/
 def detectClashI (i : Index) : Bool := detectClashS (Store.ofIndex i)
+
+/-- The extended clash decision over an index — the one the corpus
+probe consults. -/
+def detectClashPlusI (i : Index) : Bool := detectClashPlusS (Store.ofIndex i)
 
 /-! ## Section 7 — the list-scan store IS `RLClosure`
 
@@ -1303,6 +1343,23 @@ theorem detectClashS_ofGraph (g : Graph) : detectClashS (Store.ofGraph g) = dete
   rw [clashFromS_ofGraph]
   rfl
 
+theorem extClashFromS_ofGraph (g : Graph) :
+    extClashFromS (Store.ofGraph g) = extClashFrom g := by
+  funext d
+  simp only [extClashFromS, extClashFrom, extClashRowsS, extClashRows]
+  rfl
+
+theorem detectClashExtS_ofGraph (g : Graph) :
+    detectClashExtS (Store.ofGraph g) = detectClashExt g := by
+  unfold detectClashExtS detectClashExt
+  rw [extClashFromS_ofGraph]
+  rfl
+
+theorem detectClashPlusS_ofGraph (g : Graph) :
+    detectClashPlusS (Store.ofGraph g) = detectClashPlus g := by
+  unfold detectClashPlusS detectClashPlus
+  rw [detectClashS_ofGraph, detectClashExtS_ofGraph]
+
 /-! ## Section 8 — the index is a faithful picture of a list
 
 `Index.Wf i g`: every component of `i` agrees with the list
@@ -1474,6 +1531,11 @@ list it pictures. -/
 theorem detectClashI_eq {i : Index} {g : Graph} (h : i.Wf g) :
     detectClashI i = detectClash g := by
   rw [detectClashI, Store.ofIndex_eq h, detectClashS_ofGraph]
+
+/-- The extended decision over a well-formed index is the list one. -/
+theorem detectClashPlusI_eq {i : Index} {g : Graph} (h : i.Wf g) :
+    detectClashPlusI i = detectClashPlus g := by
+  rw [detectClashPlusI, Store.ofIndex_eq h, detectClashPlusS_ofGraph]
 
 /-- The indexed consistency check is `RLClosure.inconsistent`. -/
 theorem detectClashI_closureI (g : Graph) (fuel : Nat) :

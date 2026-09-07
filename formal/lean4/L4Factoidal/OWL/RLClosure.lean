@@ -1301,10 +1301,65 @@ tables has all its premises in `g`, i.e. `g` is OWL 2 RL inconsistent.
 def detectClash (g : Graph) : Bool :=
   g.any (fun d => clashFrom g d)
 
+/-! ### The three sound extension rows
+
+Decisions for `RLRules.ExtClash`. They are kept out of `clashRows` so
+that `detectClash` stays exactly the OWL 2 RL table and
+`detectClash_sound` keeps its `Clash` conclusion; `detectClashPlus`
+below is the decision the corpus probe consults. -/
+
+/-- **dt-range** `[ext]`, driven by the `rdfs:range` declaration. -/
+def dtRangeClashAt (g : Graph) (d : Triple) : Bool :=
+  if d.p == rdfsRange then
+    (subjIri d.s).any (fun p =>
+      (asIri d.o).any (fun dr =>
+        (withPred g p).any (fun u =>
+          (asLit u.o).any (fun l =>
+            xsdValueSpacesDisjoint l.val.datatype dr))))
+  else false
+
+/-- **bottom-prop** `[ext]`, driven by the `owl:onProperty` triple. -/
+def bottomPropClashAt (g : Graph) (d : Triple) : Bool :=
+  if d.p == owlOnProperty then
+    (asIri d.o).any (fun p =>
+      isBottomProperty p &&
+      (g.any (fun t => t.s == d.s && existentialObligation t.p t.o)) &&
+      (g.any (fun m => m.p == rdfType && m.o == d.s.toTerm)))
+  else false
+
+/-- **cls-svf-bot** `[ext]`, driven by the `owl:someValuesFrom` triple. -/
+def clsSvfBotAt (g : Graph) (d : Triple) : Bool :=
+  d.p == owlSomeValuesFrom && d.o == Term.iri owlNothing &&
+  g.any (fun m => m.p == rdfType && m.o == d.s.toTerm)
+
+/-- The three extension-row verdicts for one driving triple. -/
+def extClashRows (g : Graph) (d : Triple) : List Bool :=
+  [ dtRangeClashAt g d, bottomPropClashAt g d, clsSvfBotAt g d ]
+
+/-- Every extension row, driven by one triple. -/
+def extClashFrom (g : Graph) (d : Triple) : Bool :=
+  (extClashRows g d).any (fun b => b)
+
+/-- **The extension clash decision.** `RLTheorems.detectClashExt_sound`
+proves every `true` verdict is a real `ExtClash`. -/
+def detectClashExt (g : Graph) : Bool :=
+  g.any (fun d => extClashFrom g d)
+
+/-- **The decision the corpus probe consults**: the OWL 2 RL table rows
+OR the three sound extension rows. -/
+def detectClashPlus (g : Graph) : Bool :=
+  detectClash g || detectClashExt g
+
 /-- Consistency checked against the CLOSURE, which is what the F*
 `entailment_closure` + `is_inconsistent` pipeline does: a clash is
 usually only visible after materialisation. -/
 def inconsistent (g : Graph) (fuel : Nat) : Bool :=
   detectClash (closure g fuel)
+
+/-- The same over `detectClashPlus`: the table rows plus the three sound
+extension rows. This is the predicate the corpus probe scores
+ConsistencyTest and InconsistencyTest against. -/
+def inconsistentPlus (g : Graph) (fuel : Nat) : Bool :=
+  detectClashPlus (closure g fuel)
 
 end L4Factoidal.OWL.RL

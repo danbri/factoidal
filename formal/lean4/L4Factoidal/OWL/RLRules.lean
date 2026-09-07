@@ -1980,4 +1980,123 @@ theorem Clash.mono {g g' : Graph} (hsub : ∀ u, u ∈ g → u ∈ g')
   | prpFpLit hd h1 h2 hne =>
       exact Clash.prpFpLit (hsub _ hd) (hsub _ h1) (hsub _ h2) hne
 
+/-! ## Sound extension clash rows (`[ext]`, no W3C table row)
+
+Three no-consequent rows that OWL 2 RL's Tables 4-8 do NOT carry. They
+are kept OUT of `Clash` on purpose: `Clash` is the table, and
+`Unified/OwlRlSchema.owlRlSchema_conditions` discharges one
+`RlClashConditions` field per table row from RL schema satisfaction
+alone. An extension row has no schema row to be discharged from, so
+adding it to `Clash` would make that theorem unprovable. They live in
+`ExtClash`, with their own condition bundle
+(`RLSemantics.RlExtClashConditions`) and their own refutation theorem.
+
+The F* engine reaches the same three through `OWL.Closure.fsti`'s
+`is_inconsistent` checks (10), (11) and (12), which is why the F* RL
+regime scores `string-integer-clash`,
+`New-Feature-Bottom{Data,Object}Property-001` and
+`WebOnt-Restriction-001` / `WebOnt-Restriction-002` PASS and this tree did not
+(`docs/designissues/2026-09-07-lean-owl-corpus-gap.md`). -/
+
+/-- The three families of XSD datatype in `xsdAllDatatypes` whose value
+spaces are pairwise DISJOINT: the strings, the booleans, and the
+numeric tower. Membership of one family is read off the list, not
+inferred from `xsdHierarchyEdges` — see the note on
+`xsdValueSpacesDisjoint`. -/
+def xsdFamily (d : WfIri) : Option Nat :=
+  if d == xsdString then some 0
+  else if d == xsdBoolean then some 1
+  else if xsdAllDatatypes.contains d then some 2
+  else none
+
+/-- Two datatypes whose value spaces are PROVABLY disjoint.
+
+**Why this is not `¬ xsdIsSubtype`.** The F* `dt_range_clash` check
+decides "outside `D`'s value space" as "`D_lit` does not reach
+`D_range` in `xsd_hierarchy_edges`". That tree has siblings whose value
+spaces OVERLAP: `xsd:int` and `xsd:nonNegativeInteger` both reach
+`xsd:integer` and neither reaches the other, so on that reading
+`p rdfs:range xsd:nonNegativeInteger` with `x p "5"^^xsd:int` is a
+clash — and `5` IS a non-negative integer. The rule's stated premise
+("value spaces are identical, in a subtype relation, or fully
+disjoint") holds of the XSD PRIMITIVE types, not of the derived types
+the check is applied to.
+
+This function states the disjointness the row needs instead of
+inferring it: XSD 1.1 §3.3.1 (`xsd:string`), §3.3.2 (`xsd:boolean`) and
+§3.4.x (the numeric tower, all of whose members' value spaces are
+subsets of the `xsd:decimal` / `xsd:double` value space) give three
+pairwise-disjoint value spaces. `false` on every pair inside one
+family, so nothing in the numeric tower ever clashes here. -/
+def xsdValueSpacesDisjoint (d1 d2 : WfIri) : Bool :=
+  match xsdFamily d1, xsdFamily d2 with
+  | some f1, some f2 => f1 != f2
+  | _,       _       => false
+
+/-- A cardinality object whose value is PROVABLY at least one, so a
+member of the restriction must have a property edge. `false` on
+anything this cannot decide. -/
+def cardinalityAtLeastOne : Term → Bool
+  | .literal l =>
+      match XSD.parseDecimalRat l.val.lexicalForm with
+      | some r => decide (0 < r.num)
+      | none   => false
+  | _ => false
+
+/-- A property IRI whose extension is empty in every interpretation. -/
+def isBottomProperty (p : WfIri) : Bool :=
+  p == owlBottomObjectProperty || p == owlBottomDataProperty
+
+/-- The predicates that put an EXISTENTIAL obligation on a member of the
+restriction `r`: a member of `r` must have at least one `owl:onProperty`
+edge. `owl:someValuesFrom` and `owl:hasValue` unconditionally;
+the four cardinality predicates when the stated bound is at least one. -/
+def existentialObligation (q : WfIri) (v : Term) : Bool :=
+  q == owlSomeValuesFrom || q == owlHasValue
+  || ((q == owlMinCardinality || q == owlMinQualifiedCardinality
+       || q == owlCardinality || q == owlQualifiedCardinality)
+      && cardinalityAtLeastOne v)
+
+inductive ExtClash (g : Graph) : Prop where
+  /-- **dt-range** `[ext]` — a property with a declared XSD range, and
+  an edge whose literal object carries a datatype whose value space is
+  disjoint from that range's. Sound because `rdfs:range` forces every
+  object of `p` into the value space of `d` (RDF 1.1 Semantics §9
+  rdfs3), and a literal typed `dlit` denotes a member of `dlit`'s value
+  space in any D-interpretation recognising it (§7). The
+  `xsdValueSpacesDisjoint` side condition is carried, as
+  `Clash.prpFpLit` carries `valuesProvablyDistinct`: the value-space
+  disjointness is an XSD fact, not a graph fact. -/
+  | dtRange {p : WfIri} {d : WfIri} {x : Subject} {l : WfLiteral}
+      (hrng : (⟨Subject.iri p, rdfsRange, Term.iri d⟩ : Triple) ∈ g)
+      (hedge : (⟨x, p, Term.literal l⟩ : Triple) ∈ g)
+      (hdisj : xsdValueSpacesDisjoint l.val.datatype d = true) : ExtClash g
+  /-- **bottom-prop** `[ext]` — a restriction on a bottom property that
+  puts an existential obligation on its members, with a member. Sound
+  because the extension of `owl:bottomObjectProperty` /
+  `owl:bottomDataProperty` is empty in every interpretation, so no
+  individual can satisfy the obligation. -/
+  | bottomProp {r u : Subject} {p q : WfIri} {v : Term}
+      (honp : (⟨r, owlOnProperty, Term.iri p⟩ : Triple) ∈ g)
+      (hbot : isBottomProperty p = true)
+      (hobl : (⟨r, q, v⟩ : Triple) ∈ g)
+      (hex : existentialObligation q v = true)
+      (hmem : (⟨u, rdfType, r.toTerm⟩ : Triple) ∈ g) : ExtClash g
+  /-- **cls-svf-bot** `[ext]` — a `someValuesFrom` restriction whose
+  filler is `owl:Nothing`, with a member. Sound because `owl:Nothing`
+  has empty extension in every interpretation, so no individual has a
+  property edge into it. -/
+  | svfBot {r u : Subject}
+      (hsvf : (⟨r, owlSomeValuesFrom, Term.iri owlNothing⟩ : Triple) ∈ g)
+      (hmem : (⟨u, rdfType, r.toTerm⟩ : Triple) ∈ g) : ExtClash g
+
+/-- `ExtClash` is monotone in the graph, as `Clash` is. -/
+theorem ExtClash.mono {g h : Graph} (hsub : ∀ t, t ∈ g → t ∈ h)
+    (hc : ExtClash g) : ExtClash h := by
+  cases hc with
+  | dtRange a b c => exact ExtClash.dtRange (hsub _ a) (hsub _ b) c
+  | bottomProp a b c d e =>
+      exact ExtClash.bottomProp (hsub _ a) b (hsub _ c) d (hsub _ e)
+  | svfBot a b => exact ExtClash.svfBot (hsub _ a) (hsub _ b)
+
 end L4Factoidal.OWL.RL
