@@ -199,4 +199,71 @@ from, so putting it in `Clash` would make that theorem unprovable —
 beyond it. `detectClash` and `detectClash_sound` are byte-for-byte
 unchanged.
 
-## 7. Status
+## 7. Status — 2026-09-07, after C1
+
+**Scores.** Full probe, default RL regime:
+
+```
+                              before            after
+profile-RL.rdf                120 pass,  6 fail  121 pass,  5 fail (of 126)
+profile-EL.rdf                105 pass, 15 fail  110 pass, 10 fail (of 121, 1 skip)
+profile-QL.rdf                 82 pass,  5 fail   82 pass,  5 fail (of  87)
+type-positive-entailment.rdf  333 pass, 75 fail  333 pass, 75 fail (of 412, 4 unsupported)
+type-inconsistency.rdf         38 pass, 89 fail   43 pass, 84 fail (of 128, 1 skip)
+type-consistency.rdf          503 pass, 76 fail  503 pass, 76 fail (of 583, 4 unsupported)
+TOTAL                        1181 pass,266 fail 1192 pass,255 fail (of 1457)
+```
+
+Every ConsistencyTest section is unmoved (76, 72, 58, 204, 351 pass,
+with 0, 0, 0, 0 and 1 fail before and after), so the three new rows
+fired on no premise the corpus asserts consistent — the check that
+matters for a clash row.
+
+**F\*-pass / Lean-fail gap, profile catalogs (RL against RL):**
+26 units over 17 ids **before**, **20 units over 12 ids after**.
+
+**Closed.** C1 — the three clash rows, commit
+`owl: three sound extension clash rows`. Six units: `string-integer-clash`
+(RL, EL), `New-Feature-BottomDataProperty-001` (EL),
+`New-Feature-BottomObjectProperty-001` (EL), `WebOnt-Restriction-001`
+(EL), `WebOnt-Restriction-002` (EL).
+
+**Open.**
+
+* **C2 — someValuesFrom existential witnesses**, 4 units:
+  `bnode2somevaluesfrom` (EL), `somevaluesfrom2bnode` (EL),
+  `WebOnt-someValuesFrom-003` (EL),
+  `New-Feature-SelfRestriction-002` (EL). Needs
+  `cls-svf-thing-materialize`, `cls-svf-thing-witness` and
+  `cls-hasself2-synth` from § 3c.
+* **C3 — comprehension**, 11 units: `WebOnt-I5.5-005` (RL, EL, QL),
+  `New-Feature-DisjointDataProperties-002` (RL, EL, QL),
+  `New-Feature-DisjointObjectProperties-002` (RL, EL, QL),
+  `New-Feature-ObjectPropertyChain-BJP-002` (RL, EL). Needs the eight
+  `comp_*` rules from § 3c. F\*'s own banner says folding that layer
+  into the shared fixpoint took DL `type-inconsistency.rdf` from
+  124 pass, 3 fail to 63 pass, 64 fail, so it must be a separate
+  PE-only pass here too, not a closure extension.
+* **C4 — annotation carry-over**, 3 units: `WebOnt-I4.6-005-Direct`
+  (RL, EL, QL). Missing conclusion triple
+  `C2 rdfs:comment "An example class."^^xsd:string`.
+* **C5 — `owl:hasKey` and `owl:Thing ≡ owl:Nothing`**, 4 units:
+  `New-Feature-Keys-001` (EL PE), `New-Feature-Keys-002` (EL Inc),
+  `WebOnt-Thing-003` (EL, QL Inc).
+* **The `type-*` catalogs under `--dl`** remain measured only for two
+  of three (§ 2b); `type-consistency.rdf --dl` has no figure.
+
+**Where a published result looks wrong.**
+
+1. The F\* `dt-range-clash` check is unsound as written (§ 5). No corpus
+   test exercises the wrong arm, so the F\* score does not move; the
+   Lean port states the disjointness rather than inferring it, and
+   `OWL/RLTests.lean` pins `p rdfs:range xsd:nonNegativeInteger` with
+   `x p "5"^^xsd:int` as NOT a clash.
+2. `docs/claude-rules/current-state.md` § the 2026-07-30 OWL update
+   prints `type-consistency` Consistency as 337 pass, 15 fail (out of
+   352). The committed log
+   `formal/fstar/ocaml-output/owl_type_consistency_results.log` line
+   1226 says 340 pass, 12 fail (out of 352), 12 unsupported. The log is
+   the measurement; the prose has drifted by three tests.
+
