@@ -34,10 +34,14 @@ argument. `candidatesSpec` returns `none` for it and the caller scans.
 closed. Every other geometry — a linestring, an empty, a `Multi*`, a
 `GeometryCollection`, a polygon with an open ring — is OPAQUE: it carries no
 box, it is always a candidate, and it costs the caller a re-evaluation it
-would have paid anyway. The open obligation is the four-orientation
-proper-crossing rule, which `segmentsIntersect` uses with no `inSegBBox`
-conjunct and which needs the separating-axis argument; until that is proved,
-linestrings stay opaque rather than being filtered on an unproved basis.
+would have paid anyway.
+
+The four-orientation proper-crossing rule, which `segmentsIntersect` uses
+with no `inSegBBox` conjunct, was the open obligation here until 2026-09-07.
+It is now `Geo.segmentsCross_intervals`, proved by the parametric argument in
+integer arithmetic rather than by a separating axis, and it is what lets a
+POLYGON PAIR whose boundaries cross be filtered. Linestrings stay opaque all
+the same: nothing yet gives a box to `Geometry.lineString`.
 
 A term that is not a `geo:wktLiteral`, or whose lexical form does not parse,
 is never a candidate: `Geo.geoPredicate` answers `none` for it, a `none` is a
@@ -316,9 +320,9 @@ theorem exists_common_point {op : GeoOp} (hop : op ≠ GeoOp.disjoint)
           simp only [GeoOp.fn, sfTouches, isCompound, sfTouchesBase, Option.some.injEq] at h
           exact polygon_contains_of_ne_exterior hg (boundary_ne_exterior (by simpa using h))
   | .polygon poly1, .polygon poly2 =>
-      -- `sfWithin` and `sfContains` ACCEPT a polygon pair
-      -- (`Geo/Topology.lean`); the other base predicates still refuse
-      -- one, so those arms stay refutations.
+      -- `sfWithin`, `sfContains` and `sfIntersects` ACCEPT a polygon
+      -- pair (`Geo/Topology.lean`); `sfEquals` and `sfTouches` still
+      -- refuse one, so those two arms stay refutations.
       --
       -- The witness for `within` is the polygon's REPRESENTATIVE
       -- VERTEX, the head of its exterior ring: `sfWithinBase` accepts
@@ -326,6 +330,13 @@ theorem exists_common_point {op : GeoOp} (hop : op ≠ GeoOp.disjoint)
       -- the other box contains it by
       -- `polygon_contains_of_ne_exterior`, and its OWN box contains it
       -- because a fragment box covers every ring of its polygon.
+      --
+      -- `intersects` has no such vertex in general: two squares meeting
+      -- in a plus shape cross with no vertex of either inside the
+      -- other. `Geo.polygonsIntersect_common_point` supplies the
+      -- witness for that disjunct, built from the crossing segments'
+      -- coordinate intervals rather than from the rational crossing
+      -- point.
       cases op with
       | disjoint => exact absurd rfl hop
       | equals =>
@@ -333,7 +344,11 @@ theorem exists_common_point {op : GeoOp} (hop : op ≠ GeoOp.disjoint)
       | touches =>
           exfalso; simp [GeoOp.fn, sfTouches, isCompound, sfTouchesBase] at h
       | intersects =>
-          exfalso; simp [GeoOp.fn, sfIntersects, isCompound, sfIntersectsBase] at h
+          simp only [GeoOp.fn, sfIntersects, isCompound, sfIntersectsBase,
+            Option.some.injEq] at h
+          obtain ⟨hcov1, hcl1⟩ := fragmentBox_polygon hg
+          obtain ⟨hcov2, hcl2⟩ := fragmentBox_polygon hq
+          exact polygonsIntersect_common_point hcov1 hcov2 hcl1 hcl2 (by simpa using h)
       | within =>
           simp only [GeoOp.fn, sfWithin, isCompound, sfWithinBase] at h
           exact common_point_of_polygon_within hg hq h

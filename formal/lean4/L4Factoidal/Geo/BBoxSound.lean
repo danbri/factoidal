@@ -1001,6 +1001,417 @@ theorem polygonClass_ne_exterior_contains {p : Point} {poly : Polygon} {b : BBox
       rw [hext] at h
       simp at h
 
+/-! ## 5b. Two crossing segments, in integer arithmetic
+
+`segmentsIntersect` accepts a PROPER crossing with no `inSegBBox` conjunct:
+the four orientation signs alone. That branch is the one the module header
+named as open. It is closed here, and the argument is the parametric one
+rather than a separating axis.
+
+Write the four determinants as `u = orient a b c`, `v = orient a b d`,
+`w = orient c d a`, `z = orient c d b`, all at one shared scale, and put
+`D = v - u`. Then `D` is the cross product of the two direction vectors,
+`z = w - D`, and the point where the two LINES meet has
+`D * p.x = D * c.x - u * (d.x - c.x)` and also `D * p.x = D * a.x + w *
+(b.x - a.x)` — one polynomial identity, no division. A proper crossing puts
+`u` and `v` on opposite sides of zero and likewise `z` and `w`, which pins
+`D * p.x` between `D * c.x` and `D * d.x` AND between `D * a.x` and
+`D * b.x`. Dividing by `D` gives the two coordinate intervals a common value,
+which is all the bounding boxes need. The same holds on the `y` axis.
+
+Nothing here computes `p` itself: `p.x` is rational and a `Scaled` is a
+decimal, so the witness the index consumes is built from the endpoint
+coordinates instead (`Scaled.max` of the two interval minima). -/
+
+/-- `D * p` lies between `D * c` and `D * d`, where `p` is the crossing
+parameter written without division. `u ≤ 0 ≤ v` is the straddle condition
+normalised so that `D = v - u` is positive. -/
+private theorem seg_bounds (D u v c d P : Int)
+    (hu : u ≤ 0) (hv : 0 ≤ v) (hD : D = v - u)
+    (hP : P = D * c - u * (d - c)) :
+    D * min c d ≤ P ∧ P ≤ D * max c d := by
+  have e1 : P - D * c = (-u) * (d - c) := by grind
+  have e2 : D * d - P = v * (d - c) := by grind
+  rcases Int.le_total c d with h | h
+  · rw [Int.min_eq_left h, Int.max_eq_right h]
+    have h1 : 0 ≤ (-u) * (d - c) := Int.mul_nonneg (by omega) (by omega)
+    have h2 : 0 ≤ v * (d - c) := Int.mul_nonneg hv (by omega)
+    exact ⟨Int.sub_nonneg.mp (e1 ▸ h1), Int.sub_nonneg.mp (e2 ▸ h2)⟩
+  · rw [Int.min_eq_right h, Int.max_eq_left h]
+    have h1 : (-u) * (d - c) ≤ 0 :=
+      Int.mul_nonpos_of_nonneg_of_nonpos (by omega) (by omega)
+    have h2 : v * (d - c) ≤ 0 := Int.mul_nonpos_of_nonneg_of_nonpos hv (by omega)
+    exact ⟨Int.sub_nonneg.mp (by omega : (0:Int) ≤ P - D * d),
+           Int.sub_nonneg.mp (by omega : (0:Int) ≤ D * c - P)⟩
+
+/-- ONE AXIS OF A PROPER CROSSING. The two segments' coordinate intervals on
+this axis overlap. `a b` are the first segment's endpoint coordinates on the
+axis, `c d` the second's; `u v w z` are the four determinants and `P` is
+`D` times the crossing coordinate, supplied in both of its equal forms. -/
+theorem int_cross_axis
+    (a b c d u v w z P : Int)
+    (hu : u ≤ 0) (hv : 0 ≤ v) (hz : z ≤ 0) (hw : 0 ≤ w)
+    (hD : 0 < v - u) (hzw : z = w - (v - u))
+    (hP : P = (v - u) * c - u * (d - c))
+    (hQ : P = (v - u) * a + w * (b - a)) :
+    min a b ≤ max c d ∧ min c d ≤ max a b := by
+  have hcd := seg_bounds (v - u) u v c d P hu hv rfl hP
+  have hab := seg_bounds (v - u) (-w) (-z) a b P (by omega) (by omega) (by omega)
+    (by grind)
+  exact ⟨Int.le_of_mul_le_mul_left (Int.le_trans hab.1 hcd.2) hD,
+         Int.le_of_mul_le_mul_left (Int.le_trans hcd.1 hab.2) hD⟩
+
+/-- The straddle conditions without the sign normalisation: either order of
+`u, v` (and of `w, z`) is accepted, and the positive-`D` orientation is
+recovered by reading the first segment backwards. -/
+theorem int_cross_axis_gen (a b c d u v w z : Int)
+    (huv : (u ≤ 0 ∧ 0 ≤ v) ∨ (v ≤ 0 ∧ 0 ≤ u))
+    (hwz : (z ≤ 0 ∧ 0 ≤ w) ∨ (w ≤ 0 ∧ 0 ≤ z))
+    (hne : u ≠ v) (hzw : z = w - (v - u))
+    (hid : (v - u) * c - u * (d - c) = (v - u) * a + w * (b - a)) :
+    min a b ≤ max c d ∧ min c d ≤ max a b := by
+  rcases Int.lt_trichotomy u v with hlt | heq | hgt
+  · have h1 : u ≤ 0 ∧ 0 ≤ v := by omega
+    have h2 : z ≤ 0 ∧ 0 ≤ w := by omega
+    exact int_cross_axis a b c d u v w z _ h1.1 h1.2 h2.1 h2.2 (by omega) hzw rfl
+      (by omega)
+  · exact absurd heq hne
+  · have h1 : (-u) ≤ 0 ∧ 0 ≤ (-v) := by omega
+    have h2 : w ≤ 0 ∧ 0 ≤ z := by omega
+    have hid2 : ((-v) - (-u)) * c - (-u) * (d - c)
+        = ((-v) - (-u)) * b + z * (a - b) := by grind
+    have := int_cross_axis b a c d (-u) (-v) z w _ h1.1 h1.2 h2.1 h2.2
+      (by omega) (by omega) rfl hid2
+    omega
+
+/-! ### `Scaled.min` and `Scaled.max` at a shared scale -/
+
+theorem Scaled.min_scale_le (x y : Scaled) (s : Nat) (hx : x.scale ≤ s)
+    (hy : y.scale ≤ s) : (Scaled.min x y).scale ≤ s := by
+  unfold Scaled.min; split <;> assumption
+
+theorem Scaled.max_scale_le (x y : Scaled) (s : Nat) (hx : x.scale ≤ s)
+    (hy : y.scale ≤ s) : (Scaled.max x y).scale ≤ s := by
+  unfold Scaled.max; split <;> assumption
+
+theorem Scaled.min_at' (x y : Scaled) (s : Nat) (hx : x.scale ≤ s) (hy : y.scale ≤ s) :
+    (Scaled.min x y).at' s = Min.min (x.at' s) (y.at' s) := by
+  unfold Scaled.min
+  by_cases h : Scaled.le x y = true
+  · rw [if_pos h, Int.min_eq_left ((Scaled.le_iff_at'_of_ge x y s hx hy).mp h)]
+  · simp only [Bool.not_eq_true] at h
+    have hyx := Scaled.le_total x y h
+    rw [if_neg (by simp [h]),
+        Int.min_eq_right ((Scaled.le_iff_at'_of_ge y x s hy hx).mp hyx)]
+
+theorem Scaled.max_at' (x y : Scaled) (s : Nat) (hx : x.scale ≤ s) (hy : y.scale ≤ s) :
+    (Scaled.max x y).at' s = Max.max (x.at' s) (y.at' s) := by
+  unfold Scaled.max
+  by_cases h : Scaled.ge x y = true
+  · rw [Scaled.ge_eq_le_swap] at h
+    rw [if_pos (by rw [Scaled.ge_eq_le_swap]; exact h),
+        Int.max_eq_left ((Scaled.le_iff_at'_of_ge y x s hy hx).mp h)]
+  · rw [Scaled.ge_eq_le_swap] at h
+    simp only [Bool.not_eq_true] at h
+    have hxy := Scaled.le_total y x h
+    rw [if_neg (by rw [Scaled.ge_eq_le_swap]; simp [h]),
+        Int.max_eq_right ((Scaled.le_iff_at'_of_ge x y s hx hy).mp hxy)]
+
+/-! ### From the four orientation signs to the two coordinate intervals -/
+
+theorem orientSign_cases (a c p : Point) :
+    orientSign a c p = -1 ∨ orientSign a c p = 0 ∨ orientSign a c p = 1 := by
+  unfold orientSign
+  by_cases hlt : Scaled.lt (orient a c p) Scaled.zero = true
+  · simp only [hlt, if_true]; simp
+  · simp only [Bool.not_eq_true] at hlt
+    simp only [hlt, Bool.false_eq_true, if_false]
+    by_cases heq : Scaled.eq (orient a c p) Scaled.zero = true
+    · simp only [heq, if_true]; simp
+    · simp only [Bool.not_eq_true] at heq
+      simp only [heq, Bool.false_eq_true, if_false]; simp
+
+/-- Two different orientation signs put the two determinants on opposite
+sides of zero (weakly) and make them unequal. -/
+theorem straddle_of_sign_ne {o1 o2 U V : Int}
+    (hc1 : o1 = -1 ∨ o1 = 0 ∨ o1 = 1) (hc2 : o2 = -1 ∨ o2 = 0 ∨ o2 = 1)
+    (hp1 : 0 < o1 ↔ 0 < U) (hn1 : o1 < 0 ↔ U < 0)
+    (hp2 : 0 < o2 ↔ 0 < V) (hn2 : o2 < 0 ↔ V < 0)
+    (hne : o1 ≠ o2) : ((U ≤ 0 ∧ 0 ≤ V) ∨ (V ≤ 0 ∧ 0 ≤ U)) ∧ U ≠ V := by
+  omega
+
+/-- A scale large enough for every coordinate of four points. -/
+def segScale (a b c d : Point) : Nat :=
+  Nat.max (coordScale a b c) (coordScale c d b)
+
+/-- **THE PROPER-CROSSING LEMMA.** When `c` and `d` fall on opposite sides of
+the line `ab` and `a` and `b` fall on opposite sides of the line `cd`, the two
+segments' coordinate intervals overlap on both axes. This is the branch of
+`segmentsIntersect` that carries no `inSegBBox` conjunct, and it is what lets
+a polygon pair whose boundaries cross be filtered by bounding box. -/
+theorem segmentsCross_intervals {a b c d : Point}
+    (h1 : orientSign a b c ≠ orientSign a b d)
+    (h2 : orientSign c d a ≠ orientSign c d b) :
+    Scaled.le (Scaled.min a.x b.x) (Scaled.max c.x d.x) = true ∧
+    Scaled.le (Scaled.min c.x d.x) (Scaled.max a.x b.x) = true ∧
+    Scaled.le (Scaled.min a.y b.y) (Scaled.max c.y d.y) = true ∧
+    Scaled.le (Scaled.min c.y d.y) (Scaled.max a.y b.y) = true := by
+  have s := segScale a b c d
+  obtain ⟨ba1, ba2, bb1, bb2, bc1, bc2⟩ := coordScale_bounds a b c
+  obtain ⟨_, _, bd1, bd2, _, _⟩ := coordScale_bounds c d b
+  -- lift every bound to the shared scale
+  have m1 : coordScale a b c ≤ segScale a b c d := Nat.le_max_left _ _
+  have m2 : coordScale c d b ≤ segScale a b c d := Nat.le_max_right _ _
+  have hax : a.x.scale ≤ segScale a b c d := Nat.le_trans ba1 m1
+  have hay : a.y.scale ≤ segScale a b c d := Nat.le_trans ba2 m1
+  have hbx : b.x.scale ≤ segScale a b c d := Nat.le_trans bb1 m1
+  have hby : b.y.scale ≤ segScale a b c d := Nat.le_trans bb2 m1
+  have hcx : c.x.scale ≤ segScale a b c d := Nat.le_trans bc1 m1
+  have hcy : c.y.scale ≤ segScale a b c d := Nat.le_trans bc2 m1
+  have hdx : d.x.scale ≤ segScale a b c d := Nat.le_trans bd1 m2
+  have hdy : d.y.scale ≤ segScale a b c d := Nat.le_trans bd2 m2
+  clear m1 m2 ba1 ba2 bb1 bb2 bc1 bc2 bd1 bd2 s
+  -- the four determinants at that scale, in the regrouped form
+  have hU := orient_at' a b c (segScale a b c d) hax hay hbx hby hcx hcy
+  have hV := orient_at' a b d (segScale a b c d) hax hay hbx hby hdx hdy
+  have hW := orient_at' c d a (segScale a b c d) hcx hcy hdx hdy hax hay
+  have hZ := orient_at' c d b (segScale a b c d) hcx hcy hdx hdy hbx hby
+  -- the signs
+  have sU := straddle_of_sign_ne (orientSign_cases a b c) (orientSign_cases a b d)
+    (orientSign_pos_iff a b c _ hax hay hbx hby hcx hcy)
+    (orientSign_neg_iff a b c _ hax hay hbx hby hcx hcy)
+    (orientSign_pos_iff a b d _ hax hay hbx hby hdx hdy)
+    (orientSign_neg_iff a b d _ hax hay hbx hby hdx hdy) h1
+  have sW := straddle_of_sign_ne (orientSign_cases c d b) (orientSign_cases c d a)
+    (orientSign_pos_iff c d b _ hcx hcy hdx hdy hbx hby)
+    (orientSign_neg_iff c d b _ hcx hcy hdx hdy hbx hby)
+    (orientSign_pos_iff c d a _ hcx hcy hdx hdy hax hay)
+    (orientSign_neg_iff c d a _ hcx hcy hdx hdy hax hay) (Ne.symm h2)
+  -- the two polynomial identities, per axis
+  have hzw : (orient c d b).at' (segScale a b c d + segScale a b c d)
+      = (orient c d a).at' (segScale a b c d + segScale a b c d)
+        - ((orient a b d).at' (segScale a b c d + segScale a b c d)
+           - (orient a b c).at' (segScale a b c d + segScale a b c d)) := by grind
+  have hidx := int_cross_axis_gen (a.x.at' (segScale a b c d))
+    (b.x.at' (segScale a b c d)) (c.x.at' (segScale a b c d))
+    (d.x.at' (segScale a b c d))
+    ((orient a b c).at' (segScale a b c d + segScale a b c d))
+    ((orient a b d).at' (segScale a b c d + segScale a b c d))
+    ((orient c d a).at' (segScale a b c d + segScale a b c d))
+    ((orient c d b).at' (segScale a b c d + segScale a b c d))
+    sU.1 sW.1 sU.2 hzw (by grind)
+  have hidy := int_cross_axis_gen (a.y.at' (segScale a b c d))
+    (b.y.at' (segScale a b c d)) (c.y.at' (segScale a b c d))
+    (d.y.at' (segScale a b c d))
+    ((orient a b c).at' (segScale a b c d + segScale a b c d))
+    ((orient a b d).at' (segScale a b c d + segScale a b c d))
+    ((orient c d a).at' (segScale a b c d + segScale a b c d))
+    ((orient c d b).at' (segScale a b c d + segScale a b c d))
+    sU.1 sW.1 sU.2 hzw (by grind)
+  -- back to `Scaled.le`
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hax hbx) (Scaled.max_scale_le _ _ _ hcx hdx),
+      Scaled.min_at' _ _ _ hax hbx, Scaled.max_at' _ _ _ hcx hdx]
+    exact hidx.1
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hcx hdx) (Scaled.max_scale_le _ _ _ hax hbx),
+      Scaled.min_at' _ _ _ hcx hdx, Scaled.max_at' _ _ _ hax hbx]
+    exact hidx.2
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hay hby) (Scaled.max_scale_le _ _ _ hcy hdy),
+      Scaled.min_at' _ _ _ hay hby, Scaled.max_at' _ _ _ hcy hdy]
+    exact hidy.1
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hcy hdy) (Scaled.max_scale_le _ _ _ hay hby),
+      Scaled.min_at' _ _ _ hcy hdy, Scaled.max_at' _ _ _ hay hby]
+    exact hidy.2
+
+/-- **A point in both boxes, for any two intersecting segments.** The four
+`inSegBBox` branches of `segmentsIntersect` hand over an endpoint directly.
+The proper-crossing branch has no such vertex — two squares meeting in a plus
+shape cross with no vertex of either inside the other — so the witness is
+built from the interval overlap `segmentsCross_intervals` gives: the larger of
+the two interval minima on each axis lies in both intervals, hence in both
+boxes. The true crossing point is rational and a `Scaled` is a decimal, so it
+is never computed. -/
+theorem segmentsIntersect_common_point {B1 B2 : BBox} {a b c d : Point}
+    (ha : B1.contains a = true) (hb : B1.contains b = true)
+    (hc : B2.contains c = true) (hd : B2.contains d = true)
+    (h : segmentsIntersect a b c d = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [BBox.contains, Bool.and_eq_true] at ha hb hc hd
+  obtain ⟨⟨⟨a1, a2⟩, a3⟩, a4⟩ := ha
+  obtain ⟨⟨⟨b1, b2⟩, b3⟩, b4⟩ := hb
+  obtain ⟨⟨⟨c1, c2⟩, c3⟩, c4⟩ := hc
+  obtain ⟨⟨⟨d1, d2⟩, d3⟩, d4⟩ := hd
+  have hA : B1.contains a = true := by simp [BBox.contains, a1, a2, a3, a4]
+  have hB : B1.contains b = true := by simp [BBox.contains, b1, b2, b3, b4]
+  have hC : B2.contains c = true := by simp [BBox.contains, c1, c2, c3, c4]
+  have hD : B2.contains d = true := by simp [BBox.contains, d1, d2, d3, d4]
+  simp only [segmentsIntersect] at h
+  by_cases hp : ((orientSign a b c != orientSign a b d) &&
+      (orientSign c d a != orientSign c d b)) = true
+  · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hp
+    obtain ⟨hx1, hx2, hy1, hy2⟩ := segmentsCross_intervals hp.1 hp.2
+    refine ⟨⟨Scaled.max (Scaled.min a.x b.x) (Scaled.min c.x d.x),
+             Scaled.max (Scaled.min a.y b.y) (Scaled.min c.y d.y)⟩, ?_, ?_⟩
+    · simp only [BBox.contains, Bool.and_eq_true]
+      refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
+      · exact Scaled.le_trans (Scaled.le_min a1 b1) (Scaled.le_max_left _ _)
+      · exact Scaled.max_le (Scaled.le_trans (Scaled.min_le_left _ _) a2)
+          (Scaled.le_trans hx2 (Scaled.max_le a2 b2))
+      · exact Scaled.le_trans (Scaled.le_min a3 b3) (Scaled.le_max_left _ _)
+      · exact Scaled.max_le (Scaled.le_trans (Scaled.min_le_left _ _) a4)
+          (Scaled.le_trans hy2 (Scaled.max_le a4 b4))
+    · simp only [BBox.contains, Bool.and_eq_true]
+      refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
+      · exact Scaled.le_trans (Scaled.le_min c1 d1) (Scaled.le_max_right _ _)
+      · exact Scaled.max_le (Scaled.le_trans hx1 (Scaled.max_le c2 d2))
+          (Scaled.le_trans (Scaled.min_le_left _ _) c2)
+      · exact Scaled.le_trans (Scaled.le_min c3 d3) (Scaled.le_max_right _ _)
+      · exact Scaled.max_le (Scaled.le_trans hy1 (Scaled.max_le c4 d4))
+          (Scaled.le_trans (Scaled.min_le_left _ _) c4)
+  · simp only [Bool.not_eq_true] at hp
+    rw [if_neg (by simp [hp])] at h
+    simp only [Bool.or_eq_true, Bool.and_eq_true] at h
+    rcases h with ((h | h) | h) | h
+    · exact ⟨c, inSegBBox_contains hA hB h.2, hC⟩
+    · exact ⟨d, inSegBBox_contains hA hB h.2, hD⟩
+    · exact ⟨a, hA, inSegBBox_contains hC hD h.2⟩
+    · exact ⟨b, hB, inSegBBox_contains hC hD h.2⟩
+
+/-! ### 5c. From a crossing pair of boundaries to a point in both boxes
+
+Every lemma here is the same induction: a path hands its consecutive vertex
+pairs to the level below, and each level keeps the two boxes fixed. -/
+
+theorem segmentCrossesPath_common_point {B1 B2 : BBox} {a b : Point}
+    (ha : B1.contains a = true) (hb : B1.contains b = true) :
+    ∀ (l : List Point), B2.covers l → segmentCrossesPath a b l = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro l
+  induction l with
+  | nil => intro _ h; simp [segmentCrossesPath] at h
+  | cons c t ih =>
+      intro hcov h
+      cases t with
+      | nil => simp [segmentCrossesPath] at h
+      | cons d rest =>
+          simp only [segmentCrossesPath, Bool.or_eq_true] at h
+          rcases h with hseg | hrest
+          · exact segmentsIntersect_common_point ha hb (hcov c (by simp))
+              (hcov d (by simp)) hseg
+          · exact ih (fun q hq => hcov q (List.mem_cons_of_mem _ hq)) hrest
+
+theorem segmentCrossesRings_common_point {B1 B2 : BBox} {a b : Point}
+    (ha : B1.contains a = true) (hb : B1.contains b = true) :
+    ∀ (rs : List Ring), (∀ r ∈ rs, B2.covers r) → segmentCrossesRings a b rs = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro rs
+  induction rs with
+  | nil => intro _ h; simp [segmentCrossesRings] at h
+  | cons r rest ih =>
+      intro hcov h
+      simp only [segmentCrossesRings, Bool.or_eq_true] at h
+      rcases h with hr | hrest
+      · exact segmentCrossesPath_common_point ha hb r (hcov r (by simp)) hr
+      · exact ih (fun r' hr' => hcov r' (by simp [hr'])) hrest
+
+theorem segmentCrossesPolygonBoundary_common_point {B1 B2 : BBox} {a b : Point}
+    {poly : Polygon} (ha : B1.contains a = true) (hb : B1.contains b = true)
+    (hcov : ∀ r ∈ poly.ext :: poly.holes, B2.covers r)
+    (h : segmentCrossesPolygonBoundary a b poly = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [segmentCrossesPolygonBoundary, Bool.or_eq_true] at h
+  rcases h with hext | hholes
+  · exact segmentCrossesPath_common_point ha hb poly.ext (hcov poly.ext (by simp)) hext
+  · exact segmentCrossesRings_common_point ha hb poly.holes
+      (fun r hr => hcov r (by simp [hr])) hholes
+
+theorem ringCrossesPolygonBoundary_common_point {B1 B2 : BBox} {poly : Polygon}
+    (hcov2 : ∀ r ∈ poly.ext :: poly.holes, B2.covers r) :
+    ∀ (l : Ring), B1.covers l → ringCrossesPolygonBoundary l poly = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro l
+  induction l with
+  | nil => intro _ h; simp [ringCrossesPolygonBoundary] at h
+  | cons a t ih =>
+      intro hcov h
+      cases t with
+      | nil => simp [ringCrossesPolygonBoundary] at h
+      | cons b rest =>
+          simp only [ringCrossesPolygonBoundary, Bool.or_eq_true] at h
+          rcases h with hseg | hrest
+          · exact segmentCrossesPolygonBoundary_common_point (hcov a (by simp))
+              (hcov b (by simp)) hcov2 hseg
+          · exact ih (fun q hq => hcov q (List.mem_cons_of_mem _ hq)) hrest
+
+theorem ringsCrossPolygonBoundary_common_point {B1 B2 : BBox} {poly : Polygon}
+    (hcov2 : ∀ r ∈ poly.ext :: poly.holes, B2.covers r) :
+    ∀ (rs : List Ring), (∀ r ∈ rs, B1.covers r) →
+      ringsCrossPolygonBoundary rs poly = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro rs
+  induction rs with
+  | nil => intro _ h; simp [ringsCrossPolygonBoundary] at h
+  | cons r rest ih =>
+      intro hcov h
+      simp only [ringsCrossPolygonBoundary, Bool.or_eq_true] at h
+      rcases h with hr | hrest
+      · exact ringCrossesPolygonBoundary_common_point hcov2 r (hcov r (by simp)) hr
+      · exact ih (fun r' hr' => hcov r' (by simp [hr'])) hrest
+
+/-- **Crossing boundaries yield a common point of the two boxes.** This is the
+disjunct of `polygonsIntersect` that hands over no vertex. -/
+theorem polygonBoundariesCross_common_point {B1 B2 : BBox} {p1 p2 : Polygon}
+    (hcov1 : ∀ r ∈ p1.ext :: p1.holes, B1.covers r)
+    (hcov2 : ∀ r ∈ p2.ext :: p2.holes, B2.covers r)
+    (h : polygonBoundariesCross p1 p2 = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [polygonBoundariesCross, Bool.or_eq_true] at h
+  rcases h with hext | hholes
+  · exact ringCrossesPolygonBoundary_common_point hcov2 p1.ext
+      (hcov1 p1.ext (by simp)) hext
+  · exact ringsCrossPolygonBoundary_common_point hcov2 p1.holes
+      (fun r hr => hcov1 r (by simp [hr])) hholes
+
+/-- A vertex of the path that is non-exterior to the polygon lies in both
+boxes: in `B1` because `B1` covers the path, in `B2` by the ray-cast lemma. -/
+theorem anyVertexInPolygon_common_point {B1 B2 : BBox} {poly : Polygon}
+    (hcov2 : ∀ r ∈ poly.ext :: poly.holes, B2.covers r)
+    (hclosed : isClosedLine poly.ext = true) :
+    ∀ (l : List Point), B1.covers l → anyVertexInPolygon l poly = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro l
+  induction l with
+  | nil => intro _ h; simp [anyVertexInPolygon] at h
+  | cons p rest ih =>
+      intro hcov h
+      simp only [anyVertexInPolygon, Bool.or_eq_true] at h
+      rcases h with hp | hrest
+      · refine ⟨p, hcov p (by simp), ?_⟩
+        simp only [bne_iff_ne, ne_eq] at hp
+        exact polygonClass_ne_exterior_contains hcov2 hclosed hp
+      · exact ih (fun q hq => hcov q (List.mem_cons_of_mem _ hq)) hrest
+
+/-- **THE POLYGON PAIR.** Two simple polygons the exact test calls
+intersecting have a point that both bounding boxes contain — vertex witness
+for the first two disjuncts, constructed interval point for the third. -/
+theorem polygonsIntersect_common_point {B1 B2 : BBox} {p1 p2 : Polygon}
+    (hcov1 : ∀ r ∈ p1.ext :: p1.holes, B1.covers r)
+    (hcov2 : ∀ r ∈ p2.ext :: p2.holes, B2.covers r)
+    (hcl1 : isClosedLine p1.ext = true) (hcl2 : isClosedLine p2.ext = true)
+    (h : polygonsIntersect p1 p2 = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [polygonsIntersect, Bool.or_eq_true] at h
+  rcases h with (h1 | h2) | h3
+  · exact anyVertexInPolygon_common_point hcov2 hcl2 p1.ext (hcov1 p1.ext (by simp)) h1
+  · obtain ⟨r, ha, hb⟩ :=
+      anyVertexInPolygon_common_point hcov1 hcl1 p2.ext (hcov2 p2.ext (by simp)) h2
+    exact ⟨r, hb, ha⟩
+  · exact polygonBoundariesCross_common_point hcov1 hcov2 h3
+
 /-! ## 6. The trust surface
 
 Only Lean's own three axioms. Nothing here is admitted. -/
@@ -1011,5 +1422,9 @@ Only Lean's own three axioms. Nothing here is admitted. -/
 #print axioms BBox.overlaps_of_common_point
 #print axioms BBox.ofPoints_covers
 #print axioms BBox.ofRings_covers
+#print axioms int_cross_axis
+#print axioms segmentsCross_intervals
+#print axioms segmentsIntersect_common_point
+#print axioms polygonsIntersect_common_point
 
 end L4Factoidal.Geo
