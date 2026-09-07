@@ -329,6 +329,7 @@ import L4Factoidal.Math.Tests
 import L4Factoidal.Math.Sigmoid
 import L4Factoidal.Math.SigmoidTests
 import L4Factoidal.MathML.Present
+import L4Factoidal.MathML.FromJson
 import L4Factoidal.Math.ToanCases
 import L4Factoidal.XForms.Bind
 import L4Factoidal.HTTP.Client

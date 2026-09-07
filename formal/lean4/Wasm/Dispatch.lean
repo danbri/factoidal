@@ -47,6 +47,7 @@ import Wasm.Ops.Pack
 import Wasm.Ops.ExtFns
 import Wasm.Ops.Lws
 import Wasm.Ops.Solid
+import Wasm.Ops.Toan
 
 namespace L4Wasm
 
@@ -88,6 +89,11 @@ def opNames : List String :=
   , "clFiniteSat"
   , "proofCheck"
   , "proofInspect"
+  , "toanSummation"
+  , "toanProduct"
+  , "toanSimplify"
+  , "toanDiff"
+  , "toanSubst"
   , "ops" ]
 
 /-- The op names that read a BLOB REGION as well as their string arguments,
@@ -172,6 +178,11 @@ private def arity3 (op : String) (f : String → String → String → String) :
     List String → String
   | [a, b, c] => f a b c
   | args => errJson s!"{op} expects 3 arguments, got {args.length}"
+
+private def arity4 (op : String) (f : String → String → String → String → String) :
+    List String → String
+  | [a, b, c, d] => f a b c d
+  | args => errJson s!"{op} expects 4 arguments, got {args.length}"
 
 /-- The dataset-handle op names (`Wasm/Ops/Handles.lean`), served ONLY
 by `callIO` — the pure `call` cannot reach the handle store and
@@ -279,6 +290,11 @@ def call (op : String) (argsJson : String) : String :=
     | "clFiniteSat"          => arity2 op clFiniteSat args
     | "proofCheck"           => arity1 op proofCheck args
     | "proofInspect"         => arity1 op proofInspect args
+    | "toanSummation"        => arity4 op toanSummation args
+    | "toanProduct"          => arity4 op toanProduct args
+    | "toanSimplify"         => arity1 op toanSimplify args
+    | "toanDiff"             => arity2 op toanDiff args
+    | "toanSubst"            => arity3 op toanSubst args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"
 
