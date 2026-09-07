@@ -436,6 +436,17 @@ def regimeToSchema (regime : String) (Dset : RDF.DatatypeSet)
   | some .d => some (dSchema D, condTrue)
   | some .rdf => some (rdfSchema, condTrue)
   | some .rdfs => some (rdfsSchema Dset, condTrue)
+  | some .rdfsPlus =>
+      -- NO entry yet. `RDF.Regime.rdfsPlus` was added on 2026-09-07
+      -- for the rdf-semantics runner; this table is the SPECIFICATION
+      -- side, and an entry here is a claim that a schema captures the
+      -- regime, which nothing has checked for RDFS-Plus. `none` keeps
+      -- the behaviour this table had before the constructor existed
+      -- (`ofName? "RDFS-Plus"` used to fall through to `none`), rather
+      -- than quietly adopting `rdfsPlusProgram.toSchema` — that
+      -- schema serves the `x-rdfsplus` STRING below and pairing the
+      -- two spellings is a decision, not a compile fix.
+      none
   | none =>
       if regime = RDFS.regimeXRdfsCore then some (rdfsCoreSchema, condTrue)
       else if regime = RDFS.regimeXRdfsPlus then

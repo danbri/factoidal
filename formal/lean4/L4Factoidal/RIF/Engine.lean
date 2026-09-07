@@ -248,6 +248,85 @@ def entails (rules : List Rule) (facts : Facts) (goal : Formula) (rounds : Nat)
   else if capped then .undecided "the forward chain reached its round bound"
   else .doesNotHold
 
+/-! ## Which built-ins a case uses
+
+`entails` reports `undecided` when a built-in blocked a rule, but the
+flag it threads is a Bool, so it cannot say WHICH one. Naming the
+built-in is what makes an undecided verdict reviewable — the F\* tree's
+skips name theirs — so the built-in IRIs a document MENTIONS are
+collected here and printed beside the verdict.
+
+This is the set of CANDIDATES, not the one that blocked: a case may
+name several and be stopped by one of them. Reported as candidates
+rather than as a cause, because claiming the cause without measuring
+it would be a guess. Threading the blocking IRI itself through
+`groundTm`/`matchAtom`/`step`/`closure` is the fix that would say
+exactly which, and is not done here. -/
+
+mutual
+
+def externalIrisTm : Tm → List String
+  | .var _            => []
+  | .const _ _        => []
+  | .list xs          => externalIrisTms xs
+  | .external fn args => fn :: externalIrisTms args
+  | .fapp _ _ args    => externalIrisTms args
+
+def externalIrisTms : List Tm → List String
+  | []      => []
+  | x :: xs => externalIrisTm x ++ externalIrisTms xs
+
+end
+
+def externalIrisAtom : Atom → List String
+  | .pos _ _ args        => externalIrisTms args
+  | .frame o p v         => externalIrisTm o ++ externalIrisTm p ++ externalIrisTm v
+  | .member o c          => externalIrisTm o ++ externalIrisTm c
+  | .sub c d             => externalIrisTm c ++ externalIrisTm d
+  | .equal a b           => externalIrisTm a ++ externalIrisTm b
+  | .externalPred fn args => fn :: externalIrisTms args
+
+mutual
+
+def externalIrisFormula : Formula → List String
+  | .atom a       => externalIrisAtom a
+  | .and fs       => externalIrisFormulas fs
+  | .or fs        => externalIrisFormulas fs
+  | .exists _ f   => externalIrisFormula f
+
+def externalIrisFormulas : List Formula → List String
+  | []      => []
+  | f :: fs => externalIrisFormula f ++ externalIrisFormulas fs
+
+end
+
+def externalIrisRule (r : Rule) : List String :=
+  externalIrisAtom r.head ++ (r.body.map externalIrisFormula).getD []
+
+/-- Every built-in IRI a rule set and a goal name, without repeats and
+in first-mention order. -/
+def externalIrisUsed (rules : List Rule) (goal : Formula) : List String :=
+  (rules.flatMap externalIrisRule ++ externalIrisFormula goal).foldl
+    (fun acc i => if acc.contains i then acc else acc ++ [i]) []
+
+/-! An `External` in either position is collected, and a case that
+names none reports none. -/
+#guard externalIrisUsed [] (.atom (.frame (.var "x") (.var "p") (.var "v"))) = []
+
+#guard externalIrisUsed []
+  (.atom (.externalPred "http://www.w3.org/2007/rif-builtin-predicate#is-literal-dateTime"
+            [.var "d"])) =
+  ["http://www.w3.org/2007/rif-builtin-predicate#is-literal-dateTime"]
+
+#guard externalIrisUsed
+  [{ head := .frame (.var "x") (.var "p")
+       (.external "http://www.w3.org/2007/rif-builtin-function#numeric-add"
+          [.var "a", .var "b"]) }]
+  (.atom (.externalPred "http://www.w3.org/2007/rif-builtin-predicate#numeric-equal"
+            [.var "a", .var "b"])) =
+  ["http://www.w3.org/2007/rif-builtin-function#numeric-add",
+   "http://www.w3.org/2007/rif-builtin-predicate#numeric-equal"]
+
 /-! ## Local constants are DOCUMENT-SCOPED (RIF-BLD 3.4)
 
 A constant in `rif:local` means something only inside the document

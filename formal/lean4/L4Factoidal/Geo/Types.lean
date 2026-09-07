@@ -123,6 +123,35 @@ def Geometry.kind : Geometry → Kind
   | .geometryCollection _ => .geometryCollection
   | .empty k              => k
 
+mutual
+
+/-- Structural equality on `Geometry`. `deriving DecidableEq` cannot
+    discharge the self-referencing `List Geometry` field of
+    `geometryCollection` (Lean's automatic handler has no case for a
+    constructor argument of the inductive's own list type), so this is
+    hand-written instead — the ported equivalent of the equality the
+    F* extraction gets for free from OCaml's structural `=`. Mutual
+    with `beqList` for the same reason `BBox.ofGeometry` is mutual with
+    `BBox.ofGeometries` above: the recursion through a sublist is
+    structural but only visible to the termination checker when it is
+    a separate function rather than hidden inside a `List.all`/`map`. -/
+def Geometry.beq : Geometry → Geometry → Bool
+  | .point p1, .point p2 => decide (p1 = p2)
+  | .lineString l1, .lineString l2 => decide (l1 = l2)
+  | .polygon p1, .polygon p2 => decide (p1 = p2)
+  | .multiPoint l1, .multiPoint l2 => decide (l1 = l2)
+  | .multiLineString l1, .multiLineString l2 => decide (l1 = l2)
+  | .multiPolygon l1, .multiPolygon l2 => decide (l1 = l2)
+  | .geometryCollection g1, .geometryCollection g2 => Geometry.beqList g1 g2
+  | .empty k1, .empty k2 => decide (k1 = k2)
+  | _, _ => false
+
+def Geometry.beqList : List Geometry → List Geometry → Bool
+  | [], [] => true
+  | a :: as, b :: bs => Geometry.beq a b && Geometry.beqList as bs
+  | _, _ => false
+end
+
 /-- A parsed `geo:wktLiteral`: the geometry plus its optional CRS IRI.
     `none` = default CRS84. -/
 structure WktValue where

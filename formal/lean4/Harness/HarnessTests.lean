@@ -18,6 +18,7 @@ A wrong answer here is a BUILD ERROR: `#guard` evaluates during
 elaboration.
 -/
 import Harness.Run
+import Harness.Fixtures
 
 open Harness
 
@@ -462,11 +463,27 @@ these definitions should reach even fewer. No `sorry`, no user
 smuggle in). -/
 
 #print axioms parseManifestText
+/-! ## Fixture-path resolution (Harness.Fixtures)
+
+A probe's default fixture path is written ROOT-RELATIVE and tried
+against three prefixes, so the same probe runs from the repository
+root and from `formal/lean4`. -/
+
+#guard Harness.fixtureCandidates "third_party/testing/csvw" =
+  ["third_party/testing/csvw",
+   "../../third_party/testing/csvw",
+   "../../../third_party/testing/csvw"]
+
+#guard (Harness.fixtureCandidates "a").length = 3
+
+#guard (Harness.fixtureCandidates "a").head! = "a"
+
 #print axioms parseManifestTextLenient
 #print axioms extractTestCases
 #print axioms collectList
 #print axioms Score.line
 #print axioms iriToLocalPath
 #print axioms fixtureBase
+#print axioms Harness.fixtureCandidates
 
 end Harness.Tests

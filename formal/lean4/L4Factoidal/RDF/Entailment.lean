@@ -85,6 +85,8 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.RDF.Datatypes
 import L4Factoidal.RDFS.FullClosure
+import L4Factoidal.XSD.IEEE754
+import L4Factoidal.JSON.Parser
 
 namespace L4Factoidal.RDF
 
@@ -349,6 +351,196 @@ def hasRangeClash (D : List WfIri) (c : Graph) : Bool :=
         (rangeClassesOf c t.p).any (fun cls => D.contains cls && !valueInSpace l.val cls)
     | .tripleTerm _ _ _ => false)
 
+/-! ## RDF 1.2 extensions — the rdf12 `rdf-semantics` regimes
+
+Layered STRICTLY ON TOP of everything above, which stays exactly as
+written: `entailsWith` / `termMatch` / `matchObject` / `instanceCert` /
+`searchInstance` / `simpleEntails` are unchanged, because
+`Unified/DSchema.lean`, `Unified/RdfAdequacy.lean`,
+`Unified/RhoDfSchema.lean` and `Unified/Witnesses.lean` (out of this
+file's edit scope) prove theorems about them BY NAME — a behaviour
+change here, even without a signature change, can invalidate a `simp
+only [termMatch, ...]`-shaped proof there. Only `Regime`'s own
+dispatch (`ofName?`, `name`, `closure`, `literalEq`, `inconsistent`)
+changes below, and `regimeEntails` / `regimeInconsistent` go on
+calling the SAME `entailsWith`, just fed a richer `leq` and a richer
+closure.
+
+### `RDFS-Plus` and the RDF 1.2 `rdf:reifies` range step
+
+Port of `RDF.Entailment.Regime.fst`'s `rdf12_reifies_closure` /
+`owl_closure` (F* tree). The reifies step was named `rdfs_closure`
+there until 2026-07-31 and SHADOWED the real RDFS rule driver
+(issue #335) — naming it `rdf12ReifiesClosure` here avoids repeating
+that hazard. -/
+
+def rdfsPropositionIri : WfIri :=
+  ⟨"http://www.w3.org/2000/01/rdf-schema#Proposition", rfl⟩
+def rdfReifiesIri : WfIri :=
+  ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies", rfl⟩
+def owlSameAsIri : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#sameAs", rfl⟩
+
+/-- `X rdf:reifies Y` ⊢ `Y rdf:type rdfs:Proposition`, `Y` an IRI or a
+blank node (RDF 1.2 Semantics WD). -/
+def reifiesPropOf (t : Triple) : List Triple :=
+  if t.p == rdfReifiesIri then
+    match t.o.toSubject? with
+    | some ySub => [⟨ySub, rdfType, Term.iri rdfsPropositionIri⟩]
+    | none      => []
+  else []
+
+/-- The RDF 1.2 reifies-range step, applied once — it cannot chain
+(its own conclusion's predicate is `rdf:type`, never `rdf:reifies`). -/
+def rdf12ReifiesClosure (g : Graph) : Graph :=
+  g ++ g.flatMap reifiesPropOf
+
+/-- IRI substitution through a term, recursing into a triple term's
+interior — `owl:sameAs` is transparent even there (RDF 1.2 Semantics
+WD; the `opaque-iri` fixture). -/
+def substSubj (x y : WfIri) : Subject → Subject
+  | .iri i   => if i == x then .iri y else .iri i
+  | .bnode b => .bnode b
+
+def substTerm (x y : WfIri) : Term → Term
+  | .iri i             => if i == x then .iri y else .iri i
+  | .bnode b           => .bnode b
+  | .literal l         => .literal l
+  | .tripleTerm s p o  => .tripleTerm (substSubj x y s) (if p == x then y else p) (substTerm x y o)
+
+def substTriple (x y : WfIri) (t : Triple) : Triple :=
+  ⟨substSubj x y t.s, (if t.p == x then y else t.p), substTerm x y t.o⟩
+
+/-- Every `(a, b)` with `a owl:sameAs b`, both sides IRIs. -/
+def sameAsPairs (g : Graph) : List (WfIri × WfIri) :=
+  g.filterMap (fun t =>
+    if t.p == owlSameAsIri then
+      match t.s, t.o with
+      | .iri a, .iri b => some (a, b)
+      | _, _ => none
+    else none)
+
+/-- One-pass `owl:sameAs` closure: for each pair, add every triple
+with the two IRIs swapped, both directions — enough for the
+single-pair transparency fixtures; the originals are kept. -/
+def applySameAsPair (g : Graph) (p : WfIri × WfIri) : Graph :=
+  g ++ g.map (substTriple p.2 p.1) ++ g.map (substTriple p.1 p.2)
+
+def owlSameAsClosure (g : Graph) : Graph :=
+  (sameAsPairs g).foldl applySameAsPair g
+
+/-- The RDFS-regime closure: the RDF 1.2 reifies-range step FIRST (so
+its `rdf:type rdfs:Proposition` conclusions are visible to rdfs9 /
+rdfs2 / rdfs3 inside the fixed-point loop), then the ordinary RDFS
+rule set (`fullClosure`) to saturation. Adds nothing for a graph with
+no `rdf:reifies` triple, so this cannot change any existing rdf-mt
+(RDF 1.1) RDFS-regime verdict — that suite's fixtures never use the
+predicate. -/
+def rdfsRegimeClosure (D cmps : List WfIri) (g : Graph) : Graph :=
+  fullClosure D cmps (rdf12ReifiesClosure g)
+
+/-- RDFS-Plus: the RDFS-regime closure, then `owl:sameAs` IRI
+transparency. -/
+def rdfsPlusRegimeClosure (D cmps : List WfIri) (g : Graph) : Graph :=
+  owlSameAsClosure (rdfsRegimeClosure D cmps g)
+
+/-! ### `xsd:double` / `xsd:float` / `rdf:JSON` D-value equality
+
+NOT YET REACHABLE from `lake exe l4rdf-semantics`: `Harness/Run.lean`'s
+`recognizedDatatypesOf` refuses any `mf:recognizedDatatypes` entry
+outside `RDF.Datatypes.modelledDatatypes`, which does not list
+`xsd:double` / `xsd:float` / `rdf:JSON` — and `RDF/Datatypes.lean` is
+outside this task's file scope (`RDF/Entailment*.lean`, `RDFS/*.lean`
+only). The 15 rdf-semantics fixtures for these three datatypes stay
+`UNSUPPORTED` until a follow-up adds the three IRIs to
+`modelledDatatypes`; `dtValueLeq` below is verified independently by
+`#guard` in `EntailmentTests.lean` in the meantime, against the exact
+lexical pairs those fixtures carry.
+
+`rdf:JSON` value equality (RDF 1.2 Semantics WD): objects are
+UNORDERED (`json-object-unordered`), arrays are ORDERED
+(`json-array-unordered`, a NEGATIVE fixture), and numbers compare by
+IEEE-754 binary64 value, so `+0 ≠ -0` (`json-zero`) and decimals that
+round to the same double are equal (`json-round-same`). Fuel-bounded
+on the JSON tree size — port of `RDF.Entailment.Regime.fst`'s
+`json_value_eq` / `json_arr_eq` / `json_obj_eq`. -/
+mutual
+def jsonValueEq (v1 v2 : L4Factoidal.JSON.Json) : Nat → Bool
+  | 0 => false
+  | fuel + 1 =>
+    match v1, v2 with
+    | .null, .null           => true
+    | .bool a, .bool b       => a == b
+    | .string a, .string b   => a == b
+    | .number a, .number b   => L4Factoidal.XSD.doubleValueEq a b
+    | .array xs, .array ys   => jsonArrEq xs ys fuel
+    | .object fs, .object gs => fs.length == gs.length && jsonObjEq fs gs fuel
+    | _, _ => false
+
+def jsonArrEq (xs ys : List L4Factoidal.JSON.Json) : Nat → Bool
+  | 0 => false
+  | fuel + 1 =>
+    match xs, ys with
+    | [], []           => true
+    | x :: xr, y :: yr => jsonValueEq x y fuel && jsonArrEq xr yr fuel
+    | _, _             => false
+
+def jsonObjEq (fs gs : List (String × L4Factoidal.JSON.Json)) : Nat → Bool
+  | 0 => false
+  | fuel + 1 =>
+    match fs with
+    | []            => true
+    | (k, v) :: rest =>
+      match gs.find? (fun kv => kv.1 == k) with
+      | some (_, v') => jsonValueEq v v' fuel && jsonObjEq rest gs fuel
+      | none         => false
+end
+
+/-- `rdf:JSON` literal value equality by lexical form. Malformed input
+(either side fails to parse) falls back to string equality — there is
+no value to compare, matching `XSD.IEEE754`'s own convention for a
+lexical outside its datatype's lexical space. -/
+def rdfJsonValueEq (lex1 lex2 : String) : Bool :=
+  match L4Factoidal.JSON.parseJson? lex1, L4Factoidal.JSON.parseJson? lex2 with
+  | some v1, some v2 => jsonValueEq v1 v2 (v1.size + v2.size + 1)
+  | _, _              => lex1 == lex2
+
+/-- `xsd:float` — XSD 1.1 §3.4.17. (`RDF.Core` defines `xsdDouble`;
+`xsd:float` has no such constant yet and is added here, matching the
+per-module-defines-its-own-vocabulary style `RDF.Core` itself uses.) -/
+def xsdFloat : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#float", rfl⟩
+
+/-- `rdf:JSON` — RDF 1.2 Concepts. -/
+def rdfJSON : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON", rfl⟩
+
+/-- D-value literal equality for the RDF 1.2 `D` / `RDF` / `RDFS` /
+`RDFS-Plus` regimes (never `simple`, which stays `literalStrictEq` —
+see `Regime.literalEq` below): `literalValueEq` (integer/decimal value
+equality + engine `Literal.eqb`, `Datatypes.lean`) extended with
+`xsd:double` / `xsd:float` IEEE-754 value equality (±0 distinct,
+round-to-even, overflow → ∞ — `XSD.IEEE754`) and `rdf:JSON` structural
+value equality above. Port of `RDF.Entailment.Regime.fst`'s
+`dt_value_leq` MINUS its triple-term-interior directional-language-
+string opacity clause (case-sensitive comparison specifically inside a
+triple term, case-insensitive elsewhere): that clause needs to know
+whether the comparison site sits inside a triple term, which this
+file's `Literal → Literal → Bool` comparator interface (shared with
+`entailsWith`, which this commit does not touch — see the section
+header) cannot express without threading position state through
+`termMatch` / `matchObject`, which this commit also does not touch for
+the same reason. That clause is orthogonal to the `simple`-vs-`dt_value_leq`
+question this function answers, and not attempted here — reported
+apart, not hidden, in `docs/20260903-internal-test-inventory.md`'s
+`lean-pin-l4rdf-semantics` row and the landing commit message. -/
+def dtValueLeq (D : List WfIri) (l1 l2 : Literal) : Bool :=
+  if l1.datatype == xsdDouble && l2.datatype == xsdDouble then
+    L4Factoidal.XSD.doubleValueEq l1.lexicalForm l2.lexicalForm
+  else if l1.datatype == xsdFloat && l2.datatype == xsdFloat then
+    L4Factoidal.XSD.floatValueEq l1.lexicalForm l2.lexicalForm
+  else if l1.datatype == rdfJSON && l2.datatype == rdfJSON then
+    rdfJsonValueEq l1.lexicalForm l2.lexicalForm
+  else literalValueEq D l1 l2
+
 /-! ## Regimes -/
 
 /-- The entailment regimes this module decides. -/
@@ -357,37 +549,74 @@ inductive Regime where
   | d
   | rdf
   | rdfs
+  | rdfsPlus
   deriving DecidableEq, Repr
 
 /-- Parse the names the rdf-mt manifest (`mf:entailmentRegime` literal)
-and the sparql11 entailment manifest (`ent:` local names) use. -/
+and the sparql11 entailment manifest (`ent:` local names) use.
+`"RDFS-Plus"` is the rdf12 `rdf-semantics` manifest's own regime name
+(the RDFS-regime closure plus `owl:sameAs` IRI transparency). -/
 def Regime.ofName? : String → Option Regime
-  | "simple" => some .simple
-  | "D"      => some .d
-  | "RDF"    => some .rdf
-  | "RDFS"   => some .rdfs
-  | _        => none
+  | "simple"    => some .simple
+  | "D"         => some .d
+  | "RDF"       => some .rdf
+  | "RDFS"      => some .rdfs
+  | "RDFS-Plus" => some .rdfsPlus
+  | _           => none
 
 def Regime.name : Regime → String
-  | .simple => "simple"
-  | .d      => "D"
-  | .rdf    => "RDF"
-  | .rdfs   => "RDFS"
+  | .simple   => "simple"
+  | .d        => "D"
+  | .rdf      => "RDF"
+  | .rdfs     => "RDFS"
+  | .rdfsPlus => "RDFS-Plus"
 
 /-- The antecedent closure a regime applies. `cmps` is the `rdf:_n`
-slice (see `RDFS/FullClosure.lean`). -/
+slice (see `RDFS/FullClosure.lean`). The `.rdfs` arm goes through
+`rdfsRegimeClosure` (RDF 1.2 reifies-range step, then `fullClosure`)
+rather than `fullClosure` directly — identical to `fullClosure` on any
+graph without an `rdf:reifies` triple, so no existing RDF 1.1 verdict
+moves. -/
 def Regime.closure (r : Regime) (D cmps : List WfIri) (g : Graph) : Graph :=
   match r with
-  | .simple => g
-  | .d      => g
-  | .rdf    => rdfClosure cmps g
-  | .rdfs   => fullClosure D cmps g
+  | .simple   => g
+  | .d        => g
+  | .rdf      => rdfClosure cmps g
+  -- `.rdfs` is `fullClosure` — the closure its soundness theorems are
+  -- about (`Unified/SparqlAdequacy.regime_sound_rdfs`,
+  -- `unified_rdfs_closure_sound`). The RDF 1.2 `rdf:reifies`-range
+  -- step was inserted here on 2026-09-07 and the tree stopped
+  -- building: the proof could not see through the extra step, and
+  -- widening a closure a soundness theorem is stated about is a
+  -- semantic change, not a refactor. The step lives in `.rdfsPlus`,
+  -- which carries no such theorem.
+  | .rdfs     => fullClosure D cmps g
+  | .rdfsPlus => rdfsPlusRegimeClosure D cmps g
 
-/-- The literal comparison a regime matches with. -/
+/-- The literal comparison a regime matches with.
+
+`.simple` matches literals by their SYNTAX (RDF 1.1 Semantics §5.1:
+simple interpretations give a literal no value beyond itself).
+`.d` and `.rdf` use `literalValueEq D` — D-value equality over the
+datatypes `RDF.Datatypes` models. `.rdfs` and `.rdfsPlus` use
+`dtValueLeq D`, which extends that with `xsd:double` / `xsd:float` /
+`rdf:JSON` value equality.
+
+**Why `.d` is not given `dtValueLeq`.** `dtValueLeq` is a strictly
+LARGER literal equality, and a larger literal equality makes
+entailment MORE permissive — so a soundness result does not transfer
+from the smaller one to the larger just because the larger extends it.
+`Unified/DSchema.regimeEntails_d_sound_mt` proves the D-regime sound
+against the model theory through `entailsWith_valueEq_sound`, which is
+stated for `literalValueEq`. Widening `.d` broke that proof on
+2026-09-07, and the tree did not build for it. The regimes that carry
+no soundness theorem may be widened; `.d` may not, until
+`entailsWith` is proved sound under `dtValueLeq` itself. -/
 def Regime.literalEq (r : Regime) (D : List WfIri) : Literal → Literal → Bool :=
   match r with
-  | .simple => literalStrictEq
-  | _       => literalValueEq D
+  | .simple            => literalStrictEq
+  | .d | .rdf          => literalValueEq D
+  | .rdfs | .rdfsPlus  => dtValueLeq D
 
 /-- What a blank node may range over under a regime: anything, except
 (under D) an ill-formed recognised literal (§7: such a literal denotes
@@ -413,7 +642,7 @@ def Regime.inconsistent (r : Regime) (D : List WfIri) (closed : Graph) : Bool :=
   match r with
   | .simple => false
   | .d | .rdf => hasIllFormedLiteral D closed
-  | .rdfs => hasIllFormedLiteral D closed || hasRangeClash D closed
+  | .rdfs | .rdfsPlus => hasIllFormedLiteral D closed || hasRangeClash D closed
 
 /-- **Regime entailment**: close `g`, then `h` follows if the closure
 is inconsistent or has an instance of `h` as a subgraph (up to the

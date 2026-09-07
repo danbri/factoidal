@@ -40,6 +40,7 @@ import L4Factoidal.Syntax.NQuads
 import L4Factoidal.RDF.Isomorphism
 import L4Factoidal.JSON.Parser
 import L4Factoidal.CSVW.Dialect
+import Harness.Fixtures
 
 open L4Factoidal.RML
 open L4Factoidal.RDF
@@ -115,8 +116,8 @@ structure Tally where
 deriving Inhabited
 
 def main (args : List String) : IO UInt32 := do
-  let dir := (args.filter (fun a => !a.startsWith "--")).head?
-    |>.getD "third_party/testing/rml-modules/rml-core/test-cases"
+  let dir ← Harness.fixtureArgOr ((args.filter (fun a => !a.startsWith "--")).head?)
+    "third_party/testing/rml-modules/rml-core/test-cases"
   let dump := (args.find? (fun a => a.startsWith "--dump=")).map
     (fun a => String.ofList (a.toList.drop 7))
   if !(← System.FilePath.isDir dir) then

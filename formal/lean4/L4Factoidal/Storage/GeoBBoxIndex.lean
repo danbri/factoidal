@@ -203,6 +203,39 @@ theorem ne_exterior_of_bne {p : Point} {poly : Polygon}
   simp only [bne_iff_ne, ne_eq] at h
   exact h
 
+/-- A polygon's fragment box contains the head of its exterior ring.
+`fragmentBox_polygon` says the box covers every ring, and the head of
+a list is a member of it. -/
+theorem fragmentBox_contains_extHead {poly : Polygon} {b : BBox} {rep : Point}
+    {tail : List Point} (hb : fragmentBox (.polygon poly) = some b)
+    (hext : poly.ext = rep :: tail) : b.contains rep = true := by
+  obtain ⟨hcov, _⟩ := fragmentBox_polygon hb
+  exact hcov poly.ext (by simp) rep (by rw [hext]; simp)
+
+/-- **`sfWithin` on a polygon pair yields a common point of the two
+boxes.** `sfWithinBase` accepts `poly1` within `poly2` only when the
+boundaries do not cross AND the head of `poly1.ext` is non-exterior to
+`poly2`. That vertex is the witness: `poly1`'s own box covers its
+exterior ring, and `poly2`'s box contains any point non-exterior to
+`poly2`. -/
+theorem common_point_of_polygon_within {poly1 poly2 : Polygon} {b1 b2 : BBox}
+    (h1 : fragmentBox (.polygon poly1) = some b1)
+    (h2 : fragmentBox (.polygon poly2) = some b2)
+    (h : sfWithinBase (.polygon poly1) (.polygon poly2) = some true) :
+    ∃ r, b1.contains r = true ∧ b2.contains r = true := by
+  simp only [sfWithinBase] at h
+  by_cases hx : polygonBoundariesCross poly1 poly2 = true
+  · rw [if_pos hx] at h; simp at h
+  · simp only [Bool.not_eq_true] at hx
+    rw [if_neg (by simp [hx])] at h
+    match hext : poly1.ext with
+    | [] => rw [hext] at h; simp at h
+    | rep :: tail =>
+        rw [hext] at h
+        simp only [Option.some.injEq] at h
+        exact ⟨rep, fragmentBox_contains_extHead h1 hext,
+               polygon_contains_of_ne_exterior h2 (ne_exterior_of_bne (by simpa using h))⟩
+
 /-- **The geometric core.** Two fragment geometries a served predicate accepts
 have a point that both boxes contain. `sfDisjoint` is excluded: it is the one
 predicate whose truth is the ABSENCE of a shared point. -/
@@ -283,15 +316,31 @@ theorem exists_common_point {op : GeoOp} (hop : op ≠ GeoOp.disjoint)
           simp only [GeoOp.fn, sfTouches, isCompound, sfTouchesBase, Option.some.injEq] at h
           exact polygon_contains_of_ne_exterior hg (boundary_ne_exterior (by simpa using h))
   | .polygon poly1, .polygon poly2 =>
-      -- Every base predicate REFUSES a polygon pair, so no row is accepted.
-      exfalso
+      -- `sfWithin` and `sfContains` ACCEPT a polygon pair
+      -- (`Geo/Topology.lean`); the other base predicates still refuse
+      -- one, so those arms stay refutations.
+      --
+      -- The witness for `within` is the polygon's REPRESENTATIVE
+      -- VERTEX, the head of its exterior ring: `sfWithinBase` accepts
+      -- only when that vertex is non-exterior to the other polygon, so
+      -- the other box contains it by
+      -- `polygon_contains_of_ne_exterior`, and its OWN box contains it
+      -- because a fragment box covers every ring of its polygon.
       cases op with
       | disjoint => exact absurd rfl hop
-      | equals => simp [GeoOp.fn, sfEquals, isCompound, sfEqualsBase] at h
-      | within => simp [GeoOp.fn, sfWithin, isCompound, sfWithinBase] at h
-      | contains => simp [GeoOp.fn, sfContains, sfWithin, isCompound, sfWithinBase] at h
-      | intersects => simp [GeoOp.fn, sfIntersects, isCompound, sfIntersectsBase] at h
-      | touches => simp [GeoOp.fn, sfTouches, isCompound, sfTouchesBase] at h
+      | equals =>
+          exfalso; simp [GeoOp.fn, sfEquals, isCompound, sfEqualsBase] at h
+      | touches =>
+          exfalso; simp [GeoOp.fn, sfTouches, isCompound, sfTouchesBase] at h
+      | intersects =>
+          exfalso; simp [GeoOp.fn, sfIntersects, isCompound, sfIntersectsBase] at h
+      | within =>
+          simp only [GeoOp.fn, sfWithin, isCompound, sfWithinBase] at h
+          exact common_point_of_polygon_within hg hq h
+      | contains =>
+          simp only [GeoOp.fn, sfContains, sfWithin, isCompound, sfWithinBase] at h
+          obtain ⟨r, h1, h2⟩ := common_point_of_polygon_within hq hg h
+          exact ⟨r, h2, h1⟩
   | .point _, .lineString _ | .point _, .multiPoint _ | .point _, .multiLineString _
   | .point _, .multiPolygon _ | .point _, .geometryCollection _ | .point _, .empty _
   | .polygon _, .lineString _ | .polygon _, .multiPoint _ | .polygon _, .multiLineString _

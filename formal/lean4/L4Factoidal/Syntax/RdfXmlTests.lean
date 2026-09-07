@@ -793,4 +793,97 @@ def rejectsIts (extra body : String) : Bool :=
     ++ "<http://example.org/r> <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> "
     ++ "<<( <http://example.org/s> <http://example.org/p> \"blah\" )>> .")
 
+/-! ## `[7.2.17] parseTypeLiteralPropertyElt` — the namespace axis
+
+`rdf:XMLLiteral` values are compared under **Exclusive XML
+Canonicalization 1.0** (RDF 1.1 §5.1), so the guards below pin the
+canonical form the W3C `rdf-xml` fixtures require, not the lexical form
+this parser happens to emit. Exc-c14n §3.2: an element renders a
+namespace declaration only for a prefix it VISIBLY UTILIZES — the
+prefix of its own QName or of one of its attributes' QNames — and only
+when no output ancestor already declared that prefix with the same URI.
+
+The two fixture families below state the same values in different
+lexical forms and only agree under that rule:
+  * `xml-canon/test00{1,2}` copy every ambient declaration onto the
+    content's outermost element, including prefixes nothing uses;
+  * `rdfms-xml-literal-namespaces/test00{1,2}` copy only the used ones
+    and push the inherited DEFAULT namespace down to the descendant
+    that uses it.
+Their own headers say the treatment of namespaces that are not visibly
+used is implementation dependent; exc-c14n is what makes the choice
+unobservable. -/
+
+/-- The canonical form of an `rdf:XMLLiteral` lexical form. -/
+def canonStr (s : String) : String := String.ofList (XmlCanon.canonicalize s)
+
+/-- The lexical form of the first `rdf:XMLLiteral` a document produces. -/
+def firstXmlLiteral (docText : String) : Option String :=
+  match RdfXml.parseRdfXml docText (some base) with
+  | .error _ => none
+  | .ok g =>
+    g.findSome? (fun t =>
+      match t.o with
+      | .literal l =>
+          if l.val.datatype == rdfXMLLiteral then some l.val.lexicalForm else none
+      | _ => none)
+
+-- An ambient declaration nothing in the content uses is DROPPED
+-- (`xml-canon/test001`'s lexical form and the empty one denote the same
+-- value).
+#guard canonStr ("<br xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\""
+    ++ " xmlns:eg=\"http://example.org/\"></br>")
+  == "<br></br>"
+
+/-- `rdfms-xml-literal-namespaces/test001.rdf`, verbatim apart from the
+comments the canonical form never sees. -/
+def nsLiteralDoc001 : String :=
+  "<rdf:RDF xmlns=\"http://www.w3.org/1999/xhtml\"\n"
+    ++ "   xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"\n"
+    ++ "   xmlns:html=\"http://NoHTML.example.org\"\n"
+    ++ "   xmlns:my=\"http://my.example.org/\">\n"
+    ++ "   <rdf:Description rdf:ID=\"John_Smith\">\n"
+    ++ "    <my:Name rdf:parseType=\"Literal\">\n"
+    ++ "      <html:h1>\n        <b>John</b>\n      </html:h1>\n   </my:Name>\n"
+    ++ "  </rdf:Description>\n</rdf:RDF>"
+
+/-- The lexical form `rdfms-xml-literal-namespaces/test001.nt` states.
+`html:` is copied because `html:h1` uses it; `b` carries the inherited
+DEFAULT namespace because that is the first element to use it; `rdf:`
+and `my:` are used by nothing in the content and are dropped. -/
+def nsLiteralExpected001 : String :=
+  "\n      <html:h1 xmlns:html=\"http://NoHTML.example.org\">\n"
+    ++ "        <b xmlns=\"http://www.w3.org/1999/xhtml\">John</b>\n"
+    ++ "      </html:h1>\n   "
+
+#guard canonStr nsLiteralExpected001 == nsLiteralExpected001
+#guard (firstXmlLiteral nsLiteralDoc001).map canonStr == some nsLiteralExpected001
+
+/-- `rdfms-xml-literal-namespaces/test002.rdf`, verbatim apart from the
+comments. -/
+def nsLiteralDoc002 : String :=
+  "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n"
+    ++ "<rdf:Description\n"
+    ++ "  xmlns:dc=\"http://purl.org/metadata/dublin_core#\"\n"
+    ++ "  xmlns=\"http://www.w3.org/TR/REC-mathml\"\n"
+    ++ "  rdf:about=\"http://mycorp.example.com/papers/NobelPaper1\">\n\n"
+    ++ "  <dc:Title rdf:parseType=\"Literal\">\n"
+    ++ "    Ramifications of\n       <apply>\n      <power/>\n      <apply>\n"
+    ++ "\t<plus/>\n\t<ci>a</ci>\n\t<ci>b</ci>\n      </apply>\n"
+    ++ "      <cn>2</cn>\n    </apply>\n    to World Peace\n  </dc:Title>\n"
+    ++ "  <dc:Creator>David Hume</dc:Creator>\n</rdf:Description>\n</rdf:RDF>"
+
+/-- The lexical form `rdfms-xml-literal-namespaces/test002.nt` states.
+The inherited DEFAULT namespace is rendered once, on the outermost
+`apply`, and never repeated below it; `dc:` and `rdf:` are dropped;
+`<power/>` expands to `<power></power>`. -/
+def nsLiteralExpected002 : String :=
+  "\n    Ramifications of\n       <apply xmlns=\"http://www.w3.org/TR/REC-mathml\">\n"
+    ++ "      <power></power>\n      <apply>\n\t<plus></plus>\n\t<ci>a</ci>\n"
+    ++ "\t<ci>b</ci>\n      </apply>\n      <cn>2</cn>\n    </apply>\n"
+    ++ "    to World Peace\n  "
+
+#guard canonStr nsLiteralExpected002 == nsLiteralExpected002
+#guard (firstXmlLiteral nsLiteralDoc002).map canonStr == some nsLiteralExpected002
+
 end L4Factoidal.Syntax.RdfXmlTests

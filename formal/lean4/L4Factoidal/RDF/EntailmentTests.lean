@@ -289,6 +289,82 @@ def qpTtGraph : Graph := [⟨.iri exA, exFoo, qpTt⟩]
 -- 2026-08-25 — issue 602's silent double standard).
 #guard hasIllFormedRecognizedLiteral qpTtGraph [xsdInteger]
 
+/-! ## RDF 1.2 rdf-semantics pins (`lake exe l4rdf-semantics`)
+
+One `#guard` per fixture this landing's engine change is meant to
+move, using the fixture's OWN lexical values
+(`third_party/testing/w3c/rdf/rdf12/rdf-semantics/`) so a regression
+here is the same regression the manifest walk would report. -/
+
+def exClark    : WfIri := iri! "http://example.com/ns#clark"
+def exSuperman : WfIri := iri! "http://example.com/ns#superman"
+def exReports  : WfIri := iri! "http://example.com/ns#reports"
+def exCanFly   : WfIri := iri! "http://example.com/ns#can"
+
+/-- An untagged, undirectioned literal of a given datatype — `dtValueLeq`
+takes plain `Literal`s, not `WfLiteral`s, so no well-formedness proof
+is needed here. -/
+def plainLit (lex : String) (dt : WfIri) : Literal :=
+  { lexicalForm := lex, datatype := dt, langTag := none, direction := none }
+
+-- `RDFS-Plus` is a recognised regime name (`opaque-iri`, `opaque-iri-control`).
+#guard Regime.ofName? "RDFS-Plus" == some .rdfsPlus
+
+-- `reifies-range`: `:a rdf:reifies :b` |- `:b rdf:type rdfs:Proposition`.
+#guard reifiesPropOf ⟨.iri exA, rdfReifiesIri, .iri exB⟩ ==
+  [⟨.iri exB, rdfType, .iri rdfsPropositionIri⟩]
+-- Under `.rdfsPlus`, not `.rdfs`: the RDF 1.2 reifies-range step is a
+-- WIDENING of the RDFS closure, and `.rdfs` must stay `fullClosure`,
+-- which `Unified/SparqlAdequacy.regime_sound_rdfs` is stated about.
+#guard regimeEntails .rdfsPlus D0 [⟨.iri exA, rdfReifiesIri, .iri exB⟩]
+  [⟨.iri exB, rdfType, .iri rdfsPropositionIri⟩] == true
+
+-- and NOT under `.rdfs`, which is the plain RDFS closure.
+#guard regimeEntails .rdfs D0 [⟨.iri exA, rdfReifiesIri, .iri exB⟩]
+  [⟨.iri exB, rdfType, .iri rdfsPropositionIri⟩] == false
+
+-- `opaque-iri`: `owl:sameAs` substitutes even inside a triple term's
+-- interior. `:clark :reports <<( :superman :can :fly )>>` +
+-- `:clark owl:sameAs :superman` entails
+-- `:clark :reports <<( :clark :can :fly )>>`.
+def opaqueIriAction : Graph :=
+  [ ⟨.iri exClark, exReports, .tripleTerm (.iri exSuperman) exCanFly (.iri exY)⟩,
+    ⟨.iri exClark, owlSameAsIri, .iri exSuperman⟩ ]
+def opaqueIriResult : Graph :=
+  [ ⟨.iri exClark, exReports, .tripleTerm (.iri exClark) exCanFly (.iri exY)⟩ ]
+#guard regimeEntails .rdfsPlus D0 opaqueIriAction opaqueIriResult == true
+
+-- `float-zero` / `double-zero`: `dtValueLeq` distinguishes ±0 (no
+-- fallback to structural equality masks this — both lexicals ARE
+-- structurally different strings too, so this pin is about VALUE
+-- equality reaching the right answer, not accidentally matching it).
+#guard dtValueLeq D0 (plainLit "0" xsdFloat) (plainLit "-0" xsdFloat) == false
+#guard dtValueLeq D0 (plainLit "0" xsdDouble) (plainLit "-0" xsdDouble) == false
+-- `float-round-same` / `float-round-different`: double-rounding
+-- through binary64 then binary32 (`XSD.IEEE754`'s documented choice).
+#guard dtValueLeq D0 (plainLit "16777206.5" xsdFloat) (plainLit "16777205.5" xsdFloat) == true
+#guard dtValueLeq D0 (plainLit "16777206.5" xsdFloat) (plainLit "16777207.5" xsdFloat) == false
+-- `double-round-same` / `double-round-different`.
+#guard dtValueLeq D0 (plainLit "9007199254740992.5" xsdDouble)
+                     (plainLit "9007199254740991.5" xsdDouble) == true
+#guard dtValueLeq D0 (plainLit "9007199254740990.5" xsdDouble)
+                     (plainLit "9007199254740991.5" xsdDouble) == false
+-- `float-infinity` / `double-infinity`: overflow rounds to the same
+-- signed infinity regardless of exact magnitude beyond the format's range.
+#guard dtValueLeq D0 (plainLit "1E400" xsdFloat) (plainLit "1E401" xsdFloat) == true
+#guard dtValueLeq D0 (plainLit "1E400" xsdDouble) (plainLit "1E401" xsdDouble) == true
+
+-- `json-object-unordered` / `json-array-unordered` (arrays stay
+-- ORDERED — the second pair is a NEGATIVE fixture).
+#guard rdfJsonValueEq "{ \"a\":0, \"b\":1 }" "{ \"b\":1, \"a\":0 }" == true
+#guard rdfJsonValueEq "[ -0, 0 ]" "[ 0, -0 ]" == false
+-- `json-zero`: ±0 distinct in `rdf:JSON` numbers too.
+#guard rdfJsonValueEq "0" "-0" == false
+-- `json-round-same` / `json-round-different`, same values as the
+-- `xsd:double` pins above (the manifest uses the identical lexicals).
+#guard rdfJsonValueEq "9007199254740992.5" "9007199254740991.5" == true
+#guard rdfJsonValueEq "9007199254740990.5" "9007199254740991.5" == false
+
 /-! ## Axiom audit -/
 
 #print axioms L4Factoidal.RDF.simpleEntails_sound
