@@ -1332,9 +1332,17 @@ def clsSvfBotAt (g : Graph) (d : Triple) : Bool :=
   d.p == owlSomeValuesFrom && d.o == Term.iri owlNothing &&
   g.any (fun m => m.p == rdfType && m.o == d.s.toTerm)
 
-/-- The three extension-row verdicts for one driving triple. -/
+/-- **thing-nothing** `[ext]`, driven by the `owl:equivalentClass`
+triple in either direction. -/
+def thingNothingClashAt (_g : Graph) (d : Triple) : Bool :=
+  d.p == owlEquivalentClass &&
+  ((d.s == Subject.iri owlThing && d.o == Term.iri owlNothing) ||
+   (d.s == Subject.iri owlNothing && d.o == Term.iri owlThing))
+
+/-- The four extension-row verdicts for one driving triple. -/
 def extClashRows (g : Graph) (d : Triple) : List Bool :=
-  [ dtRangeClashAt g d, bottomPropClashAt g d, clsSvfBotAt g d ]
+  [ dtRangeClashAt g d, bottomPropClashAt g d, clsSvfBotAt g d,
+    thingNothingClashAt g d ]
 
 /-- Every extension row, driven by one triple. -/
 def extClashFrom (g : Graph) (d : Triple) : Bool :=

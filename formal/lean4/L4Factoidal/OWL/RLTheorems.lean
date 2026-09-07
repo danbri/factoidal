@@ -2330,6 +2330,17 @@ theorem clsSvfBotAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
   exact ExtClash.svfBot (mem_of_parts hd rfl hp ho)
     (mem_of_parts hmg rfl hmo.1 hmo.2)
 
+/-- **thing-nothing** `[ext]`. -/
+theorem thingNothingClashAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : thingNothingClashAt g d = true) : ExtClash g := by
+  unfold thingNothingClashAt at h
+  rw [Bool.and_eq_true, Bool.or_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+    beq_iff_eq, beq_iff_eq, beq_iff_eq, beq_iff_eq, beq_iff_eq] at h
+  obtain ⟨hp, hso⟩ := h
+  rcases hso with ⟨hs, ho⟩ | ⟨hs, ho⟩
+  · exact ExtClash.thingNothing (Or.inl (mem_of_parts hd hs hp ho))
+  · exact ExtClash.thingNothing (Or.inr (mem_of_parts hd hs hp ho))
+
 /-- Every extension-row verdict for one driving triple is a real
 `ExtClash`. -/
 theorem extClashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
@@ -2337,10 +2348,11 @@ theorem extClashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
   simp only [extClashFrom, List.any_eq_true, extClashRows, List.mem_cons,
     List.not_mem_nil, or_false] at h
   obtain ⟨b, hb, hv⟩ := h
-  rcases hb with rfl | rfl | rfl
+  rcases hb with rfl | rfl | rfl | rfl
   · exact dtRangeClashAt_sound hd hv
   · exact bottomPropClashAt_sound hd hv
   · exact clsSvfBotAt_sound hd hv
+  · exact thingNothingClashAt_sound hd hv
 
 /-- **Extension-clash soundness.** -/
 theorem detectClashExt_sound {g : Graph} (h : detectClashExt g = true) :

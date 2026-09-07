@@ -1044,8 +1044,14 @@ def clsSvfBotAtS (s : Store) (d : Triple) : Bool :=
   d.p == owlSomeValuesFrom && d.o == Term.iri owlNothing &&
   s.graph.any (fun m => m.p == rdfType && m.o == d.s.toTerm)
 
+def thingNothingClashAtS (_s : Store) (d : Triple) : Bool :=
+  d.p == owlEquivalentClass &&
+  ((d.s == Subject.iri owlThing && d.o == Term.iri owlNothing) ||
+   (d.s == Subject.iri owlNothing && d.o == Term.iri owlThing))
+
 def extClashRowsS (s : Store) (d : Triple) : List Bool :=
-  [ dtRangeClashAtS s d, bottomPropClashAtS s d, clsSvfBotAtS s d ]
+  [ dtRangeClashAtS s d, bottomPropClashAtS s d, clsSvfBotAtS s d,
+    thingNothingClashAtS s d ]
 
 def extClashFromS (s : Store) (d : Triple) : Bool :=
   (extClashRowsS s d).any (fun b => b)

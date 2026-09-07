@@ -2089,6 +2089,21 @@ inductive ExtClash (g : Graph) : Prop where
   | svfBot {r u : Subject}
       (hsvf : (⟨r, owlSomeValuesFrom, Term.iri owlNothing⟩ : Triple) ∈ g)
       (hmem : (⟨u, rdfType, r.toTerm⟩ : Triple) ∈ g) : ExtClash g
+  /-- **thing-nothing** `[ext]` — `owl:Thing owl:equivalentClass
+  owl:Nothing`, in either direction. Sound because the OWL 2 Direct
+  Semantics interpretation domain is NON-EMPTY (§2.1: "a nonempty set
+  ΔI"), `owl:Thing` denotes all of it and `owl:Nothing` denotes the
+  empty set, so the two classes cannot be equivalent.
+
+  Keyed on `owl:equivalentClass` and NOT on `rdfs:subClassOf`:
+  `owl:Nothing rdfs:subClassOf owl:Thing` is a theorem the closure emits
+  for every class, so a subClassOf-keyed row would have to check the
+  direction and would clash on a consequence of scm-cls. -/
+  | thingNothing
+      (h : (⟨Subject.iri owlThing, owlEquivalentClass,
+              Term.iri owlNothing⟩ : Triple) ∈ g
+           ∨ (⟨Subject.iri owlNothing, owlEquivalentClass,
+                Term.iri owlThing⟩ : Triple) ∈ g) : ExtClash g
 
 /-- `ExtClash` is monotone in the graph, as `Clash` is. -/
 theorem ExtClash.mono {g h : Graph} (hsub : ∀ t, t ∈ g → t ∈ h)
@@ -2098,5 +2113,7 @@ theorem ExtClash.mono {g h : Graph} (hsub : ∀ t, t ∈ g → t ∈ h)
   | bottomProp a b c d e =>
       exact ExtClash.bottomProp (hsub _ a) b (hsub _ c) d (hsub _ e)
   | svfBot a b => exact ExtClash.svfBot (hsub _ a) (hsub _ b)
+  | thingNothing h =>
+      exact ExtClash.thingNothing (h.imp (hsub _) (hsub _))
 
 end L4Factoidal.OWL.RL

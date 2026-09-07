@@ -569,6 +569,20 @@ private def litInt (v : String) : Term :=
    ⟨bnodeR, owlSomeValuesFrom, O cA⟩,
    ⟨S iX, rdfType, bnodeR.toTerm⟩]
 
+-- thing-nothing: owl:Thing equivalent to owl:Nothing, either direction.
+#guard detectClashExt
+  [⟨S owlThing, owlEquivalentClass, O owlNothing⟩]
+#guard detectClashExt
+  [⟨S owlNothing, owlEquivalentClass, O owlThing⟩]
+-- ... and NOT on owl:Nothing rdfs:subClassOf owl:Thing, which the
+-- closure emits for every class and which is a theorem, not a clash.
+#guard !detectClashExt
+  [⟨S owlNothing, rdfsSubClassOf, O owlThing⟩,
+   ⟨S owlThing, rdfsSubClassOf, O owlThing⟩]
+-- ... and not on an ordinary equivalence with either constant.
+#guard !detectClashExt [⟨S cA, owlEquivalentClass, O owlNothing⟩]
+#guard !detectClashExt [⟨S owlThing, owlEquivalentClass, O cA⟩]
+
 -- The table decision is UNCHANGED by all three: none of these graphs
 -- is an OWL 2 RL Table 8 clash.
 #guard !detectClash
@@ -581,6 +595,7 @@ private def litInt (v : String) : Term :=
   [⟨bnodeR, owlOnProperty, O pP⟩,
    ⟨bnodeR, owlSomeValuesFrom, O owlNothing⟩,
    ⟨S iX, rdfType, bnodeR.toTerm⟩]
+#guard !detectClash [⟨S owlThing, owlEquivalentClass, O owlNothing⟩]
 
 -- The store and index mirrors agree with the list decision.
 #guard detectClashPlusI (Index.ofGraph

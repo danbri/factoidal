@@ -1560,6 +1560,13 @@ def RlNCondSvfBot : Prop :=
     ¬ (i.iext (i.iIri owlSomeValuesFrom) r (i.iIri owlNothing) ∧
        icext i u r)
 
+/-- **thing-nothing** `[ext]`. The OWL 2 Direct Semantics domain is
+non-empty, so the class of everything and the class of nothing are
+never equivalent. -/
+def RlNCondThingNothing : Prop :=
+  ¬ i.iext (i.iIri owlEquivalentClass) (i.iIri owlThing) (i.iIri owlNothing) ∧
+  ¬ i.iext (i.iIri owlEquivalentClass) (i.iIri owlNothing) (i.iIri owlThing)
+
 end ClashConditions
 
 /-- **The clash-condition bundle**: one field per `Clash` row. -/
@@ -1588,6 +1595,7 @@ structure RlExtClashConditions (i : Interp) : Prop where
   dtRange : RlNCondDtRange i
   bottomProp : RlNCondBottomProp i
   svfBot : RlNCondSvfBot i
+  thingNothing : RlNCondThingNothing i
 
 /-! ## Truth of the collection premises under the conditions -/
 
@@ -2390,5 +2398,13 @@ theorem rl_ext_clash_holds_false {i : Interp} (hec : RlExtClashConditions i)
       have t2 := hA _ hmem
       simp only [TripleHolds, denotTerm, denot_toTerm] at t1 t2
       exact hec.svfBot _ _ ⟨t1, t2⟩
+  | thingNothing h =>
+      rcases h with h | h
+      · have t := hA _ h
+        simp only [TripleHolds, denotTerm, denotSubject] at t
+        exact hec.thingNothing.1 t
+      · have t := hA _ h
+        simp only [TripleHolds, denotTerm, denotSubject] at t
+        exact hec.thingNothing.2 t
 
 end L4Factoidal.OWL.RL
