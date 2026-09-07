@@ -199,34 +199,41 @@ from, so putting it in `Clash` would make that theorem unprovable —
 beyond it. `detectClash` and `detectClash_sound` are byte-for-byte
 unchanged.
 
-## 7. Status — 2026-09-07, after C1
+## 7. Status — 2026-09-07, after C1 and the thing-nothing row
 
 **Scores.** Full probe, default RL regime:
 
 ```
-                              before            after
+                              start of day       now
 profile-RL.rdf                120 pass,  6 fail  121 pass,  5 fail (of 126)
-profile-EL.rdf                105 pass, 15 fail  110 pass, 10 fail (of 121, 1 skip)
-profile-QL.rdf                 82 pass,  5 fail   82 pass,  5 fail (of  87)
+profile-EL.rdf                105 pass, 15 fail  111 pass,  9 fail (of 121, 1 skip)
+profile-QL.rdf                 82 pass,  5 fail   83 pass,  4 fail (of  87)
 type-positive-entailment.rdf  333 pass, 75 fail  333 pass, 75 fail (of 412, 4 unsupported)
-type-inconsistency.rdf         38 pass, 89 fail   43 pass, 84 fail (of 128, 1 skip)
+type-inconsistency.rdf         38 pass, 89 fail   44 pass, 83 fail (of 128, 1 skip)
 type-consistency.rdf          503 pass, 76 fail  503 pass, 76 fail (of 583, 4 unsupported)
-TOTAL                        1181 pass,266 fail 1192 pass,255 fail (of 1457)
+TOTAL                        1181 pass,266 fail 1195 pass,252 fail (of 1457)
 ```
 
-Every ConsistencyTest section is unmoved (76, 72, 58, 204, 351 pass,
-with 0, 0, 0, 0 and 1 fail before and after), so the three new rows
-fired on no premise the corpus asserts consistent — the check that
+Every ConsistencyTest section is unmoved throughout (76, 72, 58, 204 and
+351 pass, with 0, 0, 0, 0 and 1 fail before and after), so the four new
+rows fired on no premise the corpus asserts consistent — the check that
 matters for a clash row.
 
 **F\*-pass / Lean-fail gap, profile catalogs (RL against RL):**
-26 units over 17 ids **before**, **20 units over 12 ids after**.
+26 units over 17 ids at the start of the day, **18 units over 11 ids
+now**.
 
-**Closed.** C1 — the three clash rows, commit
-`owl: three sound extension clash rows`. Six units: `string-integer-clash`
-(RL, EL), `New-Feature-BottomDataProperty-001` (EL),
-`New-Feature-BottomObjectProperty-001` (EL), `WebOnt-Restriction-001`
-(EL), `WebOnt-Restriction-002` (EL).
+**Closed.**
+
+* **C1 — three clash rows** (`dt-range`, bottom-property existential,
+  `cls-svf-bot`), commit `owl: three sound extension clash rows`. Six
+  units: `string-integer-clash` (RL, EL),
+  `New-Feature-BottomDataProperty-001` (EL),
+  `New-Feature-BottomObjectProperty-001` (EL),
+  `WebOnt-Restriction-001` (EL), `WebOnt-Restriction-002` (EL).
+* **Part of C5 — `owl:Thing ≡ owl:Nothing`**, commit `owl: a fourth
+  extension clash row`. Three units over one id: `WebOnt-Thing-003`
+  (EL, QL, and `type-inconsistency`).
 
 **Open.**
 
@@ -243,15 +250,40 @@ matters for a clash row.
   `comp_*` rules from § 3c. F\*'s own banner says folding that layer
   into the shared fixpoint took DL `type-inconsistency.rdf` from
   124 pass, 3 fail to 63 pass, 64 fail, so it must be a separate
-  PE-only pass here too, not a closure extension.
+  PE-only pass here too, never a closure extension.
 * **C4 — annotation carry-over**, 3 units: `WebOnt-I4.6-005-Direct`
-  (RL, EL, QL). Missing conclusion triple
-  `C2 rdfs:comment "An example class."^^xsd:string`.
-* **C5 — `owl:hasKey` and `owl:Thing ≡ owl:Nothing`**, 4 units:
-  `New-Feature-Keys-001` (EL PE), `New-Feature-Keys-002` (EL Inc),
-  `WebOnt-Thing-003` (EL, QL Inc).
-* **The `type-*` catalogs under `--dl`** remain measured only for two
-  of three (§ 2b); `type-consistency.rdf --dl` has no figure.
+  (RL, EL, QL). NOT an annotation-filter gap: the Lean
+  `OWL/DirectMappingFilter.lean` and the F\*
+  `OWL.DirectMapping.Filter.fst` are the same function, and neither
+  excludes the built-in `rdfs:comment`. F\* passes it through
+  `owl_rule_named_equivalent_class_to_sameAs`
+  (`OWL.Closure.fsti` line 2848): a GUARDED, DIRECT-semantics-gated
+  rule emitting `C owl:sameAs D` from `C owl:equivalentClass D` when
+  both are named classes and one carries some other property
+  assertion, after which `eq-rep-s` copies the annotation across. The
+  guard is load-bearing — `WebOnt-I4.6-004` is a NegativeEntailmentTest
+  that a bare `equivalentClass` must NOT entail `sameAs` — and the rule
+  must be gated on `test:semantics=DIRECT`, because the RDF-Based
+  sibling `WebOnt-I4.6-005` has an identical premise and conclusion and
+  expects the OPPOSITE verdict.
+* **Rest of C5 — `owl:hasKey`**, 3 units: `New-Feature-Keys-001`
+  (EL PE, 2 units incl. `type-*`), `New-Feature-Keys-002` (EL Inc).
+  The Lean `prp-key` row exists; it does not fire because the premise
+  writes `HasKey(owl:Thing () (:hasSSN))` and never types `:Peter` /
+  `:Peter_Griffin` as `owl:Thing`, which no RL rule supplies.
+* **The `type-*` catalogs under `--dl`** are measured for two of
+  three (§ 2b); `type-consistency.rdf --dl` has no figure.
+
+**Why C2, C3, C4 and the rest of C5 were not attempted here.** All four
+need a new DERIVATION row, not a clash row. A clash row touches
+`ExtClash`, one decision function, one store mirror, one soundness
+lemma and one condition field. A derivation row touches `Derives`,
+`conclusionsList`, the indexed store rows, `RlConditions`, the Herbrand
+model discharge in `RLHerbrand.rlHerb_conditions` AND the schema bridge
+in `Unified/OwlRlSchema.owlRlSchema_conditions` — and C4 additionally
+needs a `test:semantics` mode threaded through the closure. That is a
+different size of job and was not safe to start inside the remaining
+window.
 
 **Where a published result looks wrong.**
 
@@ -260,10 +292,20 @@ matters for a clash row.
    Lean port states the disjointness rather than inferring it, and
    `OWL/RLTests.lean` pins `p rdfs:range xsd:nonNegativeInteger` with
    `x p "5"^^xsd:int` as NOT a clash.
-2. `docs/claude-rules/current-state.md` § the 2026-07-30 OWL update
-   prints `type-consistency` Consistency as 337 pass, 15 fail (out of
-   352). The committed log
+2. `docs/claude-rules/current-state.md`'s 2026-07-30 OWL update prints
+   `type-consistency` Consistency as 337 pass, 15 fail (out of 352).
+   The committed log
    `formal/fstar/ocaml-output/owl_type_consistency_results.log` line
    1226 says 340 pass, 12 fail (out of 352), 12 unsupported. The log is
    the measurement; the prose has drifted by three tests.
-
+3. `WebOnt-I4.6-005-Direct` is a W3C-sanctioned VACUOUS entailment and
+   is not a defect. Its `test:description` says "Under the direct
+   semantics, test WebOnt-I4.6-005 must be treated as a positive
+   entailment", and its conclusion ontology contains exactly one
+   annotation axiom, which carries no Direct-Semantics content. Any
+   engine passing it passes it by having no logical conclusion left to
+   check. Recorded here because the `measuring-inference` rule against
+   passing by deriving nothing would otherwise flag the fix as one, and
+   because the F\* engine reaches the same verdict through a real
+   derivation (the `sameAs` rule above) rather than through the empty
+   conclusion.
