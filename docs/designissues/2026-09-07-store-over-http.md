@@ -161,7 +161,24 @@ What the bucket must answer, and does:
 | `Access-Control-Max-Age: 86400` | one preflight per object per day, not per request |
 | `Accept-Ranges: bytes` | the range path, when the engine starts naming windows |
 
-Two operational points the measurements turned up.
+**The allowance is origin-specific, and that has a consequence.** Measured
+by hand:
+
+```text
+Origin: https://danbri.github.io   -> 206, Access-Control-Allow-Origin: https://danbri.github.io
+                                          Access-Control-Expose-Headers: Content-Length,Content-Range,ETag,Accept-Ranges
+Origin: http://127.0.0.1:8941      -> 206, and NO Access-Control-* header at all
+```
+
+The bytes come back either way; the browser is what refuses them. So the
+deployed hub page can read the bucket and a LOCAL PREVIEW of the same page
+cannot — confirmed in a real browser, where the live twin served from
+`127.0.0.1` gets `blocked by CORS policy: No 'Access-Control-Allow-Origin'
+header is present`. Add the preview origin to the bucket's rule, or accept
+that the R2 preset is a deployed-page-only path. This is why the
+notebook's default target is a store served from the site itself.
+
+Two more operational points the measurements turned up.
 
 **`r2.dev` is rate-limited by Cloudflare.** It is a development URL, not a
 production one. The notebook keeps at most four requests in flight for
@@ -208,6 +225,15 @@ Those numbers are not prose. `tests/hub/post54_test.mjs` parses the table
 out of the notebook's own markdown and fails if a measured request count
 or byte count disagrees with it.
 
+**Confirmed in a real browser**, not only under Node. The built page was
+served under its real `/factoidal/` path prefix and driven headless: the
+cell mounts with no `.observable-cell-error`, no console error and no
+horizontal overflow at a 390-CSS-pixel viewport, and "Run all nine"
+produced the same nine plan modes, object counts, byte counts and row
+counts as the table above, in 77 ms to 1,073 ms per question. Every
+artifact was digest-checked in the tab with `crypto.subtle` before it
+reached the module.
+
 ## Measured: the skosall generation in R2
 
 662 named graphs, 219,530,671 quads, 18,642,130,989 bytes of blocks in
@@ -224,8 +250,18 @@ or byte count disagrees with it.
 
 The network is 0.8 percent of that. Decoding a 25.5 MB manifest of 36,106
 entries takes nine minutes inside the engine, and it is paid per
-operation: `storeQueryPlan` decodes it again, and `storeQuery` a third
-time, so one question costs roughly half an hour.
+operation, so one question costs a multiple of it.
+
+`storeQueryPlan` is worse than `storeManifestInspect`, not equal to it. A
+single bound-predicate, bound-graph query
+(`SELECT ?c ?l WHERE { GRAPH <http://aims.fao.org/aos/agrovoc> { ?c
+skos:prefLabel ?l } } LIMIT 20`) was left in `storeQueryPlan` on the same
+manifest for **55 minutes without returning** and was then stopped. The
+plan does more per entry than the inspect does — it reads the query's
+patterns against 36,106 entries' predicate declarations and subject and
+object zone maps — and nothing about that work is amortised. A query
+against this generation was therefore never observed to complete at all,
+by any route.
 
 Before that, it does not fit in the default call stack. `openStoreOverHttp`
 against this generation on plain `node` fails with `Maximum call stack size

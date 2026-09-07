@@ -411,11 +411,13 @@ laptop on 2026-09-07:
 | **`storeManifestInspect`** | **538 s** |
 
 The transport is not the problem. Decoding a 25.5 MB manifest of 36,106
-entries takes nine minutes inside the engine, and both `storeQueryPlan`
-and `storeQuery` decode it again, so one question against this generation
-costs roughly half an hour. It also overflows the default call stack
-before it gets that far: Node clears it with a worker thread and a 64 MB
-stack, and a browser tab has no such control.
+entries takes nine minutes inside the engine, and every operation decodes
+it again. `storeQueryPlan` is worse still: one bound-predicate query was
+left in it for 55 minutes without returning, so a query against this
+generation has not been observed to complete by any route. It also
+overflows the default call stack before it gets that far — Node clears
+that with a worker thread and a 64 MB stack, and a browser tab has no
+such control.
 
 So the R2 preset in the cell above is real, reachable and correct, and it
 is not usable from a tab today. What has to change is in the engine, not
@@ -441,12 +443,14 @@ in the page:
 Until then the honest description of the R2 store is: published, verified,
 range-readable, and opened by a program with a big stack and patience.
 
-Two smaller things a reader will meet. Cloudflare rate-limits the
+Three smaller things a reader will meet. Cloudflare rate-limits the
 `r2.dev` development URL, so the notebook keeps at most four requests in
-flight and a custom domain is what a real deployment uses. And this page,
-like every hub page, has a strict twin and a live twin: the strict page's
+flight and a custom domain is what a real deployment uses. This page, like
+every hub page, has a strict twin and a live twin: the strict page's
 `connect-src 'self'` allows the bundled sample store and refuses R2, and
-the live twin allows both.
+the live twin allows both. And the bucket's cross-origin rule names
+`https://danbri.github.io` exactly, so the deployed page can read it and a
+local preview of the same page cannot.
 
 ## Reproducing it
 
