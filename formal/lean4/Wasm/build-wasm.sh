@@ -249,8 +249,15 @@ for s in $RT_SRCS; do
   [ -s "$RT_OBJ/$s.o" ] && continue
   em++ -std=c++20 $CFLAGS -I "$RT_SRC" $UVINC -c "$RT_SRC/runtime/$s.cpp" -o "$RT_OBJ/$s.o"
 done
+# L4_WASM_MIMALLOC_CFLAGS is the hook for a MEASURING build. mimalloc's
+# commit and requested-byte counters are only maintained when it is
+# compiled with MI_STAT above zero, so a memory investigation needs
+# `L4_WASM_MIMALLOC_CFLAGS=-DMI_STAT=2` (with its own work dir, because
+# the object is cached). The shipping module is built with the hook
+# unset; see docs/designissues/2026-09-07-wasm-packer-memory.md.
 if [ ! -s "$RT_OBJ/mimalloc_static.o" ]; then
   emcc -O3 -DNDEBUG -DMI_SECURE=0 -Wno-unused-function \
+       ${L4_WASM_MIMALLOC_CFLAGS:-} \
        -I "$WORK/mimalloc/include" -c "$WORK/mimalloc/src/static.c" \
        -o "$RT_OBJ/mimalloc_static.o"
 fi
@@ -327,7 +334,7 @@ em++ -O3 -DNDEBUG -fwasm-exceptions \
   "$LIB_OBJ"/*.o "$CORE_OBJ"/*.o "$RT_OBJ"/*.o \
   -o "$WORK/l4factoidal.mjs" \
   -sMODULARIZE=1 -sEXPORT_ES6=1 \
-  -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_call_c,_l4_call_blob_c,_l4_call_blob_io_c,_l4_free_result,_l4_free_blob,_l4_collect,_l4_mem_report_c,_malloc,_free \
+  -sEXPORTED_FUNCTIONS=_l4_init,_l4_version_c,_l4_bgp_query_c,_l4_call_c,_l4_call_blob_c,_l4_call_blob_io_c,_l4_free_result,_l4_free_blob,_l4_collect,_l4_mem_report_c,_l4_mem_stats_c,_l4_heap_tags_c,_l4_mi_option_set,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,getValue,setValue \
   -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB \
   -sSTACK_SIZE=8MB \

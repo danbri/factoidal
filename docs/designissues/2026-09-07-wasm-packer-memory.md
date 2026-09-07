@@ -132,36 +132,203 @@ Read together:
 5. `datasetOpen` + `datasetClose` also fails to converge, so whatever
    this is, it is not confined to the packer.
 
-## 5. Where this leaves the cause
+## 5. What section 4 was read to mean, and why that reading was wrong
 
-Not the host, not `Pack.lean`'s operation sequence, not the handle
-table, not the publication batch, and not a general inability of the
-module to reuse freed memory. What remains is the interaction between
-the packer's allocation pattern and the module's allocator — Lean's
-runtime built with `LEAN_MIMALLOC`, mimalloc 2.2.7 on Emscripten, whose
-operating-system layer is emmalloc and whose `_mi_prim_decommit` is a
-no-op — and the measurements above cannot separate bytes in use from
-bytes held free.
+The first reading of the table above was that the packer's allocation
+pattern meets the module's allocator badly: Lean built with
+`LEAN_MIMALLOC`, mimalloc 2.2.7 on Emscripten, whose operating-system
+layer is emmalloc and whose `_mi_prim_decommit` is a no-op. That
+reading was recorded here as the remaining candidate. **It is wrong,
+and the measurement in section 6 replaces it.** The error is worth
+naming, because the same shape can recur: linear memory is an upper
+bound, and every figure available at the time was an upper bound, so
+"the allocator holds it" was the only hypothesis the instruments could
+not refute. Nothing said it was true.
 
-**The cause is not closed.** The next instrument is in the tree and is
-not yet measured: `l4_mem_report_c` and `l4_collect` in
-`formal/lean4/Wasm/l4_shim.c`, exported by `build-wasm.sh`. The first
-answers mimalloc's own committed and in-use totals, which splits the
-curve into bytes in use and bytes held free; the second asks mimalloc
-to release what it holds free, which is the candidate repair if the
-split says the allocator holds it. Both compile for wasm32 and both
-symbols are present in the mimalloc object; NEITHER HAS BEEN RUN, because
-the module was not relinked in this landing.
+## 6. Bytes in use, measured
 
-Two conditions on that measurement:
+Three instruments were added to the module and run (a measuring build,
+`L4_WASM_MIMALLOC_CFLAGS=-DMI_STAT=2`, in its own work dir):
 
-* mimalloc's commit counters are maintained only when it is compiled
-  with `MI_STAT` above zero. `build-wasm.sh` does not set it — the cost
-  of setting it is not measured — so a measuring build must add
-  `-DMI_STAT=2` to the mimalloc compile line and must not ship.
-* The probe drives one pack repeatedly in ONE module instance and
-  reports the heap, the mimalloc totals, and the totals again after
-  `l4_collect(1)`. The repeat table in section 4 is what it extends.
+* `l4_mem_stats_c` returns mimalloc's own statistics as text. Its
+  `total:` row is bytes allocated and not yet freed; its `reserved:`
+  row is memory mimalloc holds from emmalloc. Together they split the
+  linear-memory curve into bytes in use and bytes held free.
+* `l4_heap_tags_c` visits every live mimalloc block and reads its
+  eighth byte, which is the `m_tag` field of `lean_object`'s header. It
+  answers WHAT the live bytes are.
+* `l4_mi_option_set` sets one mimalloc option at run time, so an
+  allocator experiment needs no rebuild (the module has no environment,
+  so `MIMALLOC_*` variables cannot reach it).
 
-Raising `-sMAXIMUM_MEMORY` moves the panic and does not touch any line
-of this record.
+The input for section 6 is a 100 MB line-aligned prefix of
+`prefix700t.nq` (617,158 lines) and a 20 MB prefix of the same file
+(109,804 rows). Section 3's prefix has 587,430 lines, so the two sets of
+figures are not directly comparable line for line; every comparison
+below is within section 6.
+
+`l4_mem_report_c` and `l4_collect`, added in the previous landing, were
+also run. `l4_collect(1)` does not move the heap by one byte, in any
+configuration; `l4_mem_report_c`'s `commit` figure is not a measure of
+live bytes, because `_mi_prim_decommit` is a no-op and the counter
+drifts (it reported 83 MiB while 385 MiB was allocated). Read `total:`,
+not `commit`.
+
+### 6.1 In use is flat within a pass and rises across passes
+
+100 MB AGROVOC prefix, IBK5, N-Quads, 64 KiB feeds, per-feed trace:
+
+| ingest offset | in use (`total:` current) | mimalloc reserved | linear memory |
+|---|---|---|---|
+| 65,536 | 9.8 MiB | 32.0 MiB | 55,443,456 |
+| 10,551,296 | 82.8 MiB | 138.0 MiB | 191,365,120 |
+| 26,279,936 | 82.8 MiB | 138.0 MiB | 191,365,120 |
+| 47,251,456 | 82.8 MiB | 224.0 MiB | 330,694,656 |
+| 68,222,976 | 82.8 MiB | 320.0 MiB | 396,886,016 |
+| 99,680,256 | 82.8 MiB | 448.0 MiB | 571,604,992 |
+
+The `committed` figure in that trace is flat at 82.8 MiB, and taking it
+for "bytes in use" is what made the allocator look guilty. The `total:`
+row over the whole pack says otherwise: **peak in use 449.3 MiB,
+385.0 MiB still in use after `packClose`**, against 512.0 MiB reserved.
+The allocator's overhead over live bytes is 1.33x. It is not the cause.
+
+### 6.2 The same pack repeated raises the LIVE bytes every time
+
+20 MB prefix, one module instance, the same file each repetition:
+
+| repetition | in use, after `packClose` | reserved | linear memory |
+|---|---|---|---|
+| 1 | 70.1 MiB | 160.0 MiB | 229,638,144 |
+| 2 | 134.9 MiB | 224.0 MiB | 330,694,656 |
+| 3 | 199.8 MiB | 320.0 MiB | 476,315,648 |
+| 4 | 264.6 MiB | 394.0 MiB | 571,604,992 |
+| 5 | 329.5 MiB | 458.0 MiB | 675,348,480 |
+
+64.8 MiB of live bytes per pack of the same 20 MB file, after the pack
+handle is closed and erased from the table. Reserved tracks it at about
+1.4x. This is retention, not fragmentation.
+
+### 6.3 What is retained: `mpz`, 15.6 objects per quad
+
+`l4_heap_tags_c` after each of three repeated 20 MB packs:
+
+| repetition | tag 250 (`mpz`) | tag 0, 8-byte blocks | everything else |
+|---|---|---|---|
+| start | 2,522 / 0.1 MiB | 5,348 / 0.1 MiB | 5.1 MiB |
+| 1 | 1,709,007 / 52.2 MiB | 1,649,313 / 12.6 MiB | 5.3 MiB |
+| 2 | 3,415,492 / 104.2 MiB | 3,293,286 / 25.2 MiB | 5.3 MiB |
+| 3 | 5,121,977 / 156.3 MiB | 4,937,258 / 37.7 MiB | 5.3 MiB |
+
+Every other tag is constant. The retained bytes are arbitrary-precision
+integers and one small block each, 1,709,007 of them per 109,804-row
+pack — 15.6 per quad — growing by exactly that count per repetition.
+
+This is a wasm32-only object. The module is GMP-free and 32-bit, so a
+Lean `Nat` at or above 2^30 is a heap `mpz`; on a 64-bit build the same
+value is an unboxed scalar and no object exists. That is why the native
+route through the same operations (`lake exe l4wasm-cli pack`, 195 MB
+peak) does not show it.
+
+### 6.4 Where it is, and where it is not
+
+| route, repeated in one module instance | live bytes |
+|---|---|
+| `parseToDatasetJson`, 3 MB, four times | 5.3 MiB, unchanged |
+| `datasetOpen` + `datasetClose`, 3 MB, four times | 5.3 MiB, unchanged |
+| the pack's PRE-PASS alone, 20 MB | 5.2 MiB, unchanged |
+| the pack's ingest pass, 20 MB | 5.2 -> 70.7 MiB |
+| `packFinish`, then `packClose` | 70.8 -> 70.1 MiB |
+
+So the retention is in the parse-and-publish pass, and only there. The
+pre-pass digests the same bytes with the same SHA-256 block fold and
+retains nothing, which excludes the digest. `packClose` releases
+0.7 MiB of the 65 MiB, which excludes the pack handle and its state:
+whatever holds these objects is not in `packTable`. Publication timing
+is irrelevant — a batch of 999,999,999,999 bytes, which publishes
+nothing until the end, and a batch of 4 MiB give the identical count of
+1,709,007 — which excludes the open runs and the artifact queue.
+
+`datasetOpen` + `datasetClose` still raises the heap on every
+repetition (236 -> 409 -> 490 -> 589 MB) while its live bytes stay at
+5.3 MiB. THAT one is fragmentation, and it is a different problem from
+the packer's.
+
+### 6.5 The allocator options, one at a time
+
+Each is one module instance, five repeated 20 MB packs, set through
+`l4_mi_option_set` before the first pack (`mi_option_t` ordinals from
+mimalloc 2.2.7's `include/mimalloc.h`):
+
+| option | linear memory after 5 repetitions | verdict |
+|---|---|---|
+| (default) | 675,348,480 | — |
+| `arena_reserve` = 512 MiB | 599,851,008 after 1 | no better |
+| `arena_reserve` = 1 GiB | 591,462,400 (flat from the 4th) | 12% better |
+| `arena_reserve` = 2 GiB | 688,586,752 (flat from the 1st) | worse |
+| `arena_reserve` = 4 GiB | 4 GiB ceiling by the 3rd | fails |
+| `arena_reserve` = 0 | 4 GiB ceiling by the 3rd | fails |
+| `disallow_arena_alloc` = 1 | 4 GiB ceiling by the 3rd | fails |
+| `purge_delay` = 0 | 675,348,480 | no change |
+| `l4_collect(1)` after each | 675,348,480 | no change |
+
+Two readings. Turning the arena layer OFF is much worse, not better:
+without it every 4 MiB mimalloc segment is an `emmalloc_memalign` call
+and the fragmentation is catastrophic, so the arena layer is carrying
+this build rather than harming it. And purging cannot help, because
+`_mi_prim_decommit` is a no-op by construction. **No allocator option
+is a fix, and none is shipped.**
+
+## 7. The 700 MB reproduction does not reproduce
+
+Section 1 records that the module stops with `INTERNAL PANIC: out of
+memory` 436 MB into the ingest pass, at 1.99 GB. Re-run on 2026-09-07
+against `SCRATCH/oom/prefix700t.nq` (734,003,186 bytes), IBK5, 64 MiB
+batch, through `npm/factoidal/bin/factoidal.mjs pack`, it does not:
+
+| module | verdict | peak RSS | wall clock |
+|---|---|---|---|
+| the module committed before this landing | completes | 1,099,366,400 | 576 s |
+| the module this landing commits | completes | 1,062,567,936 | 517 s |
+
+Both write 4,016 artifacts, 518,790,565 bytes, 4,282,588 rows — the
+same generation. The 3% difference between them is build-to-build; this
+landing makes no behaviour change and does not claim it.
+
+So the reported panic is not a property of the committed module on this
+input. Either the input differed (section 1 names `prefix700.nq`, and
+only `prefix700t.nq` is now on disk), or the invocation did, or the
+module measured was not the committed one. **A reproduction that no
+longer reproduces is a fact about the record, not about the engine**:
+until the failing invocation is recovered, the panic is unconfirmed and
+the working figure for a 700 MB pack is 1.06 GB of peak resident set,
+against the native packer's 257 MB.
+
+That leaves the retention in section 6 measured and real, and its
+consequence smaller than assumed: the packer costs 4.1x the native
+packer on this input rather than failing on it. The live bytes are also
+sublinear in the source over the whole file — 385 MiB after 100 MB
+would project to 2.7 GB at 700 MB, and the run peaks at 1.06 GB — so
+the per-quad figure in section 6.3 is a rate at the head of the file,
+not a constant.
+
+## 8. What is open
+
+The cause is localised and not closed. What is known: 15.6 `mpz`
+objects per quad, allocated in the pack's parse-and-publish pass, are
+never freed; they are not reachable from the pack handle, since closing
+it releases 1% of them; and the standalone N-Quads parse
+(`parseToDatasetJson`, a different, non-streaming parser) does not
+produce them. What is not known is which allocation site they come from
+and what holds them. The next measurement is a bisect inside the ingest
+pass — the streaming N-Quads fold
+(`L4Factoidal.Syntax.NQuadsStreaming.feedChunkC`) against the run
+accumulation and block encoding — with `l4_heap_tags_c` after each,
+which the shipping module exports.
+
+The gate stands at 1.06 GB of peak resident set for the 700 MB prefix,
+against a target of 514 MB (twice the native packer) and a floor of
+1 GB. It is missed by 6% and follows the repair in section 6, not an
+allocator setting.
+
+`-sMAXIMUM_MEMORY` moves the panic and touches no line of this record.
