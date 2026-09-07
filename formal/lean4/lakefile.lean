@@ -301,6 +301,11 @@ extern_lib libl4exthost pkg := do
 
 @[default_target] lean_exe «l4mathml» where root := `Harness.MathMLRun
 
+-- The "Think of a Number" parity battery: the checks of the F*
+-- consumer test tests/unit/toan_tests.ml, run against the Lean
+-- Math/* and MathML/Core functions. Zero arguments.
+@[default_target] lean_exe «l4toan» where root := `Harness.ToanRun
+
 @[default_target] lean_exe «l4xmlconf» where root := `Harness.XmlConfRun
 
 @[default_target] lean_exe «l4shex» where root := `Harness.ShExRun
