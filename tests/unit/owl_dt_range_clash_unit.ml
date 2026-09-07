@@ -92,6 +92,24 @@ let () =
   check ~name:"unrecognised-datatype does NOT clash"
     (not (clashes (xsd "integer") "x" (ex "MyType")));
 
+  (* --- Why case 5 is a regression and not a hypothetical. ---
+     `xsd_is_subtype` is the predicate the old check used and is still
+     defined in OWL.Closure. Cases 10 and 11 pin the two facts that
+     made the old check fire on case 5: neither of the two overlapping
+     datatypes reaches the other in `xsd_hierarchy_edges`, so the old
+     test `not (lit.datatype = d_range) && not (xsd_is_subtype ...)`
+     was true in both directions. Case 12 pins that a genuine subtype
+     pair DOES reach, so the predicate itself is not simply broken --
+     the tree is correct as a subtype tree and wrong as a
+     disjointness test. Without these three the suite would not show
+     that case 5 ever failed, only that it passes now. *)
+  check ~name:"old predicate: int does not reach nonNegativeInteger"
+    (not (xsd_is_subtype (xsd "int") (xsd "nonNegativeInteger")));
+  check ~name:"old predicate: nonNegativeInteger does not reach int"
+    (not (xsd_is_subtype (xsd "nonNegativeInteger") (xsd "int")));
+  check ~name:"old predicate: byte does reach integer"
+    (xsd_is_subtype (xsd "byte") (xsd "integer"));
+
   Printf.printf "owl_dt_range_clash_unit: %d pass, %d fail (out of %d)\n"
     !passed !failed (!passed + !failed);
   if !failed <> 0 then exit 1

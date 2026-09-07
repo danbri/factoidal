@@ -239,10 +239,18 @@ this check does not compute. A withheld verdict is sound; the
 over-firing was not. The check still fires on `string-integer-clash`,
 the InconsistencyTest it was written for.
 
-**Unit fixture:** `tests/unit/owl_dt_range_clash_unit.ml` — nine cases,
-four that must still clash across families, five that must not
-(including the `xsd:int` / `xsd:nonNegativeInteger` regression in both
-directions).
+**Unit fixture:** `tests/unit/owl_dt_range_clash_unit.ml`, 12 pass,
+0 fail (out of 12) — four cross-family pairs that must still clash,
+five overlapping or identical pairs that must not (including the
+`xsd:int` / `xsd:nonNegativeInteger` regression in both directions),
+and three that pin the OLD predicate's behaviour. Those last three
+matter for anti-pattern 28: `xsd_is_subtype` is still defined, so the
+suite asserts directly that neither of the two overlapping datatypes
+reaches the other — which is exactly what made the old check fire —
+and that a genuine subtype pair does reach, so the tree is shown
+correct as a subtype tree and wrong as a disjointness test. Without
+them the suite would show only that the case passes now, not that it
+ever failed.
 
 ## 5. Defect (c): the witness closure is in F\*, but unproved.
 
