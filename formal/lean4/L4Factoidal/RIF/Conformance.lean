@@ -59,7 +59,7 @@ namespace L4Factoidal.RIF.Conformance
 
 open L4Factoidal.RIF.Xml (tagIs firstChildWithLocalName childElementsOnly
   collectLeafText trimWs findAttr elementChildren isAtomTag isBodyWrapperTag
-  findFirstNamed parseTermHost isIriTypeMarker rifNs)
+  findFirstNamed parseTermHost isIriTypeMarker rifNs elementText trimWs)
 
 def conformanceFuel : Nat := 1000
 
@@ -626,6 +626,101 @@ def frameFactSeparationViolation (imported : RDF.Graph) : Atom → Bool
 def owlDirectSeparationInconsistent (rules : List Rule) (imported : RDF.Graph) : Bool :=
   (rules.flatMap ruleAtoms).any (frameFactSeparationViolation imported)
 
+/-! ## 6. The import-rejection verdict
+
+The five conditions above decide, together, whether a document's
+IMPORTS may be combined at all (RIF-RDF/OWL Combination §Import
+validity). They are applied as a DISJUNCTION over the conditions
+rather than through a per-fixture dispatch table: each disjunct is a
+specification condition in its own right, so a document that violates
+any one of them is rejected whatever its file is called.
+
+Narrowness, stated: this is not an OWL 2 DL well-formedness or
+consistency checker. `importedGraphIsEmpty` and
+`owlDirectSeparationInconsistent` catch the criteria their fixtures
+name and nothing more, and that limit is recorded at each definition
+above. What this function adds is only the combination.
+
+The imported documents reach it already loaded — RIF-XML imports as
+parsed XML roots (the role analysis needs the raw tree, because an
+imported document's rule head may be a shape the rule parser refuses),
+RDF imports as graphs. Reading them off disk is the runner's job. -/
+
+/-- One `<directive><Import>` site: where it points, and under which
+entailment regime. -/
+structure ImportSite where
+  location : Option String
+  profile  : Option String
+deriving Repr
+
+/-- `<Import><location>…</location><profile>…</profile></Import>`. Both
+children are optional: a bare `<location>` means the Simple profile by
+the combination spec's default, and this records the absence rather
+than inventing the default, so a caller can tell the two apart. -/
+def parseImportElement (n : XML.Node) : ImportSite :=
+  match n with
+  | .element _ _ children =>
+      { location := (firstChildWithLocalName "location" children).map (trimWs ∘ elementText)
+      , profile  := (firstChildWithLocalName "profile" children).map (trimWs ∘ elementText) }
+  | _ => { location := none, profile := none }
+
+/-- Every import site of a document, in document order. Directives are
+direct children of `Document` ([RIF Core] §Document), so this is a
+single level of children and needs no fuel. -/
+def documentImports (root : XML.Node) : List ImportSite :=
+  match root with
+  | .element _ _ children =>
+      (childElementsOnly children).filterMap (fun c =>
+        match c with
+        | .element tag _ dchildren =>
+            if tagIs "directive" tag then
+              (firstChildWithLocalName "Import" dchildren).map parseImportElement
+            else if tagIs "Import" tag then
+              some (parseImportElement c)
+            else none
+        | _ => none)
+  | _ => []
+
+/-- The declared profiles, in document order. The WHOLE set matters:
+an incomparable PAIR is what rejects, so the first profile alone
+cannot decide. -/
+def documentImportProfiles (root : XML.Node) : List String :=
+  (documentImports root).filterMap (·.profile)
+
+def owlDirectProfile : String := "http://www.w3.org/ns/entailment/OWL-Direct"
+
+/-- What a runner must supply: the importing document's XML tree, the
+XML trees of its RIF-XML imports, and the graphs of its RDF imports. -/
+structure ImportClosure where
+  root             : XML.Node
+  importedRifRoots : List XML.Node := []
+  importedGraphs   : List RDF.Graph := []
+
+/-- `some reason` when the import combination must be REJECTED, naming
+the condition; `none` when none of the checked conditions fires.
+
+`none` is not a certificate of validity — it says these checks found
+no violation, which is the same claim the F\* runner makes. -/
+def importRejectionReason (c : ImportClosure) : Option String :=
+  let profiles := documentImportProfiles c.root
+  let owlDirect := profiles.contains owlDirectProfile
+  if hasIncomparableProfilePair profiles then
+    some "two declared import profiles have no defined ordering, so the imports have no highest profile"
+  else if owlDirect && hasVariableFrameProperty c.root conformanceFuel then
+    some "under OWL-Direct a Frame slot property must be a constant, and one is a variable"
+  else if owlDirect && c.importedGraphs.any importedGraphIsEmpty then
+    some "under OWL-Direct an empty imported graph is not recognisable as an OWL 2 DL ontology"
+  else if c.importedGraphs.any graphHasForbiddenRifDatatype then
+    some "an imported graph carries a rif:iri or rdf:PlainLiteral typed literal, which RIF-RDF Combination does not permit"
+  else if multipleContextViolation (c.root :: c.importedRifRoots) then
+    some "a constant is used both as a positional-atom predicate and as a frame slot property across the imports closure"
+  else
+    none
+
+/-- The verdict as a Bool, for a caller that only needs to score. -/
+def importRejected (c : ImportClosure) : Bool :=
+  (importRejectionReason c).isSome
+
 /-! ## Pinned behaviour
 
 A conformance checker that answered `true` for everything would pass
@@ -698,6 +793,49 @@ private def equalChain : String :=
     "</Implies></formula></Forall></sentence>")
 
 #guard checkDocumentSafeText equalChain
+
+/-! Import sites are read off the directives, and the WHOLE profile
+list is returned — an incomparable pair is invisible to a check that
+looks only at the first. -/
+private def twoProfileDoc : String :=
+  "<Document xmlns=\"http://www.w3.org/2007/rif#\">" ++
+  "<directive><Import><location>urn:a</location>" ++
+  "<profile>http://www.w3.org/ns/entailment/Simple</profile></Import></directive>" ++
+  "<directive><Import><location>urn:b</location>" ++
+  "<profile>http://www.w3.org/ns/entailment/OWL-Direct</profile></Import></directive>" ++
+  "</Document>"
+
+private def rootOfText (input : String) : Option XML.Node :=
+  match XML.parseXML input with
+  | .error _ => none
+  | .ok doc  => some doc.root
+
+#guard (rootOfText twoProfileDoc).isSome
+#guard ((rootOfText twoProfileDoc).map documentImportProfiles).getD [] =
+  ["http://www.w3.org/ns/entailment/Simple",
+   "http://www.w3.org/ns/entailment/OWL-Direct"]
+#guard ((rootOfText twoProfileDoc).map (fun r => (documentImports r).length)).getD 0 = 2
+
+/-! Rejected for the incomparable pair — and a document whose two
+imports sit on the SAME comparable chain is NOT rejected, so the check
+is not answering `reject` unconditionally. -/
+#guard ((rootOfText twoProfileDoc).map (fun r => importRejected { root := r })).getD false
+
+private def comparableProfileDoc : String :=
+  "<Document xmlns=\"http://www.w3.org/2007/rif#\">" ++
+  "<directive><Import><location>urn:a</location>" ++
+  "<profile>http://www.w3.org/ns/entailment/Simple</profile></Import></directive>" ++
+  "<directive><Import><location>urn:b</location>" ++
+  "<profile>http://www.w3.org/ns/entailment/RDFS</profile></Import></directive>" ++
+  "</Document>"
+
+#guard !(((rootOfText comparableProfileDoc).map
+          (fun r => importRejected { root := r })).getD true)
+
+/-! A document with no imports at all is not rejected. -/
+#guard !(((rootOfText (wrapGroup ("<sentence>" ++ atomStr "p" (cc "a" ++ cc "b") ++
+                                  "</sentence>"))).map
+          (fun r => importRejected { root := r })).getD true)
 
 /-! Local-name extraction, both directions. -/
 #guard localNameOfIri "http://www.w3.org/2007/rif-builtin-predicate#iri-string"

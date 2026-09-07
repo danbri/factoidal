@@ -33,6 +33,8 @@ alternative is calling a well-formed conclusion unparsable.
 Usage: `lake exe l4rif [suite-dir]`
 -/
 import L4Factoidal.RIF.Engine
+import L4Factoidal.RIF.Conformance
+import L4Factoidal.XML.Parser
 import L4Factoidal.RIF.Ps
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.RDFS.Closure
@@ -41,6 +43,7 @@ import Harness.Fixtures
 open L4Factoidal.RIF
 open L4Factoidal.RDF
 open L4Factoidal.Syntax
+open L4Factoidal.XML (parseXML)
 
 /-- An RDF term as a RIF constant. RIF-RDF Compatibility §3: an IRI is
     a constant in `rif:iri`, a typed literal is one in its datatype,
@@ -93,6 +96,51 @@ def turtlePrefixes (src : String) : List (String × String) :=
       | _ => none
     else none)
 
+/-- The last `/`-separated segment of an import location. The corpus
+publishes every import under a W3C URL whose last segment is the local
+file's stem, so `.../RDF_Combination_Invalid_Profiles_1-import001`
+resolves against `RDF_Combination_Invalid_Profiles_1-import001.ttl` or
+`…-import001.rif` beside the case. -/
+def lastSegment (url : String) : String :=
+  match (url.splitOn "/").reverse with
+  | seg :: _ => seg
+  | []       => url
+
+/-- The local file STEM an import location names. Some locations carry
+the extension (`…-import001.rif`) and some do not (`…-import001`), so
+a known extension is stripped and the candidate names are rebuilt from
+the stem. -/
+def importStem (url : String) : String :=
+  let seg := lastSegment url
+  let chop := fun (x : String) => String.ofList (x.toList.take (x.length - 4))
+  if seg.endsWith ".rif" || seg.endsWith ".ttl" || seg.endsWith ".rdf" then chop seg
+  else seg
+
+/-- Load a document's imports closure: RIF-XML imports as XML trees,
+RDF imports as graphs. Reading files is the runner's job; the verdict
+is `L4Factoidal.RIF.Conformance.importRejectionReason`'s. -/
+def loadImportClosure (cdir : String) (files : List String) (root : L4Factoidal.XML.Node)
+    : IO L4Factoidal.RIF.Conformance.ImportClosure := do
+  let mut rifRoots : List L4Factoidal.XML.Node := []
+  let mut graphs : List (List Triple) := []
+  for site in L4Factoidal.RIF.Conformance.documentImports root do
+    match site.location with
+    | none     => pure ()
+    | some loc =>
+      let stem := importStem loc
+      for f in files do
+        if f == stem ++ ".rif" then
+          let src ← IO.FS.readFile (cdir ++ "/" ++ f)
+          match parseXML src with
+          | .ok d    => rifRoots := rifRoots ++ [d.root]
+          | .error _ => pure ()
+        else if f == stem ++ ".ttl" then
+          let src ← IO.FS.readFile (cdir ++ "/" ++ f)
+          match parseTurtle src none with
+          | .ok g    => graphs := graphs ++ [g]
+          | .error _ => graphs := graphs ++ [[]]
+  return { root := root, importedRifRoots := rifRoots, importedGraphs := graphs }
+
 structure Tally where
   pass      : Nat := 0
   fail      : Nat := 0
@@ -125,7 +173,26 @@ def main (args : List String) : IO UInt32 := do
             | none   => pure none
             | some f => (IO.FS.readFile (cdir ++ "/" ++ f)).map some
           if kind == "ImportRejectionTest" then
-            t := { t with skipped := t.skipped + 1 }
+            -- The import combination must be REJECTED. The verdict is
+            -- the library's disjunction of the RIF-RDF/OWL Combination
+            -- import-validity conditions; the runner only resolves the
+            -- imported files off disk.
+            match ← readOne "-input.rif" with
+            | none => t := { t with notRead := t.notRead + 1 }
+            | some raw =>
+              match parseXML raw with
+              | .error _ =>
+                  t := { t with notRead := t.notRead + 1 }
+                  IO.println s!"NOT READ {kind}/{name}: input.rif did not parse as XML"
+              | .ok d =>
+                let closure ← loadImportClosure cdir files d.root
+                match L4Factoidal.RIF.Conformance.importRejectionReason closure with
+                | some why =>
+                    t := { t with pass := t.pass + 1 }
+                    if verbose then IO.println s!"PASS {kind}/{name}: {why}"
+                | none =>
+                    t := { t with fail := t.fail + 1 }
+                    IO.println s!"FAIL {kind}/{name}: this import combination must be rejected, and the checked conditions found no violation"
           else if kind == "PositiveSyntaxTest" || kind == "NegativeSyntaxTest" then
             match ← readOne "-input.rifps" with
             | none => t := { t with notRead := t.notRead + 1 }
@@ -224,8 +291,8 @@ def main (args : List String) : IO UInt32 := do
   IO.println s!"UNDECIDED: {t.undecided} cases — a built-in outside this port's slice"
   IO.println s!"  blocked a rule, or the chain reached its round bound"
   IO.println s!"NOT READ: {t.notRead} cases"
-  IO.println s!"IMPORT REJECTION: {t.skipped} cases, not attempted — this port has no"
-  IO.println "  import profile checker and makes no claim about them"
+  if t.skipped > 0 then
+    IO.println s!"IMPORT REJECTION: {t.skipped} cases, not attempted"
   IO.println ""
   IO.println "An UNDECIDED case is counted apart, never as a pass and never as a"
   IO.println "failure: a closure computed without a rule is not the closure, and"
