@@ -27,6 +27,93 @@ shim is not a semantic replacement.
 - A recursive map over a small, bounded metadata list may be appropriate. Do
   not generalise that exception to data-sized lists, graph rows, or tokens.
 
+## Input-proportional recursion is a stack bug, and the scanner is the gate
+
+A function that recurses once per element of an input the CALLER sizes -- a
+list, a string, a byte stream, a declared entry count -- costs one C stack
+frame per element. On the host that is a slow path; in the wasm module it is a
+crash, because the stack we ship there is far smaller. The rule:
+
+> **Recursion over an input-proportional structure is tail-recursive or
+> worklist-driven. Never rely on a bigger stack.**
+
+### How to tell, by tool and not by reading
+
+Lean compiles a DIRECT TAIL self-call into a jump: the emitted C function opens
+with `_start:` and the call becomes `goto _start;`. Any self-call that survives
+as a real C call is a real stack frame. Read that from the compiled output:
+
+    lake build                                   # in formal/lean4/
+    python3 tools/lean-tail-recursion-audit.py   # counts, areas, ranked table
+    python3 tools/lean-tail-recursion-audit.py --json /tmp/t.json
+    python3 tools/lean-tail-recursion-audit.py --gate   # CI form
+
+`--gate` fails when a NEW input-proportional recursion appears that is not in
+`tools/lean-tail-recursion-allow.txt`. Removing a line from that file is the
+goal; adding one needs a reason in the commit message. Read the script's
+docstring for what the method cannot see -- inlining, specialisation, and
+recursion that runs through an unspecialised core combinator.
+
+The first measurement, 2026-09-07: 833 self-recursions without a loop, 268
+mutual cycles; 598 input-length, 42 input-depth. Per area (length): JSON-LD 71,
+Shardborough 66, SPARQL 65, SHACL/ShEx 36, OWL 33, RDF parsers 18, XPath/XSLT
+18, XML 11.
+
+### The repair: `csimp`, not a rewrite of the specification
+
+Keep the specification's shape -- every theorem is stated about it -- and add a
+tail-recursive twin plus a proved `@[csimp]` replacement. The code generator
+then emits the twin and the proofs are untouched. `csimp` replaces one CONSTANT
+by another, so the accumulator's empty start needs its own `def`:
+
+```lean
+def decodeEntriesTR (version : Nat) : Nat -> List UInt8 -> List Entry ->
+    Option (List Entry × List UInt8)
+  | 0, bytes, acc => some (acc.reverse, bytes)
+  | n + 1, bytes, acc =>
+      match decodeEntry version bytes with
+      | none => none
+      | some (entry, after) => decodeEntriesTR version n after (entry :: acc)
+
+theorem decodeEntriesTR_eq (version : Nat) : ∀ n bytes acc,
+    decodeEntriesTR version n bytes acc =
+      (decodeEntries version n bytes).map (fun p => (acc.reverse ++ p.1, p.2)) := ...
+
+def decodeEntriesImpl (version n : Nat) (bytes : List UInt8) := decodeEntriesTR version n bytes []
+
+@[csimp] theorem decodeEntries_eq_decodeEntriesImpl :
+    @decodeEntries = @decodeEntriesImpl := ...
+```
+
+`@[implemented_by]` reaches the same runtime effect with no proof. It is an
+unchecked assumption about the two functions agreeing, and this tree does not
+take those. Use `csimp`.
+
+### What it cost
+
+* <https://github.com/danbri/factoidal/issues/670>. `ShardManifest.decodeEntries`
+  recursed once per manifest entry. The published SKOS manifest declares 36,106,
+  so a browser tab answered "Maximum call stack size exceeded", and
+  `storeQueryPlan` never returned.
+* <https://github.com/danbri/factoidal/issues/673>. Recorded as "XML entity
+  expansion is not tail-recursive, near 2,000 sequential entities". The scanner
+  plus a bisection said otherwise: `expandEntityValue` was already loop-compiled
+  except for its nested-entity dive, and the ceiling tracked DOCUMENT LENGTH,
+  not entity count. 500 plain sibling elements and 12,000 characters of ordinary
+  text both died, with no entity present. The recursion was
+  `normalizeLineEndings`, the section 2.11 line-ending pre-pass, which walks
+  every character of the document before parsing starts. The wasm RDF/XML
+  parser's ceiling was about 7,000 characters of any input.
+* The 36,106-entry manifest took 322 s natively. That number did NOT come from
+  the recursion: `/usr/bin/sample` put every sampled frame in
+  `ShardManifest.valid` -> `uniqueArtifactKeys` -> `List.eraseDupsBy`, a
+  quadratic duplicate scan over about 150,000 artifact keys. Measure before
+  attributing a cost to the defect you happen to be holding.
+
+`tests/stack/run.sh` is the behavioural half of this: deep inputs on two
+routes, the committed wasm module in Node and the native CLI. Add a case there
+whenever you repair one of these.
+
 ## Factoidal RDF/block ingestion
 
 The parsing layers and their entry points are recorded in
