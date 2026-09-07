@@ -108,6 +108,12 @@ module.exports = function(eleventyConfig) {
   eleventyConfig.addPassthroughCopy({
     "../npm/factoidal/sample-store": "web/hub/assets/store/sample"
   });
+  // The live twin (hub-live/) resolves the same relative path from its own
+  // directory, so it needs its own copy; without it the twin's sample
+  // target answered 404 (found on the deployed site, 2026-09-07).
+  eleventyConfig.addPassthroughCopy({
+    "../npm/factoidal/sample-store": "web/hub-live/assets/store/sample"
+  });
 
   // Pass-through the project-owned reactive-cell compiler
   // (docs/web/hub/reactive-cells.mjs) to /vendor/hub/reactive-cells.mjs

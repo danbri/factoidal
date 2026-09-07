@@ -115,9 +115,17 @@ async function get (url, options = {}) {
   try {
     response = await fetch(url, { headers, ...(options.init ?? {}) })
   } catch (cause) {
+    // fetch throws before any response exists: the host is unreachable, the
+    // connection dropped, the page's connect-src forbids the origin, or a
+    // cross-origin server did not answer the preflight. The browser does not
+    // say which, so the message names the possibilities and carries the
+    // cause instead of asserting one of them.
+    const why = cause && cause.message ? ` (${cause.message})` : ''
     throw new HttpStoreError('FETCH_FAILED',
-      `${url} could not be fetched. A cross-origin read needs the bucket to ` +
-      'answer the browser preflight; see the design note.', { url, cause })
+      `${url} could not be fetched${why}: no response arrived. Either the ` +
+      'server is unreachable, the page forbids that origin (connect-src), or ' +
+      'a cross-origin server did not answer the preflight; see the design note.',
+      { url, cause })
   }
   if (!response.ok) {
     throw new HttpStoreError('NOT_OK',
