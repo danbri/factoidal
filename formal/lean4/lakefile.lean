@@ -423,3 +423,9 @@ extern_lib libl4exthost pkg := do
 -- tests/unit/xpath_tests.ml (Harness/XPathRun.lean), scored against
 -- tests/unit/xpath_cases.json.
 @[default_target] lean_exe «l4xpath» where root := `Harness.XPathRun
+
+-- One XMPP client connection on stdin and stdout (RFC 6120 / RFC 6121).
+-- The carrier forks one of these per connection and terminates TLS
+-- outside it (XEP-0368 direct TLS); see deploy/fly/xmpp/. Every
+-- protocol decision is in L4Factoidal/XMPP/Server.lean, not here.
+@[default_target] lean_exe «l4xmpp-serve» where root := `Harness.XmppServe
