@@ -424,34 +424,210 @@ def artifactKeyList (entries : List Entry) : List ArtifactKey :=
       (entry.literalIndex.map ArtifactRef.key).toList ++
       (entry.geoIndex.map ArtifactRef.key).toList
 
-/-- The same decision as `uniqueArtifactKeys`, in `n log n` instead of `n²`.
+/-- The key order the fast scan sorts by: byte-lexicographic on the key's own
+    `String` value, non-strict.  Named so the sort-route proof can unfold it. -/
+def keyLeBool (a b : ArtifactKey) : Bool := decide (a.value ≤ b.value)
 
-    `uniqueArtifactKeys` asks `keys.length == keys.eraseDups.length`, and
-    `List.eraseDups` compares every surviving key against every earlier one.
-    The published SKOS manifest carries about 150,000 artifact keys, so that
-    is on the order of 10^10 String comparisons: `/usr/bin/sample` puts every
-    sampled frame of a 300-second `storeManifestInspect` inside it.
+/-- The specification's duplicate check, over an arbitrary key list.
+    `uniqueArtifactKeys` and `sbm10ManifestFields` both decide "no key twice"
+    this way, and `List.eraseDups` compares every surviving key against every
+    earlier one -- quadratic. -/
+def noDupKeys (keys : List ArtifactKey) : Bool :=
+  keys.length == keys.eraseDups.length
 
-    NOT YET WIRED. `@[csimp]` requires
-      `uniqueArtifactKeys = uniqueArtifactKeysFast`
-    and Lean 4.33.1 core does not carry the three lemmas that proof needs:
-    `List.eraseDups` has no `Sublist` lemma, no `Nodup` lemma, and no
-    `eraseDups_eq_self_of_nodup`. `exact?` finds none of the three. The route
-    is: prove `l.eraseDups.Sublist l` by induction on `eraseDups_cons` with
-    `filter_sublist`; get `l.eraseDups = l` from `Sublist.eq_of_length`;
-    conclude `l.length == l.eraseDups.length ↔ l.Nodup`; carry `Nodup` across
-    `mergeSort` with the core lemmas `mergeSort_perm` and `Perm.nodup_iff`
-    (both present); finish with sortedness against `adjacentDistinctKeys`.
-    Until that closes, `valid` keeps calling the quadratic specification --
-    an unproved replacement inside a validity predicate would let a manifest
-    that the specification rejects be accepted, which is the one failure this
-    check exists to prevent. -/
+/-- The same decision as `noDupKeys`, in `n log n` instead of `n²`: sort by
+    `keyLeBool`, then check only adjacent pairs.
+
+    The published SKOS manifest carries about 150,000 artifact keys, so the
+    `eraseDups` scan is on the order of 10^10 String comparisons:
+    `/usr/bin/sample` puts every sampled frame of a 300-second
+    `storeManifestInspect` inside it.  Measured 2026-09-07 on the real 25.5 MB
+    manifest: 300 s with the list check, 36.6 s with this one.
+
+    WIRED via `@[csimp]` (`noDupKeys_eq_noDupKeysFast` and
+    `uniqueArtifactKeys_eq_uniqueArtifactKeysFast` below).  The code generator
+    calls this at runtime; `valid` still reads the quadratic specification and
+    every proof about `valid` is unchanged.  The equality is
+    `noDupKeysFast_eq`, proved through the `keyLeBool`-sorted
+    adjacent-distinct-decides-Nodup bridge -- antisymmetry of `String.le`
+    (`String.le_antisymm`, present in Lean 4.33.1 core) is what rules out a
+    repeat hiding inside a run of equal keys. -/
 def noDupKeysFast (keys : List ArtifactKey) : Bool :=
-  adjacentDistinctKeys (keys.mergeSort (fun a b => decide (a.value ≤ b.value)))
+  adjacentDistinctKeys (keys.mergeSort keyLeBool)
 
 /-- The `n log n` twin of `uniqueArtifactKeys`. -/
 def uniqueArtifactKeysFast (entries : List Entry) : Bool :=
   noDupKeysFast (artifactKeyList entries)
+
+/-! ### The equality proof that makes the fast scan a sound `@[csimp]` target
+
+Five lemmas, list-generic where they can be.  Lean 4.33.1 core carries no
+bridge between `List.eraseDups` and `List.Nodup`, so lemmas 1-3 build it by a
+length-bounded induction (`eraseDups_cons` recurses into a `filter` of the
+tail, not the tail, so structural recursion does not apply); lemma 4 turns it
+into the list duplicate check; lemma 5 carries `Nodup` across the sort. -/
+
+/-- LEMMA 1. `List.eraseDups` keeps a sublist of its input. -/
+theorem eraseDups_sublist {α : Type} [BEq α] [LawfulBEq α] :
+    ∀ (n : Nat) (l : List α), l.length ≤ n → l.eraseDups.Sublist l := by
+  intro n
+  induction n with
+  | zero => intro l h; cases l with
+            | nil => simp
+            | cons a as => simp at h
+  | succ n ih =>
+      intro l h
+      cases l with
+      | nil => simp
+      | cons a as =>
+          rw [List.eraseDups_cons]
+          have hlen : (as.filter (fun b => !(b == a))).length ≤ n := by
+            have := List.length_filter_le (fun b => !(b == a)) as
+            simp at h
+            omega
+          have h1 := ih (as.filter (fun b => !(b == a))) hlen
+          exact List.Sublist.cons_cons a (h1.trans List.filter_sublist)
+
+/-- LEMMA 2. `List.eraseDups` produces a `Nodup` list. -/
+theorem eraseDups_nodup {α : Type} [BEq α] [LawfulBEq α] :
+    ∀ (n : Nat) (l : List α), l.length ≤ n → l.eraseDups.Nodup := by
+  intro n
+  induction n with
+  | zero => intro l h; cases l with
+            | nil => simp
+            | cons a as => simp at h
+  | succ n ih =>
+      intro l h
+      cases l with
+      | nil => simp
+      | cons a as =>
+          rw [List.eraseDups_cons, List.nodup_cons]
+          have hlen : (as.filter (fun b => !(b == a))).length ≤ n := by
+            have := List.length_filter_le (fun b => !(b == a)) as
+            simp at h
+            omega
+          refine ⟨?_, ih _ hlen⟩
+          rw [List.mem_eraseDups, List.mem_filter]
+          rintro ⟨_, hba⟩
+          simp at hba
+
+/-- LEMMA 3. A `Nodup` list is its own `eraseDups`. -/
+theorem eraseDups_eq_self_of_nodup {α : Type} [BEq α] [LawfulBEq α] :
+    ∀ (n : Nat) (l : List α), l.length ≤ n → l.Nodup → l.eraseDups = l := by
+  intro n
+  induction n with
+  | zero => intro l h _; cases l with
+            | nil => simp
+            | cons a as => simp at h
+  | succ n ih =>
+      intro l h hnd
+      cases l with
+      | nil => simp
+      | cons a as =>
+          rw [List.nodup_cons] at hnd
+          obtain ⟨hnotin, hasnd⟩ := hnd
+          rw [List.eraseDups_cons]
+          have hfilter : as.filter (fun b => !(b == a)) = as := by
+            rw [List.filter_eq_self]
+            intro b hb
+            have hne : b ≠ a := fun heq => hnotin (heq ▸ hb)
+            simp [hne]
+          rw [hfilter]
+          have hlen : as.length ≤ n := by simp at h; omega
+          rw [ih as hlen hasnd]
+
+/-- LEMMA 4. The list duplicate check is true exactly when the list is
+    `Nodup`. -/
+theorem noDupKeys_iff {α : Type} [BEq α] [LawfulBEq α] (l : List α) :
+    (l.length == l.eraseDups.length) = true ↔ l.Nodup := by
+  constructor
+  · intro h
+    have hsub := eraseDups_sublist l.length l (Nat.le_refl _)
+    have hlen : l.length = l.eraseDups.length := by simpa using h
+    have he : l.eraseDups = l := hsub.eq_of_length hlen.symm
+    exact he ▸ eraseDups_nodup l.length l (Nat.le_refl _)
+  · intro hnd
+    rw [eraseDups_eq_self_of_nodup l.length l (Nat.le_refl _) hnd]
+    simp
+
+theorem keyLeBool_trans (a b c : ArtifactKey) :
+    keyLeBool a b = true → keyLeBool b c = true → keyLeBool a c = true := by
+  simp only [keyLeBool, decide_eq_true_eq]
+  exact fun h1 h2 => String.le_trans h1 h2
+
+theorem keyLeBool_total (a b : ArtifactKey) :
+    (keyLeBool a b || keyLeBool b a) = true := by
+  simp only [keyLeBool, Bool.or_eq_true, decide_eq_true_eq]
+  exact String.le_total a.value b.value
+
+theorem keyLeBool_antisymm (a b : ArtifactKey) :
+    keyLeBool a b = true → keyLeBool b a = true → a = b := by
+  simp only [keyLeBool, decide_eq_true_eq]
+  intro h1 h2
+  have hv : a.value = b.value := String.le_antisymm h1 h2
+  cases a; cases b; simp_all
+
+/-- LEMMA 5, core. On a `keyLeBool`-sorted list, adjacent-distinct decides
+    `Nodup`.  Antisymmetry of the order is what rules out a repeat hiding
+    behind a run of equal keys. -/
+theorem adjacentDistinctKeys_iff_nodup : ∀ (l : List ArtifactKey),
+    List.Pairwise (fun a b => keyLeBool a b = true) l →
+    (adjacentDistinctKeys l = true ↔ l.Nodup)
+  | [], _ => by simp [adjacentDistinctKeys]
+  | [_], _ => by simp [adjacentDistinctKeys]
+  | a :: b :: rest, hs => by
+      have hcons := List.pairwise_cons.mp hs
+      have hforall : ∀ x ∈ (b :: rest), keyLeBool a x = true := hcons.1
+      have hs' := hcons.2
+      have ih := adjacentDistinctKeys_iff_nodup (b :: rest) hs'
+      simp only [adjacentDistinctKeys, Bool.and_eq_true, bne_iff_ne, ne_eq]
+      rw [ih]
+      constructor
+      · rintro ⟨hne, hnd⟩
+        rw [List.nodup_cons]
+        refine ⟨?_, hnd⟩
+        intro hmem
+        rcases List.mem_cons.mp hmem with heq | hmemr
+        · exact hne heq
+        · have hab : keyLeBool a b = true := hforall b (by simp)
+          have hbcons := List.pairwise_cons.mp hs'
+          have hba : keyLeBool b a = true := hbcons.1 a hmemr
+          exact hne (keyLeBool_antisymm a b hab hba)
+      · intro hnd
+        rw [List.nodup_cons] at hnd
+        obtain ⟨hnotin, hndrest⟩ := hnd
+        refine ⟨?_, hndrest⟩
+        intro heq
+        subst heq
+        exact hnotin (by simp)
+
+/-- LEMMA 5. The fast scan is true exactly when the key list is `Nodup`. -/
+theorem noDupKeysFast_iff (l : List ArtifactKey) :
+    noDupKeysFast l = true ↔ l.Nodup := by
+  have hsorted : List.Pairwise (fun a b => keyLeBool a b = true) (l.mergeSort keyLeBool) :=
+    List.pairwise_mergeSort keyLeBool_trans keyLeBool_total l
+  have hperm : (l.mergeSort keyLeBool).Perm l := List.mergeSort_perm l keyLeBool
+  unfold noDupKeysFast
+  rw [adjacentDistinctKeys_iff_nodup _ hsorted]
+  exact hperm.nodup_iff
+
+/-- The fast scan and the specification's list check agree on every input.
+    This is the equality the `@[csimp]` rewrites below rest on. -/
+theorem noDupKeysFast_eq (l : List ArtifactKey) :
+    noDupKeysFast l = noDupKeys l := by
+  rw [noDupKeys, Bool.eq_iff_iff, noDupKeysFast_iff, noDupKeys_iff]
+
+/-- `@[csimp]`: the code generator runs `noDupKeysFast` wherever the
+    specification writes `noDupKeys`.  The logical definition is unchanged. -/
+@[csimp] theorem noDupKeys_eq_noDupKeysFast : @noDupKeys = @noDupKeysFast := by
+  funext keys; exact (noDupKeysFast_eq keys).symm
+
+/-- `@[csimp]`: same swap for the entry-level check `valid` calls directly. -/
+@[csimp] theorem uniqueArtifactKeys_eq_uniqueArtifactKeysFast :
+    @uniqueArtifactKeys = @uniqueArtifactKeysFast := by
+  funext entries
+  show noDupKeys (artifactKeyList entries) = noDupKeysFast (artifactKeyList entries)
+  exact (noDupKeysFast_eq (artifactKeyList entries)).symm
 
 /-- Structural acceptance before any host artifact is opened. -/
 def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
@@ -576,7 +752,7 @@ def sbm10ManifestFields (manifest : Manifest) : Bool :=
       manifest.entries.flatMap (fun entry =>
         entry.artifact.key :: (entry.literalIndex.map ArtifactRef.key).toList ++
           (entry.geoIndex.map ArtifactRef.key).toList)
-     keys.length == keys.eraseDups.length)
+     noDupKeys keys)
   else manifest.blobs.isEmpty
 
 def valid (manifest : Manifest) : Bool :=
