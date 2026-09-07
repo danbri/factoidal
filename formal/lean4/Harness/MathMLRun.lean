@@ -13,9 +13,29 @@ them would be wrong in the direction that is hardest to notice. Six of
 the corpus's tests expect exactly that, so they are scored like any
 other.
 
+## Two manifests, one corpus
+
+`manifest.json` holds the 56 chapter-4 arithmetic and relation cases.
+`matrix-manifest.json` holds 25 more, all of them Content markup:
+MathML 3.0 §4.4.10 (Linear Algebra) and the OpenMath `linalg1` /
+`linalg2` Content Dictionaries. Both are read and scored together.
+None of the 25 is a presentation-markup case; this module is a
+Content MathML backend by design (decoding and exact evaluation), so
+a presentation case would be out of scope rather than a gap, and
+there are none here.
+
+## Where the corpus is found
+
+A relative directory is tried first against the process working
+directory (the repository root, as `lake -d formal/lean4 exe l4mathml`
+runs it) and second against `../../` (the working directory when a
+command runs inside `formal/lean4`), so both invocations work.
+
 Usage: `lake exe l4mathml [tests-dir]`
+       default corpus: `third_party/testing/mathml`
 -/
 import L4Factoidal.MathML.FromXml
+import L4Factoidal.MathML.Matrix
 import L4Factoidal.JSON.Parser
 
 open L4Factoidal.JSON
@@ -31,11 +51,22 @@ private def str? (k : String) (v : Json) : Option String :=
   | _                => none
 
 /-- Write a value the way the manifest writes it: an integer bare, a
-    rational as `num/den`, a boolean as `true`/`false`. -/
+    rational as `num/den`, a boolean as `true`/`false`, a vector as
+    `[a,b,c]` and a matrix as `[[a,b],[c,d]]`. -/
 def showValue : Option Value → String
   | none            => "undef"
   | some (.bool b)  => if b then "true" else "false"
-  | some (.num (n, d)) => if d == 1 then toString n else toString n ++ "/" ++ toString d
+  | some (.num r)   => showRat r
+  | some (.vecv v)  => showVec v
+  | some (.matv m)  => showMat m
+
+/-- Resolve a corpus directory written relative to the repository root
+    or relative to `formal/lean4`. -/
+def resolveBase (d : String) : IO String := do
+  if ← System.FilePath.pathExists (d ++ "/manifest.json") then return d
+  let up := "../../" ++ d
+  if ← System.FilePath.pathExists (up ++ "/manifest.json") then return up
+  return d
 
 /-- The environment an entry supplies, as the evaluator wants it. -/
 def envOf (j : Json) : String → Option (Int × Int) :=
@@ -48,22 +79,33 @@ def envOf (j : Json) : String → Option (Int × Int) :=
     | _ => []
   fun s => (pairs.find? (fun (k, _) => k == s)).map (·.2)
 
+/-- The cases of one manifest, or the empty list when it is absent. -/
+def casesOf (path : String) : IO (List Json) := do
+  if !(← System.FilePath.pathExists path) then
+    IO.println s!"mathml runner: manifest not found: {path}"
+    return []
+  let text ← IO.FS.readFile path
+  match parseJson? text with
+  | none =>
+      IO.println s!"mathml runner: manifest did not parse: {path}"
+      return []
+  | some j => return (match field? "tests" j with
+      | some (.array ts) => ts
+      | _                => [])
+
 def main (args : List String) : IO UInt32 := do
-  let dir := args.head? |>.getD "third_party/testing/mathml"
+  let dir ← resolveBase ((args.filter (fun a => !a.startsWith "--")).head?
+    |>.getD "third_party/testing/mathml")
   let manifestPath := dir ++ "/manifest.json"
   if !(← System.FilePath.pathExists manifestPath) then
     IO.println s!"mathml runner: manifest not found: {manifestPath}"
     IO.println "run tools/ensure-test-env.sh from the repository root first"
     return 1
-  let mtext ← IO.FS.readFile manifestPath
-  match parseJson? mtext with
-  | none =>
-      IO.println "mathml runner: manifest did not parse"
-      return 1
-  | some mj =>
-      let tests := match field? "tests" mj with
-        | some (.array ts) => ts
-        | _ => []
+  do
+      -- Both manifests are Content markup and are scored together.
+      let arith ← casesOf manifestPath
+      let linalg ← casesOf (dir ++ "/matrix-manifest.json")
+      let tests := arith ++ linalg
       let mut pass := 0
       let mut fail := 0
       let mut unread := 0
@@ -91,6 +133,7 @@ def main (args : List String) : IO UInt32 := do
         | _, _ => pure ()
       IO.println ""
       IO.println s!"content-mathml evaluation: {pass} pass, {fail} fail, {unread} markup-not-read (out of {tests.length})"
+      IO.println s!"  ({arith.length} chapter-4 arithmetic and relation cases + {linalg.length} section 4.4.10 linear-algebra cases)"
       IO.println "`undef` is an expected ANSWER here, not a skip: a division by zero,"
       IO.println "an inexact root, a non-integer power and an unsupported operator all"
       IO.println "denote nothing, and returning a number for any of them would be"
