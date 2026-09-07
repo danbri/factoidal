@@ -1,0 +1,53 @@
+name: Local — RDF 1.2 Semantics tight cases
+spec: https://www.w3.org/TR/rdf12-semantics/
+runner: tools/run-rdf12-semantics-tight.sh
+runner_args: []
+log_path: formal/fstar/ocaml-output/rdf12_semantics_tight.log
+domain: RDF
+foundational: false
+
+# Not a W3C suite, and never reported together with one. Fixtures and the
+# manifest are at tests/local/rdf12-semantics-tight/; the reasoning, with
+# specification citations, is in
+# docs/designissues/2026-09-07-rdf12-sparql12-semantics-fstar.md.
+#
+# Every entry states a reading of RDF 1.2 Semantics that the vendored
+# rdf12/rdf-semantics manifest either contradicts or cannot express:
+#
+#   TC-1  the annotation block {| ... |}. Two vendored entries name an
+#         expected graph that contradicts the expansion the same upstream
+#         commit's Turtle 1.2 eval oracles define. Graded here the other
+#         way round, plus a positive entry for the Turtle 1.2 reading.
+#   TC-2  literal-type, whose vendored manifest block is unreadable
+#         (undeclared `test:` prefix), re-stated verbatim.
+#   TC-3  malformed literals and D-inconsistency, with a vacuity guard: a
+#         checker that answered "inconsistent" for every graph would
+#         otherwise score two out of two.
+#   TC-4  the rdf:reifies range condition applied to a DERIVED
+#         rdf:reifies triple.
+#   TC-5  rdfs9 carrying a triple term from rdfs:Proposition into a
+#         superclass of it.
+#
+# TC-4 and TC-5 were written before the engine could pass them. They are
+# the two residual incompletenesses the previous
+# RDF.Entailment.Regime banner named; no vendored fixture exercises
+# either shape, so neither could be found by running the vendored suite.
+#
+# Score, 2026-09-07: 9 pass, 0 fail (out of 9). This suite is a GATE: a
+# fail here means either the engine regressed on a condition we decided
+# deliberately, or the decision itself changed and this file plus the
+# design record have to change with it.
+
+triggers:
+  paths:
+    - formal/fstar/RDF.Entailment.Regime.fst
+    - formal/fstar/RDF.Entailment.Simple.fst
+    - formal/fstar/RDFS.Closure.fsti
+    - formal/fstar/RDFS.Closure.fst
+    - formal/fstar/XSD.Datatypes.fst
+    - formal/fstar/Parser.Turtle.fst
+    - tests/local/rdf12-semantics-tight/**
+    - tools/run-rdf12-semantics-tight.sh
+    - bin/w3c-runner/**
+
+  excludes: []
