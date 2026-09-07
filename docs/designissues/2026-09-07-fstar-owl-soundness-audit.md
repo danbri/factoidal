@@ -307,6 +307,19 @@ with the pre-fix and post-fix `bin/darwin-arm64/owl_runner`.
 | `profile-EL` PE / NE / Cons / Inc | 29 / 6 / 71+1 fail / 13, 1 skip | same | **same** |
 | `type-inconsistency` Inc | 126 pass, 1 fail (of 127) | 125 pass, 2 fail | **125 pass, 2 fail** |
 | `type-negative-entailment` NE / Cons | 23 pass 0 fail; 22 pass 1 fail | same | **same** |
+| `type-positive-entailment` PE | 195 pass, 9 fail (of 204), 2 skip | not measured | **195 pass, 9 fail — matches committed** |
+| `type-positive-entailment` Cons | 199 pass, 5 fail (of 204), 5 unsupported | not measured | **199 pass, 5 fail — matches committed** |
+| `type-consistency` Cons | 340 pass, 12 fail (of 352), 12 unsupported | not measured | not finished in the window |
+
+`type-positive-entailment` is the catalog that matters most here: every
+one of its PE units is scored through the eleven-rule witness closure of
+section 5, and both tests the deleted rule used to carry
+(`WebOnt-I4.6-005-Direct`, `WebOnt-equivalentClass-008-Direct`) appear
+in it. It reproduces the committed serial figures exactly, both units.
+`type-consistency` was still inside its ConsistencyTest section at the
+end of the session; it is the one catalog not re-measured, and the two
+fixes cannot reach a unit of it that the other six catalogs do not also
+contain.
 
 **No score moved.** Removing an unsound rule that costs nothing is the
 good case: the two tests it was scoring
