@@ -29,6 +29,8 @@ the boundary itself never has to carry an exception.
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -258,3 +260,53 @@ L4_EXPORT void l4_free_result(char *p) { free(p); }
    Kept apart from l4_free_result on purpose -- see the ownership note
    on l4_call_blob_io_c. */
 L4_EXPORT void l4_free_blob(uint8_t *p) { free(p); }
+
+/* ------------------------------------------------------------------
+   Memory reporting and reclamation.
+
+   These are NOT part of the RDF ABI: they carry no format decision and
+   compute nothing about the data. They exist because the WebAssembly
+   module's linear memory only ever grows, so a host that packs a large
+   source needs to see where the growth is and to give the allocator a
+   chance to return what it is holding.
+
+   `l4_mem_report_c` answers a JSON object with mimalloc's own view of
+   the heap, so a caller can tell BYTES IN USE from BYTES THE ALLOCATOR
+   HOLDS FREE. Without that distinction a growth curve cannot say
+   whether the packer retains data or the allocator retains pages.
+   The figures come from mimalloc's `mi_process_info`, whose commit
+   counters are only maintained when mimalloc is compiled with
+   `MI_STAT` above zero; `build-wasm.sh` does NOT set it, because the
+   cost of setting it is not measured, so a release module reports
+   zeros there and a measuring build adds `-DMI_STAT=2` to the
+   mimalloc compile line.
+
+   `l4_collect_c` asks mimalloc to release the pages and segments it
+   holds free. Linear memory cannot shrink, so this never lowers the
+   reported heap size; what it does is make those bytes available for
+   the next allocation instead of forcing a further growth.
+   ------------------------------------------------------------------ */
+
+#ifdef LEAN_MIMALLOC_DECLS_MISSING
+#else
+void mi_collect(bool force);
+void mi_process_info(size_t *elapsed_msecs, size_t *user_msecs,
+                     size_t *system_msecs, size_t *current_rss,
+                     size_t *peak_rss, size_t *current_commit,
+                     size_t *peak_commit, size_t *page_faults);
+#endif
+
+L4_EXPORT void l4_collect(int force) { mi_collect(force != 0); }
+
+L4_EXPORT char *l4_mem_report_c(void) {
+    size_t elapsed = 0, user = 0, sys = 0, rss = 0, peak_rss = 0;
+    size_t commit = 0, peak_commit = 0, faults = 0;
+    mi_process_info(&elapsed, &user, &sys, &rss, &peak_rss, &commit,
+                    &peak_commit, &faults);
+    char buf[320];
+    snprintf(buf, sizeof buf,
+             "{\"ok\":true,\"rss\":%zu,\"peakRss\":%zu,\"commit\":%zu,"
+             "\"peakCommit\":%zu}",
+             rss, peak_rss, commit, peak_commit);
+    return strdup(buf);
+}

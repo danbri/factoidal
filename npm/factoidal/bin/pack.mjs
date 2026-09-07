@@ -23,6 +23,7 @@
 // and writes each artifact as it appears, so neither side ever holds the
 // whole input or the whole generation.
 
+import { appendFileSync } from 'node:fs'
 import { StoreHostError, readChunk, writeNew } from '../store-host/index.mjs'
 import { joinPath } from '../store-host/paths.mjs'
 
@@ -30,6 +31,20 @@ import { joinPath } from '../store-host/paths.mjs'
  *  bytes at a time; matching it keeps the two folds in step, which is
  *  what makes the byte-identity gate meaningful. */
 export const FEED_BYTES = 65536
+
+/** A diagnostic trace of the module's linear memory, one line per feed
+ *  and one per drain, written when `L4_PACK_MEM` names a file. It exists
+ *  because linear memory only ever grows, so a memory question about a
+ *  pack needs the curve per feed rather than one figure per process. The
+ *  worker thread's `process.stderr` does not flush while the pack loop
+ *  runs, so the trace is written synchronously to a file.
+ *  Design record: docs/designissues/2026-09-07-wasm-packer-memory.md. */
+function memNote (engine, line) {
+  const path = process.env.L4_PACK_MEM
+  if (!path) return
+  const heap = engine._module ? engine._module.HEAPU8.byteLength : -1
+  appendFileSync(path, `${line} ${heap}\n`)
+}
 
 /** An error the pack operations reported, with the engine's own words. */
 export class PackError extends Error {
@@ -130,7 +145,9 @@ export function packFile (engine, input, output, options) {
         offset += chunk.length
         bytesRead += chunk.length
         engine.callBlobIO('packFeed', [handle], chunk)
+        memNote(engine, `feed ${passName} ${offset}`)
         const drained = drain(engine, handle, output)
+        memNote(engine, `drain ${passName} ${offset}`)
         written.push(...drained.names)
         bytesWritten += drained.bytes
         if (typeof options.onProgress === 'function') {
