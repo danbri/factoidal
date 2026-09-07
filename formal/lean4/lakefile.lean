@@ -393,3 +393,8 @@ extern_lib libl4exthost pkg := do
 -- See docs/lws-solid-conformance.md.
 @[default_target] lean_exe «l4lws-probe» where root := `Harness.LwsProbe
 @[default_target] lean_exe «l4solid-probe» where root := `Harness.SolidProbe
+
+-- XPath 1.0 Stage-1 unit battery, ported from the F* corpus
+-- tests/unit/xpath_tests.ml (Harness/XPathRun.lean), scored against
+-- tests/unit/xpath_cases.json.
+@[default_target] lean_exe «l4xpath» where root := `Harness.XPathRun
