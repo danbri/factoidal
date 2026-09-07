@@ -179,18 +179,102 @@ The whole 47 is the gap.
 
 ## Status
 
-Updated as commits land. Every score below was measured in this
-worktree.
+Final for the 2026-09-07 session. Every score below was measured in
+this worktree by running the probe, not quoted from a report.
 
-| area | before | after | closed | open |
-| --- | --- | --- | --- | --- |
-| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | 32 pass, 2 fail (of 34 decided); 11 undecided, 1 not read, 0 not attempted | the 6 ImportRejectionTest cases; OWL_Combination_Vocabulary_Separation_Inconsistency_1 and _2 | the 2 fails (RDF_Combination_Constant_Equivalence_4, EBusiness_Contract); 9 built-in cases; Modeling_Brain_Anatomy and Non-Annotation_Entailment (OWL-Direct closure); RDF_Combination_Constant_Equivalence_Graph_Entailment (graph conclusion) |
-| RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | unchanged | | RMLTC0027b-JSON (fixture writes an IRIREF with a space); the 15 negative cases need a mapping validator |
-| RML io | not run | unchanged | | the whole rml-io section (84 directories) |
-| CSVW validation | not run (282 entries) | see the probe's own report | | |
-| RDF/XML | 130 pass, 2 fail (of 132 eval-isomorphic) | 132 pass, 0 fail (of 132) | rdfms-xml-literal-namespaces/test001 and test002 | none |
-| GeoSPARQL | no probe (F\* 37 of 37) | see the probe's own report | | |
-| rdf-semantics | not run (47 entries) | see the probe's own report | | |
+| area | before | after | F\* comparison |
+| --- | --- | --- | --- |
+| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | 33 pass, 1 fail (of 34 decided); 11 undecided, 0 not read, 1 local override | 42 pass, 0 fail, 1 local override, 3 skip (of 46) |
+| RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | unchanged | 76 pass (of 76) |
+| RML io | not run | not run | 17 pass, 1 fail, 55 skip (of 73) |
+| CSVW validation | not run | 266 pass, 14 fail, 2 skip (of 282) | 281 pass, 1 fail (of 282) |
+| RDF/XML | 130 pass, 2 fail (of 132 eval-isomorphic) | 132 pass, 0 fail (of 132) | does not run these two |
+| GeoSPARQL | no probe | 37 pass, 0 fail, 0 skip (of 37) | 37 pass (of 37) |
+| rdf-semantics | not run | 22 pass, 10 fail, 0 skip, 15 unsupported (of 47) | 41 pass, 3 fail, 3 skip (of 47) |
+
+### Closed
+
+* **RDF/XML** — both `rdfms-xml-literal-namespaces` cases. See the
+  section below.
+* **GeoSPARQL** — all 37 F\* assertions ported, none skipped
+  (`lake exe l4geo`). Needed a WKT serialiser, a parenthesised
+  MULTIPOINT component parser, `sfOverlaps` with the Polygon/Polygon
+  cases of `sfIntersects`/`sfWithin`, and `geof:distance`/
+  `geof:envelope`, all fuel-bounded rather than `partial`.
+* **RIF** — the 6 `ImportRejectionTest` cases,
+  `OWL_Combination_Vocabulary_Separation_Inconsistency_1` and `_2`, and
+  `RDF_Combination_Constant_Equivalence_Graph_Entailment`.
+  `RDF_Combination_Constant_Equivalence_4` moved from FAIL to the
+  local-override bucket, which is where the F\* tree already had it.
+
+### Open, by test id
+
+**RIF (12 cases short of F\*).** One fail: `EBusiness_Contract`, which
+needs the dateTime slice (`is-literal-dateTime` accepting `xs:date`
+operands at midnight, `func:subtract-dateTimes`,
+`func:days-from-duration`) and n-ary reification for its arity-3
+`cpt:delivered` relation. Eleven undecided: `Builtins_Numeric`,
+`Builtins_String`, `Builtins_Binary`, `Builtins_PlainLiteral`,
+`Builtins_XMLLiteral`, `Builtins_List`, `Builtins_Time`,
+`IRI_from_RDF_Literal`, `Factorial_Forward_Chaining`,
+`Modeling_Brain_Anatomy` and `Non-Annotation_Entailment`. F\* skips
+only `Builtins_List` and `Builtins_Time` (naming
+`is-literal-dateTimeStamp`); the rest are Lean gaps.
+
+`Factorial_Forward_Chaining` is the one to look at first, and it is
+NOT a built-in gap: it names only `numeric-add`, `numeric-multiply`
+and `numeric-greater-than-or-equal`, and `RIF/Builtins.lean`
+implements all three. The F\* ledger records the same case needing
+`Equal`-as-BIND (`?N = External(func:numeric-add(?N1 1))`), an engine
+feature rather than a built-in.
+
+**An engine limit worth naming.** `entails` threads a Bool through
+`groundTm`/`matchAtom`/`step`/`closure`, so it can say a built-in
+blocked a rule but not WHICH. The runner now prints the built-in IRIs
+a case uses, clearly labelled as candidates rather than as the
+measured cause. Threading the blocking IRI itself is the change that
+would let an undecided verdict name its own cause the way the F\*
+skips do.
+
+**RML.** `RMLTC0027b-JSON` stays not-read: its own `output.nq` writes
+`<http://example.com/Person/Emily Smith>`, and an IRIREF may not
+contain a space. The 15 negative cases need a mapping validator; the
+whole rml-io section (84 directories) needs a probe.
+
+**CSVW validation, 14 fails.** `test034` and `test035` (foreign-key
+`schemaReference` resolution), `test094`, `test100`, `test107`,
+`test109`, `test111`, `test124`, `test127`, `test147`, `test148`
+(structural and title-compatibility rules), `test257` and `test258`
+(cross-table foreign-key referential integrity), and `test308` — the
+one the F\* tree also fails, for the reason
+`.github/test-suites/csvw-validation.yaml` records. Two skips,
+`test092` and `test119`, name fixtures the manifest references that
+are not vendored in this checkout.
+
+**rdf-semantics, 10 fails and 15 unsupported.** Fails: `literal-type`,
+`triple-terms-propositions` (both need a literal or triple term in
+SUBJECT position, which `Triple.s : Subject` cannot represent — F\*
+has the same limit), `annotation` and `annotation-unfolded` (the
+expected result names an IRI reifier where the action's `{| |}`
+shorthand produces a fresh blank node; F\* fails both identically),
+`opaque-literal`, `opaque-language-string`,
+`opaque-language-string-control`, `opaque-dir-language-string-control`,
+`malformed-literal-no-spurious`, `malformed-literal-bnode-neg`.
+
+The 15 unsupported are the 7 `rdf:JSON`, 4 `xsd:float` and 4
+`xsd:double` fixtures, all refused by `recognizedDatatypesOf` in
+`Harness/Run.lean` because the IRIs are not in
+`RDF.Datatypes.modelledDatatypes`. **Adding the three IRIs to that
+list is not the fix**, even though it would turn the tests green:
+`literalIllFormed` decides ill-formedness only for datatypes whose
+LEXICAL SPACE this module knows, and it knows none of these three. A
+bare list edit would make every `xsd:double` literal count as
+well-formed, malformed ones included, in a suite that contains
+malformed-literal tests. The fix is the lexical spaces first
+(XSD 1.1 §3.3.5 for double and float, the Lean JSON parser for
+`rdf:JSON`), then `literalIllFormed`, then the list. The D-value
+comparison itself (`dtValueLeq`, IEEE-754 and structural JSON
+equality) is already implemented and `#guard`-pinned.
 
 ### RDF/XML: what the fix was, and a finding about the fixtures
 
@@ -208,14 +292,28 @@ copied into the literal, `rdfms-xml-literal-namespaces` expects unused
 ones dropped. No byte comparison passes both. Only a namespace-aware
 comparison does, which is what the specification asks for anyway.
 
-### Disk
+### Two working-method failures from this session
 
-The 2026-09-07 session stopped its parallel builds at 2.7 GB free on
-`/System/Volumes/Data`. The space was not the Lean build caches (the
-five worktrees hold 0.5-0.9 GB each); 13 GB sat in another project's
-agent scratchpad under `/private/tmp/claude-501/` and 4 GB in a
-five-day-old Factoidal session scratchpad. Neither was this session's
-to remove. The rule in CLAUDE.md's Agent Work Strategy assumes the
-worktrees are the consumer; on this machine the agent scratchpads are
-the larger one, and a session that only measures `.lake` will conclude
-it has room when it does not.
+**A commit carried files its subject does not name.** Commit
+`47b9d2c3a`, whose message describes only RIF work, also contains the
+whole GeoSPARQL landing (`Harness/GeoRun.lean`,
+`L4Factoidal/Geo/{Types,Wkt,Topology,Functions}.lean`, and the test
+inventory row). Four agents shared one worktree; one had staged its
+files, and a plain `git commit` after `git add <own paths>` commits
+the whole INDEX, not the paths just added. This is anti-pattern #33 in
+a new shape — there the files were half-extracted, here they belong to
+another agent. The rule that prevents it: in a shared worktree, commit
+by PATHSPEC (`git commit -m … -- path1 path2`), which ignores
+everything else in the index. Later commits in this session did.
+
+**The disk floor was measured in the wrong place.** The session hit
+2.7 GB free on `/System/Volumes/Data` and stopped its parallel builds.
+The Lean build caches were not the cause: the five worktrees hold
+0.5-0.9 GB each. 13 GB sat in another project's agent scratchpad under
+`/private/tmp/claude-501/`, and 4 GB in a five-day-old Factoidal
+session scratchpad. CLAUDE.md's Agent Work Strategy tells a session to
+size the worktrees; on this machine the agent scratchpads are the
+larger consumer, and a session that measures only `.lake` concludes it
+has room when it does not. Check `df` itself, and when it is low,
+`du -sh /private/tmp/claude-*/*` before assuming the worktrees are at
+fault.
