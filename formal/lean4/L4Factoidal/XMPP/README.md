@@ -321,4 +321,24 @@ modules so far:
     (through the reused `L4Factoidal.XML` parser), and every truncation
     point of the real captured ejabberd stream-open tag — all return
     promptly, none hang, none crash.
-- Nothing committed to git yet.
+- **JS/wasm API landed** (2026-09-07): `Wasm/Ops/Xmpp.lean` exposes
+  `xmppJidParse`/`xmppJidRender`/`xmppStreamHeaderParse`/
+  `xmppStreamHeaderRender`/`xmppFeaturesFor`/`xmppStanzaParse` on the
+  dispatch ABI (`Wasm/Dispatch.lean`), and
+  `npm/factoidal/xmpp/index.mjs` wraps them in a functional-programming-
+  style JS API (pure functions, `{ok,value}`/`{ok:false,error}` results,
+  never throws for an expected outcome) — see
+  `npm/factoidal/xmpp/README.md`. 24/24 unit tests pass
+  (`npm/factoidal/test/xmpp.test.mjs`), run against the real rebuilt
+  wasm, not mocked.
+- **Known upstream limit, found via the JS test suite**: `parseStanza`/
+  `parseStreamHeader` delegate to the shared `L4Factoidal.XML` parser
+  (correctly — see "XML" section above), whose entity-expansion
+  handling is not tail-recursive over a run of sequential entity
+  references: ~2,000+ consecutive entities in one text node overflows
+  the wasm call stack. Not this module's bug, not silently worked
+  around — see `npm/factoidal/xmpp/README.md`'s "Known upstream limit"
+  for the bisected threshold. Worth a `L4Factoidal.XML` issue; not filed
+  yet.
+- Committed to git in PR #661 (Jid/Wire/Core/Sasl/Gc3 landing) and this
+  same-day wasm/JS follow-up.
