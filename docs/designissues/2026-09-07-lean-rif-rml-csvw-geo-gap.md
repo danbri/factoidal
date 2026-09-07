@@ -207,6 +207,46 @@ this worktree by running the probe, not quoted from a report.
   `RDF_Combination_Constant_Equivalence_4` moved from FAIL to the
   local-override bucket, which is where the F\* tree already had it.
 
+## RIF Core: the 12 open ids, by cause (2026-09-07, session 2)
+
+Branch `wt/finish-rif2`. Measured start: `lake -d formal/lean4 exe l4rif`
+gives **33 pass, 1 fail (out of 34 decided), 11 undecided, 1 local
+override** against the F\* runner's **42 pass, 0 fail, 1 local
+override, 3 skip (out of 46)**.
+
+The table below is written BEFORE any engine change in this session.
+Each row names what the id needs, by RIF-DTB section where the need is
+a built-in, and the F\* verdict for the same id from
+`bin/rif-runner/README.md`. The "built-ins used" lists printed by
+`l4rif --verbose` are CANDIDATES; the cause column below was read from
+each fixture's own `-premise.rifps`, which is the measurement the
+Bool-threaded `blocked` flag cannot give.
+
+| id | Lean before | cause, measured from the fixture | F\* verdict |
+| --- | --- | --- | --- |
+| `Factorial_Forward_Chaining` | undecided | NOT a built-in gap. `And(...)` puts `External(pred:numeric-greater-than-or-equal(?N1 0))` FIRST, with `?N1` unbound, and `matchFormula` folds conjuncts strictly left to right, so the built-in is called on an unground argument and reports `unknown`. Also needs `?N = External(func:numeric-add(?N1 1))` as a BIND: `matchAtom .equal` only compares two ground sides. RIF-BLD §3.2 makes `And` a set-like conjunction, so conjunct order carries no semantics | pass (ledger: "Equal-as-BIND") |
+| `IRI_from_RDF_Literal` | undecided | `External(pred:iri-string(?z ?x))` with `?x` a bound string and `?z` unbound. RIF-DTB §4.3 `pred:iri-string` relates an IRI to its string; `Conformance`/`boundFix` already list it in `bindingBuiltins` for safeness, but `matchAtom` has no binding-pattern execution for it | pass |
+| `Builtins_XMLLiteral` | undecided | `External(rdf:XMLLiteral("<br></br>"^^xs:string))` — a constructor cast whose datatype IRI is in the RDF namespace. `builtinName` maps only `func:`, `pred:` and `xs:`, so an `rdf:` cast returns `none` and `groundTm` reports blocked. RIF-DTB §5 (constructors) covers `rdf:XMLLiteral` and `rdf:PlainLiteral` alongside the XSD ones | pass |
+| `Builtins_Binary` | undecided | `xs:base64Binary` has no lexical space in `inLexicalSpace` (it returns `none`, i.e. undecided), and the fixture both tests `pred:is-literal-base64Binary` and casts to it. XSD 1.1 §3.3.16 gives the lexical space (groups of four Base64 characters, final group padded with `=`) | pass |
+| `Builtins_Numeric` | undecided | `func:numeric-divide` (RIF-DTB §4.4) is not in `evalFunc`, so `groundTm` blocks. Also `2 = External(func:numeric-divide(6 3))` needs `Equal` to compare by VALUE across `xs:integer` and `xs:decimal`, which `matchAtom .equal`'s structural `==` does not | pass |
+| `Builtins_String` | undecided | thirteen RIF-DTB §4.5 functions absent from `evalFunc`: `compare`, `string-join`, `substring` (2- and 3-argument), `encode-for-uri`, `iri-to-uri`, `escape-html-uri`, `substring-before`, `substring-after`, `replace`; and one §4.6 predicate, `matches`. `replace` and `matches` need the XPath regex engine, which the Lean tree already has at `L4Factoidal/Regex/XPath.lean` (`compile`/`isMatch`/`replace`, the same engine SPARQL `REGEX`/`REPLACE` use) | pass |
+| `Builtins_PlainLiteral` | undecided | RIF-DTB §4.7: `func:PlainLiteral-compare` and `pred:matches-language-range` are absent; the `rdf:PlainLiteral` constructor cast hits the same `builtinName` namespace gap as `Builtins_XMLLiteral`; and `func:string-from-PlainLiteral` / `func:lang-from-PlainLiteral` are applied by the fixture to an `xs:string` argument, which the current guard rejects | pass |
+| `EBusiness_Contract` | FAIL (not entailed, must be) | the dateTime slice: `pred:is-literal-dateTime` applied to `"2008-07-22Z"^^xs:date` must hold (RIF-DTB §3.2 — `xs:date` values are `xs:dateTime` values at midnight, and the Approved fixture depends on it); `func:subtract-dateTimes` (§4.8) giving an `xs:dayTimeDuration`; `func:days-from-duration` (§4.8). The arity-3 `cpt:delivered` is NOT a gap in Lean — `RIF.Syntax.Atom.pos` carries a `List Tm` of any length, so the n-ary reification the F\* tree needed here is unnecessary | pass |
+| `Builtins_List` | undecided | RIF-DTB §4.9 list functions: `get`, `sublist`, `append`, `concatenate`, `insert-before`, `remove`, `index-of`, `union`, `distinct-values`, `intersect`, `except`. `is-list`, `list-contains`, `make-list`, `count`, `reverse` are already decided | **skip**, named `List` |
+| `Builtins_Time` | undecided | the whole RIF-DTB §4.8 date/time/duration family, about 60 built-ins | **skip**, named `is-literal-dateTimeStamp` |
+| `Modeling_Brain_Anatomy` | undecided | imports under `http://www.w3.org/ns/entailment/OWL-Direct`. The rule body needs `rdf:type MaterialAnatomicalEntity` on individuals the ontology asserts only through `rdf:type Gyrus` + `rdfs:subClassOf`. F\* closes the imported graph under OWL-RL plus tableau materialisation before merging | pass |
+| `Non-Annotation_Entailment` | undecided | a `NegativeEntailmentTest` importing under OWL-Direct. The imported graph declares `dc:title` an `owl:OntologyProperty`, so under the OWL 2 Direct Semantics its use is an ONTOLOGY ANNOTATION and carries no semantic condition (OWL 2 Structural Specification §10, Direct Semantics §2.1) — the rule body `?x[dc:title -> ?y]` therefore has no fact to match and the conclusion does not follow. Answering `doesNotHold` needs the annotation filter AND a statement that the rest of the imported graph is inside the implemented fragment | pass |
+
+Two of the twelve are ids the F\* tree SKIPS with a named missing
+built-in (`Builtins_List`, `Builtins_Time`). Under the parity rule
+they may stay undecided in Lean only while the same built-ins are
+named. The other ten are Lean gaps against a passing F\* verdict.
+
+### Ledger status
+
+| id | after this session | note |
+| --- | --- | --- |
+
 ### Open, by test id
 
 **RIF (12 cases short of F\*).** One fail: `EBusiness_Contract`, which
