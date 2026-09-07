@@ -407,6 +407,32 @@ strict external parser (JSON.parse, a SPARQL client, a W3C fixture
 diff) deserves one exact-bytes unit test. Verified-total is not
 extracted-total, and the dashboard only sees what a suite feeds it.
 
+## The same tail-recursion scan is owed over the extracted OCaml
+
+The Lean tree now has a scanner for recursion that costs a C stack frame per
+input element: `tools/lean-tail-recursion-audit.py` reads
+`formal/lean4/.lake/build/ir/**/*.c` and reports every self-call that Lean did
+NOT compile into a `goto _start` loop. First run, 2026-09-07: 833 of them, 598
+bounded by an input's length.
+
+The F\* tree has the same class of defect and no equivalent gate.
+<https://github.com/danbri/factoidal/issues/674>, the SHACL segfault, is that
+class: OCaml's native code grows the system stack per frame and a deep
+recursion ends in SIGSEGV rather than an exception, so it reads as a memory
+bug rather than a recursion one.
+
+The scanner has a coarse F\* mode:
+
+    python3 tools/lean-tail-recursion-audit.py --fstar
+
+It scans `formal/fstar/ocaml-output/*.ml` for `let rec` definitions with a
+self-call and ranks them by self-call count. It is a SUSPECT LIST, not a
+result: there is no readable compiled IR on that side, so it cannot tell a
+tail call from a stacked one the way the Lean mode can. Treat a hit as a
+reason to read the definition, and remember that F\* extraction can turn a
+source-level tail call into a non-tail one (see the extraction-semantics traps
+above -- accumulator order and `List.Tot.splitAt` are already on that list).
+
 ## KaRaMeL-compatible style (write for C even before we extract to it)
 
 The C/WASM path (`fstar.exe --codegen krml`, see

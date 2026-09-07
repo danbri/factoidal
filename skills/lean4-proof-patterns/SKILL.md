@@ -244,6 +244,56 @@ rather than a proof question. Recognise them and stop early.
   `FromJson.shapeExprOf` recurses through `arr` and `fld?`, which carry
   no size bound on the result).
 
+## 9a. Retiring a stack-consuming recursion: the `csimp` twin
+
+The same problem as a `partial def`, from the other side: a TOTAL definition
+that recurses once per element of an input the caller sizes still costs one C
+stack frame per element, and the wasm module we ship has a small stack. Do not
+rewrite the specification to fix it -- every theorem in the tree is stated
+about the specification's shape. Add a tail-recursive twin and a proved
+`@[csimp]` replacement; the code generator emits the twin and the proofs are
+untouched.
+
+The proof is always the same accumulator generalisation, and it is short:
+
+```lean
+theorem fTR_eq : ∀ n bytes acc,
+    fTR n bytes acc = (f n bytes).map (fun p => (acc.reverse ++ p.1, p.2)) := by
+  intro n
+  induction n with
+  | zero => intro bytes acc; simp [fTR, f]
+  | succ n ih =>
+      intro bytes acc
+      simp only [fTR, f]
+      cases h : step bytes with
+      | none => simp
+      | some pair =>
+          obtain ⟨x, rest⟩ := pair
+          simp only [Option.bind_some]
+          rw [ih rest (x :: acc)]
+          cases hq : f n rest with
+          | none => simp [hq]
+          | some q =>
+              obtain ⟨xs, tail⟩ := q
+              simp [hq, List.reverse_cons]
+```
+
+Three things that cost time on 2026-09-07:
+
+* the closing `simp` needs `hq` -- without it the `Option.bind` on the
+  right-hand side is not reduced and both branches are left open;
+* `csimp` accepts only `@f = @g` with `g` a CONSTANT, so the accumulator's
+  empty start needs its own `def fImpl ... := fTR ... []`, and the csimp proof
+  opens with `show _ = fTR ... []`;
+* for a definition that matches on list patterns rather than on `Nat`, use
+  `fun_induction f cs`. The generated case names carry the NON-match
+  hypotheses too: `normalizeLineEndings` gave `case2 rest h ih` and
+  `case3 c rest h1 h2 ih`, and guessing the arity wastes a compile each time.
+
+`tools/lean-tail-recursion-audit.py` finds these by reading the emitted C for
+self-calls that are not `goto _start`. Run it before you go looking by hand.
+`skills/lean4-performance/SKILL.md` carries the rule and what it cost.
+
 ## 10. Gate before commit
 
 - `#print axioms <thm>` at the end of the module: only `propext`,

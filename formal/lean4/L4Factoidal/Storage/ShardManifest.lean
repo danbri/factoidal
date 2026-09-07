@@ -1158,6 +1158,55 @@ def decodeGraphNames : Nat → List UInt8 → Option (List GraphName × List UIn
       let (names, rest) ← decodeGraphNames n afterName
       some (name :: names, rest)
 
+/-- The COMPILED form of `decodeGraphNames`: one accumulator, so the graph
+set of an entry costs no C stack.  `decodeGraphNames` stays the
+specification -- every theorem about it is unchanged -- and `@[csimp]`
+below is what makes the extracted code run this one instead.
+
+A count read off the wire is an input length wearing a `Nat`: a manifest
+that declares 40,000 graph names asks for 40,000 nested frames, and a
+browser tab has far less stack than that. -/
+def decodeGraphNamesTR : Nat → List UInt8 → List GraphName →
+    Option (List GraphName × List UInt8)
+  | 0, bytes, acc => some (acc.reverse, bytes)
+  | n + 1, bytes, acc =>
+      match decodeGraphName bytes with
+      | none => none
+      | some (name, afterName) => decodeGraphNamesTR n afterName (name :: acc)
+
+theorem decodeGraphNamesTR_eq : ∀ (n : Nat) (bytes : List UInt8) (acc : List GraphName),
+    decodeGraphNamesTR n bytes acc =
+      (decodeGraphNames n bytes).map (fun p => (acc.reverse ++ p.1, p.2)) := by
+  intro n
+  induction n with
+  | zero => intro bytes acc; simp [decodeGraphNamesTR, decodeGraphNames]
+  | succ n ih =>
+      intro bytes acc
+      simp only [decodeGraphNamesTR, decodeGraphNames]
+      cases h : decodeGraphName bytes with
+      | none => simp
+      | some pair =>
+          obtain ⟨name, afterName⟩ := pair
+          simp only [Option.bind_some]
+          rw [ih afterName (name :: acc)]
+          cases hq : decodeGraphNames n afterName with
+          | none => simp [hq]
+          | some q =>
+              obtain ⟨names, rest⟩ := q
+              simp [hq, List.reverse_cons]
+
+/-- `csimp` replaces one constant by another, so the accumulator's empty
+start needs a name of its own. -/
+def decodeGraphNamesImpl (n : Nat) (bytes : List UInt8) :
+    Option (List GraphName × List UInt8) := decodeGraphNamesTR n bytes []
+
+@[csimp] theorem decodeGraphNames_eq_decodeGraphNamesImpl :
+    @decodeGraphNames = @decodeGraphNamesImpl := by
+  funext n bytes
+  show _ = decodeGraphNamesTR n bytes []
+  rw [decodeGraphNamesTR_eq]
+  cases decodeGraphNames n bytes <;> simp
+
 /-- The wire-field bounds every version's entry must satisfy, whatever its
     version-specific commitments are. -/
 def encodableCommon (entry : Entry) : Bool :=
@@ -1352,6 +1401,54 @@ def decodeBlobRefList : Nat → List UInt8 → Option (List Nat × List UInt8)
       let (rest, trailing) ← decodeBlobRefList count afterValue
       some (value.toNat :: rest, trailing)
 
+/-- The COMPILED form of `decodeBlobRefList`, by accumulator.  See
+`decodeGraphNamesTR` for why the specification and the compiled form are
+separate definitions here. -/
+def decodeBlobRefListTR : Nat → List UInt8 → List Nat → Option (List Nat × List UInt8)
+  | 0, bytes, acc => some (acc.reverse, bytes)
+  | count + 1, bytes, acc =>
+      match readU32LE bytes 0 with
+      | none => none
+      | some value =>
+          match takeExact 4 bytes with
+          | none => none
+          | some (_, afterValue) => decodeBlobRefListTR count afterValue (value.toNat :: acc)
+
+theorem decodeBlobRefListTR_eq : ∀ (n : Nat) (bytes : List UInt8) (acc : List Nat),
+    decodeBlobRefListTR n bytes acc =
+      (decodeBlobRefList n bytes).map (fun p => (acc.reverse ++ p.1, p.2)) := by
+  intro n
+  induction n with
+  | zero => intro bytes acc; simp [decodeBlobRefListTR, decodeBlobRefList]
+  | succ n ih =>
+      intro bytes acc
+      simp only [decodeBlobRefListTR, decodeBlobRefList]
+      cases h : readU32LE bytes 0 with
+      | none => simp
+      | some value =>
+          simp only [Option.bind_some]
+          cases h2 : takeExact 4 bytes with
+          | none => simp
+          | some pair =>
+              obtain ⟨taken, afterValue⟩ := pair
+              simp only [Option.bind_some]
+              rw [ih afterValue (value.toNat :: acc)]
+              cases hq : decodeBlobRefList n afterValue with
+              | none => simp [hq]
+              | some q =>
+                  obtain ⟨refs, rest⟩ := q
+                  simp [hq, List.reverse_cons]
+
+def decodeBlobRefListImpl (n : Nat) (bytes : List UInt8) :
+    Option (List Nat × List UInt8) := decodeBlobRefListTR n bytes []
+
+@[csimp] theorem decodeBlobRefList_eq_decodeBlobRefListImpl :
+    @decodeBlobRefList = @decodeBlobRefListImpl := by
+  funext n bytes
+  show _ = decodeBlobRefListTR n bytes []
+  rw [decodeBlobRefListTR_eq]
+  cases decodeBlobRefList n bytes <;> simp
+
 def decodeBlobRefs (bytes : List UInt8) : Option (List Nat × List UInt8) := do
   let count ← readU32LE bytes 0
   let (_, afterCount) ← takeExact 4 bytes
@@ -1368,6 +1465,46 @@ def decodeBlobList : Nat → List UInt8 → Option (List ArtifactRef × List UIn
       let (blob, afterBlob) ← decodeSidecarRef bytes
       let (rest, trailing) ← decodeBlobList count afterBlob
       some (blob :: rest, trailing)
+
+/-- The COMPILED form of `decodeBlobList`, by accumulator. -/
+def decodeBlobListTR : Nat → List UInt8 → List ArtifactRef →
+    Option (List ArtifactRef × List UInt8)
+  | 0, bytes, acc => some (acc.reverse, bytes)
+  | count + 1, bytes, acc =>
+      match decodeSidecarRef bytes with
+      | none => none
+      | some (blob, afterBlob) => decodeBlobListTR count afterBlob (blob :: acc)
+
+theorem decodeBlobListTR_eq : ∀ (n : Nat) (bytes : List UInt8) (acc : List ArtifactRef),
+    decodeBlobListTR n bytes acc =
+      (decodeBlobList n bytes).map (fun p => (acc.reverse ++ p.1, p.2)) := by
+  intro n
+  induction n with
+  | zero => intro bytes acc; simp [decodeBlobListTR, decodeBlobList]
+  | succ n ih =>
+      intro bytes acc
+      simp only [decodeBlobListTR, decodeBlobList]
+      cases h : decodeSidecarRef bytes with
+      | none => simp
+      | some pair =>
+          obtain ⟨blob, afterBlob⟩ := pair
+          simp only [Option.bind_some]
+          rw [ih afterBlob (blob :: acc)]
+          cases hq : decodeBlobList n afterBlob with
+          | none => simp [hq]
+          | some q =>
+              obtain ⟨blobs, rest⟩ := q
+              simp [hq, List.reverse_cons]
+
+def decodeBlobListImpl (n : Nat) (bytes : List UInt8) :
+    Option (List ArtifactRef × List UInt8) := decodeBlobListTR n bytes []
+
+@[csimp] theorem decodeBlobList_eq_decodeBlobListImpl :
+    @decodeBlobList = @decodeBlobListImpl := by
+  funext n bytes
+  show _ = decodeBlobListTR n bytes []
+  rw [decodeBlobListTR_eq]
+  cases decodeBlobList n bytes <;> simp
 
 def decodeBlobTable (bytes : List UInt8) : Option (List ArtifactRef × List UInt8) := do
   let count ← readU32LE bytes 0
@@ -1534,6 +1671,56 @@ def decodeEntries (version : Nat) : Nat → List UInt8 → Option (List Entry ×
       let (entry, afterEntry) ← decodeEntry version bytes
       let (entries, rest) ← decodeEntries version n afterEntry
       some (entry :: entries, rest)
+
+/-- The COMPILED form of `decodeEntries`: one accumulator, one C stack
+frame for any entry count.
+
+This is the recursion behind
+<https://github.com/danbri/factoidal/issues/670>.  The published SKOS
+manifest declares 36,106 entries, so the specification's shape asked for
+36,106 nested calls; a browser tab decoding it answered "Maximum call
+stack size exceeded".  `decodeEntries` remains the specification and
+every theorem in `ShardManifestTheorems.lean` is stated about it; the
+`@[csimp]` below is what the code generator uses. -/
+def decodeEntriesTR (version : Nat) : Nat → List UInt8 → List Entry →
+    Option (List Entry × List UInt8)
+  | 0, bytes, acc => some (acc.reverse, bytes)
+  | n + 1, bytes, acc =>
+      match decodeEntry version bytes with
+      | none => none
+      | some (entry, afterEntry) => decodeEntriesTR version n afterEntry (entry :: acc)
+
+theorem decodeEntriesTR_eq (version : Nat) :
+    ∀ (n : Nat) (bytes : List UInt8) (acc : List Entry),
+    decodeEntriesTR version n bytes acc =
+      (decodeEntries version n bytes).map (fun p => (acc.reverse ++ p.1, p.2)) := by
+  intro n
+  induction n with
+  | zero => intro bytes acc; simp [decodeEntriesTR, decodeEntries]
+  | succ n ih =>
+      intro bytes acc
+      simp only [decodeEntriesTR, decodeEntries]
+      cases h : decodeEntry version bytes with
+      | none => simp
+      | some pair =>
+          obtain ⟨entry, afterEntry⟩ := pair
+          simp only [Option.bind_some]
+          rw [ih afterEntry (entry :: acc)]
+          cases hq : decodeEntries version n afterEntry with
+          | none => simp [hq]
+          | some q =>
+              obtain ⟨entries, rest⟩ := q
+              simp [hq, List.reverse_cons]
+
+def decodeEntriesImpl (version : Nat) (n : Nat) (bytes : List UInt8) :
+    Option (List Entry × List UInt8) := decodeEntriesTR version n bytes []
+
+@[csimp] theorem decodeEntries_eq_decodeEntriesImpl :
+    @decodeEntries = @decodeEntriesImpl := by
+  funext version n bytes
+  show _ = decodeEntriesTR version n bytes []
+  rw [decodeEntriesTR_eq]
+  cases decodeEntries version n bytes <;> simp
 
 /-- Strict SBM0/SBM1/SBM2 decoding. A decoder refuses bad framing, unknown versions,
     invalid UTF-8/IRIs, trailing bytes and structurally invalid manifests. -/
