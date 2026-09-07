@@ -2903,10 +2903,11 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph) : r
 // test:semantics=RDF-BASED over the identical premise + candidate
 // triple, and expect the OPPOSITE verdict. `owl_semantics_mode` below
 // is that dispatch key, threaded through a "_mode"-suffixed sibling of
-// each closure entry point (owl_rule_named_equivClass_to_sameAs_mode /
-// owl_rl_closure_step_mode / owl_rl_closure_mode /
-// owl_rl_closure_with_reflexivity_mode). The original arity-preserving
-// entry points (owl_rule_named_equivClass_to_sameAs, owl_rl_closure_step,
+// each closure entry point (owl_rl_closure_step_mode /
+// owl_rl_closure_mode / owl_rl_closure_with_reflexivity_mode; it also
+// reached owl_rule_named_equivClass_to_sameAs_mode until that rule was
+// deleted as unsound on 2026-09-07, see the removal note below). The
+// original arity-preserving entry points (owl_rl_closure_step,
 // owl_rl_closure, owl_rl_closure_with_reflexivity) become one-line
 // wrappers that pass owl_semantics_direct — bitwise the same behaviour
 // as before this change, so w3c_runner.ml / factoidal_cli.ml /
