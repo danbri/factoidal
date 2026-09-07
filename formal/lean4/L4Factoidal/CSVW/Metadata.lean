@@ -136,10 +136,35 @@ structure Column where
   common         : List CommonProp := []
 deriving Repr, Inhabited
 
+/-- MV §5.5.1, the `reference` of a foreign key: the table it points
+    into, named either by `resource` (that table's `url`) or by
+    `schemaReference` (the URL of the schema that table uses), plus
+    the columns of it the key matches against. -/
+structure ForeignKeyRef where
+  resource        : Option String := none
+  schemaReference : Option String := none
+  columnReference : List String := []
+deriving Repr, Inhabited
+
+/-- MV §5.5.1 foreign key: local columns, and the reference they must
+    match. DM §6.6 makes these a validator's business — "for each row
+    that does not have a unique referenced row for each of the foreign
+    keys on the table in which the row appears". -/
+structure ForeignKey where
+  columnReference : List String := []
+  reference       : ForeignKeyRef := {}
+deriving Repr, Inhabited
+
 /-- §5.5 table schema. -/
 structure TableSchema where
   columns      : List Column := []
   primaryKey   : List String := []
+  /-- §5.5.1 `foreignKeys`. Carried on the DECODED schema rather than
+      read back out of the raw JSON, so that a schema fetched through
+      a `tableSchema` URL brings its foreign keys with it — which is
+      what test034/test035 need, their keys living in external
+      `gov.uk/schema/*.json` files. -/
+  foreignKeys  : List ForeignKey := []
   rowTitles    : List String := []
   aboutUrlBase : Option String := none
   inherited    : Inherited := {}

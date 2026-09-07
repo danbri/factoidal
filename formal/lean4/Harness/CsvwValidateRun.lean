@@ -127,6 +127,15 @@ def suiteRelative (base : String) (u : String) : String :=
     (u.splitOn "/").getLast?.getD u
   else u
 
+/-- Reading one metadata document has THREE outcomes, and collapsing
+    the last two is what made `test092` a skip: a file that is not on
+    disk cannot be attempted, but a file that IS on disk and does not
+    parse as JSON is a verdict of its own (tabular-metadata §6.1). -/
+inductive MetaRead where
+  | absent
+  | malformed
+  | ok (raw : Json) (decoded : Option (TableGroup × Ctx)) (base : String)
+
 /-- One entry's verdict: does the described document conform, and why
     not when it doesn't. `none` means the entry could not be attempted
     at all (a file the manifest names is missing) — reported as a
@@ -137,34 +146,44 @@ def runOne (dir : String) (e : VEntry) : IO (Option (Bool × List String)) := do
   -- checks), its decoded group + context (for the data-level checks,
   -- when decoding succeeds), and the base URL everything in it
   -- resolves against.
-  let readMeta : String → IO (Option (Json × Option (TableGroup × Ctx) × String)) := fun mf => do
+  let readMeta : String → IO MetaRead := fun mf => do
     let mp := dir ++ "/" ++ mf
-    if !(← System.FilePath.pathExists mp) then pure none
+    if !(← System.FilePath.pathExists mp) then pure .absent
     else
       let msrc ← IO.FS.readFile mp
       match L4Factoidal.JSON.parseJson? msrc with
-      | none    => pure none
+      | none    => pure .malformed
       | some rj =>
           let decoded := parseMetadata rj
           let base := match decoded with
             | some (_, c) => effectiveBase (suiteBase ++ mf) c
             | none        => suiteBase ++ mf
-          pure (some (rj, decoded, base))
+          pure (.ok rj decoded base)
   let requested := suiteBase ++ e.action
   let mut chosen : Option (Json × Option (TableGroup × Ctx) × String) := none
   let mut metaMissing := false
+  let mut metaMalformed := false
   match e.metadata with
   | some mf =>
       match ← readMeta mf with
-      | some c => chosen := some c
-      | none   => metaMissing := true
+      | .ok rj d b  => chosen := some (rj, d, b)
+      | .absent     => metaMissing := true
+      | .malformed  => metaMalformed := true
   | none =>
       for mf in e.metaCandidates do
         if chosen.isNone then
           match ← readMeta mf with
-          | some (rj, some (g, c), b) =>
+          | .ok rj (some (g, c)) b =>
               if describesTable b g requested then chosen := some (rj, some (g, c), b)
           | _ => pure ()
+  if metaMalformed then
+    -- The metadata document is ON DISK and did not parse as JSON.
+    -- That is a VERDICT, not a missing fixture: tabular-metadata §6.1
+    -- — "All compliant applications MUST generate errors and stop
+    -- processing if a metadata document does not use valid JSON
+    -- syntax" (test092). Reading it as a skip, as this runner did
+    -- until 2026-09-07, drops the one test that states the rule.
+    return some (false, ["metadata is not valid JSON"])
   if metaMissing then
     -- A named metadata file that is not on disk: the entry cannot be
     -- attempted (this suite ships every fixture it references, so
@@ -177,7 +196,11 @@ def runOne (dir : String) (e : VEntry) : IO (Option (Bool × List String)) := do
       -- on its own, per the spec's fallback. Nothing structural or
       -- data-level to check against — such a document always
       -- conforms.
-      let path := dir ++ "/" ++ suiteRelative requested e.action
+      -- The action is relative to the SUITE base, not to the request
+      -- URL — resolving it against `requested`, which already ends in
+      -- the action, produced `test119/test119/action.csv` and skipped
+      -- the entry (test119).
+      let path := dir ++ "/" ++ suiteRelative suiteBase e.action
       if !(← System.FilePath.pathExists path) then return none
       return some (true, [])
   | some (rawJson, none, _) =>

@@ -95,6 +95,9 @@ structure Entry where
       tables come from the metadata document's own `url`/`tables`. -/
   csvAction : Option String
   negative : Bool
+  /-- A plain `ToRdfTest` — not the WithWarnings class. Only these
+      are held to the validator over-strict cross-check. -/
+  strictPositive : Bool
 
 /-- Every entry the manifest lists, with its options. Nothing is
     filtered out here — the run loop decides what it can attempt, so
@@ -134,6 +137,17 @@ def manifestEntries (j : L4Factoidal.JSON.Json) : List Entry :=
           | _ => none)
         let negative := match str? "type" e with
           | some t => t.endsWith "NegativeRdfTest"
+          | none   => false
+        -- A `ToRdfTestWithWarnings` entry is a document a CONVERTER must
+        -- convert and a VALIDATOR must reject: test100, test107,
+        -- test109 and test111 carry exactly that pair of duties, being
+        -- `NegativeValidationTest` in the validation manifest. The
+        -- over-strict cross-check below therefore covers only the
+        -- plain `ToRdfTest` class; applying it to the WithWarnings class
+        -- would demand the validator accept documents the validation
+        -- suite requires it to reject.
+        let strictPositive := match str? "type" e with
+          | some t => t.endsWith "ToRdfTest"
           | none   => false
         match str? "id" e, str? "action" e with
         | some i, some a =>
@@ -180,7 +194,7 @@ def manifestEntries (j : L4Factoidal.JSON.Json) : List Entry :=
                      minimal := minimal, metadata := metadata,
                      metaCandidates := candidates,
                      csvAction := if isCsv then some a else none,
-                     negative := negative }
+                     negative := negative, strictPositive := strictPositive }
         | _, _ => none)
   | _ => []
 
@@ -373,7 +387,7 @@ def main (args : List String) : IO UInt32 := do
         -- tests must still ACCEPT every positive one. Without this the
         -- negative score can be bought with rules that reject
         -- everything, and the two numbers would never disagree.
-        match e.metadata with
+        match (if e.strictPositive then e.metadata else none) with
         | none => pure ()
         | some mf =>
             let mp := dir ++ "/" ++ mf

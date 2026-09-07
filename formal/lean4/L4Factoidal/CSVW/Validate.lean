@@ -73,18 +73,27 @@ def checkType (role : String) (v : Json) : List Finding :=
   | none   => []
 
 /-- A `titles` object keys its values by language tag; each key must
-    be a well-formed tag. -/
+    be a well-formed tag (MV §5.1.3), and the value as a whole must be
+    a string, an array or such an object (MV §5.2).
+
+    BOTH are ERRORS, and the reason is the two duties the same
+    document carries. test109 and test111 are `ToRdfTestWithWarnings`
+    in the csv2rdf manifest and `NegativeValidationTest` in the
+    validation manifest: a CONVERTER warns and proceeds with the title
+    unusable, a VALIDATOR raises an error. This module is the
+    validator, so it errs; `CsvwRdfRun`/`CsvwJsonRun`'s over-strict
+    cross-check is scoped to the plain `ToRdfTest`/`ToJsonTest` class
+    for exactly this reason. Emitting a warning here instead made both
+    tests unfailable. -/
 def checkTitles (v : Json) : List Finding :=
   match field? "titles" v with
   | some (.object ms) =>
       ms.filterMap (fun (k, _) =>
-        -- A WARNING, not an error: the suite classifies
-        -- `titles with invalid language` as
-        -- `ToRdfTestWithWarnings` (test109), so the document still
-        -- converts and the title is simply unusable for that
-        -- language.
-        if langValid k then none else some (warn ("invalid language tag in titles: " ++ k)))
-  | _ => []
+        if langValid k then none else some (err ("invalid language tag in titles: " ++ k)))
+  | some (.string _) => []
+  | some (.array _)  => []
+  | some _           => [err "titles must be a string, array, or language object"]
+  | none             => []
 
 /-- The built-in datatype names.
 
@@ -365,6 +374,14 @@ def checkSchema (v : Json) : List Finding :=
   let cols := match field? "columns" v with
     | some (.array cs) => cs
     | _ => []
+  -- MV §5.2: a non-array value for an array property is a warning for
+  -- a converter, which proceeds as if an EMPTY array had been given —
+  -- and an empty column list against a populated CSV is then
+  -- incompatible, which a validator MUST reject (test100).
+  let colsShape := match field? "columns" v with
+    | some (.array _) => []
+    | none            => []
+    | some _          => [err "columns must be an array"]
   let names := cols.filterMap (stringField? "name")
   -- Column names are unique (test128), and every virtual column comes
   -- after every real one (test133).
@@ -377,7 +394,7 @@ def checkSchema (v : Json) : List Finding :=
   let orderFindings :=
     if (virtuals.zip (virtuals.drop 1)).any (fun (a, b) => a && !b)
     then [err "a virtual column precedes a non-virtual one"] else []
-  checkId "schema" v ++ checkType "Schema" v ++ cols.flatMap checkColumn
+  checkId "schema" v ++ checkType "Schema" v ++ colsShape ++ cols.flatMap checkColumn
     ++ dupFindings ++ orderFindings
     -- `foreignKeys` given as a non-array, or holding a non-object
     -- member, is a WARNING and the offending value is ignored — the
@@ -408,9 +425,18 @@ def checkTable (v : Json) : List Finding :=
     | some _           => [err "table url must be a string"]
     | none             => [err "a table must have a url"]
   checkId "table" v ++ checkType "Table" v ++ urlFindings
+    -- MV §5.2: `tableSchema` is an object property, so it takes an
+    -- inline object or a string naming one. Any other type is a
+    -- warning for a converter, which proceeds as if an object with no
+    -- properties had been given — leaving no columns at all, which a
+    -- validator MUST reject (test107). Passing the non-object to
+    -- `checkSchema` found nothing, because every `field?` lookup
+    -- inside it returns `none` for a non-object.
     ++ (match field? "tableSchema" v with
-        | some s => checkSchema s
-        | none   => [])
+        | some (.object ms) => checkSchema (.object ms)
+        | some (.string _)  => []
+        | some _            => [err "tableSchema must be an object or string"]
+        | none              => [])
     ++ (match field? "dialect" v with
         | some d => checkId "dialect" d ++ checkType "Dialect" d
         | none   => [])
@@ -484,9 +510,14 @@ def checkTableGroup (v : Json) : List Finding :=
   let tablesFindings := match field? "tables" v with
     | some (.array []) => [err "tables must not be empty"]
     | some (.array ts) =>
+        -- MV §5: 'Any items within an array that are not valid objects
+        -- of the type expected are ignored.' test094 is a
+        -- WarningValidationTest whose `tables` array holds a valid
+        -- table and the integer 1; the document CONFORMS on the
+        -- strength of the one table. Erring here rejected it.
         ts.flatMap (fun t => match t with
           | .object _ => checkTable t
-          | _         => [err "tables must hold table objects"])
+          | _         => [warn "a tables member is not a table object; ignored"])
     | some _ => [err "tables must be an array"]
     | none   => [err "a table group must have tables"]
   checkId "table group" v ++ checkType "TableGroup" v ++ tablesFindings
@@ -534,12 +565,12 @@ different rules — plus a `format`-as-regex check for the string-like
 bases that `formatConvert`'s `.noFormat` branch does not itself parse
 (tabular-metadata §5.11.3, test154).
 
-NOT covered yet: multi-table foreign-key referential integrity
-(cross-table, `formal/fstar/CSVW.Validate.fst`'s `cv_check_table_fks`)
-and title/header-language compatibility (`cv_title_compat`) — both
-read the raw metadata JSON's `foreignKeys` / column `titles` in ways
-this port's decoded `TableSchema` does not yet carry. Left for a
-follow-up once the failing-test list says they cost real tests. -/
+Also covered, since 2026-09-07: DM §5.4.3 per-column table-description
+compatibility (`titleCompat`) and DM §6.6 cross-table foreign-key
+referential integrity (`checkForeignKeys`). The decoded `TableSchema`
+now carries `foreignKeys`, so a schema fetched through a
+`tableSchema` URL brings its keys with it and no raw-JSON second pass
+is needed. -/
 
 /-- Bases whose `format` facet is a REGULAR EXPRESSION the raw value
     must match (tabular-metadata §5.11.3), for the bases
@@ -699,6 +730,71 @@ def dataColumnName (headers : List String) (j : Nat) (c : Column) : String :=
                | "" => "_col." ++ toString (j + 1)
                | h  => h
 
+/-- Do a title's language tag and the header's effective language
+    match? DM §5.4.3: "`und` matches any language, and languages match
+    if they are equal when truncated, as defined in [BCP47], to the
+    length of the shortest language tag." -/
+def titleLangMatch (a b : String) : Bool :=
+  a == b || a == "und" || b == "und" ||
+    (let k := Nat.min a.length b.length
+     String.ofList (a.toList.take k) == String.ofList (b.toList.take k))
+
+/-- DM §5.4.3, the per-column half of table-description compatibility,
+    applied position by position once the column COUNTS already agree
+    (the width half, checked separately — comparing by index when the
+    widths differ would blame the wrong column).
+
+    * A column that HAS titles is compatible only if some title equals
+      the header cell — case-sensitively — and carries a language
+      matching the header's. The header cell carries the table's
+      effective language, so a `"lang": "de"` table and an `{"en": …}`
+      title do not match (test148); `gid` and `GID` do not match
+      because the comparison is case-sensitive (test147); `Family
+      Name` and `FamilyName` do not intersect at all (test127).
+    * A column with a `name` and NO titles must have that name equal
+      the name the header title itself encodes to (test124: metadata
+      `GID1` against a header `GID`, whose name is `GID`).
+    * A column with neither constrains nothing.
+
+    Header cells are compared TRIMMED: the default dialect trims them,
+    so test032's header " Start Date" carries the title "Start Date".
+
+    `dl` is the table's effective default language. -/
+def titleCompat (dl : String) (colsMeta : List Column) (header : List String)
+    : List Finding :=
+  (colsMeta.zip header).flatMap (fun (c, h) =>
+    let ht0 := h.trim
+    match c.titlesLang with
+    | _ :: _ =>
+        if c.titlesLang.any (fun (t, lo) =>
+             t.trim == ht0 && titleLangMatch (lo.getD dl) dl)
+        then []
+        else [err ("column title incompatible with CSV header: " ++ ht0)]
+    | [] =>
+        match c.name with
+        | some n =>
+            if n == UriTemplate.encodeColumnName ht0 then []
+            else [err ("column name incompatible with CSV header: " ++ ht0)]
+        | none => [])
+
+/-- One table's non-virtual columns as (name, inherited properties,
+    the column's cells in row order). Shared by the per-table data
+    checks and by the foreign-key check, so both sides of a key are
+    built the same way and a value is never compared against a
+    differently-derived one. -/
+def tableColumnData (g : TableGroup) (t : TableDesc) (tbl : Table)
+    : List (String × Inherited × List String) :=
+  let fieldCount := match tbl.header.head? with
+    | some h => h.cells.length
+    | none   => match tbl.rows.head? with
+      | some r => r.cells.length
+      | none   => 0
+  let headers := (tbl.header.head?).map (·.cells) |>.getD []
+  let cols := nonVirtualColumns t.schema fieldCount
+  cols.zipIdx.map (fun (c, j) =>
+    (dataColumnName headers j c, effectiveInherited g t t.schema c,
+     tbl.rows.map (fun r => r.cells.getD j "")))
+
 /-- Every data-level finding for one table: cell formats, required
     columns, primary-key uniqueness (single and composite), and
     schema/CSV width compatibility (test278). A table whose declared
@@ -707,18 +803,9 @@ def dataColumnName (headers : List String) (j : Nat) (c : Column) : String :=
     a required check over a misaligned column list would blame the
     wrong column. -/
 def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding :=
-  let fieldCount := match tbl.header.head? with
-    | some h => h.cells.length
-    | none   => match tbl.rows.head? with
-      | some r => r.cells.length
-      | none   => 0
   let headers := (tbl.header.head?).map (·.cells) |>.getD []
-  let cols := nonVirtualColumns t.schema fieldCount
   let dataRows := tbl.rows
-  let colData : List (String × Inherited × List String) :=
-    cols.zipIdx.map (fun (c, j) =>
-      (dataColumnName headers j c, effectiveInherited g t t.schema c,
-       dataRows.map (fun r => r.cells.getD j "")))
+  let colData : List (String × Inherited × List String) := tableColumnData g t tbl
   let cellErrs := colData.flatMap (fun (nm, inh, vals) => checkCellsForColumn inh nm vals)
   let colVals := colData.map (fun (nm, _, vals) => (nm, vals))
   let pkNames := t.schema.map (·.primaryKey) |>.getD []
@@ -737,7 +824,82 @@ def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding
   let reqErrs :=
     if widthErr.isEmpty then colData.flatMap (fun (nm, inh, vals) => checkRequiredCells inh nm vals)
     else []
-  cellErrs ++ pkErrs ++ reqErrs ++ widthErr
+  -- The header cells carry the table's effective language, so that is
+  -- what a title's own tag is matched against (DM §5.4.3). Absent
+  -- everywhere, it is `und`, which matches anything — so this check
+  -- only bites on a document that declares a language.
+  let tableLang := (t.inherited.lang.orElse (fun _ => g.inherited.lang)).getD "und"
+  let titleErrs :=
+    if widthErr.isEmpty && headers.length > 0 then titleCompat tableLang declaredNonVirt headers
+    else []
+  cellErrs ++ pkErrs ++ reqErrs ++ widthErr ++ titleErrs
+
+/-- The last slash-separated segment of a URL. -/
+def basenameOf (s : String) : String :=
+  (s.splitOn "/").getLast?.getD s
+
+private def lookupStr (k : String) : List (String × String) → Option String
+  | []            => none
+  | (k2, v) :: tl => if k2 == k then some v else lookupStr k tl
+
+/-- One composite value per row over the named columns, in row order.
+    An empty list when any named column is absent from the table — a
+    reference this port cannot resolve makes NO claim rather than a
+    false one. -/
+def compositeValues (cols : List (String × List String)) (names : List String)
+    : List String :=
+  let vlists := names.filterMap (fun n => (cols.find? (fun p => p.1 == n)).map (·.2))
+  if vlists.length != names.length || vlists.isEmpty then [] else zipJoin vlists
+
+/-- DM §6.6 foreign-key referential integrity, across the group's
+    tables: "Validators MUST raise errors … for each row that does not
+    have a UNIQUE referenced row for each of the foreign keys on the
+    table in which the row appears." Both halves of "unique" are
+    errors — no referenced row (test257) and more than one (test258).
+
+    A reference names its target either by `resource`, the target
+    table's own `url` (test257/test258), or by `schemaReference`, the
+    URL of the SCHEMA that target uses (test034/test035, whose keys and
+    schemas live in external `gov.uk/schema/*.json` files). The second
+    form is resolved through the group's own tables: a table records
+    the schema URL it was given, so the schema's basename identifies
+    the table that uses it.
+
+    Only the EMPTY cell is exempt. A column's `null` value is NOT: DM
+    §6.6 requires a unique referenced row for every row, with no
+    exemption for a cell that the column's `null` annotation makes
+    null, and test034/test035 are exactly that case — `senior-roles.csv`
+    declares `"null": "xx"` on `reportsTo` and carries the value `xx`,
+    which matches no `ref`. Exempting null values there would make both
+    tests conform. The F* module reads the rule the same way.
+
+    A `suppressOutput` table raises no findings of its own, matching
+    `checkData`, but remains available as a key's TARGET. -/
+def checkForeignKeys (g : TableGroup) (tables : List (TableDesc × Table))
+    : List Finding :=
+  let schemaMap : List (String × String) :=
+    tables.filterMap (fun (t, _) => t.schemaRef.map (fun r => (basenameOf r, t.url)))
+  let valuesOf : List (String × List (String × List String)) :=
+    tables.map (fun (t, tbl) =>
+      (t.url, (tableColumnData g t tbl).map (fun (nm, _, vals) => (nm, vals))))
+  tables.flatMap (fun (t, tbl) =>
+    if t.suppress == some true then [] else
+    let localCols := (tableColumnData g t tbl).map (fun (nm, _, vals) => (nm, vals))
+    ((t.schema.map (·.foreignKeys)).getD []).flatMap (fun fk =>
+      let target : Option String :=
+        fk.reference.resource.orElse (fun _ =>
+          fk.reference.schemaReference.bind (fun sr => lookupStr (basenameOf sr) schemaMap))
+      match target.bind (fun u => (valuesOf.find? (fun p => p.1 == u)).map (·.2)) with
+      | none => []
+      | some targetCols =>
+          let localVals := compositeValues localCols fk.columnReference
+          let refVals := compositeValues targetCols fk.reference.columnReference
+          localVals.flatMap (fun lv =>
+            if lv == "" then [] else
+            match (refVals.filter (· == lv)).length with
+            | 0 => [err ("foreign key value has no referenced row: " ++ lv)]
+            | 1 => []
+            | _ => [err ("foreign key value references multiple rows: " ++ lv)])))
 
 /-- Every data-level finding across a table group's tables. A table
     with `suppressOutput` is read for other checks (foreign keys, not
@@ -745,5 +907,6 @@ def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding
     `csvw_table_suppressed`'s role in the F* module. -/
 def checkData (g : TableGroup) (tables : List (TableDesc × Table)) : List Finding :=
   tables.flatMap (fun (t, tbl) => if t.suppress == some true then [] else checkDataTable g t tbl)
+    ++ checkForeignKeys g tables
 
 end L4Factoidal.CSVW

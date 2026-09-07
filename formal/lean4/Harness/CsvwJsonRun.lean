@@ -133,6 +133,9 @@ structure JEntry where
       tried. Same rule, same reason, as `CsvwRdfRun`. -/
   metaCandidates : List String
   negative  : Bool
+  /-- A plain `ToJsonTest` — not the WithWarnings class. Only these
+      are held to the validator over-strict cross-check. -/
+  strictPositive : Bool
 
 def jsonManifestEntries (j : Json) : List JEntry :=
   let field? (k : String) (v : Json) : Option Json :=
@@ -163,6 +166,17 @@ def jsonManifestEntries (j : Json) : List JEntry :=
         let negative := match str? "type" e with
           | some t => t.endsWith "NegativeJsonTest"
           | none   => false
+        -- A `ToJsonTestWithWarnings` entry is a document a CONVERTER must
+        -- convert and a VALIDATOR must reject: test100, test107,
+        -- test109 and test111 carry exactly that pair of duties, being
+        -- `NegativeValidationTest` in the validation manifest. The
+        -- over-strict cross-check below therefore covers only the
+        -- plain `ToJsonTest` class; applying it to the WithWarnings class
+        -- would demand the validator accept documents the validation
+        -- suite requires it to reject.
+        let strictPositive := match str? "type" e with
+          | some t => t.endsWith "ToJsonTest"
+          | none   => false
         match str? "id" e, str? "action" e with
         | some i, some a =>
             -- A retrieval URL may carry a QUERY: two entries name
@@ -190,7 +204,7 @@ def jsonManifestEntries (j : Json) : List JEntry :=
                 if acc.contains f then acc else acc ++ [f]) ([] : List String)
               some { id := i, action := a, result := (str? "result" e).getD "",
                      minimal := minimal, metadata := metadata,
-                     metaCandidates := candidates, negative := negative }
+                     metaCandidates := candidates, negative := negative, strictPositive := strictPositive }
         | _, _ => none)
   | _ => []
 
@@ -325,7 +339,7 @@ def main (args : List String) : IO UInt32 := do
         -- tests must still ACCEPT every positive one. Without this the
         -- negative score can be bought with rules that reject
         -- everything, and the two numbers would never disagree.
-        match e.metadata with
+        match (if e.strictPositive then e.metadata else none) with
         | none => pure ()
         | some mf =>
             let mp := dir ++ "/" ++ mf
