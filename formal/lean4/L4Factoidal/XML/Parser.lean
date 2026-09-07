@@ -298,15 +298,23 @@ exact. The F* needs a hand-written UTF-8 encoder here
 is one character. -/
 def codepointToString (cp : Nat) : String := String.singleton (Char.ofNat cp)
 
-/-- The general internal entities declared by the internal subset:
-name ↦ raw, unexpanded replacement text. Port of F*
-`dtd_entity_table`. -/
-abbrev EntityTable := List (String × String)
+/-- Look a declared general entity's DECLARATION up by name.
+`XML/Document.lean` carries `EntityTable` and `EntityDef`, because
+`Doctype` holds one. -/
+def lookupEntityDef (name : String) (ents : EntityTable) : Option EntityDef :=
+  (ents.defs.find? (fun p => p.1 == name)).map (·.2)
 
-/-- Look a declared general entity up by name. Port of F*
-`lookup_entity`. -/
+/-- Look a declared general entity's replacement text up by name.
+Port of F* `lookup_entity`. -/
 def lookupEntity (name : String) (ents : EntityTable) : Option String :=
-  (ents.find? (fun p => p.1 == name)).map (·.2)
+  (lookupEntityDef name ents).bind (fun d => if d.resolved then some d.value else none)
+
+/-- Record a declaration. The FIRST declaration of a name wins
+(section 4.2), so an existing binding is kept. -/
+def declareEntity (name : String) (d : EntityDef) (ents : EntityTable) : EntityTable :=
+  match lookupEntityDef name ents with
+  | some _ => ents
+  | none   => { ents with defs := (name, d) :: ents.defs }
 
 /-- The five entities §4.6 says every processor must recognise whether
 or not they are declared. -/
@@ -331,7 +339,7 @@ the F*'s own `%[depth; budget]`: diving into a nested entity decrements
 `depth`, scanning forward decrements `budget`.
 
 Port of F* `expand_entity_value`. -/
-def expandEntityValue (ents : EntityTable) (visited : List String)
+def expandEntityValue (inAttr : Bool) (ents : EntityTable) (visited : List String)
     (s : Chars) (pos : Nat) (depth : Nat) (budget : Nat)
     (acc : List String) : PResult String :=
   match budget with
@@ -360,7 +368,7 @@ def expandEntityValue (ents : EntityTable) (visited : List String)
             | .ok digits pos' =>
               let cp := hexValue digits
               if isXmlCharCode cp then
-                expandEntityValue ents visited s pos' depth budget'
+                expandEntityValue inAttr ents visited s pos' depth budget'
                   (codepointToString cp :: acc)
               else .err "character reference to a non-Char codepoint" pos'
           else
@@ -369,7 +377,7 @@ def expandEntityValue (ents : EntityTable) (visited : List String)
             | .ok digits pos' =>
               let cp := decValue digits
               if isXmlCharCode cp then
-                expandEntityValue ents visited s pos' depth budget'
+                expandEntityValue inAttr ents visited s pos' depth budget'
                   (codepointToString cp :: acc)
               else .err "character reference to a non-Char codepoint" pos'
         else
@@ -381,19 +389,33 @@ def expandEntityValue (ents : EntityTable) (visited : List String)
             else
               let pos' := posN + 1
               if isPredefinedEntity name then
-                expandEntityValue ents visited s pos' depth budget'
+                expandEntityValue inAttr ents visited s pos' depth budget'
                   (predefinedValue name :: acc)
               else if visited.contains name then
                 .err "recursive entity reference (WFC: No Recursion)" pos
               else
-                match lookupEntity name ents with
-                | none => .err "reference to undeclared entity (WFC: Entity Declared)" pos
-                | some subval =>
+                match lookupEntityDef name ents with
+                | none =>
+                    -- Section 4.1 WFC Entity Declared is a VALIDITY
+                    -- constraint once the DTD has an included
+                    -- parameter entity; `ents.lax` records which.
+                    if ents.lax then
+                      expandEntityValue inAttr ents visited s pos' depth budget' acc
+                    else .err "reference to undeclared entity (WFC: Entity Declared)" pos
+                | some ed =>
+                  if inAttr && ed.external then
+                    .err "an attribute value may not reference an external entity, directly or indirectly (WFC: No External Entity References, section 4.4.4)" pos
+                  else if !ed.resolved then
+                    if ents.lax then
+                      expandEntityValue inAttr ents visited s pos' depth budget' acc
+                    else .err "reference to undeclared entity (WFC: Entity Declared)" pos
+                  else
+                  let subval := ed.value
                   match depth with
                   | 0 => .err "entity nesting too deep" pos
                   | depth' + 1 =>
                     let subArr : Chars := subval.toList.toArray
-                    match expandEntityValue ents (name :: visited) subArr 0 depth'
+                    match expandEntityValue inAttr ents (name :: visited) subArr 0 depth'
                             (subArr.size + 1) [] with
                     | .err m p => .err m p
                     | .ok decoded _ =>
@@ -401,16 +423,16 @@ def expandEntityValue (ents : EntityTable) (visited : List String)
                       -- `depth` generalised it, so naming the successor
                       -- form is what lets the `(depth, budget)` measure
                       -- see this call keep the depth and drop the budget.
-                      expandEntityValue ents visited s pos' (depth' + 1) budget' (decoded :: acc)
+                      expandEntityValue inAttr ents visited s pos' (depth' + 1) budget' (decoded :: acc)
       else
-        expandEntityValue ents visited s (pos + 1) depth budget'
+        expandEntityValue inAttr ents visited s (pos + 1) depth budget'
           (String.singleton ch :: acc)
 termination_by (depth, budget)
 
 /-- Parse one `[67] Reference` whose leading `&` has already been
 consumed, returning its replacement text and the position after the
 `;`. Port of F* `parse_reference`. -/
-def parseReference (ents : EntityTable) (s : Chars) (pos : Nat) : PResult String :=
+def parseReference (inAttr : Bool) (ents : EntityTable) (s : Chars) (pos : Nat) : PResult String :=
   if pos ≥ s.size then .err "unterminated reference" pos
   else if charAt s pos == '#' then
     if pos + 1 ≥ s.size then .err "unterminated character reference" pos
@@ -441,11 +463,25 @@ def parseReference (ents : EntityTable) (s : Chars) (pos : Nat) : PResult String
         let pos' := posN + 1
         if isPredefinedEntity name then .ok (predefinedValue name) pos'
         else
-          match lookupEntity name ents with
-          | none => .err "reference to undeclared entity (WFC: Entity Declared)" pos
-          | some subval =>
-            let subArr : Chars := subval.toList.toArray
-            match expandEntityValue ents [name] subArr 0 (ents.length + 1)
+          match lookupEntityDef name ents with
+          | none =>
+              -- Section 4.1 WFC Entity Declared, first clause: outside
+              -- a document with no DTD, an internal-only subset with no
+              -- parameter-entity reference, or `standalone="yes"`, an
+              -- undeclared entity is a VALIDITY error and a
+              -- non-validating processor must not report it
+              -- (`rmt-e3e-13`).
+              if ents.lax then .ok "" pos'
+              else .err "reference to undeclared entity (WFC: Entity Declared)" pos
+          | some ed =>
+            if inAttr && ed.external then
+              .err "an attribute value may not reference an external entity, directly or indirectly (WFC: No External Entity References, section 4.4.4)" pos
+            else if !ed.resolved then
+              (if ents.lax then .ok "" pos'
+               else .err "reference to undeclared entity (WFC: Entity Declared)" pos)
+            else
+            let subArr : Chars := ed.value.toList.toArray
+            match expandEntityValue inAttr ents [name] subArr 0 (ents.defs.length + 1)
                     (subArr.size + 1) [] with
             | .err m p => .err m p
             | .ok decoded _ => .ok decoded pos'
@@ -478,7 +514,7 @@ def parseAttrValueBody (ents : EntityTable) (qch : Char) (s : Chars) (pos : Nat)
         -- AttValue excludes '<' unconditionally ([10] / §3.1).
         .err "attribute values exclude '<'" pos
       else if ch == '&' then
-        match parseReference ents s (pos + 1) with
+        match parseReference true ents s (pos + 1) with
         | .err m p => .err m p
         | .ok decoded pos' => parseAttrValueBody ents qch s pos' (decoded :: acc) fuel
       else
@@ -607,7 +643,7 @@ def parseTextContent (ents : EntityTable) (s : Chars) (pos : Nat)
         if entityCarriesMarkup ents s (pos + 1) then
           .ok (String.join acc.reverse) pos
         else
-        match parseReference ents s (pos + 1) with
+        match parseReference false ents s (pos + 1) with
         | .err m p => .err m p
         | .ok decoded pos' => parseTextContent ents s pos' (decoded :: acc) fuel
       else
@@ -772,7 +808,7 @@ def tryPseudoAttr (name : String) (s : Chars) (pos : Nat) : Option (String × Na
       | .err _ _ => none
       | .ok _ pos4 =>
         let pos5 := skipSpace s pos4
-        match parseAttrValue [] s pos5 with
+        match parseAttrValue {} s pos5 with
         | .err _ _ => none
         | .ok v pos6 => some (v, pos6)
 
@@ -801,7 +837,7 @@ def parseXmlDecl (s : Chars) (pos : Nat) : PResult XmlDecl :=
         | .err m p => .err m p
         | .ok _ pos4 =>
           let pos5 := skipSpace s pos4
-          match parseAttrValue [] s pos5 with
+          match parseAttrValue {} s pos5 with
           | .err m p => .err m p
           | .ok vernum pos6 =>
             if !isVersionNum vernum then .err "illegal VersionNum" pos5
@@ -1443,7 +1479,7 @@ def parseDefaultDecl (check : Bool) (ents : EntityTable) (s : Chars) (pos : Nat)
         if !check then .ok () p'
         else
           let body : Chars := (sub s (p + 1) (p' - 1)).toList.toArray
-          match expandEntityValue ents [] body 0 (ents.length + 1) (body.size + 1) [] with
+          match expandEntityValue true ents [] body 0 (ents.defs.length + 1) (body.size + 1) [] with
           | .err m _ => .err ("in an attribute default value: " ++ m) p
           | .ok _ _  => .ok () p'
     else .err "expected #REQUIRED, #IMPLIED, #FIXED or a quoted default" p
@@ -1765,14 +1801,8 @@ def parseEntityDecl (resolve : Resolver) (internal : Bool) (s : Chars) (pos : Na
                   -- A PARAMETER entity is not a general entity, so it
                   -- never enters the table a `&name;` reference reads.
                   -- It has its OWN table, which `%name;` reads.
-                  if isPE then
-                    .ok (ents, (match lookupEntity name pes with
-                                | some _ => pes
-                                | none   => (name, value) :: pes)) p7
-                  else
-                    .ok ((match lookupEntity name ents with
-                          | some _ => ents
-                          | none   => (name, value) :: ents), pes) p7
+                  if isPE then .ok (ents, declareEntity name { value := value } pes) p7
+                  else .ok (declareEntity name { value := value } ents, pes) p7
           else
             match parseExternalIDSys s p5 with
             | .err m p => .err m p
@@ -1802,8 +1832,19 @@ def parseEntityDecl (resolve : Resolver) (internal : Bool) (s : Chars) (pos : Na
                     -- reference to it rejects — which is what the
                     -- parser did before, and is still what it does
                     -- when nothing can be fetched.
+                    -- An EXTERNAL entity is DECLARED whether or not its
+                    -- text can be read: section 4.4.4 forbids a
+                    -- reference to it in an attribute value on the
+                    -- strength of the DECLARATION, and the table is
+                    -- where that fact lives. Unread, it carries no
+                    -- replacement text, so a reference in CONTENT gets
+                    -- the same verdict as before.
                     match resolve sysId with
-                    | none      => .ok (ents, pes) p'
+                    | none      =>
+                        let ed : EntityDef :=
+                          { value := "", external := true, resolved := false }
+                        if isPE then .ok (ents, declareEntity name ed pes) p'
+                        else .ok (declareEntity name ed ents, pes) p'
                     | some raw  =>
                       match readTextDecl raw with
                       -- A malformed `[77] TextDecl` in the entity is
@@ -1812,14 +1853,9 @@ def parseEntityDecl (resolve : Resolver) (internal : Bool) (s : Chars) (pos : Na
                       -- undeclared.
                       | .error m   => .err m p'
                       | .ok text =>
-                        if isPE then
-                            .ok (ents, (match lookupEntity name pes with
-                                        | some _ => pes
-                                        | none   => (name, text) :: pes)) p'
-                        else
-                            .ok ((match lookupEntity name ents with
-                                  | some _ => ents
-                                  | none   => (name, text) :: ents), pes) p'
+                        let ed : EntityDef := { value := text, external := true }
+                        if isPE then .ok (ents, declareEntity name ed pes) p'
+                        else .ok (declareEntity name ed ents, pes) p'
 
 /-- Where a declaration subset ENDS. The three are different
     productions and confusing them changes the verdict:
@@ -1887,6 +1923,11 @@ def parseSubset (resolve : Resolver) (endKind : SubsetEnd)
                -- external subset this parser has not read, `%name;`
                -- may well be declared there, and rejecting would call
                -- a well-formed document malformed.
+               -- Section 4.1 WFC Entity Declared turns on whether a
+               -- `[69] PEReference` was RECOGNISED, declared or not,
+               -- so the table records it here and not at the
+               -- declaration.
+               let pes := { pes with sawPe := true }
                match lookupEntity name pes with
                | none => parseSubset resolve endKind s (p1 + 1) ents pes ids fuel
                | some text =>
@@ -2081,7 +2122,7 @@ def peScan (resolve : Resolver) (s : Chars) (pos : Nat) (pes : EntityTable)
           else if peekLit "<?" s pos then
             peScan resolve s (pos + 2) pes ("<?" :: acc) .pi depth fuel'
           else if peekLit "<!ENTITY" s pos then
-            match parseEntityDecl resolve false s pos [] pes with
+            match parseEntityDecl resolve false s pos {} pes with
             | .err _ _ =>
                 -- Not a declaration this parser can read as it stands
                 -- — it may hold a parameter-entity reference that has
@@ -2102,7 +2143,8 @@ termination_by (depth, fuel)
 STEPPED OVER, never loaded — no external resource is read.
 Port of F* `parse_doctype` (which discards the root Name; it is
 recorded here). -/
-def parseDoctype (resolve : Resolver) (s : Chars) (pos : Nat) : PResult Doctype :=
+def parseDoctype (resolve : Resolver) (standalone : Bool)
+    (s : Chars) (pos : Nat) : PResult Doctype :=
   match pstring "<!DOCTYPE" s pos with
   | .err m p => .err m p
   | .ok _ p1 =>
@@ -2131,17 +2173,18 @@ def parseDoctype (resolve : Resolver) (s : Chars) (pos : Nat) : PResult Doctype 
           -- over a later one of the same name (§4.2).
           let p4 := skipSpace s p3'
           match (if p4 < s.size && charAt s p4 == '[' then
-                   match parseSubset resolve .bracket s (p4 + 1) [] [] [] (s.size + 1) with
+                   match parseSubset resolve .bracket s (p4 + 1) {} {} [] (s.size + 1) with
                    | .err m p => PResult.err m p
                    | .ok r p5 => PResult.ok r p5
-                 else PResult.ok (([], [], []) :
-                        EntityTable × EntityTable × List (String × String)) p4) with
+                 else PResult.ok ((({}, {}, []) :
+                        EntityTable × EntityTable × List (String × String))) p4) with
           | .err m p => .err m p
           | .ok (ents, pes, ids) p5 =>
             -- ...then the EXTERNAL subset, if the DOCTYPE names one
             -- and the caller can read it. `[30] extSubset` is the
             -- same declarations plus `[61] conditionalSect`, and the
             -- entities the internal subset already bound stay bound.
+            let extRead := (sysId.bind resolve).isSome
             match (match sysId.bind resolve with
                    | none      => PResult.ok (ents, pes, ids) p5
                    | some text =>
@@ -2158,10 +2201,34 @@ def parseDoctype (resolve : Resolver) (s : Chars) (pos : Nat) : PResult Doctype 
                        | .err m _ => PResult.err ("in the external subset: " ++ m) p5
                        | .ok r _  => PResult.ok r p5) with
             | .err m p => .err m p
-            | .ok (ents, _, ids) _ =>
+            | .ok (entsAll, pesAll, ids) _ =>
+              -- Section 2.9 / section 4.1 WFC Entity Declared under
+              -- `standalone="yes"`: the document declares that it
+              -- depends on no external markup declaration, so a
+              -- general entity declared only in the external subset
+              -- is NOT declared for it, and a reference to one is a
+              -- fatal error rather than a validity error
+              -- (`ibm-not-wf-P32-ibm32n09.xml`,
+              -- `ibm-not-wf-P68-ibm68n06.xml`). Dropping those
+              -- declarations is what makes the reference report the
+              -- constraint it violates.
+              let entsKept := if standalone then ents else entsAll
+              -- Section 4.1, first clause. The constraint is a
+              -- well-formedness one only "in a document without any
+              -- DTD, a document with only an internal DTD subset which
+              -- contains no parameter entity references, or a document
+              -- with `standalone='yes'`". A recognised parameter-entity
+              -- reference, or an external subset this parser could not
+              -- read, puts the document outside all three, and an
+              -- undeclared general entity is then a VALIDITY error a
+              -- non-validating processor must not report
+              -- (`rmt-e3e-13`).
+              let entsOut :=
+                { entsKept with
+                    lax := !standalone && (pesAll.sawPe || (sysId.isSome && !extRead)) }
               let p6 := skipSpace s p5
               if p6 < s.size && charAt s p6 == '>' then
-                .ok { rootName := rootName, entities := ents, idAttrs := ids,
+                .ok { rootName := rootName, entities := entsOut, idAttrs := ids,
                       systemId := sysId } (p6 + 1)
               else .err "DOCTYPE: expected '>' after the document type declaration" p6
 
@@ -2303,14 +2370,15 @@ def parseXMLWith (resolve : Resolver) (input : String) : Except XmlError Documen
     -- reached the caller under one wrong message. The VERDICT is the
     -- same either way — the element parser was going to reject the
     -- `<!DOCTYPE` text it was handed — but the reason was not.
+    let standalone := (decl.bind (·.standalone)) == some "yes"
     match (if peekLit "<!DOCTYPE" s pos2 then
-             match parseDoctype resolve s pos2 with
+             match parseDoctype resolve standalone s pos2 with
              | .ok d p  => PResult.ok (some d) p
              | .err m p => PResult.err m p
            else PResult.ok none pos2) with
     | .err m p => .error { message := m, position := p }
     | .ok doctype posDt =>
-    let ents := (doctype.map (·.entities)).getD []
+    let ents := (doctype.map (·.entities)).getD {}
     match collectMisc s posDt [] fuel with
     | .err m p => .error { message := m, position := p }
     | .ok pre2 pos3 =>

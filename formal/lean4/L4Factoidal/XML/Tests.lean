@@ -354,6 +354,14 @@ the accept direction is the one that hides. -/
 
 private def wf (src : String) : Bool := isWellFormed src
 
+/-- Well-formedness with a caller that CAN read the one external
+entity these cases declare. Its text is a well-formed
+`[78] extParsedEnt` with a valid `[77] TextDecl`, so nothing about the
+entity FILE can decide the cases below; only the constraint under test
+can. -/
+private def wfExt (body : String) (src : String) : Bool :=
+  isWellFormedWith (fun sysId => if sysId == "e.ent" then some body else none) src
+
 -- [75]: the PUBLIC form requires a SystemLiteral after the
 -- PubidLiteral (not-wf-sa-054), and the space between them
 -- (not-wf-sa-061).
@@ -477,5 +485,46 @@ default value too, and none of them was checked. -/
 #guard !(wf ("<!DOCTYPE doc [<!ENTITY e1 \"&e2;\"><!ENTITY e2 \"&e3;\">" ++
              "<!ENTITY e3 \"&e1;\"><!ELEMENT doc (#PCDATA)>" ++
              "<!ATTLIST doc a CDATA \"&e1;\">]><doc></doc>"))
+
+/-! ## WFC: No External Entity References (section 4.4.4)
+
+Section 4.4.4 makes a reference to an external parsed entity
+FORBIDDEN in an attribute value, directly or indirectly, and
+`Included if validating` in content. The constraint is about the
+DECLARATION, so it holds whether or not the entity's text can be read.
+
+`ibm-not-wf-P41-ibm41n10.xml` and `ibm-not-wf-P41-ibm41n11.xml` name
+this constraint, but their entity files independently violate `[77]`
+(they open `<?xml verison="1.0"?>` — `version` misspelt, so no
+`encoding` pseudo-attribute is present) and are rejected for that
+before an attribute is reached. They therefore cannot witness this
+constraint, and these cases do. -/
+
+private def okEnt : String := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>any"
+
+-- Direct: the attribute value references the external entity itself.
+#guard !(wfExt okEnt ("<!DOCTYPE root [<!ELEMENT root ANY>" ++
+           "<!ATTLIST root a CDATA #IMPLIED>" ++
+           "<!ENTITY ext SYSTEM \"e.ent\">]><root a=\"&ext;\"></root>"))
+-- Indirect: through an internal entity whose replacement text
+-- references it.
+#guard !(wfExt okEnt ("<!DOCTYPE root [<!ELEMENT root ANY>" ++
+           "<!ATTLIST root a CDATA #IMPLIED>" ++
+           "<!ENTITY ext SYSTEM \"e.ent\"><!ENTITY ind \"&ext;\">" ++
+           "]><root a=\"&ind;\"></root>"))
+-- In an attribute DEFAULT, which is an `[10] AttValue` as well.
+#guard !(wfExt okEnt ("<!DOCTYPE root [<!ELEMENT root ANY>" ++
+           "<!ENTITY ext SYSTEM \"e.ent\">" ++
+           "<!ATTLIST root a CDATA \"&ext;\">]><root></root>"))
+-- The SAME reference in CONTENT is admitted: section 4.4.3 Included
+-- if validating, not Forbidden. Without this the three above would
+-- also hold of a parser that simply refused every external entity.
+#guard wfExt okEnt ("<!DOCTYPE root [<!ELEMENT root ANY>" ++
+           "<!ENTITY ext SYSTEM \"e.ent\">]><root>&ext;</root>")
+-- And an INTERNAL entity in an attribute value is admitted, so the
+-- three above turn on `external`, not on the reference itself.
+#guard wfExt okEnt ("<!DOCTYPE root [<!ELEMENT root ANY>" ++
+           "<!ATTLIST root a CDATA #IMPLIED>" ++
+           "<!ENTITY int \"v\">]><root a=\"&int;\"></root>")
 
 end L4Factoidal.XML.Tests
