@@ -48,6 +48,7 @@ import Wasm.Ops.ExtFns
 import Wasm.Ops.Lws
 import Wasm.Ops.Solid
 import Wasm.Ops.Toan
+import Wasm.Ops.Xmpp
 
 namespace L4Wasm
 
@@ -94,6 +95,12 @@ def opNames : List String :=
   , "toanSimplify"
   , "toanDiff"
   , "toanSubst"
+  , "xmppJidParse"
+  , "xmppJidRender"
+  , "xmppStreamHeaderParse"
+  , "xmppStreamHeaderRender"
+  , "xmppFeaturesFor"
+  , "xmppStanzaParse"
   , "ops" ]
 
 /-- The op names that read a BLOB REGION as well as their string arguments,
@@ -295,6 +302,12 @@ def call (op : String) (argsJson : String) : String :=
     | "toanSimplify"         => arity1 op toanSimplify args
     | "toanDiff"             => arity2 op toanDiff args
     | "toanSubst"            => arity3 op toanSubst args
+    | "xmppJidParse"         => arity1 op xmppJidParse args
+    | "xmppJidRender"        => arity1 op xmppJidRender args
+    | "xmppStreamHeaderParse"  => arity1 op xmppStreamHeaderParse args
+    | "xmppStreamHeaderRender" => arity1 op xmppStreamHeaderRender args
+    | "xmppFeaturesFor"      => arity1 op xmppFeaturesFor args
+    | "xmppStanzaParse"      => arity1 op xmppStanzaParse args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"
 

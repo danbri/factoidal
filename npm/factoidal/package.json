@@ -72,6 +72,7 @@
     "./l4-assets/*": "./l4-assets/*",
     "./store-host": "./store-host/index.mjs",
     "./store-host/paths": "./store-host/paths.mjs",
+    "./xmpp": "./xmpp/index.mjs",
     "./select": {
       "types": "./select.d.ts",
       "default": "./select.js"
@@ -149,7 +150,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
-    "test": "node --test 'test/*.test.js'",
+    "test": "node --test 'test/*.test.js' 'test/*.test.mjs'",
     "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
     "prepublishOnly": "npm test"
   },
