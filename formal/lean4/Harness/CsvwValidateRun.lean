@@ -189,14 +189,41 @@ def runOne (dir : String) (e : VEntry) : IO (Option (Bool × List String)) := do
       let structural := validate rawJson
       let findings := (err "metadata failed to decode") :: structural
       return some (passes findings, (findings.filter (·.severity == .error)).map (·.message))
-  | some (rawJson, some (_group, _ctx), _mbase) =>
-      -- STRUCTURAL checks only, for this probe: the raw-JSON shape
-      -- rules (`CSVW.Validate.validate`). No cell-format, `required`,
-      -- `primaryKey` or schema/CSV-width check runs yet — those are
-      -- data-level and land in a follow-up once this probe's own
-      -- failing-test list is recorded (test-first discipline).
+  | some (rawJson, some (group, ctx), mbase) =>
       let structural := validate rawJson
-      return some (passes structural, (structural.filter (·.severity == .error)).map (·.message))
+      -- Resolve any `tableSchema` given as a URL, exactly as
+      -- `CsvwRdfRun.lean` does: the parse records the link and stops,
+      -- and fetching it is the only part that needs I/O.
+      let mut resolved : List TableDesc := []
+      for t in group.tables do
+        match t.schemaRef with
+        | none => resolved := resolved ++ [t]
+        | some ref =>
+            let sp := dir ++ "/" ++ suiteRelative mbase ref
+            if ← System.FilePath.pathExists sp then
+              let ssrc ← IO.FS.readFile sp
+              match parseSchemaText ctx ssrc with
+              | some sch => resolved := resolved ++ [{ t with schema := some sch }]
+              | none     => resolved := resolved ++ [t]
+            else resolved := resolved ++ [t]
+      let group := { group with tables := resolved }
+      let mut pairs : List (TableDesc × Table) := []
+      for t in group.tables do
+        let path := dir ++ "/" ++ suiteRelative mbase t.url
+        if ← System.FilePath.pathExists path then
+          let src ← IO.FS.readFile path
+          pairs := pairs ++ [(t, read (effectiveDialect group t).resolve src)]
+        else
+          -- The table's file is not on disk: read it as empty rather
+          -- than skip the whole entry. Several validation fixtures
+          -- test only the metadata SHAPE and ship no accompanying CSV
+          -- at all; an empty table contributes no data-level finding
+          -- of its own, and the structural findings above are
+          -- unaffected.
+          pairs := pairs ++ [(t, ({ header := [], rows := [] } : Table))]
+      let dataFindings := checkData group pairs
+      let findings := structural ++ dataFindings
+      return some (passes findings, (findings.filter (·.severity == .error)).map (·.message))
 
 def main (args : List String) : IO UInt32 := do
   let argDir := (args.filter (fun a => !a.startsWith "--")).head?

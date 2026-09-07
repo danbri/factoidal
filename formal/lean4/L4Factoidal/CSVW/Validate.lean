@@ -15,6 +15,7 @@ on, and those are carried here.
 -/
 import L4Factoidal.JSON.Value
 import L4Factoidal.CSVW.Formats
+import L4Factoidal.CSVW.Pipeline
 
 namespace L4Factoidal.CSVW
 
@@ -520,5 +521,229 @@ def validate (v : Json) : List Finding :=
     ++ (if (field? "tables" v).isSome then checkTableGroup v
         else if (field? "url" v).isSome then checkTable v
         else [err "a metadata document must describe a table or a table group"])
+
+/-! ## Data-level checks (over the converted table)
+
+Ported from `formal/fstar/CSVW.Validate.fst`'s data-level section:
+§5.11.2 cell format/facet constraints, §6.4.9 `required` and
+`primaryKey`, and §5.4.2 schema/CSV width compatibility. These share
+the same cell-format machinery `CSVW.Conversion.prepareLexical` uses
+for csv2rdf emission (`formatConvert`, `satisfiesFacetsFor`) — a cell
+is never valid for RDF output and invalid for validation under two
+different rules — plus a `format`-as-regex check for the string-like
+bases that `formatConvert`'s `.noFormat` branch does not itself parse
+(tabular-metadata §5.11.3, test154).
+
+NOT covered yet: multi-table foreign-key referential integrity
+(cross-table, `formal/fstar/CSVW.Validate.fst`'s `cv_check_table_fks`)
+and title/header-language compatibility (`cv_title_compat`) — both
+read the raw metadata JSON's `foreignKeys` / column `titles` in ways
+this port's decoded `TableSchema` does not yet carry. Left for a
+follow-up once the failing-test list says they cost real tests. -/
+
+/-- Bases whose `format` facet is a REGULAR EXPRESSION the raw value
+    must match (tabular-metadata §5.11.3), for the bases
+    `CSVW.Formats.formatConvert` does not parse itself (its
+    `.noFormat` branch). Numeric, boolean, date and duration bases are
+    excluded: `formatConvert` already treats their `format` as a
+    parse pattern, not a value-matching regex. -/
+def stringFormatBase (b : String) : Bool :=
+  ["string", "normalizedString", "token", "language", "Name", "NMTOKEN",
+   "xml", "html", "json", "anyAtomicType", "anyURI"].contains b
+
+/-- A `format` regex that does not even PARSE as one is a malformed
+    facet, not a value the cell failed to satisfy: `"+"` (a quantifier
+    with nothing to quantify) is `test153`'s "bad format string", a
+    `WarningValidationTest` that must still conform. Rejecting every
+    cell in the column would read a metadata AUTHORING mistake as a
+    DATA error, so an unparseable pattern is treated as no format at
+    all. `regexMatch` itself cannot distinguish the two cases (an
+    unparseable pattern and a parseable one the text does not match
+    both return `false`), so the parse is checked here, once, with
+    `XSDPattern.parseXsdPattern`. -/
+def stringFormatOk (base : String) (fmt : Option String) (txt : String) : Bool :=
+  match fmt with
+  | none   => true
+  | some f =>
+      if stringFormatBase base then
+        match L4Factoidal.Regex.XSDPattern.parseXsdPattern f with
+        | none   => true
+        | some _ => L4Factoidal.Regex.regexMatch txt f ""
+      else true
+
+/-- Is one raw cell value valid for its column's effective datatype?
+    Mirrors `CSVW.Conversion.prepareLexical`'s decision — the same
+    function that decides whether csv2rdf emits a typed literal for
+    this cell — with `stringFormatOk` added on top for the string-like
+    bases `formatConvert` leaves to its `.noFormat` branch.
+
+    An empty cell, or one equal to the column's `null` value, is
+    vacuously valid here; `required`-ness is `checkRequiredCells`'s
+    concern, not this one's. -/
+def cellValueValid (dt : Option Datatype) (nullProp : Option String) (txt : String) : Bool :=
+  if txt == "" || (match nullProp with | some n => txt == n | none => false) then true
+  else
+    match dt with
+    | none => true
+    | some d =>
+        let base := d.baseName.getD "string"
+        if !(stringFormatOk base d.formatOf txt) then false
+        else
+          match formatConvert base d.formatOf d.patternOf d.groupCharOf d.decimalCharOf txt with
+          | .invalid   => false
+          | .valid lex => satisfiesFacetsFor base d.facets lex
+          | .noFormat  => satisfiesFacetsFor base d.facets txt
+
+/-- One physical column's raw cells, across every data row: an error
+    for each value ill-formed for the column's datatype. A
+    `separator` cell validates each split PART, not the whole raw
+    text (tabular-data-model §5.1.1, test228). -/
+def checkCellsForColumn (inh : Inherited) (name : String) (cells : List String) : List Finding :=
+  cells.flatMap (fun txt =>
+    let parts := match inh.separator with
+      | some sep => splitSeparated sep txt
+      | none     => [txt]
+    parts.filterMap (fun part =>
+      if cellValueValid inh.datatype inh.null part then none
+      else some (err ("invalid value in column " ++ name ++ ": " ++ part))))
+
+/-- A REQUIRED column (`required: true`) must have a non-null value in
+    every data row (tabular-data-model §6.4.9): an empty cell, or one
+    equal to the column's `null` value, is an error (test125/126). -/
+def checkRequiredCells (inh : Inherited) (name : String) (cells : List String) : List Finding :=
+  if inh.required != some true then []
+  else
+    cells.filterMap (fun v =>
+      let isNull := v == "" || (match inh.null with | some n => v == n | none => false)
+      if isNull then some (err ("required column " ++ name ++ " has a null/empty cell"))
+      else none)
+
+/-- Does a list of strings contain a duplicate? -/
+def hasDup (xs : List String) : Bool :=
+  let rec go (seen : List String) : List String → Bool
+    | []      => false
+    | x :: tl => seen.contains x || go (x :: seen) tl
+  go [] xs
+
+/-- Single-column `primaryKey` uniqueness (tabular-data-model §6.4.9,
+    test232): more than one row with the same key value is an error. -/
+def checkPrimaryKeySingle (cols : List (String × List String)) (pkNames : List String) : List Finding :=
+  match pkNames with
+  | [name] =>
+      match cols.find? (fun p => p.1 == name) with
+      | some (_, vals) =>
+          if hasDup vals then [err ("duplicate primaryKey value in column " ++ name)] else []
+      | none => []
+  | _ => []
+
+/-- One composite string per row, over a list of equal-length
+    per-column value lists — for multi-column `primaryKey` uniqueness
+    (test234). The row count is taken from the first column; a caller
+    that has already checked every list is the same length. -/
+def zipJoin (colVals : List (List String)) : List String :=
+  match colVals with
+  | []     => []
+  | c0 :: _ =>
+      (List.range c0.length).map (fun i =>
+        String.intercalate "~|~" (colVals.map (fun c => c.getD i "")))
+
+/-- Composite (multi-column) `primaryKey` uniqueness. Single-column PK
+    is `checkPrimaryKeySingle`'s job; this covers two or more names. -/
+def checkPrimaryKeyComposite (cols : List (String × List String)) (pkNames : List String)
+    : List Finding :=
+  if pkNames.length < 2 then []
+  else
+    let vlists := pkNames.filterMap (fun n => (cols.find? (fun p => p.1 == n)).map (·.2))
+    if vlists.length != pkNames.length then []
+    else if hasDup (zipJoin vlists) then [err "duplicate multi-column primaryKey"] else []
+
+/-- The non-virtual columns a table's DATA rows line up with,
+    positionally. `Pipeline.effectiveColumns` pads the declared list
+    with unnamed columns for any extra CSV field, and a virtual column
+    (checked to sort after every real one by `checkSchema`'s
+    `orderFindings`, test133) does not consume a physical position —
+    filtering it out preserves the CSV's own column order for a
+    well-formed document. -/
+def nonVirtualColumns (s : Option TableSchema) (fieldCount : Nat) : List Column :=
+  (effectiveColumns s fieldCount).filter (fun c => c.virtual != some true)
+
+/-- No `Inherited` property is set at all. -/
+def inheritedIsBlank (i : Inherited) : Bool :=
+  i.aboutUrl.isNone && i.propertyUrl.isNone && i.valueUrl.isNone && i.datatype.isNone &&
+  i.lang.isNone && i.null.isNone && i.default.isNone && i.ordered.isNone &&
+  i.required.isNone && i.separator.isNone
+
+/-- A `columns` array member that is NOT a JSON object — `1` in
+    `test096`'s "last column is datatype, not column" — decodes
+    through `MetadataParse.parseColumn` to a fully-default `Column`
+    (every field reads out of a non-object as absent). That decode
+    artifact is indistinguishable, downstream, from a genuinely empty
+    `{}` column object; either way it names nothing, describes
+    nothing, and constrains nothing, so it is excluded from the
+    schema/CSV WIDTH count — counting it inflated the declared column
+    count past the CSV's actual width and rejected a document the
+    suite expects to conform. -/
+def columnIsBlank (c : Column) : Bool :=
+  c.name.isNone && c.titles.isEmpty && c.titlesLang.isEmpty && c.virtual.isNone &&
+  c.suppressOutput.isNone && c.common.isEmpty && inheritedIsBlank c.inherited
+
+/-- A column's data-check name: its declared `name`, else its header
+    text, else the positional `_col.N` fallback (tabular-data-model §8
+    step 4.6) — used only to MATCH a `primaryKey` entry against a
+    column. RDF emission's own (richer, title-aware) name derivation
+    in `Pipeline.lean` is untouched by this. -/
+def dataColumnName (headers : List String) (j : Nat) (c : Column) : String :=
+  match c.name with
+  | some nm => nm
+  | none    => match headers.getD j "" with
+               | "" => "_col." ++ toString (j + 1)
+               | h  => h
+
+/-- Every data-level finding for one table: cell formats, required
+    columns, primary-key uniqueness (single and composite), and
+    schema/CSV width compatibility (test278). A table whose declared
+    non-virtual column count does not match the data's actual width
+    skips the required-column check — same as the F* module — because
+    a required check over a misaligned column list would blame the
+    wrong column. -/
+def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding :=
+  let fieldCount := match tbl.header.head? with
+    | some h => h.cells.length
+    | none   => match tbl.rows.head? with
+      | some r => r.cells.length
+      | none   => 0
+  let headers := (tbl.header.head?).map (·.cells) |>.getD []
+  let cols := nonVirtualColumns t.schema fieldCount
+  let dataRows := tbl.rows
+  let colData : List (String × Inherited × List String) :=
+    cols.zipIdx.map (fun (c, j) =>
+      (dataColumnName headers j c, effectiveInherited g t t.schema c,
+       dataRows.map (fun r => r.cells.getD j "")))
+  let cellErrs := colData.flatMap (fun (nm, inh, vals) => checkCellsForColumn inh nm vals)
+  let colVals := colData.map (fun (nm, _, vals) => (nm, vals))
+  let pkNames := t.schema.map (·.primaryKey) |>.getD []
+  let pkErrs := checkPrimaryKeySingle colVals pkNames ++ checkPrimaryKeyComposite colVals pkNames
+  let declaredNonVirt : List Column := match t.schema with
+    | some sch => sch.columns.filter (fun c => c.virtual != some true && !columnIsBlank c)
+    | none     => []
+  let actualWidth :=
+    if headers.length > 0 then headers.length
+    else match dataRows.head? with | some r => r.cells.length | none => 0
+  let widthErr :=
+    if declaredNonVirt.length > 0 && actualWidth > 0 && declaredNonVirt.length != actualWidth then
+      [err ("schema declares " ++ toString declaredNonVirt.length ++
+            " non-virtual columns but the data has " ++ toString actualWidth)]
+    else []
+  let reqErrs :=
+    if widthErr.isEmpty then colData.flatMap (fun (nm, inh, vals) => checkRequiredCells inh nm vals)
+    else []
+  cellErrs ++ pkErrs ++ reqErrs ++ widthErr
+
+/-- Every data-level finding across a table group's tables. A table
+    with `suppressOutput` is read for other checks (foreign keys, not
+    yet ported here) but contributes no findings of its own — matching
+    `csvw_table_suppressed`'s role in the F* module. -/
+def checkData (g : TableGroup) (tables : List (TableDesc × Table)) : List Finding :=
+  tables.flatMap (fun (t, tbl) => if t.suppress == some true then [] else checkDataTable g t tbl)
 
 end L4Factoidal.CSVW
