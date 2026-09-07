@@ -21,8 +21,10 @@ duplicating it, and it's tested against a live ejabberd instance, not
 just hand-written strings.
 
 What's below is what exists **today**: RFC 7622 JID parsing, RFC 6120
-stream-header and `<stream:features>` negotiation, and stanza parsing.
-There is no socket layer and no GC3 yet — see "What this isn't, yet"
+stream-header and `<stream:features>` negotiation, and stanza parsing,
+all live in the browser — and, since 2026-09-07, a running server that
+speaks RFC 6120 and RFC 6121 over a real socket (see "The server"
+below). GC3 is still absent — see "What this isn't, yet"
 at the end.
 
 ## JIDs (RFC 7622)
@@ -105,54 +107,135 @@ because stream negotiation is a different layer:
 notAStanza = fn.l4Call("xmppStanzaParse", ["<stream:features/>"]).catch((e) => ({ rejected: e.message }))
 ```
 
-## Configuration — the planned shape (not yet implemented)
+## The server: `l4xmpp-serve`
 
-There is no running server yet: the pieces above are protocol *logic*
-— pure functions over strings — with no socket, TLS, or process
-lifecycle around them. Marked plainly as planned, dated 2026-09-07, so
-it doesn't quietly rot into a claim: the intended shape, per the
-[design record](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/XMPP/README.md),
-is a fresh Erlang/Elixir (BEAM) supervision tree — chosen for
-per-connection process isolation and preemptive scheduling, not
-reused from any existing server — calling this Lean-compiled wasm core
-through a NIF, with configuration read from **either** a settings
-file **or** CLI flags, e.g.:
-
-```toml
-# xmpp.toml (planned)
-[server]
-domain = "example.com"
-c2s_port = 5222
-s2s_port = 5269
-
-[tls]
-cert = "/etc/xmpp/cert.pem"
-key = "/etc/xmpp/key.pem"
-require_before_auth = true   # STARTTLS before SASL, per RFC 6120 §5.4.1
-
-[sasl]
-mechanisms = ["SCRAM-SHA-256"]
-```
+There **is** a running server now. `lean_exe l4xmpp-serve` speaks
+RFC 6120 and RFC 6121 on standard input and output for one connection,
+and the carrier forks one process per connection. The whole non-Lean
+part of the deployment is this command:
 
 ```
-# equivalent CLI flags (planned)
-xmpp-lean --domain example.com --c2s-port 5222 --s2s-port 5269 \
-          --tls-cert /etc/xmpp/cert.pem --tls-key /etc/xmpp/key.pem \
-          --sasl-mechanisms SCRAM-SHA-256
+socat OPENSSL-LISTEN:5223,reuseaddr,fork,cert=/certs/fullchain.pem,key=/certs/privkey.pem,verify=0 \
+  EXEC:/opt/factoidal/bin/l4xmpp-serve,pipes
 ```
 
-Whichever settings surface lands, `xmppFeaturesFor` above is what would
-compute the actual `<stream:features>` offered at each stage from these
-values — the config format is new work, the negotiation logic it would
-drive already exists and is proved, which is why it's demonstrated live
-above rather than only described.
+socat accepts the connection and terminates TLS; it never reads the
+stream. [XEP-0368](https://xmpp.org/extensions/xep-0368.html) (direct
+TLS on port 5223) is what makes that a complete answer rather than a
+partial one: with direct TLS there is no STARTTLS step for the
+application to perform, so no TLS library is linked into the Lean
+binary. No C, no JavaScript, no Erlang is involved in serving a
+connection. The build files and the line count are in
+[`deploy/fly/xmpp/`](https://github.com/danbri/factoidal/tree/claude/main/deploy/fly/xmpp).
+
+### A real session, captured
+
+This is not a browser simulation. It is the wire log of
+[`@xmpp/client`](https://www.npmjs.com/package/@xmpp/client) — a
+third-party XMPP library nobody here wrote — talking to `l4xmpp-serve`
+through that socat line, captured by
+[`tools/xmpp-interop.sh`](https://github.com/danbri/factoidal/blob/claude/main/tools/xmpp-interop.sh).
+`C:` is the client, `S:` the server.
+
+```
+C: <?xml version='1.0'?><stream:stream version="1.0" xmlns="jabber:client"
+     xmlns:stream="http://etherx.jabber.org/streams" to="localhost">
+
+S: <?xml version='1.0'?><stream:stream xmlns='jabber:client'
+     xmlns:stream='http://etherx.jabber.org/streams' from='localhost'
+     id='s431823914549416' version='1.0' xml:lang='en'>
+   <stream:features>
+     <mechanisms xmlns="urn:ietf:params:xml:ns:xmpp-sasl">
+       <mechanism>SCRAM-SHA-256</mechanism>
+       <mechanism>PLAIN</mechanism>
+     </mechanisms>
+   </stream:features>
+
+C: <auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl"
+     mechanism="PLAIN">AGp1bGlldAByMG0zMA==</auth>
+
+S: <success xmlns='urn:ietf:params:xml:ns:xmpp-sasl'/>
+
+C: <?xml version='1.0'?><stream:stream version="1.0" xmlns="jabber:client"
+     xmlns:stream="http://etherx.jabber.org/streams" to="localhost">
+
+S: <?xml version='1.0'?><stream:stream ... id='s431823914549416' ...>
+   <stream:features>
+     <bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"/>
+     <session xmlns="urn:ietf:params:xml:ns:xmpp-session"/>
+   </stream:features>
+
+C: <iq type="set" id="cuqx6m6v1y"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind">
+     <resource>balcony</resource></bind></iq>
+
+S: <iq type="result" id="cuqx6m6v1y"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind">
+     <jid>juliet@localhost/balcony</jid></bind></iq>
+
+C: <iq type="get" id="d7tkm39mn9"><query xmlns="jabber:iq:roster"/></iq>
+
+S: <iq type="result" id="d7tkm39mn9"><query xmlns="jabber:iq:roster"/></iq>
+```
+
+Notice the second `<stream:features>`. It offers `bind` and no
+mechanisms, and the first offers mechanisms and no `bind` — that is
+`featuresFor` above, the function whose ordering the four theorems in
+`Core.lean` pin. The negotiation the browser cells demonstrate is the
+same code that produced these bytes.
+
+### What it speaks
+
+RFC 6120 sections 4.2, 4.4, 4.9 (stream errors), 6 (SASL PLAIN per
+RFC 4616 and SCRAM-SHA-256 per RFC 7677, with the 6.4.6 stream
+restart), 7 (resource binding), 8 and 8.4; RFC 6121 sections 2 (the
+roster: get, set, push, remove, persisted across connections), 3
+(presence subscription), 4 (presence broadcast to `from`/`both`
+contacts) and 8 (message delivery between sessions, with the `from`
+stamped by the server rather than trusted from the client); and a
+minimal XEP-0030 `disco#info`.
+
+Every one of those decisions is in
+[`L4Factoidal/XMPP/Server.lean`](https://github.com/danbri/factoidal/blob/claude/main/formal/lean4/L4Factoidal/XMPP/Server.lean)
+as one total function,
+
+```
+step : Session → Env → Framing.Unit → Session × Env × List Out
+```
+
+and the host that carries the bytes performs the `Out` actions without
+deciding any of them. Even "may this session receive a stanza waiting
+for it?" is asked of `Session.canDeliver` rather than answered by the
+host — because a host that read and unlinked a stanza the server would
+refuse has destroyed it, which is exactly what happened once before the
+gate moved into Lean.
+
+Scores, measured 2026-09-07: 41 pass, 0 fail (out of 41) for the RFC
+sequences replayed through the live binary
+([`tests/xmpp/server.mjs`](https://github.com/danbri/factoidal/blob/claude/main/tests/xmpp/server.mjs)),
+and 7 pass, 0 fail (out of 7) for the `@xmpp/client` interop over a
+real socket.
 
 ## What this isn't, yet
 
-- No socket/TLS layer, no running server (see "Configuration" above).
 - No GC3 — still an early-stage, unfinished upstream XSF spec.
-- No SASL/SCRAM *computation* — the message format exists on the Lean
-  side; the hash/HMAC binding to the project's HACL* FFI doesn't yet.
+  Implementing rooms would be inventing a wire format, not
+  implementing one.
+- No STARTTLS. The carrier holds TLS (XEP-0368 direct TLS), so
+  RFC 6120 section 5 is not implemented in Lean, and neither is SCRAM
+  channel binding — the process cannot see the TLS layer.
+- No SCRAM-SHA-1. `Crypto/SHA1.lean` exists only as a codec for the
+  SPARQL `SHA1()` builtin and its own header forbids using it for
+  authentication. SCRAM-SHA-256 (RFC 7677) and PLAIN are what is
+  offered.
+- No server-to-server federation. One process, one client connection.
+- Accounts are a plaintext file with one salt for all of them, and a
+  SCRAM login therefore runs PBKDF2 per authentication rather than
+  reading stored keys. `Scram.StoredCredentials` is already the right
+  shape for the fix; the change is an account-file format, not a
+  protocol change.
+- Routing between connections is a directory of files, polled every
+  50 ms. Inspectable, not fast. `Out.route` names a destination and a
+  payload rather than a file, so a faster carrier replaces it without
+  touching the protocol modules.
 - No MUC/MIX interop modules.
 - `parseStanza` has no inverse for reconstructing a stanza's payload
   from JSON — payload children come back as one serialized XML string.

@@ -46,6 +46,7 @@ Usage:
   --max-units N     refuse more than N top-level units on this stream
                     (default 1000000). See `Options.maxUnits`.
 -/
+import Std.Sync.Mutex
 import L4Factoidal.XMPP.Server
 
 open L4Factoidal.XMPP
@@ -69,6 +70,11 @@ structure Options where
   section 4.9.3.14), which is a stated refusal and not a hang.
   A million units is far above any real session. -/
   maxUnits : Nat := 1000000
+  /-- Milliseconds between mailbox polls (see `pollMailbox`). -/
+  pollMs : Nat := 50
+  /-- The most mailbox polls one connection may make, for the same
+  reason `maxUnits` exists. At the default 50 ms this is about 58 days. -/
+  maxPollTicks : Nat := 100000000
 
 /-- Argument parsing as a fold, so there is no recursion to bound. The
 state carries the flag whose value is expected next; a flag left waiting
@@ -136,6 +142,19 @@ def presencePath (o : Options) (full : String) : System.FilePath :=
 
 /-! ## Performing the server's actions -/
 
+/-- What the two concurrent parts of the host share. The read loop and
+the mailbox poller both write to the same socket, so every write goes
+through `lock`: without it a delivered stanza could land in the middle of
+a reply and produce bytes that are not XML. `session` is the poller's
+view of the connection — it reads it to ask `Session.canDeliver`, and
+never writes it. -/
+structure Host where
+  opts : Options
+  out : IO.FS.Stream
+  lock : Std.Mutex Unit
+  session : IO.Ref Session
+  finished : IO.Ref Bool
+
 def readRoster (o : Options) (bare : String) : IO Server.Roster := do
   let p := rosterPath o bare
   if ← p.pathExists then
@@ -151,16 +170,20 @@ def routeTo (o : Options) (bare : String) (text : String) (seq : Nat) : IO Unit 
   let stamp := (← IO.monoNanosNow)
   IO.FS.writeFile (dir / s!"{stamp}-{seq}") text
 
-def performOut (o : Options) (out : IO.FS.Stream) (seq : Nat) : Out → IO Bool
-  | .send text => do out.putStr text; out.flush; return false
-  | .route bare text => do routeTo o bare text seq; return false
+/-- Perform one action. Returns whether the connection should close.
+Every byte that reaches the socket passes through `h.lock`. -/
+def performOut (h : Host) (seq : Nat) : Out → IO Bool
+  | .send text => do
+      h.lock.atomically (liftM (m := IO) (do h.out.putStr text; h.out.flush))
+      return false
+  | .route bare text => do routeTo h.opts bare text seq; return false
   | .saveRoster bare encoded => do
-      let p := rosterPath o bare
+      let p := rosterPath h.opts bare
       IO.FS.createDirAll (p.parent.getD ".")
       IO.FS.writeFile p encoded
       return false
   | .presence _bare full available => do
-      let p := presencePath o full
+      let p := presencePath h.opts full
       IO.FS.createDirAll (p.parent.getD ".")
       if available then IO.FS.writeFile p "1"
       else if ← p.pathExists then IO.FS.removeFile p
@@ -170,30 +193,89 @@ def performOut (o : Options) (out : IO.FS.Stream) (seq : Nat) : Out → IO Bool
 /-- Drain this session's mailbox: read every file, unlink it, and hand
 its bytes to `Server.deliver`, which decides whether the session may
 receive them yet. -/
-def drainMailbox (o : Options) (s : Session) (out : IO.FS.Stream) : IO Unit := do
+def drainMailbox (h : Host) (s : Session) : IO Unit := do
+  -- `Session.canDeliver` is the gate, and it is asked BEFORE the
+  -- directory is touched. Reading a stanza this session may not yet
+  -- receive would delete it, and `Server.deliver` returning nothing
+  -- would leave no trace of the loss.
+  if !s.canDeliver then return ()
   match s.bareJid with
   | none => return ()
   | some bare =>
-    let dir := spoolDir o bare
+    let dir := spoolDir h.opts bare
     if !(← dir.pathExists) then return ()
     let entries := (← dir.readDir).map (·.fileName)
     for name in entries.qsort (· < ·) do
       let p := dir / name
       let text ← try IO.FS.readFile p catch _ => pure ""
-      try IO.FS.removeFile p catch _ => pure ()
-      if !text.isEmpty then
-        for a in Server.deliver s text do
-          let _ ← performOut o out 0 a
+      let acts := Server.deliver s text
+      -- Unlink only after the bytes have been handed on, so a crash
+      -- between the two loses nothing.
+      for a in acts do
+        let _ ← performOut h 0 a
+      if !acts.isEmpty then
+        try IO.FS.removeFile p catch _ => pure ()
+
+/-- The mailbox poller, run as a separate task beside the read loop.
+
+It exists because the read loop BLOCKS: `IO.FS.Stream.read` waits for a
+byte, and a session that has authenticated and is sitting quietly would
+otherwise never look at its mailbox — a message sent to it while it was
+idle would arrive only when it next typed something. That was measured,
+not guessed: with the poller absent, `tools/xmpp-interop.sh` timed out
+at "romeo receives the message" while the stanza sat in the spool.
+
+Bounded like everything else here: `ticks` is an explicit `Nat`. -/
+def pollMailbox (h : Host) : Nat → IO Unit
+  | 0 => pure ()
+  | ticks + 1 => do
+    if ← h.finished.get then return ()
+    drainMailbox h (← h.session.get)
+    IO.sleep (UInt32.ofNat h.opts.pollMs)
+    pollMailbox h ticks
 
 /-! ## The loop -/
 
-/-- Read whatever bytes are available on stdin, blocking for at least one
-when the buffer holds no complete unit. `IO.FS.Stream.read` returns an
-empty array at end of file. -/
+/-- Read one byte from stdin, blocking until it arrives. Empty means end
+of file.
+
+ONE byte, not a block. `IO.FS.Stream.read n` is `fread`: it blocks until
+`n` bytes have arrived or the stream ends, so asking for 4096 stalls an
+interactive client that has sent one stanza and is waiting for the
+answer. That was measured, not guessed: the first version of this file
+asked for 4096 and the live SCRAM exchange in `tests/xmpp/server.mjs`
+timed out with the server holding a complete `<auth/>` it had never been
+handed. A batch replay through a closed pipe did NOT show it, because
+end of file releases the read.
+
+The cost is one system call per byte. For a chat stream that is a few
+hundred calls per stanza, which is not the bottleneck; if it ever
+becomes one, the fix is a non-blocking read that returns what is
+available, not a larger blocking one. -/
 def readChunk (inp : IO.FS.Stream) : IO String := do
-  let bytes ← inp.read 4096
-  if bytes.isEmpty then return ""
-  return String.fromUTF8! bytes
+  let lead ← inp.read 1
+  if lead.isEmpty then return ""
+  let b := lead.get! 0
+  -- RFC 3629: the lead byte says how many continuation bytes follow. A
+  -- character split across two reads would otherwise reach
+  -- `String.fromUTF8!` half-formed, and a message body in any language
+  -- but English would end the connection.
+  let extra : Nat :=
+    if b < 0x80 then 0
+    else if b ≥ 0xF0 then 3
+    else if b ≥ 0xE0 then 2
+    else if b ≥ 0xC0 then 1
+    else 0
+  let rest ← if extra == 0 then pure ByteArray.empty else inp.read (USize.ofNat extra)
+  let all := lead ++ rest
+  match String.fromUTF8? all with
+  | some str => return str
+  | none =>
+    -- Not valid UTF-8. RFC 6120 section 11.5 makes the stream UTF-8, so
+    -- this is a bad-format stream error rather than something to guess
+    -- at; returning the replacement character lets the framer reach the
+    -- server, which answers with the error.
+    return "\uFFFD"
 
 structure LoopState where
   session : Session
@@ -206,7 +288,7 @@ structure LoopState where
 /-- Process every complete unit sitting in the buffer. `fuel` bounds the
 recursion: every unit consumes at least one character, so the buffer's
 length is always enough. -/
-def drainBuffer (o : Options) (out : IO.FS.Stream) (st : LoopState) :
+def drainBuffer (h : Host) (st : LoopState) :
     Nat -> IO LoopState
   | 0 => return st
   | fuel + 1 => do
@@ -217,41 +299,43 @@ def drainBuffer (o : Options) (out : IO.FS.Stream) (st : LoopState) :
     -- The roster on disk is the truth; read it fresh so a change another
     -- connection made is seen.
     let roster ← match st.session.bareJid with
-      | some b => readRoster o b
+      | some b => readRoster h.opts b
       | none => pure st.env.roster
     let (s', env', outs) := Server.step st.session { st.env with roster := roster } unit
     let mut closed := false
     let mut seq := st.seq
     for a in outs do
       seq := seq + 1
-      if ← performOut o out seq a then closed := true
-    drainBuffer o out
+      if ← performOut h seq a then closed := true
+    h.session.set s'
+    drainBuffer h
       { session := s', env := env', buffer := rest, seq := seq
         eof := st.eof, done := closed || s'.stage == .closed } fuel
 
 /-- The read loop, bounded by `Options.maxUnits`. Exhausting the bound is
 RFC 6120 section 4.9.3.14 `policy-violation`, reported to the client
 before the stream closes. -/
-def loop (o : Options) (inp out : IO.FS.Stream) (st : LoopState) :
+def loop (h : Host) (inp : IO.FS.Stream) (st : LoopState) :
     Nat → IO LoopState
   | 0 => do
       for a in Server.streamError "policy-violation" "too many stream units" do
-        let _ ← performOut o out 0 a
+        let _ ← performOut h 0 a
       return { st with done := true }
   | fuel + 1 => do
   if st.done then return st
-  let st ← drainBuffer o out st (st.buffer.length + 1)
+  let st ← drainBuffer h st (st.buffer.length + 1)
   if st.done then return st
-  drainMailbox o st.session out
+  drainMailbox h st.session
   if st.eof then return { st with done := true }
   let chunk ← readChunk inp
   if chunk.isEmpty then
     -- End of input. Answer a half-closed stream the way RFC 6120
     -- section 4.4 asks, then stop.
-    let st ← drainBuffer o out { st with eof := true } (st.buffer.length + 1)
-    if !st.done then out.putStr "</stream:stream>"; out.flush
+    let st ← drainBuffer h { st with eof := true } (st.buffer.length + 1)
+    if !st.done then
+      let _ ← performOut h 0 (.send "</stream:stream>")
     return { st with done := true }
-  loop o inp out { st with buffer := st.buffer ++ chunk } fuel
+  loop h inp { st with buffer := st.buffer ++ chunk } fuel
 
 def usage : String :=
   "usage: l4xmpp-serve --domain DOMAIN --state DIR [--accounts FILE] " ++
@@ -290,9 +374,18 @@ def main (args : List String) : IO UInt32 := do
     err.putStrLn s!"l4xmpp-serve: domain={o.domain} accounts={accounts.length} tls-carrier={!o.plaintext}"
     let inp ← IO.getStdin
     let out ← IO.getStdout
-    let _ ← loop o inp out
-      { session := Session.init cfg, env := ⟨[]⟩, buffer := "", seq := 0
+    let session0 := Session.init cfg
+    let h : Host := {
+      opts := o, out := out
+      lock := ← Std.Mutex.new ()
+      session := ← IO.mkRef session0
+      finished := ← IO.mkRef false }
+    let poller ← IO.asTask (pollMailbox h o.maxPollTicks)
+    let _ ← loop h inp
+      { session := session0, env := ⟨[]⟩, buffer := "", seq := 0
         eof := false, done := false } o.maxUnits
+    h.finished.set true
+    let _ ← IO.wait poller
     return 0
 
 end Harness.XmppServe

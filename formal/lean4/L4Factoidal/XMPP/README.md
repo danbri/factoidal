@@ -270,11 +270,60 @@ modules so far:
   server-first/client-final/server-final parse+render); hash/HMAC
   computation deliberately not called from here yet (see Crypto section).
 - `Gc3.lean` remains a scope-only stub — GC3 itself is still an
-  early-stage, unfinished XSF spec.
-- Not yet implemented: the actual TLS handshake, SASL hash/HMAC
-  computation (needs HMAC-SHA-256 added to `L4Factoidal/Crypto/`),
-  resource binding, stanza routing, MUC/MIX interop modules, and the BEAM
-  host.
+  early-stage, unfinished XSF spec. Implementing rooms would be
+  inventing a wire format, not implementing one.
+- Not yet implemented: STARTTLS (the carrier holds TLS, XEP-0368),
+  SCRAM channel binding, server-to-server federation, MUC/MIX interop
+  modules, and the BEAM host.
+
+### 2026-09-07, later the same day: a running server
+
+The three gaps listed above as "not yet implemented" — SASL hash/HMAC
+computation, resource binding, stanza routing — are implemented, and
+`lean_exe l4xmpp-serve` runs.
+
+- `L4Factoidal/Crypto/Hmac.lean` — HMAC-SHA-256 (RFC 2104) and
+  PBKDF2-HMAC-SHA-256 (RFC 8018 section 5.2) over the existing
+  `Crypto.sha256`, exactly as the "Cryptography" section above proposed
+  ("HMAC's construction doesn't need its own native primitive"). RFC 4231
+  cases 1, 2, 3, 6, 7 and the RFC 7914 section 11 PBKDF2 vector as
+  `#guard`s.
+- `L4Factoidal/XMPP/Scram.lean` — the SCRAM-SHA-256 arithmetic. The
+  RFC 7677 section 3 published exchange is reproduced: its ClientProof
+  verifies and its ServerSignature comes back.
+- `L4Factoidal/XMPP/Framing.lean` — where the next top-level unit of a
+  stream ends, which is the one thing `L4Factoidal.XML` cannot do for a
+  never-closed root. It supplies only the CUT; `Wire.parseElement` (the
+  real parser) still parses.
+- `L4Factoidal/XMPP/Server.lean` — every remaining protocol decision as
+  one total function. RFC 6120 sections 4.2, 4.4, 4.9, 6, 7, 8, 8.4 and
+  RFC 6121 sections 2, 3, 4, 8.
+- `Harness/XmppServe.lean` — the I/O only.
+
+**The carrier.** `deploy/fly/xmpp/` holds the entire non-Lean part: a
+Dockerfile and one socat command that terminates TLS and forks one
+process per connection. XEP-0368 direct TLS is what makes that complete
+— with no STARTTLS step there is no TLS work left for the application.
+No C, no JavaScript, no Erlang serves a connection. The BEAM host
+described above is therefore not on the critical path any more; it
+remains the interesting option for supervision and scheduling, not the
+only way to get a socket.
+
+**Measured.** 41 pass, 0 fail (out of 41) replaying the RFC sequences
+through the live binary (`tests/xmpp/server.mjs`); 7 pass, 0 fail (out
+of 7) driving it with `@xmpp/client` over a real socket through the
+socat carrier (`tools/xmpp-interop.sh`). The interop script exits 2 with
+a reason when socat or the client library is absent, never a green skip.
+
+**Two defects the tests found, recorded so they are not repeated.**
+(1) `IO.FS.Stream.read n` is `fread`: it blocks until `n` bytes arrive.
+Reading 4096 stalled every interactive client — a batch replay through a
+closed pipe did not show it, because end of file releases the read.
+(2) The host read and unlinked a spooled stanza before asking whether
+the session could receive it, and the stanza was destroyed. The gate is
+now `Server.Session.canDeliver`, asked BEFORE the mailbox is touched.
+Both are written into the module headers beside the code that pays for
+them.
 - **Retested after the move**: all round-trip/negative-case checks pass
   against the new `L4Factoidal.XML`-backed `Wire`/`Core`.
 - **Tested against a live ejabberd instance** (the `foafmixer` pilot

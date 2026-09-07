@@ -1,0 +1,14 @@
+{
+  "name": "factoidal-xmpp-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test-only dependencies for the Factoidal XMPP server tests. Kept out of npm/factoidal so nothing here reaches the published @factoidal/core package. @xmpp/client is here to be an XMPP implementation this repository did not write: tools/xmpp-interop.sh drives the Lean server with it over a real socket through the socat carrier.",
+  "devDependencies": {
+    "@xmpp/client": "^0.13.6"
+  },
+  "scripts": {
+    "test": "node server.mjs",
+    "interop": "bash ../../tools/xmpp-interop.sh"
+  }
+}

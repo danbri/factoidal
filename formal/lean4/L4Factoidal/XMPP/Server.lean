@@ -664,6 +664,18 @@ def step (s : Session) (env : Env) (u : Framing.Unit) : Session × Env × List O
                 (render (Core.Stanza.toXml { st with from_ := Jid.parse full }))])
       | .closed => (s, env, [])
 
+/-- May this session receive a stanza that arrived for it from another
+connection? Only a BOUND session may (RFC 6121 section 8.5.3: an
+unavailable resource is not a delivery target). The host asks BEFORE it
+touches the mailbox, because a host that reads and unlinks a stanza this
+function would refuse has destroyed it — measured 2026-09-07, when
+exactly that lost a message between two sessions in
+`tests/xmpp/server.mjs`. -/
+def Session.canDeliver (s : Session) : Bool :=
+  match s.stage with
+  | .bound _ _ => true
+  | _ => false
+
 /-- A stanza that arrived from another connection through the host's
 mailbox. It reaches the client only once the session is bound — RFC 6121
 section 8.5.3 says an unavailable resource is not a delivery target — so

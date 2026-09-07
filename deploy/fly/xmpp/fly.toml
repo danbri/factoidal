@@ -1,0 +1,59 @@
+# factoidal-xmpp: an XMPP server whose protocol is Lean and whose
+# carrier is one socat command. See README.md beside this file for the
+# exact non-Lean line count and what the server speaks.
+#
+#   fly apps create factoidal-xmpp
+#   fly volumes create xmpp_data -a factoidal-xmpp -r lhr -s 1
+#   fly deploy -c deploy/fly/xmpp/fly.toml --build-arg FACTOIDAL_REF=<sha>
+#
+# Accounts are one `user:password` line each in /data/xmpp/accounts on
+# the volume. The image ships none.
+app = "factoidal-xmpp"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+  [build.args]
+    # The danbri/factoidal ref the image's first stage builds
+    # l4xmpp-serve from. A branch, a tag or a full commit SHA; pin a
+    # deploy to one commit with --build-arg on the command line.
+    FACTOIDAL_REF = "claude/main"
+
+[env]
+  # The domain this server is authoritative for. A client opening a
+  # stream that names any other domain is answered with `host-unknown`
+  # (RFC 6120 section 4.9.3.6), so this must match the certificate.
+  XMPP_DOMAIN = "xmpp.factoidal.com"
+  XMPP_STATE = "/data/xmpp"
+  # Fly terminates nothing for a raw TCP service, so the certificate is
+  # the container's. Mount it, or set XMPP_PLAINTEXT=1 for a listener
+  # with no confidentiality at all (local testing only).
+  XMPP_CERT = "/certs/fullchain.pem"
+  XMPP_KEY = "/certs/privkey.pem"
+  XMPP_PLAINTEXT = "0"
+
+[[mounts]]
+  source = "xmpp_data"
+  destination = "/data"
+
+# XEP-0368 direct TLS on 5223. `handlers = []`: Fly must pass the bytes
+# through untouched, because socat's OPENSSL-LISTEN is what terminates
+# TLS. A `tls` handler here would terminate it twice and the stream
+# would never parse.
+[[services]]
+  protocol = "tcp"
+  internal_port = 5223
+
+  [[services.ports]]
+    port = 5223
+    handlers = []
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
