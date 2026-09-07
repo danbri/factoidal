@@ -123,7 +123,7 @@ extern_lib libl4exthost pkg := do
 -- library: these do file I/O and print scores. The probes
 -- (`Harness.TurtleProbe`, `Harness.CanonProbe`) stay executable roots.
 @[default_target] lean_lib Harness where globs :=
-  #[`Harness.Common, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests,
+  #[`Harness.Common, `Harness.Fixtures, `Harness.Manifest, `Harness.Compare, `Harness.ProtocolRun, `Harness.Run, `Harness.HarnessTests,
     `Harness.NativeHasher,
     `Harness.PosixRangeIO, `Harness.CompactedEpoch, `Harness.GenerationPointer, `Harness.ShardMerkleMaterialize, `Harness.ShardMerkleProfile, `Harness.ShardPublish,
     `Harness.IndexedBlockV3Materialize]
@@ -296,6 +296,20 @@ extern_lib libl4exthost pkg := do
 @[default_target] lean_exe «l4csvw-rdf» where root := `Harness.CsvwRdfRun
 
 @[default_target] lean_exe «l4csvw-json» where root := `Harness.CsvwJsonRun
+
+-- The W3C csvw VALIDATION manifest (Positive / Warning / Negative
+-- ValidationTest), run through L4Factoidal.CSVW.Validate. The twin of
+-- the F* `csvw_runner --validate` mode, in the same score grammar.
+@[default_target] lean_exe «l4csvw-validate» where root := `Harness.CsvwValidateRun
+
+-- The GeoSPARQL v0 slice (WKT parsing, Simple Features topology,
+-- geof: distance/envelope) as a scored run, the twin of the F*
+-- tests/unit/geosparql_v0_unit.ml pin file.
+@[default_target] lean_exe l4geo where root := `Harness.GeoRun
+
+-- The W3C rdf-semantics entailment manifest (RDF 1.2), scored against
+-- L4Factoidal.RDFS / L4Factoidal.RDF.Entailment.
+@[default_target] lean_exe «l4rdf-semantics» where root := `Harness.RdfSemanticsRun
 
 @[default_target] lean_exe «l4jsonschema» where root := `Harness.JsonSchemaRun
 

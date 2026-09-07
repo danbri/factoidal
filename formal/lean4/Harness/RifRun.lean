@@ -36,6 +36,7 @@ import L4Factoidal.RIF.Engine
 import L4Factoidal.RIF.Ps
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.RDFS.Closure
+import Harness.Fixtures
 
 open L4Factoidal.RIF
 open L4Factoidal.RDF
@@ -103,8 +104,8 @@ deriving Inhabited
 def rounds : Nat := 24
 
 def main (args : List String) : IO UInt32 := do
-  let dir := (args.filter (fun a => !a.startsWith "--")).head?
-    |>.getD "third_party/testing/rif-core-suite/Core_v1.22/Approved"
+  let dir ← Harness.fixtureArgOr ((args.filter (fun a => !a.startsWith "--")).head?)
+    "third_party/testing/rif-core-suite/Core_v1.22/Approved"
   let verbose := args.contains "--verbose"
   if !(← System.FilePath.isDir dir) then
     IO.println s!"rif runner: corpus not found: {dir}"

@@ -32,6 +32,7 @@ waits for the manifest-driven runner.
 import L4Factoidal.Syntax.RdfXml
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.RDF.Isomorphism
+import Harness.Fixtures
 
 open L4Factoidal.Syntax
 open L4Factoidal.RDF
@@ -151,10 +152,11 @@ def report (label : String) (t : Tally) (verbose : Bool) : IO Unit := do
       IO.println s!"  FAIL {f}"
 
 def main (args : List String) : IO Unit := do
-  let root : System.FilePath :=
-    match args.head? with
-    | some a => if a == "--quiet" then "../../third_party/testing/w3c/rdf/rdf11/rdf-xml" else a
-    | none   => "../../third_party/testing/w3c/rdf/rdf11/rdf-xml"
+  let rel := "third_party/testing/w3c/rdf/rdf11/rdf-xml"
+  let root : System.FilePath ←
+    (match args.head? with
+     | some a => if a == "--quiet" then Harness.resolveFixtureOr rel else pure a
+     | none   => Harness.resolveFixtureOr rel).map System.FilePath.mk
   let verbose := !(args.contains "--quiet")
   if !(← root.pathExists) then
     IO.println s!"rdf-xml: directory not present at {root} — no numbers reported"
