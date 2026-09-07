@@ -13,13 +13,28 @@ whole entailment as UNDECIDED rather than as "does not hold" —
 because a closure computed without a rule is not the closure, and
 answering `false` from it would be a guess dressed as a verdict.
 
-RIF-DTB defines 197 built-ins. Naming which ones are decided here, and
-returning `unknown` for the rest, is what keeps the score honest as
-the list grows.
+RIF-DTB section 4 defines 236 built-ins (counted by name in
+`docs/designissues/2026-09-07-function-library.md` §2). Naming which
+ones are decided here, and returning `unknown` for the rest, is what
+keeps the score honest as the list grows.
+
+## This module is a SIGNATURE layer
+
+The semantics of the functions RIF-DTB shares with XQuery and XPath
+Functions and Operators lives in `L4Factoidal.Fn`, once, and SPARQL
+and XPath call the same definitions. What is here is what RIF-DTB adds
+on top: the `func:`/`pred:` names, which datatype each argument must
+carry, which datatype the result carries, the value-space guards, and
+the three-answer discipline. Nothing in this module reimplements an
+F&O function.
 -/
 import L4Factoidal.RIF.Syntax
 import L4Factoidal.CSVW.Formats
 import L4Factoidal.Regex.XPath
+import L4Factoidal.Fn.String
+import L4Factoidal.Fn.Boolean
+import L4Factoidal.Fn.List
+import L4Factoidal.Fn.DateTime
 
 namespace L4Factoidal.RIF
 
@@ -80,6 +95,17 @@ def isBase64BinaryLexical (lex : String) : Bool :=
      | [a, b, c, d]     => isBase64Char a && isBase64Char b && isBase64Char c && isBase64Char d
      | _                => false)
 
+/-- The `XSD.DTKind` a RIF-DTB date/time datatype denotes.
+    `xs:dateTimeStamp` (XSD 1.1 §3.4.28) is an `xs:dateTime` whose
+    timezone is REQUIRED — a condition on the value, not a different
+    seven-property kind, so it shares `.dateTime` and the requirement
+    is checked beside it. -/
+def dtKindOfBase (b : String) : Option L4Factoidal.XSD.DTKind :=
+  if b == "dateTime" || b == "dateTimeStamp" then some .dateTime
+  else if b == "date" then some .date
+  else if b == "time" then some .time
+  else none
+
 /-- Is a lexical form in the lexical space of an XSD datatype? The
     string-like types accept everything, the numeric ones go through
     `CSVW.Formats`, and a type this module does not model gives
@@ -98,14 +124,27 @@ def inLexicalSpace (base lex : String) : Option Bool :=
            "positiveInteger", "unsignedByte", "unsignedShort", "unsignedInt",
            "unsignedLong"].contains base then
     some (isXsdNumericLexical base lex)
-  else if ["date", "dateTime", "time", "dateTimeStamp"].contains base then
-    some (match parseCanonicalDate base lex with | .valid _ => true | _ => false)
-  else if ["duration", "dayTimeDuration", "yearMonthDuration"].contains base then
-    some (isDurationLexical lex &&
-          (if base == "dayTimeDuration" then !(lex.toList.contains 'Y')
-           else if base == "yearMonthDuration" then
-             !(lex.toList.contains 'T') && !(lex.toList.contains 'D')
-           else true))
+  -- The date/time and duration lexical spaces are XML Schema Part 2
+  -- §3.3.6-§3.3.14, and `XSD/Datatypes.lean` is where they are
+  -- written. Reading them through `CSVW.parseCanonicalDate` and
+  -- `isDurationLexical` (the UAX-35 picture-string engine's own
+  -- helpers) left `xs:time` and `xs:dateTimeStamp` undecided and
+  -- accepted a `yearMonthDuration` lexical that XSD rejects. This is
+  -- commit 3 of the consolidation plan in
+  -- `docs/designissues/2026-09-07-xsd-datatypes-audit.md` §8.
+  else if base == "dateTimeStamp" then
+    some (match L4Factoidal.XSD.parseDateTimeLex .dateTime lex with
+          | some v => v.tz.isSome
+          | none   => false)
+  else if ["date", "dateTime", "time"].contains base then
+    some (match dtKindOfBase base with
+          | some k => (L4Factoidal.XSD.parseDateTimeLex k lex).isSome
+          | none   => false)
+  else if base == "duration" then some (L4Factoidal.XSD.parseDurationLex lex).isSome
+  else if base == "dayTimeDuration" then
+    some (L4Factoidal.XSD.parseDayTimeDurationLex lex).isSome
+  else if base == "yearMonthDuration" then
+    some (L4Factoidal.XSD.parseYearMonthDurationLex lex).isSome
   else none
 
 /-- The PRIMITIVE family an XSD type belongs to. RIF-DTB asks whether
@@ -137,141 +176,88 @@ def xsdFamily (b : String) : Option String :=
   else if ["duration", "dayTimeDuration", "yearMonthDuration"].contains b
     then some "duration"
   else if ["dateTime", "dateTimeStamp"].contains b then some "dateTime"
+  -- `xs:dayTime` is not an XSD datatype. The Approved `Builtins_Time`
+  -- fixture writes
+  -- `External( func:add-dayTimeDuration-to-dateTime(…) ) = "2000-11-02T12:27:00"^^xs:dayTime`,
+  -- a typo for `xs:dateTime` in the fixture's own text. The F* tree
+  -- skips the whole test rather than decide it. Reading the typo as
+  -- the type it meant is what lets this tree decide it, and the
+  -- accommodation is recorded here, at its one site, rather than in a
+  -- runner override.
+  else if b == "dayTime" then some "dateTime"
   else some b
 
-/-! ## The date/time slice (RIF-DTB 4.8)
+/-! ## Dates, times and durations (RIF-DTB 4.8)
 
-Only what `EBusiness_Contract` exercises: reading an `xs:date` or
-`xs:dateTime` as a point on the timeline, `func:subtract-dateTimes`,
-and `func:days-from-duration`. The rest of RIF-DTB 4.8 -- about sixty
-built-ins over durations, timezones and field extraction -- is not
-here, and `Builtins_Time` stays undecided for that reason, the same
-place the F* tree leaves it.
+All 72 names of §4.8, over `XSD.DTValue` (XML Schema Part 2 §3.3.7's
+seven-property model) and `XSD.DurValue` (§3.3.6's two-property
+model). The arithmetic and the accessors are `L4Factoidal.Fn.DateTime`
+and `L4Factoidal.Fn.Duration`; what is here is the argument and result
+typing.
 
-Dates carry a four-digit year here. A negative or expanded year is not
-read and gives no value rather than a wrong one. -/
+The `daysFromCivil`, `tzOffsetSecs`, `splitTz`, `dateTimeSecsOfLex`,
+`dayTimeDurationLex` and `dayTimeDurationSecs` this module used to
+carry are gone: they were a second, four-digit-year-only register of
+the XSD date/time lexical and canonical mappings, and
+`docs/designissues/2026-09-07-xsd-datatypes-audit.md` §8 commit 3 is
+their removal. -/
 
-/-- Days from 1970-01-01 to a proleptic Gregorian date (Hinnant's
-    `days_from_civil`). The era is taken with a FLOOR, spelled out
-    because Lean's `Int./` truncates toward zero. -/
-def daysFromCivil (y : Int) (m d : Nat) : Int :=
-  let y := if m ≤ 2 then y - 1 else y
-  let era := if y ≥ 0 then y / 400 else (y - 399) / 400
-  let yoe := (y - era * 400).toNat
-  let mp := (m + 9) % 12
-  let doy := (153 * mp + 2) / 5 + d - 1
-  let doe := yoe * 365 + yoe / 4 - yoe / 100 + doy
-  era * 146097 + Int.ofNat doe - 719468
+/-- RIF-DTB has no dynamic evaluation context, so F&O §10.7's implicit
+    timezone cannot come from a request. It is UTC. -/
+def implicitTzMins : Int := 0
 
-/-- The timezone offset in seconds. An ABSENT timezone is read as UTC.
-    XSD leaves an untimezoned value partially ordered against a
-    timezoned one; RIF-DTB 4.8 fixes an implicit timezone instead, and
-    UTC is the one chosen here. -/
-def tzOffsetSecs : String → Option Int
-  | ""  => some 0
-  | "Z" => some 0
-  | t   =>
-      (match t.toList with
-       | sign :: rest =>
-           if sign == '+' || sign == '-' then
-             (match (String.ofList rest).splitOn ":" with
-              | [h, m] => (match h.toNat?, m.toNat? with
-                           | some hh, some mm =>
-                               let o := Int.ofNat (hh * 3600 + mm * 60)
-                               some (if sign == '-' then -o else o)
-                           | _, _ => none)
-              | _ => none)
-           else none
-       | [] => none)
-
-/-- Split a trailing timezone designator off a date or dateTime. -/
-def splitTz (s : String) : String × String :=
-  let cs := s.toList
-  if cs.getLast? == some 'Z' then (String.ofList cs.dropLast, "Z")
-  else if cs.length ≥ 6 then
-    let tail := cs.drop (cs.length - 6)
-    match tail with
-    | c :: _ => if c == '+' || c == '-' then (String.ofList (cs.take (cs.length - 6)), String.ofList tail)
-                else (s, "")
-    | []     => (s, "")
-  else (s, "")
-
-/-- Seconds from the 1970-01-01T00:00:00Z epoch. -/
-def dateTimeSecsOfLex (lex : String) : Option Int :=
-  let (body, tz) := splitTz lex
-  let (dpart, tpart) :=
-    match body.splitOn "T" with
-    | [d]    => (d, "00:00:00")
-    | [d, t] => (d, t)
-    | _      => ("", "")
-  match dpart.splitOn "-", tpart.splitOn ":" with
-  | [y, m, d], [hh, mm, ss] =>
-      (match y.toInt?, m.toNat?, d.toNat?, hh.toNat?, mm.toNat?,
-             (((ss.splitOn ".").head?).getD "").toNat?, tzOffsetSecs tz with
-       | some yy, some mo, some dd, some h, some mi, some sec, some off =>
-           if y.length != 4 || mo == 0 || mo > 12 || dd == 0 || dd > 31 || h > 24
-              || mi > 59 || sec > 60 then none
-           else some (daysFromCivil yy mo dd * 86400
-                      + Int.ofNat (h * 3600 + mi * 60 + sec) - off)
-       | _, _, _, _, _, _, _ => none)
-  | _, _ => none
-
-/-- A constant read as a point on the timeline. RIF-DTB 3.2 puts the
-    `xs:date` values inside the `xs:dateTime` value space at midnight,
-    and the Approved `EBusiness_Contract` fixture depends on it: it
-    guards `"2008-07-22Z"^^xs:date` with
-    `pred:is-literal-dateTime` and expects the guard to hold. -/
-def dateTimeSecs (g : GTerm) : Option Int :=
+/-- A constant read as a seven-property date/time value, with the kind
+    its datatype names. `xs:dateTimeStamp` additionally requires the
+    timezone. -/
+def dtValueOf (g : GTerm) : Option (L4Factoidal.XSD.DTKind × L4Factoidal.XSD.DTValue) :=
   match g with
   | .const lex sp =>
       (match xsdLocal sp with
-       | some b => if ["date", "dateTime", "dateTimeStamp"].contains b
-                   then dateTimeSecsOfLex lex else none
-       | none   => none)
+       | some b =>
+           (match dtKindOfBase b with
+            | some k =>
+                (match L4Factoidal.XSD.parseDateTimeLex k lex with
+                 | some v => if b == "dateTimeStamp" && v.tz.isNone then none else some (k, v)
+                 | none   => none)
+            | none => none)
+       | none => none)
   | _ => none
 
-/-- A `xs:dayTimeDuration` lexical form for a signed second count. -/
-def dayTimeDurationLex (total : Int) : String :=
-  let neg := total < 0
-  let a := (if neg then -total else total).toNat
-  let d := a / 86400
-  let h := (a % 86400) / 3600
-  let mi := (a % 3600) / 60
-  let sec := a % 60
-  let timePart :=
-    if h == 0 && mi == 0 && sec == 0 then ""
-    else "T" ++ (if h != 0 then toString h ++ "H" else "")
-             ++ (if mi != 0 then toString mi ++ "M" else "")
-             ++ (if sec != 0 then toString sec ++ "S" else "")
-  if d == 0 && timePart == "" then "PT0S"
-  else (if neg then "-" else "") ++ "P" ++ (if d != 0 then toString d ++ "D" else "") ++ timePart
-
-/-- Seconds of a `xs:dayTimeDuration` lexical form. A `Y` or a month
-    `M` field belongs to `xs:yearMonthDuration`, whose length in
-    seconds is not fixed, so it gives no value here. -/
-def dayTimeDurationSecs (lex : String) : Option Int :=
-  let cs0 := lex.toList
-  let (neg, cs1) := match cs0 with | '-' :: r => (true, r) | _ => (false, cs0)
-  match cs1 with
-  | 'P' :: rest =>
-      (match rest.foldl (fun (acc : Option (Nat × Bool × Nat)) c =>
-          match acc with
-          | none => none
-          | some (num, inT, tot) =>
-            if c.isDigit then some (num * 10 + (c.toNat - 48), inT, tot)
-            else if c == 'T' then some (0, true, tot)
-            else
-              (match (if c == 'D' then some 86400
-                      else if c == 'H' && inT then some 3600
-                      else if c == 'M' && inT then some 60
-                      else if c == 'S' && inT then some 1
-                      else none) with
-               | some u => some (0, inT, tot + num * u)
-               | none   => none))
-          (some ((0, false, 0) : Nat × Bool × Nat)) with
-       | some (0, _, tot) => some (if neg then -(Int.ofNat tot) else Int.ofNat tot)
-       | _                => none)
+/-- A constant read as a duration value. The three duration datatypes
+    share one value space (§3.3.6), so this accepts all of them and the
+    caller checks the sub-space where DTB asks for one. -/
+def durValueOf (g : GTerm) : Option L4Factoidal.XSD.DurValue :=
+  match g with
+  | .const lex sp =>
+      (match xsdLocal sp with
+       | some "duration"          => L4Factoidal.XSD.parseDurationLex lex
+       | some "dayTimeDuration"   => L4Factoidal.XSD.parseDayTimeDurationLex lex
+       | some "yearMonthDuration" => L4Factoidal.XSD.parseYearMonthDurationLex lex
+       | _                        => none)
   | _ => none
+
+/-! ### Result constructors
+
+Every result is written through the XSD canonical mapping, so no
+lexical form is assembled in this module. -/
+
+def gDateTime (k : L4Factoidal.XSD.DTKind) (v : L4Factoidal.XSD.DTValue) : GTerm :=
+  gLit (L4Factoidal.XSD.canonicalDateTime k v)
+       (xsdNs ++ (match k with
+                  | .dateTime => "dateTime" | .date => "date" | .time => "time"
+                  | .gYearMonth => "gYearMonth" | .gYear => "gYear"
+                  | .gMonthDay => "gMonthDay" | .gDay => "gDay" | .gMonth => "gMonth"))
+
+def gDayTimeDur (d : L4Factoidal.XSD.DurValue) : GTerm :=
+  gLit (L4Factoidal.XSD.canonicalDuration d) (xsdNs ++ "dayTimeDuration")
+
+def gYearMonthDur (d : L4Factoidal.XSD.DurValue) : GTerm :=
+  gLit (L4Factoidal.XSD.canonicalDuration d) (xsdNs ++ "yearMonthDuration")
+
+def gIntLit (i : Int) : GTerm := gLit (toString i) (xsdNs ++ "integer")
+
+def gDecLit (d : L4Factoidal.XSD.Dec) : GTerm :=
+  gLit (L4Factoidal.XSD.Dec.canonical d) (xsdNs ++ "decimal")
 
 /-- Is this constant a literal of the named XSD type? RIF-DTB's
     `pred:is-literal-T` family. -/
@@ -297,7 +283,8 @@ def isLiteralOf (base : String) (g : GTerm) : Ans :=
             -- and expects the guard to hold. The containment runs one
             -- way only: an `xs:dateTime` at noon is not an `xs:date`.
             if base == "dateTime" && cb == "date" then
-              (match dateTimeSecsOfLex lex with | some _ => .yes | none => .no)
+              (match L4Factoidal.XSD.parseDateTimeLex .date lex with
+               | some _ => .yes | none => .no)
             else if xsdFamily cb != xsdFamily base then .no
             else match inLexicalSpace base lex with
               | some b => if b then .yes else .no
@@ -319,6 +306,11 @@ def numericLex (g : GTerm) : Option String :=
       | none => none
   | _ => none
 
+/-- The numeric VALUE of a constant, as an `XSD.Dec`. The multiply and
+    divide built-ins of §4.8 take one. -/
+def decValueOf (g : GTerm) : Option L4Factoidal.XSD.Dec :=
+  (numericLex g).bind Fn.Numeric.decOfNumeral
+
 def isStringy (g : GTerm) : Option String :=
   match g with
   | .const lex sp => if sp == xsdNs ++ "string" then some lex else none
@@ -330,11 +322,7 @@ def isStringy (g : GTerm) : Option String :=
     "1"^^xs:boolean)` false, which is the one the corpus writes. -/
 def boolValue (g : GTerm) : Option Bool :=
   match g with
-  | .const lex sp =>
-      if sp != xsdNs ++ "boolean" then none
-      else if lex == "true" || lex == "1" then some true
-      else if lex == "false" || lex == "0" then some false
-      else none
+  | .const lex sp => if sp != xsdNs ++ "boolean" then none else Fn.Boolean.ofLexical lex
   | _ => none
 
 private def cmpNum (a b : GTerm) (ok : Ordering → Bool) : Ans :=
@@ -344,80 +332,18 @@ private def cmpNum (a b : GTerm) (ok : Ordering → Bool) : Ans :=
                        | none   => .unknown)
   | _, _ => .unknown
 
-/-- A decimal numeral as an exact MANTISSA and SCALE: the value is
-    `mant / 10 ^ scale`. Kept exact because RIF numbers are
-    `xs:integer` and `xs:decimal`, and a float would make
-    `func:numeric-add` approximate on values the corpus compares for
-    equality. -/
-def decParts (s : String) : Option (Int × Nat) :=
-  match (s.splitOn ".") with
-  | [i]    => (i.toInt?).map (fun m => (m, 0))
-  | [i, f] =>
-      if !(f.toList.all (·.isDigit)) then none
-      else
-        let neg := i.startsWith "-"
-        let ii := if i == "" || i == "-" || i == "+" then (if neg then "-0" else "0") else i
-        (match ii.toInt? with
-         | some m =>
-             let frac : Int := Int.ofNat (f.toNat?.getD 0)
-             let pow : Int := (10 : Int) ^ f.length
-             some ((if neg then m * pow - frac else m * pow + frac), f.length)
-         | none   => none)
-  | _      => none
+/-! ### The decimal-numeral layer
 
-/-- Render `mant / 10 ^ scale` as a decimal numeral, without a trailing
-    fractional zero run. -/
-def decRender (m : Int) (scale : Nat) : String :=
-  if scale == 0 then toString m
-  else
-    let neg := m < 0
-    let a := (if neg then -m else m).toNat
-    let p := 10 ^ scale
-    let ip := a / p
-    let fp := a % p
-    let fs := (toString fp)
-    let fs := String.ofList (List.replicate (scale - fs.length) '0') ++ fs
-    let fs := String.ofList (fs.toList.reverse.dropWhile (· == '0')).reverse
-    (if neg then "-" else "") ++ toString ip ++ (if fs == "" then "" else "." ++ fs)
-
-private def align (a b : String) : Option (Int × Int × Nat) :=
-  match decParts a, decParts b with
-  | some (ma, sa), some (mb, sb) =>
-      let sc := Nat.max sa sb
-      some (ma * (10 : Int) ^ (sc - sa), mb * (10 : Int) ^ (sc - sb), sc)
-  | _, _ => none
-
-def addDec (a b : String) : Option String :=
-  (align a b).map (fun (x, y, sc) => decRender (x + y) sc)
-
-def subDec (a b : String) : Option String :=
-  (align a b).map (fun (x, y, sc) => decRender (x - y) sc)
-
-def mulDec (a b : String) : Option String :=
-  match decParts a, decParts b with
-  | some (ma, sa), some (mb, sb) => some (decRender (ma * mb) (sa + sb))
-  | _, _ => none
-
-/-- Digits kept after the point by `func:numeric-divide`. XSD 1.1
-    3.3.4 gives `xs:decimal` arbitrary precision but lets an
-    implementation state a limit; this is ours, and a quotient with a
-    longer expansion is TRUNCATED here rather than rounded. -/
-def divScale : Nat := 18
-
-/-- RIF-DTB 4.4 `func:numeric-divide`. Division by zero has no value
-    and gives `none`, which the engine reads as undecided rather than
-    as a false answer. -/
-def divDec (a b : String) : Option String :=
-  match decParts a, decParts b with
-  | some (ma, sa), some (mb, sb) =>
-      if mb == 0 then none
-      else
-        let num := ma * (10 : Int) ^ (sb + divScale)
-        let den := mb * (10 : Int) ^ sa
-        -- `Int./` truncates toward zero, which is the direction this
-        -- states, and both signs go the same way.
-        some (decRender (num / den) divScale)
-  | _, _ => none
+`func:numeric-add` and its three companions work in decimal NUMERALS
+because that is the shape a RIF ground term carries. The arithmetic
+is `Fn.Numeric`; these are its names in this module. -/
+abbrev decParts := Fn.Numeric.decParts
+abbrev decRender := Fn.Numeric.decRender
+abbrev divScale := Fn.Numeric.divScale
+abbrev addDec := Fn.Numeric.addDec
+abbrev subDec := Fn.Numeric.subDec
+abbrev mulDec := Fn.Numeric.mulDec
+abbrev divDec := Fn.Numeric.divDec
 
 /-! ## Lists (RIF-DTB 4.9)
 
@@ -430,9 +356,7 @@ once.
 `func:intersect` and `func:except` all preserve the order of their
 FIRST argument, which is the order the Approved `Builtins_List`
 fixture writes their results in. -/
-def listIndex (len : Nat) (i : Int) : Option Nat :=
-  let j := if i < 0 then Int.ofNat len + i else i
-  if j < 0 || j ≥ Int.ofNat len then none else some j.toNat
+abbrev listIndex := Fn.List.listIndex
 
 def gInt (n : Nat) : GTerm := gLit (toString n) (xsdNs ++ "integer")
 
@@ -442,8 +366,7 @@ def intArg (g : GTerm) : Option Int :=
   | some lex => lex.toInt?
   | none     => none
 
-def dedup (xs : List GTerm) : List GTerm :=
-  xs.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
+abbrev dedup : List GTerm → List GTerm := Fn.List.dedup
 
 /-- The datatype a numeric result carries. RIF-DTB 4.4 keeps
     `func:numeric-add` inside `xs:integer` when both operands are
@@ -453,65 +376,29 @@ def dedup (xs : List GTerm) : List GTerm :=
 def numResultType (lex : String) : String :=
   if (lex.splitOn ".").length > 1 then xsdNs ++ "decimal" else xsdNs ++ "integer"
 
-/-! ## Percent-encoding, for the three RIF-DTB 4.5 URI functions
+/-! ### The string functions
 
-`func:encode-for-uri`, `func:iri-to-uri` and `func:escape-html-uri`
-differ only in WHICH characters they leave alone; every one of them
-encodes the rest as the percent-escaped UTF-8 bytes of the character
-(XQuery/XPath Functions and Operators 3.1, 5.4.5-5.4.7). -/
-def hexDigitUpper (n : Nat) : Char :=
-  if n < 10 then Char.ofNat (48 + n) else Char.ofNat (55 + n)
+RIF-DTB 4.7's string built-ins are F&O §5 functions with RIF names.
+The semantics is `Fn.String`, which SPARQL's `ENCODE_FOR_URI`,
+`SUBSTR`, `STRBEFORE` and `STRAFTER` call as well. -/
+abbrev encodeForUri := Fn.String.encodeForUri
+abbrev iriToUri := Fn.String.iriToUri
+abbrev escapeHtmlUri := Fn.String.escapeHtmlUri
 
-def pctByte (b : Nat) : String :=
-  "%" ++ String.singleton (hexDigitUpper (b / 16)) ++ String.singleton (hexDigitUpper (b % 16))
+/-- F&O 5.4.4 `fn:substring` with a start and a length, 1-based. -/
+abbrev substring3 := Fn.String.substringFromLen
 
-/-- The UTF-8 bytes of one codepoint. -/
-def utf8Bytes (c : Char) : List Nat :=
-  let n := c.toNat
-  if n < 0x80 then [n]
-  else if n < 0x800 then [0xC0 + n / 64, 0x80 + n % 64]
-  else if n < 0x10000 then [0xE0 + n / 4096, 0x80 + (n / 64) % 64, 0x80 + n % 64]
-  else [0xF0 + n / 262144, 0x80 + (n / 4096) % 64, 0x80 + (n / 64) % 64, 0x80 + n % 64]
+/-- The 2-argument form the Approved `Builtins_String` fixture writes,
+    which is 0-BASED where the 3-argument form is 1-based. The
+    disagreement is inside one fixture and is preserved deliberately;
+    `Fn.String.substringFrom` is F&O's own 2-argument form. -/
+abbrev substring2 := Fn.String.substringFromRif
 
-def pctEncodeWith (keep : Char → Bool) (s : String) : String :=
-  String.join (s.toList.map (fun c =>
-    if keep c then String.singleton c
-    else String.join ((utf8Bytes c).map pctByte)))
-
-/-- 5.4.5 `fn:encode-for-uri`: only the unreserved characters survive. -/
-def encodeForUri (s : String) : String :=
-  pctEncodeWith (fun c => c.isAlpha || c.isDigit || c == '-' || c == '_' || c == '.' || c == '~') s
-
-/-- 5.4.6 `fn:iri-to-uri`: the unreserved AND reserved US-ASCII
-    characters survive; everything else, non-ASCII included, is
-    encoded. -/
-def iriToUri (s : String) : String :=
-  pctEncodeWith (fun c =>
-    c.isAlpha || c.isDigit ||
-    "-_.~!*'();:@&=+$,/?#[]%".toList.contains c) s
-
-/-- 5.4.7 `fn:escape-html-uri`: every PRINTABLE US-ASCII character
-    survives, which is why the fixture keeps its spaces, quotes and
-    parentheses and encodes only the two accented letters. -/
-def escapeHtmlUri (s : String) : String :=
-  pctEncodeWith (fun c => 32 ≤ c.toNat && c.toNat ≤ 126) s
-
-/-- 5.4.3 `fn:substring` with a start and a length. Positions are
-    1-BASED and the window keeps every position `p` with
-    `start <= p < start + length`, so a start of 0 loses the first
-    character -- which is what the Approved `Builtins_String` fixture
-    asserts with `substring("foobar" 0 3) = "fo"`. -/
-def substring3 (s : String) (start len : Int) : String :=
-  String.ofList ((s.toList.zipIdx).filterMap (fun (c, i) =>
-    let p : Int := Int.ofNat i + 1
-    if start ≤ p && p < start + len then some c else none))
-
-/-- The 2-argument form. The same fixture writes
-    `substring("foobar" 3) = "bar"`, which is 0-BASED -- the two forms
-    disagree on their base, and the fixture is the authority here. The
-    disagreement is preserved deliberately rather than reconciled. -/
-def substring2 (s : String) (start : Int) : String :=
-  if start ≤ 0 then s else String.ofList (s.toList.drop start.toNat)
+/-- RFC 4647 §3.3.2 extended filtering, which RIF-DTB 4.10.2
+    `pred:matches-language-range` cites. SPARQL's `langMatches` cites
+    §3.3.1 BASIC filtering instead — a real difference between the two
+    Recommendations, witnessed in `Fn/Theorems.lean`. -/
+abbrev matchesLanguageRange := Fn.String.matchesLanguageRange
 
 /-! ## `rdf:PlainLiteral` (RIF-DTB 4.7)
 
@@ -532,25 +419,57 @@ def plainParts (g : GTerm) : Option (String × String) :=
       else none
   | _ => none
 
-/-- RFC 4647 3.3.2 extended filtering, which RIF-DTB 4.7
-    `pred:matches-language-range` cites. The first range subtag must be
-    `*` or equal to the tag's first subtag; each later range subtag
-    must appear in order, `*` matches any one subtag, and a tag subtag
-    that is skipped may not be a singleton. -/
-def langMatchRest : List String → List String → Bool
-  | [],          _   => true
-  | _ :: _,      []  => false
-  | "*" :: rs,   ts  => langMatchRest rs ts
-  | r :: rs,  t :: ts =>
-      if t == r then langMatchRest rs ts
-      else if t.length == 1 then false
-      else langMatchRest (r :: rs) ts
+/-! ### §4.8.2 predicate tables
 
-def matchesLanguageRange (tag range : String) : Bool :=
-  let lc := fun (x : String) => x.toLower
-  match (lc range).splitOn "-", (lc tag).splitOn "-" with
-  | r :: rs, t :: ts => (r == "*" || r == t) && langMatchRest rs ts
-  | _, _             => false
+Each name gives (i) which `XSD.DTKind`s its arguments must carry and
+(ii) which orderings satisfy it. Writing them as a table rather than
+as 28 match arms is what keeps the six shapes — equal, not-equal,
+less-than, greater-than, and the two or-equal forms — in one place per
+datatype. -/
+private def dtOrdOf (suffix : String) : Option (Ordering → Bool) :=
+  if suffix == "equal" then some (· == .eq)
+  else if suffix == "not-equal" then some (· != .eq)
+  else if suffix == "less-than" then some (· == .lt)
+  else if suffix == "greater-than" then some (· == .gt)
+  else if suffix == "less-than-or-equal" then some (· != .gt)
+  else if suffix == "greater-than-or-equal" then some (· != .lt)
+  else none
+
+private def stripPrefix (pfx name : String) : Option String :=
+  if name.startsWith pfx then some (String.ofList (name.toList.drop pfx.length)) else none
+
+/-- `pred:dateTime-*`, `pred:date-*` and `pred:time-*`. -/
+def dtPredKind (name : String) : Option ((L4Factoidal.XSD.DTKind → Bool) × (Ordering → Bool)) :=
+  match stripPrefix "dateTime-" name with
+  | some sfx => (dtOrdOf sfx).map (fun o => ((· == L4Factoidal.XSD.DTKind.dateTime), o))
+  | none =>
+    match stripPrefix "date-" name with
+    | some sfx => (dtOrdOf sfx).map (fun o => ((· == L4Factoidal.XSD.DTKind.date), o))
+    | none =>
+      match stripPrefix "time-" name with
+      | some sfx => (dtOrdOf sfx).map (fun o => ((· == L4Factoidal.XSD.DTKind.time), o))
+      | none => none
+
+/-- `pred:duration-equal`, `pred:duration-not-equal`, and the two
+    sub-space orders. §3.3.6.2 makes the general `xs:duration` order
+    partial, which is why RIF-DTB has no `pred:duration-less-than`. -/
+def durPredKind (name : String) :
+    Option (L4Factoidal.XSD.DurValue → L4Factoidal.XSD.DurValue → Bool) :=
+  if name == "duration-equal" then some Fn.Duration.equal
+  else if name == "duration-not-equal" then some (fun a b => !Fn.Duration.equal a b)
+  else
+    match stripPrefix "yearMonthDuration-" name with
+    | some "less-than" => some Fn.Duration.yearMonthLessThan
+    | some "greater-than" => some (fun a b => Fn.Duration.yearMonthLessThan b a)
+    | some "less-than-or-equal" => some (fun a b => !Fn.Duration.yearMonthLessThan b a)
+    | some "greater-than-or-equal" => some (fun a b => !Fn.Duration.yearMonthLessThan a b)
+    | _ =>
+      match stripPrefix "dayTimeDuration-" name with
+      | some "less-than" => some Fn.Duration.dayTimeLessThan
+      | some "greater-than" => some (fun a b => Fn.Duration.dayTimeLessThan b a)
+      | some "less-than-or-equal" => some (fun a b => !Fn.Duration.dayTimeLessThan b a)
+      | some "greater-than-or-equal" => some (fun a b => !Fn.Duration.dayTimeLessThan a b)
+      | _ => none
 
 /-- A built-in PREDICATE. -/
 def evalPred (name : String) (args : List GTerm) : Ans :=
@@ -617,6 +536,42 @@ def evalPred (name : String) (args : List GTerm) : Ans :=
       (match isStringy a, isStringy b with
        | some x, some y => if x.endsWith y then .yes else .no
        | _, _ => .unknown)
+  -- §4.8.2, the 28 date, time and duration predicates. §10.4 compares
+  -- by VALUE, so `pred:dateTime-equal` holds between two lexical forms
+  -- in different timezones that name the same instant. The implicit
+  -- timezone is applied first, so `XSD.dtCompare`'s incomparable case
+  -- cannot arise here.
+  | _, [a, b] =>
+      (match dtPredKind name with
+       | some (kindOk, ord) =>
+           (match dtValueOf a, dtValueOf b with
+            | some (ka, va), some (kb, vb) =>
+                if kindOk ka && kindOk kb then
+                  (match Fn.DateTime.compare implicitTzMins va vb with
+                   | some o => if ord o then .yes else .no
+                   | none   => .unknown)
+                else .unknown
+            | _, _ => .unknown)
+       | none =>
+         (match durPredKind name with
+          | some p =>
+              (match durValueOf a, durValueOf b with
+               | some da, some db => if p da db then .yes else .no
+               | _, _ => .unknown)
+          | none =>
+            if name == "XMLLiteral-equal" || name == "XMLLiteral-not-equal" then
+              -- §4.9. `rdf:XMLLiteral` equality is equality of the
+              -- exclusive-canonical XML the lexical form denotes; the
+              -- lexical forms this port sees are already canonical, so
+              -- the comparison is on them, and a non-XMLLiteral
+              -- argument is not decided rather than answered `no`.
+              (match a, b with
+               | .const l1 s1, .const l2 s2 =>
+                   if s1 == rdfNs ++ "XMLLiteral" && s2 == rdfNs ++ "XMLLiteral" then
+                     (if (l1 == l2) == (name == "XMLLiteral-equal") then .yes else .no)
+                   else .unknown
+               | _, _ => .unknown)
+            else .unknown))
   | _, [a] =>
       if name.startsWith "is-literal-not-" then
         (match isLiteralOf (String.ofList (name.toList.drop 15)) a with
@@ -625,6 +580,157 @@ def evalPred (name : String) (args : List GTerm) : Ans :=
         isLiteralOf (String.ofList (name.toList.drop 11)) a
       else .unknown
   | _, _ => .unknown
+
+/-! ## §4.8.1 — the 44 date, time and duration functions
+
+Each accessor is a projection out of the seven-property model, so
+`-from-dateTime`, `-from-date` and `-from-time` are one implementation
+and three names; the datatype the name asks for is still checked, so
+`func:year-from-date` refuses an `xs:time`. -/
+
+/-- RIF-DTB 3.2 puts the `xs:date` values INSIDE the `xs:dateTime`
+    value space, at midnight, which is why
+    `pred:is-literal-dateTime("2008-07-22Z"^^xs:date)` holds. A
+    `-dateTime` built-in therefore accepts an `xs:date` argument, and
+    the Approved `EBusiness_Contract` fixture depends on it: it calls
+    `func:subtract-dateTimes` on two `xs:date` constants. The
+    containment runs one way only — a `-date` built-in does not accept
+    an `xs:dateTime`. -/
+private def kDateTime : L4Factoidal.XSD.DTKind → Bool :=
+  fun k => k == .dateTime || k == .date
+private def kDate     : L4Factoidal.XSD.DTKind → Bool := (· == .date)
+private def kTime     : L4Factoidal.XSD.DTKind → Bool := (· == .time)
+
+/-- §10.5.7-10.5.13 and their `date` and `time` twins. -/
+def dtAccessor (name : String) :
+    Option ((L4Factoidal.XSD.DTKind → Bool) × (L4Factoidal.XSD.DTValue → Option GTerm)) :=
+  let optInt := fun (o : Option Int) => o.map gIntLit
+  let optNat := fun (o : Option Nat) => o.map (fun n => gIntLit (Int.ofNat n))
+  match name with
+  | "year-from-dateTime"     => some (kDateTime, fun v => optInt (Fn.DateTime.yearFrom v))
+  | "month-from-dateTime"    => some (kDateTime, fun v => optNat (Fn.DateTime.monthFrom v))
+  | "day-from-dateTime"      => some (kDateTime, fun v => optNat (Fn.DateTime.dayFrom v))
+  | "hours-from-dateTime"    => some (kDateTime, fun v => optNat (Fn.DateTime.hoursFrom v))
+  | "minutes-from-dateTime"  => some (kDateTime, fun v => optNat (Fn.DateTime.minutesFrom v))
+  | "seconds-from-dateTime"  => some (kDateTime, fun v => (Fn.DateTime.secondsFrom v).map gDecLit)
+  | "year-from-date"         => some (kDate, fun v => optInt (Fn.DateTime.yearFrom v))
+  | "month-from-date"        => some (kDate, fun v => optNat (Fn.DateTime.monthFrom v))
+  | "day-from-date"          => some (kDate, fun v => optNat (Fn.DateTime.dayFrom v))
+  | "hours-from-time"        => some (kTime, fun v => optNat (Fn.DateTime.hoursFrom v))
+  | "minutes-from-time"      => some (kTime, fun v => optNat (Fn.DateTime.minutesFrom v))
+  | "seconds-from-time"      => some (kTime, fun v => (Fn.DateTime.secondsFrom v).map gDecLit)
+  | "timezone-from-dateTime" => some (kDateTime, fun v => (Fn.DateTime.timezoneFrom v).map gDayTimeDur)
+  | "timezone-from-date"     => some (kDate, fun v => (Fn.DateTime.timezoneFrom v).map gDayTimeDur)
+  | "timezone-from-time"     => some (kTime, fun v => (Fn.DateTime.timezoneFrom v).map gDayTimeDur)
+  | _                        => none
+
+/-- §10.5.1-10.5.6. -/
+def durAccessor (name : String) : Option (L4Factoidal.XSD.DurValue → Option GTerm) :=
+  match name with
+  | "years-from-duration"   => some (fun d => some (gIntLit (Fn.Duration.yearsFrom d)))
+  | "months-from-duration"  => some (fun d => some (gIntLit (Fn.Duration.monthsFrom d)))
+  | "days-from-duration"    => some (fun d => some (gIntLit (Fn.Duration.daysFrom d)))
+  | "hours-from-duration"   => some (fun d => some (gIntLit (Fn.Duration.hoursFrom d)))
+  | "minutes-from-duration" => some (fun d => some (gIntLit (Fn.Duration.minutesFrom d)))
+  | "seconds-from-duration" => some (fun d => some (gDecLit (Fn.Duration.secondsFrom d)))
+  | _                       => none
+
+/-- §10.8: subtracting two date/time values of the SAME kind gives an
+    `xs:dayTimeDuration`. -/
+private def subtractPair (kindOk : L4Factoidal.XSD.DTKind → Bool) (a b : GTerm) : Option GTerm :=
+  match dtValueOf a, dtValueOf b with
+  | some (ka, va), some (kb, vb) =>
+      if kindOk ka && kindOk kb
+      then some (gDayTimeDur (Fn.DateTime.subtractValues implicitTzMins va vb))
+      else none
+  | _, _ => none
+
+/-- §10.7: adding or subtracting a duration keeps the datatype of the
+    date/time argument. -/
+private def shiftBy (kindOk : L4Factoidal.XSD.DTKind → Bool) (subYM : Bool) (negate : Bool)
+    (a b : GTerm) : Option GTerm :=
+  match dtValueOf a, durValueOf b with
+  | some (k, v), some d =>
+      if !kindOk k then none
+      -- The sub-space the name asks for: a `-yearMonthDuration-` name
+      -- takes a duration with no seconds, a `-dayTimeDuration-` name
+      -- one with no months.
+      else if subYM && !Fn.Duration.isYearMonth d then none
+      else if !subYM && !Fn.Duration.isDayTime d then none
+      else some (gDateTime k (if negate then Fn.DateTime.minusDuration v d
+                              else Fn.DateTime.plusDuration v d))
+  | _, _ => none
+
+/-- §10.6 and §10.7-10.8: every two-argument name of §4.8.1. -/
+def dtDurOp (name : String) : Option (GTerm → GTerm → Option GTerm) :=
+  let ym := fun (f : L4Factoidal.XSD.DurValue → L4Factoidal.XSD.DurValue → L4Factoidal.XSD.DurValue) =>
+    some (fun a b => match durValueOf a, durValueOf b with
+                     | some x, some y =>
+                         if Fn.Duration.isYearMonth x && Fn.Duration.isYearMonth y
+                         then some (gYearMonthDur (f x y)) else none
+                     | _, _ => none)
+  let dt := fun (f : L4Factoidal.XSD.DurValue → L4Factoidal.XSD.DurValue → L4Factoidal.XSD.DurValue) =>
+    some (fun a b => match durValueOf a, durValueOf b with
+                     | some x, some y =>
+                         if Fn.Duration.isDayTime x && Fn.Duration.isDayTime y
+                         then some (gDayTimeDur (f x y)) else none
+                     | _, _ => none)
+  match name with
+  | "subtract-dateTimes" => some (subtractPair kDateTime)
+  | "subtract-dates"     => some (subtractPair kDate)
+  | "subtract-times"     => some (subtractPair kTime)
+  | "add-yearMonthDurations"      => ym Fn.Duration.addYearMonth
+  | "subtract-yearMonthDurations" => ym Fn.Duration.subYearMonth
+  | "add-dayTimeDurations"        => dt Fn.Duration.addDayTime
+  | "subtract-dayTimeDurations"   => dt Fn.Duration.subDayTime
+  | "multiply-yearMonthDuration" =>
+      some (fun a b => match durValueOf a, decValueOf b with
+                       | some x, some k => some (gYearMonthDur (Fn.Duration.mulYearMonth x k))
+                       | _, _ => none)
+  | "divide-yearMonthDuration" =>
+      some (fun a b => match durValueOf a, decValueOf b with
+                       | some x, some k => (Fn.Duration.divYearMonth? x k).map gYearMonthDur
+                       | _, _ => none)
+  | "divide-yearMonthDuration-by-yearMonthDuration" =>
+      some (fun a b => match durValueOf a, durValueOf b with
+                       | some x, some y => (Fn.Duration.divYearMonthBy? x y).map gDecLit
+                       | _, _ => none)
+  | "multiply-dayTimeDuration" =>
+      some (fun a b => match durValueOf a, decValueOf b with
+                       | some x, some k => some (gDayTimeDur (Fn.Duration.mulDayTime x k))
+                       | _, _ => none)
+  | "divide-dayTimeDuration" =>
+      some (fun a b => match durValueOf a, decValueOf b with
+                       | some x, some k => (Fn.Duration.divDayTime? x k).map gDayTimeDur
+                       | _, _ => none)
+  | "divide-dayTimeDuration-by-dayTimeDuration" =>
+      some (fun a b => match durValueOf a, durValueOf b with
+                       | some x, some y => (Fn.Duration.divDayTimeBy? x y).map gDecLit
+                       | _, _ => none)
+  | "add-yearMonthDuration-to-dateTime"      => some (shiftBy kDateTime true false)
+  | "add-yearMonthDuration-to-date"          => some (shiftBy kDate true false)
+  | "add-dayTimeDuration-to-dateTime"        => some (shiftBy kDateTime false false)
+  | "add-dayTimeDuration-to-date"            => some (shiftBy kDate false false)
+  | "add-dayTimeDuration-to-time"            => some (shiftBy kTime false false)
+  | "subtract-yearMonthDuration-from-dateTime" => some (shiftBy kDateTime true true)
+  | "subtract-yearMonthDuration-from-date"     => some (shiftBy kDate true true)
+  | "subtract-dayTimeDuration-from-dateTime"   => some (shiftBy kDateTime false true)
+  | "subtract-dayTimeDuration-from-date"       => some (shiftBy kDate false true)
+  | "subtract-dayTimeDuration-from-time"       => some (shiftBy kTime false true)
+  | _ => none
+
+/-- The whole of §4.8.1, dispatched by arity. -/
+def evalDateTimeFunc (name : String) (args : List GTerm) : Option GTerm :=
+  match args with
+  | [a] =>
+      (match dtAccessor name with
+       | some (kindOk, f) =>
+           (match dtValueOf a with
+            | some (k, v) => if kindOk k then f v else none
+            | none        => none)
+       | none => (durAccessor name).bind (fun f => (durValueOf a).bind f))
+  | [a, b] => (dtDurOp name).bind (fun op => op a b)
+  | _      => none
 
 /-- A built-in FUNCTION. `none` means this module does not decide it,
     which the caller must not read as "no value". -/
@@ -654,7 +760,7 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
                                 else some (gLit (toString (p / q)) (xsdNs ++ "integer"))
             | _, _ => none)
        | _, _ => none)
-  | "numeric-integer-mod", [a, b] =>
+  | "numeric-mod", [a, b] | "numeric-integer-mod", [a, b] =>
       (match numericLex a, numericLex b with
        | some x, some y =>
            (match x.toInt?, y.toInt? with
@@ -693,17 +799,11 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
        | _, _, _ => none)
   | "substring-before", [a, b] =>
       (match isStringy a, isStringy b with
-       | some x, some y =>
-           some (gStr (match x.splitOn y with
-                       | first :: _ :: _ => first
-                       | _               => ""))
+       | some x, some y => some (gStr (Fn.String.substringBefore x y))
        | _, _ => none)
   | "substring-after", [a, b] =>
       (match isStringy a, isStringy b with
-       | some x, some y =>
-           some (gStr (match x.splitOn y with
-                       | _ :: rest@(_ :: _) => String.intercalate y rest
-                       | _                  => ""))
+       | some x, some y => some (gStr (Fn.String.substringAfter x y))
        | _, _ => none)
   | "encode-for-uri", [a] => (isStringy a).map (fun x => gStr (encodeForUri x))
   | "iri-to-uri", [a] => (isStringy a).map (fun x => gStr (iriToUri x))
@@ -717,25 +817,18 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
                            | .ok out  => some (gStr out)
                            | .error _ => none))
        | _, _, _ => none)
-  | "subtract-dateTimes", [a, b] =>
-      (match dateTimeSecs a, dateTimeSecs b with
-       | some x, some y => some (gLit (dayTimeDurationLex (x - y)) (xsdNs ++ "dayTimeDuration"))
-       | _, _ => none)
-  | "days-from-duration", [a] =>
-      (match a with
-       | .const lex sp =>
-           (match xsdLocal sp with
-            | some b =>
-                if ["duration", "dayTimeDuration"].contains b then
-                  (dayTimeDurationSecs lex).map
-                    (fun t => gLit (toString (t / 86400)) (xsdNs ++ "integer"))
-                else none
-            | none => none)
-       | _ => none)
+  -- §4.6.1 `func:not`.
+  | "not", [a] => (boolValue a).map (fun b => gLit (Fn.Boolean.canonical (Fn.Boolean.not b))
+                                                   (xsdNs ++ "boolean"))
+  -- §4.10.1 `func:PlainLiteral-length`: the length of the STRING part,
+  -- not of the lexical form, so the language tag is not counted.
+  | "PlainLiteral-length", [a] =>
+      (plainParts a).map (fun (str, _) =>
+        gIntLit (Int.ofNat (Fn.String.stringLength str)))
   | "string-length", [a] =>
-      (isStringy a).map (fun s => gLit (toString s.toList.length) (xsdNs ++ "integer"))
-  | "upper-case", [a] => (isStringy a).map (fun s => gStr s.toUpper)
-  | "lower-case", [a] => (isStringy a).map (fun s => gStr s.toLower)
+      (isStringy a).map (fun s => gIntLit (Int.ofNat (Fn.String.stringLength s)))
+  | "upper-case", [a] => (isStringy a).map (fun s => gStr (Fn.String.upperCase s))
+  | "lower-case", [a] => (isStringy a).map (fun s => gStr (Fn.String.lowerCase s))
   | "concat", args' =>
       (args'.foldl (fun acc g => match acc, isStringy g with
         | some s, some t => some (s ++ t)
@@ -820,7 +913,10 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
                             | .lt => "-1" | .eq => "0" | .gt => "1")
                            (xsdNs ++ "integer"))
        | _, _ => none)
-  | _, _ =>
+  | _, rest =>
+      match evalDateTimeFunc name rest with
+      | some r => some r
+      | none =>
       -- A datatype CAST, `External( xs:date ( "…"^^xs:string ) )`.
       if name.startsWith "cast-rdf-" then
         -- RIF-DTB 5: `rdf:PlainLiteral(x)` takes the lexical form of
@@ -828,7 +924,7 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
         -- into the lexical form after `@`; `rdf:XMLLiteral(x)` retags
         -- a string.
         let base := String.ofList (name.toList.drop 9)
-        (match args with
+        (match rest with
          | [.const lex _] =>
              if base == "PlainLiteral" then some (.const (lex ++ "@") (rdfNs ++ "PlainLiteral"))
              else if base == "XMLLiteral" then some (.const lex (rdfNs ++ "XMLLiteral"))
@@ -836,7 +932,7 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
          | _ => none)
       else if name.startsWith "cast-" then
         let base := String.ofList (name.toList.drop 5)
-        (match args with
+        (match rest with
          | [.const lex _] =>
              (match inLexicalSpace base lex with
               | some true => some (gLit lex (xsdNs ++ base))
@@ -919,24 +1015,117 @@ fixture writes out, not a value read back off this implementation. -/
 #guard evalFunc "replace" [gStr "abcd", gStr "(ab)|(a)", gStr "[1=$1][2=$2]"]
      = some (gStr "[1=ab][2=]cd")
 
--- RIF-DTB 4.8, the slice `EBusiness_Contract` exercises.
-#guard daysFromCivil 1970 1 1 = 0
-#guard daysFromCivil 2008 7 22 - daysFromCivil 2008 7 11 = 11
-#guard dateTimeSecsOfLex "2008-07-22Z" = some (daysFromCivil 2008 7 22 * 86400)
-#guard dateTimeSecsOfLex "2008-07-22T12:00:00Z" = some (daysFromCivil 2008 7 22 * 86400 + 43200)
-#guard dateTimeSecsOfLex "2008-07-22T00:00:00+01:00"
-     = some (daysFromCivil 2008 7 22 * 86400 - 3600)
-#guard dayTimeDurationLex 950400 = "P11D"
-#guard dayTimeDurationLex 0 = "PT0S"
-#guard dayTimeDurationLex (-3661) = "-PT1H1M1S"
-#guard dayTimeDurationSecs "P11D" = some 950400
-#guard dayTimeDurationSecs "P1Y" = none
-#guard evalPred "is-literal-dateTime" [gLit "2008-07-22Z" (xsdNs ++ "date")] = .yes
+-- RIF-DTB 4.8. `EBusiness_Contract`'s slice, then every line of the
+-- Approved `Builtins_Time` fixture that this module answers.
+private def dtC (lex : String) : GTerm := gLit lex (xsdNs ++ "dateTime")
+private def dC (lex : String) : GTerm := gLit lex (xsdNs ++ "date")
+private def tC (lex : String) : GTerm := gLit lex (xsdNs ++ "time")
+private def dtdC (lex : String) : GTerm := gLit lex (xsdNs ++ "dayTimeDuration")
+private def ymdC (lex : String) : GTerm := gLit lex (xsdNs ++ "yearMonthDuration")
+
+#guard evalPred "is-literal-dateTime" [dC "2008-07-22Z"] = .yes
+#guard evalFunc "subtract-dateTimes" [dC "2008-07-22Z", dC "2008-07-11Z"]
+     = some (dtdC "P11D")
+#guard evalFunc "subtract-dates" [dC "2008-07-22Z", dC "2008-07-11Z"]
+     = some (dtdC "P11D")
+#guard evalFunc "days-from-duration" [dtdC "P11D"] = some (gIntLit 11)
+
+-- The six positive and six negative guards of the fixture's first block.
+#guard evalPred "is-literal-date" [dC "2000-12-13-11:00"] = .yes
+#guard evalPred "is-literal-dateTime" [dtC "2000-12-13T00:11:11.3"] = .yes
+#guard evalPred "is-literal-dateTimeStamp"
+        [gLit "2000-12-13T00:11:11.3Z" (xsdNs ++ "dateTimeStamp")] = .yes
+#guard evalPred "is-literal-dateTimeStamp"
+        [gLit "2000-12-13T00:11:11.3" (xsdNs ++ "dateTimeStamp")] = .no
+#guard evalPred "is-literal-time" [tC "00:11:11.3Z"] = .yes
+#guard evalPred "is-literal-dayTimeDuration" [dtdC "P3DT2H"] = .yes
+#guard evalPred "is-literal-yearMonthDuration" [ymdC "P1Y2M"] = .yes
+#guard evalPred "is-literal-not-time" [gStr "foo"] = .yes
+#guard evalPred "is-literal-not-dayTimeDuration" [gStr "foo"] = .yes
+
+-- The casts of the fixture's second block.
+#guard evalFunc "cast-date" [gStr "2000-12-13-11:00"] = some (dC "2000-12-13-11:00")
+#guard evalFunc "cast-time" [gStr "00:11:11.3Z"] = some (tC "00:11:11.3Z")
+#guard evalFunc "cast-dayTimeDuration" [gStr "P3DT2H"] = some (dtdC "P3DT2H")
+#guard evalFunc "cast-yearMonthDuration" [gStr "P1Y2M"] = some (ymdC "P1Y2M")
+
+-- The accessors.
+#guard evalFunc "year-from-dateTime" [dtC "1999-12-31T24:00:00"] = some (gIntLit 2000)
+#guard evalFunc "month-from-dateTime" [dtC "1999-05-31T13:20:00-05:00"] = some (gIntLit 5)
+#guard evalFunc "day-from-dateTime" [dtC "1999-05-31T13:20:00-05:00"] = some (gIntLit 31)
+#guard evalFunc "hours-from-dateTime" [dtC "1999-05-31T08:20:00-05:00"] = some (gIntLit 8)
+#guard evalFunc "minutes-from-dateTime" [dtC "1999-05-31T13:20:00-05:00"] = some (gIntLit 20)
+#guard evalFunc "seconds-from-dateTime" [dtC "1999-05-31T13:20:00-05:00"]
+     = some (gLit "0" (xsdNs ++ "decimal"))
+#guard evalFunc "year-from-date" [dC "1999-12-31"] = some (gIntLit 1999)
+#guard evalFunc "hours-from-time" [tC "08:20:00-05:00"] = some (gIntLit 8)
+#guard evalFunc "seconds-from-time" [tC "13:20:00-05:00"] = some (gLit "0" (xsdNs ++ "decimal"))
+#guard evalFunc "timezone-from-dateTime" [dtC "1999-05-31T13:20:00-05:00"]
+     = some (dtdC "-PT5H")
+#guard evalFunc "timezone-from-date" [dC "1999-05-31-05:00"] = some (dtdC "-PT5H")
+#guard evalFunc "timezone-from-time" [tC "13:20:00-05:00"] = some (dtdC "-PT5H")
+#guard evalFunc "years-from-duration" [ymdC "P20Y15M"] = some (gIntLit 21)
+#guard evalFunc "months-from-duration" [ymdC "P20Y15M"] = some (gIntLit 3)
+#guard evalFunc "hours-from-duration" [dtdC "P3DT10H"] = some (gIntLit 10)
+#guard evalFunc "minutes-from-duration" [dtdC "-P5DT12H30M"] = some (gIntLit (-30))
+#guard evalFunc "seconds-from-duration" [dtdC "P3DT10H12.5S"]
+     = some (gLit "12.5" (xsdNs ++ "decimal"))
+
+-- The arithmetic.
 #guard evalFunc "subtract-dateTimes"
-        [gLit "2008-07-22Z" (xsdNs ++ "date"), gLit "2008-07-11Z" (xsdNs ++ "date")]
-     = some (gLit "P11D" (xsdNs ++ "dayTimeDuration"))
-#guard evalFunc "days-from-duration" [gLit "P11D" (xsdNs ++ "dayTimeDuration")]
-     = some (gLit "11" (xsdNs ++ "integer"))
+        [dtC "2000-10-30T06:12:00-05:00", dtC "1999-11-28T09:00:00Z"]
+     = some (dtdC "P337DT2H12M")
+#guard evalFunc "subtract-times" [tC "11:12:00Z", tC "04:00:00Z"] = some (dtdC "PT7H12M")
+#guard evalFunc "add-yearMonthDurations" [ymdC "P2Y11M", ymdC "P3Y3M"] = some (ymdC "P6Y2M")
+#guard evalFunc "subtract-yearMonthDurations" [ymdC "P2Y11M", ymdC "P3Y3M"]
+     = some (ymdC "-P4M")
+#guard evalFunc "multiply-yearMonthDuration" [ymdC "P2Y11M", gLit "2.3" (xsdNs ++ "decimal")]
+     = some (ymdC "P6Y9M")
+#guard evalFunc "divide-yearMonthDuration" [ymdC "P2Y11M", gLit "1.5" (xsdNs ++ "decimal")]
+     = some (ymdC "P1Y11M")
+#guard evalFunc "divide-yearMonthDuration-by-yearMonthDuration" [ymdC "P3Y4M", ymdC "-P1Y4M"]
+     = some (gLit "-2.5" (xsdNs ++ "decimal"))
+#guard evalFunc "add-dayTimeDurations" [dtdC "P2DT12H5M", dtdC "P5DT12H"]
+     = some (dtdC "P8DT5M")
+#guard evalFunc "multiply-dayTimeDuration" [dtdC "PT2H10M", gLit "2.1" (xsdNs ++ "decimal")]
+     = some (dtdC "PT4H33M")
+#guard evalFunc "divide-dayTimeDuration" [dtdC "P4D", gIntLit 2] = some (dtdC "P2D")
+#guard evalFunc "divide-dayTimeDuration-by-dayTimeDuration" [dtdC "P4D", dtdC "P2D"]
+     = some (gLit "2" (xsdNs ++ "decimal"))
+#guard evalFunc "add-yearMonthDuration-to-dateTime" [dtC "2000-10-30T11:12:00", ymdC "P1Y2M"]
+     = some (dtC "2001-12-30T11:12:00")
+#guard evalFunc "add-dayTimeDuration-to-time" [tC "23:12:00+03:00", dtdC "P1DT3H15M"]
+     = some (tC "02:27:00+03:00")
+#guard evalFunc "subtract-dayTimeDuration-from-date" [dC "2000-10-30", dtdC "P3DT1H15M"]
+     = some (dC "2000-10-26")
+-- A `-yearMonthDuration-` name refuses a `xs:dayTimeDuration` argument.
+#guard evalFunc "add-yearMonthDuration-to-date" [dC "2000-10-30", dtdC "P3D"] = none
+
+-- The comparisons.
+#guard evalPred "dateTime-equal"
+        [dtC "2002-04-02T12:00:00-01:00", dtC "2002-04-02T17:00:00+04:00"] = .yes
+#guard evalPred "dateTime-not-equal"
+        [dtC "2002-04-01T12:00:00-01:00", dtC "2002-04-02T17:00:00+04:00"] = .yes
+#guard evalPred "date-equal" [dC "2004-12-25-12:00", dC "2004-12-26+12:00"] = .yes
+#guard evalPred "time-greater-than" [tC "22:30:00+10:30", tC "06:00:00-05:00"] = .yes
+#guard evalPred "duration-equal" [ymdC "P1Y", ymdC "P12M"] = .yes
+#guard evalPred "duration-not-equal" [ymdC "P1Y", ymdC "P1M"] = .yes
+#guard evalPred "yearMonthDuration-less-than" [ymdC "P1Y", ymdC "P13M"] = .yes
+#guard evalPred "dayTimeDuration-greater-than-or-equal" [dtdC "P1D", dtdC "PT23H"] = .yes
+#guard evalPred "dayTimeDuration-less-than" [dtdC "P1D", dtdC "PT25H"] = .yes
+
+-- §4.6.1 and §4.10.1, the two names that were absent.
+#guard evalFunc "not" [gLit "1" (xsdNs ++ "boolean")]
+     = some (gLit "false" (xsdNs ++ "boolean"))
+#guard evalFunc "PlainLiteral-length" [.const "Hello@en" (rdfNs ++ "PlainLiteral")]
+     = some (gIntLit 5)
+-- §4.9.
+#guard evalPred "XMLLiteral-equal"
+        [.const "<br></br>" (rdfNs ++ "XMLLiteral"), .const "<br></br>" (rdfNs ++ "XMLLiteral")]
+     = .yes
+#guard evalPred "XMLLiteral-not-equal"
+        [.const "<br></br>" (rdfNs ++ "XMLLiteral"), .const "<i></i>" (rdfNs ++ "XMLLiteral")]
+     = .yes
 
 -- RIF-DTB 4.9, every line of the Approved `Builtins_List` fixture.
 private def l5 : GTerm := .list [gInt 0, gInt 1, gInt 2, gInt 3, gInt 4]
