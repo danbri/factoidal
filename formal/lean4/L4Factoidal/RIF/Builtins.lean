@@ -37,11 +37,47 @@ def builtinName (iri : String) : Option String :=
   if iri.startsWith funcNs then some (String.ofList (iri.toList.drop funcNs.length))
   else if iri.startsWith predNs then some (String.ofList (iri.toList.drop predNs.length))
   else if iri.startsWith xsdNs then some ("cast-" ++ String.ofList (iri.toList.drop xsdNs.length))
+  -- RIF-DTB 5 lists `rdf:PlainLiteral` and `rdf:XMLLiteral` among the
+  -- constructor functions beside the XSD ones. Leaving the RDF
+  -- namespace out made `External(rdf:XMLLiteral("<br></br>"^^xs:string))`
+  -- an unrecognised built-in, which blocks a rule rather than
+  -- evaluating it.
+  else if iri.startsWith rdfNs then
+    some ("cast-rdf-" ++ String.ofList (iri.toList.drop rdfNs.length))
   else none
 
 /-- The XSD local name of a datatype IRI. -/
 def xsdLocal (dt : String) : Option String :=
   if dt.startsWith xsdNs then some (String.ofList (dt.toList.drop xsdNs.length)) else none
+
+/-- The `xs:base64Binary` lexical space, XSD 1.1 3.3.16: whitespace is
+    not significant, the remaining characters come from the Base64
+    alphabet, and they form groups of four, of which only the LAST may
+    carry `=` padding — two padding characters after two data
+    characters, or one after three.
+
+    Modelled at group granularity. XSD additionally restricts which
+    Base64 character may precede the padding (the unused low bits must
+    be zero); that facet is not checked here, so a lexical form whose
+    final data character has non-zero unused bits is accepted where XSD
+    rejects it. No vendored fixture writes one. -/
+def isBase64Char (c : Char) : Bool :=
+  c.isAlpha || c.isDigit || c == '+' || c == '/'
+
+def isBase64BinaryLexical (lex : String) : Bool :=
+  let cs := lex.toList.filter (fun c => !(c == ' ' || c == '\n' || c == '\t' || c == '\r'))
+  let n := cs.length
+  if n % 4 != 0 then false
+  else if n == 0 then true
+  else
+    let body := cs.take (n - 4)
+    let last := cs.drop (n - 4)
+    body.all isBase64Char &&
+    (match last with
+     | [a, b, '=', '='] => isBase64Char a && isBase64Char b
+     | [a, b, c, '=']   => isBase64Char a && isBase64Char b && isBase64Char c
+     | [a, b, c, d]     => isBase64Char a && isBase64Char b && isBase64Char c && isBase64Char d
+     | _                => false)
 
 /-- Is a lexical form in the lexical space of an XSD datatype? The
     string-like types accept everything, the numeric ones go through
@@ -55,7 +91,7 @@ def inLexicalSpace (base lex : String) : Option Bool :=
   else if base == "hexBinary" then
     some (lex.toList.length % 2 == 0 &&
           lex.toList.all (fun c => c.isDigit || ('a' ≤ c && c ≤ 'f') || ('A' ≤ c && c ≤ 'F')))
-  else if base == "base64Binary" then none
+  else if base == "base64Binary" then some (isBase64BinaryLexical lex)
   else if ["integer", "int", "long", "short", "byte", "decimal", "double", "float",
            "nonNegativeInteger", "nonPositiveInteger", "negativeInteger",
            "positiveInteger", "unsignedByte", "unsignedShort", "unsignedInt",
@@ -158,24 +194,88 @@ private def cmpNum (a b : GTerm) (ok : Ordering → Bool) : Ans :=
                        | none   => .unknown)
   | _, _ => .unknown
 
-/-- Sum, difference, product of two exact decimals, as a lexical
-    form. Kept exact: RIF numbers are `xs:integer` and `xs:decimal`
-    here, and a float would make `func:numeric-add` approximate on
-    values the corpus compares for equality. -/
-def addDec (a b : String) : Option String :=
-  match a.toInt?, b.toInt? with
-  | some x, some y => some (toString (x + y))
+/-- A decimal numeral as an exact MANTISSA and SCALE: the value is
+    `mant / 10 ^ scale`. Kept exact because RIF numbers are
+    `xs:integer` and `xs:decimal`, and a float would make
+    `func:numeric-add` approximate on values the corpus compares for
+    equality. -/
+def decParts (s : String) : Option (Int × Nat) :=
+  match (s.splitOn ".") with
+  | [i]    => (i.toInt?).map (fun m => (m, 0))
+  | [i, f] =>
+      if !(f.toList.all (·.isDigit)) then none
+      else
+        let neg := i.startsWith "-"
+        let ii := if i == "" || i == "-" || i == "+" then (if neg then "-0" else "0") else i
+        (match ii.toInt? with
+         | some m =>
+             let frac : Int := Int.ofNat (f.toNat?.getD 0)
+             let pow : Int := (10 : Int) ^ f.length
+             some ((if neg then m * pow - frac else m * pow + frac), f.length)
+         | none   => none)
+  | _      => none
+
+/-- Render `mant / 10 ^ scale` as a decimal numeral, without a trailing
+    fractional zero run. -/
+def decRender (m : Int) (scale : Nat) : String :=
+  if scale == 0 then toString m
+  else
+    let neg := m < 0
+    let a := (if neg then -m else m).toNat
+    let p := 10 ^ scale
+    let ip := a / p
+    let fp := a % p
+    let fs := (toString fp)
+    let fs := String.ofList (List.replicate (scale - fs.length) '0') ++ fs
+    let fs := String.ofList (fs.toList.reverse.dropWhile (· == '0')).reverse
+    (if neg then "-" else "") ++ toString ip ++ (if fs == "" then "" else "." ++ fs)
+
+private def align (a b : String) : Option (Int × Int × Nat) :=
+  match decParts a, decParts b with
+  | some (ma, sa), some (mb, sb) =>
+      let sc := Nat.max sa sb
+      some (ma * (10 : Int) ^ (sc - sa), mb * (10 : Int) ^ (sc - sb), sc)
   | _, _ => none
+
+def addDec (a b : String) : Option String :=
+  (align a b).map (fun (x, y, sc) => decRender (x + y) sc)
 
 def subDec (a b : String) : Option String :=
-  match a.toInt?, b.toInt? with
-  | some x, some y => some (toString (x - y))
-  | _, _ => none
+  (align a b).map (fun (x, y, sc) => decRender (x - y) sc)
 
 def mulDec (a b : String) : Option String :=
-  match a.toInt?, b.toInt? with
-  | some x, some y => some (toString (x * y))
+  match decParts a, decParts b with
+  | some (ma, sa), some (mb, sb) => some (decRender (ma * mb) (sa + sb))
   | _, _ => none
+
+/-- Digits kept after the point by `func:numeric-divide`. XSD 1.1
+    3.3.4 gives `xs:decimal` arbitrary precision but lets an
+    implementation state a limit; this is ours, and a quotient with a
+    longer expansion is TRUNCATED here rather than rounded. -/
+def divScale : Nat := 18
+
+/-- RIF-DTB 4.4 `func:numeric-divide`. Division by zero has no value
+    and gives `none`, which the engine reads as undecided rather than
+    as a false answer. -/
+def divDec (a b : String) : Option String :=
+  match decParts a, decParts b with
+  | some (ma, sa), some (mb, sb) =>
+      if mb == 0 then none
+      else
+        let num := ma * (10 : Int) ^ (sb + divScale)
+        let den := mb * (10 : Int) ^ sa
+        -- `Int./` truncates toward zero, which is the direction this
+        -- states, and both signs go the same way.
+        some (decRender (num / den) divScale)
+  | _, _ => none
+
+/-- The datatype a numeric result carries. RIF-DTB 4.4 keeps
+    `func:numeric-add` inside `xs:integer` when both operands are
+    integers and inside `xs:decimal` otherwise; the value is the same
+    either way, and `RIF.Engine.gEqValue` compares numerics by value,
+    so this only affects what a derived fact SAYS its type is. -/
+def numResultType (lex : String) : String :=
+  if (lex.splitOn ".").length > 1 then xsdNs ++ "decimal" else xsdNs ++ "integer"
 
 /-- A built-in PREDICATE. -/
 def evalPred (name : String) (args : List GTerm) : Ans :=
@@ -238,15 +338,19 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
   match name, args with
   | "numeric-add", [a, b] =>
       (match numericLex a, numericLex b with
-       | some x, some y => (addDec x y).map (fun r => gLit r (xsdNs ++ "integer"))
+       | some x, some y => (addDec x y).map (fun r => gLit r (numResultType r))
        | _, _ => none)
   | "numeric-subtract", [a, b] =>
       (match numericLex a, numericLex b with
-       | some x, some y => (subDec x y).map (fun r => gLit r (xsdNs ++ "integer"))
+       | some x, some y => (subDec x y).map (fun r => gLit r (numResultType r))
        | _, _ => none)
   | "numeric-multiply", [a, b] =>
       (match numericLex a, numericLex b with
-       | some x, some y => (mulDec x y).map (fun r => gLit r (xsdNs ++ "integer"))
+       | some x, some y => (mulDec x y).map (fun r => gLit r (numResultType r))
+       | _, _ => none)
+  | "numeric-divide", [a, b] =>
+      (match numericLex a, numericLex b with
+       | some x, some y => (divDec x y).map (fun r => gLit r (numResultType r))
        | _, _ => none)
   | "numeric-integer-divide", [a, b] =>
       (match numericLex a, numericLex b with
@@ -302,7 +406,19 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
        | _ => none)
   | _, _ =>
       -- A datatype CAST, `External( xs:date ( "…"^^xs:string ) )`.
-      if name.startsWith "cast-" then
+      if name.startsWith "cast-rdf-" then
+        -- RIF-DTB 5: `rdf:PlainLiteral(x)` takes the lexical form of
+        -- `x` and gives it an EMPTY language tag, which RIF writes
+        -- into the lexical form after `@`; `rdf:XMLLiteral(x)` retags
+        -- a string.
+        let base := String.ofList (name.toList.drop 9)
+        (match args with
+         | [.const lex _] =>
+             if base == "PlainLiteral" then some (.const (lex ++ "@") (rdfNs ++ "PlainLiteral"))
+             else if base == "XMLLiteral" then some (.const lex (rdfNs ++ "XMLLiteral"))
+             else none
+         | _ => none)
+      else if name.startsWith "cast-" then
         let base := String.ofList (name.toList.drop 5)
         (match args with
          | [.const lex _] =>
@@ -311,5 +427,40 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
               | _         => none)
          | _ => none)
       else none
+
+/-! ## Pins from the RIF-DTB text and the Approved fixtures
+
+Each `#guard` below is an equation the specification or a vendored
+fixture writes out, not a value read back off this implementation. -/
+
+-- RIF-DTB 4.4 `func:numeric-divide`, and the `xs:decimal` result type
+-- `Builtins_Numeric` compares against the integer `2`.
+#guard divDec "6" "3" = some "2"
+#guard divDec "1" "8" = some "0.125"
+#guard divDec "1" "0" = none
+#guard addDec "1.5" "2.25" = some "3.75"
+#guard subDec "1" "1" = some "0"
+#guard mulDec "-1.5" "2" = some "-3"
+
+-- XSD 1.1 3.3.16, the value `Builtins_Binary` writes plus the two
+-- padded shapes.
+#guard isBase64BinaryLexical
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/+0123456789" = true
+#guard isBase64BinaryLexical "QUJD" = true
+#guard isBase64BinaryLexical "QQ==" = true
+#guard isBase64BinaryLexical "QUI=" = true
+#guard isBase64BinaryLexical "QUJ" = false
+#guard isBase64BinaryLexical "Q===" = false
+
+-- RIF-DTB 5 constructors in the RDF namespace, which
+-- `Builtins_XMLLiteral` and `Builtins_PlainLiteral` both call.
+#guard builtinName (rdfNs ++ "XMLLiteral") = some "cast-rdf-XMLLiteral"
+#guard evalFunc "cast-rdf-XMLLiteral" [gStr "<br></br>"]
+     = some (.const "<br></br>" (rdfNs ++ "XMLLiteral"))
+#guard evalFunc "cast-rdf-PlainLiteral" [gLit "1" (xsdNs ++ "integer")]
+     = some (.const "1@" (rdfNs ++ "PlainLiteral"))
+#guard evalPred "is-literal-XMLLiteral" [.const "<br></br>" (rdfNs ++ "XMLLiteral")] = .yes
+#guard evalPred "is-literal-base64Binary" [gLit "QUJD" (xsdNs ++ "base64Binary")] = .yes
+#guard evalPred "is-literal-not-base64Binary" [gStr "foo"] = .yes
 
 end L4Factoidal.RIF
