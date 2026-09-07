@@ -146,7 +146,8 @@ extern_lib libl4exthost pkg := do
              `Wasm.Ops.Pack,
              `Wasm.Ops.Lws,
              `Wasm.Ops.Solid,
-             `Wasm.Ops.Toan]
+             `Wasm.Ops.Toan,
+             `Wasm.Ops.Xmpp]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See

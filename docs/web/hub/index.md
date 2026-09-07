@@ -74,6 +74,7 @@ model, Factoidal API, and test contract.
   <li><a href="./51-query-shardborough-blocks-in-browser/">Three blocks, one SPARQL query</a> — fetch three current IBK3 artifacts, verify their published identities, inspect their actual byte layout, then run either an editable join or a query over all 13 decoded triples through the Lean WebAssembly runtime (sparql)</li>
   <li><a href="./52-persisted-store-on-your-laptop/">The persisted store on your laptop: what a query costs</a> — recorded 2026-09-02: 888,949 and 1,290,077 Wikidata life-sciences triples packed into IBK3 generations and queried through the Lean native harness in under a second per query, with the theorems and checks each number rests on</li>
   <li><a href="./54-skosdex-over-r2/">A store in a bucket: SPARQL over plain HTTP</a> — open a Shardborough generation that lives in an object store, ask the engine which artifacts a query needs, fetch only those, check their digests and answer in the browser: nine SKOS query shapes with the keys, the bytes and the time each one costs (skos)</li>
+  <li><a href="./53-xmpp-protocol-logic-in-lean/">XMPP, verified: JIDs, stream negotiation, and stanzas</a> — the start of a fresh, GC3-targeting XMPP implementation in Lean 4: RFC 7622 JID parsing, RFC 6120 stream negotiation with a proved TLS-then-SASL-then-bind ordering, and stanza parsing, tested against a live ejabberd instance and reusing the existing XML parser rather than duplicating it (none)</li>
 </ul>
 
 See also: the <a href="../perf/">performance hub</a> — measured
