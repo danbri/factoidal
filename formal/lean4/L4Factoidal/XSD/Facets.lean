@@ -44,6 +44,7 @@ equal to `"1.0"^^xsd:decimal`, which OWL 2 denies.
 -/
 import L4Factoidal.RDF.Core
 import L4Factoidal.NatBounds
+import L4Factoidal.XSD.Datatypes
 
 namespace L4Factoidal.XSD
 
@@ -276,14 +277,10 @@ two differ in exactly the place that matters — SHACL returns the
 has-timezone flag and compares only same-flag pairs, this one drops
 an untimezoned value outright. -/
 
-def daysFromCivil (y m d : Int) : Int :=
-  let y' := if m ≤ 2 then y - 1 else y
-  let era := (if y' ≥ 0 then y' else y' - 399) / 400
-  let yoe := y' - era * 400
-  let mp := (m + 9) % 12
-  let doy := (153 * mp + 2) / 5 + d - 1
-  let doe := yoe * 365 + yoe / 4 - yoe / 100 + doy
-  era * 146097 + doe - 719468
+/-- The proleptic Gregorian day number, on Int-valued month and day —
+one call into `XSD.Datatypes.daysFromCivil`, which is the same function
+this module used to carry a second copy of. -/
+def daysFromCivilInt (y m d : Int) : Int := daysFromCivil y m.toNat d.toNat
 
 def substrOf (s : String) (start len : Nat) : String :=
   String.ofList ((s.toList.drop start).take len)
@@ -341,7 +338,7 @@ def dtParseUtcMs (s : String) : Option Int :=
         (match dtParseTail (String.ofList (s.toList.drop 19)) with
          | some (fms, tzoff, hasTz) =>
              if hasTz then
-               let days := daysFromCivil y mo d
+               let days := daysFromCivilInt y mo d
                let secs := days * 86400 + h * 3600 + mi * 60 + se - tzoff
                some (secs * 1000 + fms)
              else none

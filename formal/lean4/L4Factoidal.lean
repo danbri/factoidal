@@ -314,6 +314,7 @@ import L4Factoidal.XSD.Datatypes
 import L4Factoidal.XSD.SchemaReader
 import L4Factoidal.XSD.SimpleType
 import L4Factoidal.XSD.DatatypesTests
+import L4Factoidal.XSD.DatatypesTheorems
 import L4Factoidal.XSD.Facets
 import L4Factoidal.XSD.FacetsTests
 import L4Factoidal.OWL.Refute

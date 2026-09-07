@@ -120,6 +120,137 @@ The zero-failure set at baseline: `dateTime`, `date`, `time`,
 `hexBinary`, `base64Binary`, `normalizedString`, `token`, `Name`,
 `NCName`, `NMTOKEN`, `NMTOKENS`, `language`.
 
+## Status — 2026-09-07, end of the first run
+
+**XSD datatype instance tests: 18951 pass, 5 fail (out of 18956
+scored).** Baseline at the start of the run was 18249 pass, 905 fail
+(out of 19154 scored); the denominator moved because 198 tests left the
+score into named buckets (below), which is a change in what is
+MEASURED, not a change in what passes.
+
+Not scored, each with its reason: structures 7053, mixed 0,
+schema-invalid 1, version-1.0 8, unreadable 138, not-simple 8,
+assertion 32, unreadable-pattern 105, nilled 3, value-constraint 53.
+Schema-validity tests seen and not scored: 15378.
+
+Per datatype, at the end of the run:
+
+| datatype | pass | fail | of |
+|---|---:|---:|---:|
+| list variety | 8593 | 0 | 8593 |
+| union variety | 425 | 1 | 426 |
+| integer | 343 | 0 | 343 |
+| int | 342 | 0 | 342 |
+| long, nonNegativeInteger, nonPositiveInteger, negativeInteger, unsignedLong, unsignedInt | 340 each | 0 | 340 each |
+| positiveInteger | 340 | 1 | 341 |
+| short, unsignedShort | 335 each | 0 | 335 each |
+| byte, unsignedByte | 315 each | 0 | 315 each |
+| decimal | 391 | 1 | 392 |
+| dateTime | 309 | 0 | 309 |
+| time | 290 | 0 | 290 |
+| date | 289 | 0 | 289 |
+| gYearMonth | 289 | 0 | 289 |
+| duration | 285 | 0 | 285 |
+| gMonthDay | 285 | 0 | 285 |
+| gYear | 283 | 0 | 283 |
+| gMonth | 275 | 0 | 275 |
+| gDay | 270 | 0 | 270 |
+| dateTimeStamp | 7 | 0 | 7 |
+| yearMonthDuration, dayTimeDuration | 5 each | 0 | 5 each |
+| anyURI | 255 | 0 | 255 |
+| string | 244 | 1 | 245 |
+| normalizedString | 210 | 0 | 210 |
+| NMTOKENS | 207 | 0 | 207 |
+| token, Name, NMTOKEN | 205 each | 0 | 205 each |
+| language | 200 | 0 | 200 |
+| NCName | 180 | 0 | 180 |
+| hexBinary, base64Binary | 130 each | 0 | 130 each |
+| double | 124 | 0 | 124 |
+| float | 120 | 0 | 120 |
+| QName | 108 | 0 | 108 |
+| boolean | 60 | 1 | 61 |
+| anySimpleType | 2 | 0 | 2 |
+
+The five failures: namespace-qualified type-name resolution (the
+`targetNS00101m1` and `ST_name00101m1` groups — the reader matches a
+type QName by local name and does not check that the prefix resolves to
+the schema's target namespace), one version-control-attribute group
+(`vc_003_2`), one boolean group whose expected outcome turns on
+something outside the datatype, and one union group.
+
+### What the run changed
+
+1. §4.3.5 `enumeration` was applied to atomic types only. A list
+   enumeration member is itself a list literal (§3.1.2) and a union
+   enumeration member is a literal of the union, so each is mapped
+   through the item type or the member types before the identity
+   comparison. list 7977 -> 8593 pass, union 327 -> 425 pass.
+2. §4.3.1: `length`, `minLength` and `maxLength` are not applicable to
+   `QName` and `NOTATION`. QName 88 -> 108 pass with no failures.
+3. `Regex/XSDPattern.lean` did not read the Appendix G class escapes
+   `\i`, `\I`, `\c` and `\C` (the XML `NameStartChar` and `NameChar`
+   classes). An unreadable pattern makes its group vacuous, so every
+   `anyURI` pattern group answered valid. anyURI 230 -> 255 pass.
+
+## Theorems
+
+`L4Factoidal/XSD/DatatypesTheorems.lean`, each closed by
+`#print axioms` with only `propext`, `Classical.choice` and
+`Quot.sound`:
+
+| theorem | statement |
+|---|---|
+| `lexicalMapWs_factors` | whiteSpace (§4.3.6) is applied BEFORE the lexical mapping and never inside it — the factorisation RDF 1.1 Semantics §7 depends on, since it needs the version without whiteSpace |
+| `string_lexical_total` | §3.3.1: `string` fixes whiteSpace to `preserve`, so its lexical mapping is the identity and its lexical space is every string |
+| `derivedFrom_refl`, `byte_derived_integer`, `integer_derived_decimal`, `decimal_not_derived_integer` | the §3.4 derivation hierarchy |
+| `int_lexical_in_bounds` | for every integer-tower type, a literal outside the type's bounds has NO value: the bound check is inside the lexical mapping, not a facet a caller can forget |
+| `boolean_canonical_roundTrip` | §3.3.2: the canonical mapping produces a lexical representation that maps back to the same value |
+| `boolean_canonical_idempotent` | canonicalising the value of a canonical representation returns that representation |
+| `nan_incomparable` | §3.3.4: NaN is outside the order relation, so `valCompare` answers `none` for every partner |
+| `nan_fails_every_bound` | consequently NaN fails every §4.3.7-§4.3.10 bound facet whose bound is in the lexical space |
+| `validate_iff_valueOf` | `validate` is exactly "the literal has a value under this type" |
+| `atomic_valueOf_eq` | the atomic case of `valueOf`, unfolded once — the equation the three soundness statements below are corollaries of |
+| `atomic_valid_has_value` | a validated literal IS in the base type's lexical space after whiteSpace processing |
+| `atomic_valid_satisfies_facets` | facet checking is SOUND against the value space: the value of a validated literal satisfies every value-space facet the type declares |
+| `atomic_valid_matches_patterns` | §4.3.4: it also matches every pattern group, on the whiteSpace-normalized literal |
+
+The canonical-mapping round trip is stated and proved for `boolean`,
+whose value space is finite. For the datatypes with infinite value
+spaces it is exercised by the `#guard` battery, not proved.
+
+### Consumer gates after the switch
+
+| gate | score | before |
+|---|---|---|
+| `l4rdf-semantics` | 40 pass, 7 fail, 0 unsupported (out of 47) | 40 pass — unchanged |
+| `l4shacl` | 98 pass, 0 fail, 0 skip, 0 unsupported (out of 98) | 98 — unchanged |
+| `l4csvw-validate` | 281 pass, 1 fail, 0 skip (out of 282) | 281 — unchanged |
+| `l4xmlconf` | 1861 pass, 0 fail (out of 1861 in profile) | 1861 — unchanged |
+| `l4rif` | 42 pass, 0 fail (out of 42 decided) | unchanged |
+| `tools/lean-hygiene-audit.py` | clean; `partial def` 172, the committed baseline | unchanged |
+
+## Consumers
+
+The point of one implementation is that every consumer reads the same
+lexical-to-value mappings. Switched in this run:
+
+| consumer | what changed | gate |
+|---|---|---|
+| `RDF/Datatypes.lean` | `NumVal` IS `XSD.Dec`; `parseIntegerLexical`, `parseDecimalLexical`, `intInRange` and the float/double lexical space are the §3 mappings. The RDF-specific part stays: §7 does NOT apply whiteSpace, so `lexicalMap` is called and never `lexicalMapWs` | `l4rdf-semantics` |
+| `SHACL/Validation.lean` | `literalIllFormed` is one call into `XSD.builtinOfIri?` + `XSD.lexicalMap`, replacing 18 hand-written datatype arms | `l4shacl` 98 pass, 0 fail (out of 98) |
+| `XSD/Facets.lean` | its private `daysFromCivil` is one call into the shared one | `l4owl-probe` (its catalog fixtures were not present in this worktree; the module builds and the OWL probe was not re-measured) |
+
+Not yet switched, named so the next session does not have to rediscover
+them:
+
+* `CSVW/Formats.lean` carries its own `xsd:duration` lexical space, its
+  own numeric-base lexical spaces and its own `integerBounds`. They
+  coexist with format-string handling (grouping and decimal separators,
+  percent scaling), so the switch is a decomposition and not a
+  substitution.
+* `RIF/Builtins.lean` and `SHACL/Validation.lean` each carry a second
+  `daysFromCivil` in their own namespace.
+
 ## Open
 
 * The `float`/`double` canonical mapping (§3.3.4.2) emits the EXACT
@@ -134,4 +265,13 @@ The zero-failure set at baseline: `dateTime`, `date`, `time`,
   datatype-only validator does not have.
 * `assertion` (§4.3.12) is recorded on the facet record and not
   decided; it needs XPath 2.0 over the value.
-* Schema-validity tests are counted, not scored.
+* Schema-validity tests are counted, not scored — 15378 of them.
+  Deciding them needs the Part 1 §3.16 schema component constraints.
+* 105 scored-in-principle tests sit in the `unreadable-pattern` bucket:
+  the largest construct the XSD regular-expression parser does not read
+  is character-class SUBTRACTION (`[a-z-[m-n]]`, §G.1).
+* The reader matches a type QName by local name. Two groups turn on the
+  prefix resolving to the schema's target namespace.
+* Part 1 Structures — schema components, PSVI, identity constraints,
+  conditional type assignment, assertions — is the next slice, on
+  <https://github.com/danbri/factoidal/issues/666>.
