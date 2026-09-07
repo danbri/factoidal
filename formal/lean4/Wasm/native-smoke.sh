@@ -1358,6 +1358,78 @@ args "$TMP/lws-unknown.json" "lws999" '{"method":"GET","target":"/"}'
 check "lwsStep on an unknown handle -> error" lwsStep "$TMP/lws-unknown.json" \
   'r["ok"] is False and "unknown LWS handle" in r["error"]'
 
+# --- TOAN: the computer-algebra ops -----------------------------------
+# Envelopes match bin/npm-entry/entry_jsoo.ml op for op. The `mathml`
+# member is CONTENT MathML (to_content_mathml, line 2159), so each
+# assertion below names a content element -- <apply>, <plus/>, <cn>.
+# Asserting only that the string starts with "<math" would score a
+# Presentation answer as correct.
+
+TOAN_BODY='{"app":"plus","args":[{"sym":"x"},{"app":"times","args":[{"sym":"i"},{"sym":"y"}]}]}'
+
+args "$TMP/toan-sum.json" "$TOAN_BODY" i 1 4
+check "toanSummation sum_{i=1}^{4} (x + i*y) = 4x + 10y" \
+  toanSummation "$TMP/toan-sum.json" \
+  'r["ok"] is True and "<plus/>" in r["mathml"]
+   and "<cn type=\"integer\">4</cn>" in r["mathml"]
+   and "<cn type=\"integer\">10</cn>" in r["mathml"]
+   and "<ci>x</ci>" in r["mathml"] and "<ci>y</ci>" in r["mathml"]
+   and "<mi>" not in r["mathml"]'
+
+args "$TMP/toan-prod.json" '{"sym":"i"}' i 1 3
+check "toanProduct prod_{i=1}^{3} i = 6" toanProduct "$TMP/toan-prod.json" \
+  'r["ok"] is True and "<cn type=\"integer\">6</cn>" in r["mathml"]'
+
+args "$TMP/toan-empty.json" "$TOAN_BODY" i 5 1
+check "toanSummation over an empty range is the additive identity" \
+  toanSummation "$TMP/toan-empty.json" \
+  'r["ok"] is True and "<cn type=\"integer\">0</cn>" in r["mathml"]'
+
+args "$TMP/toan-simp.json" '{"app":"plus","args":[{"int":2},{"int":3}]}'
+check "toanSimplify 2 + 3 folds to 5" toanSimplify "$TMP/toan-simp.json" \
+  'r["ok"] is True and "<cn type=\"integer\">5</cn>" in r["mathml"]
+   and "<plus/>" not in r["mathml"]'
+
+args "$TMP/toan-rat.json" '{"app":"plus","args":[{"rat":[1,3]},{"rat":[1,3]},{"rat":[1,3]}]}'
+check "toanSimplify 1/3 + 1/3 + 1/3 is exactly 1, not a float" \
+  toanSimplify "$TMP/toan-rat.json" \
+  'r["ok"] is True and "<cn type=\"integer\">1</cn>" in r["mathml"]
+   and "0.9" not in r["mathml"] and "<rational" not in r["mathml"]'
+
+args "$TMP/toan-diff.json" '{"app":"times","args":[{"sym":"x"},{"sym":"x"}]}' x
+check "toanDiff d/dx (x*x) mentions x" toanDiff "$TMP/toan-diff.json" \
+  'r["ok"] is True and "<ci>x</ci>" in r["mathml"] and "<apply>" in r["mathml"]'
+
+args "$TMP/toan-diff-none.json" '{"app":"coth","args":[{"sym":"x"}]}' x
+check "toanDiff with no rule emits the diff_unsupported marker" \
+  toanDiff "$TMP/toan-diff-none.json" \
+  'r["ok"] is True and "diff_unsupported" in r["mathml"]'
+
+args "$TMP/toan-subst.json" '{"app":"plus","args":[{"sym":"x"},{"int":1}]}' x '{"int":4}'
+check "toanSubst (x + 1)[x := 4] mentions 4" toanSubst "$TMP/toan-subst.json" \
+  'r["ok"] is True and "<cn type=\"integer\">4</cn>" in r["mathml"]
+   and "<ci>x</ci>" not in r["mathml"]'
+
+args "$TMP/toan-mat.json" '{"mat":[[{"int":1},{"int":2}],[{"int":3},{"int":4}]]}'
+check "toanSimplify carries a matrix literal through to <matrix>" \
+  toanSimplify "$TMP/toan-mat.json" \
+  'r["ok"] is True and "<matrix>" in r["mathml"]
+   and r["mathml"].count("<matrixrow>") == 2'
+
+args "$TMP/toan-bad.json" '{"nope":1}'
+check "toanSimplify on an expr object with no known member -> error" \
+  toanSimplify "$TMP/toan-bad.json" \
+  'r["ok"] is False and "int / rat / bool / sym / app" in r["error"]'
+
+args "$TMP/toan-badbound.json" "$TOAN_BODY" i one 4
+check "toanSummation with a non-numeral bound -> error, not zero" \
+  toanSummation "$TMP/toan-badbound.json" \
+  'r["ok"] is False and "decimal integer" in r["error"]'
+
+args "$TMP/toan-arity.json" '{"int":1}' x
+check "toanSimplify arity is checked" toanSimplify "$TMP/toan-arity.json" \
+  'r["ok"] is False and "expects 1 argument" in r["error"]'
+
 # --- Dispatch reflection + unknown op ---------------------------------
 args "$TMP/empty.json"
 check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
@@ -1370,7 +1442,9 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "rhoDfClosure","rhoDfFragmentCheck",
             "rdfsPlusClosure","clParse","clSerialize",
             "clAlphaNorm","clNormalize","clFiniteSat",
-            "proofCheck","proofInspect","ops",
+            "proofCheck","proofInspect",
+            "toanSummation","toanProduct","toanSimplify",
+            "toanDiff","toanSubst","ops",
             "datasetOpen","datasetQuery","datasetUpdate",
             "datasetSerialize","datasetClose",
             "activateVerify",
