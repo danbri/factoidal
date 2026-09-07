@@ -73,18 +73,27 @@ def checkType (role : String) (v : Json) : List Finding :=
   | none   => []
 
 /-- A `titles` object keys its values by language tag; each key must
-    be a well-formed tag. -/
+    be a well-formed tag (MV §5.1.3), and the value as a whole must be
+    a string, an array or such an object (MV §5.2).
+
+    BOTH are ERRORS, and the reason is the two duties the same
+    document carries. test109 and test111 are `ToRdfTestWithWarnings`
+    in the csv2rdf manifest and `NegativeValidationTest` in the
+    validation manifest: a CONVERTER warns and proceeds with the title
+    unusable, a VALIDATOR raises an error. This module is the
+    validator, so it errs; `CsvwRdfRun`/`CsvwJsonRun`'s over-strict
+    cross-check is scoped to the plain `ToRdfTest`/`ToJsonTest` class
+    for exactly this reason. Emitting a warning here instead made both
+    tests unfailable. -/
 def checkTitles (v : Json) : List Finding :=
   match field? "titles" v with
   | some (.object ms) =>
       ms.filterMap (fun (k, _) =>
-        -- A WARNING, not an error: the suite classifies
-        -- `titles with invalid language` as
-        -- `ToRdfTestWithWarnings` (test109), so the document still
-        -- converts and the title is simply unusable for that
-        -- language.
-        if langValid k then none else some (warn ("invalid language tag in titles: " ++ k)))
-  | _ => []
+        if langValid k then none else some (err ("invalid language tag in titles: " ++ k)))
+  | some (.string _) => []
+  | some (.array _)  => []
+  | some _           => [err "titles must be a string, array, or language object"]
+  | none             => []
 
 /-- The built-in datatype names.
 
@@ -365,6 +374,14 @@ def checkSchema (v : Json) : List Finding :=
   let cols := match field? "columns" v with
     | some (.array cs) => cs
     | _ => []
+  -- MV §5.2: a non-array value for an array property is a warning for
+  -- a converter, which proceeds as if an EMPTY array had been given —
+  -- and an empty column list against a populated CSV is then
+  -- incompatible, which a validator MUST reject (test100).
+  let colsShape := match field? "columns" v with
+    | some (.array _) => []
+    | none            => []
+    | some _          => [err "columns must be an array"]
   let names := cols.filterMap (stringField? "name")
   -- Column names are unique (test128), and every virtual column comes
   -- after every real one (test133).
@@ -377,7 +394,7 @@ def checkSchema (v : Json) : List Finding :=
   let orderFindings :=
     if (virtuals.zip (virtuals.drop 1)).any (fun (a, b) => a && !b)
     then [err "a virtual column precedes a non-virtual one"] else []
-  checkId "schema" v ++ checkType "Schema" v ++ cols.flatMap checkColumn
+  checkId "schema" v ++ checkType "Schema" v ++ colsShape ++ cols.flatMap checkColumn
     ++ dupFindings ++ orderFindings
     -- `foreignKeys` given as a non-array, or holding a non-object
     -- member, is a WARNING and the offending value is ignored — the
@@ -408,9 +425,18 @@ def checkTable (v : Json) : List Finding :=
     | some _           => [err "table url must be a string"]
     | none             => [err "a table must have a url"]
   checkId "table" v ++ checkType "Table" v ++ urlFindings
+    -- MV §5.2: `tableSchema` is an object property, so it takes an
+    -- inline object or a string naming one. Any other type is a
+    -- warning for a converter, which proceeds as if an object with no
+    -- properties had been given — leaving no columns at all, which a
+    -- validator MUST reject (test107). Passing the non-object to
+    -- `checkSchema` found nothing, because every `field?` lookup
+    -- inside it returns `none` for a non-object.
     ++ (match field? "tableSchema" v with
-        | some s => checkSchema s
-        | none   => [])
+        | some (.object ms) => checkSchema (.object ms)
+        | some (.string _)  => []
+        | some _            => [err "tableSchema must be an object or string"]
+        | none              => [])
     ++ (match field? "dialect" v with
         | some d => checkId "dialect" d ++ checkType "Dialect" d
         | none   => [])
@@ -484,9 +510,14 @@ def checkTableGroup (v : Json) : List Finding :=
   let tablesFindings := match field? "tables" v with
     | some (.array []) => [err "tables must not be empty"]
     | some (.array ts) =>
+        -- MV §5: 'Any items within an array that are not valid objects
+        -- of the type expected are ignored.' test094 is a
+        -- WarningValidationTest whose `tables` array holds a valid
+        -- table and the integer 1; the document CONFORMS on the
+        -- strength of the one table. Erring here rejected it.
         ts.flatMap (fun t => match t with
           | .object _ => checkTable t
-          | _         => [err "tables must hold table objects"])
+          | _         => [warn "a tables member is not a table object; ignored"])
     | some _ => [err "tables must be an array"]
     | none   => [err "a table group must have tables"]
   checkId "table group" v ++ checkType "TableGroup" v ++ tablesFindings
