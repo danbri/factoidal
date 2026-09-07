@@ -292,61 +292,68 @@ copied into the literal, `rdfms-xml-literal-namespaces` expects unused
 ones dropped. No byte comparison passes both. Only a namespace-aware
 comparison does, which is what the specification asks for anyway.
 
-### BLOCKER: `lake build` over the whole tree is RED
+### `lake build` over the whole tree: RED, then GREEN
 
-Two modules fail to build at `751d81c21`. Neither is in any probe's
-transitive closure, so every per-target build and every probe in this
-session was green while the tree was not. Both are genuine proof
-obligations created by this session's engine changes, not cosmetic
-breaks. Fix these before anything else on this branch.
+The session's engine changes left the tree unbuildable. It builds
+again at `1d4c830b7`: **1096 jobs, green**, hygiene audit clean
+(`partial def` 172, baseline 172), `tools/blockengine-ibk5-quad-smoke.sh`
+passing.
 
-**1. `L4Factoidal/Unified/DSchema.lean:281`** — type mismatch in
-`regimeEntails_d_sound_mt`. The proof asserts
+FOUR modules were broken, not the two first seen — the build stops at
+the first failure, so each repair revealed the next. All four came from
+the same two changes, and three of the four are one mistake in three
+places: **a definition that a soundness theorem is stated about was
+widened, and the widening was treated as a refactor.**
 
-```
-regimeEntails Regime.d D g h
-  = (hasIllFormedLiteral D g || entailsWith (literalValueEq D) … )
-```
+| module | what broke it | repair |
+| --- | --- | --- |
+| `Unified/DSchema.lean:281` | `Regime.literalEq` gave every non-`simple` regime `dtValueLeq` instead of `literalValueEq` | `.d` and `.rdf` keep `literalValueEq`; only `.rdfs`/`.rdfsPlus` get `dtValueLeq` |
+| `Storage/GeoBBoxIndex.lean:291` | Polygon/Polygon arms added to `sfWithinBase` and `sfIntersectsBase` | `within`/`contains` PROVED; the `sfIntersectsBase` arm removed |
+| `Unified/SparqlQuery.lean:434` | the new `Regime.rdfsPlus` constructor, in an exhaustive match | `none`, preserving the table's prior behaviour |
+| `Unified/SparqlAdequacy.lean:1194` | `Regime.closure .rdfs` widened from `fullClosure g` to `fullClosure (rdf12ReifiesClosure g)` | `.rdfs` back to `fullClosure`; the reifies step stays in `.rdfsPlus` |
 
-by definitional equality. That stopped holding when
-`Regime.literalEq` (in `RDF/Entailment.lean`, commit `d0bd06d22`)
-changed every non-`simple` regime from `literalValueEq D` to
-`dtValueLeq D`. This is not a rename: `dtValueLeq` is a STRICTLY
-LARGER literal equality, and a larger literal equality makes
-entailment MORE permissive, so soundness does not carry over on its
-own. `entailsWith_valueEq_sound` is stated for `literalValueEq`.
-Two ways out, and the choice is a real decision:
+**The rule these three share.** `dtValueLeq` extends `literalValueEq`;
+`rdf12ReifiesClosure` extends the identity. Both extensions make
+entailment MORE permissive, and soundness does not travel from a
+smaller relation to a larger one just because the larger contains it.
+A regime that carries a soundness theorem may not be widened without
+re-proving it. Regimes that carry none may. The reason is now written
+at both definitions, so the next widening has to answer it.
 
-* narrow `Regime.literalEq` so `.d` keeps `literalValueEq D` and only
-  the regimes the rdf-semantics fixtures need (`.rdfs`, `.rdfsPlus`)
-  get `dtValueLeq` — most likely to keep both the theorem and the 3
-  extra passes, and the first thing to try; or
-* prove `entailsWith` sound under `dtValueLeq`, which is the real
-  theorem if the D-regime is meant to use it.
+**What the repairs cost, measured:**
 
-**2. `L4Factoidal/Storage/GeoBBoxIndex.lean:291`** — unsolved goals in
-the `within` case of the bounding-box refinement proof. The Polygon /
-Polygon arm added to `sfWithinBase` and `sfIntersectsBase` (in
-`Geo/Topology.lean`, inside commit `47b9d2c3a`) introduces a case the
-proof does not discharge:
+* `rdf-semantics` 22 pass → **21 pass**, 11 fail, 15 unsupported (of
+  47). One fixture wanted the `rdf:reifies`-range step under the
+  `.rdfs` regime. Recover it by giving that fixture the RDFS-Plus
+  regime, or by proving the widened closure sound.
+* `geosparql-v0` 37 pass → **35 pass**, 2 fail (of 37):
+  `sfIntersects(square A, overlapping square B)` and
+  `sfDisjoint(square A, far-away square C)`, both now `None`. The
+  second follows from the first because `sfDisjoint` is `sfIntersects`
+  negated — the correct relation, and it was not decoupled to buy the
+  test back.
+* `Regime.literalEq`: no cost. Zero tests moved.
 
-```
-h : polygonBoundariesCross poly1 poly2 = false
-    ∧ (match poly1.ext with
-       | rep :: tail => some (polygonClass rep poly2 != PtClass.exterior)
-       | [] => none) = some true
-```
+**The Geo lemma that would restore the two GeoSPARQL cases.**
+`exists_common_point` is TRUE for a polygon pair — two polygons that
+intersect share a point, and that point is in both boxes. Our
+`polygonsIntersect` is a three-way disjunction and only two disjuncts
+hand over a witness (a vertex of either polygon non-exterior to the
+other). The third, `polygonBoundariesCross`, does not: two squares
+meeting in a plus shape cross with no vertex of either inside the
+other. Restoring the arm needs a constructed segment-intersection
+point, or a lemma that overlapping boxes contain a common point
+(`BBox.overlaps_of_common_point` exists; its converse does not).
 
-The obligation is the honest one: a polygon within a polygon must have
-its bounding box inside the other's, so the index may not prune it.
-
-**Why this was not caught.** Four agents shared one worktree on a disk
-at its floor, and each was told to build only its own target to keep
-off the shared Lake lock. That instruction bought throughput and paid
-for it here: a target-scoped build cannot see a module that only
-DEPENDS on what you changed. The rule that follows — one whole-tree
-`lake build` before the last commit of a session, however green the
-targeted ones were, and never a session that ends without one.
+**Why none of this was caught in flight.** Four agents shared one
+worktree on a disk at its floor, and each was told to build only its
+own target to stay off the shared Lake lock. That bought throughput
+and paid for it here: a target-scoped build cannot see a module that
+merely DEPENDS on what you changed, and adding a constructor to a
+widely-used inductive touches every exhaustive match over it. The rule
+that follows — one whole-tree `lake build` before a session's last
+commit, however green the targeted ones were, and never a session that
+ends without one.
 
 ### Two working-method failures from this session
 
