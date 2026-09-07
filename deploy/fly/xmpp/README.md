@@ -10,11 +10,15 @@ is not Lean:
 
 | file | lines | what it is |
 |---|---|---|
-| `Dockerfile` | 41 non-comment lines | fetch the repository, build one binary, put it in an image with socat |
-| `entrypoint.sh` | 15 non-comment lines | choose the port and certificate, then run socat |
-| `fly.toml` | 24 non-comment lines | Fly.io machine size, region, volume, ports |
+| `Dockerfile` | 43 | fetch the repository, build one binary, put it in an image with socat |
+| `entrypoint.sh` | 20 | choose the port and certificate, then run socat |
+| `fly.toml` | 28 | Fly.io machine size, region, volume, ports |
+| **total** | **91** | |
 
-Of those, **two lines carry the connection**. This is the whole of it:
+Counted with `grep -vE '^\s*#|^\s*$'` over the three files, 2026-09-07;
+run it again rather than trusting this number. Most of the 91 is build
+plumbing — a sparse git fetch, an elan toolchain install, a `lake build`
+of one target. Of the 91, **one command carries the connection**:
 
 ```sh
 socat OPENSSL-LISTEN:5223,reuseaddr,fork,cert=/certs/fullchain.pem,key=/certs/privkey.pem,verify=0 \
@@ -67,7 +71,7 @@ What is left is protocol, and protocol is what Lean is for.
 | `.../XMPP/Sasl.lean` | the SCRAM message grammar (RFC 5802) |
 | `.../XMPP/Scram.lean` | the SCRAM-SHA-256 arithmetic (RFC 5802 section 3, RFC 7677) |
 | `.../XMPP/Server.lean` | every remaining decision: SASL, binding, roster, presence, routing, stream errors |
-| `formal/lean4/Crypto/Hmac.lean` | HMAC-SHA-256 and PBKDF2-HMAC-SHA-256 |
+| `formal/lean4/L4Factoidal/Crypto/Hmac.lean` | HMAC-SHA-256 and PBKDF2-HMAC-SHA-256 |
 | `formal/lean4/Harness/XmppServe.lean` | the I/O: read bytes, ask where a unit ends, call `step`, perform the result |
 
 `Harness/XmppServe.lean` is Lean but is NOT part of the verified library:
@@ -157,10 +161,14 @@ Not implemented, and said here rather than left to be discovered:
   per-account salt and a server that never holds the password;
   `Scram.StoredCredentials` is already the right shape for that, and the
   change is an account-file format, not a protocol change.
-* **A SCRAM login costs a 4096-iteration PBKDF2 per authentication.**
-  Measured: about seventy seconds in the Lean *interpreter*, far less
-  compiled, but it is per login rather than per account. Storing the
-  derived keys removes it.
+* **A SCRAM login costs two 4096-iteration PBKDF2 runs.** Measured
+  2026-09-07 against the compiled binary: 67 ms for the challenge and
+  72 ms for the response, so about 140 ms of CPU per SCRAM login. (The
+  same derivation in the Lean *interpreter* takes about seventy seconds,
+  which is why `Scram.lean`'s build-time checks use stored keys as
+  constants rather than deriving them.) It is per login rather than per
+  account because the account file holds a password; storing the derived
+  keys removes both runs. PLAIN costs nothing extra.
 * **Routing between connections is a directory of files.** One file per
   stanza under `$XMPP_STATE/spool/<bare jid>/`, polled every 50 ms by a
   task beside the read loop. It is inspectable when a test fails, and it
