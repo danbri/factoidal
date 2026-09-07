@@ -166,6 +166,51 @@ Two-tier rule for `formal/lean4/` (analysis:
    under `npm/factoidal/hacl-wasm/`. No target gets a different
    crypto implementation.
 
+### The `@[extern]` crypto family, as it stands 2026-09-07
+
+Every member is HACL\* from the SAME pinned commit,
+`cryspen/hacl-packages` `05c3d8fb321ed65e3db3a6a8b853019e86fb40a2`
+(`third_party/hacl/PROVENANCE.md`). A NEW member needs the same three
+things every existing one has: a module-header trust statement naming
+what is trusted and what is NOT checked, a shim carrying length checks
+and no arithmetic, and a run-time vector check in a probe (a `#guard`
+cannot reach an extern).
+
+| Module | Primitive | Shim | Probe |
+|---|---|---|---|
+| `Crypto/Ed25519.lean` | Ed25519 sign/verify | `ffi/hacl_ed25519.c` | `l4vc-probe` |
+| `Crypto/SHA2Native.lean` | SHA-256, and the block walk | `ffi/hacl_ed25519.c` | `l4vc-probe` |
+| `Crypto/P256Native.lean` | ECDSA P-256 (JWS ES256) | `ffi/hacl_p256.c` | `l4jose-probe` |
+| `Crypto/RsaNative.lean` | the RSA public operation (RS256) | `ffi/hacl_rsa.c` | `l4jose-probe` |
+| `Crypto/ChaChaPoly.lean` | ChaCha20-Poly1305 AEAD | `ffi/hacl_chachapoly.c` | `l4crypto-probe` |
+| `Crypto/Hkdf.lean` | HMAC-SHA-256, HKDF-SHA-256 | `ffi/hacl_kdf.c` | `l4crypto-probe` |
+| `Crypto/X25519.lean` | X25519 | `ffi/hacl_kdf.c` | `l4crypto-probe` |
+| `Crypto/Hpke.lean` | HPKE base mode (RFC 9180) | `ffi/hacl_hpke.c` | `l4crypto-probe` |
+
+Design record for the last four:
+[`docs/designissues/2026-09-07-crypto-primitives.md`](../../docs/designissues/2026-09-07-crypto-primitives.md).
+
+🔴 **AES-GCM is NOT available and must not be hand-written or taken from
+the AES-NI path.** The pinned release ships no PORTABLE AES-GCM: every
+AES-GCM branch of `EverCrypt_AEAD.c` is behind `#if HACL_CAN_COMPILE_VALE`
+and calls Vale x86-64 assembly the C distribution does not include, and
+`Hacl_AES128.h` declares symbols the release never defines. The AES-NI
+variant fails the wasm gate below, so it was refused rather than smuggled
+in for one architecture. Tracked in
+<https://github.com/danbri/factoidal/issues/677>; it blocks OMEMO 0.8 and
+nothing else, because MLS ciphersuite 3 and HPKE both use
+ChaCha20-Poly1305. Close it with a newer HACL\* release or with the
+upstream bitsliced units — never by writing AES or GCM here.
+
+A derived construction is NOT a new primitive under this policy. HMAC
+(RFC 2104), PBKDF2 (RFC 8018 §5.2) and HKDF (RFC 5869 §2) are defined as
+calls to an unmodified hash, hold no internal state of their own, and may
+therefore exist in pure Lean beside the HACL\* binding — which is what
+`Crypto/Hmac.lean` and `Crypto/Hkdf.lean` do, so the RFC vectors can be
+build-time `#guard`s. When both exist, their agreement is an OBLIGATION
+that must be MEASURED in a probe, never assumed: one side is opaque, so it
+cannot be proved.
+
 ### Hash agility (owner, 2026-08-22)
 
 Owner, verbatim: "wherever we use SHA-256 maybe we should prep the

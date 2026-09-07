@@ -306,14 +306,34 @@ HACL_DIR="$REPO_ROOT/third_party/hacl"
 # Hacl_Bignum64.c + Hacl_Bignum.c (the RS256 public operation,
 # Crypto/RsaNative.lean) joined the list on 2026-09-06.  Omitting one
 # fails the link on l4_hacl_p256_verify_sha256 or l4_hacl_rsa_public_op.
+# The 2026-09-07 additions: ChaCha20-Poly1305 (Crypto/ChaChaPoly.lean),
+# HMAC + HKDF-SHA-256 (Crypto/Hkdf.lean), X25519 (Crypto/X25519.lean, over the
+# Hacl_Curve25519_51.c already listed) and HPKE base mode (Crypto/Hpke.lean).
+# Hacl_Hash_SHA1.c, Hacl_Hash_Blake2s.c, Hacl_Hash_Blake2b.c and
+# Lib_Memzero0.c are LINK CLOSURE of Hacl_HMAC.c, which is one translation
+# unit for every HMAC hash; no Lean code calls them, and leaving them out
+# fails the link. Every unit here is the PORTABLE scalar variant: the
+# Simd128/Simd256 and Vec128/Vec256 units need target intrinsics wasm32 does
+# not have. AES-GCM is absent on purpose — the pinned release has no portable
+# AES-GCM, see https://github.com/danbri/factoidal/issues/677 and
+# third_party/hacl/PROVENANCE.md.
 for f in "$HACL_DIR/src/Hacl_Ed25519.c" "$HACL_DIR/src/Hacl_Curve25519_51.c" \
          "$HACL_DIR/src/Hacl_Hash_SHA2.c" "$HACL_DIR/src/Hacl_P256.c" \
-         "$HACL_DIR/src/Hacl_Bignum64.c" "$HACL_DIR/src/Hacl_Bignum.c"; do
+         "$HACL_DIR/src/Hacl_Bignum64.c" "$HACL_DIR/src/Hacl_Bignum.c" \
+         "$HACL_DIR/src/Hacl_AEAD_Chacha20Poly1305.c" \
+         "$HACL_DIR/src/Hacl_Chacha20.c" "$HACL_DIR/src/Hacl_MAC_Poly1305.c" \
+         "$HACL_DIR/src/Hacl_HKDF.c" "$HACL_DIR/src/Hacl_HMAC.c" \
+         "$HACL_DIR/src/Hacl_Hash_SHA1.c" "$HACL_DIR/src/Hacl_Hash_Blake2s.c" \
+         "$HACL_DIR/src/Hacl_Hash_Blake2b.c" "$HACL_DIR/src/Lib_Memzero0.c" \
+         "$HACL_DIR/src/Hacl_HPKE_Curve51_CP32_SHA256.c"; do
   emcc $CFLAGS -I "$HACL_DIR/include" -c "$f" -o "$LIB_OBJ/$(basename "${f%.c}").o"
 done
 emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_ed25519.c" -o "$LIB_OBJ/l4_hacl_shim.o"
 emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_p256.c" -o "$LIB_OBJ/l4_hacl_p256_shim.o"
 emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_rsa.c" -o "$LIB_OBJ/l4_hacl_rsa_shim.o"
+emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_chachapoly.c" -o "$LIB_OBJ/l4_hacl_chachapoly_shim.o"
+emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_kdf.c" -o "$LIB_OBJ/l4_hacl_kdf_shim.o"
+emcc $CFLAGS -I "$HACL_DIR/include" -c "$LEAN_DIR/ffi/hacl_hpke.c" -o "$LIB_OBJ/l4_hacl_hpke_shim.o"
 # The SPARQL 1.1 section 17.6 extension-function host call-out
 # (Wasm/ExtHost.lean's `@[extern "l4_ext_call"]`).  Under Emscripten the
 # body is an EM_JS thunk onto globalThis.__factoidalExtCall, which the

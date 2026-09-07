@@ -49,6 +49,7 @@ import Wasm.Ops.Lws
 import Wasm.Ops.Solid
 import Wasm.Ops.Toan
 import Wasm.Ops.Xmpp
+import Wasm.Ops.Crypto
 
 namespace L4Wasm
 
@@ -100,6 +101,10 @@ def opNames : List String :=
   , "xmppStreamHeaderParse"
   , "xmppStreamHeaderRender"
   , "xmppFeaturesFor"
+  , "aeadSeal"
+  , "aeadOpen"
+  , "hpkeSeal"
+  , "hpkeOpen"
   , "xmppStanzaParse"
   , "ops" ]
 
@@ -307,6 +312,10 @@ def call (op : String) (argsJson : String) : String :=
     | "xmppStreamHeaderParse"  => arity1 op xmppStreamHeaderParse args
     | "xmppStreamHeaderRender" => arity1 op xmppStreamHeaderRender args
     | "xmppFeaturesFor"      => arity1 op xmppFeaturesFor args
+    | "aeadSeal"             => arity1 op aeadSeal args
+    | "aeadOpen"             => arity1 op aeadOpen args
+    | "hpkeSeal"             => arity1 op hpkeSeal args
+    | "hpkeOpen"             => arity1 op hpkeOpen args
     | "xmppStanzaParse"      => arity1 op xmppStanzaParse args
     | "ops"                  => opsReflection
     | _                      => errJson s!"unknown op '{op}'"

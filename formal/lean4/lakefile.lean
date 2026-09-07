@@ -77,6 +77,56 @@ target Hacl_Bignum64.o pkg : FilePath :=
 target Hacl_Bignum.o pkg : FilePath :=
   buildHaclO pkg "Hacl_Bignum" (haclDir pkg / "src" / "Hacl_Bignum.c")
 
+/-! The XMPP client-role and end-to-end-encryption additions (2026-09-07).
+`L4Factoidal/Crypto/ChaChaPoly.lean`, `Crypto/Hkdf.lean`, `Crypto/X25519.lean`
+and `Crypto/Hpke.lean` declare `@[extern]` opaques realised by
+`ffi/hacl_chachapoly.c`, `ffi/hacl_kdf.c` and `ffi/hacl_hpke.c` over the
+same vendored HACL* C. `Hacl_Hash_SHA1.c`, `Hacl_Hash_Blake2s.c`,
+`Hacl_Hash_Blake2b.c` and `Lib_Memzero0.c` are here as LINK CLOSURE of
+`Hacl_HMAC.c`, which is one translation unit covering every HMAC hash; no
+Lean code calls them. Portable scalar units only — see
+`third_party/hacl/PROVENANCE.md` for why the Simd/Vec variants and AES-GCM
+are not vendored. -/
+
+target hacl_chachapoly_shim.o pkg : FilePath :=
+  buildHaclO pkg "hacl_chachapoly_shim" (pkg.dir / "ffi" / "hacl_chachapoly.c")
+
+target hacl_kdf_shim.o pkg : FilePath :=
+  buildHaclO pkg "hacl_kdf_shim" (pkg.dir / "ffi" / "hacl_kdf.c")
+
+target hacl_hpke_shim.o pkg : FilePath :=
+  buildHaclO pkg "hacl_hpke_shim" (pkg.dir / "ffi" / "hacl_hpke.c")
+
+target Hacl_AEAD_Chacha20Poly1305.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_AEAD_Chacha20Poly1305" (haclDir pkg / "src" / "Hacl_AEAD_Chacha20Poly1305.c")
+
+target Hacl_Chacha20.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_Chacha20" (haclDir pkg / "src" / "Hacl_Chacha20.c")
+
+target Hacl_MAC_Poly1305.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_MAC_Poly1305" (haclDir pkg / "src" / "Hacl_MAC_Poly1305.c")
+
+target Hacl_HKDF.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_HKDF" (haclDir pkg / "src" / "Hacl_HKDF.c")
+
+target Hacl_HMAC.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_HMAC" (haclDir pkg / "src" / "Hacl_HMAC.c")
+
+target Hacl_Hash_SHA1.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_Hash_SHA1" (haclDir pkg / "src" / "Hacl_Hash_SHA1.c")
+
+target Hacl_Hash_Blake2s.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_Hash_Blake2s" (haclDir pkg / "src" / "Hacl_Hash_Blake2s.c")
+
+target Hacl_Hash_Blake2b.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_Hash_Blake2b" (haclDir pkg / "src" / "Hacl_Hash_Blake2b.c")
+
+target Lib_Memzero0.o pkg : FilePath :=
+  buildHaclO pkg "Lib_Memzero0" (haclDir pkg / "src" / "Lib_Memzero0.c")
+
+target Hacl_HPKE_Curve51_CP32_SHA256.o pkg : FilePath :=
+  buildHaclO pkg "Hacl_HPKE_Curve51_CP32_SHA256" (haclDir pkg / "src" / "Hacl_HPKE_Curve51_CP32_SHA256.c")
+
 extern_lib libl4hacl pkg := do
   let shim ← hacl_ed25519_shim.o.fetch
   let ed ← Hacl_Ed25519.o.fetch
@@ -87,9 +137,24 @@ extern_lib libl4hacl pkg := do
   let p256 ← Hacl_P256.o.fetch
   let bn64 ← Hacl_Bignum64.o.fetch
   let bn ← Hacl_Bignum.o.fetch
+  let cpShim ← hacl_chachapoly_shim.o.fetch
+  let kdfShim ← hacl_kdf_shim.o.fetch
+  let hpkeShim ← hacl_hpke_shim.o.fetch
+  let aead ← Hacl_AEAD_Chacha20Poly1305.o.fetch
+  let chacha ← Hacl_Chacha20.o.fetch
+  let poly ← Hacl_MAC_Poly1305.o.fetch
+  let hkdf ← Hacl_HKDF.o.fetch
+  let hmac ← Hacl_HMAC.o.fetch
+  let sha1 ← Hacl_Hash_SHA1.o.fetch
+  let blake2s ← Hacl_Hash_Blake2s.o.fetch
+  let blake2b ← Hacl_Hash_Blake2b.o.fetch
+  let memzero ← Lib_Memzero0.o.fetch
+  let hpke ← Hacl_HPKE_Curve51_CP32_SHA256.o.fetch
   let name := nameToStaticLib "l4hacl"
   buildStaticLib (pkg.staticLibDir / name)
-    #[shim, ed, curve, sha2, p256Shim, rsaShim, p256, bn64, bn]
+    #[shim, ed, curve, sha2, p256Shim, rsaShim, p256, bn64, bn,
+      cpShim, kdfShim, hpkeShim,
+      aead, chacha, poly, hkdf, hmac, sha1, blake2s, blake2b, memzero, hpke]
 
 /-- Build the deliberately small POSIX `pread` host adapter used only by the
     native IBK2 range-read probe. The pure planner/decoder remains in Lean;
@@ -147,7 +212,8 @@ extern_lib libl4exthost pkg := do
              `Wasm.Ops.Lws,
              `Wasm.Ops.Solid,
              `Wasm.Ops.Toan,
-             `Wasm.Ops.Xmpp]
+             `Wasm.Ops.Xmpp,
+             `Wasm.Ops.Crypto]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
 -- reads paths from stdin, prints WF / NWF per file. See
@@ -376,6 +442,15 @@ extern_lib libl4exthost pkg := do
 -- pure JOSE layers decide is a build-time `#guard` in those modules;
 -- this binary exists for the part that needs an extern.
 @[default_target] lean_exe «l4jose-probe» where root := `Harness.JoseProbe
+
+-- Real-corpus probe for the AEAD, KDF, X25519 and HPKE primitives
+-- (Harness/CryptoProbe.lean): RFC 8439 section 2.8.2, RFC 5869 Appendix A,
+-- RFC 7748 section 6.1, RFC 9180 Appendix A.2, and the Wycheproof
+-- chacha20_poly1305, hkdf_sha256 and x25519 corpora. It also reports the
+-- AES-GCM gap as NOT RUN rather than passing over it. Same spec/pragmatics
+-- split as the other probes: file I/O and printed scores, and the externs
+-- a `#guard` cannot reach. Run the built binary from the REPOSITORY ROOT.
+@[default_target] lean_exe «l4crypto-probe» where root := `Harness.CryptoProbe
 
 -- SHACL Core probe over the W3C shacl test suite (Harness/ShaclProbe.lean).
 @[default_target] lean_exe «l4shacl» where root := `Harness.ShaclProbe

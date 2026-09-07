@@ -1430,6 +1430,87 @@ args "$TMP/toan-arity.json" '{"int":1}' x
 check "toanSimplify arity is checked" toanSimplify "$TMP/toan-arity.json" \
   'r["ok"] is False and "expects 1 argument" in r["error"]'
 
+# --- Crypto: the AEAD and HPKE ops ------------------------------------
+# Round trips through the dispatch ABI with PUBLISHED bytes on both sides,
+# not self-consistency: seal must reproduce the RFC's own ciphertext, and
+# open must recover the RFC's own plaintext from it. A round trip that only
+# fed seal's output back into open would pass against a pair of functions
+# that agreed with each other and with nothing else.
+#
+# Vectors: RFC 8439 section 2.8.2 for the AEAD; RFC 9180 Appendix A.2.1,
+# sequence number 0, for HPKE (DHKEM(X25519, HKDF-SHA256) / HKDF-SHA256 /
+# ChaCha20Poly1305, base mode). The full corpora are lake exe l4crypto-probe.
+
+AEAD_KEY="808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"
+AEAD_NONCE="070000004041424344454647"
+AEAD_AAD="50515253c0c1c2c3c4c5c6c7"
+AEAD_PT="4c616469657320616e642047656e746c656d656e206f662074686520636c617373206f66202739393a204966204920636f756c64206f6666657220796f75206f6e6c79206f6e652074697020666f7220746865206675747572652c2073756e73637265656e20776f756c642062652069742e"
+AEAD_CT="d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d63dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b3692ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc3ff4def08e4b7a9de576d26586cec64b61161ae10b594f09e26a7e902ecbd0600691"
+
+args "$TMP/aead-seal.json" \
+  "{\"alg\":\"chacha20-poly1305\",\"key\":\"$AEAD_KEY\",\"nonce\":\"$AEAD_NONCE\",\"aad\":\"$AEAD_AAD\",\"plaintext\":\"$AEAD_PT\"}"
+check "aeadSeal reproduces the RFC 8439 2.8.2 ciphertext and tag" \
+  aeadSeal "$TMP/aead-seal.json" \
+  'r["ok"] is True and r["ciphertext"] == "'"$AEAD_CT"'"'
+
+args "$TMP/aead-open.json" \
+  "{\"alg\":\"chacha20-poly1305\",\"key\":\"$AEAD_KEY\",\"nonce\":\"$AEAD_NONCE\",\"aad\":\"$AEAD_AAD\",\"ciphertext\":\"$AEAD_CT\"}"
+check "aeadOpen recovers the RFC 8439 2.8.2 plaintext" \
+  aeadOpen "$TMP/aead-open.json" \
+  'r["ok"] is True and r["plaintext"] == "'"$AEAD_PT"'"'
+
+# One flipped ciphertext bit must NOT open. Without this the round trip
+# above would pass against an "AEAD" that ignored the tag entirely.
+AEAD_CT_BAD="d21a8d34${AEAD_CT:8}"
+args "$TMP/aead-bad.json" \
+  "{\"alg\":\"chacha20-poly1305\",\"key\":\"$AEAD_KEY\",\"nonce\":\"$AEAD_NONCE\",\"aad\":\"$AEAD_AAD\",\"ciphertext\":\"$AEAD_CT_BAD\"}"
+check "aeadOpen refuses a flipped ciphertext bit" \
+  aeadOpen "$TMP/aead-bad.json" \
+  'r["ok"] is False and "authenticate" in r["error"]'
+
+# AES-GCM is named in the ABI and refused with its issue, so a caller
+# learns it is missing rather than getting a wrong answer or a bare
+# "unknown alg". See https://github.com/danbri/factoidal/issues/677 .
+args "$TMP/aead-aes.json" \
+  "{\"alg\":\"aes-128-gcm\",\"key\":\"$AEAD_KEY\",\"nonce\":\"$AEAD_NONCE\",\"plaintext\":\"\"}"
+check "aeadSeal names the AES-GCM gap and its issue" \
+  aeadSeal "$TMP/aead-aes.json" \
+  'r["ok"] is False and "677" in r["error"]'
+
+HPKE_SKE="f4ec9b33b792c372c1d2c2063507b684ef925b8c75a42dbcbf57d63ccd381600"
+HPKE_PKR="4310ee97d88cc1f088a5576c77ab0cf5c3ac797f3d95139c6c84b5429c59662a"
+HPKE_SKR="8057991eef8f1f1af18f4a9491d16a1ce333f695d4db8e38da75975c4478e0fb"
+HPKE_INFO="4f6465206f6e2061204772656369616e2055726e"
+HPKE_AAD="436f756e742d30"
+HPKE_PT="4265617574792069732074727574682c20747275746820626561757479"
+HPKE_ENC="1afa08d3dec047a643885163f1180476fa7ddb54c6a8029ea33f95796bf2ac4a"
+HPKE_CT="1c5250d8034ec2b784ba2cfd69dbdb8af406cfe3ff938e131f0def8c8b60b4db21993c62ce81883d2dd1b51a28"
+
+args "$TMP/hpke-seal.json" \
+  "{\"skE\":\"$HPKE_SKE\",\"pkR\":\"$HPKE_PKR\",\"info\":\"$HPKE_INFO\",\"aad\":\"$HPKE_AAD\",\"plaintext\":\"$HPKE_PT\"}"
+check "hpkeSeal reproduces RFC 9180 A.2.1 enc and ct (sequence number 0)" \
+  hpkeSeal "$TMP/hpke-seal.json" \
+  'r["ok"] is True and r["enc"] == "'"$HPKE_ENC"'" and r["ciphertext"] == "'"$HPKE_CT"'"
+   and r["message"] == r["enc"] + r["ciphertext"]'
+
+args "$TMP/hpke-open.json" \
+  "{\"skR\":\"$HPKE_SKR\",\"info\":\"$HPKE_INFO\",\"aad\":\"$HPKE_AAD\",\"message\":\"$HPKE_ENC$HPKE_CT\"}"
+check "hpkeOpen recovers the RFC 9180 A.2.1 plaintext" \
+  hpkeOpen "$TMP/hpke-open.json" \
+  'r["ok"] is True and r["plaintext"] == "'"$HPKE_PT"'"'
+
+args "$TMP/hpke-badinfo.json" \
+  "{\"skR\":\"$HPKE_SKR\",\"info\":\"00\",\"aad\":\"$HPKE_AAD\",\"message\":\"$HPKE_ENC$HPKE_CT\"}"
+check "hpkeOpen refuses a changed info" \
+  hpkeOpen "$TMP/hpke-badinfo.json" \
+  'r["ok"] is False and "authenticate" in r["error"]'
+
+args "$TMP/hpke-shortkey.json" \
+  "{\"skE\":\"00\",\"pkR\":\"$HPKE_PKR\",\"plaintext\":\"\"}"
+check "hpkeSeal refuses a 1-byte ephemeral key" \
+  hpkeSeal "$TMP/hpke-shortkey.json" \
+  'r["ok"] is False and "32 bytes" in r["error"]'
+
 # --- Dispatch reflection + unknown op ---------------------------------
 args "$TMP/empty.json"
 check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
@@ -1452,7 +1533,8 @@ check "ops reflection (incl. handle ops via callIO)" ops "$TMP/empty.json" \
             "packNext","packFinish","packClose",
             "lwsOpen","lwsStep","lwsClose",
             "solidOpen","solidStep","solidClose",
-            "solidClientRequest","solidClientResponse"]) <= set(r["ops"])
+            "solidClientRequest","solidClientResponse",
+            "aeadSeal","aeadOpen","hpkeSeal","hpkeOpen"]) <= set(r["ops"])
    and r["blobOps"] == ["storeQuery","activateVerify"]
    and r["blobIoOps"] == ["blobEcho","packFeed","packNext"]'
 
