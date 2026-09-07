@@ -14,6 +14,7 @@ ID: SRI1 alone cannot establish that cross-object relation.
 -/
 import L4Factoidal.Storage.SubjectRowIndex
 import L4Factoidal.Storage.BlockWireV0
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.SubjectRowIndexWire
 
@@ -57,7 +58,7 @@ private def encodePair (pair : Nat × Nat) : List UInt8 :=
   writeU32LE (UInt32.ofNat pair.1) ++ writeU32LE (UInt32.ofNat pair.2)
 
 def supported (rows : Array IdTriple) : Bool :=
-  rows.size < UInt32.size && rows.toList.all fun row => row.s < UInt32.size
+  rows.size < two32 && rows.toList.all fun row => row.s < two32
 
 /-- Canonical SRI1 encoding.  It refuses values which a u32 field would
     truncate; every accepted row produces exactly one payload pair. -/

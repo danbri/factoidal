@@ -120,6 +120,7 @@ import L4Factoidal.RDF.Graph
 import L4Factoidal.Syntax.Lexing
 import L4Factoidal.Syntax.NTriples
 import L4Factoidal.Syntax.IriResolve
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Syntax
 
@@ -620,7 +621,7 @@ quadratic (measured 2026-09-02: 2,514 triples 0.38 s, 5,012 triples
 cannot be held as a `List Char` on any current host, so the constant is
 not a practical limit; the equality with the specification forms is
 stated under `cs.length < literalFuel`. -/
-def literalFuel : Nat := 4294967296
+@[noinline] def literalFuel : Nat := 4294967296
 
 /-- [17] String — dispatch on the opening quote run, with the loop fuel
 supplied by the caller. Port of `parse_turtle_string`. -/

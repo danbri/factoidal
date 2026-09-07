@@ -326,9 +326,139 @@ pass — the streaming N-Quads fold
 accumulation and block encoding — with `l4_heap_tags_c` after each,
 which the shipping module exports.
 
-The gate stands at 1.06 GB of peak resident set for the 700 MB prefix,
+The gate stood at 1.06 GB of peak resident set for the 700 MB prefix,
 against a target of 514 MB (twice the native packer) and a floor of
-1 GB. It is missed by 6% and follows the repair in section 6, not an
-allocator setting.
+1 GB. Section 9 closes it: 305 MB, measured.
 
 `-sMAXIMUM_MEMORY` moves the panic and touches no line of this record.
+
+## 9. Cause and fix
+
+### 9.1 The bisect
+
+`l4_heap_tags_c` after each step of one pack, two repetitions in one
+module instance, 20 MB N-Quads prefix (109,804 rows), IBK5, 64 KiB
+feeds, 64 MiB batch. The pack loop must run on a worker thread with
+`resourceLimits.stackSizeMb` raised, as `pack-host.mjs` does; on the
+main thread the ingest pass overflows the stack.
+
+| step | mpz objects | 8-byte blocks | live |
+|---|---|---|---|
+| start | 2,522 | 5,348 | 5.3 MiB |
+| prepass, per feed and at `packEndPass` | 2,522 | 5,371 | 5.3 MiB |
+| ingest feed 64 | 2,522 | 97,720 | 15.1 MiB |
+| ingest feed 128 | 2,522 | 190,045 | 24.8 MiB |
+| ingest feed 192 | 202,339 | 393,854 | 32.1 MiB |
+| ingest feed 256 | 499,198 | 714,554 | 46.3 MiB |
+| ingest feed 320 (last) | 714,876 | 1,005,334 | 61.7 MiB |
+| ingest `packEndPass`, drained | 1,705,847 | 1,647,662 | 70.7 MiB |
+| `packFinish`, drained | 1,709,007 | 1,650,821 | 70.8 MiB |
+| `packClose` | 1,709,007 | 1,649,313 | 70.1 MiB |
+| repetition 2, `packClose` | 3,415,492 | 3,293,285 | 135.0 MiB |
+
+The count rises only while blocks are published — at the per-block cut
+inside a feed, and at the `packEndPass` which publishes every open run.
+No step releases any of it.
+
+### 9.2 What the objects are
+
+A second instrument reads the values. Lean's GMP-free `mpz` on wasm32
+is `bool m_sign; size_t m_size; mpn_digit * m_digits` after the object
+header, so a JavaScript scan of `HEAPU8` for a byte-7 tag of 250
+recovers every live one and its digits. The scan finds exactly the
+1,709,007 the histogram counts, and they hold TWO values:
+
+| value | count after one pack |
+|---|---|
+| `4294967296` (2 ^ 32) | 1,646,462 |
+| `4294967295` (2 ^ 32 - 1) | 62,525 |
+
+The 8-byte blocks are their two-digit magnitude arrays.
+
+### 9.3 The retaining structure: there is none
+
+They are not retained, they are LEAKED, and the leak is in the code the
+Lean compiler emits for a `Nat` LITERAL at or above 2 ^ 31. Example, the
+emitted C for `TermLocalIndexWire.fitsU32`:
+
+    LEAN_EXPORT uint8_t ..._fitsU32(lean_object* v_n_121_){
+    v___x_122_ = lean_cstr_to_nat("4294967296");
+    v___x_123_ = lean_nat_dec_lt(v_n_121_, v___x_122_);
+    return v___x_123_;
+    }
+
+`lean_nat_dec_lt` borrows both arguments and the function returns
+without releasing `v___x_122_`. On a 64-bit target the literal is an
+unboxed scalar and there is nothing to release, which is why every
+native measurement was bounded and why nothing else in the tree noticed.
+On wasm32 it is a 32-byte object plus an 8-byte digit array, allocated
+and abandoned on every call.
+
+That explains every property section 6 measured: the count grows with
+the rows published rather than with the bytes fed; the pre-pass, which
+publishes nothing, produces none; `packClose` releases none, because
+nothing holds them; and the batch size does not move the total.
+
+### 9.4 The fix
+
+A TOP-LEVEL definition is built once in the module initialiser and
+marked persistent, and the call site then reads a global. `@[noinline]`
+is what stops the compiler folding the definition back into the call
+site — measured: without it the emitted code is the inline literal
+again. `@[reducible]` beside it keeps the literal transparent to the
+proofs about those functions.
+
+`L4Factoidal/NatBounds.lean` holds `two32`, and the executable
+comparisons in the block codecs, the manifest, the delta log, the paged
+term dictionary and the COTTAS writers use it instead of the literal or
+`UInt32.size`. `TermWireV2.maxBlobBytes` and `Syntax.literalFuel` were
+already definitions and only needed `@[noinline]`: the compiler had been
+inlining them into `PackStream` and the Turtle literal readers.
+
+### 9.5 Before and after
+
+Three packs of the same 20 MB N-Quads prefix (109,804 rows), IBK5,
+64 MiB batch, in ONE module instance, heap-tag histogram after each
+`packClose`:
+
+| repetition | mpz before | live before | mpz after | live after |
+|---|---|---|---|---|
+| 1 | 1,709,007 | 70.1 MiB | 29 | 5.2 MiB |
+| 2 | 3,415,492 | 135.0 MiB | 29 | 5.2 MiB |
+| 3 | 5,121,977 | 199.8 MiB | 29 | 5.2 MiB |
+
+The 29 remaining objects are the module's own initialisers and do not
+grow. Live bytes after `packClose` are now the same 5.2 MiB the module
+starts from, so a pack returns the module to its starting state.
+
+Linear memory still steps up across repetitions (191 -> 229 -> 275 MB
+for the three packs above) while live bytes stay at 5.2 MiB. That
+residue is allocator fragmentation, the same effect section 6.4 records
+for `datasetOpen`, and it is a different problem from this one.
+
+### 9.6 The 700 MB pack
+
+`SCRATCH/oom/prefix700t.nq` (734,003,186 bytes), IBK5, 64 MiB batch,
+through `npm/factoidal/bin/factoidal.mjs pack`, `/usr/bin/time -l`:
+
+| module | peak RSS | wall clock | generation |
+|---|---|---|---|
+| before this landing | 1,062,567,936 | 517 s | 4,016 artifacts, 518,790,565 bytes, 4,282,588 rows |
+| with the fix | 305,168,384 | 540 s | the same |
+
+The native packer's figure is 257 MB, so the module now costs 1.19x the
+native packer on this input rather than 4.1x. Section 8's gate — twice
+the native packer, 514 MB — is met with 209 MB to spare. The wall clock
+is 4% longer and is build-to-build noise; reading a global is cheaper
+than parsing a decimal string, so nothing here should be slower.
+
+### 9.7 What is left of the same class
+
+Two `Int` bounds outside the pack path still compile to an inline
+literal and leak one object per call on wasm32:
+`XSD/Facets.lean` and `SHACL/Validation.lean`, both the
+`xsd:unsignedInt` facet bound `4294967295`, one per typed-literal facet
+check. They are named here rather than changed with this landing,
+because they carry their own proofs and are not on the packer's path.
+Any new `Nat` or `Int` literal at or above 2 ^ 31 in executable code
+should be a `@[reducible, noinline]` definition for the same reason.

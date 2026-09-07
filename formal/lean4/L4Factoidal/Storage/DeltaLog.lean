@@ -24,6 +24,7 @@ need.
 import L4Factoidal.Storage.Bytes
 import L4Factoidal.RDF.Core
 import Init.Omega
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage
 
@@ -409,7 +410,7 @@ def serializeLString (s : String) : List UInt8 :=
     in its u32 prefix. -/
 def serializeLString? (s : String) : Option (List UInt8) :=
   let b := bytesOfString s
-  if b.length >= UInt32.size then none else some (writeU32LE (UInt32.ofNat b.length) ++ b)
+  if b.length >= two32 then none else some (writeU32LE (UInt32.ofNat b.length) ++ b)
 
 def parseU8 (bs : List UInt8) : Option (UInt8 × List UInt8) :=
   match bs with
@@ -481,7 +482,7 @@ block encoder can refuse such a term before it reaches the wire.
 and the equivalence `termFitsU32b_iff`. -/
 
 /-- The UTF-8 byte length of the string is below the u32 field limit. -/
-def stringFitsU32b (s : String) : Bool := (bytesOfString s).length < UInt32.size
+def stringFitsU32b (s : String) : Bool := (bytesOfString s).length < two32
 
 /-- Every length-prefixed string in the term fits its u32 length prefix. A
     triple term has no encoding at all, so it never fits. -/
@@ -759,7 +760,7 @@ def parseFramedDeltaEntry (bs : List UInt8) : Option (DeltaEntry × List UInt8) 
   if payloadRest.isEmpty then some (entry, rest) else none
 
 def serializeDeltaBatchBody? (b : DeltaBatch) : Option (List UInt8) :=
-  if !natFitsU64 b.seq || !natFitsU64 b.epoch || b.ops.length >= UInt32.size then none
+  if !natFitsU64 b.seq || !natFitsU64 b.epoch || b.ops.length >= two32 then none
   else do
     let entries ← b.ops.mapM serializeFramedDeltaEntry?
     some (writeU64LE b.seq.toUInt64 ++ writeU64LE b.epoch.toUInt64 ++
@@ -784,7 +785,7 @@ def parseDeltaBatchBody (bs : List UInt8) : Option DeltaBatch := do
     whole-log writer. -/
 def serializeDeltaBatch? (b : DeltaBatch) : Option (List UInt8) := do
   let body ← serializeDeltaBatchBody? b
-  if body.length >= UInt32.size then none else
+  if body.length >= two32 then none else
   some (writeU32LE deltaBatchMagic ++ writeU32LE deltaBatchVersion ++
     writeU32LE (UInt32.ofNat body.length) ++ body ++ writeU32LE (simpleChecksum body))
 

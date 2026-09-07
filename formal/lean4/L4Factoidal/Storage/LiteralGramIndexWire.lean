@@ -81,6 +81,7 @@ No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Storage.LiteralGramIndex
 import L4Factoidal.Storage.BlockWireV0
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.LiteralGramIndexWire
 
@@ -137,7 +138,7 @@ structure Artifact where
 
 def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 def listOfByteArray (xs : ByteArray) : List UInt8 := xs.data.toList
-def fitsU32 (n : Nat) : Bool := n < UInt32.size
+def fitsU32 (n : Nat) : Bool := n < two32
 
 def gramBytes (gram : List Char) : List UInt8 := (String.ofList gram).toUTF8.data.toList
 

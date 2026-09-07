@@ -60,6 +60,7 @@ the gap.
 -/
 import L4Factoidal.Cottas.OnDiskIndex
 import L4Factoidal.Cottas.OffsetsWriter
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -93,7 +94,7 @@ def buildDictHeader (n idsOffset tokensOffset : Nat) : List UInt8 :=
     = i` depends on it, and so does the reader's binary search. -/
 def serializeDict (sortedTokens : List String) : Option ByteArray :=
   let n := sortedTokens.length
-  if n ≥ 4294967296 then none
+  if n ≥ two32 then none
   else
     let idsOffset := dictWriterHeaderSize
     let tokensOffset := idsOffset + dictIdSize * n

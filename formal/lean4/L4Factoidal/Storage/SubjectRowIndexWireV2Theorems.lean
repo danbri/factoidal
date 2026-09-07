@@ -1166,7 +1166,7 @@ theorem decode?_encode? (index : Index) (bytes : ByteArray) (h : encode? index =
         injection h with h
         subst h
         have hs : supported index = true := by simpa using hsupp
-        simp only [supported, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq, fitsU32,
+        simp only [supported, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq, fitsU32, two32_eq_uint32Size,
           List.all_eq_true, gt_iff_lt] at hs
         obtain ⟨⟨⟨⟨⟨htsize, hrows0⟩, hrowsfit⟩, hsize⟩, hall⟩, hperm⟩ := hs
         have hlenrows : index.pairs.toList.length = index.rowCount := by
@@ -1176,7 +1176,7 @@ theorem decode?_encode? (index : Index) (bytes : ByteArray) (h : encode? index =
           cases hx : strictlyOrdered index.pairs.toList
           · rw [hx] at hordered; simp at hordered
           · rfl
-        simp only [Bool.or_eq_true, decide_eq_true_eq, not_or, Nat.not_le] at hguard
+        simp only [Bool.or_eq_true, two32_eq_uint32Size, decide_eq_true_eq, not_or, Nat.not_le] at hguard
         rw [decode?_encoded index.targetIBKSha256 index.rowCount index.pairs.toList
           htsize hrows0 hrowsfit hlenrows hall' hperm hsorted
           (by omega) (by omega) (by omega)]

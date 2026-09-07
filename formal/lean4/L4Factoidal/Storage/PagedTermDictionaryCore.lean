@@ -23,6 +23,7 @@ term codec v2 over `TermWireV2.WireTerm`).
 No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Storage.Bytes
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.PTD
 
@@ -68,7 +69,7 @@ structure ByteRange where
 
 def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 def listOfByteArray (bytes : ByteArray) : List UInt8 := bytes.data.toList
-def fitsU32 (n : Nat) : Bool := n < 4294967296
+def fitsU32 (n : Nat) : Bool := n < two32
 
 def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   let b0 ← bytes[offset]?

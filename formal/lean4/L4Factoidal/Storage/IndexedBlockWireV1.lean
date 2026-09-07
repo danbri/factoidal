@@ -17,6 +17,7 @@ import L4Factoidal.Storage.IndexedBlock
 import L4Factoidal.Storage.BlockWireV0
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Storage.BlockArtifact
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.IndexedBlockWireV1
 
@@ -30,7 +31,7 @@ open L4Factoidal.Storage.BlockArtifact
 def magic : UInt32 := 0x314B4249
 def version : UInt8 := 1
 
-def fitsU32 (n : Nat) : Bool := n < 4294967296
+def fitsU32 (n : Nat) : Bool := n < two32
 
 def supported (block : Block) : Bool :=
   block.dict.toList.all termSupported && fitsU32 block.dict.size && fitsU32 block.rows.size &&

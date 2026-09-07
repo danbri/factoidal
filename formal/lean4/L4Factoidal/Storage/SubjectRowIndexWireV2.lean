@@ -6,6 +6,7 @@ same canonical `(subject local ID, source row offset)` relation but binds it to
 one IBK3 SHA-256 and supplies a compact first-subject directory.
 -/
 import L4Factoidal.Storage.SubjectRowIndexWire
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.SubjectRowIndexWireV2
 
@@ -45,7 +46,7 @@ structure Index where
 
 def bytesOf (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 def listOf (xs : ByteArray) : List UInt8 := xs.data.toList
-def fitsU32 (n : Nat) : Bool := n < UInt32.size
+def fitsU32 (n : Nat) : Bool := n < two32
 def readU32At? (bytes : ByteArray) (offset : Nat) : Option UInt32 := do
   let b0 ← bytes[offset]?
   let b1 ← bytes[offset + 1]?
@@ -128,7 +129,7 @@ def encode? (index : Index) : Option ByteArray := do
   let refs := pageRefs pages pairPages
   let directory := refs.flatMap encodeRef
   let pageArea := pages.flatten
-  if refs.length >= UInt32.size || directory.length >= UInt32.size || pageArea.length >= UInt32.size then none else
+  if refs.length >= two32 || directory.length >= two32 || pageArea.length >= two32 then none else
   let payload := index.targetIBKSha256.toList ++ writeU32LE (UInt32.ofNat index.rowCount) ++
     writeU32LE (UInt32.ofNat pairs.length) ++ writeU32LE (UInt32.ofNat pagePairs) ++
     writeU32LE (UInt32.ofNat refs.length) ++ writeU32LE (UInt32.ofNat directory.length) ++

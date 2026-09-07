@@ -59,6 +59,7 @@ order and codepoint order agree for valid UTF-8 — which is why the
 search works at all and is worth stating rather than assuming.
 -/
 import L4Factoidal.Cottas.PresenceBitmap
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -208,7 +209,7 @@ private def u32leBytes (n : Nat) : List UInt8 :=
    UInt8.ofNat ((n / 65536) % 256), UInt8.ofNat ((n / 16777216) % 256)]
 
 private def u64leBytes (n : Nat) : List UInt8 :=
-  u32leBytes (n % 4294967296) ++ u32leBytes (n / 4294967296)
+  u32leBytes (n % two32) ++ u32leBytes (n / two32)
 
 private def insertByStr (x : String × Nat) :
     List (String × Nat) → List (String × Nat)

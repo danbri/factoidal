@@ -6,6 +6,7 @@ import L4Factoidal.Storage.ChunkedArtifact
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.SPARQL.Query
 import L4Factoidal.SPARQL.DatasetRestriction
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.ShardManifest
 
@@ -53,7 +54,7 @@ def takeExact (n : Nat) (bytes : List UInt8) : Option (List UInt8 × List UInt8)
 
     It is defined here rather than beside the codecs because the SBM10
     admission tests read it and those run inside `valid`. -/
-def fitsU32 (n : Nat) : Bool := n < 4294967296
+def fitsU32 (n : Nat) : Bool := n < two32
 
 /-- A relative artifact key.  Host integrations decide whether this denotes a
     file, `bytea`, TiKV value, OPFS entry, or mapped byte range. -/
