@@ -116,8 +116,12 @@ for `hexBinary` and `base64Binary`; items for a list. `none` where
 def valueLength? : Val → Option Nat
   | .str _ s => some s.length
   | .bin _ bs => some bs.length
-  | .qname p l _ => some ((if p == "" then l else p ++ ":" ++ l).length)
   | .seq vs => some vs.length
+  -- §4.3.1: `length` is not applicable to `QName` or `NOTATION` — their
+  -- value space is not a sequence, and the suite's
+  -- `atomic-QName-maxLength` group expects a QName longer than the
+  -- facet to be VALID.
+  | .qname _ _ _ => none
   | _ => none
 
 /-! ## §4.3.4 — pattern -/
@@ -213,15 +217,37 @@ def valueOfFuel : Nat → SimpleType → String → Option Val
         if vs.any Option.isNone then none
         else
           let v := Val.seq (vs.filterMap id)
-          -- §4.3.1: on a list, length/minLength/maxLength count items,
-          -- and enumeration and the bounds do not apply.
+          -- §4.3.1: on a list, length/minLength/maxLength count ITEMS.
+          -- §4.3.5 `enumeration` still applies, and each of its members
+          -- is itself a list literal (§3.1.2), so it is mapped through
+          -- the item type the same way.
+          let enumOk :=
+            match lf.enumeration with
+            | none => true
+            | some lexs => lexs.any (fun lex =>
+                let ets := (applyWhiteSpace .collapse lex).splitOn " "
+                             |>.filter (fun t => t != "")
+                let evs := ets.map (fun t => valueOfFuel fuel item t)
+                !evs.any Option.isNone && valIdentical v (.seq (evs.filterMap id)))
           if (match lf.length with | some n => vs.length == n | none => true) &&
              (match lf.minLength with | some n => vs.length ≥ n | none => true) &&
-             (match lf.maxLength with | some n => vs.length ≤ n | none => true)
+             (match lf.maxLength with | some n => vs.length ≤ n | none => true) &&
+             enumOk
           then some v else none
-    | .union members _ =>
-        let hits := members.filterMap (fun m => valueOfFuel fuel m norm)
-        hits.head?
+    | .union members uf =>
+        match members.filterMap (fun m => valueOfFuel fuel m norm) |>.head? with
+        | none => none
+        | some v =>
+          -- §4.3.5 on a union: the enumeration members are literals of
+          -- the union, so each is mapped through the member types.
+          let enumOk :=
+            match uf.enumeration with
+            | none => true
+            | some lexs => lexs.any (fun lex =>
+                match members.filterMap (fun m => valueOfFuel fuel m lex) |>.head? with
+                | some ev => valIdentical v ev
+                | none    => false)
+          if enumOk then some v else none
 
 def valueOf (t : SimpleType) (lit : String) : Option Val := valueOfFuel 8 t lit
 
