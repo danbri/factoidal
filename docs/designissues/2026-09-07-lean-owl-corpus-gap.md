@@ -503,3 +503,48 @@ negative test's conclusion easier to contain.
   passes and this tree does not.
 * **The model-theoretic soundness of `CompStar`** — see the OWL
   comprehension section of `docs/theorem-registry.md`.
+
+## 9. The `type-*` catalogs under `--dl`, measured 2026-09-07 evening
+
+`lake exe l4owl-probe --dl type-inconsistency.rdf
+type-positive-entailment.rdf type-consistency.rdf` from
+`formal/lean4/`, at the DEFAULT budgets (`--cap-ms 30000`,
+`--refute-budget 64`, `--refute-ms 20000`). This is the regime the
+committed F\* logs used for these three catalogs (§ 1).
+
+**The whole run takes 8 min 37 s wall clock.** On the morning's tree
+`type-consistency.rdf --dl` at the default refute budget did not finish
+in 40 minutes, which is why § 2b measured it at `--refute-budget 16`
+and could only report a lower bound. Two things changed. The comprehension
+layer closes PE units in the closure, so fewer of them reach the
+refuter at all; and `--refute-ms` bounds a single call. **The wall clock
+tripped on no case in this run** (`grep -c REFUTER-WALLCLOCK` is 0), so
+every figure below is a full-budget figure, not a withheld one.
+
+| catalog / unit | Lean RL | Lean `--dl` closure alone | Lean `--dl` closure or refutation | F\* DL |
+|---|---|---|---|---|
+| `type-inconsistency.rdf` Inconsistency | 44 pass, 83 fail | 49 pass, 78 fail | **116 pass, 11 fail** (1 skip, of 128) | 126 pass, 1 fail |
+| `type-positive-entailment.rdf` PE | 138 pass, 66 fail | 138 pass, 66 fail | **164 pass, 40 fail** (2 unsupported, of 206) | 195 pass, 9 fail |
+| `type-positive-entailment.rdf` Consistency | 204 pass, 0 fail | 204 pass, 0 fail | **204 pass, 0 fail** (2 unsupported, of 206) | 199 pass, 5 fail |
+| `type-consistency.rdf` PE | 138 pass, 66 fail | 138 pass, 66 fail | **164 pass, 40 fail** (of 206) | — |
+| `type-consistency.rdf` NE | 23 pass, 0 fail | 23 pass, 0 fail | **23 pass, 0 fail** (of 23) | — |
+| `type-consistency.rdf` Consistency | 351 pass, 1 fail | 351 pass, 1 fail | **351 pass, 1 fail** (2 unsupported, of 354) | — |
+| all three catalogs | — | 905 pass, 209 fail | **1022 pass, 92 fail** (1 skip, 8 unsupported, of 1123) | 558 + 195 + 199 + 126 … see § 1 |
+
+The `--dl` figure still BEATS F\* on `type-positive-entailment.rdf`'s
+ConsistencyTest section (204 pass, 0 fail against 199 pass, 5 fail —
+F\*'s five are cap escapes,
+<https://github.com/danbri/factoidal/issues/326>).
+
+The two score lines the probe prints under `--dl` are kept apart on
+purpose: the closure is a sound consequence operator complete for the
+RL profile, the refuter is a different procedure with a different
+completeness claim, and a single number mixing them makes neither claim
+statable (`docs/designissues/2026-09-04-owl-rl-resplit.md`).
+
+The eleven `type-inconsistency` ids the refuter does not reach are
+unchanged from § 7: the datatype-facet family (`owl:real`, string
+patterns, disjoint data properties) and the `WebOnt-description-logic`
+tableau family, two of which (`-909`, `-910`) are not clean F\* passes
+either.
+
