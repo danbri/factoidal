@@ -141,12 +141,50 @@ def loadImportClosure (cdir : String) (files : List String) (root : L4Factoidal.
           | .error _ => graphs := graphs ++ [[]]
   return { root := root, importedRifRoots := rifRoots, importedGraphs := graphs }
 
+/-! ## Local overrides
+
+`tests/local-overrides/rif/<TestName>.override` records a documented
+disagreement with a DEFECTIVE fixture (see
+`tests/local-overrides/README.md`). It is a disposition, not a semantic
+change: the engine still runs and still reports its real answer, and
+the override only moves one named divergence out of the fail bucket
+into a distinctly-counted one. Reading it here is consumer-tool
+bookkeeping, which is why it lives in the runner and not in
+`L4Factoidal/RIF/`.
+
+An override never masks a success: a test that passes on its own is
+reported PASS and its override is flagged stale. -/
+
+/-- The header value for a key, from an `.override` file's `key: value`
+block above the `---` line. -/
+def overrideHeader (src : String) (key : String) : Option String :=
+  let headerLines := (src.splitOn "\n").takeWhile (fun l => l.trimAscii.toString != "---")
+  headerLines.findSome? (fun line =>
+    if line.startsWith (key ++ ":") then
+      some ((String.ofList (line.toList.drop (key.length + 1))).trimAscii.toString)
+    else none)
+
+/-- The test names dispositioned `local-override` for the rif suite. -/
+def loadOverrides (dir : String) : IO (List String) := do
+  if !(← System.FilePath.isDir dir) then return []
+  let mut names : List String := []
+  for e in ← System.FilePath.readDir dir do
+    if e.fileName.endsWith ".override" then
+      let src ← IO.FS.readFile e.path
+      if (overrideHeader src "disposition") == some "local-override" then
+        match overrideHeader src "test" with
+        | some n => names := names ++ [n]
+        | none   => pure ()
+  return names
+
 structure Tally where
   pass      : Nat := 0
   fail      : Nat := 0
   undecided : Nat := 0
   notRead   : Nat := 0
   skipped   : Nat := 0
+  overridden : Nat := 0
+  staleOverrides : List String := []
 deriving Inhabited
 
 def rounds : Nat := 24
@@ -155,6 +193,8 @@ def main (args : List String) : IO UInt32 := do
   let dir ← Harness.fixtureArgOr ((args.filter (fun a => !a.startsWith "--")).head?)
     "third_party/testing/rif-core-suite/Core_v1.22/Approved"
   let verbose := args.contains "--verbose"
+  let overrideDir ← Harness.resolveFixtureOr "tests/local-overrides/rif"
+  let overrides ← loadOverrides overrideDir
   if !(← System.FilePath.isDir dir) then
     IO.println s!"rif runner: corpus not found: {dir}"
     IO.println "run tools/ensure-test-env.sh from the repository root first"
@@ -285,12 +325,24 @@ def main (args : List String) : IO UInt32 := do
                                  "the case imports under an entailment regime this port does not implement"
                                else entails rules facts goal rounds) with
                         | .holds =>
-                            if want then t := { t with pass := t.pass + 1 }
+                            if want then
+                              t := { t with pass := t.pass + 1 }
+                              if overrides.contains name then
+                                t := { t with staleOverrides := t.staleOverrides ++ [name] }
+                            else if overrides.contains name then
+                              t := { t with overridden := t.overridden + 1 }
+                              IO.println s!"OVERRIDE {kind}/{name}: entailed, and the fixture says it must not be"
                             else
                               t := { t with fail := t.fail + 1 }
                               IO.println s!"FAIL {kind}/{name}: entailed, and must not be"
                         | .doesNotHold =>
-                            if !want then t := { t with pass := t.pass + 1 }
+                            if !want then
+                              t := { t with pass := t.pass + 1 }
+                              if overrides.contains name then
+                                t := { t with staleOverrides := t.staleOverrides ++ [name] }
+                            else if overrides.contains name then
+                              t := { t with overridden := t.overridden + 1 }
+                              IO.println s!"OVERRIDE {kind}/{name}: not entailed, and the fixture says it must be"
                             else
                               t := { t with fail := t.fail + 1 }
                               IO.println s!"FAIL {kind}/{name}: not entailed, and must be"
@@ -303,6 +355,12 @@ def main (args : List String) : IO UInt32 := do
   IO.println s!"UNDECIDED: {t.undecided} cases — a built-in outside this port's slice"
   IO.println s!"  blocked a rule, or the chain reached its round bound"
   IO.println s!"NOT READ: {t.notRead} cases"
+  if t.overridden > 0 then
+    IO.println s!"LOCAL OVERRIDE: {t.overridden} cases — a documented disagreement with a"
+    IO.println s!"  DEFECTIVE fixture, read from {overrideDir}. The engine still ran and"
+    IO.println "  its observed verdict is printed on the OVERRIDE line above."
+  for stale in t.staleOverrides do
+    IO.println s!"STALE OVERRIDE {stale}: this test now passes on its own — remove its .override file"
   if t.skipped > 0 then
     IO.println s!"IMPORT REJECTION: {t.skipped} cases, not attempted"
   IO.println ""
