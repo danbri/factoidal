@@ -419,6 +419,32 @@ def divDec (a b : String) : Option String :=
         some (decRender (num / den) divScale)
   | _, _ => none
 
+/-! ## Lists (RIF-DTB 4.9)
+
+An index is 0-BASED, and a NEGATIVE index counts from the end: `-1`
+is the last element and `-n` the first of an `n`-element list. Every
+function below normalises through `listIndex`, so the rule is stated
+once.
+
+`func:index-of`, `func:union`, `func:distinct-values`,
+`func:intersect` and `func:except` all preserve the order of their
+FIRST argument, which is the order the Approved `Builtins_List`
+fixture writes their results in. -/
+def listIndex (len : Nat) (i : Int) : Option Nat :=
+  let j := if i < 0 then Int.ofNat len + i else i
+  if j < 0 || j ≥ Int.ofNat len then none else some j.toNat
+
+def gInt (n : Nat) : GTerm := gLit (toString n) (xsdNs ++ "integer")
+
+/-- The integer VALUE of a constant, for a list index. -/
+def intArg (g : GTerm) : Option Int :=
+  match numericLex g with
+  | some lex => lex.toInt?
+  | none     => none
+
+def dedup (xs : List GTerm) : List GTerm :=
+  xs.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
+
 /-- The datatype a numeric result carries. RIF-DTB 4.4 keeps
     `func:numeric-add` inside `xs:integer` when both operands are
     integers and inside `xs:decimal` otherwise; the value is the same
@@ -710,7 +736,7 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
       (isStringy a).map (fun s => gLit (toString s.toList.length) (xsdNs ++ "integer"))
   | "upper-case", [a] => (isStringy a).map (fun s => gStr s.toUpper)
   | "lower-case", [a] => (isStringy a).map (fun s => gStr s.toLower)
-  | "concat", args' | "concatenate", args' =>
+  | "concat", args' =>
       (args'.foldl (fun acc g => match acc, isStringy g with
         | some s, some t => some (s ++ t)
         | _, _ => none) (some "")).map gStr
@@ -719,9 +745,64 @@ def evalFunc (name : String) (args : List GTerm) : Option GTerm :=
        | .list xs => some (gLit (toString xs.length) (xsdNs ++ "integer"))
        | _ => none)
   | "make-list", xs => some (.list xs)
+  | "get", [a, b] =>
+      (match a, intArg b with
+       | .list xs, some i => (listIndex xs.length i).bind (fun k => xs[k]?)
+       | _, _ => none)
+  -- RIF-DTB 4.9 `func:sublist(list start stop)`: the elements from
+  -- `start` up to but NOT including `stop`.
+  | "sublist", [a, b, c] =>
+      (match a, intArg b, intArg c with
+       | .list xs, some i, some j =>
+           let n := Int.ofNat xs.length
+           let lo := if i < 0 then n + i else i
+           let hi := if j < 0 then n + j else j
+           let lo := if lo < 0 then 0 else lo
+           let hi := if hi > n then n else hi
+           if hi ≤ lo then some (.list [])
+           else some (.list ((xs.drop lo.toNat).take (hi - lo).toNat))
+       | _, _, _ => none)
+  | "sublist", [a, b] =>
+      (match a, intArg b with
+       | .list xs, some i =>
+           let lo := if i < 0 then Int.ofNat xs.length + i else i
+           let lo := if lo < 0 then 0 else lo
+           some (.list (xs.drop lo.toNat))
+       | _, _ => none)
+  | "append", a :: rest =>
+      (match a with | .list xs => some (.list (xs ++ rest)) | _ => none)
+  | "concatenate", args' =>
+      (args'.foldl (fun acc g => match acc, g with
+        | some xs, .list ys => some (xs ++ ys)
+        | _, _ => none) (some [])).map GTerm.list
+  | "insert-before", [a, b, c] =>
+      (match a, intArg b with
+       | .list xs, some i =>
+           (listIndex xs.length i).map (fun k => .list (xs.take k ++ [c] ++ xs.drop k))
+       | _, _ => none)
+  | "remove", [a, b] =>
+      (match a, intArg b with
+       | .list xs, some i =>
+           (listIndex xs.length i).map (fun k => .list (xs.take k ++ xs.drop (k + 1)))
+       | _, _ => none)
+  | "index-of", [a, b] =>
+      (match a with
+       | .list xs =>
+           some (.list ((xs.zipIdx).filterMap (fun (x, i) => if x == b then some (gInt i) else none)))
+       | _ => none)
+  | "union", [a, b] =>
+      (match a, b with | .list xs, .list ys => some (.list (dedup (xs ++ ys))) | _, _ => none)
+  | "distinct-values", [a] =>
+      (match a with | .list xs => some (.list (dedup xs)) | _ => none)
+  | "intersect", [a, b] =>
+      (match a, b with
+       | .list xs, .list ys => some (.list (dedup (xs.filter ys.contains)))
+       | _, _ => none)
+  | "except", [a, b] =>
+      (match a, b with
+       | .list xs, .list ys => some (.list (dedup (xs.filter (fun x => !(ys.contains x)))))
+       | _, _ => none)
   | "reverse", [a] => (match a with | .list xs => some (.list xs.reverse) | _ => none)
-  | "concatenate-lists", [a, b] =>
-      (match a, b with | .list x, .list y => some (.list (x ++ y)) | _, _ => none)
   | "PlainLiteral-from-string-lang", [a, b] =>
       (match isStringy a, isStringy b with
        | some s, some l => some (.const (s ++ "@" ++ l) (rdfNs ++ "PlainLiteral"))
@@ -856,5 +937,28 @@ fixture writes out, not a value read back off this implementation. -/
      = some (gLit "P11D" (xsdNs ++ "dayTimeDuration"))
 #guard evalFunc "days-from-duration" [gLit "P11D" (xsdNs ++ "dayTimeDuration")]
      = some (gLit "11" (xsdNs ++ "integer"))
+
+-- RIF-DTB 4.9, every line of the Approved `Builtins_List` fixture.
+private def l5 : GTerm := .list [gInt 0, gInt 1, gInt 2, gInt 3, gInt 4]
+#guard evalFunc "get" [l5, gLit "-1" (xsdNs ++ "integer")] = some (gInt 4)
+#guard evalFunc "sublist" [l5, gInt 0, gInt 5] = some l5
+#guard evalFunc "append" [.list [gInt 0, gInt 1, gInt 2], gInt 3, gInt 4] = some l5
+#guard evalFunc "concatenate" [.list [gInt 0, gInt 1, gInt 2], .list [gInt 3, gInt 4]]
+     = some l5
+#guard evalFunc "insert-before" [l5, gLit "-1" (xsdNs ++ "integer"), gInt 99]
+     = some (.list [gInt 0, gInt 1, gInt 2, gInt 3, gInt 99, gInt 4])
+#guard evalFunc "remove" [l5, gLit "-5" (xsdNs ++ "integer")]
+     = some (.list [gInt 1, gInt 2, gInt 3, gInt 4])
+#guard evalFunc "reverse" [l5] = some (.list [gInt 4, gInt 3, gInt 2, gInt 1, gInt 0])
+#guard evalFunc "index-of"
+        [.list [gInt 0, gInt 1, gInt 2, gInt 3, gInt 4, gInt 5, gInt 2, gInt 2], gInt 2]
+     = some (.list [gInt 2, gInt 6, gInt 7])
+#guard evalFunc "union" [.list [gInt 0, gInt 1, gInt 2, gInt 3], .list [gInt 4]] = some l5
+#guard evalFunc "distinct-values" [.list [gInt 3, gInt 3, gInt 3]] = some (.list [gInt 3])
+#guard evalFunc "intersect" [l5, .list [gInt 3, gInt 1]] = some (.list [gInt 1, gInt 3])
+#guard evalFunc "except" [l5, .list [gInt 1, gInt 3]]
+     = some (.list [gInt 0, gInt 2, gInt 4])
+#guard evalPred "is-list" [.list [gInt 0, .list [gInt 3, gInt 4]]] = .yes
+#guard evalPred "list-contains" [.list [gInt 0, .list [gInt 7, gInt 8]], .list [gInt 7, gInt 8]] = .yes
 
 end L4Factoidal.RIF
