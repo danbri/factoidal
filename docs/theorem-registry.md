@@ -2888,6 +2888,32 @@ tracking [#658](https://github.com/danbri/factoidal/issues/658) and
 | A language-tagged or `rdf:XMLLiteral` constant object was UNSOUND to zone-test on — `Term.eqb` folds language-tag case and canonicalises XML, a zone bound is the version-2 wire key | `Storage/ShardManifest.lean` (`constantObjectOf`) | `RDF.exactObjectIndexKeySafe` | ✅ REPAIRED (2026-09-06) | — |
 | `restrictDataset keep (D S) = restrictDataset keep (D E)` — the storage obligation. Needs an `Index.Wf`-style characterisation of `datasetOfQuads` (a `foldl` over `Std.HashMap`) plus the entry-level facts under the activation invariants | `Storage/QuadDataset.lean`, `Storage/PlannerSoundness.lean` | `Storage.QuadDataset.datasetOfQuads` | ⬜ OPEN (2026-09-06) — recorded with its route | — |
 | The DELEGATING arms of `evalPatternBackend` (`FILTER` / `OPTIONAL` / `BIND` with an expression that is not `Expr.backendLocal`, property paths, sub-SELECT, `VALUES`, `SERVICE`, `LATERAL`) — they materialise the dataset and run the algebra evaluator, a second evaluator the induction does not reach | `SPARQL/DatasetRestriction.lean` module header | `QueryPattern.lowerWith` / `GraphPattern.evalIn` | ⬜ OPEN (2026-09-06) — the collectors refuse them, so the planner reads more | — |
+## GeoSPARQL bounding-box index (Lean 4, 2026-09-07)
+
+The GBI1 index is a CANDIDATE FILTER: a box can exclude a row, never
+confirm one. Soundness is the single direction "a term the exact
+predicate accepts is a candidate". Design records:
+[`designissues/2026-09-05-geometry-bounding-box-index.md`](designissues/2026-09-05-geometry-bounding-box-index.md)
+and the Geo section of
+[`designissues/2026-09-07-lean-rif-rml-csvw-geo-gap.md`](designissues/2026-09-07-lean-rif-rml-csvw-geo-gap.md).
+
+| Theorem | Module | Native anchor | Status | Fragment / hypotheses |
+|---|---|---|---|---|
+| `mem_candidatesSpec` — a dictionary term the exact GeoSPARQL predicate accepts is in the candidate list | `Storage/GeoBBoxIndex.lean` | `GeoBBoxIndex.candidatesSpec` | ✅ PROVED | `op ≠ sfDisjoint`; query geometry in the fragment |
+| `exists_common_point` — two fragment geometries a served predicate accepts have a point both boxes contain | `Storage/GeoBBoxIndex.lean` | `GeoOp.fn` (`Geo.sfEquals` and siblings) | ✅ PROVED (2026-09-07, polygon-pair `sfIntersects` case closed) | `op ≠ sfDisjoint`; point or closed-ring polygon on both sides |
+| `polygonsIntersect_common_point` — the polygon pair, all three disjuncts of `Geo.polygonsIntersect` | `Geo/BBoxSound.lean` | `Geo.polygonsIntersect` | ✅ PROVED (2026-09-07) | both boxes cover every ring; both exterior rings closed |
+| `segmentsIntersect_common_point` — any two intersecting segments have a point in both covering boxes | `Geo/BBoxSound.lean` | `Geo.segmentsIntersect` | ✅ PROVED (2026-09-07) | each box contains its segment's two endpoints |
+| `segmentsCross_intervals` — the PROPER-crossing branch: four orientation signs with no `inSegBBox` conjunct still put the two coordinate intervals in overlap, on both axes | `Geo/BBoxSound.lean` | `Geo.orientSign` | ✅ PROVED (2026-09-07) — closes the obligation the `GeoBBoxIndex` header named open | `orientSign a b c ≠ orientSign a b d` and `orientSign c d a ≠ orientSign c d b` |
+| `int_cross_axis` / `int_cross_axis_gen` — the parametric argument in integer arithmetic. `D` times the crossing coordinate has one polynomial form per segment, so no division and no rational point | `Geo/BBoxSound.lean` | — (arithmetic) | ✅ PROVED (2026-09-07) | straddle signs; `D = v - u ≠ 0` |
+| `polygonClass_ne_exterior_contains`, `ringClass_interior_contains` — the ray cast puts a non-exterior point inside a covering box | `Geo/BBoxSound.lean` | `Geo.polygonClass` | ✅ PROVED (earlier) | closed exterior ring; simple ring |
+| `geof:sfDisjoint` is NOT served by the index — it accepts exactly the rows a box can exclude, so a box test inverts there | `Storage/GeoBBoxIndex.lean` (`candidatesSpec`) | — | ✅ REFUSED BY CONSTRUCTION | `candidatesSpec` returns `none`; the caller scans |
+| LineStrings, `Multi*`, `GeometryCollection` and open-ring polygons carry NO box — they are opaque and always candidates | `Storage/GeoBBoxIndex.lean` (`fragmentBox`) | — | ⬜ OUT OF THE PROVED FRAGMENT | the caller re-evaluates, so no answer is lost |
+
+Every theorem in this section reports `propext, Classical.choice,
+Quot.sound` under `#print axioms`. Probe: `lake -d formal/lean4 exe
+l4geo` — 37 pass, 0 fail (out of 37), the same 37 assertions as the
+F\* `geosparql-v0` pin file.
+
 ## 10. JOSE, DPoP and Solid-OIDC over HACL\* — Lean tree
 
 Landed 2026-09-06. Design record:

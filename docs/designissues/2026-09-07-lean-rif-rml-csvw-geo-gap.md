@@ -189,7 +189,7 @@ this worktree by running the probe, not quoted from a report.
 | RML io | not run | not run | 17 pass, 1 fail, 55 skip (of 73) |
 | CSVW validation | not run | 266 pass, 14 fail, 2 skip (of 282) | 281 pass, 1 fail (of 282) |
 | RDF/XML | 130 pass, 2 fail (of 132 eval-isomorphic) | 132 pass, 0 fail (of 132) | does not run these two |
-| GeoSPARQL | no probe | 37 pass, 0 fail, 0 skip (of 37) | 37 pass (of 37) |
+| GeoSPARQL | no probe | 37 pass, 0 fail, 0 skip (of 37) — 35 pass for one day while the polygon-pair lemma was open, restored 2026-09-07 | 37 pass (of 37) |
 | rdf-semantics | not run | 22 pass, 10 fail, 0 skip, 15 unsupported (of 47) | 41 pass, 3 fail, 3 skip (of 47) |
 
 ### Closed
@@ -200,7 +200,12 @@ this worktree by running the probe, not quoted from a report.
   (`lake exe l4geo`). Needed a WKT serialiser, a parenthesised
   MULTIPOINT component parser, `sfOverlaps` with the Polygon/Polygon
   cases of `sfIntersects`/`sfWithin`, and `geof:distance`/
-  `geof:envelope`, all fuel-bounded rather than `partial`.
+  `geof:envelope`, all fuel-bounded rather than `partial`. The
+  Polygon/Polygon arm of `sfIntersects` was withdrawn on 2026-09-07
+  when its bounding-box refinement would not go through, and restored
+  the same day WITH that refinement proved — see "The Geo lemma"
+  below. Registry rows: `docs/theorem-registry.md`, section
+  "GeoSPARQL bounding-box index".
 * **RIF** — the 6 `ImportRejectionTest` cases,
   `OWL_Combination_Vocabulary_Separation_Inconsistency_1` and `_2`, and
   `RDF_Combination_Constant_Equivalence_Graph_Entailment`.
@@ -328,22 +333,71 @@ at both definitions, so the next widening has to answer it.
   regime, or by proving the widened closure sound.
 * `geosparql-v0` 37 pass → **35 pass**, 2 fail (of 37):
   `sfIntersects(square A, overlapping square B)` and
-  `sfDisjoint(square A, far-away square C)`, both now `None`. The
-  second follows from the first because `sfDisjoint` is `sfIntersects`
-  negated — the correct relation, and it was not decoupled to buy the
-  test back.
+  `sfDisjoint(square A, far-away square C)`, both `None` for one day.
+  The second followed from the first because `sfDisjoint` is
+  `sfIntersects` negated — the correct relation, and it was not
+  decoupled to buy the test back. **REPAIRED 2026-09-07 by proving the
+  missing lemma; the arm is back and the score is 37 pass, 0 fail (of
+  37). See "The Geo lemma" below.**
 * `Regime.literalEq`: no cost. Zero tests moved.
 
-**The Geo lemma that would restore the two GeoSPARQL cases.**
-`exists_common_point` is TRUE for a polygon pair — two polygons that
-intersect share a point, and that point is in both boxes. Our
-`polygonsIntersect` is a three-way disjunction and only two disjuncts
-hand over a witness (a vertex of either polygon non-exterior to the
-other). The third, `polygonBoundariesCross`, does not: two squares
-meeting in a plus shape cross with no vertex of either inside the
-other. Restoring the arm needs a constructed segment-intersection
-point, or a lemma that overlapping boxes contain a common point
-(`BBox.overlaps_of_common_point` exists; its converse does not).
+**The Geo lemma that restored the two GeoSPARQL cases. CLOSED
+2026-09-07.** `exists_common_point` is TRUE for a polygon pair — two
+polygons that intersect share a point, and that point is in both
+boxes. `polygonsIntersect` is a three-way disjunction and only two
+disjuncts hand over a witness (a vertex of either polygon
+non-exterior to the other). The third, `polygonBoundariesCross`, does
+not: two squares meeting in a plus shape cross with no vertex of
+either inside the other.
+
+The witness for that third disjunct is now constructed, and NOT as the
+crossing point: a `Scaled` is an exact decimal and the crossing point
+of two segments is rational, so it cannot be represented. The route
+taken instead, in `L4Factoidal/Geo/BBoxSound.lean`:
+
+1. `int_cross_axis` — the parametric argument in integer arithmetic
+   at one shared scale. Write `u = orient a b c`, `v = orient a b d`,
+   `w = orient c d a`, `z = orient c d b` and `D = v - u`, the cross
+   product of the two direction vectors. Then `z = w - D`, and `D`
+   times the crossing coordinate has TWO equal polynomial forms,
+   `D*c.x - u*(d.x - c.x)` and `D*a.x + w*(b.x - a.x)` — one per
+   segment, and no division. The straddle signs put that quantity
+   between `D*c.x` and `D*d.x` AND between `D*a.x` and `D*b.x`;
+   dividing by `D` leaves the two coordinate intervals overlapping.
+2. `int_cross_axis_gen` drops the sign normalisation by reading the
+   first segment backwards when `D < 0`.
+3. `segmentsCross_intervals` lifts that to `Scaled` points through the
+   existing `orient_at'` bridge plus two new lemmas, `Scaled.min_at'`
+   and `Scaled.max_at'`. This CLOSES the obligation the
+   `Storage/GeoBBoxIndex.lean` header recorded as open — the
+   four-orientation proper-crossing rule, which `segmentsIntersect`
+   uses with no `inSegBBox` conjunct.
+4. `segmentsIntersect_common_point` produces the point. The four
+   collinear branches of `segmentsIntersect` hand over an endpoint
+   directly (`inSegBBox_contains`). The proper-crossing branch takes
+   the larger of the two interval minima on each axis: it is inside
+   both segments' coordinate intervals, hence inside both boxes. Note
+   what this does NOT need — no box well-formedness lemma, because the
+   witness is assembled from the four endpoint coordinates the boxes
+   already contain.
+5. `polygonsIntersect_common_point` runs the same induction the module
+   already used for `pointOnPath`: ring to segment pairs, polygon
+   boundary to rings, and the two vertex disjuncts through
+   `polygonClass_ne_exterior_contains`.
+
+`Geo/Topology.lean`'s `sfIntersectsBase` serves
+`polygonsIntersect` again, and the `intersects` case of
+`Storage.GeoBBoxIndex.exists_common_point` is a proof rather than a
+refutation. `#print axioms` on every theorem named above:
+`propext, Classical.choice, Quot.sound`.
+
+**A note on the alternative that was NOT taken.** A weaker
+`sfIntersectsBase` — answering `some true` only for the two vertex
+disjuncts and `none` when the boundaries cross with no vertex inside —
+would also have turned both tests green, because neither fixture is a
+plus shape. It was rejected: it buys the score by narrowing the
+predicate at exactly the configuration the missing lemma covers, and
+the F\* tree answers it. The lemma was the deliverable.
 
 **Why none of this was caught in flight.** Four agents shared one
 worktree on a disk at its floor, and each was told to build only its

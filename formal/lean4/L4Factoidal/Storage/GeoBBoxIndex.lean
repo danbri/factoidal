@@ -34,10 +34,14 @@ argument. `candidatesSpec` returns `none` for it and the caller scans.
 closed. Every other geometry — a linestring, an empty, a `Multi*`, a
 `GeometryCollection`, a polygon with an open ring — is OPAQUE: it carries no
 box, it is always a candidate, and it costs the caller a re-evaluation it
-would have paid anyway. The open obligation is the four-orientation
-proper-crossing rule, which `segmentsIntersect` uses with no `inSegBBox`
-conjunct and which needs the separating-axis argument; until that is proved,
-linestrings stay opaque rather than being filtered on an unproved basis.
+would have paid anyway.
+
+The four-orientation proper-crossing rule, which `segmentsIntersect` uses
+with no `inSegBBox` conjunct, was the open obligation here until 2026-09-07.
+It is now `Geo.segmentsCross_intervals`, proved by the parametric argument in
+integer arithmetic rather than by a separating axis, and it is what lets a
+POLYGON PAIR whose boundaries cross be filtered. Linestrings stay opaque all
+the same: nothing yet gives a box to `Geometry.lineString`.
 
 A term that is not a `geo:wktLiteral`, or whose lexical form does not parse,
 is never a candidate: `Geo.geoPredicate` answers `none` for it, a `none` is a
