@@ -3044,3 +3044,49 @@ fail out of 400; RS256 400 pass, 0 fail out of 400).
 | that `n` is a genuine RSA modulus | key trust is the issuer-pinning layer's, not the primitive's | `Crypto/RsaNative.lean` module header |
 | that HACL\* computes what its specification says | it is `opaque`; no theorem depends on it | measured by `l4jose-probe` and the WebCrypto differential |
 | replay detection | the store is the host's; freshness is a `String → Bool` parameter | `JOSE/DPoP.lean` `ProofPolicy.jtiFresh` |
+
+## The function library — `L4Factoidal.Fn` (2026-09-07)
+
+Tracking: [#664](https://github.com/danbri/factoidal/issues/664).
+Design record:
+[`designissues/2026-09-07-function-library.md`](designissues/2026-09-07-function-library.md).
+
+One implementation of the
+[XQuery and XPath Functions and Operators](https://www.w3.org/TR/xpath-functions/)
+semantics, over the `L4Factoidal.XSD` value spaces, with RIF-DTB,
+SPARQL 1.1 §17 and XPath 1.0 §4 as calling front ends. No `sorry`, no
+user `axiom`, no `partial`, no `native_decide`; `#print axioms` over
+all 27 theorems gives `propext`, `Classical.choice`, `Quot.sound` or
+fewer.
+
+| Theorem | Module | What it states | Status |
+|---|---|---|---|
+| `encodeForUri_rif`, `encodeForUri_sparql` | `Fn/Theorems.lean` | RIF's `func:encode-for-uri` and SPARQL's `ENCODE_FOR_URI` ARE `Fn.String.encodeForUri` (F&O §5.4.5) | ✅ PROVED — `rfl`; a reintroduced second copy stops the build |
+| `substringBefore_sparql`, `substringAfter_sparql` | `Fn/Theorems.lean` | SPARQL `STRBEFORE`/`STRAFTER` are F&O §5.4.2/§5.4.3 | ✅ PROVED — `rfl` |
+| `substringIndex_xpath` | `Fn/Theorems.lean` | XPath 1.0's substring index is `Fn.String.indexOfSub` | ✅ PROVED — `rfl` |
+| `langMatches_sparql` | `Fn/Theorems.lean` | SPARQL `langMatches` is RFC 4647 §3.3.1 basic filtering | ✅ PROVED — `rfl` |
+| `addDec_rif`, `subDec_rif`, `mulDec_rif`, `divDec_rif`, `listIndex_rif` | `Fn/Theorems.lean` | RIF-DTB 4.5 and 4.11 call `Fn.Numeric` and `Fn.List` | ✅ PROVED — `rfl` |
+| `substring_sparql_differs_from_fando` | `Fn/Theorems.lean` | SPARQL `SUBSTR` clamps a start below 1 where `fn:substring` keeps the window rule. Witness `("foobar", 0, 3)`: `"foo"` against `"fo"` | ✅ PROVED — a stated difference between two Recommendations, not a defect |
+| `substring2_rif_differs_from_fando` | `Fn/Theorems.lean` | the Approved `Builtins_String` fixture's 2-argument `substring` counts from 0; F&O counts from 1. Witness `("foobar", 3)`: `"bar"` against `"obar"` | ✅ PROVED |
+| `concat_nil` | `Fn/Theorems.lean` | `fn:concat` and SPARQL `CONCAT` are variadic including the empty list; XPath 1.0 `concat()` needs two arguments, which is a front-end arity rule | ✅ PROVED |
+| `divide_by_zero_has_no_value` | `Fn/Theorems.lean` | F&O's `FOAR0001` is `none` in the library; each front end maps it (RIF `unknown`, SPARQL error, XPath `NaN`) | ✅ PROVED |
+| `dateTimeStamp_requires_a_timezone` | `Fn/Theorems.lean` | XSD 1.1 §3.4.28 as a condition on the VALUE, not a separate seven-property kind | ✅ PROVED |
+| `years_months_decompose` | `Fn/Duration.lean` | `fn:years-from-duration` and `fn:months-from-duration` decompose the month count exactly: `y * 12 + m = months` | ✅ PROVED — `Int.tdiv_mul_add_tmod` |
+| `sub_self_mantissa`, `normFuel_zero_mantissa` | `Fn/Duration.lean` | subtracting an `XSD.Dec` from itself gives zero, through `Dec.norm` | ✅ PROVED |
+| `equal_refl`, `neg_neg`, `addYearMonth_subYearMonth` | `Fn/Duration.lean` | F&O §10.4.1 reflexive; negation an involution; §10.6.1 and §10.6.2 inverse on the month count | ✅ PROVED |
+| `subtract_self` | `Fn/DateTime.lean` | F&O §10.8: a value minus itself is a zero duration, timezoned or not | ✅ PROVED |
+| `withImplicitTz_idem` | `Fn/DateTime.lean` | the RIF-DTB 4.8 implicit-timezone rule may be applied at every entry point without tracking whether it already was | ✅ PROVED |
+| `timezoneFrom_isSome`, `plusDuration_preserves_tz` | `Fn/DateTime.lean` | §10.5.13 has a value exactly when the value has a timezone; §10.7 carries the timezone through | ✅ PROVED |
+| `listIndex_lt` | `Fn/List.lean` | every index RIF-DTB 4.11 accepts is a position of the list, which is why `get?`/`remove?`/`insertBefore?` need no bound check | ✅ PROVED |
+| `lessThan_asymm`, `trichotomy` | `Fn/Boolean.lean` | F&O §9.2's `xs:boolean` order is total and antisymmetric over the whole two-element value space | ✅ PROVED |
+
+Six further checks are `#guard`s and NOT theorems, and the reason is
+recorded at their site: both sides call `String.toLower` or
+`String.startsWith`, which are `@[extern]`, so the kernel cannot
+reduce them — `decide` gets stuck and `rfl` fails. `native_decide`
+would close the gap by trusting the compiler inside the kernel and is
+banned in this repository. They are
+`matchesLanguageRange`/`langMatchesBasic` on `de-Latn-DE` against
+`de-*-DE` (the extended-versus-basic filtering difference),
+`func:numeric-divide` by zero, and the two RIF-DTB 3.2 date/dateTime
+containment directions.

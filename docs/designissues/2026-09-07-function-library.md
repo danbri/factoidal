@@ -231,8 +231,68 @@ witnesses it.
 | `L4Factoidal/Fn/Casting.lean` | F&O 17: a lexical form to a value of a named datatype, over `XSD.lexicalMap` |
 | `L4Factoidal/Fn/Theorems.lean` | the agreement theorems and the named difference theorems |
 
-## 6. Status
+## 6. What was found while writing the library
 
-Written before the code, per the task brief. The "after" column of the table
-in §2 is the target; the record's status section is updated with the measured
-result when the gates run.
+Two defects, both from the same wrong assumption: that Lean 4's `Int` `/`
+truncates toward zero. It is EUCLIDEAN — `(-7) / 2` is `-4` and `(-7) % 2`
+is `1`.
+
+1. **`XSD.daysFromCivil` was one day short for every year in `[-399, -1]`.**
+   Hinnant's `days_from_civil` takes the era with a TRUNCATING division and
+   writes `y' - 399` to emulate a floor. Written with Lean's `/`, the
+   adjustment fires a second time. Found by the round-trip `#guard` between
+   `Fn.DateTime.civilFromDays` and `XSD.daysFromCivil` on `-44-03-15`; fixed
+   with `Int.tdiv`. Every date/time comparison and every `timeOnTimeline` for
+   a BCE date read the wrong instant before this. No vendored fixture has a
+   negative year, which is why 18,951 of 18,956 datatype tests passed over it.
+2. **`func:numeric-divide` floored where F&O §6.2.4 truncates.** The comment
+   above `divDec` in `RIF/Builtins.lean` asserted the opposite of what the
+   code did. `divDec "-1" "3"` gave `-0.333333333333333334`. Fixed with
+   `Int.tdiv`, with a `#guard` on both signs.
+
+Both are the shape anti-pattern #28 names: a comment stating a property of a
+primitive is evidence about the comment, not about the primitive.
+`Fn/Numeric.lean` now pins all four division directions as `example`s, so the
+next reader does not have to take anyone's word for it.
+
+## 7. Status (measured 2026-09-07 in `/Users/danbri/working/factoidal-wt-dtb`)
+
+| gate | before | after |
+| --- | --- | --- |
+| `l4rif` | 42 pass, 0 fail (out of 42 decided); 3 undecided, 1 local override | **43 pass, 0 fail (out of 43 decided); 2 undecided, 1 local override** |
+| `l4xpath` | 100 pass, 0 fail (out of 100) | MEASURED-BELOW |
+| `l4xslt` | 84 pass, 3 fail (out of 87 decided) | MEASURED-BELOW |
+| `l4xsd-datatypes` | 18951 pass, 5 fail (out of 18956 scored) | MEASURED-BELOW |
+| SPARQL 1.1 `l4w3c` | 631 pass, 0 fail (out of 631) | MEASURED-BELOW |
+
+`Builtins_Time` was undecided in BOTH trees for lack of DTB §4.8. It is now
+decided and passes. The 2 remaining undecided cases are
+`Modeling_Brain_Anatomy` and `Non-Annotation_Entailment`, both blocked on an
+OWL entailment regime rather than on a built-in
+([#665](https://github.com/danbri/factoidal/issues/665)).
+
+### The QT3 Functions-and-Operators suite is NOT vendored
+
+The task brief allowed vendoring `w3c/qt3tests` shallow if it is under
+300 MB. It was not vendored, and the reason is the disk rather than the
+licence: this machine ran to 162 MB free during the session with five
+worktrees live, and a new submodule plus its build products is exactly the
+thing that filled it. No QT3 number is reported, and none is estimated. The
+executable evidence for the shared functions is the `#guard` set in each `Fn`
+module (the F&O examples and the RIF corpus's own equations) plus the five
+suites above.
+
+### Still open
+
+* The numeric lexical spaces still route through `CSVW.isXsdNumericLexical`
+  at the RIF call site rather than through `XSD.lexicalMap`. That move
+  changes ACCEPTANCE and its gate is the SPARQL suites, so it is commit 7 of
+  `docs/designissues/2026-09-07-xsd-datatypes-audit.md` §8 and not this work.
+* `civilFromDays` and `daysFromCivil` are shown mutually inverse by `#guard`
+  on eight dates, not by a theorem for every year.
+* `LWS/Operations.lean` keeps a third `civilFromDays` for HTTP-date
+  formatting. It is a different specification's formatter and moving it is a
+  separate commit with its own gate.
+* SPARQL's `valueCompare` still orders same-datatype `xs:dateTime` literals
+  by LEXICAL string rather than by `XSD.dtCompare`. `Fn.DateTime.compare`
+  is now available to it; the repair is commit 8 of the XSD audit plan.

@@ -111,6 +111,45 @@ shard packer, the proofs between them, the costs paid and open):
 - New `#guard`s go in `Tests.lean`; new theorems in `Invariants.lean`
   (or a sibling), each with a doc comment citing the spec section.
 
+## Function semantics live in `L4Factoidal.Fn` — front ends do not reimplement
+
+`L4Factoidal/Fn/` holds the
+[XQuery and XPath Functions and Operators](https://www.w3.org/TR/xpath-functions/)
+semantics ONCE, over the `L4Factoidal.XSD` value spaces:
+`Fn/Numeric.lean` (F&O §6), `Fn/String.lean` (§5), `Fn/Boolean.lean`
+(§9), `Fn/Duration.lean` (§10.5-10.6), `Fn/DateTime.lean` (§10.4,
+§10.5, §10.7-10.8), `Fn/List.lean` (RIF-DTB 4.11) and
+`Fn/Casting.lean` (§17).
+
+Three front ends CALL it and none of them carries its own copy:
+`RIF/Builtins.lean` adds the RIF-DTB `func:`/`pred:` names, signatures
+and guards; `SPARQL/Expr.lean` adds §17 typing and errors;
+`XPath/Eval.lean` adds XPath 1.0's coercions.
+
+Rules when you touch any of them:
+
+* A new function that any two of RIF, SPARQL, XPath or XSLT need goes
+  in `Fn`, not in a front end.
+* Where two Recommendations define the same-named function
+  DIFFERENTLY, keep both and name the difference. `Fn/Theorems.lean`
+  carries a theorem per difference with the input that witnesses it
+  (`substring_sparql_differs_from_fando`,
+  `substring2_rif_differs_from_fando`,
+  `langMatches_extended_differs_from_basic`). Reconciling them is
+  wrong: each front end must answer what its own specification says.
+* The agreement theorems in `Fn/Theorems.lean` are `rfl`, and that is
+  their job — they are a GUARD. Reintroduce a second copy of
+  `fn:encode-for-uri` in `SPARQL/Expr.lean` and
+  `encodeForUri_sparql` stops type-checking. A comment saying "do not
+  duplicate this" does not do that.
+* A `#guard` where a theorem is expected usually means both sides call
+  an `@[extern]` `String` primitive (`toLower`, `startsWith`), which
+  the KERNEL cannot reduce: `decide` gets stuck and `rfl` fails.
+  `native_decide` is not the answer here — it is banned.
+
+Design record: `docs/designissues/2026-09-07-function-library.md`.
+Tracking: <https://github.com/danbri/factoidal/issues/664>.
+
 ## Proof policy (stricter than the F\* tree's)
 
 - **No `sorry`. No user `axiom`. No `native_decide`** (it adds trust in
