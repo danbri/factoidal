@@ -31,7 +31,8 @@ at the end.
 
 `fn.l4Call("xmppJidParse", [jid])` parses the
 `[ localpart "@" ] domainpart [ "/" resourcepart ]` grammar. Structural
-and length well-formedness only — PRECIS enforcement (Unicode
+and length well-formedness only — PRECIS enforcement (tracked as
+<https://github.com/danbri/factoidal/issues/676> with expected-failure tests; Unicode
 normalization, disallowed codepoints) isn't implemented yet, which the
 Lean side's own module header states plainly rather than silently.
 

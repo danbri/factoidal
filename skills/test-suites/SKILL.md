@@ -457,3 +457,28 @@ Consequences for practice:
 
 War story in full: issue #343; hazard #20 in
 `skills/workflow-gotchas-debugging/SKILL.md`.
+
+## Expected failures (owner rule, 2026-09-07)
+
+A stated shortfall is a failing test plus an open issue; prose alone is not a
+record. Conventions, by test kind:
+
+- **Node suites** (`node:test`): an `xfail(name, issueUrl, fn)` helper — runs
+  `fn`; if it throws, the case passes as a subtest whose NAME starts with
+  `xfail:` and carries the issue URL, with a diagnostic line quoting the
+  failure (the bucket is `grep -c '^ok .* xfail:'` over the TAP output);
+  if it PASSES, the case FAILS with
+  "unexpected pass: flip to an assertion and close <issue>". Never
+  `test.skip`/`test.todo` for a shortfall: those hide it. Model:
+  `npm/factoidal/test/xmpp.test.mjs` (PRECIS, https://github.com/danbri/factoidal/issues/676).
+- **Lean probes and `l4w3c`**: an `expected-fail` bucket in the score line
+  ("N pass, M fail, K expected-fail (out of T)") with the issue URL printed
+  per case, and the probe exits non-zero when an expected-fail case passes.
+  Local override files carry the issue URL in their reason field.
+- **`#guard`**: cannot express an expected failure; use the probe bucket or
+  a Node case instead, and say so beside the header prose.
+- **F\* runners**: the `tests/local-overrides/` reason string carries the
+  issue URL; a passing overridden test is a failure of the runner.
+
+Every score line that includes expected failures prints them separately;
+they never count as passes.

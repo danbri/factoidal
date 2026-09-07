@@ -281,3 +281,28 @@ test('adversarial: 1,000 chained "&amp;" entities in a stanza body parse promptl
   const result = await parseStanza(`<message><body>${body}</body></message>`, { engine: eng })
   assert.equal(result.ok, true)
 })
+
+// Expected failures (owner rule, 2026-09-07): a stated shortfall is a
+// failing test plus an open issue. `xfail` runs the check; if it throws, the
+// case is an expected failure naming the issue; if it PASSES, the case FAILS,
+// so the flip to a real assertion and the issue closure cannot be forgotten.
+function xfail (name, issueUrl, fn) {
+  test(`xfail: ${name} (${issueUrl})`, async (t) => {
+    let failed = false
+    try { await fn(t) } catch (error) { failed = true; t.diagnostic(`expected failure: ${String(error.message).slice(0, 160)}`) }
+    assert.ok(failed, `unexpected pass: ${name} now works — flip this xfail to an assertion and close ${issueUrl}`)
+  })
+}
+
+const PRECIS_ISSUE = 'https://github.com/danbri/factoidal/issues/676'
+
+xfail('parseJid rejects a localpart with a PRECIS-disallowed codepoint (U+00A0 NO-BREAK SPACE, RFC 8265 §3.3)', PRECIS_ISSUE, async () => {
+  const r = await parseJid('juliet\u00A0capulet@example.com')
+  assert.equal(r.ok, false, 'a disallowed codepoint must be rejected under PRECIS UsernameCaseMapped')
+})
+
+xfail('parseJid normalizes a non-NFC localpart (RFC 8265 §3.3 normalization rule)', PRECIS_ISSUE, async () => {
+  const r = await parseJid('juli\u0065\u0301t@example.com')
+  assert.equal(r.ok, true)
+  assert.equal(r.value.localpart, 'juli\u00e9t', 'NFC form expected after PRECIS enforcement')
+})

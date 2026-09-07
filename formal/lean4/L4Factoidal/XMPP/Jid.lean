@@ -1,7 +1,8 @@
 /-!
 RFC 7622 XMPP Address Format (JID): structural and length well-formedness.
 
-Deliberately does NOT implement PRECIS enforcement (RFC 8264 `IdentifierClass`
+Deliberately does NOT implement PRECIS enforcement (tracked: https://github.com/danbri/factoidal/issues/676;
+expected-failure cases in npm/factoidal/test/xmpp.test.mjs) (RFC 8264 `IdentifierClass`
 for localpart, RFC 8265 `UsernameCaseMapped`/`OpaqueString` profiles) —
 that's Unicode normalization, case folding, and disallowed-category checks,
 a separate and much larger piece of work. Treat that gap as a stated,

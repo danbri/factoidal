@@ -193,3 +193,11 @@ actual consequence spelled out.
   [#404](https://github.com/danbri/factoidal/issues/404); the hygiene
   tracker is
   [#198](https://github.com/danbri/factoidal/issues/198).
+
+## Shortfalls are issues with failing tests (owner rule, 2026-09-07)
+
+A "not implemented" or "known gap" statement anywhere in the tree names an
+OPEN issue by full URL and is backed by an expected-failure test that names
+the same issue (conventions in `skills/test-suites/SKILL.md` § Expected
+failures). Closing the issue and flipping the test are one commit. First
+instance: https://github.com/danbri/factoidal/issues/676.

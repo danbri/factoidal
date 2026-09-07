@@ -353,6 +353,26 @@ repair the dataset embedding — on blast-radius grounds that only apply
 to a codebase with users. The owner overruled it: "The correct path is
 (3.)".
 
+### A stated shortfall is a failing test plus an open issue (owner, 2026-09-07)
+
+Owner, verbatim, on a hub sentence saying a module header "states plainly" that
+PRECIS is not implemented:
+
+> "If you're talking about prose in comments, that is better than nothing, but
+> it is close to nothing. You must use failing tests, annotated to show the
+> expected failure, and an associated open github issue to track the
+> shortfall."
+
+Rule: any "not implemented", "not yet", "deliberately does not", "out of
+scope for now" or "known gap" in code, README, design record or hub post
+carries (1) an OPEN GitHub issue (full URL in the text), and (2) a test that
+FAILS today, marked as an expected failure naming that issue, whose harness
+turns the suite RED when the case unexpectedly passes, so the flip to a real
+assertion and the issue closure cannot be forgotten. Prose alone is not a
+record of a shortfall. First instance: PRECIS for XMPP JIDs,
+<https://github.com/danbri/factoidal/issues/676>, with the `xfail` cases in `npm/factoidal/test/xmpp.test.mjs`.
+Conventions per test kind: `skills/test-suites/SKILL.md` § Expected failures.
+
 ## Reading owner steers: prioritization is not prohibition
 
 The owner usually steers this project from a phone, between other

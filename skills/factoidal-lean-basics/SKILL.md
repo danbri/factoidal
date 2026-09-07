@@ -380,3 +380,11 @@ and domain-mathematics skills);
 (Mathlib style). The lean-lsp-mcp server itself is already wired here
 (`.mcp.json`; tools `lean_goal`, `lean_diagnostic_messages`,
 `lean_local_search`, `lean_multi_attempt`, `lean_verify`).
+
+## Module headers may state a shortfall only with an issue and a test (2026-09-07)
+
+A header sentence such as "deliberately does NOT implement X" is allowed only
+next to the issue URL that tracks X and with an expected-failure case in the
+relevant probe or Node suite (`skills/test-suites/SKILL.md` § Expected
+failures). Owner, 2026-09-07: prose alone "is close to nothing". First
+instance: `L4Factoidal/XMPP/Jid.lean` and https://github.com/danbri/factoidal/issues/676.
