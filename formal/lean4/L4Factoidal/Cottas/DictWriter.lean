@@ -99,7 +99,7 @@ def serializeDict (sortedTokens : List String) : Option ByteArray :=
     let idsOffset := dictWriterHeaderSize
     let tokensOffset := idsOffset + dictIdSize * n
     let dataOffset := tokensOffset + dictOffsetSize * (n + 1)
-    if dataOffset ≥ 18446744073709551616 then none
+    if dataOffset ≥ two64 then none
     else some ⟨(buildDictHeader n idsOffset tokensOffset ++
                 buildDictIds n ++
                 (buildDictOffs dataOffset sortedTokens).flatMap writeU64Le ++

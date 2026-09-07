@@ -53,4 +53,58 @@ theorem two32_eq : two32 = 4294967296 := rfl
 
 theorem two32_eq_uint32Size : two32 = UInt32.size := rfl
 
+/-- `2 ^ 32 - 1` — the `xsd:unsignedInt` inclusive upper bound
+(XSD 1.1 §3.4.19). Used by the `Nat`-typed callers. -/
+@[reducible, noinline] def two32m1 : Nat := 4294967295
+
+theorem two32m1_eq : two32m1 = 4294967295 := rfl
+
+/-- `2 ^ 32 - 1` as an `Int`, for the `xsd:unsignedInt` facet checks
+that compare against an `Int` lexical value (`XSD.Facets.baseIntervalFor`,
+`SHACL.Validation.literalIllFormed`). -/
+@[reducible, noinline] def two32m1Int : Int := 4294967295
+
+theorem two32m1Int_eq : two32m1Int = 4294967295 := rfl
+
+/-- `2 ^ 63` — used only via its `Int` coercion in `GeoBBoxIndexWire`'s
+`fitsI64`/`decodeScaled` (the two's-complement split point of a 64-bit
+mantissa). Kept as a `Nat` because the wire-format arithmetic there is
+`Nat`-typed. -/
+@[reducible, noinline] def two63 : Nat := 9223372036854775808
+
+theorem two63_eq : two63 = 9223372036854775808 := rfl
+
+/-- `2 ^ 64` — the exclusive upper bound of a `UInt64` wire field
+(`Cottas.DictWriter.serializeDict`'s data-offset guard,
+`Cottas.SubjectOffsetsWriter.buildSubjectOffsets`'s endpoint guard,
+`GeoBBoxIndexWire.decodeScaled`'s two's-complement fold-back). -/
+@[reducible, noinline] def two64 : Nat := 18446744073709551616
+
+theorem two64_eq : two64 = 18446744073709551616 := rfl
+
+/-- `-(2 ^ 31)` as an `Int` — the `xsd:int` inclusive lower bound
+(XSD 1.1 §3.4.17), used both by `RDF.Datatypes.intInRange` and by
+`SHACL.Validation.literalIllFormed`'s `xsd:int` case. -/
+@[reducible, noinline] def two31NegInt : Int := -2147483648
+
+theorem two31NegInt_eq : two31NegInt = -2147483648 := rfl
+
+/-- `-(2 ^ 63)` as an `Int` — the `xsd:long` inclusive lower bound
+(XSD 1.1 §3.4.16), used by `SHACL.Validation.literalIllFormed`. -/
+@[reducible, noinline] def two63NegInt : Int := -9223372036854775808
+
+theorem two63NegInt_eq : two63NegInt = -9223372036854775808 := rfl
+
+/-- `2 ^ 63 - 1` as an `Int` — the `xsd:long` inclusive upper bound
+(XSD 1.1 §3.4.16), used by `SHACL.Validation.literalIllFormed`. -/
+@[reducible, noinline] def two63m1Int : Int := 9223372036854775807
+
+theorem two63m1Int_eq : two63m1Int = 9223372036854775807 := rfl
+
+/-- `2 ^ 64 - 1` as an `Int` — the `xsd:unsignedLong` inclusive upper
+bound (XSD 1.1 §3.4.18), used by `SHACL.Validation.literalIllFormed`. -/
+@[reducible, noinline] def two64m1Int : Int := 18446744073709551615
+
+theorem two64m1Int_eq : two64m1Int = 18446744073709551615 := rfl
+
 end L4Factoidal

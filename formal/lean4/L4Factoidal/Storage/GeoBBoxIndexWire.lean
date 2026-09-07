@@ -55,6 +55,7 @@ No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Storage.GeoBBoxIndex
 import L4Factoidal.Storage.TermLocalIndexWireTheorems
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.GeoBBoxIndexWire
 
@@ -76,8 +77,6 @@ def scaledBytes : Nat := 9
 def entryBytes : Nat := 4 + 4 + 4 * scaledBytes
 
 @[noinline] def two32 : Nat := 4294967296
-def two63 : Nat := 9223372036854775808
-def two64 : Nat := 18446744073709551616
 
 structure Artifact where
   targetIBKSha256 : ByteArray
@@ -87,7 +86,7 @@ structure Artifact where
 /-! ## 1. Admission -/
 
 def fitsU32 (n : Nat) : Bool := n < two32
-def fitsI64 (m : Int) : Bool := -(two63 : Int) ≤ m && m < (two63 : Int)
+def fitsI64 (m : Int) : Bool := -(L4Factoidal.two63 : Int) ≤ m && m < (L4Factoidal.two63 : Int)
 def scaledSupported (s : Scaled) : Bool := fitsI64 s.mantissa && s.scale < 256
 
 def boxSupported (b : BBox) : Bool :=
@@ -125,7 +124,7 @@ def supported (artifact : Artifact) : Bool :=
 
 /-- The unsigned 64-bit image of a mantissa inside the signed range. -/
 def mantissaWord (m : Int) : Nat :=
-  if m < 0 then ((two64 : Int) + m).toNat else m.toNat
+  if m < 0 then ((L4Factoidal.two64 : Int) + m).toNat else m.toNat
 
 def encodeScaled (s : Scaled) : List UInt8 :=
   let w := mantissaWord s.mantissa
@@ -184,7 +183,7 @@ def readScaled (r : Reader) (off : Nat) : Option Scaled := do
   let hi ← r.u32 (off + 4)
   let sc ← r.u8 (off + 8)
   let w := hi.toNat * two32 + lo.toNat
-  let m : Int := if w ≥ two63 then (w : Int) - (two64 : Int) else (w : Int)
+  let m : Int := if w ≥ L4Factoidal.two63 then (w : Int) - (L4Factoidal.two64 : Int) else (w : Int)
   some { mantissa := m, scale := sc.toNat }
 
 def readEntry (r : Reader) (off : Nat) : Option Entry := do

@@ -121,7 +121,7 @@ def rangesAllLt (rs : List (Nat × Nat)) (bound : Nat) : Bool :=
 def buildSubjectOffsets (numSubjects numRowsTotal : Nat)
     (ranges : List (Nat × Nat)) : Option ByteArray :=
   if ranges.length != numSubjects then none
-  else if !rangesAllLt ranges 18446744073709551616 then none
+  else if !rangesAllLt ranges two64 then none
   else (serializeSubjectOffsetsHeader numSubjects numRowsTotal).map (fun hdr =>
     ⟨(hdr ++ (flattenRanges ranges).flatMap writeU64Le).toArray⟩)
 

@@ -55,6 +55,7 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.RDF.Core
 import L4Factoidal.XML.Parser
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.RDF
 
@@ -127,7 +128,7 @@ def parseDecimalLexical (s : String) : Option NumVal :=
       some (v.normalize (frac.length + 1))
 
 /-- XSD `int` bounds (§3.4.17). -/
-def intInRange (i : Int) : Bool := -2147483648 ≤ i && i ≤ 2147483647
+def intInRange (i : Int) : Bool := L4Factoidal.two31NegInt ≤ i && i ≤ 2147483647
 
 /-- The numeric value of a literal of a modelled numeric datatype;
 `none` when the lexical form is not in the datatype's lexical space or
