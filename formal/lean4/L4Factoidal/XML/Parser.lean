@@ -2097,6 +2097,44 @@ def skipBom : List Char → List Char
   | c :: rest => if c.toNat == 0xFEFF then rest else c :: rest
   | [] => []
 
+/-- XML 1.0 §4.3.3 (Character Encoding in Entities), applied to the
+    DOCUMENT entity.
+
+    This parser reads UTF-8 only, and that is exactly what lets it
+    decide two of the errors §4.3.3 names. The entity in hand
+    DECODED as UTF-8, so:
+
+      * a declaration of UTF-16 contradicts the bytes that were read.
+        §4.3.3: "it is a fatal error if an XML entity is determined to
+        be in UTF-16 and contains no byte order mark". Nothing that
+        decodes as UTF-8 without a UTF-16 byte order mark is in
+        UTF-16.
+      * a UTF-8 byte order mark with an encoding declaration naming
+        anything else is the same contradiction from the other side.
+        §4.3.3: "it is a fatal error when an XML entity ... begins
+        with a byte order mark and the encoding declaration names a
+        different encoding".
+
+    An encoding this parser simply cannot read is a DIFFERENT matter
+    and is not decided here: the entity does not decode, and the
+    runner counts it out of profile rather than as a failure.
+
+    Encoding names are case-insensitive (§4.3.3). -/
+def encodingConflict (hadBom : Bool) (declared : Option String) : Option String :=
+  match declared with
+  | none   => none
+  | some e =>
+      let e := e.toLower
+      let isUtf16 := e == "utf-16" || e == "utf-16be" || e == "utf-16le"
+      let isUtf8  := e == "utf-8" || e == "utf8"
+      if isUtf16 then
+        some ("the encoding declaration names " ++ e ++ " but the entity is not in UTF-16 "
+              ++ "and carries no UTF-16 byte order mark (XML 1.0 section 4.3.3)")
+      else if hadBom && !isUtf8 then
+        some ("the entity begins with a UTF-8 byte order mark but its encoding declaration names "
+              ++ e ++ " (XML 1.0 section 4.3.3)")
+      else none
+
 /-! ## `[1] document` -/
 
 /-- Parse a whole XML document.
@@ -2118,7 +2156,13 @@ absent constructs, not errors. A declaration or DOCTYPE that IS present
 but malformed leaves the cursor where it was, and the element parser
 then rejects the document from there. -/
 def parseXMLWith (resolve : Resolver) (input : String) : Except XmlError Document :=
-  let chars := normalizeLineEndings (skipBom input.toList)
+  let raw := input.toList
+  -- Whether a byte order mark was there is needed by §4.3.3 below,
+  -- and `skipBom` consumes it.
+  let hadBom := match raw with
+    | c :: _ => c.toNat == 0xFEFF
+    | []     => false
+  let chars := normalizeLineEndings (skipBom raw)
   let s : Chars := chars.toArray
   let fuel := s.size + 1
   -- The declaration, if present, must be the very first thing: no
@@ -2128,6 +2172,9 @@ def parseXMLWith (resolve : Resolver) (input : String) : Except XmlError Documen
     match parseXmlDecl s 0 with
     | .ok d p => (some d, p)
     | .err _ _ => (none, 0)
+  match encodingConflict hadBom (decl.bind (·.encoding)) with
+  | some m => .error { message := m, position := 0 }
+  | none   =>
   match collectMisc s pos1 [] fuel with
   | .err m p => .error { message := m, position := p }
   | .ok pre1 pos2 =>
