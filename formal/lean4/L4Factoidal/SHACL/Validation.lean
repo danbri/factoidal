@@ -227,11 +227,11 @@ def literalIllFormed (dt : WfIri) (lex : String) : Bool :=
   if dt == xsdBoolean then !(lex == "true" || lex == "false" || lex == "1" || lex == "0")
   else if dt == xsdInteger then !isIntegerLexical lex
   else if dt == xsdDecimal then !isDecimalLexical lex
-  else if dt == xsdLong then !intLexicalInRange lex (some (-9223372036854775808)) (some 9223372036854775807)
-  else if dt == xsdInt then !intLexicalInRange lex (some (-2147483648)) (some 2147483647)
+  else if dt == xsdLong then !intLexicalInRange lex (some L4Factoidal.two63NegInt) (some L4Factoidal.two63m1Int)
+  else if dt == xsdInt then !intLexicalInRange lex (some L4Factoidal.two31NegInt) (some 2147483647)
   else if dt == xsdShort then !intLexicalInRange lex (some (-32768)) (some 32767)
   else if dt == xsdByte then !intLexicalInRange lex (some (-128)) (some 127)
-  else if dt == xsdUnsignedLong then !intLexicalInRange lex (some 0) (some 18446744073709551615)
+  else if dt == xsdUnsignedLong then !intLexicalInRange lex (some 0) (some L4Factoidal.two64m1Int)
   else if dt == xsdUnsignedInt then !intLexicalInRange lex (some 0) (some L4Factoidal.two32m1Int)
   else if dt == xsdUnsignedShort then !intLexicalInRange lex (some 0) (some 65535)
   else if dt == xsdUnsignedByte then !intLexicalInRange lex (some 0) (some 255)
