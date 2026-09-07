@@ -277,7 +277,7 @@ Summary: of 22, **19 are parser defects** in four related areas
 | --- | --- | --- | --- | --- |
 | XPath 1.0 | `l4xpath` (new) | no runner existed; 89 pass, 11 fail on first run | **100 pass, 0 fail** | 100 |
 | MathML Content | `l4mathml` | 56 pass, 0 fail; 25 not attempted | **81 pass, 0 fail** | 81 |
-| XML 1.0 conformance | `l4xmlconf` | 1840 pass, 22 fail | **1853 pass, 9 fail** | 1862 in profile |
+| XML 1.0 conformance | `l4xmlconf` | 1840 pass, 22 fail | **1861 pass, 0 fail** | 1861 in profile (see the second session below) |
 | XSLT 1.0 default | `l4xslt` | 84 pass, 3 fail | 84 pass, 3 fail | 87 decided |
 | XSLT 1.0 Xalan | `l4xslt --base …xslt1-xalan` | not run through Lean | **1134 pass, 284 fail, 259 refused** | 1418 decided of 1690 |
 
@@ -485,3 +485,73 @@ constraint they do not test. Section 4.4.4 makes a reference to an
 external parsed entity FORBIDDEN in an attribute value, directly or
 indirectly, and that constraint is not implemented. The entity table
 has to carry the external flag before it can be.
+
+
+## Second session, 2026-09-07: the 9 closed
+
+`lake -d formal/lean4 exe l4xmlconf`, before and after each commit:
+
+| commit | before | after |
+| --- | --- | --- |
+| report the DOCTYPE's own error; runner prints the parse error text | 1853 pass, 9 fail (out of 1862) | 1853 pass, 9 fail (out of 1862) |
+| parameter-entity boundaries | 1853 pass, 9 fail (out of 1862) | 1857 pass, 5 fail (out of 1862) |
+| entity externality and provenance | 1857 pass, 5 fail (out of 1862) | 1861 pass, 1 fail (out of 1862) |
+| system identifiers resolved against the document's directory | 1861 pass, 1 fail (out of 1862) | **1861 pass, 0 fail (out of 1861)** |
+
+The denominator falls by one at the last step and the reason must be
+read with the score: `ext02` moves from SCORED to the `not UTF-8`
+out-of-profile bucket, which now holds 65 rather than 64. Its two
+entities are UTF-16 and in a sibling directory, and the runner could
+not find them before, so the case was scored as a parser failure for a
+missing declaration. Found, they do not decode, and the parser is
+UTF-8 only and says so — the same treatment `valid/ext-sa/007`, `008`
+and `014` already get. No parser change and no profile prose was
+needed for it.
+
+### Per-id verdicts
+
+| id | now | why |
+| --- | --- | --- |
+| `o-p28pass5` | pass | `peScan`'s nested expansion has its own budget, so `<!ELEMENT doc (a)>` is no longer truncated to `<!ELEMENT doc ` |
+| `valid-not-sa-023` | pass | a PE reference in an `[9] EntityValue` is included in literal (section 4.4.5), so `%e3;` reads `doc` and not ` do  c ` |
+| `not-wf-not-sa-009` | pass | WFC PE Between Declarations: a PE reference at `[28a]` position is no longer spliced textually, and its replacement text `<!--` does not parse as a complete `[30] extSubsetDecl` |
+| `ibm-not-wf-p28a-ibm28an01.xml` | pass | same; `<!ELEMENT leopard ` does not either |
+| `ibm-not-wf-P32-ibm32n09.xml` | pass | `standalone="yes"` drops the general entities declared only in the external subset, so `&animal_content;` reports WFC Entity Declared |
+| `ibm-not-wf-P68-ibm68n06.xml` | pass | same, the reference standing in an `[10] AttValue` |
+| `rmt-e3e-13` | pass | an internal PE reference was recognised, so section 4.1 makes an undeclared general entity a validity error, and a non-validating processor must accept |
+| `rmt-e2e-18` | pass, but NOT for the reason it tests | E18 tests that a relative system identifier resolves against the base URI of the entity that CONTAINS the declaration. This parser has no notion of a per-entity base URI and still does not do that. It accepts because the external parameter entity `subdir1/E18-pe` is not read, which is the same section 4.1 clause as `rmt-e3e-13`. |
+| `ext02` | out of profile | see above |
+
+### What is implemented, and what is not
+
+Implemented and witnessed by a test that can only pass if it works:
+
+* WFC PE Between Declarations, section 2.8 `[28a]`.
+* Section 4.4.5 Included in Literal and section 4.4.8 Included as PE,
+  now distinguished.
+* WFC **No External Entity References**, section 4.4.4. The two ids
+  that name it, `ibm-not-wf-P41-ibm41n10.xml` and
+  `ibm-not-wf-P41-ibm41n11.xml`, still reject for `[77]` — their
+  entity files open `<?xml verison="1.0"?>` with `version` misspelt,
+  so no `encoding` pseudo-attribute is present, and the declaration is
+  refused before an attribute is reached. Nothing can change that
+  ordering: the declaration is read first. Six `#guard` cases in
+  `XML/Tests.lean` witness the constraint instead, over an entity file
+  whose `[77] TextDecl` IS valid: direct, indirect and
+  attribute-default references are refused, while the same reference
+  in content and an internal entity in an attribute value are both
+  admitted, so the refusals turn on `external` and not on the
+  reference itself.
+* Section 2.9 and section 4.1 WFC Entity Declared under
+  `standalone="yes"`.
+* Section 4.1 WFC Entity Declared, first clause — the 3e erratum.
+
+NOT implemented, and no test in this suite now distinguishes it:
+
+* **Base URI for a relative system identifier** (section 4.2.2,
+  XML Base). The parser passes a system identifier to the resolver
+  exactly as written; nothing tracks which entity a declaration came
+  from. `rmt-e2e-18`, the one case that tests it, now passes for a
+  different and correct reason, so this suite no longer measures it.
+* **Transcoding.** The profile is UTF-8 only. 65 cases are out of
+  profile for it.

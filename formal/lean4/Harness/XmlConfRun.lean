@@ -173,7 +173,6 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
                 -- affordable: a conformance case names at most a
                 -- handful of small files, all in its own directory.
                 let docDir := base ++ dirOf uri
-                let mut fetched : List (String × String) := []
                 -- An entity file this parser cannot DECODE puts the
                 -- case out of profile, the same way a non-UTF-8
                 -- DOCUMENT already is. `valid/ext-sa/007`, `008` and
@@ -183,22 +182,65 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
                 -- transcoding gap scored as a parser failure.
                 --
                 -- Only files the document NAMES count. A stray
-                -- undecodable file in the directory says nothing
-                -- about this case.
-                let mut entityNotUtf8 := false
+                -- undecodable file in a directory says nothing about
+                -- this case.
+                let mut fetched : List (String × String × String) := []
+                let mut undecodable : List String := []
                 if ← System.FilePath.isDir docDir then
                   for entry in (← System.FilePath.readDir docDir) do
                     let ep := entry.path.toString
                     if !(← System.FilePath.isDir ep) then
                       let b ← IO.FS.readBinFile ep
                       match String.fromUTF8? b with
-                      | none   =>
-                          if (text.splitOn entry.fileName).length > 1 then
-                            entityNotUtf8 := true
-                      | some t => fetched := fetched ++ [(entry.fileName, t)]
+                      | none   => undecodable := undecodable ++ [entry.fileName]
+                      | some t => fetched := fetched ++ [(entry.fileName, ep, t)]
+                  -- A system identifier is RELATIVE to the document
+                  -- that names it, and a conformance case may put an
+                  -- entity in a sibling or a child directory:
+                  -- `valid/ext02.xml` names `../invalid/utf16b.xml`.
+                  -- Reading every neighbouring directory for all 1862
+                  -- cases would be hundreds of thousands of file
+                  -- reads, so a directory is read only when the
+                  -- document's own text names it.
+                  let parent := dirOf (docDir.dropRight 1)
+                  -- (directory name, identifier prefix, path)
+                  let mut cands : List (String × String × String) := []
+                  for entry in (← System.FilePath.readDir docDir) do
+                    if ← System.FilePath.isDir entry.path.toString then
+                      cands := cands ++
+                        [(entry.fileName, entry.fileName ++ "/", entry.path.toString)]
+                  if parent != "" && (← System.FilePath.isDir parent) then
+                    for entry in (← System.FilePath.readDir parent) do
+                      if ← System.FilePath.isDir entry.path.toString then
+                        cands := cands ++
+                          [(entry.fileName, "../" ++ entry.fileName ++ "/",
+                            entry.path.toString)]
+                  for (dname, pfx, dpath) in cands do
+                    if (text.splitOn (dname ++ "/")).length > 1 then
+                      for entry in (← System.FilePath.readDir dpath) do
+                        let ep := entry.path.toString
+                        if !(← System.FilePath.isDir ep) then
+                          let b ← IO.FS.readBinFile ep
+                          match String.fromUTF8? b with
+                          | none   => undecodable := undecodable ++ [pfx ++ entry.fileName]
+                          | some t => fetched := fetched ++ [(pfx ++ entry.fileName, ep, t)]
+                -- A file that will not decode counts only if the
+                -- document writes the identifier that names it.
+                let mut entityNotUtf8 := false
+                for key in undecodable do
+                  if (text.splitOn key).length > 1 then entityNotUtf8 := true
+                -- Resolution: the identifier AS WRITTEN first (so
+                -- `../invalid/utf16b.xml` finds that file and not a
+                -- namesake in this directory), then the last path
+                -- segment among the document's own directory, which is
+                -- what the vendored corpus needs where a manifest
+                -- renamed a file.
                 let resolve : String → Option String := fun sysId =>
-                  let name := ((sysId.splitOn "/").getLast?).getD sysId
-                  (fetched.find? (fun (n, _) => n == name)).map (·.2)
+                  match fetched.find? (fun (k, _, _) => k == sysId) with
+                  | some (_, _, t) => some t
+                  | none =>
+                    let name := ((sysId.splitOn "/").getLast?).getD sysId
+                    (fetched.find? (fun (k, _, _) => k == name)).map (·.2.2)
                 if entityNotUtf8 then
                   c := Counts.add c { notUtf8 := 1 }
                 else
