@@ -45,6 +45,26 @@ type-consistency.rdf:         503 pass, 76 fail, 0 skip, 4 unsupported (out of 5
 TOTAL:                       1181 pass, 266 fail, 2 skip, 8 unsupported (out of 1457)
 ```
 
+## 2b. The `type-*` catalogs under `--dl`, which is the F\* regime
+
+Measured 2026-09-07, `lake exe l4owl-probe --dl`, default caps
+(`--cap-ms 30000`). The run was stopped by the operator on a disk-space
+floor part-way through `type-consistency.rdf`, so that catalog has no
+`--dl` figure yet.
+
+| catalog / unit | Lean RL | Lean `--dl` | F\* DL |
+|---|---|---|---|
+| `type-inconsistency.rdf` Inconsistency | 38 pass, 89 fail | **116 pass, 11 fail** | 126 pass, 1 fail |
+| `type-positive-entailment.rdf` PE | 129 pass, 75 fail | **157 pass, 47 fail** | 195 pass, 9 fail |
+| `type-positive-entailment.rdf` Consistency | 204 pass, 0 fail | 204 pass, 0 fail | 199 pass, 5 fail |
+| `type-consistency.rdf` (all units) | 503 pass, 76 fail | not measured | 558 pass, 21 fail |
+
+So the regime accounts for 78 of the 89 `type-inconsistency` failures
+and 28 of the 75 `type-positive-entailment` PE failures. The Lean
+`--dl` figures also BEAT F\* on `type-positive-entailment`'s
+ConsistencyTest section (204 pass, 0 fail against 199 pass, 5 fail —
+F\*'s five are `unsupported` cap escapes, #326).
+
 ## 3. The like-for-like gap: profile catalogs, RL against RL
 
 F\* scores every unit of all three profile catalogs PASS
@@ -83,6 +103,28 @@ All report `no clash row fired on a premise asserted inconsistent`.
 | `WebOnt-Restriction-002` | EL | member of `∃ op . owl:Nothing` |
 | `New-Feature-Keys-002` | EL | `owl:hasKey` |
 | `WebOnt-Thing-003` | EL, QL | `owl:Thing owl:equivalentClass owl:Nothing` |
+
+## 3c. The F\* RL regime is not the RL closure alone either
+
+`bin/owl-runner/owl_runner.ml` scores PositiveEntailmentTest through
+`apply_closure_with_witnesses`, in BOTH regimes. That calls
+`OWL.Closure.fsti`'s `owl_rl_closure_with_reflexivity_and_witnesses_mode`
+(line 6584): the RL closure, then `cls-hasself2-synth`,
+`cls-svf-thing-materialize`, `cls-svf-thing-witness`, then eight
+comprehension rules (`comp_singleton_union`, `comp_min1_restriction`,
+`comp_oneof_union`, `comp_union_oneof`, `comp_enum_range_value`,
+`comp_range_avf`, `comp_range_intersection`,
+`comp_pinned_domain_enum`), then one plain re-closure. Its own banner
+records why the layer is kept out of the shared fixpoint: folding it in
+took DL-regime `type-inconsistency.rdf` from 124 pass, 3 fail to 63
+pass, 64 fail.
+
+ConsistencyTest and InconsistencyTest do NOT see that layer — they run
+`apply_closure_stages`, which in RL is the plain closure. So the F\* RL
+figures are two different pipelines under one heading, and the Lean
+default matches the second but not the first. That is why every
+remaining profile-catalog PE failure is a comprehension-witness gap and
+every Inconsistency failure was a clash-row gap.
 
 ## 4. Clusters
 
@@ -133,6 +175,28 @@ only when they sit in DIFFERENT families (`xsd:string`, `xsd:boolean`,
 the numeric tower). That is weaker and sound, and it still fires on
 `string-integer-clash`.
 
-## 6. Status
+## 6. What C1 changes in the engine
 
-See § 8 below, kept current as clusters close.
+`OWL/RLRules.lean` gains `ExtClash`, a THREE-row inductive kept apart
+from `Clash`, plus `xsdValueSpacesDisjoint`, `cardinalityAtLeastOne`,
+`isBottomProperty` and `existentialObligation`.
+`OWL/RLClosure.lean` gains `dtRangeClashAt`, `bottomPropClashAt`,
+`clsSvfBotAt`, `detectClashExt` and `detectClashPlus`;
+`OWL/RLClosureIndexed.lean` gains the store mirrors and
+`detectClashPlusI` with `detectClashPlusI_eq`.
+`OWL/RLTheorems.lean` gains `detectClashExt_sound` and
+`detectClashPlus_sound`. `OWL/RLSemantics.lean` gains
+`RlExtClashConditions` and `rl_ext_clash_holds_false`.
+`Harness/OwlProbe.lean` consults `detectClashPlusI`.
+
+**Why `ExtClash` is a separate inductive and not three more `Clash`
+constructors.** `Unified/OwlRlSchema.owlRlSchema_conditions` discharges
+one `RlClashConditions` field per OWL 2 RL table row from RL schema
+satisfaction alone. An extension row has no schema row to be discharged
+from, so putting it in `Clash` would make that theorem unprovable —
+`Clash` states the table, `ExtClash` states what the OWL 2 semantics of
+`owl:Nothing`, the two bottom properties and the XSD datatype map force
+beyond it. `detectClash` and `detectClash_sound` are byte-for-byte
+unchanged.
+
+## 7. Status
