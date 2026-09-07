@@ -26,6 +26,8 @@ PREFIX trs:  <https://factoidal.example/tests/rdf12-semantics-tight#>
     trs:malformed-literal-in-triple-term-inconsistent
     trs:malformed-literal-asserted-inconsistent
     trs:well-formed-literal-consistent
+    trs:reifies-subproperty-range
+    trs:proposition-subclass
   ) .
 
 # ---- TC-1: what does the annotation block {| ... |} denote? -------------
@@ -110,5 +112,30 @@ trs:well-formed-literal-consistent a mf:NegativeEntailmentTest ;
   mf:name "well-formed-literal-consistent" ;
   mf:recognizedDatatypes (xsd:integer) ;
   mf:result false ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+# ---- TC-4 / TC-5: do the RDF 1.2 steps take part in the RDFS fixed point?
+# Both shapes are licensed by RDF 1.2 Semantics + RDFS but are not
+# exercised by any vendored fixture. They pin the two residual
+# incompletenesses that RDF.Entailment.Regime documents.
+
+trs:reifies-subproperty-range a mf:PositiveEntailmentTest ;
+  rdfs:comment "rdfs7 derives an rdf:reifies triple from a subproperty of it; the rdf:reifies range condition must then apply to the DERIVED triple." ;
+  mf:action <tc4-reifies-subproperty-action.ttl> ;
+  mf:entailmentRegime "RDFS" ;
+  mf:name "reifies-subproperty-range" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc4-reifies-subproperty-result.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+trs:proposition-subclass a mf:PositiveEntailmentTest ;
+  rdfs:comment "A triple term is an instance of rdfs:Proposition, so rdfs9 must carry it into any superclass of rdfs:Proposition. The consequent reaches the triple term through a blank node, which is the only way a concrete syntax can name it." ;
+  mf:action <tc5-proposition-subclass-action.ttl> ;
+  mf:entailmentRegime "RDFS" ;
+  mf:name "proposition-subclass" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc5-proposition-subclass-result.ttl> ;
   mf:unrecognizedDatatypes () ;
   rdft:approval rdft:Proposed .

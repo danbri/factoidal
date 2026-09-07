@@ -171,7 +171,7 @@ current headline numbers, all measured on the shipped tree:
   commit's Turtle eval oracles define, and `literal-type`'s manifest
   block is unreadable (undeclared `test:` prefix). Local tight-case
   suite: `RDF12_TESTS_BASE=tests/local w3c_runner --rdf12entail
-  rdf12-semantics-tight` — 7 pass, 0 fail (out of 7).
+  rdf12-semantics-tight` — 9 pass, 0 fail (out of 9).
   Still open: RML-star mapping generation, and browser/npm-API +
   dashboard wiring (JS `parse`/`query` still 1.1-only).
 - Dispositions table landed in the completeness ledger (day-closure

@@ -261,11 +261,42 @@ step (`X rdf:reifies Y` gives `Y rdf:type rdfs:Proposition` for an IRI or
 blank-node `Y`) is the corollary for reified objects that a `triple` subject
 can hold.
 
-Residual incompleteness, stated rather than hidden: the proposition
-assertions are emitted after the RDFS fixed point, so no RDFS rule fires on
-them — `rdfs:Proposition rdfs:subClassOf X` would not yield
-`<<(..)>> rdf:type X`. Closing that needs the rule driver itself to run over
-gtriples. No fixture in the tree exercises the shape.
+### RDFS rules whose conclusion is about a triple term or a literal
+
+Two residual incompletenesses were found by writing the tests for them
+first. Neither is exercised by any vendored fixture; both are tight cases
+TC-4 and TC-5 in the local suite, and both failed before the fix.
+
+`RDFS.Closure` works on `triple`, so the two RDFS rules whose conclusion can
+be about a triple term or a literal were unreachable to it:
+
+- **rdfs3** — `s p o` with `p rdfs:range D` gives `o rdf:type D`, and `o`
+  may be a triple term or a literal. Applied as `rdfs3_over_gtriples`
+  against the closed antecedent, for those two object shapes only; IRI and
+  blank-node objects are already handled inside the fixed point.
+- **rdfs9** — `x rdf:type c` with `c rdfs:subClassOf d` gives
+  `x rdf:type d`, and `x` is a triple term for every proposition assertion
+  and a literal for every datatype-instance assertion. Applied as
+  `rdfs9_over_gtriples`. One pass suffices for the class hierarchy because
+  rdfs11 (subClassOf transitivity) has already reached its fixed point
+  inside `rdfs_regime_closure`, so the lookup returns transitive
+  superclasses. No RDFS rule has a premise that can be a generalized
+  triple other than these two, so one pass is complete for the RDFS rule
+  set rather than merely enough for the fixtures.
+
+Separately, the RDF 1.2 vocabulary axiom
+`rdf:reifies rdfs:range rdfs:Proposition` is now seeded before the RDFS
+fixed point, so an `rdf:reifies` triple **derived** inside the loop — by
+rdfs7 from a subproperty of `rdf:reifies` — triggers the range condition.
+Before, the reifies step ran once before the loop and derived triples were
+missed (TC-4). The pre-pass `rdf12_reifies_closure` is kept, because rdfs3
+as `RDFS.Closure` implements it reads the object as a subject-capable term.
+
+The axiom seeding was measured against the suites the shared
+`RDFS.Closure` reaches: OWL 2 RL is unchanged at 30 pass 0 fail positive
+entailment, 6 pass 0 fail negative entailment, 76 pass 0 fail consistency,
+14 pass 0 fail inconsistency; RDF 1.1 unchanged at 1030 pass, 0 fail, 1
+unsupported (out of 1031).
 
 ### D-inconsistency
 
@@ -340,7 +371,7 @@ Same binary path, `bin/darwin-arm64/w3c_runner`, rebuilt from the changed
 | Suite | Before | After |
 |---|---|---|
 | `--rdf12entail` rdf-semantics | 41 pass, 3 fail, 3 skip (out of 47) | **44 pass, 2 fail, 1 skip (out of 47)** |
-| tight cases (`rdf12-semantics-tight`) | did not exist | **7 pass, 0 fail (out of 7)** |
+| tight cases (`rdf12-semantics-tight`) | did not exist | **9 pass, 0 fail (out of 9)** |
 | `--rdf12` | 242 pass, 0 fail (out of 242) | 242 pass, 0 fail (out of 242) |
 | `--rdf12c14n` | 82 pass, 0 fail (out of 82) | 82 pass, 0 fail (out of 82) |
 | `--sparql12` | 254 pass, 0 fail (out of 254) | 254 pass, 0 fail (out of 254) |
@@ -360,6 +391,21 @@ and exercised by the suites above: `TRIPLE`, `SUBJECT`, `PREDICATE`,
 (`SPARQL11.Algebra.fst` constructors `E_IsTriple`, `E_HasLang`,
 `E_HasLangDir`, `E_LangDir`; `SPARQL11.Parser.fst` tokens gated on the
 `sparql12` flag).
+
+### TC-4 and TC-5 — the two residuals, found by writing the test first
+
+Neither shape appears in any vendored fixture, so neither could have been
+found by running the suite. Both are licensed by RDF 1.2 Semantics together
+with RDFS, both failed when first written, and both pass now.
+
+- **TC-4 `reifies-subproperty-range`.** `:p rdfs:subPropertyOf rdf:reifies`
+  and `:x :p :y` entail `:y rdf:type rdfs:Proposition`. rdfs7 derives
+  `:x rdf:reifies :y` inside the fixed point; the range condition has to
+  apply to that derived triple.
+- **TC-5 `proposition-subclass`.** `rdfs:Proposition rdfs:subClassOf :C`
+  and `:a1 :p1 <<( :a :b :c )>>` entail `:a1 :p1 _:t . _:t rdf:type :C`.
+  The consequent reaches the triple term through a blank node, which is the
+  only way a concrete syntax can name it.
 
 ### Open
 

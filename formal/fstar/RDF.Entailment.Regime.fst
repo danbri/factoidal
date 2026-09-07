@@ -225,8 +225,22 @@ let rdfs_regime_fuel : nat = 100
 // triples no RDFS rule licenses (it reads owl:Class / owl:ObjectProperty
 // typing, which is an OWL-rung licence). Using it here would make
 // NegativeEntailmentTests wrongly pass.
+// The RDF 1.2 vocabulary axiom that makes the reifies-range step a
+// consequence of rdfs3 rather than a step outside the loop:
+//   rdf:reifies rdfs:range rdfs:Proposition
+// Seeding it lets an rdf:reifies triple DERIVED inside the fixed point (by
+// rdfs7 from a subproperty of rdf:reifies, say) trigger the range
+// condition. `rdf12_reifies_closure` is kept as well: rdfs3 as
+// RDFS.Closure implements it reads the object as a subject-capable term,
+// and the pre-pass is what covers the shapes it cannot.
+let rdf12_vocabulary_axioms : list triple =
+  [ { s = S_IRI rdf_reifies_iri;
+      p = RDFS.Closure.rdfs_range;
+      o = T_IRI rdfs_proposition_iri } ]
+
 let rdfs_regime_closure (ts : list triple) : list triple =
-  RDFS.Closure.rdfs_closure (rdf12_reifies_closure ts) rdfs_regime_fuel
+  RDFS.Closure.rdfs_closure
+    (rdf12_vocabulary_axioms @ rdf12_reifies_closure ts) rdfs_regime_fuel
 
 // ---- owl:sameAs closure (IRI transparency, incl. triple-term interiors) -
 
@@ -390,17 +404,75 @@ let literal_type_gtriples (ts : list triple) : list gtriple =
 let rdf_regime_gclosure (ts : list triple) : list gtriple =
   map gtriple_of_triple ts @ literal_type_gtriples ts @ proposition_gtriples ts
 
-// The RDFS-regime antecedent, generalized: the ordinary RDFS closure
-// embedded as gtriples, plus the triple-term proposition assertions.
+// ---- RDFS rules over the generalized layer ------------------------------
 //
-// Residual incompleteness, stated rather than hidden: the proposition
-// assertions are emitted AFTER the RDFS fixed point, so an RDFS rule
-// cannot fire ON them (e.g. `rdfs:Proposition rdfs:subClassOf X` would not
-// give `<<(..)>> rdf:type X`). Closing that needs the rule driver itself to
-// run over gtriples; no fixture in the tree exercises the shape.
+// RDFS.Closure works on `triple`, so the two RDFS rules whose CONCLUSION
+// can be about a triple term or a literal are unreachable to it:
+//   rdfs3  `s p o` with `p rdfs:range D` gives `o rdf:type D` -- and `o`
+//          may be a triple term or a literal;
+//   rdfs9  `x rdf:type c` with `c rdfs:subClassOf d` gives `x rdf:type d`
+//          -- and `x` is a triple term for every proposition assertion,
+//          or a literal for every datatype-instance assertion.
+// Both are applied here, over gtriples, against the already-closed
+// antecedent.
+
+// Objects of `c rdfs:subClassOf ?d` in the closed antecedent. rdfs11
+// (subClassOf transitivity) has already run inside `rdfs_regime_closure`,
+// so this one lookup returns every superclass, not just the direct ones.
+let subclass_targets (closed : list triple) (c : wf_iri) : list wf_iri =
+  collect (fun (t : triple) ->
+    if t.p = RDFS.Closure.rdfs_subClassOf then
+      (match t.s, t.o with
+       | S_IRI a, T_IRI b -> if a = c then [b] else []
+       | _, _             -> [])
+    else []) closed
+
+// rdfs9 over gtriples: for every `x rdf:type c` at the generalized layer,
+// add `x rdf:type d` for every superclass d of c.
+let rdfs9_over_gtriples (closed : list triple) (gts : list gtriple) : list gtriple =
+  collect (fun (g : gtriple) ->
+    if g.gp = rdf_type_iri then
+      (match g.go with
+       | T_IRI c -> map (fun (d : wf_iri) -> ({ gs = g.gs; gp = rdf_type_iri; go = T_IRI d } <: gtriple))
+                        (subclass_targets closed c)
+       | _       -> [])
+    else []) gts
+
+// Objects of `p rdfs:range ?d` in the closed antecedent.
+let range_targets (closed : list triple) (p : wf_iri) : list wf_iri =
+  collect (fun (t : triple) ->
+    if t.p = RDFS.Closure.rdfs_range then
+      (match t.s, t.o with
+       | S_IRI a, T_IRI b -> if a = p then [b] else []
+       | _, _             -> [])
+    else []) closed
+
+// rdfs3 for the objects RDFS.Closure cannot type: triple terms and
+// literals. IRI and blank-node objects are already handled inside the
+// fixed point, so they are skipped here rather than duplicated.
+let rdfs3_over_gtriples (closed : list triple) : list gtriple =
+  collect (fun (t : triple) ->
+    match t.o with
+    | T_TripleTerm _ _ _ | T_Literal _ ->
+      map (fun (d : wf_iri) -> ({ gs = t.o; gp = rdf_type_iri; go = T_IRI d } <: gtriple))
+          (range_targets closed t.p)
+    | _ -> []) closed
+
+// The RDFS-regime antecedent, generalized: the ordinary RDFS closure
+// embedded as gtriples, plus the RDF 1.2 semantic conditions, plus one
+// pass of rdfs3 and rdfs9 over the generalized layer.
+//
+// One pass of rdfs9 is enough for the class hierarchy, because rdfs11 ran
+// to its fixed point inside `rdfs_regime_closure`, so `subclass_targets`
+// already returns the transitive superclasses. What one pass does NOT
+// reach is a class derived from a generalized type assertion by a rule
+// other than rdfs9 -- there is no such rule in the RDFS rule set whose
+// premise can be a generalized triple, so this is a completeness statement
+// about the RDFS rules, not an admission about them.
 let rdfs_regime_gclosure (ts : list triple) : list gtriple =
   let closed = rdfs_regime_closure ts in
-  rdf_regime_gclosure closed
+  let base = rdf_regime_gclosure closed @ rdfs3_over_gtriples closed in
+  base @ rdfs9_over_gtriples closed base
 
 // ---- RDF 1.2 D-inconsistency -------------------------------------------
 
