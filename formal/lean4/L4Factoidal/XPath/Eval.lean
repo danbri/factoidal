@@ -105,6 +105,13 @@ def Value.toBool (v : Value) : Bool :=
 
 /-! ## Name tests -/
 
+/-- A prefix used in the document with no `xmlns` declaration in scope
+    to resolve it. `Parser.XML` does no namespace resolution — a
+    prefixed tag such as `ns:tagged` is stored as one opaque string —
+    so an undeclared prefix here is not an error, it is the ordinary
+    case for a document that never declares namespaces at all. -/
+private def unboundNs (pfx : String) : String := " unbound:" ++ pfx
+
 /-- The expanded name of an item: `(namespace URI, local part)`.
 
     An unprefixed ATTRIBUTE name is in no namespace even when a
@@ -122,10 +129,14 @@ def expandedName (d : Doc) (it : Item) : String × String :=
       else
         let owner := itemAt d { path := it.loc.path }
         let nss := (owner.map (namespacesOf d)).getD []
-        (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD "", loc)
+        (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD (unboundNs pfx), loc)
   | .element | .pi =>
       let nss := namespacesOf d it
-      (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD "", loc)
+      -- An UNPREFIXED element with no default namespace declared is in
+      -- no namespace, not "unbound" — only a genuine prefix falls back
+      -- to the opaque-match sentinel below.
+      let fallback := if pfx == "" then "" else unboundNs pfx
+      (((nss.find? (fun n => n.qname == pfx)).map (fun n => n.stringValue)).getD fallback, loc)
   | _ => ("", loc)
 
 /-- Expand a name written in an EXPRESSION. An unprefixed name has no
@@ -135,7 +146,7 @@ def expandedName (d : Doc) (it : Item) : String × String :=
 def expandTestName (nsctx : List (String × String)) (q : String) : String × String :=
   let pfx := prefixOf q
   if pfx == "" then ("", q)
-  else (((nsctx.find? (fun (p, _) => p == pfx)).map (·.2)).getD " unbound", localOf q)
+  else (((nsctx.find? (fun (p, _) => p == pfx)).map (·.2)).getD (unboundNs pfx), localOf q)
 
 /-- The node type an axis selects by default (§2.3). -/
 def principalKind : Ax → Kind
@@ -189,13 +200,21 @@ def isReverse : Ax → Bool
 
 /-! ## String helpers -/
 
-private def substrChars (s : String) (from' len : Int) : String :=
+/-- §4.2 `substring()`'s character selection, worked in `Num` rather
+    than `Int`: `lo`/`len` are already rounded, and `hi := lo + len`
+    goes through `Num.add`, which is where ±Infinity and NaN get the
+    IEEE answer (`x + +Inf = +Inf`, `-Inf + +Inf = NaN`) for free. A
+    character at 1-based position `p` is kept when `lo ≤ p < hi`,
+    using `Num.le`/`Num.lt` so a NaN bound excludes every position
+    (NaN compares false to everything) instead of an `Int`-only
+    implementation silently treating an infinite length as "no
+    characters" the way a fixed sentinel bound would. -/
+private def substrChars (s : String) (lo len : Num) : String :=
+  let hi := Num.add lo len
   let cs := s.toList
-  let lo := max 1 from'
-  let hi := from' + len
   String.ofList ((cs.zipIdx).filterMap (fun (c, i) =>
-    let p : Int := (i : Int) + 1
-    if lo ≤ p && p < hi then some c else none))
+    let p := Num.finite ((i : Int) + 1) 0
+    if Num.le lo p && Num.lt p hi then some c else none))
 
 private def isWsC (c : Char) : Bool :=
   c == ' ' || c == '\t' || c == '\n' || c == '\r'
@@ -423,12 +442,28 @@ partial def cmpValues (op : String) (x y : Value) : Bool :=
 partial def scalarCmp (op : String) (x y : Value) : Bool :=
   let isB (v : Value) := match v with | .bool _ => true | _ => false
   let isN (v : Value) := match v with | .num _ => true | _ => false
+  let isS (v : Value) := match v with | .str _ => true | _ => false
   if op == "=" || op == "!=" then
     let same :=
       if isB x || isB y then x.toBool == y.toBool
       else if isN x || isN y then Num.eq x.toNum y.toNum
       else x.toStr == y.toStr
     if op == "=" then same else !same
+  else if isS x && isS y then
+    -- Both sides are STRING VALUES (not a number/boolean converted to
+    -- one via `toStr`), so `<`/`<=`/`>`/`>=` compare lexicographically
+    -- by codepoint rather than through `number()`. A node-set's
+    -- string-value reaches here too (its `Value` is already `.str`
+    -- by the time `cmpValues` calls this), so `@v > "5"` on an
+    -- attribute node still compares as strings -- the coercion to
+    -- NUMBER only happens when the OTHER side is itself a number
+    -- (the `isN` branch below).
+    let a := x.toStr
+    let b := y.toStr
+    if op == "<" then a < b
+    else if op == "<=" then a ≤ b
+    else if op == ">" then b < a
+    else b ≤ a
   else
     let m := x.toNum
     let n := y.toNum
@@ -495,13 +530,9 @@ partial def evalCall (c : Ctx) (f : String) (args : List Expr) : Option Value :=
         | some i => String.ofList (a.toStr.toList.drop (i + b.toStr.toList.length))
         | none   => ""))
   | "substring", [a, b] =>
-      some (.str (match Num.roundN b.toNum with
-        | .finite m 0 => substrChars a.toStr m 1000000000
-        | _           => ""))
+      some (.str (substrChars a.toStr (Num.roundN b.toNum) Num.posInf))
   | "substring", [a, b, l] =>
-      some (.str (match Num.roundN b.toNum, Num.roundN l.toNum with
-        | .finite m 0, .finite k 0 => substrChars a.toStr m k
-        | _, _                     => ""))
+      some (.str (substrChars a.toStr (Num.roundN b.toNum) (Num.roundN l.toNum)))
   | "translate", [a, b, cc] => some (.str (translateStr a.toStr b.toStr cc.toStr))
   | "floor", [v]   => some (.num (Num.floorN v.toNum))
   | "ceiling", [v] => some (.num (Num.ceilingN v.toNum))

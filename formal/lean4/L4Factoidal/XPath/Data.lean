@@ -267,7 +267,19 @@ def namespacesOf (d : Doc) (it : Item) : List Item :=
       let merged := decls.foldl (fun acc (p, u) =>
         (acc.filter (fun (q, _) => q != p)) ++ [(p, u)])
         [("xml", "http://www.w3.org/XML/1998/namespace")]
-      ((merged.filter (fun (_, u) => u != "")).zipIdx).map (fun ((p, u), i) =>
+      -- Presentation order (not a document-order fact -- namespace
+      -- nodes have no source position of their own): the default
+      -- binding first, then the remaining prefixes ascending
+      -- lexicographic, `xml` included. Plain string `<` gives this
+      -- directly, since `""` is a PREFIX of every non-empty prefix
+      -- and so already sorts first. `slot`'s index feeds `normalize`'s
+      -- document-order sort, so the order has to be fixed HERE, not
+      -- by re-sorting the axis result afterward -- a later `normalize`
+      -- call re-sorts by this same key and would undo any reordering
+      -- done downstream.
+      let ordered := (merged.filter (fun (_, u) => u != "")).toArray.qsort
+        (fun (p1, _) (p2, _) => p1 < p2) |>.toList
+      (ordered.zipIdx).map (fun ((p, u), i) =>
         .ns { path := l.path, slot := some (false, i) } p u)
   | _ => []
 

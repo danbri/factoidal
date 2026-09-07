@@ -12,6 +12,8 @@ floats: MathML content markup means the mathematical value, and
 `1/3 + 1/3 + 1/3` must be `1`.
 -/
 
+import L4Factoidal.MathML.Matrix
+
 namespace L4Factoidal.MathML
 
 /-- A Content MathML expression. -/
@@ -21,38 +23,12 @@ inductive Expr where
   | bool (b : Bool)
   | sym  (name : String)
   | app  (fn : String) (args : List Expr)
+  /-- `<matrix>` of `<matrixrow>`s, §4.4.10.2. Rows of expressions,
+      not of values: an entry may itself be an `<apply>`. -/
+  | mat  (rows : List (List Expr))
+  /-- `<vector>`, §4.4.10.1. -/
+  | vec  (xs : List Expr)
 deriving Repr, Inhabited
-
-/-! ## Exact rational arithmetic -/
-
-private partial def gcdNat (a b : Nat) : Nat := if b == 0 then a else gcdNat b (a % b)
-
-/-- Normalise to lowest terms with a positive denominator. A zero
-    denominator collapses to `0/1` rather than propagating — Content
-    MathML has no infinity, so the F* module treats it as absent
-    rather than inventing a value. -/
-def normRat (n d : Int) : Int × Int :=
-  if d == 0 then (0, 1)
-  else
-    let s : Int := if d < 0 then -1 else 1
-    let n := n * s
-    let d := d * s
-    let g : Int := gcdNat n.natAbs d.natAbs
-    if g == 0 then (0, 1) else (n / g, d / g)
-
-def addRat (a b : Int × Int) : Int × Int :=
-  normRat (a.1 * b.2 + b.1 * a.2) (a.2 * b.2)
-
-def mulRat (a b : Int × Int) : Int × Int := normRat (a.1 * b.1) (a.2 * b.2)
-def negRat (a : Int × Int) : Int × Int := (-a.1, a.2)
-def subRat (a b : Int × Int) : Int × Int := addRat a (negRat b)
-
-/-- Division. A zero divisor yields `none` — MathML has no infinity,
-    so this refuses rather than inventing one. -/
-def divRat (a b : Int × Int) : Option (Int × Int) :=
-  if b.1 == 0 then none else some (normRat (a.1 * b.2) (a.2 * b.1))
-
-def cmpRat (a b : Int × Int) : Ordering := compare (a.1 * b.2) (b.1 * a.2)
 
 /-! ## Evaluation -/
 
@@ -60,6 +36,10 @@ def cmpRat (a b : Int × Int) : Ordering := compare (a.1 * b.2) (b.1 * a.2)
 inductive Value where
   | num  (r : Int × Int)
   | bool (b : Bool)
+  /-- A vector of exact rationals (§4.4.10.1). -/
+  | vecv (v : Vec)
+  /-- A matrix of exact rationals (§4.4.10.2). -/
+  | matv (m : Mat)
 deriving Repr, DecidableEq, Inhabited
 
 private def relResult (fn : String) (o : Ordering) : Option Bool :=
@@ -122,6 +102,48 @@ private partial def gcdInt (a b : Int) : Int :=
     fractional argument rather than truncating it. -/
 def asInt (a : Int × Int) : Option Int := if a.2 == 1 then some a.1 else none
 
+/-- The linear-algebra operators of §4.4.10, over already-evaluated
+    arguments.
+
+    `none` means "this is not a linear-algebra application" AND "this
+    application has no value" — the two collapse safely, because the
+    scalar path that `eval` falls through to also has no value for an
+    argument that is a matrix or a vector. So a shape mismatch stays
+    undefined rather than being answered with a number.
+
+    `plus`, `minus` and `times` are shared with the scalar evaluator:
+    they reach here only when an argument is a matrix or a vector. -/
+def linAlg (fn : String) (vs : List Value) : Option Value :=
+  match fn, vs with
+  | "plus",  [.matv a, .matv b] => (addMat a b).map Value.matv
+  | "minus", [.matv a, .matv b] => (subMat a b).map Value.matv
+  | "plus",  [.vecv a, .vecv b] =>
+      if a.length != b.length then none
+      else some (.vecv ((a.zip b).map (fun (x, y) => addRat x y)))
+  | "minus", [.vecv a, .vecv b] =>
+      if a.length != b.length then none
+      else some (.vecv ((a.zip b).map (fun (x, y) => subRat x y)))
+  | "times", [.num k, .matv a] => some (.matv (scaleMat k a))
+  | "times", [.matv a, .num k] => some (.matv (scaleMat k a))
+  | "times", [.num k, .vecv a] => some (.vecv (a.map (mulRat k)))
+  | "times", [.vecv a, .num k] => some (.vecv (a.map (mulRat k)))
+  | "times", [.matv a, .matv b] => (mulMat a b).map Value.matv
+  | "determinant", [.matv a]    => (determinant a).map Value.num
+  | "transpose",   [.matv a]    => (transposeMat a).map Value.matv
+  | "scalarproduct", [.vecv u, .vecv v] => (dot u v).map Value.num
+  | "vectorproduct", [.vecv u, .vecv v] => (cross u v).map Value.vecv
+  | "outerproduct",  [.vecv u, .vecv v] => some (.matv (outer u v))
+  -- `selector` indexes from ONE: (row, column) into a matrix, or a
+  -- single index into a vector. Out of range has no value.
+  | "selector", [.matv a, .num i, .num j] =>
+      if i.2 != 1 || j.2 != 1 then none
+      else (nth1? i.1 a).bind (fun r => (nth1? j.1 r).map Value.num)
+  | "selector", [.matv a, .num i] =>
+      if i.2 != 1 then none else (nth1? i.1 a).map Value.vecv
+  | "selector", [.vecv v, .num i] =>
+      if i.2 != 1 then none else (nth1? i.1 v).map Value.num
+  | _, _ => none
+
 /-- Evaluate against a symbol environment. `none` is a REFUSAL — an
     unbound symbol, an unknown operator, or a division by zero — never
     a default value. -/
@@ -130,10 +152,29 @@ partial def eval (env : String → Option (Int × Int)) : Expr → Option Value
   | .rat n d   => if d == 0 then none else some (.num (normRat n d))
   | .bool b    => some (.bool b)
   | .sym s     => (env s).map .num
+  -- A `<matrix>`/`<vector>` literal may hold any expression, so each
+  -- entry is evaluated; an entry that is not a scalar, or a ragged
+  -- row shape, leaves the whole literal without a value.
+  | .mat rws =>
+      match rws.mapM (fun r => r.mapM (fun e => match eval env e with
+                                | some (.num x) => some x
+                                | _             => none)) with
+      | some m => if rectangular m then some (.matv m) else none
+      | none   => none
+  | .vec xs =>
+      (xs.mapM (fun e => match eval env e with
+        | some (.num x) => some x
+        | _             => none)).map Value.vecv
   | .app fn args =>
-      let nums := args.mapM (fun a => match eval env a with
-        | some (.num r) => some r
-        | _ => none)
+      match args.mapM (eval env) with
+      | none => none
+      | some vs =>
+      match linAlg fn vs with
+      | some r => some r
+      | none =>
+      let nums := vs.mapM (fun v => match v with
+        | .num r => some r
+        | _      => none)
       match nums with
       | none => none
       | some rs =>
@@ -227,6 +268,10 @@ partial def eval (env : String → Option (Int × Int)) : Expr → Option Value
     power, with atoms and divide tightest. A NEGATIVE literal gets
     the loose precedence of a `minus`, so `2^-3` renders fenced. -/
 def prec : Expr → Int
+  -- A matrix or vector literal is an ATOM: it carries its own
+  -- brackets, so it never needs fencing.
+  | .mat _   => 4
+  | .vec _   => 4
   | .int n   => if n < 0 then 1 else 4
   | .rat n _ => if n < 0 then 1 else 4
   | .bool _  => 4
@@ -262,6 +307,12 @@ partial def render (e : Expr) : String :=
     let s := render child
     if prec child < parent then fence s else s
   match e with
+  -- Presentation output for a matrix or vector is NOT modelled: this
+  -- module is a Content MathML backend (decoding and exact
+  -- evaluation), not a presentation renderer, so it names the
+  -- construct rather than inventing a layout for it.
+  | .mat _   => "<mi>matrix</mi>"
+  | .vec _   => "<mi>vector</mi>"
   | .int n   => "<mn>" ++ toString n ++ "</mn>"
   | .rat n d => "<mfrac><mn>" ++ toString n ++ "</mn><mn>" ++ toString d ++ "</mn></mfrac>"
   | .bool b  => "<mi>" ++ (if b then "true" else "false") ++ "</mi>"

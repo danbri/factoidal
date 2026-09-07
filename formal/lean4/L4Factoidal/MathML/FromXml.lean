@@ -133,6 +133,21 @@ partial def exprOf (n : Node) : Option Expr :=
             -- reject `type="integer"` written as `42.0`.
             (decimalToRat (textOf n)).map (fun r =>
               if r.2 == 1 then Expr.int r.1 else Expr.rat r.1 r.2)
+      -- §4.4.10.2 `<matrix>` is a list of `<matrixrow>`s; §4.4.10.1
+      -- `<vector>` is a flat list. A `<matrix>` whose children are
+      -- not all `<matrixrow>` is not read, rather than being read as
+      -- a one-row matrix of whatever was there.
+      else if ln == "matrix" then
+        (let rws := (elementChildren n).map (fun r =>
+           match r with
+           | .element t _ _ =>
+               if localName t == "matrixrow"
+               then (elementChildren r).mapM exprOf
+               else none
+           | _ => none)
+         (rws.mapM id).map Expr.mat)
+      else if ln == "vector" then
+        ((elementChildren n).mapM exprOf).map Expr.vec
       else if ln == "ci" then some (.sym (trim (textOf n)))
       else if ln == "true" then some (.bool true)
       else if ln == "false" then some (.bool false)
