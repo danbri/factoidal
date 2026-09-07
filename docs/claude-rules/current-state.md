@@ -153,12 +153,27 @@ current headline numbers, all measured on the shipped tree:
   parser, and the `regex_match` assume val RETIRED — SPARQL
   REGEX/fn:matches now runs on the verified engine (`regex_replace`
   is the one remaining Str seam, #63).
-- RDF 1.2 / SPARQL 1.2 (#305): term model + text/line syntaxes landed
-  and verified — RDF 1.2 syntax/eval 212 pass, 0 fail; SPARQL 1.2 248
-  pass, 6 fail (out of 254). Still open: RDF/XML 1.2, c14n-1.2 (86) +
-  entailment (74) suites, 6 SPARQL eval fails, RML-star mapping gen, and
-  browser/npm-API + dashboard wiring (JS `parse`/`query` still 1.1-only).
-  (The earlier "14/84 true gap" census predated the syntax/eval landings.)
+- RDF 1.2 / SPARQL 1.2 (#305): superseded by the 2026-09-07 measurement
+  below. (The earlier "14/84 true gap" census predated the syntax/eval
+  landings; the "212 pass / 248 pass, 6 fail" line predated the RDF/XML
+  1.2, c14n-1.2 and SPARQL 1.2 eval landings.)
+
+  **Measured 2026-09-07, F\* tree, `bin/darwin-arm64/w3c_runner`:**
+  `--rdf12` 242 pass, 0 fail (out of 242, seven leaf suites incl.
+  rdf-xml/eval); `--rdf12c14n` 82 pass, 0 fail (out of 82);
+  `--sparql12` 254 pass, 0 fail (out of 254, ten leaf suites);
+  `--rdf12entail` (rdf-semantics) 44 pass, 2 fail, 1 skip (out of 47),
+  up from 41 pass, 3 fail, 3 skip. Every remaining non-pass is an
+  upstream fixture defect, each with a tight case and citations in
+  [`docs/designissues/2026-09-07-rdf12-sparql12-semantics-fstar.md`](../designissues/2026-09-07-rdf12-sparql12-semantics-fstar.md):
+  `annotation` / `annotation-unfolded` name an expected graph that
+  contradicts the Turtle 1.2 annotation expansion the same upstream
+  commit's Turtle eval oracles define, and `literal-type`'s manifest
+  block is unreadable (undeclared `test:` prefix). Local tight-case
+  suite: `RDF12_TESTS_BASE=tests/local w3c_runner --rdf12entail
+  rdf12-semantics-tight` — 9 pass, 0 fail (out of 9).
+  Still open: RML-star mapping generation, and browser/npm-API +
+  dashboard wiring (JS `parse`/`query` still 1.1-only).
 - Dispositions table landed in the completeness ledger (day-closure
   /goal): every residual fail/skip named with a one-line disposition.
 

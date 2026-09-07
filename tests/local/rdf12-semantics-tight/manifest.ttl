@@ -1,0 +1,141 @@
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX mf:   <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#>
+PREFIX rdft: <http://www.w3.org/ns/rdftest#>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+PREFIX trs:  <https://factoidal.example/tests/rdf12-semantics-tight#>
+
+# Local tight-case suite for RDF 1.2 Semantics.
+#
+# Not a W3C suite and never reported with one. Every entry states a
+# reading of the specification that the vendored
+# third_party/testing/w3c/rdf/rdf12/rdf-semantics manifest either
+# contradicts or cannot express. Written 2026-09-07; the reasoning is in
+# docs/designissues/2026-09-07-rdf12-sparql12-semantics-fstar.md.
+#
+# Run:  RDF12_TESTS_BASE=tests/local bin/<platform>/w3c_runner \
+#         --rdf12entail rdf12-semantics-tight
+
+<> a mf:Manifest ;
+  rdfs:label "RDF 1.2 Semantics -- Factoidal tight cases" ;
+  mf:entries (
+    trs:annotation-expansion-entailed
+    trs:annotation-cg-reading-not-entailed
+    trs:annotation-unfolded-not-entailed
+    trs:literal-type
+    trs:malformed-literal-in-triple-term-inconsistent
+    trs:malformed-literal-asserted-inconsistent
+    trs:well-formed-literal-consistent
+    trs:reifies-subproperty-range
+    trs:proposition-subclass
+  ) .
+
+# ---- TC-1: what does the annotation block {| ... |} denote? -------------
+# Reading A (RDF 1.2 Turtle 7.4, and turtle12-eval-annotation-01 at the
+# same upstream commit): a fresh reifier r with `r rdf:reifies <<(s p o)>>`
+# and the annotation predicate-object list on r. Reading B: the graph the
+# vendored `annotation` entry names, `:a1 :p1 <<( :a :b :c )>>`.
+# We implement reading A. These three entries pin that choice.
+
+trs:annotation-expansion-entailed a mf:PositiveEntailmentTest ;
+  rdfs:comment "Reading A: the annotation block expands to a reifier triple plus the annotation. The action entails its own expansion." ;
+  mf:action <tc1-annotation-action.ttl> ;
+  mf:entailmentRegime "simple" ;
+  mf:name "annotation-expansion-entailed" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc1-annotation-reading-A.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+trs:annotation-cg-reading-not-entailed a mf:NegativeEntailmentTest ;
+  rdfs:comment "Reading B is NOT entailed. This is the vendored `annotation` entry graded the other way round: its expected result names an IRI (:a1) that does not occur in the action, so no entailment regime can license it." ;
+  mf:action <tc1-annotation-action.ttl> ;
+  mf:entailmentRegime "simple" ;
+  mf:name "annotation-cg-reading-not-entailed" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc1-annotation-reading-B.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+trs:annotation-unfolded-not-entailed a mf:NegativeEntailmentTest ;
+  rdfs:comment "The vendored `annotation-unfolded` entry, graded the other way round. Its action has no rdf:reifies triple, so it cannot entail the reifier the annotation block introduces." ;
+  mf:action <tc1-annotation-unfolded-action.ttl> ;
+  mf:entailmentRegime "simple" ;
+  mf:name "annotation-unfolded-not-entailed" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc1-annotation-action.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+# ---- TC-2: literals denote instances of their datatype ------------------
+# A verbatim re-statement of the vendored `literal-type` entry, whose own
+# manifest block is unreadable upstream (it writes `test:approval
+# test:NotClassified` with no `test:` prefix declared, so the whole block
+# is dropped by any conforming Turtle parser).
+
+trs:literal-type a mf:PositiveEntailmentTest ;
+  rdfs:comment "Literals denote instances of their datatype. Re-states the vendored `literal-type` entry, which is unreachable there because of an undeclared-prefix typo in its manifest block." ;
+  mf:action <tc2-literal-type-action.ttl> ;
+  mf:entailmentRegime "RDF" ;
+  mf:name "literal-type" ;
+  mf:recognizedDatatypes (xsd:integer) ;
+  mf:result <tc2-literal-type-result.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+# ---- TC-3: malformed literals and inconsistency -------------------------
+
+trs:malformed-literal-in-triple-term-inconsistent a mf:PositiveEntailmentTest ;
+  rdfs:comment "A literal ill-formed for a recognized datatype makes the graph D-inconsistent even inside a triple term. Same fixture and grading as the vendored `malformed-literal`." ;
+  mf:action <tc3-malformed-in-triple-term.ttl> ;
+  mf:entailmentRegime "RDF" ;
+  mf:name "malformed-literal-in-triple-term-inconsistent" ;
+  mf:recognizedDatatypes (xsd:integer) ;
+  mf:result false ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+trs:malformed-literal-asserted-inconsistent a mf:PositiveEntailmentTest ;
+  rdfs:comment "The same for an asserted malformed literal. Same fixture and grading as the vendored `malformed-literal-control`." ;
+  mf:action <tc3-malformed-asserted.ttl> ;
+  mf:entailmentRegime "RDF" ;
+  mf:name "malformed-literal-asserted-inconsistent" ;
+  mf:recognizedDatatypes (xsd:integer) ;
+  mf:result false ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+trs:well-formed-literal-consistent a mf:NegativeEntailmentTest ;
+  rdfs:comment "Vacuity guard for the two entries above: a well-formed literal of the same recognized datatype must NOT be reported inconsistent. Without this, an inconsistency checker that answers `true` for every graph would score three out of three." ;
+  mf:action <tc2-literal-type-action.ttl> ;
+  mf:entailmentRegime "RDF" ;
+  mf:name "well-formed-literal-consistent" ;
+  mf:recognizedDatatypes (xsd:integer) ;
+  mf:result false ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+# ---- TC-4 / TC-5: do the RDF 1.2 steps take part in the RDFS fixed point?
+# Both shapes are licensed by RDF 1.2 Semantics + RDFS but are not
+# exercised by any vendored fixture. They pin the two residual
+# incompletenesses that RDF.Entailment.Regime documents.
+
+trs:reifies-subproperty-range a mf:PositiveEntailmentTest ;
+  rdfs:comment "rdfs7 derives an rdf:reifies triple from a subproperty of it; the rdf:reifies range condition must then apply to the DERIVED triple." ;
+  mf:action <tc4-reifies-subproperty-action.ttl> ;
+  mf:entailmentRegime "RDFS" ;
+  mf:name "reifies-subproperty-range" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc4-reifies-subproperty-result.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
+
+trs:proposition-subclass a mf:PositiveEntailmentTest ;
+  rdfs:comment "A triple term is an instance of rdfs:Proposition, so rdfs9 must carry it into any superclass of rdfs:Proposition. The consequent reaches the triple term through a blank node, which is the only way a concrete syntax can name it." ;
+  mf:action <tc5-proposition-subclass-action.ttl> ;
+  mf:entailmentRegime "RDFS" ;
+  mf:name "proposition-subclass" ;
+  mf:recognizedDatatypes () ;
+  mf:result <tc5-proposition-subclass-result.ttl> ;
+  mf:unrecognizedDatatypes () ;
+  rdft:approval rdft:Proposed .
