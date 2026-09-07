@@ -1299,7 +1299,7 @@ theorem decodeSpec?_encode? (index : Index) (bytes : ByteArray) (h : encode? ind
           · rfl
         have hperm' : localIdsPermutation index.entries.toList
             index.entries.toList.length = true := by rw [hlen]; exact hperm
-        simp only [Bool.or_eq_true, Bool.not_eq_true', fitsU32, decide_eq_false_iff_not,
+        simp only [Bool.or_eq_true, Bool.not_eq_true', fitsU32, two32_eq_uint32Size, decide_eq_false_iff_not,
           Nat.not_lt, not_or, Nat.not_le] at hguard
         rw [decodeSpec?_encoded index.targetIBKSha256 index.entries.toList htsize hcountfit
           hok hinc hperm' (by omega) (by omega) (by omega)]

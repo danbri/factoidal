@@ -53,6 +53,7 @@ No `partial`, no `unsafe`, no `sorry`.
 -/
 import L4Factoidal.Storage.IndexedBlockWireV4
 import L4Factoidal.Storage.PagedTermDictionaryV2
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.IndexedBlockWireV5
 
@@ -357,8 +358,8 @@ def encode? (block : QuadBlock) : Option ByteArray := do
   let graphs := distinctGraphs block.rows.toList
   let graphBytes := graphs.flatMap encodeGraphEntry
   let rows := positionedRows block |>.flatMap encodeRow
-  if dictionary.size >= UInt32.size || rows.length >= UInt32.size ||
-      graphs.length >= UInt32.size then none else
+  if dictionary.size >= two32 || rows.length >= two32 ||
+      graphs.length >= two32 then none else
   let payload := writeU32LE (UInt32.ofNat block.rows.size) ++
     writeU32LE (UInt32.ofNat dictionary.size) ++ writeU32LE (UInt32.ofNat graphs.length) ++
     graphBytes ++ rows ++ dictionary.data.toList

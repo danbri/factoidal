@@ -35,6 +35,7 @@ theorem that assumed its own conclusion, it is deleted, and what remains
 is computational evidence at four shapes.
 -/
 import L4Factoidal.Cottas.PresenceBitmap
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -53,7 +54,7 @@ def buildHeader (numRgs numTokens : UInt32) : List UInt8 :=
     a practical impossibility for a real corpus, but the bound is part
     of the format so it is checked rather than assumed. -/
 def serializePresenceHeader (numRgs numTokens : Nat) : Option (List UInt8) :=
-  if numRgs ≥ 4294967296 || numTokens ≥ 4294967296 then none
+  if numRgs ≥ two32 || numTokens ≥ two32 then none
   else some (buildHeader (UInt32.ofNat numRgs) (UInt32.ofNat numTokens))
 
 /-- Header plus a caller-supplied bitmap. The caller's invariant, NOT

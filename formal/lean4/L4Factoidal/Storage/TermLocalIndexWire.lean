@@ -7,6 +7,7 @@ reader can locate the one page which may contain a requested RDF term.
 -/
 import L4Factoidal.Storage.TermLocalIndex
 import L4Factoidal.Storage.BlockWireV0
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.TermLocalIndexWire
 
@@ -44,7 +45,7 @@ structure Index where
 
 def byteArrayOfList (xs : List UInt8) : ByteArray := ByteArray.mk xs.toArray
 def listOfByteArray (xs : ByteArray) : List UInt8 := xs.data.toList
-def fitsU32 (n : Nat) : Bool := n < UInt32.size
+def fitsU32 (n : Nat) : Bool := n < two32
 
 def lessKey : List UInt8 → List UInt8 → Bool
   | [], [] => false
@@ -109,10 +110,10 @@ def localIdsPermutation (entries : List Entry) (termCount : Nat) : Bool :=
     needs to rebuild the RDF term from the stored key.  Without these
     conjuncts the encoder would emit bytes its own decoder rejects. -/
 def supported (index : Index) : Bool :=
-  index.targetIBKSha256.size == 32 && index.entries.size < UInt32.size &&
+  index.targetIBKSha256.size == 32 && index.entries.size < two32 &&
     index.entries.toList.all (fun entry =>
       entry.localId < index.entries.size && entry.key == serializeTerm entry.term &&
-        entry.key.length < UInt32.size && termSupported entry.term &&
+        entry.key.length < two32 && termSupported entry.term &&
         termFitsU32b entry.term) &&
     localIdsPermutation index.entries.toList index.entries.size
 

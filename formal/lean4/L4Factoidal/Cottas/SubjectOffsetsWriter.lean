@@ -55,6 +55,7 @@ the full subject count — a short unparseable file, written with no
 error. `buildSubjectOffsets` returns `none`.
 -/
 import L4Factoidal.Cottas.OffsetsWriter
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -78,7 +79,7 @@ def buildSubjectOffsetsHeader (numSubjects numRowsTotal : UInt32) : List UInt8 :
 
 def serializeSubjectOffsetsHeader (numSubjects numRowsTotal : Nat) :
     Option (List UInt8) :=
-  if numSubjects ≥ 4294967296 || numRowsTotal ≥ 4294967296 then none
+  if numSubjects ≥ two32 || numRowsTotal ≥ two32 then none
   else some (buildSubjectOffsetsHeader (UInt32.ofNat numSubjects)
                (UInt32.ofNat numRowsTotal))
 

@@ -64,6 +64,7 @@ The two decisive `false`s are what make the gate worth having; every
 other row is an over-include.
 -/
 import L4Factoidal.Cottas.PresenceBitmap
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -122,7 +123,7 @@ def readRgEndOffset (h : CompoundHandle) (rg : Nat) : Option Nat :=
 
 /-- `(predId << 32) ||| objId`, written with multiplication as the F\*
     source does. -/
-def pairCode (p o : Nat) : Nat := p * 4294967296 + o
+def pairCode (p o : Nat) : Nat := p * two32 + o
 
 /-! ## The search
 
@@ -220,7 +221,7 @@ private def u32le (n : Nat) : List UInt8 :=
    UInt8.ofNat ((n / 65536) % 256), UInt8.ofNat ((n / 16777216) % 256)]
 
 private def u64le (n : Nat) : List UInt8 :=
-  u32le (n % 4294967296) ++ u32le (n / 4294967296)
+  u32le (n % two32) ++ u32le (n / two32)
 
 /-- `rgs` gives, per row group, its SORTED list of `(p, o)` pairs. -/
 def mkCompound (predDictSize objDictSize : Nat) (rgs : List (List (Nat × Nat))) :

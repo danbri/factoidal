@@ -75,7 +75,7 @@ def scaledBytes : Nat := 9
 /-- `u32 id`, `u32 crsIndex`, four `Scaled`. -/
 def entryBytes : Nat := 4 + 4 + 4 * scaledBytes
 
-def two32 : Nat := 4294967296
+@[noinline] def two32 : Nat := 4294967296
 def two63 : Nat := 9223372036854775808
 def two64 : Nat := 18446744073709551616
 
@@ -86,7 +86,7 @@ structure Artifact where
 
 /-! ## 1. Admission -/
 
-def fitsU32 (n : Nat) : Bool := n < UInt32.size
+def fitsU32 (n : Nat) : Bool := n < two32
 def fitsI64 (m : Int) : Bool := -(two63 : Int) ≤ m && m < (two63 : Int)
 def scaledSupported (s : Scaled) : Bool := fitsI64 s.mantissa && s.scale < 256
 

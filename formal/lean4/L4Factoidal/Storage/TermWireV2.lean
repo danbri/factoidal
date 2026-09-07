@@ -67,6 +67,7 @@ No `sorry`, no user `axiom`, no `native_decide`, no `partial`.
 -/
 import L4Factoidal.Storage.DeltaLog
 import L4Factoidal.Crypto.SHA2
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.TermWireV2
 
@@ -82,7 +83,7 @@ def maxInlineLexicalBytes : Nat := 65536
 
 /-- The out-of-line ceiling of section 2: `2 ^ 32 - 1` bytes. Above it
 the packer refuses the literal. -/
-def maxBlobBytes : Nat := 4294967295
+@[noinline] def maxBlobBytes : Nat := 4294967295
 
 def tagIri : UInt8 := 0
 def tagBnode : UInt8 := 1

@@ -60,6 +60,7 @@ checked by `#guard` at several shapes and is NOT proved; see the same
 note in `PresenceWriter`.
 -/
 import L4Factoidal.Cottas.CompoundPresenceWriter
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -83,7 +84,7 @@ def buildOffsetsHeader (numRgs numPreds : UInt32) : List UInt8 :=
 
 /-- The 16-byte header alone — the one function the OCaml glue calls. -/
 def serializeOffsetsHeader (numRgs numPreds : Nat) : Option (List UInt8) :=
-  if numRgs ≥ 4294967296 || numPreds ≥ 4294967296 then none
+  if numRgs ≥ two32 || numPreds ≥ two32 then none
   else some (buildOffsetsHeader (UInt32.ofNat numRgs) (UInt32.ofNat numPreds))
 
 /-! ## The buckets
@@ -104,7 +105,7 @@ def offsetsDataStart (numRgs numPreds : Nat) : Nat :=
 def buildOffsets (numRgs numPreds : Nat) (buckets : List (List Nat)) :
     Option ByteArray :=
   if buckets.length != numRgs * numPreds then none
-  else if buckets.any (fun b => b.any (fun s => s ≥ 4294967296)) then none
+  else if buckets.any (fun b => b.any (fun s => s ≥ two32)) then none
   else
     let sorted := buckets.map sortSubjects
     (serializeOffsetsHeader numRgs numPreds).map (fun hdr =>

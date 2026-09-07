@@ -23,6 +23,7 @@ decoder rather than guessed from a byte sketch.
 -/
 import L4Factoidal.Storage.IndexedBlockWireV2
 import L4Factoidal.Storage.PagedTermDictionary
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Storage.IndexedBlockWireV3
 
@@ -164,7 +165,7 @@ def encode? (block : Block) : Option ByteArray := do
   if !supported block then none else
   let dictionary ← PagedTermDictionary.encode? block.dict
   let rows := positionedRows block |>.flatMap encodeRow
-  if dictionary.size >= UInt32.size || rows.length >= UInt32.size then none else
+  if dictionary.size >= two32 || rows.length >= two32 then none else
   some (encodeBytes block dictionary rows)
 
 def decodePrefix (bytes : ByteArray) : Option Prefix := do

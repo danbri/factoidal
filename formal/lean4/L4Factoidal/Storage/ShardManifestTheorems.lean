@@ -475,7 +475,7 @@ theorem decodeZone_encodeZone (zone : List UInt8 × List UInt8) (rest : List UIn
 /-- A zone bound of at most `zoneBytes` bytes is within the u32 field width. -/
 theorem fitsU32_of_le_zoneBytes {n : Nat} (h : n ≤ zoneBytes) : fitsU32 n := by
   simp only [zoneBytes] at h
-  simp only [fitsU32, decide_eq_true_eq]
+  simp only [fitsU32, two32, decide_eq_true_eq]
   omega
 
 theorem decodeBlobRefList_flatMap : ∀ (indices : List Nat) (rest : List UInt8),

@@ -34,6 +34,7 @@ than by comment.
 import L4Factoidal.Cottas.CompoundPresenceBitmap
 import L4Factoidal.Cottas.PresenceWriter
 import L4Factoidal.Cottas.SortByKey
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.Cottas
 
@@ -51,7 +52,7 @@ def buildCompoundHeader (numRgs predDictSize objDictSize : UInt32) : List UInt8 
     bound. -/
 def serializeCompoundPresenceHeader (numRgs predDictSize objDictSize : Nat) :
     Option (List UInt8) :=
-  if numRgs ≥ 4294967296 || predDictSize ≥ 4294967296 || objDictSize ≥ 4294967296
+  if numRgs ≥ two32 || predDictSize ≥ two32 || objDictSize ≥ two32
   then none
   else some (buildCompoundHeader (UInt32.ofNat numRgs) (UInt32.ofNat predDictSize)
                (UInt32.ofNat objDictSize))
@@ -115,7 +116,7 @@ def buildCompoundPresence (predDictSize objDictSize : Nat)
 
 /-! ## Round trip -/
 
-def decodePair (code : Nat) : Nat × Nat := (code / 4294967296, code % 4294967296)
+def decodePair (code : Nat) : Nat × Nat := (code / two32, code % two32)
 
 /-- The pairs in `[startOff, endOff)`. `none` on a truncated file or a
     span that is not a whole number of 8-byte codes. -/
