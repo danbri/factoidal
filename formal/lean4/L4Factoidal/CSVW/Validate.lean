@@ -730,6 +730,53 @@ def dataColumnName (headers : List String) (j : Nat) (c : Column) : String :=
                | "" => "_col." ++ toString (j + 1)
                | h  => h
 
+/-- Do a title's language tag and the header's effective language
+    match? DM §5.4.3: "`und` matches any language, and languages match
+    if they are equal when truncated, as defined in [BCP47], to the
+    length of the shortest language tag." -/
+def titleLangMatch (a b : String) : Bool :=
+  a == b || a == "und" || b == "und" ||
+    (let k := Nat.min a.length b.length
+     String.ofList (a.toList.take k) == String.ofList (b.toList.take k))
+
+/-- DM §5.4.3, the per-column half of table-description compatibility,
+    applied position by position once the column COUNTS already agree
+    (the width half, checked separately — comparing by index when the
+    widths differ would blame the wrong column).
+
+    * A column that HAS titles is compatible only if some title equals
+      the header cell — case-sensitively — and carries a language
+      matching the header's. The header cell carries the table's
+      effective language, so a `"lang": "de"` table and an `{"en": …}`
+      title do not match (test148); `gid` and `GID` do not match
+      because the comparison is case-sensitive (test147); `Family
+      Name` and `FamilyName` do not intersect at all (test127).
+    * A column with a `name` and NO titles must have that name equal
+      the name the header title itself encodes to (test124: metadata
+      `GID1` against a header `GID`, whose name is `GID`).
+    * A column with neither constrains nothing.
+
+    Header cells are compared TRIMMED: the default dialect trims them,
+    so test032's header " Start Date" carries the title "Start Date".
+
+    `dl` is the table's effective default language. -/
+def titleCompat (dl : String) (colsMeta : List Column) (header : List String)
+    : List Finding :=
+  (colsMeta.zip header).flatMap (fun (c, h) =>
+    let ht0 := h.trim
+    match c.titlesLang with
+    | _ :: _ =>
+        if c.titlesLang.any (fun (t, lo) =>
+             t.trim == ht0 && titleLangMatch (lo.getD dl) dl)
+        then []
+        else [err ("column title incompatible with CSV header: " ++ ht0)]
+    | [] =>
+        match c.name with
+        | some n =>
+            if n == UriTemplate.encodeColumnName ht0 then []
+            else [err ("column name incompatible with CSV header: " ++ ht0)]
+        | none => [])
+
 /-- Every data-level finding for one table: cell formats, required
     columns, primary-key uniqueness (single and composite), and
     schema/CSV width compatibility (test278). A table whose declared
@@ -768,7 +815,15 @@ def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding
   let reqErrs :=
     if widthErr.isEmpty then colData.flatMap (fun (nm, inh, vals) => checkRequiredCells inh nm vals)
     else []
-  cellErrs ++ pkErrs ++ reqErrs ++ widthErr
+  -- The header cells carry the table's effective language, so that is
+  -- what a title's own tag is matched against (DM §5.4.3). Absent
+  -- everywhere, it is `und`, which matches anything — so this check
+  -- only bites on a document that declares a language.
+  let tableLang := (t.inherited.lang.orElse (fun _ => g.inherited.lang)).getD "und"
+  let titleErrs :=
+    if widthErr.isEmpty && headers.length > 0 then titleCompat tableLang declaredNonVirt headers
+    else []
+  cellErrs ++ pkErrs ++ reqErrs ++ widthErr ++ titleErrs
 
 /-- Every data-level finding across a table group's tables. A table
     with `suppressOutput` is read for other checks (foreign keys, not
