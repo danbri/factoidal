@@ -116,6 +116,46 @@ partial def polygonList (inp : P) : Option (List Polygon × P) := do
       some (poly :: ps, inp')
   | rest => some ([poly], rest)
 
+/-- A single MULTIPOINT component: `1 2` or `(1 2)` — Simple Features
+    WKT allows both spellings for this one production only (`parenPoints`
+    above is right for every other point list). Not recursive, so no
+    `partial` is needed. -/
+def multipointComponent (inp : P) : Option (Point × P) :=
+  match skipWs inp with
+  | '(' :: rest => do
+      let (p, rest2) ← point rest
+      let rest3 ← lit ')' rest2
+      some (p, rest3)
+  | _ => point inp
+
+/-- The `, component` tail of a MULTIPOINT list, bounded by an explicit
+    fuel (the remaining input length) rather than `partial`: each round
+    consumes at least a comma and a component, so the fuel is a strict
+    upper bound on rounds and running out means "no more input to
+    consume", not "gave up early". Mirrors the F* port's
+    `parse_multipoint_rest`, which carries the same fuel for the same
+    reason. -/
+def multipointRestFuel : Nat → P → List Point → Option (List Point × P)
+  | 0, inp, acc => some (acc.reverse, inp)
+  | fuel + 1, inp, acc =>
+      match skipWs inp with
+      | ',' :: rest =>
+          match multipointComponent rest with
+          | some (p, inp2) => multipointRestFuel fuel inp2 (p :: acc)
+          | none => none
+      | rest => some (acc.reverse, rest)
+
+def multipointRest (inp : P) : Option (List Point × P) :=
+  multipointRestFuel inp.length inp []
+
+/-- `( component (, component)* )`, components in either spelling. -/
+def multipointBody (inp : P) : Option (List Point × P) := do
+  let inp ← lit '(' inp
+  let (p, inp) ← multipointComponent inp
+  let (ps, inp) ← multipointRest inp
+  let inp ← lit ')' inp
+  some (p :: ps, inp)
+
 /-- Match a case-insensitive keyword. -/
 def keyword (kw : String) (inp : P) : Option P :=
   let inp := skipWs inp
@@ -144,7 +184,7 @@ partial def geometry (inp : P) : Option (Geometry × P) :=
       some (.point p, r)
   else if let some r := keyword "MULTIPOINT" inp0 then
     if let some r' := tryEmpty r then some (.empty .multiPoint, r')
-    else do let (ps, r) ← parenPoints r; some (.multiPoint ps, r)
+    else do let (ps, r) ← multipointBody r; some (.multiPoint ps, r)
   else if let some r := keyword "MULTILINESTRING" inp0 then
     if let some r' := tryEmpty r then some (.empty .multiLineString, r')
     else do let (rs, r) ← parenRings r; some (.multiLineString rs, r)
@@ -218,5 +258,82 @@ def Scaled.toStringDec (a : Scaled) : String :=
     let intPart := padded.take cut
     let fracPart := padded.drop cut
     (if neg then "-" else "") ++ intPart ++ "." ++ fracPart
+
+/-! ## WKT serialization, ported from `Parser.WKT.fst`'s
+`serialize_*` family. Kept in the small, tightly-coupled parse/unparse
+pair rather than a separate module for the same reason the F* side
+gives: the v0 slice's module count is already large. Not required to
+byte-for-byte reproduce a given input's whitespace or formatting — only
+that re-parsing the output reconstructs the same geometry. -/
+
+namespace Wkt
+
+def serializePoint (p : Point) : String :=
+  s!"{Scaled.toStringDec p.x} {Scaled.toStringDec p.y}"
+
+def serializePoints : List Point → String
+  | []      => ""
+  | [p]     => serializePoint p
+  | p :: rest => s!"{serializePoint p}, {serializePoints rest}"
+
+def serializeRing (r : Ring) : String := s!"({serializePoints r})"
+
+def serializeRings : List Ring → String
+  | []      => ""
+  | [r]     => serializeRing r
+  | r :: rest => s!"{serializeRing r}, {serializeRings rest}"
+
+def serializePolygonBody (p : Polygon) : String :=
+  s!"({serializeRings (p.ext :: p.holes)})"
+
+def serializePolygons : List Polygon → String
+  | []      => ""
+  | [p]     => serializePolygonBody p
+  | p :: rest => s!"{serializePolygonBody p}, {serializePolygons rest}"
+
+def serializeLineStrings : List (List Point) → String
+  | []      => ""
+  | [l]     => s!"({serializePoints l})"
+  | l :: rest => s!"({serializePoints l}), {serializeLineStrings rest}"
+
+def kindTag : Kind → String
+  | .point              => "POINT"
+  | .lineString         => "LINESTRING"
+  | .polygon            => "POLYGON"
+  | .multiPoint         => "MULTIPOINT"
+  | .multiLineString    => "MULTILINESTRING"
+  | .multiPolygon       => "MULTIPOLYGON"
+  | .geometryCollection => "GEOMETRYCOLLECTION"
+
+mutual
+
+/-- Render a `Geometry` back to WKT text. Mutual with
+    `serializeGeometryList` for the `GeometryCollection` case, the same
+    structural-recursion reason `Geometry.beq`/`beqList` are mutual
+    (`L4Factoidal/Geo/Types.lean`). -/
+def serializeGeometry : Geometry → String
+  | .point p               => s!"POINT({serializePoint p})"
+  | .lineString l          => s!"LINESTRING({serializePoints l})"
+  | .polygon poly          => s!"POLYGON{serializePolygonBody poly}"
+  | .multiPoint ps         => s!"MULTIPOINT({serializePoints ps})"
+  | .multiLineString ls    => s!"MULTILINESTRING({serializeLineStrings ls})"
+  | .multiPolygon ps       => s!"MULTIPOLYGON({serializePolygons ps})"
+  | .geometryCollection gs => s!"GEOMETRYCOLLECTION({serializeGeometryList gs})"
+  | .empty k               => s!"{kindTag k} EMPTY"
+
+def serializeGeometryList : List Geometry → String
+  | []      => ""
+  | [g]     => serializeGeometry g
+  | g :: rest => s!"{serializeGeometry g}, {serializeGeometryList rest}"
+
+end
+
+/-- Render a complete `geo:wktLiteral`, CRS prefix and all. -/
+def serializeValue (v : WktValue) : String :=
+  match v.crs with
+  | none     => serializeGeometry v.geom
+  | some crs => s!"<{crs}> {serializeGeometry v.geom}"
+
+end Wkt
 
 end L4Factoidal.Geo

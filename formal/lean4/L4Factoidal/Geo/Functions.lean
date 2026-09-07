@@ -69,4 +69,74 @@ def extFns (iri : String) (args : List EvalResult) : Option EvalResult :=
         else none
     | _ => none
 
+/-! ## `geof:distance` and `geof:envelope`
+
+Ported from `RDF.Geo.Functions.fst`'s `geo_distance`/`geo_envelope`.
+Both are "cheap" geometry functions the evaluator can also install
+through `extFns` above, but the pin file exercises them directly, so
+they are plain functions rather than registry entries. -/
+
+/-- `floor(sqrt n)` by binary search, fuel-bounded by `n + 2` (a
+    generous, easy-to-see bound: the search halves its range each
+    round, so it converges in `O(log n)` rounds well inside that fuel
+    via the early `lo ≥ hi` exit). Structural on the fuel argument, so
+    no `partial` is needed — the same shape as `Scaled.pow10` above. -/
+def isqrtSearch : Nat → Nat → Nat → Nat → Nat
+  | _,        lo, _,  0        => lo
+  | n,        lo, hi, fuel + 1 =>
+      if lo ≥ hi then lo
+      else
+        let mid := (lo + hi + 1) / 2
+        if mid * mid ≤ n then isqrtSearch n mid hi fuel
+        else isqrtSearch n lo (mid - 1) fuel
+
+def isqrt (n : Nat) : Nat :=
+  if n == 0 then 0 else isqrtSearch n 0 (n + 1) (n + 2)
+
+/-- Extra decimal digits of precision `geoSqrtApprox` discloses beyond
+    the input's own scale. -/
+def geoDistancePrecisionExtraDigits : Nat := 9
+
+def geoDistanceSquared (p1 p2 : Point) : Scaled :=
+  let dx := Scaled.sub p1.x p2.x
+  let dy := Scaled.sub p1.y p2.y
+  Scaled.add (Scaled.mul dx dx) (Scaled.mul dy dy)
+
+/-- `floor(sqrt v)` of a nonnegative `Scaled`, to
+    `geoDistancePrecisionExtraDigits` extra decimal digits beyond the
+    input's own scale. This is the ONE inexact step anywhere in the
+    GeoSPARQL v0 surface — an under-approximation (never rounded or
+    over-approximated), computed by the pure integer `isqrt` above, so
+    the disclosed inexactness is exactly one documented
+    `floor(sqrt(...))` call, not a black box. -/
+def geoSqrtApprox (v : Scaled) : Scaled :=
+  let s := v.scale
+  let outScale := s + geoDistancePrecisionExtraDigits
+  let shift : Nat := outScale + outScale - s
+  let m : Nat := (if v.mantissa < 0 then 0 else v.mantissa).toNat
+  let arg : Nat := m * Scaled.pow10 shift
+  { mantissa := (isqrt arg : Int), scale := outScale }
+
+/-- `geof:distance(g1,g2)`: the exact squared distance and a disclosed
+    approximate square root for point/point; refused (`none`) for
+    every other geometry-kind pair — v0 scope limits the exact-
+    arithmetic distance function to point/point. -/
+def geoDistance (g1 g2 : Geometry) : Option Scaled :=
+  match g1, g2 with
+  | .point p1, .point p2 => some (geoSqrtApprox (geoDistanceSquared p1 p2))
+  | _, _ => none
+
+/-- The bounding box as a closed rectangular exterior ring, no holes. -/
+def bboxToPolygon (b : BBox) : Polygon :=
+  { ext := [ ⟨b.xmin, b.ymin⟩, ⟨b.xmax, b.ymin⟩, ⟨b.xmax, b.ymax⟩,
+             ⟨b.xmin, b.ymax⟩, ⟨b.xmin, b.ymin⟩ ],
+    holes := [] }
+
+/-- `geof:envelope(g)`: the geometry's bounding box as a rectangular
+    polygon — exact, no approximation involved at all. -/
+def geoEnvelope (g : Geometry) : Option Geometry :=
+  match BBox.ofGeometry g with
+  | none   => none
+  | some b => some (.polygon (bboxToPolygon b))
+
 end L4Factoidal.Geo

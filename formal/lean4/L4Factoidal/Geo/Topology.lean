@@ -194,6 +194,44 @@ where
   segmentCrossesRings : List Point → List Ring → Bool
   | l, rings => rings.any (fun r => pathCrossesPath l r)
 
+/-! ## Polygon/polygon boundary interaction -/
+
+def segmentCrossesRings (a b : Point) : List Ring → Bool
+  | []      => false
+  | r :: rs => segmentCrossesPath a b r || segmentCrossesRings a b rs
+
+def segmentCrossesPolygonBoundary (a b : Point) (poly : Polygon) : Bool :=
+  segmentCrossesPath a b poly.ext || segmentCrossesRings a b poly.holes
+
+/-- Some vertex of `pts` lies on the boundary or in the interior of
+    `poly` (i.e. is not exterior). -/
+def anyVertexInPolygon : List Point → Polygon → Bool
+  | [], _         => false
+  | p :: rest, poly => polygonClass p poly != .exterior || anyVertexInPolygon rest poly
+
+def ringCrossesPolygonBoundary : Ring → Polygon → Bool
+  | [], _          => false
+  | [_], _         => false
+  | a :: b :: rest, poly =>
+      segmentCrossesPolygonBoundary a b poly || ringCrossesPolygonBoundary (b :: rest) poly
+
+def ringsCrossPolygonBoundary : List Ring → Polygon → Bool
+  | [], _      => false
+  | r :: rest, poly => ringCrossesPolygonBoundary r poly || ringsCrossPolygonBoundary rest poly
+
+/-- The two polygons' boundaries (exterior ring plus holes, on both
+    sides) share a crossing point anywhere. -/
+def polygonBoundariesCross (p1 p2 : Polygon) : Bool :=
+  ringCrossesPolygonBoundary p1.ext p2 || ringsCrossPolygonBoundary p1.holes p2
+
+/-- Complete (not just sufficient) exact test for two SIMPLE polygons:
+    they intersect iff some vertex of either lies inside-or-on the
+    other, or their boundaries cross — the standard result for simple
+    polygons, ported from `RDF.Geo.Topology.fst`'s
+    `geo_polygons_intersect`. -/
+def polygonsIntersect (p1 p2 : Polygon) : Bool :=
+  anyVertexInPolygon p1.ext p2 || anyVertexInPolygon p2.ext p1 || polygonBoundariesCross p1 p2
+
 /-- `sfEquals` on points: coordinate equality across scales. -/
 def pointEquals (p q : Point) : Bool := Point.eq p q
 
@@ -247,6 +285,10 @@ def sfIntersectsBase : Geometry → Geometry → Option Bool
   | .lineString l1, .lineString l2 => some (pathCrossesPath l1 l2)
   | .lineString l, .polygon poly => some (lineIntersectsPolygon l poly)
   | .polygon poly, .lineString l => some (lineIntersectsPolygon l poly)
+  | .polygon p1, .polygon p2 =>
+      match BBox.ofPolygon p1, BBox.ofPolygon p2 with
+      | some b1, some b2 => if !(b1.overlaps b2) then some false else some (polygonsIntersect p1 p2)
+      | _, _ => some false
   | _, _ => none
 
 /-- `sfWithin` over the base kinds. An empty geometry is within
@@ -265,6 +307,11 @@ def sfWithinBase : Geometry → Geometry → Option Bool
   | .point p, .polygon poly => some (polygonClass p poly == .interior)
   | .polygon _, .point _ => some false
   | .lineString l1, .lineString l2 => pathWithinPath l1 l2
+  | .polygon p1, .polygon p2 =>
+      if polygonBoundariesCross p1 p2 then none
+      else match p1.ext with
+        | rep :: _ => some (polygonClass rep p2 != .exterior)
+        | []       => none
   | _, _ => none
 
 /-- `sfTouches` over the base kinds: the geometries meet, but only at
@@ -359,6 +406,34 @@ def sfTouches (g1 g2 : Geometry) : Option Bool :=
   else
     combineExists
       ((components g1).flatMap (fun a => (components g2).map (sfTouchesBase a)))
+
+/-- `sfOverlaps` over the base kinds: a pair of DIFFERENT dimensions
+    never overlaps per the Simple Features convention (overlap needs
+    same-dimension interiors to share points without one containing
+    the other); Point/Point pairs never overlap regardless (points
+    have no interior); same-dimension LineString/LineString and
+    Polygon/Polygon pairs are REFUSED — not ported past the dimension
+    check in this v0 slice, matching `RDF.Geo.Topology.fst`'s
+    `sf_overlaps_base`. -/
+def sfOverlapsBase : Geometry → Geometry → Option Bool
+  | .empty _, _ => some false
+  | _, .empty _ => some false
+  | .point _, .point _ => some false
+  | .point _, .lineString _ => some false
+  | .lineString _, .point _ => some false
+  | .point _, .polygon _ => some false
+  | .polygon _, .point _ => some false
+  | .lineString _, .polygon _ => some false
+  | .polygon _, .lineString _ => some false
+  | .lineString _, .lineString _ => none
+  | .polygon _, .polygon _ => none
+  | _, _ => none
+
+/-- `sfOverlaps` over full geometries: the base predicate applies
+    directly, with NO Multi*/GeometryCollection decomposition — this
+    matches the F* port, where `sf_overlaps` is `sf_overlaps_base`
+    unchanged rather than routed through `geo_decompose`. -/
+def sfOverlaps (g1 g2 : Geometry) : Option Bool := sfOverlapsBase g1 g2
 
 /-- `sfEquals`: mutual containment for compounds; the base test
     otherwise. -/

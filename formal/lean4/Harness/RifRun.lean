@@ -268,7 +268,19 @@ def main (args : List String) : IO UInt32 := do
                         -- different symbols.
                         let rules := doc.rules.map (qualifyRule "premise")
                         let goal := qualifyFormula "conclusion" goal
-                        match (if unsupportedRegime
+                        -- An OWL-Direct combination that violates the
+                        -- individual/data-value VOCABULARY SEPARATION
+                        -- is INCONSISTENT, and an inconsistent
+                        -- combination entails everything — including a
+                        -- conclusion the rules never derive. Checked
+                        -- before the regime is declared unsupported,
+                        -- because it is a verdict the port can reach
+                        -- without an OWL-Direct closure.
+                        let separationInconsistent :=
+                          L4Factoidal.RIF.Conformance.owlDirectSeparationInconsistent
+                            doc.rules imported
+                        match (if separationInconsistent then Verdict.holds
+                               else if unsupportedRegime
                                then Verdict.undecided
                                  "the case imports under an entailment regime this port does not implement"
                                else entails rules facts goal rounds) with
