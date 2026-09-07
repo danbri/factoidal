@@ -474,11 +474,37 @@ def graphInClosure? (cl : Graph) (gc : Graph) : Option Bool :=
     let (ok, left) := searchMapping cl (orderPats gc) [] matchBudget
     if ok then some true else if left == 0 then none else some false
 
+/-- The BUILT-IN annotation properties: OWL 2 Structural Specification
+and Functional-Style Syntax (W3C Rec. 2012-12-11) § 5.5, "the following
+IRIs are used as annotation properties". A document does not declare
+them — they are annotation properties by the specification, and the
+OWL 2 Mapping to RDF Graphs writes no `rdf:type owl:AnnotationProperty`
+triple for them. So a filter that only reads declarations cannot see
+them, which is what `WebOnt-I4.6-005-Direct` exposed. -/
+def builtinAnnotationProperties : List WfIri :=
+  [ rdfsLabel, rdfsComment, rdfsSeeAlso, rdfsIsDefinedBy,
+    owlDeprecated, owlVersionInfo, owlPriorVersion,
+    owlBackwardCompatibleWith, owlIncompatibleWith ]
+
 /-- Port of `OWL_DirectMapping_Filter.exclude_annotation_triples`: drop
-the triples whose predicate the graph itself types as an annotation or
-ontology property. -/
+the triples whose predicate is an annotation property — declared as one
+by the graph itself, or built in.
+
+Under the Direct Semantics an annotation assertion is an
+`AnnotationAssertion` axiom, and OWL 2 Direct Semantics § 2.1 gives the
+axiom closure of an ontology WITHOUT its annotations: annotations have
+no effect on the interpretation, so no annotation assertion is entailed
+or refuted by anything. Dropping them from a DIRECT-only conclusion is
+therefore the Direct Semantics' own reading of that conclusion, and it
+is what `WebOnt-I4.6-005-Direct`'s `test:description` states in so many
+words: "the direct semantics ignore annotations in the conclusion
+ontology". The filter applies to DIRECT-only cases and nowhere else —
+the RDF-Based sibling `WebOnt-I4.6-005` has the identical premise and
+conclusion and is a NegativeEntailmentTest, because under the RDF-Based
+Semantics `rdfs:comment` is an ordinary triple. -/
 def excludeAnnotationTriples (g : Graph) : Graph :=
   let isAnn (p : WfIri) : Bool :=
+    builtinAnnotationProperties.contains p ||
     g.any (fun t => t.s == Subject.iri p && t.p == rdfType &&
       (t.o == Term.iri owlAnnotationProperty || t.o == Term.iri owlOntologyProperty))
   g.filter (fun t => !isAnn t.p)
