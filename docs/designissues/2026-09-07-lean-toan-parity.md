@@ -49,70 +49,68 @@ about the suite rather than about the port (anti-pattern 28).
 
 ## Status, 2026-09-07
 
-**No score has been measured.** The session was stopped by the disk
-floor before anything could be built or run. What is recorded here is
-therefore a transcription and a predicted score, both labelled as
-such.
-
-The environment: `/System/Volumes/Data` had about 10 GB free at the
-start, shared with three other agents. A cold `lake build` in this
-worktree reached target 529 of 602 -- the per-module `:c.o` compiles
-that the executables link against -- and the volume fell to 2.0 GB.
-The build was killed to keep the volume from filling; it recovered to
-2.7 GB, still under the 3 GB floor this session was given, so no
-further build was attempted. This worktree's own `.lake` is 460 MB,
-so it is not what filled the volume.
-
-PREDICTED first score, from reading the two trees rather than running
-them. It is a prediction and must be replaced by a run:
+FIRST SCORE, measured, before any change to the serializer:
 
     TOAN (Lean): 32 pass, 78 fail (out of 110)
 
-The 78 predicted failures are all one gap: `MathML.Present.fst` has
-no Lean counterpart, so every check that serializes an expression --
-`present-wellformed` 18, `present-parens` 5, `content-roundtrip` 17,
-`present-new-ops` 20, `present-new-ops-wellformed` 14,
-`content-new-ops` 4 -- reports MISSING. The 32 predicted passes are
-the summation, product, normaliser and evaluation checks, whose Lean
-counterparts are all present.
+| Category | Pass | Fail | Out of |
+| --- | ---: | ---: | ---: |
+| motivating-summation | 1 | 0 | 1 |
+| motivating-product | 1 | 0 | 1 |
+| empty-range | 4 | 0 | 4 |
+| coeff-merge | 8 | 0 | 8 |
+| coeff-merge-soundness | 3 | 0 | 3 |
+| simplify-idempotence | 9 | 0 | 9 |
+| simplify-soundness | 6 | 0 | 6 |
+| present-wellformed | 0 | 18 | 18 |
+| present-parens | 0 | 5 | 5 |
+| content-roundtrip | 0 | 17 | 17 |
+| present-new-ops | 0 | 20 | 20 |
+| present-new-ops-wellformed | 0 | 14 | 14 |
+| content-new-ops | 0 | 4 | 4 |
 
-## What is committed
+All 78 failures are one gap and they say so by name: `MathML.Present.fst`
+has no Lean counterpart, so every check that SERIALIZES an expression
+reports `MISSING L4Factoidal.MathML.toPresentationMathML` or
+`... toContentMathML`. The 32 passes are the summation, product,
+normaliser and evaluation checks, whose Lean counterparts are present
+and agree with F* on every one.
 
-| Path | State |
-| --- | --- |
-| `formal/lean4/L4Factoidal/Math/ToanCases.lean` | the 110 cases, each citing its `.ml` line; NEVER COMPILED |
-| `formal/lean4/Harness/ToanRun.lean` | `lake exe l4toan`, zero-argument; NEVER COMPILED |
-| `formal/lean4/lakefile.lean` | the `l4toan` executable entry |
-| `formal/lean4/L4Factoidal.lean` | the `ToanCases` import |
-| `formal/lean4/L4Factoidal/MathML/Present.lean` | DRAFT port of `MathML.Present.fst`; NEVER COMPILED, not imported by anything |
-| `formal/lean4/L4Factoidal/MathML/FromJson.lean` | DRAFT reading of `expr_of_json`; NEVER COMPILED, not imported by anything |
+An earlier revision of this note carried 32/78 as a PREDICTION made by
+reading the two trees while the disk floor blocked a build. The run
+matched it. That is worth exactly one sentence: the prediction was
+cheap because the gap is a whole missing module, and a prediction that
+matches is still not a measurement.
 
-Nothing in that table has been through `lake build`. Two specific
-risks are unresolved because of it:
+### The linear-algebra de-duplication
 
-1. `Present.lean` and `FromJson.lean` use MUTUAL STRUCTURAL RECURSION
-   over `Expr`, whose `app` constructor nests a `List Expr`. Every
-   existing recursion over `Expr` in this tree (`Core.render`,
-   `Simplify.simplify`, `Diff.diff`, `Subst.subst`) is a `partial
-   def`. Whether Lean accepts the structural form here is untested.
-   If it does not, the alternative is `termination_by` on a size
-   measure -- NOT a new `partial def`, which the hygiene baseline of
-   172 forbids.
-2. `ToanCases.lean` computes its outcomes eagerly at module level
-   through `partial def`s (`simplify`, `summation`). Whether that
-   elaborates without a `#eval` wrapper is untested, and it is the
-   reason the guards asked for in step 4 were not written: `#guard`
-   cannot reduce a `partial def`.
+`L4Factoidal/MathML/Matrix.lean` was a second copy of the algebra in
+`L4Factoidal/Math/Matrix.lean`, the port of `Math.Matrix.fst` that
+carries the shape theorems. The copy is deleted and
+`MathML.Core.linAlg` routes §4.4.10 through `Math.Matrix`. The import
+arrow reversed to allow it: `Math/Matrix.lean` now imports
+`MathML.Rat`, which is all it ever used, and `MathML.Core` imports
+`Math.Matrix`.
+
+Two things stayed where they were, each for a reason:
+
+  * Vector `plus` and `minus` stay elementwise in Core.
+    `Math.Matrix.dynAdd` has no vector case and answers
+    `add-type-mismatch`; that is the F* module's behaviour, and
+    §4.4.10 wanting vector addition is not a reason to change the port
+    from the MathML side.
+  * The shape CHECKS stay in Core. MathML decides which shapes have a
+    value; `Math.Matrix` computes what the value is.
+
+`lake exe l4mathml`: 81 pass, 0 fail (out of 81), unchanged.
 
 ## Open items
 
-1. Build and run: `lake build`, `lake exe l4toan`, record the real
-   first score here, and replace the prediction above.
-2. Land `Present.lean`, flip the five hook functions in
+1. Land `Present.lean`, flip the five hook functions in
    `ToanCases.lean` (`presCheck`, `presContains`, `presWellFormed`,
    `contentContains`, `contentRoundTrip`) from `chkMissing` to the
    real comparison, and record the before and after scores.
-3. The dispatch ABI operations. The brief named
+2. The dispatch ABI operations. The brief named
    `toanExprToMathML`, `toanEval`, `toanSummation`, `toanProduct`,
    `toanDiff` and `toanSimplify`. The F* npm entry
    (`bin/npm-entry/entry_jsoo.ml` line 2548) registers five and they
@@ -121,11 +119,11 @@ risks are unresolved because of it:
    `toanEval`. Port the five that exist -- matching the npm entry op
    for op is the whole point of the dispatch table -- and do not
    invent the two that do not.
-4. All five operations return `{"ok":true,"mathml":...}` carrying
+3. All five operations return `{"ok":true,"mathml":...}` carrying
    CONTENT MathML, not Presentation (`toan_mathml_result`, line
    2159). A Lean port that returned Presentation would pass a
    `contains "<math"` test and be wrong.
-5. `lakefile.lean` entry, the `L4Factoidal.lean` import and the
+4. `lakefile.lean` entry, the `L4Factoidal.lean` import and the
    design record are done; the `docs/20260903-internal-test-inventory.md`
    row is not. That document's `lean-probe-*` row counts 30 zero-arg
    probes; `l4toan` makes 31.
