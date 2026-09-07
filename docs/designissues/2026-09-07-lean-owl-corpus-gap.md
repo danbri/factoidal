@@ -223,6 +223,27 @@ matters for a clash row.
 26 units over 17 ids at the start of the day, **18 units over 11 ids
 now**.
 
+**Whole-corpus classification of every Lean failure**, each unit matched
+against the committed F\* log for its catalog and test type (the
+per-unit join `tools`-free script is in this record's commit message
+trail; the F\* verdicts come from `formal/fstar/ocaml-output/`):
+
+| | start of day | now |
+|---|---|---|
+| Lean FAIL units | 266 | 252 |
+| … F\* records PASS | 249 | 235 |
+| … F\* records FAIL | 16 | 16 |
+| … F\* records no verdict | 1 | 1 |
+
+The 235 is NOT a rule gap: 217 of it is on the three `type-*` catalogs,
+where F\* ran DL and this column ran RL (§ 1, § 2b). The 16 F\*-also-FAIL
+units are eight ids counted in two catalogs each — `WebOnt-Class-001`,
+`WebOnt-Class-003`, `WebOnt-I5.3-014`, `WebOnt-I5.3-015`,
+`WebOnt-I5.8-017`, `WebOnt-extra-credit-002`, `-003`, `-004` — so
+neither engine passes them and they are not a Lean-side gap. The one
+with no F\* verdict is `WebOnt-description-logic-909`, which the F\* log
+records as skipped rather than passed.
+
 **Closed.**
 
 * **C1 — three clash rows** (`dt-range`, bottom-property existential,
