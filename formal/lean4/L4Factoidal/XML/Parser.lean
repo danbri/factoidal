@@ -1614,7 +1614,8 @@ def readTextDecl (t : String) : Except String String :=
     Storing the raw text and expanding everything later collapses those
     two into one, and whichever way the collapse falls, one of the pair
     is then wrong. -/
-def normalizeEntityValue (internal : Bool) (s : Chars) (pos : Nat) (acc : List String)
+def normalizeEntityValue (internal : Bool) (pes : EntityTable)
+    (s : Chars) (pos : Nat) (acc : List String)
     : Nat → PResult String
   | 0 => .ok (String.join acc.reverse) pos
   | fuel + 1 =>
@@ -1635,9 +1636,33 @@ def normalizeEntityValue (internal : Bool) (s : Chars) (pos : Nat) (acc : List S
           .err "a parameter-entity reference may not appear in an entity value in the internal subset" pos
         else match parseName s (pos + 1) with
           | .err m p => .err m p
-          | .ok _ p1 =>
+          | .ok name p1 =>
               if p1 < s.size && charAt s p1 == ';' then
-                normalizeEntityValue internal s (p1 + 1) (sub s pos (p1 + 1) :: acc) fuel
+                -- §4.4.5 **Included in Literal**: a parameter entity
+                -- referenced inside an `[9] EntityValue` is expanded
+                -- HERE, and — unlike §4.4.8 Included as PE — with no
+                -- leading or trailing space attached. §4.4.8 says so
+                -- in as many words: "This behavior MUST NOT apply to
+                -- parameter entity references within entity values".
+                --
+                -- Copying the reference through instead left it for
+                -- `peScan`, which is the §4.4.8 path and does attach
+                -- the spaces, so `<!ENTITY % e3 "%e1;%e2;">` over
+                -- `do` and `c` produced ` do  c ` where `doc` is
+                -- meant, and `<!ATTLIST %e3; a1 CDATA "v1">` then
+                -- read `c` as an attribute name
+                -- (`valid-not-sa-023`).
+                --
+                -- Each parameter entity's own value was normalised
+                -- when IT was declared, so the text substituted here
+                -- carries no further references and no second pass is
+                -- needed. An UNDECLARED parameter entity is copied
+                -- through: in a document whose external subset this
+                -- parser has not read, it may well be declared there.
+                match lookupEntity name pes with
+                | some v => normalizeEntityValue internal pes s (p1 + 1) (v :: acc) fuel
+                | none   =>
+                    normalizeEntityValue internal pes s (p1 + 1) (sub s pos (p1 + 1) :: acc) fuel
               else .err "expected ';' after a parameter-entity reference ([69])" p1
       else if ch == '&' then
         if pos + 1 < s.size && charAt s (pos + 1) == '#' then
@@ -1647,7 +1672,7 @@ def normalizeEntityValue (internal : Bool) (s : Chars) (pos : Nat) (acc : List S
             | .ok digits pos' =>
                 let cp := hexValue digits
                 if isXmlCharCode cp then
-                  normalizeEntityValue internal s pos' (codepointToString cp :: acc) fuel
+                  normalizeEntityValue internal pes s pos' (codepointToString cp :: acc) fuel
                 else .err "character reference to a non-Char codepoint" pos'
           else
             match parseRefDigits isDecDigit s (pos + 2) [] (s.size + 1) with
@@ -1655,7 +1680,7 @@ def normalizeEntityValue (internal : Bool) (s : Chars) (pos : Nat) (acc : List S
             | .ok digits pos' =>
                 let cp := decValue digits
                 if isXmlCharCode cp then
-                  normalizeEntityValue internal s pos' (codepointToString cp :: acc) fuel
+                  normalizeEntityValue internal pes s pos' (codepointToString cp :: acc) fuel
                 else .err "character reference to a non-Char codepoint" pos'
         else
           -- A bare `&` is not a character in an entity value: `[9]`
@@ -1671,9 +1696,9 @@ def normalizeEntityValue (internal : Bool) (s : Chars) (pos : Nat) (acc : List S
               if p1 < s.size && charAt s p1 == ';' then
                 -- BYPASSED: a general-entity reference is left as
                 -- written and included at the reference site (§4.4.7).
-                normalizeEntityValue internal s (p1 + 1) (sub s pos (p1 + 1) :: acc) fuel
+                normalizeEntityValue internal pes s (p1 + 1) (sub s pos (p1 + 1) :: acc) fuel
               else .err "entity reference not terminated by ';'" p1
-      else normalizeEntityValue internal s (pos + 1) (String.singleton ch :: acc) fuel
+      else normalizeEntityValue internal pes s (pos + 1) (String.singleton ch :: acc) fuel
 
 /-- `[70] EntityDecl ::= GEDecl | PEDecl`,
     `[71] GEDecl ::= '<!ENTITY' S Name S EntityDef S? '>'`,
@@ -1734,7 +1759,7 @@ def parseEntityDecl (resolve : Resolver) (internal : Bool) (s : Chars) (pos : Na
               | .err m p => .err m p
               | .ok _ p7 =>
                 let rawArr : Chars := rawval.toList.toArray
-                match normalizeEntityValue internal rawArr 0 [] (rawArr.size + 1) with
+                match normalizeEntityValue internal pes rawArr 0 [] (rawArr.size + 1) with
                 | .err m p => .err m p
                 | .ok value _ =>
                   -- A PARAMETER entity is not a general entity, so it
@@ -1943,52 +1968,134 @@ def skipToSubsetOrGt (s : Chars) (pos : Nat) : Nat → PResult Unit
         | .ok _ pos' => skipToSubsetOrGt s pos' fuel
       else skipToSubsetOrGt s (pos + 1) fuel
 
-/-- Expand `[69] PEReference`s throughout an EXTERNAL subset, and
-    collect the parameter entities as it goes.
+/-- Where a scan of the external subset stands, for `peScan`.
 
-    §4.4.8: in the external subset a parameter-entity reference may
-    appear ANYWHERE a markup declaration may, and also WITHIN one. The
-    second half is what `parseSubset` alone cannot do — it handles a
-    `%name;` that stands where a declaration would, and
-    `<!ELEMENT child1 (a ,%choice1;,c )>` puts one in the middle of a
-    content model, where the declaration parser meets a `%` it has no
-    production for and rejects the whole document
-    (`ibm-valid-P49-ibm49v01`).
+    §4.4.8 admits a parameter-entity reference in the DTD in two very
+    different places, and they must not be treated alike:
+
+      * at declaration-separator position (`[28a] DeclSep`), where WFC
+        **PE Between Declarations** requires the replacement text to be
+        a whole number of markup declarations. `parseSubset` already
+        decides that correctly — it parses the replacement text as a
+        complete `[30] extSubsetDecl` — so `peScan` leaves those
+        references where they stand.
+      * INSIDE a markup declaration, where `parseSubset` has no
+        production for a `%` at all
+        (`<!ELEMENT child1 (a ,%choice1;,c )>`, `ibm-valid-P49-ibm49v01`)
+        and the reference must be included textually, with the leading
+        and trailing space §4.4.8 attaches.
+
+    A parameter-entity reference is not recognised inside a comment or
+    a processing instruction, nor inside a quoted literal — an
+    `[9] EntityValue`'s references were already included in literal
+    when the declaration was read (§4.4.5). -/
+inductive PeMode where
+  /-- Between declarations: `[28a] DeclSep` position. -/
+  | top
+  /-- Inside a markup declaration, after its `<!` and before its `>`. -/
+  | decl
+  /-- Inside a `[15] Comment`. -/
+  | comment
+  /-- Inside a `[16] PI`. -/
+  | pi
+  /-- Inside a quoted literal of a declaration, closed by `q`. -/
+  | lit (q : Char)
+deriving DecidableEq, Repr, Inhabited
+
+/-- Expand the `[69] PEReference`s that stand INSIDE a markup
+    declaration of an EXTERNAL subset, and collect the parameter
+    entities as the scan goes.
 
     One left-to-right pass with a table that grows as declarations go
     by. That is enough for a DTD that declares before it uses, which
     every case in the corpus does; a forward reference is left
     unexpanded rather than guessed at, and the declaration parser then
-    reports it. -/
+    reports it.
+
+    `depth` bounds how many nested parameter entities may still be
+    dived into, and `fuel` bounds the scan of the string in hand. They
+    are separate because the two are unrelated quantities: the nested
+    expansion used to be given the CALLER's remaining fuel, so a
+    replacement text longer than what was left of the outer budget was
+    cut off with NO error. `p28pass5.dtd` is twelve characters
+    (`%rootdecl;` and a line end), so the eighteen-character
+    replacement `<!ELEMENT doc (a)>` arrived as `<!ELEMENT doc ` and
+    the document was rejected for a content specification it did in
+    fact have. Scanning a string costs one fuel per character of THAT
+    string, so `size + 1` is exact; diving into an entity costs one
+    depth, and §4.1 WFC No Recursion bounds how many dives there can
+    be by the number of parameter entities declared. -/
 def peScan (resolve : Resolver) (s : Chars) (pos : Nat) (pes : EntityTable)
-    (acc : List String) : Nat → String
+    (acc : List String) (mode : PeMode) (depth : Nat) (fuel : Nat) : String :=
+  match fuel with
   | 0 => String.join acc.reverse
-  | fuel + 1 =>
+  | fuel' + 1 =>
     if pos ≥ s.size then String.join acc.reverse
-    else if peekLit "<!ENTITY" s pos then
-      match parseEntityDecl resolve false s pos [] pes with
-      | .err _ _ =>
-          -- Not a declaration this parser can read. Copy it through
-          -- and let `parseSubset` produce the real message.
-          peScan resolve s (pos + 1) pes (String.singleton (charAt s pos) :: acc) fuel
-      | .ok (_, pes') e => peScan resolve s e pes' (sub s pos e :: acc) fuel
-    else if charAt s pos == '%' then
-      match parseName s (pos + 1) with
-      | .err _ _ =>
-          peScan resolve s (pos + 1) pes (String.singleton '%' :: acc) fuel
-      | .ok name p1 =>
-          if p1 < s.size && charAt s p1 == ';' then
-            match lookupEntity name pes with
-            | none   => peScan resolve s (pos + 1) pes (String.singleton '%' :: acc) fuel
-            | some v =>
-                -- The replacement text may itself hold references, so
-                -- it is scanned too. §4.4.8 includes a PE in the DTD
-                -- with a leading and trailing space.
-                let varr : Chars := v.toList.toArray
-                let expanded := peScan resolve varr 0 pes [] fuel
-                peScan resolve s (p1 + 1) pes ((" " ++ expanded ++ " ") :: acc) fuel
-          else peScan resolve s (pos + 1) pes (String.singleton '%' :: acc) fuel
-    else peScan resolve s (pos + 1) pes (String.singleton (charAt s pos) :: acc) fuel
+    else
+      let ch := charAt s pos
+      match mode with
+      | .comment =>
+          if peekLit "-->" s pos then
+            peScan resolve s (pos + 3) pes ("-->" :: acc) .top depth fuel'
+          else peScan resolve s (pos + 1) pes (String.singleton ch :: acc) .comment depth fuel'
+      | .pi =>
+          if peekLit "?>" s pos then
+            peScan resolve s (pos + 2) pes ("?>" :: acc) .top depth fuel'
+          else peScan resolve s (pos + 1) pes (String.singleton ch :: acc) .pi depth fuel'
+      | .lit q =>
+          peScan resolve s (pos + 1) pes (String.singleton ch :: acc)
+            (if ch == q then .decl else .lit q) depth fuel'
+      | .decl =>
+          if ch == '"' || ch == '\'' then
+            peScan resolve s (pos + 1) pes (String.singleton ch :: acc) (.lit ch) depth fuel'
+          else if ch == '>' then
+            peScan resolve s (pos + 1) pes (">" :: acc) .top depth fuel'
+          else if ch == '[' then
+            -- `<![ INCLUDE [` — what follows the `[` is declarations
+            -- again, at `[28a]` position.
+            peScan resolve s (pos + 1) pes ("[" :: acc) .top depth fuel'
+          else if ch == '%' then
+            match parseName s (pos + 1) with
+            | .err _ _ => peScan resolve s (pos + 1) pes ("%" :: acc) .decl depth fuel'
+            | .ok name p1 =>
+                if p1 < s.size && charAt s p1 == ';' then
+                  match lookupEntity name pes with
+                  | none   => peScan resolve s (pos + 1) pes ("%" :: acc) .decl depth fuel'
+                  | some v =>
+                      match depth with
+                      -- `0` rather than `depth`: matching on `depth`
+                      -- generalised it, so naming the literal is what
+                      -- lets the `(depth, fuel)` measure see this call
+                      -- keep the depth and drop the fuel.
+                      | 0     => peScan resolve s (pos + 1) pes ("%" :: acc) .decl 0 fuel'
+                      | d + 1 =>
+                          let varr : Chars := v.toList.toArray
+                          let expanded := peScan resolve varr 0 pes [] .decl d (varr.size + 1)
+                          peScan resolve s (p1 + 1) pes ((" " ++ expanded ++ " ") :: acc)
+                            .decl (d + 1) fuel'
+                else peScan resolve s (pos + 1) pes ("%" :: acc) .decl depth fuel'
+          else peScan resolve s (pos + 1) pes (String.singleton ch :: acc) .decl depth fuel'
+      | .top =>
+          if peekLit "<!--" s pos then
+            peScan resolve s (pos + 4) pes ("<!--" :: acc) .comment depth fuel'
+          else if peekLit "<?" s pos then
+            peScan resolve s (pos + 2) pes ("<?" :: acc) .pi depth fuel'
+          else if peekLit "<!ENTITY" s pos then
+            match parseEntityDecl resolve false s pos [] pes with
+            | .err _ _ =>
+                -- Not a declaration this parser can read as it stands
+                -- — it may hold a parameter-entity reference that has
+                -- to be spliced first. Step into it and let the scan
+                -- do that; `parseSubset` produces the real message
+                -- afterwards either way.
+                peScan resolve s (pos + 2) pes ("<!" :: acc) .decl depth fuel'
+            | .ok (_, pes') e => peScan resolve s e pes' (sub s pos e :: acc) .top depth fuel'
+          else if peekLit "<![" s pos then
+            peScan resolve s (pos + 3) pes ("<![" :: acc) .decl depth fuel'
+          else if peekLit "<!" s pos then
+            peScan resolve s (pos + 2) pes ("<!" :: acc) .decl depth fuel'
+          else peScan resolve s (pos + 1) pes (String.singleton ch :: acc) .top depth fuel'
+termination_by (depth, fuel)
 
 /-- `[28] doctypedecl ::= '<!DOCTYPE' S Name (S ExternalID)? S?
 ('[' intSubset ']' S?)? '>'`. The external subset is recognised and
@@ -2046,7 +2153,7 @@ def parseDoctype (resolve : Resolver) (s : Chars) (pos : Nat) : PResult Doctype 
                        | .ok body =>
                        let raw : Chars := body.toList.toArray
                        let arr : Chars :=
-                         (peScan resolve raw 0 pes [] (raw.size + 1)).toList.toArray
+                         (peScan resolve raw 0 pes [] .top (raw.size + 1) (raw.size + 1)).toList.toArray
                        match parseSubset resolve .eof arr 0 ents pes ids (arr.size + 1) with
                        | .err m _ => PResult.err ("in the external subset: " ++ m) p5
                        | .ok r _  => PResult.ok r p5) with
