@@ -285,10 +285,18 @@ def sfIntersectsBase : Geometry → Geometry → Option Bool
   | .lineString l1, .lineString l2 => some (pathCrossesPath l1 l2)
   | .lineString l, .polygon poly => some (lineIntersectsPolygon l poly)
   | .polygon poly, .lineString l => some (lineIntersectsPolygon l poly)
-  | .polygon p1, .polygon p2 =>
-      match BBox.ofPolygon p1, BBox.ofPolygon p2 with
-      | some b1, some b2 => if !(b1.overlaps b2) then some false else some (polygonsIntersect p1 p2)
-      | _, _ => some false
+  -- Polygon / Polygon is REFUSED, not guessed. `polygonsIntersect`
+  -- below is the complete test and is kept, but serving it here made
+  -- `Storage/GeoBBoxIndex.exists_common_point` unprovable on
+  -- 2026-09-07: that theorem is what lets the bounding-box index prune
+  -- a row, and it needs a point inside BOTH boxes. Two of
+  -- `polygonsIntersect`'s three disjuncts give one (a vertex of either
+  -- polygon that is non-exterior to the other). The third,
+  -- `polygonBoundariesCross`, does not: two squares meeting in a plus
+  -- shape cross with no vertex of either inside the other, so the
+  -- witness is a constructed segment-intersection point that this
+  -- tree cannot yet build. Restore this arm together with that lemma —
+  -- see the 2026-09-07 design record.
   | _, _ => none
 
 /-- `sfWithin` over the base kinds. An empty geometry is within
