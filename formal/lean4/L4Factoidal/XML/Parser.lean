@@ -1507,8 +1507,8 @@ abbrev Resolver := String → Option String
     order written. `[77]` is not `[41] Attribute` — the names are
     fixed, the order is fixed, and a value is a literal — so the scan
     only has to collect `name =` occurrences. -/
-def textDeclNames (cs : List Char) : List String :=
-  let rec go : Nat → List Char → List String
+def textDeclAttrs (cs : List Char) : List (String × String) :=
+  let rec go : Nat → List Char → List (String × String)
     | 0, _ => []
     | _, [] => []
     | f + 1, c :: rest =>
@@ -1523,9 +1523,10 @@ def textDeclNames (cs : List Char) : List String :=
               match more with
               | q :: body =>
                   if q == '"' || q == '\'' then
-                    String.ofList nm :: go f ((body.dropWhile (· != q)).drop 1)
-                  else String.ofList nm :: go f more
-              | [] => [String.ofList nm]
+                    (String.ofList nm, String.ofList (body.takeWhile (· != q)))
+                      :: go f ((body.dropWhile (· != q)).drop 1)
+                  else (String.ofList nm, "") :: go f more
+              | [] => [(String.ofList nm, "")]
           | _ => go f rest
         else go f rest
   go (cs.length + 1) cs
@@ -1571,13 +1572,23 @@ def readTextDecl (t : String) : Except String String :=
         if !closed then
           .error "a text declaration must be closed by '?>' ([77] TextDecl, XML 1.0 section 4.3.1)"
         else
-          let names := textDeclNames body
+          let attrs := textDeclAttrs body
+          let names := attrs.map (·.1)
+          let version? := (attrs.find? (fun a => a.1 == "version")).map (·.2)
           if names.contains "standalone" then
             .error "an external entity's text declaration may not carry 'standalone' ([77] TextDecl; standalone belongs to [23] XMLDecl)"
           else if !(names.contains "encoding") then
             .error "a text declaration must carry 'encoding' ([77] TextDecl, EncodingDecl is not optional)"
           else if names != ["encoding"] && names != ["version", "encoding"] then
             .error "a text declaration is 'version'? then 'encoding', in that order and nothing else ([77] TextDecl)"
+          -- XML 1.0 section 4.3.4 (Version Information in Entities):
+          -- an XML 1.0 document may not contain an entity that
+          -- declares version 1.1. This parser's scored profile is XML
+          -- 1.0 (an XML 1.1 document is out of profile and is never
+          -- scored), so every document reaching here is 1.0 and no
+          -- document version has to be threaded in.
+          else if version? == some "1.1" then
+            .error "an XML 1.0 document may not contain an entity whose text declaration says version 1.1 (XML 1.0 section 4.3.4)"
           else
             -- Drop through the terminator, which the check above
             -- proved is present in the head.
