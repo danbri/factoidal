@@ -526,6 +526,24 @@ against the old core library.
 
 ## Traps, each one paid for
 
+- **A `Nat` literal at or above 2^31 leaks one bignum per evaluation on
+  wasm32.** The compiler emits `lean_cstr_to_nat("4294967296")` at the
+  use site; when that value goes straight into a borrowing comparison
+  (`lean_nat_dec_lt`) nothing releases it. On 64-bit targets the literal
+  is an unboxed scalar, so native measurements never show it; on the
+  GMP-free wasm32 build each comparison leaves a 40-byte `mpz` on the
+  heap. Paid for 2026-09-07: the packer retained 15.6 objects per quad
+  (1.7 million per 110,000-row pack, surviving `packClose`), the
+  all-skosdex pack died at the memory ceiling twice on Fly, and two
+  agent-days went to the allocator before a heap histogram by object
+  tag (`l4_heap_tags_c`) found two values only, `4294967296` and
+  `4294967295`. Rule: never write such a literal inline in executable
+  code; use `L4Factoidal.NatBounds.two32` (or add a sibling there),
+  declared `@[reducible, noinline]` — `noinline` is what stops the
+  compiler folding it back into the call site (measured), `reducible`
+  keeps it transparent to proofs. Full record:
+  `docs/designissues/2026-09-07-wasm-packer-memory.md` §9.
+
 1. **`leanir` fails silently** — emits a near-empty module and exits 0.
    Do not use it. (Above.)
 2. **Dropping mimalloc** aborts the module on error paths only, with a
