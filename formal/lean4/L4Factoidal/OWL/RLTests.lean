@@ -597,6 +597,26 @@ private def litInt (v : String) : Term :=
    ⟨S iX, rdfType, bnodeR.toTerm⟩]
 #guard !detectClash [⟨S owlThing, owlEquivalentClass, O owlNothing⟩]
 
+-- `inconsistentPlus` closes first and then asks: the bottom-property
+-- row needs cax-sco to have put the member into the restriction.
+#guard inconsistentPlus
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S cA, rdfsSubClassOf, bnodeR.toTerm⟩,
+   ⟨S iX, rdfType, O cA⟩] 3
+-- ... and the same graph without the subclass edge, whose member never
+-- reaches the restriction, is not decided inconsistent.
+#guard !inconsistentPlus
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S iX, rdfType, O cA⟩] 3
+-- The table-only decision does not see either.
+#guard !inconsistent
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S cA, rdfsSubClassOf, bnodeR.toTerm⟩,
+   ⟨S iX, rdfType, O cA⟩] 3
+
 -- The store and index mirrors agree with the list decision.
 #guard detectClashPlusI (Index.ofGraph
   [⟨bnodeR, owlOnProperty, O pP⟩,
