@@ -74,6 +74,7 @@ check third_party/testing/rml-modules/rml-fnml       "rml-fnml"           "futur
 check third_party/testing/rml-modules/rml-star       "rml-star"           "future rml_runner"
 # Vendored-in-tree (not submodules) — regressions here mean a bad
 # checkout/sparse clone rather than submodule drift, but verify anyway:
+check third_party/testing/xsd/suite.xml              "xsd (W3C)"          "l4xsd-datatypes, the XML Schema Part 2 datatype score"
 check third_party/testing/xml/xmlconf                "xml-conformance"    "xml_runner (1414/0/1171 row)"
 check third_party/testing/xslt/manifest.json         "xslt"               "xslt_runner (default slice-1 subset)"
 check third_party/testing/xslt1-xalan/xalan-test-src/tests/conf/axes/axes01.xsl "xslt1-xalan (Apache)" "xslt_runner --base xslt1-xalan (XSLT 1.0 conformance mirror)"

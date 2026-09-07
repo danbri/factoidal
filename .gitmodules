@@ -56,3 +56,6 @@
 [submodule "third_party/testing/wycheproof"]
 	path = third_party/testing/wycheproof
 	url = https://github.com/C2SP/wycheproof.git
+[submodule "third_party/testing/xsd"]
+	path = third_party/testing/xsd
+	url = https://github.com/w3c/xsdtests.git
