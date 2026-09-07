@@ -831,3 +831,63 @@ Measured effect, `--dl type-inconsistency.rdf`: 116 pass, 11 fail
 landed as a soundness repair, not as a score move; the five
 `WebOnt-description-logic` ≤-rule ids need the max-cardinality label to
 reach the node first, which is a separate gap.
+
+## 12. Status — 2026-09-07 night, after the negation-goal builders and the ≤-rule cover
+
+**Scores.** `lake exe l4owl-probe --dl --refute-ms 3000` from
+`formal/lean4/`, one process per catalog.
+
+| catalog / unit | § 9 (before) | now |
+|---|---|---|
+| `type-inconsistency.rdf` Inconsistency | 116 pass, 11 fail | 116 pass, 11 fail (1 skip, of 128) |
+| `type-positive-entailment.rdf` PE | 164 pass, 40 fail | **168 pass, 36 fail** (2 unsupported, of 206) |
+| `type-positive-entailment.rdf` Consistency | 204 pass, 0 fail | 204 pass, 0 fail (2 unsupported, of 206) |
+| `type-consistency.rdf` PE | 164 pass, 40 fail | **168 pass, 36 fail** (of 206) |
+| `type-consistency.rdf` NE | 23 pass, 0 fail | 23 pass, 0 fail (of 23) |
+| `type-consistency.rdf` Consistency | 351 pass, 1 fail | 351 pass, 1 fail (2 unsupported, of 354) |
+| all three catalogs | 1022 pass, 92 fail | **1030 pass, 84 fail** (1 skip, 8 unsupported, of 1123) |
+
+`refuter_flips_to_fail=0` on every catalog: no unit asserted consistent
+was turned by the new goals.
+
+**The default RL regime is unchanged**, as it must be — the refuter is
+not consulted there. `lake exe l4owl-probe` (all six catalogs):
+1229 pass, 218 fail, 2 skip, 8 unsupported (out of 1457), with
+`profile-RL.rdf` 126 of 126, `profile-QL.rdf` 87 of 87, `profile-EL.rdf`
+118 pass, 2 fail (1 skip, of 121). 2 min 28 s.
+
+**Wall clock, and it went the wrong way.** The three `--dl` catalogs
+now take 6 s + 5 min 32 s + 9 min 35 s = **15 min 13 s** at
+`--refute-ms 3000`, against § 9's 8 min 37 s at the default
+`--refute-ms 20000`. The cause is named rather than absorbed: the six
+new builders take `pe_no_negation_goal` down to 11, so about thirty
+units that used to return `.noGoals` in microseconds now run a tableau
+per conclusion conjunct, and `WebOnt-I5.21-002` alone runs 66 goals
+over a 518-triple closure. `pe_refuter_budget=0` on every catalog, so
+none of that time is a timeout — it is work. Two mitigations are
+available and neither is taken here: hoisting the premise closure out
+of the per-goal `closure ++ goal` concatenation, and deciding a
+conclusion's goals against one shared saturation instead of one per
+goal. Both are performance work with a fixed verdict, measurable
+against these numbers.
+
+**Closed.** Four ids, eight units, all `DECIDED-BY-REFUTER`:
+`WebOnt-AllDifferent-001`, `WebOnt-differentFrom-002`,
+`WebOnt-distinctMembers-001` (the `owl:differentFrom` builder against
+the `owl:AllDifferent` graph violation) and `WebOnt-I5.21-002` (the
+`owl:disjointWith` builder, 66 goals, every one refuted).
+
+**Open, unchanged.** The § 10.5 ledger stands with 84 units in place of
+92; the two § 10.1a ids the new builders did not close are
+`rdfbased-sem-restrict-maxqcr-inst-obj-one` — the premise puts the
+`owl:maxQualifiedCardinality` triples on a NAMED class with no
+`rdfs:subClassOf` to carry them, so `parseClassExpr` reads the type as
+`.named z` and the bound never becomes a label — and `WebOnt-I5.24-004`,
+whose `rdfs:range` goal builds but does not close.
+
+**Gates, this landing.** `lake build` 1137 jobs green;
+`tools/lean-hygiene-audit.py` clean (0 `sorry`, 0 user `axiom`, 0
+`native_decide`, 0 `unsafe`, 0 `@[implemented_by]`, 172 `partial def`
+against a baseline of 172); `l4rdfs-semi` 6 of 6; SHACL 1.0 core 98
+pass, 0 fail (out of 98); SHACL 1.2 rules 88 pass, 0 fail (out of 88);
+`#print axioms` on all eight new theorems.
