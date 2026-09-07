@@ -442,12 +442,28 @@ partial def cmpValues (op : String) (x y : Value) : Bool :=
 partial def scalarCmp (op : String) (x y : Value) : Bool :=
   let isB (v : Value) := match v with | .bool _ => true | _ => false
   let isN (v : Value) := match v with | .num _ => true | _ => false
+  let isS (v : Value) := match v with | .str _ => true | _ => false
   if op == "=" || op == "!=" then
     let same :=
       if isB x || isB y then x.toBool == y.toBool
       else if isN x || isN y then Num.eq x.toNum y.toNum
       else x.toStr == y.toStr
     if op == "=" then same else !same
+  else if isS x && isS y then
+    -- Both sides are STRING VALUES (not a number/boolean converted to
+    -- one via `toStr`), so `<`/`<=`/`>`/`>=` compare lexicographically
+    -- by codepoint rather than through `number()`. A node-set's
+    -- string-value reaches here too (its `Value` is already `.str`
+    -- by the time `cmpValues` calls this), so `@v > "5"` on an
+    -- attribute node still compares as strings -- the coercion to
+    -- NUMBER only happens when the OTHER side is itself a number
+    -- (the `isN` branch below).
+    let a := x.toStr
+    let b := y.toStr
+    if op == "<" then a < b
+    else if op == "<=" then a ≤ b
+    else if op == ">" then b < a
+    else b ≤ a
   else
     let m := x.toNum
     let n := y.toNum
