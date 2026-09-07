@@ -72,6 +72,13 @@ Of these, F\* skips exactly two with a named built-in
 plus `NestedListsAreNotFlatLists`. The other ten are F\* passes, so
 they are Lean gaps rather than shared limits.
 
+**`Builtins_Time` is decided as of 2026-09-07 session 3**, which is a case
+NEITHER tree decided before: all 72 built-ins of RIF-DTB 4.8 landed with
+`L4Factoidal.Fn`. See
+[`2026-09-07-function-library.md`](2026-09-07-function-library.md) and
+[#664](https://github.com/danbri/factoidal/issues/664). The 2 remaining
+undecided cases are the OWL-regime ones.
+
 ### The 1 Lean not-read
 
 * `PositiveEntailmentTest/RDF_Combination_Constant_Equivalence_Graph_Entailment`
@@ -184,7 +191,7 @@ this worktree by running the probe, not quoted from a report.
 
 | area | before | after | F\* comparison |
 | --- | --- | --- | --- |
-| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | **42 pass, 0 fail (of 42 decided); 3 undecided, 0 not read, 1 local override** (2026-09-07 session 2) | 42 pass, 0 fail, 1 local override, 3 skip (of 46) |
+| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | **43 pass, 0 fail (of 43 decided); 2 undecided, 0 not read, 1 local override** (2026-09-07 session 3, all of RIF-DTB 4.8) | 42 pass, 0 fail, 1 local override, 3 skip (of 46) |
 | RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | unchanged | 76 pass (of 76) |
 | RML io | not run | not run | 17 pass, 1 fail, 55 skip (of 73) |
 | CSVW validation | not run | **281 pass, 1 fail, 0 skip (of 282)** | 281 pass, 1 fail (of 282) |

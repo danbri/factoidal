@@ -27,6 +27,7 @@ document of the right shape with the content missing — the failure
 mode this project has paid for in five other suites.
 -/
 import L4Factoidal.XPath.Data
+import L4Factoidal.Fn.String
 import L4Factoidal.XPath.Expr
 
 namespace L4Factoidal.XPath.Full
@@ -242,13 +243,7 @@ def translateStr (s from' to' : String) : String :=
     | some i => t[i]?))
 
 /-- The index of `needle` in `hay`, by codepoint. -/
-def substrIndex (hay needle : String) : Option Nat :=
-  let h := hay.toList
-  let n := needle.toList
-  let rec go (i : Nat) : List Char → Option Nat
-    | []          => if n.isEmpty then some i else none
-    | x :: tl     => if (x :: tl).take n.length == n then some i else go (i + 1) tl
-  if n.isEmpty then some 0 else go 0 h
+def substrIndex (hay needle : String) : Option Nat := Fn.String.indexOfSub hay needle
 
 /-! ## `id()` -/
 
@@ -522,13 +517,9 @@ partial def evalCall (c : Ctx) (f : String) (args : List Expr) : Option Value :=
   | "starts-with", [a, b] => some (.bool (a.toStr.startsWith b.toStr))
   | "contains", [a, b]   => some (.bool (substrIndex a.toStr b.toStr).isSome)
   | "substring-before", [a, b] =>
-      some (.str (match substrIndex a.toStr b.toStr with
-        | some i => String.ofList (a.toStr.toList.take i)
-        | none   => ""))
+      some (.str (Fn.String.substringBefore a.toStr b.toStr))
   | "substring-after", [a, b] =>
-      some (.str (match substrIndex a.toStr b.toStr with
-        | some i => String.ofList (a.toStr.toList.drop (i + b.toStr.toList.length))
-        | none   => ""))
+      some (.str (Fn.String.substringAfter a.toStr b.toStr))
   | "substring", [a, b] =>
       some (.str (substrChars a.toStr (Num.roundN b.toNum) Num.posInf))
   | "substring", [a, b, l] =>
