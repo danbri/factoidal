@@ -1117,6 +1117,116 @@ theorem Scaled.max_at' (x y : Scaled) (s : Nat) (hx : x.scale ≤ s) (hy : y.sca
     rw [if_neg (by rw [Scaled.ge_eq_le_swap]; simp [h]),
         Int.max_eq_right ((Scaled.le_iff_at'_of_ge x y s hx hy).mp hxy)]
 
+/-! ### From the four orientation signs to the two coordinate intervals -/
+
+theorem orientSign_cases (a c p : Point) :
+    orientSign a c p = -1 ∨ orientSign a c p = 0 ∨ orientSign a c p = 1 := by
+  unfold orientSign
+  by_cases hlt : Scaled.lt (orient a c p) Scaled.zero = true
+  · simp only [hlt, if_true]; simp
+  · simp only [Bool.not_eq_true] at hlt
+    simp only [hlt, Bool.false_eq_true, if_false]
+    by_cases heq : Scaled.eq (orient a c p) Scaled.zero = true
+    · simp only [heq, if_true]; simp
+    · simp only [Bool.not_eq_true] at heq
+      simp only [heq, Bool.false_eq_true, if_false]; simp
+
+/-- Two different orientation signs put the two determinants on opposite
+sides of zero (weakly) and make them unequal. -/
+theorem straddle_of_sign_ne {o1 o2 U V : Int}
+    (hc1 : o1 = -1 ∨ o1 = 0 ∨ o1 = 1) (hc2 : o2 = -1 ∨ o2 = 0 ∨ o2 = 1)
+    (hp1 : 0 < o1 ↔ 0 < U) (hn1 : o1 < 0 ↔ U < 0)
+    (hp2 : 0 < o2 ↔ 0 < V) (hn2 : o2 < 0 ↔ V < 0)
+    (hne : o1 ≠ o2) : ((U ≤ 0 ∧ 0 ≤ V) ∨ (V ≤ 0 ∧ 0 ≤ U)) ∧ U ≠ V := by
+  omega
+
+/-- A scale large enough for every coordinate of four points. -/
+def segScale (a b c d : Point) : Nat :=
+  Nat.max (coordScale a b c) (coordScale c d b)
+
+/-- **THE PROPER-CROSSING LEMMA.** When `c` and `d` fall on opposite sides of
+the line `ab` and `a` and `b` fall on opposite sides of the line `cd`, the two
+segments' coordinate intervals overlap on both axes. This is the branch of
+`segmentsIntersect` that carries no `inSegBBox` conjunct, and it is what lets
+a polygon pair whose boundaries cross be filtered by bounding box. -/
+theorem segmentsCross_intervals {a b c d : Point}
+    (h1 : orientSign a b c ≠ orientSign a b d)
+    (h2 : orientSign c d a ≠ orientSign c d b) :
+    Scaled.le (Scaled.min a.x b.x) (Scaled.max c.x d.x) = true ∧
+    Scaled.le (Scaled.min c.x d.x) (Scaled.max a.x b.x) = true ∧
+    Scaled.le (Scaled.min a.y b.y) (Scaled.max c.y d.y) = true ∧
+    Scaled.le (Scaled.min c.y d.y) (Scaled.max a.y b.y) = true := by
+  have s := segScale a b c d
+  obtain ⟨ba1, ba2, bb1, bb2, bc1, bc2⟩ := coordScale_bounds a b c
+  obtain ⟨_, _, bd1, bd2, _, _⟩ := coordScale_bounds c d b
+  -- lift every bound to the shared scale
+  have m1 : coordScale a b c ≤ segScale a b c d := Nat.le_max_left _ _
+  have m2 : coordScale c d b ≤ segScale a b c d := Nat.le_max_right _ _
+  have hax : a.x.scale ≤ segScale a b c d := Nat.le_trans ba1 m1
+  have hay : a.y.scale ≤ segScale a b c d := Nat.le_trans ba2 m1
+  have hbx : b.x.scale ≤ segScale a b c d := Nat.le_trans bb1 m1
+  have hby : b.y.scale ≤ segScale a b c d := Nat.le_trans bb2 m1
+  have hcx : c.x.scale ≤ segScale a b c d := Nat.le_trans bc1 m1
+  have hcy : c.y.scale ≤ segScale a b c d := Nat.le_trans bc2 m1
+  have hdx : d.x.scale ≤ segScale a b c d := Nat.le_trans bd1 m2
+  have hdy : d.y.scale ≤ segScale a b c d := Nat.le_trans bd2 m2
+  clear m1 m2 ba1 ba2 bb1 bb2 bc1 bc2 bd1 bd2 s
+  -- the four determinants at that scale, in the regrouped form
+  have hU := orient_at' a b c (segScale a b c d) hax hay hbx hby hcx hcy
+  have hV := orient_at' a b d (segScale a b c d) hax hay hbx hby hdx hdy
+  have hW := orient_at' c d a (segScale a b c d) hcx hcy hdx hdy hax hay
+  have hZ := orient_at' c d b (segScale a b c d) hcx hcy hdx hdy hbx hby
+  -- the signs
+  have sU := straddle_of_sign_ne (orientSign_cases a b c) (orientSign_cases a b d)
+    (orientSign_pos_iff a b c _ hax hay hbx hby hcx hcy)
+    (orientSign_neg_iff a b c _ hax hay hbx hby hcx hcy)
+    (orientSign_pos_iff a b d _ hax hay hbx hby hdx hdy)
+    (orientSign_neg_iff a b d _ hax hay hbx hby hdx hdy) h1
+  have sW := straddle_of_sign_ne (orientSign_cases c d b) (orientSign_cases c d a)
+    (orientSign_pos_iff c d b _ hcx hcy hdx hdy hbx hby)
+    (orientSign_neg_iff c d b _ hcx hcy hdx hdy hbx hby)
+    (orientSign_pos_iff c d a _ hcx hcy hdx hdy hax hay)
+    (orientSign_neg_iff c d a _ hcx hcy hdx hdy hax hay) (Ne.symm h2)
+  -- the two polynomial identities, per axis
+  have hzw : (orient c d b).at' (segScale a b c d + segScale a b c d)
+      = (orient c d a).at' (segScale a b c d + segScale a b c d)
+        - ((orient a b d).at' (segScale a b c d + segScale a b c d)
+           - (orient a b c).at' (segScale a b c d + segScale a b c d)) := by grind
+  have hidx := int_cross_axis_gen (a.x.at' (segScale a b c d))
+    (b.x.at' (segScale a b c d)) (c.x.at' (segScale a b c d))
+    (d.x.at' (segScale a b c d))
+    ((orient a b c).at' (segScale a b c d + segScale a b c d))
+    ((orient a b d).at' (segScale a b c d + segScale a b c d))
+    ((orient c d a).at' (segScale a b c d + segScale a b c d))
+    ((orient c d b).at' (segScale a b c d + segScale a b c d))
+    sU.1 sW.1 sU.2 hzw (by grind)
+  have hidy := int_cross_axis_gen (a.y.at' (segScale a b c d))
+    (b.y.at' (segScale a b c d)) (c.y.at' (segScale a b c d))
+    (d.y.at' (segScale a b c d))
+    ((orient a b c).at' (segScale a b c d + segScale a b c d))
+    ((orient a b d).at' (segScale a b c d + segScale a b c d))
+    ((orient c d a).at' (segScale a b c d + segScale a b c d))
+    ((orient c d b).at' (segScale a b c d + segScale a b c d))
+    sU.1 sW.1 sU.2 hzw (by grind)
+  -- back to `Scaled.le`
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hax hbx) (Scaled.max_scale_le _ _ _ hcx hdx),
+      Scaled.min_at' _ _ _ hax hbx, Scaled.max_at' _ _ _ hcx hdx]
+    exact hidx.1
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hcx hdx) (Scaled.max_scale_le _ _ _ hax hbx),
+      Scaled.min_at' _ _ _ hcx hdx, Scaled.max_at' _ _ _ hax hbx]
+    exact hidx.2
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hay hby) (Scaled.max_scale_le _ _ _ hcy hdy),
+      Scaled.min_at' _ _ _ hay hby, Scaled.max_at' _ _ _ hcy hdy]
+    exact hidy.1
+  · rw [Scaled.le_iff_at'_of_ge _ _ (segScale a b c d)
+        (Scaled.min_scale_le _ _ _ hcy hdy) (Scaled.max_scale_le _ _ _ hay hby),
+      Scaled.min_at' _ _ _ hcy hdy, Scaled.max_at' _ _ _ hay hby]
+    exact hidy.2
+
 /-! ## 6. The trust surface
 
 Only Lean's own three axioms. Nothing here is admitted. -/
@@ -1128,5 +1238,6 @@ Only Lean's own three axioms. Nothing here is admitted. -/
 #print axioms BBox.ofPoints_covers
 #print axioms BBox.ofRings_covers
 #print axioms int_cross_axis
+#print axioms segmentsCross_intervals
 
 end L4Factoidal.Geo
