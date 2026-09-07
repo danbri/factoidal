@@ -2903,10 +2903,11 @@ let owl_rule_named_sameAs_to_equivClass (g : rdf_graph) (ig : indexed_graph) : r
 // test:semantics=RDF-BASED over the identical premise + candidate
 // triple, and expect the OPPOSITE verdict. `owl_semantics_mode` below
 // is that dispatch key, threaded through a "_mode"-suffixed sibling of
-// each closure entry point (owl_rule_named_equivClass_to_sameAs_mode /
-// owl_rl_closure_step_mode / owl_rl_closure_mode /
-// owl_rl_closure_with_reflexivity_mode). The original arity-preserving
-// entry points (owl_rule_named_equivClass_to_sameAs, owl_rl_closure_step,
+// each closure entry point (owl_rl_closure_step_mode /
+// owl_rl_closure_mode / owl_rl_closure_with_reflexivity_mode; it also
+// reached owl_rule_named_equivClass_to_sameAs_mode until that rule was
+// deleted as unsound on 2026-09-07, see the removal note below). The
+// original arity-preserving entry points (owl_rl_closure_step,
 // owl_rl_closure, owl_rl_closure_with_reflexivity) become one-line
 // wrappers that pass owl_semantics_direct — bitwise the same behaviour
 // as before this change, so w3c_runner.ml / factoidal_cli.ml /
@@ -2929,64 +2930,48 @@ let owl_semantics_rdf_based : string = "RDF-BASED"
 // (default OFF); no other caller ever passes it.
 let owl_semantics_rdf_based_full : string = "RDF-BASED-FULL"
 
-let owl_rule_named_equivClass_to_sameAs_mode
-    (g : rdf_graph) (ig : indexed_graph) (mode : string) : rdf_graph =
-  // Under RDF-Based semantics a named owl:equivalentClass axiom
-  // identifies class EXTENSIONS only — it does not license collapsing
-  // the two class resources to owl:sameAs, so an annotation triple
-  // asserted on one side must NOT be copied to the other. Suppress the
-  // whole rule in that mode — and in RDF-BASED-FULL, which is the
-  // RDF-Based reading plus the meta-vocabulary axiom table (2026-07-29:
-  // with the meta table emitting rdfs:Class owl:equivalentClass
-  // owl:Class, letting this rule fire in FULL mode collapsed the two
-  // RESOURCES to owl:sameAs and copied a dc:creator annotation across,
-  // refuting WebOnt-Class-004, whose description is exactly
-  // "Annotations about owl:Class are not related to those about
-  // rdfs:Class"). Every other mode (including the owl_semantics_direct
-  // default) keeps the historical unconditional behaviour below.
-  if mode = owl_semantics_rdf_based || mode = owl_semantics_rdf_based_full then g else
-  let is_class (i : wf_iri) : bool =
-    let types = find_objects_indexed ig (S_IRI i) rdf_type in
-    List.Tot.existsb (fun (x : rdf_term) -> rdf_term_eq x (T_IRI owl_Class)) types
-  in
-  // has_extra_property: does i carry some triple whose predicate is
-  // not one of the class-hood / equivalentClass-axiom / derived-
-  // subClassOf / sameAs-reflexivity predicates? Scans the step-input
-  // snapshot g (not the live accumulator), matching this file's
-  // snapshot-semantics convention for single-pass rule bodies.
-  let has_extra_property (i : wf_iri) : bool =
-    List.Tot.existsb
-      (fun (t : triple) ->
-        match t.s with
-        | S_IRI si ->
-          si = i &&
-          t.p <> rdf_type && t.p <> owl_equivalentClass &&
-          t.p <> rdfs_subClassOf && t.p <> owl_sameAs
-        | S_BNode _ -> false)
-      g
-  in
-  List.Tot.fold_left
-    (fun (acc : rdf_graph) (t : triple) ->
-      if t.p = owl_equivalentClass then
-        match t.s, t.o with
-        | S_IRI c_iri, T_IRI d_iri ->
-          if c_iri <> d_iri && is_class c_iri && is_class d_iri &&
-             (has_extra_property c_iri || has_extra_property d_iri) then
-            let t1 : triple =
-              { s = S_IRI c_iri; p = owl_sameAs; o = T_IRI d_iri } in
-            let t2 : triple =
-              { s = S_IRI d_iri; p = owl_sameAs; o = T_IRI c_iri } in
-            add_triple_unchecked (add_triple_unchecked acc t1) t2
-          else acc
-        | _, _ -> acc
-      else acc)
-    g
-    g
-
-// Arity-preserving wrapper — see the 2026-07-05 note above. Every
-// existing caller of this name keeps working unmodified.
-let owl_rule_named_equivClass_to_sameAs (g : rdf_graph) (ig : indexed_graph) : rdf_graph =
-  owl_rule_named_equivClass_to_sameAs_mode g ig owl_semantics_direct
+// ---- REMOVED 2026-09-07: named-equivalentClass-to-sameAs ------------------
+//
+// `owl_rule_named_equivClass_to_sameAs_mode` used to emit
+// `C owl:sameAs D` and `D owl:sameAs C` from `C owl:equivalentClass D`
+// whenever both were named classes and at least one carried some other
+// property assertion, under a DIRECT-semantics gate. The rule is
+// UNSOUND under both OWL 2 semantics and has been deleted.
+//
+// Under the Direct Semantics, `EquivalentClasses(C D)` is the condition
+// (C)^C = (D)^C on the two class expressions' extensions
+// (https://www.w3.org/TR/owl2-direct-semantics/, Table 2's class-axiom
+// row). `SameIndividual(C D)` is the condition (C)^I = (D)^I on their
+// individual interpretations. Punning keeps the class and individual
+// readings of one IRI independent (OWL 2 Structural Specification
+// section 5.8), so coextension of the class readings entails nothing
+// about the individual readings. Under the RDF-Based Semantics,
+// `owl:equivalentClass` is the section 5.8 condition
+// ICEXT(S(c)) = ICEXT(S(d)) on class extensions, and `owl:sameAs` is
+// the section 5.8 condition S(c) = S(d) on the resources themselves
+// (https://www.w3.org/TR/owl2-rdf-based-semantics/); two distinct
+// resources may have equal class extensions in a model, so again the
+// implication does not hold.
+//
+// The rule's gates -- DIRECT-only, both sides named classes, one side
+// carrying an extra property -- describe what the rule AVOIDS (they
+// exist so `WebOnt-I4.6-004`, an RDF-Based NegativeEntailmentTest that
+// a bare `equivalentClass` must NOT entail `sameAs`, keeps passing).
+// None of them is a licence.
+//
+// What the rule was scoring: `WebOnt-I4.6-005-Direct` and
+// `WebOnt-equivalentClass-008-Direct`, whose conclusions are ANNOTATION
+// assertions that `eq-rep-s` then copied across the fabricated
+// `owl:sameAs`. Both are reached instead by `OWL.DirectMapping.Filter`,
+// which now recognises the nine built-in annotation properties of
+// Structural Specification section 5.5: under the Direct Semantics an
+// annotation assertion has no model-theoretic content, so a DIRECT-only
+// conclusion made of annotation triples carries nothing to check. That
+// is the licensed route to the same verdict.
+//
+// The SOUND direction, `owl_rule_named_sameAs_to_equivClass` (sameAs
+// resources have equal class extensions), is unaffected and stays.
+// Recorded in docs/designissues/2026-09-07-fstar-owl-soundness-audit.md.
 
 // ---- Tier-3: prp-key (HasKey) — OWL 2 RL Cluster B -------------------------
 //
@@ -5305,10 +5290,11 @@ let owl_rule_rdf_based_full_meta_axioms_mode (g : rdf_graph) (mode : string) : r
 //
 // `mode` (owl_semantics_direct / owl_semantics_rdf_based /
 // owl_semantics_rdf_based_full, 2026-07-05, extended 2026-07-28)
-// reaches exactly two rules below (owl_rule_named_equivClass_to_sameAs_mode
-// at g5a; owl_rule_rdf_based_full_meta_axioms_mode at g26b) — see those
-// rules' header comments for why. Every other rule is
-// semantics-mode-invariant.
+// reaches exactly one rule below (owl_rule_rdf_based_full_meta_axioms_mode
+// at g26b) — see that rule's header comment for why. Every other rule is
+// semantics-mode-invariant. (It reached a second,
+// owl_rule_named_equivClass_to_sameAs_mode at g5a, until that rule was
+// deleted as unsound on 2026-09-07.)
 let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   (* OWL-RL Commit B: build the index once per step; thread to all
      30 rules. Snapshot semantics — see #4 of the design doc. *)
@@ -5338,13 +5324,11 @@ let owl_rl_closure_step_mode (g : rdf_graph) (mode : string) : rdf_graph =
   let g3a = owl_rule_inverseOf_domain_range_flip g3_comp ig in
   let g4 = owl_rule_symmetric_property g3a ig in
   let g5 = owl_rule_transitive_property g4 ig in
-  // Named-equivalentClass-to-sameAs: must run BEFORE the sameAs rules
-  // so the freshly-emitted (c1 sameAs c2) facts feed eq-rep-s/p/o in
-  // the same step, propagating annotation properties from one named
-  // class to its equivalent. Targets WebOnt-I4.6-005-Direct and
-  // WebOnt-equivalentClass-008-Direct (cluster I+J).
-  let g5a = owl_rule_named_equivClass_to_sameAs_mode g5 ig mode in
-  let g6 = owl_rule_sameAs_reflexivity g5a ig in
+  // (The named-equivalentClass-to-sameAs rule used to run here, before
+  // the sameAs rules, so its emissions fed eq-rep-s/p/o in the same
+  // step. It was deleted 2026-09-07 as unsound — see the removal note
+  // where its definition was.)
+  let g6 = owl_rule_sameAs_reflexivity g5 ig in
   let g7 = owl_rule_sameAs_symmetry g6 ig in
   // eq-diff-sym: differentFrom is symmetric.
   let g7a = owl_rule_differentFrom_symmetry g7 ig in
@@ -6660,6 +6644,60 @@ let rec xsd_is_subtype_fuel (d1 d2 : wf_iri) (fuel : nat) : Tot bool (decreases 
 let xsd_is_subtype (d1 d2 : wf_iri) : bool =
   xsd_is_subtype_fuel d1 d2 (List.Tot.length xsd_hierarchy_edges + 1)
 
+// ---- XSD value-space families (2026-09-07, dt-range-clash repair) ---------
+//
+// WHY THIS REPLACES `xsd_is_subtype` INSIDE THE dt-range-clash CHECK.
+// `xsd_hierarchy_edges` is a TREE, so two recognised datatypes can have
+// OVERLAPPING value spaces without either reaching the other: xsd:int
+// and xsd:nonNegativeInteger both reach xsd:integer, and neither is an
+// ancestor of the other. The check's own banner asserted that XSD value
+// spaces are "identical, in a subtype relation, or fully disjoint —
+// never partially overlapping". That is true of the PRIMITIVE types and
+// false of the DERIVED integer types the check is applied to. Under the
+// old test, `p rdfs:range xsd:nonNegativeInteger` together with
+// `x p "5"^^xsd:int` was reported as a clash, and 5 IS a non-negative
+// integer (XSD 1.1 Datatypes section 3.4.20: the value space of
+// xsd:nonNegativeInteger is the integers greater than or equal to zero,
+// and 5 is one of them). That is an unsound inconsistency verdict.
+//
+// The repair STATES the disjointness instead of inferring it from
+// non-reachability. XSD 1.1 Datatypes section 3.3 gives xsd:string
+// (character sequences), xsd:boolean ({true, false}) and the numeric
+// datatypes (numbers) pairwise disjoint value spaces, and every derived
+// datatype's value space is a subset of its base's, so a derived type
+// stays inside its base's family. Two recognised datatypes therefore
+// clash only when their families differ. This is WEAKER than the old
+// test — a same-family pair such as (xsd:negativeInteger range,
+// xsd:positiveInteger literal) is no longer reported, because deciding
+// it needs the literal's VALUE and not just its datatype, which this
+// check does not compute. Withholding a verdict there is sound; the old
+// over-firing was not.
+let xsd_numeric_datatypes : list wf_iri =
+  [
+    xsd_double; xsd_decimal; xsd_integer;
+    xsd_long; xsd_int; xsd_short; xsd_byte;
+    xsd_nonNegativeInteger; xsd_positiveInteger;
+    xsd_unsignedLong; xsd_unsignedInt;
+    xsd_unsignedShort; xsd_unsignedByte;
+    xsd_nonPositiveInteger; xsd_negativeInteger;
+  ]
+
+// Family tag: 0 = character strings, 1 = the two booleans, 2 = numbers.
+// `None` for any IRI outside the recognised set — an unrecognised
+// datatype gets no verdict, never a clash.
+let xsd_value_space_family (d : wf_iri) : option nat =
+  if d = xsd_string then Some 0
+  else if d = xsd_boolean then Some 1
+  else if List.Tot.mem d xsd_numeric_datatypes then Some 2
+  else None
+
+// True only when both datatypes are recognised AND sit in different
+// families, i.e. when their value spaces are provably disjoint.
+let xsd_value_spaces_disjoint (d1 d2 : wf_iri) : bool =
+  match xsd_value_space_family d1, xsd_value_space_family d2 with
+  | Some f1, Some f2 -> f1 <> f2
+  | _, _ -> false
+
 // owl:bottomObjectProperty / owl:bottomDataProperty — the OWL 2
 // built-in properties with EMPTY extension in every model. Mirrors
 // Tableau.Refute.fst's owl_bottomObjectProperty / owl_bottomDataProperty
@@ -6952,17 +6990,25 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
                     // a recognised XSD datatype (xsd_all_datatypes),
                     // and some `(x P v)` asserts a literal `v` whose
                     // OWN datatype `D_lit` is also a recognised XSD
-                    // datatype but is neither `D_range` nor a
-                    // (transitive) subtype of it in
-                    // `xsd_hierarchy_edges`. XSD primitive datatypes'
-                    // value spaces are either identical, in a subtype
-                    // relation, or fully disjoint — never partially
-                    // overlapping — so `v` is then provably outside
-                    // `D_range`'s value space. Reuses the same
-                    // hierarchy/table this module already threads
-                    // through owl_rule_xsd_datatype_axioms /
-                    // owl_rule_dt_range_intersect (xsd_is_subtype,
-                    // defined just above); no new lexical-grammar code.
+                    // datatype and whose VALUE SPACE IS DISJOINT from
+                    // `D_range`'s (`xsd_value_spaces_disjoint`, defined
+                    // just above). `v` is then provably outside
+                    // `D_range`'s value space.
+                    //
+                    // 2026-09-07: this used to read "neither `D_range`
+                    // nor a (transitive) subtype of it in
+                    // `xsd_hierarchy_edges`", on the stated premise
+                    // that XSD value spaces are identical, in a
+                    // subtype relation, or fully disjoint. That
+                    // premise holds of the PRIMITIVE types and fails
+                    // of the DERIVED integer types this check is
+                    // applied to: xsd:int and xsd:nonNegativeInteger
+                    // overlap and neither reaches the other in the
+                    // tree, so `p rdfs:range xsd:nonNegativeInteger`
+                    // with `x p "5"^^xsd:int` was reported
+                    // INCONSISTENT although 5 is a non-negative
+                    // integer. See `xsd_value_spaces_disjoint`'s
+                    // banner for the repair and what it gives up.
                     // Targets string-integer-clash (InconsistencyTest;
                     // needs cls-hv1 above to see the direct
                     // `hasAge "aString"^^xsd:string` triple through the
@@ -6980,8 +7026,7 @@ let is_inconsistent (g : rdf_graph) : Tot bool =
                                  (match t.o with
                                   | T_Literal lit ->
                                     List.Tot.mem lit.datatype xsd_all_datatypes &&
-                                    not (lit.datatype = d_range) &&
-                                    not (xsd_is_subtype lit.datatype d_range)
+                                    xsd_value_spaces_disjoint lit.datatype d_range
                                   | _ -> false))
                                g
                            | _, _ -> false))

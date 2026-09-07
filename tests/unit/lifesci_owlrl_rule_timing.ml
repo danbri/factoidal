@@ -110,7 +110,9 @@ let () =
   probe "inverseOf_domain_range_flip"    (fun () -> RDF_Graph_Executable.owl_rule_inverseOf_domain_range_flip g1 ig);
   probe "symmetric_property"             (fun () -> RDF_Graph_Executable.owl_rule_symmetric_property g1 ig);
   probe "transitive_property"            (fun () -> RDF_Graph_Executable.owl_rule_transitive_property g1 ig);
-  probe "named_equivClass_to_sameAs"     (fun () -> RDF_Graph_Executable.owl_rule_named_equivClass_to_sameAs g1 ig);
+  (* named_equivClass_to_sameAs was deleted 2026-09-07 as unsound --
+     see docs/designissues/2026-09-07-fstar-owl-soundness-audit.md.
+     The probe goes with it; no rule runs at this position now. *)
   probe "sameAs_reflexivity"             (fun () -> RDF_Graph_Executable.owl_rule_sameAs_reflexivity g1 ig);
   probe "sameAs_symmetry"                (fun () -> RDF_Graph_Executable.owl_rule_sameAs_symmetry g1 ig);
   probe "differentFrom_symmetry"         (fun () -> RDF_Graph_Executable.owl_rule_differentFrom_symmetry g1 ig);
