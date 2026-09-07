@@ -952,8 +952,11 @@ about thirty units that used to return `.noGoals` in microseconds now
 run one tableau per conclusion conjunct, and `WebOnt-I5.21-002` alone
 runs 66 goals over a 518-triple closure; the named-restriction entry
 then grew the TBox that `onePass` folds over per node and per label.
-At `--refute-ms 3000` the same three catalogs take 14 min 20 s with
-the same scores, because nothing was decided by the extra budget.
+A smaller `--refute-ms` does not buy the time back for free and was
+not measured as a whole-run figure on this tree: the per-catalog runs
+at `--refute-ms 3000` gave `type-inconsistency.rdf` 4 s and
+`type-positive-entailment.rdf` 4 min 39 s with the same scores, and
+`type-consistency.rdf` was not re-measured at that setting.
 
 Two mitigations are available and neither is taken here, so that the
 score and the speed stay separate measurements:
