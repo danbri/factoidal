@@ -1648,16 +1648,41 @@ withholds refutations; including them would invent them.
 A pair already forced apart is never offered: merging a provably
 distinct pair is unsound, not merely unhelpful. -/
 
-/-- A blank node stands for an EXISTENTIAL witness rather than for a
-    named individual — whether this module minted it (`_:tw_`), the
-    materialisation pass minted it (`_:bw_`), or the document carries
-    it. All three are existentially quantified, so identifying two of
-    them is a choice a model may make.
+/-- A term the ≤-rule may identify with another: a blank node or a
+    named individual, never a literal.
 
-    A NAMED individual is excluded. Merging one is a further wave;
-    withholding it loses refutations, which is the safe direction. -/
+    **Named individuals were excluded until 2026-09-07, and excluding
+    them was not the safe direction.** The header's argument was that
+    a named individual's graph-asserted edges cannot be rewritten, so
+    a merge would leave a half-merged state. That argument describes
+    the REWRITING merge this module no longer has: `mergeInto` records
+    an identification pair, and `labelsOf` / `successorsOf` pool the
+    group across the input graph as well as the expansion edges
+    (`identifiedWith`, used in both). Nothing is rewritten, so nothing
+    is half-rewritten.
+
+    The exclusion was also unsound in the direction that matters. The
+    ≤-rule refutes a node only when EVERY offered merge closes, and
+    that is an argument only if the offered merges COVER every
+    coincidence a model could choose. With `≤ k p` and more than `k`
+    successors, pigeonhole says some two successor TERMS denote one
+    element; if the pair a model picks is not offered, "every offered
+    merge closes" proves nothing. Offering only blank nodes left every
+    pair involving a named successor uncovered. Offering every
+    non-provably-distinct pair of resource successors restores the
+    cover.
+
+    Literals stay out. A literal and an IRI denote in disjoint domains
+    under OWL 2 Direct Semantics (§ 2.2, the object domain and the
+    data domain), and two literals with different values are already
+    `provablyDistinct`, so no pair involving a literal is a
+    coincidence a model may choose. A cardinality bound measured over
+    a literal successor of an OBJECT property is outside this
+    argument; it is recorded as the residual in
+    `docs/designissues/2026-09-07-lean-owl-corpus-gap.md` § 11. -/
 def isMergeableTerm : Term → Bool
   | .bnode _ => true
+  | .iri _   => true
   | _        => false
 
 private def witnessPairs (g : Graph) (succs : List Term) (k : Nat)

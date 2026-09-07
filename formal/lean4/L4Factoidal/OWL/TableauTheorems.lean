@@ -358,4 +358,58 @@ theorem sameGoal_iff {δ : Type} (I : Interp δ) (ν : Ind → δ) (a b : Ind) :
     ¬ (ν a = ν b) ↔ Satisfies I ν (.diff a b) := by
   simp [Satisfies]
 
+/-! ## Model existence for a clash-free literal label set (2026-09-07)
+
+Every tableau COMPLETENESS argument has the same leaf: a branch that
+saturated without a clash is turned into a model, and the turn starts
+from the literal (atom / negated atom) part of a node's label set. That
+leaf is proved here. It is the only part of completeness this tree
+proves today; § 11 of
+`docs/designissues/2026-09-07-lean-owl-corpus-gap.md` states what the
+rest of the argument needs and why it is not claimed.
+
+The canonical interpretation is the one-element model that reads the
+label set literally: an atom holds exactly when the set carries it. -/
+
+/-- The literal concepts: an atom, a negated atom, or `owl:Thing`. -/
+inductive LiteralConcept : Concept → Prop where
+  | atom (a : String) : LiteralConcept (.atom a)
+  | negAtom (a : String) : LiteralConcept (.neg (.atom a))
+  | top : LiteralConcept .top
+
+/-- No atom occurs both plainly and negated — exactly the condition
+    `Refuted.clash` looks for on a node's labels. -/
+def NoLiteralClash (ls : List Concept) : Prop :=
+  ∀ a : String, Concept.atom a ∈ ls → Concept.neg (.atom a) ∉ ls
+
+/-- One domain element; an atom holds of it exactly when `ls` carries
+    that atom; no role edges. -/
+def canonInterp (ls : List Concept) : Interp Unit where
+  concept a _ := Concept.atom a ∈ ls
+  role _ _ _ := False
+
+/-- MODEL EXISTENCE, literal fragment: a label set of literals with no
+    atom clash is satisfied, at the single domain element, by its own
+    canonical interpretation. A clash-free literal branch therefore has
+    a model — the leaf case of completeness, and the converse direction
+    to `refuted_sound` above. -/
+theorem canon_models_all (ls : List Concept)
+    (hlit : ∀ c ∈ ls, LiteralConcept c) (h : NoLiteralClash ls) :
+    ∀ c ∈ ls, (canonInterp ls).sem c () := by
+  intro c hc
+  cases hlit c hc with
+  | atom a => exact hc
+  | negAtom a => intro hmem; exact (h a hmem) hc
+  | top => trivial
+
+/-- The other half of the leaf: `owl:Nothing` is in no model, so a
+    label set carrying it is never satisfied. Together with
+    `canon_models_all` this says the two clash conditions
+    `Refuted.clash` and `Refuted.botClash` are exactly the obstructions
+    to a model in the literal fragment. -/
+theorem canon_rejects_bot (ls : List Concept) :
+    ¬ (canonInterp ls).sem .bot () := by
+  intro hb
+  exact hb
+
 end L4Factoidal.OWL

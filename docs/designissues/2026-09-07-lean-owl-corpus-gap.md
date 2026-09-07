@@ -695,3 +695,139 @@ Two of the eight rows are not Lean gaps against F\*: F\* also fails
 `WebOnt-I5.3-014`, `-015`, `WebOnt-I5.8-017` and
 `WebOnt-description-logic-910`, and `-909` is disputed. That is
 9 ids — 17 units — where neither engine answers.
+
+## 11. Completeness: what is proved, what is stated, what is open
+
+Full SROIQ(D) completeness with a machine-checked proof is not
+claimed, and nothing below should be read as claiming it.
+
+### 11.1 The tableau has no blocking condition
+
+`OWL/Refute.lean`'s `search` terminates on three caps, not on a
+blocking condition:
+
+* `maxWitnessDepth = 3` — the ∃-rule mints no successor below depth 3;
+* `maxGeneratedWitnesses = 6` — at most six witnesses per node;
+* the threaded `budget` (`--refute-budget`, default 64), plus the
+  harness wall clock `--refute-ms`.
+
+A cap and a blocking condition are different objects. Subset blocking
+(Horrocks, Kutz and Sattler, *The Even More Irresistible SROIQ*, KR
+2006, § 3; the pairwise / equality-blocking refinement for SHOIQ) stops
+expansion when a node's label set is contained in an ancestor's, and
+the argument that the branch still yields a model is what makes the
+procedure a DECISION procedure: the blocked node is unravelled into an
+infinite or cyclic model. A depth cap stops expansion at depth 3
+whether or not the label set repeated, and the state left behind
+witnesses nothing.
+
+The consequence is already in the module header and is restated here
+as a completeness statement: `tableauConsistent = some true` is NOT a
+satisfiability claim, and no completeness claim follows from
+termination. The engine is a SOUND REFUTATION procedure with an
+INCOMPLETE search, and the corpus scores are scores of that.
+
+### 11.2 The fragment a completeness proof is available for
+
+The caps do not bite on
+
+> **ALC ABox consistency with an acyclic (unfoldable) TBox**, where
+> every concept has role-nesting depth ≤ 3 and no node carries more
+> than 6 existential restrictions.
+
+In that fragment the ∃-rule never reaches either cap, an acyclic TBox
+unfolds in finitely many steps with no cycle for a blocking condition
+to catch, and the search space is finite for a reason that is stated
+rather than imposed. This is the fragment for which a completeness
+theorem is worth attempting, and it is the smallest one that covers
+any of the corpus ids in § 10.
+
+### 11.3 What is proved
+
+The LEAF of the completeness argument, in `OWL/TableauTheorems.lean`:
+
+* `canon_models_all` — a label set of literals (atom, negated atom,
+  `owl:Thing`) with no atom clash is satisfied, at a single domain
+  element, by its own canonical interpretation. Depends on no axioms.
+* `canon_rejects_bot` — `owl:Nothing` is in no model. Depends on no
+  axioms.
+
+Together they say the two clash conditions `Refuted.clash` and
+`Refuted.botClash` are EXACTLY the obstructions to a model in the
+literal fragment: clash-free means a model exists, and a model exists
+means clash-free. That is the converse direction to `refuted_sound`,
+restricted to the leaf.
+
+### 11.4 The theorem still to prove, and what blocks it
+
+    theorem search_complete_ALC
+        (R : RoleAxioms) (A : List Assertion)
+        (hFrag : InALC A) (hAcyclic : AcyclicTBox tb)
+        (hDepth : RoleDepth A ≤ 3) (hEx : ExCount A ≤ 6) :
+        ¬ Consistent R A → Refuted R A
+
+Two things block it, and they are work items, not unknowns.
+
+1. **The inductive lift.** `canon_models_all` covers the literal leaf.
+   The lift needs the ⊓ / ⊔ decomposition cases and the ∀ / ∃
+   successor construction — the canonical interpretation grows from
+   one element to the expansion tree, and the role extension stops
+   being `False`. This is ordinary structural induction over
+   `Concept`; it is bounded work, not research.
+2. **`search` is a `partial def`.** A completeness theorem about the
+   EXECUTABLE engine needs an induction principle for it, and a
+   `partial def` has none. The prerequisite is a fuel-indexed
+   reformulation with a proof that the fuel-indexed and the partial
+   versions agree — the same move `RLClosureIndexed.indexedClosure_eq`
+   already made for the closure. The repository's no-new-`partial def`
+   rule points the same way.
+
+Until both land, the statement above stays an OBLIGATION in this
+record, not a lemma with a hypothesis arranged to make it provable.
+
+### 11.5 Features whose completeness is open, with the ids that need them
+
+| feature | status | corpus ids that depend on it |
+|---|---|---|
+| blocking (subset / equality) | absent; replaced by a depth cap | every cyclic-TBox fixture; none of the § 10 ids is decided by it today |
+| nominals (`owl:oneOf`) beyond the two size rules | partial | `one=two`, `WebOnt-oneOf-003`, `WebOnt-oneOf-004`, `WebOnt-unionOf-002`, `Consistent-but-all-unsat` |
+| the counting oracle, wired into the search | `OWL/CountingOracle.lean` exists with a proved Farkas validator; `search` does not consult it | `one=two`, `Consistent-but-all-unsat` |
+| SHIQ ≤-rule over named individuals | landed 2026-09-07 (§ 11.6); no id moved | `WebOnt-description-logic-035`, `-040`, `-108`, `-502`, `-504` |
+| datatype facets in the clash rules | partial (`XSD/Facets.lean` value spaces; no pattern facet, no `owl:real`) | `Inconsistent Disjoint Dataproperties`, `Inconsistent String Pattern with Disjoint Dataproperties`, `Minus Infinity is not in owl:real`, `WebOnt-I5.8-017` |
+| disjoint DATA properties | absent | the first two of the row above |
+| role chains (`owl:propertyChainAxiom`) in the tableau | absent | none of the § 10 ids |
+| `owl:disjointUnionOf` as an axiom source | absent | `New-Feature-DisjointUnion-001` |
+| self restrictions (`owl:hasSelf`) as a labelled concept | graph-level only | `New-Feature-SelfRestriction-002` (profile-EL) |
+| keys (`owl:hasKey`) beyond the graph-level rule | partial | `New-Feature-Keys-001` (profile-EL) |
+| the RDF and OWL vocabulary axiom table | absent | § 10.1b, 12 ids |
+| comprehension in a CONCLUSION under the DL regime | absent | § 10.1c, 10 ids |
+
+### 11.6 A coverage defect in the ≤-rule, repaired
+
+`isMergeableTerm` admitted blank nodes only, on the argument that a
+named individual's graph-asserted edges cannot be rewritten. That
+argument describes a rewriting merge the module no longer has:
+`mergeInto` records an identification pair and `labelsOf` /
+`successorsOf` pool the group through `identifiedWith`, over the input
+graph as well as the expansion edges.
+
+The exclusion was also unsound in the direction that matters. The
+≤-rule refutes a node only when EVERY offered merge closes, and that is
+an argument only if the offered merges COVER every coincidence a model
+could choose. With `≤ k p` and more than `k` successors, pigeonhole
+forces some two successor TERMS to denote one element; a pair the model
+picks that was never offered breaks the cover. Offering only blank
+nodes left every pair involving a named successor uncovered.
+
+Named individuals are now offered. Literals stay out: a literal and an
+IRI denote in disjoint domains (OWL 2 Direct Semantics § 2.2) and two
+literals with different values are already `provablyDistinct`. The
+residual, stated rather than hidden: a cardinality bound measured over
+a LITERAL successor of an object property is outside this argument and
+its cover is still incomplete.
+
+Measured effect, `--dl type-inconsistency.rdf`: 116 pass, 11 fail
+(1 skip, out of 128) before and after — the change closes no id. It is
+landed as a soundness repair, not as a score move; the five
+`WebOnt-description-logic` ≤-rule ids need the max-cardinality label to
+reach the node first, which is a separate gap.
