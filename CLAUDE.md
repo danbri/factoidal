@@ -793,6 +793,12 @@ session.
   — wall-clock + Monitor + lock-cleanup pattern for long autonomous
   sessions. Read when kicking long background builds, when "the
   job has been silent for a while," or before a multi-hour solo run.
+- [`danbri-function-precrime-checkers`](skills/danbri-function-precrime-checkers/SKILL.md)
+  — catch a function's resource-scaling defects (stack, memory, time that
+  grow with input) by measurement during the test run, before they crash on
+  a large input in production: the static IR scan, the small-budget canary
+  run, and the n/2n/4n scaling assertion. Read before adding a parser,
+  decoder, serialiser or fold, or a stress test.
 - [`counting-coverage`](skills/counting-coverage/SKILL.md) — how to
   count what a port or migration has covered without the number lying.
   **Read before writing any coverage number, before adding an alias-table
