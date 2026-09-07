@@ -257,13 +257,33 @@ next reader does not have to take anyone's word for it.
 
 ## 7. Status (measured 2026-09-07 in `/Users/danbri/working/factoidal-wt-dtb`)
 
+Every number below was produced by running the probe in this worktree, before
+and after, not quoted from a dashboard.
+
 | gate | before | after |
 | --- | --- | --- |
 | `l4rif` | 42 pass, 0 fail (out of 42 decided); 3 undecided, 1 local override | **43 pass, 0 fail (out of 43 decided); 2 undecided, 1 local override** |
-| `l4xpath` | 100 pass, 0 fail (out of 100) | MEASURED-BELOW |
-| `l4xslt` | 84 pass, 3 fail (out of 87 decided) | MEASURED-BELOW |
-| `l4xsd-datatypes` | 18951 pass, 5 fail (out of 18956 scored) | MEASURED-BELOW |
-| SPARQL 1.1 `l4w3c` | 631 pass, 0 fail (out of 631) | MEASURED-BELOW |
+| `l4xpath` | 100 pass, 0 fail (out of 100) | 100 pass, 0 fail (out of 100) — unchanged |
+| `l4xslt` | 84 pass, 3 fail (out of 87 decided), 1 refused | 84 pass, 3 fail (out of 87 decided), 1 refused — unchanged |
+| `l4xsd-datatypes` | 18951 pass, 5 fail (out of 18956 scored) | 18951 pass, 5 fail (out of 18956 scored) — unchanged |
+| SPARQL 1.1 `l4w3c` | 631 pass, 0 fail (out of 631) | 631 pass, 0 fail (out of 631) — unchanged |
+| SPARQL 1.2 `l4w3c` | 254 pass, 0 fail (out of 254) | 254 pass, 0 fail (out of 254) — unchanged |
+
+The `l4xsd-datatypes` score not moving is the expected result of the
+`daysFromCivil` repair, not evidence against it: no vendored instance file in
+that suite carries a negative proleptic year, so the suite cannot see the
+defect in either direction. The `#guard` in `Fn/DateTime.lean` is what sees
+it.
+
+Not a gate here, and reported without a claim: the superseded SPARQL 1.0
+evaluation manifest gives 208 pass, 74 fail (out of 282). No baseline for it
+is recorded anywhere in the repository, so this run establishes one rather
+than measuring a change.
+
+Hygiene: `#print axioms` over all 27 theorems of `L4Factoidal.Fn` gives
+`propext`, `Classical.choice`, `Quot.sound` or fewer. No `sorry`, no user
+`axiom`, no `native_decide`, no `unsafe`. `partial def` count across
+`L4Factoidal` is 170, down from the 172 baseline.
 
 `Builtins_Time` was undecided in BOTH trees for lack of DTB §4.8. It is now
 decided and passes. The 2 remaining undecided cases are
