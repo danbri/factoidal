@@ -106,3 +106,5 @@ third_party/jsonld-context-cache/.index.lock
 # here. It is a 22MB third-party distribution fetched by
 # tools/install-jena-for-diff-testing.sh, not repo content.
 .jena-cache/
+tests/xmpp/node_modules/
+tests/xmpp/package-lock.json

@@ -522,4 +522,7 @@ import L4Factoidal.XMPP.Jid
 import L4Factoidal.XMPP.Wire
 import L4Factoidal.XMPP.Core
 import L4Factoidal.XMPP.Sasl
+import L4Factoidal.XMPP.Scram
+import L4Factoidal.XMPP.Framing
+import L4Factoidal.XMPP.Server
 import L4Factoidal.XMPP.Gc3
