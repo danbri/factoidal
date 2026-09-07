@@ -292,6 +292,47 @@ structure XmlDecl where
   standalone : Option String
 deriving DecidableEq, Repr, Inhabited
 
+/-- One declared general entity.
+
+`external` says the declaration was an `[75] ExternalID` rather than
+an `[9] EntityValue`. Section 4.4.4 makes a reference to an external
+parsed entity FORBIDDEN in an attribute value, directly or
+indirectly, so the table has to carry the distinction; storing the
+replacement text alone cannot answer the question. -/
+structure EntityDef where
+  /-- The raw, un-expanded replacement text (references inside are
+  resolved at the reference site). -/
+  value : String
+  /-- Declared with an `[75] ExternalID`. -/
+  external : Bool := false
+  /-- The replacement text is in hand. An external entity whose system
+  identifier the caller could not read is DECLARED (so section 4.4.4
+  can refuse it in an attribute value) but has no text, and a
+  reference to it in content is the same "undeclared" verdict this
+  parser gave before it recorded the declaration at all. -/
+  resolved : Bool := true
+deriving DecidableEq, Repr, Inhabited
+
+/-- The declared general entities, or (kept apart, section 4.1) the
+declared parameter entities.
+
+Two flags travel with the table because both are properties of the
+DECLARATIONS, not of any one entity:
+
+* `sawPe` — a `[69] PEReference` was recognised while these
+  declarations were read.
+* `lax` — section 4.1 WFC Entity Declared applies in full only "in a
+  document without any DTD, a document with only an internal DTD
+  subset which contains no parameter entity references, or a document
+  with `standalone='yes'`". Outside those, a reference to an
+  undeclared entity is a VALIDITY error, which a non-validating
+  processor must not report. -/
+structure EntityTable where
+  defs  : List (String × EntityDef) := []
+  sawPe : Bool := false
+  lax   : Bool := false
+deriving DecidableEq, Repr, Inhabited
+
 /-- `[28] doctypedecl ::= '<!DOCTYPE' S Name (S ExternalID)? S?
 ('[' intSubset ']' S?)? '>'`, as far as a NON-VALIDATING processor
 reads it — which is exactly as far as the F* `parse_doctype` reads it.
@@ -311,7 +352,7 @@ structure Doctype where
   /-- `[71] GEDecl` internal general entities: name ↦ raw replacement
   text, un-expanded (references inside are resolved lazily at the
   reference site). -/
-  entities : List (String × String)
+  entities : EntityTable
   /-- `(element name, attribute name)` pairs declared `[54] AttType`
   = `ID` in the internal subset. -/
   idAttrs : List (String × String)

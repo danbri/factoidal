@@ -234,12 +234,12 @@ prepending as the internal subset is scanned, so the stored order is
 the reverse of the document order; reversing on the way out is what
 makes the re-parse rebuild the identical lists. -/
 def Doctype.serialize (dt : Doctype) : String :=
-  if dt.entities.isEmpty && dt.idAttrs.isEmpty then
+  if dt.entities.defs.isEmpty && dt.idAttrs.isEmpty then
     "<!DOCTYPE " ++ dt.rootName ++ ">"
   else
     "<!DOCTYPE " ++ dt.rootName ++ " [" ++
-    String.join (dt.entities.reverse.map fun e =>
-      "<!ENTITY " ++ e.1 ++ " \"" ++ e.2 ++ "\">") ++
+    String.join (dt.entities.defs.reverse.map fun e =>
+      "<!ENTITY " ++ e.1 ++ " \"" ++ e.2.value ++ "\">") ++
     String.join (dt.idAttrs.reverse.map fun p =>
       "<!ATTLIST " ++ p.1 ++ " " ++ p.2 ++ " ID #IMPLIED>") ++
     "]>"
