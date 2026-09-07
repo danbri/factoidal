@@ -505,13 +505,9 @@ def rdfJsonValueEq (lex1 lex2 : String) : Bool :=
   | some v1, some v2 => jsonValueEq v1 v2 (v1.size + v2.size + 1)
   | _, _              => lex1 == lex2
 
-/-- `xsd:float` — XSD 1.1 §3.4.17. (`RDF.Core` defines `xsdDouble`;
-`xsd:float` has no such constant yet and is added here, matching the
-per-module-defines-its-own-vocabulary style `RDF.Core` itself uses.) -/
-def xsdFloat : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#float", rfl⟩
-
-/-- `rdf:JSON` — RDF 1.2 Concepts. -/
-def rdfJSON : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON", rfl⟩
+-- `xsdFloat` and `rdfJSON` are defined in `RDF/Datatypes.lean`, beside
+-- their LEXICAL spaces and their `modelledDatatypes` entry, so that the
+-- IRI and the two things a `D` must know about it stay in one place.
 
 /-- D-value literal equality for the RDF 1.2 `D` / `RDF` / `RDFS` /
 `RDFS-Plus` regimes (never `simple`, which stays `literalStrictEq` —
@@ -597,26 +593,39 @@ def Regime.closure (r : Regime) (D cmps : List WfIri) (g : Graph) : Graph :=
 
 `.simple` matches literals by their SYNTAX (RDF 1.1 Semantics §5.1:
 simple interpretations give a literal no value beyond itself).
-`.d` and `.rdf` use `literalValueEq D` — D-value equality over the
-datatypes `RDF.Datatypes` models. `.rdfs` and `.rdfsPlus` use
-`dtValueLeq D`, which extends that with `xsd:double` / `xsd:float` /
-`rdf:JSON` value equality.
+`.d` uses `literalValueEq D` — D-value equality over the datatypes
+`RDF.Datatypes` models with a `NumVal` value space. `.rdf`, `.rdfs`
+and `.rdfsPlus` use `dtValueLeq D`, which extends that with
+`xsd:double` / `xsd:float` / `rdf:JSON` value equality.
 
-**Why `.d` is not given `dtValueLeq`.** `dtValueLeq` is a strictly
-LARGER literal equality, and a larger literal equality makes
+**Why `.rdf` IS given `dtValueLeq` (2026-09-07).** All fifteen
+`xsd:double` / `xsd:float` / `rdf:JSON` fixtures of the rdf12
+`rdf-semantics` manifest carry `mf:entailmentRegime "RDF"`, and RDF
+1.2 Semantics §6 defines RDF entailment over D-interpretations that
+recognise the datatypes in `D`. Under such an interpretation
+`"1E400"^^xsd:double` and `"1E401"^^xsd:double` denote the same value
+(both overflow to `+INF`), so matching them is D-semantics, not a
+liberty. `.rdf` carries no soundness theorem — the theorems are
+`Unified/DSchema.regimeEntails_d_sound_mt` (`.d`, through
+`entailsWith_valueEq_sound`, stated for `literalValueEq`) and
+`Unified/SparqlAdequacy.regime_sound_rdfs` (`.rdfs`, about the
+CLOSURE, not the comparator) — so this widening re-opens no proof.
+
+**Why `.d` is still not given `dtValueLeq`.** `dtValueLeq` is a
+strictly LARGER literal equality, and a larger literal equality makes
 entailment MORE permissive — so a soundness result does not transfer
 from the smaller one to the larger just because the larger extends it.
-`Unified/DSchema.regimeEntails_d_sound_mt` proves the D-regime sound
-against the model theory through `entailsWith_valueEq_sound`, which is
-stated for `literalValueEq`. Widening `.d` broke that proof on
-2026-09-07, and the tree did not build for it. The regimes that carry
-no soundness theorem may be widened; `.d` may not, until
-`entailsWith` is proved sound under `dtValueLeq` itself. -/
+`regimeEntails_d_sound_mt` proves the D-regime sound against the model
+theory through `entailsWith_valueEq_sound`, which is stated for
+`literalValueEq`. Widening `.d` broke that proof on 2026-09-07, and
+the tree did not build for it. The regimes that carry no soundness
+theorem may be widened; `.d` may not, until `entailsWith` is proved
+sound under `dtValueLeq` itself. -/
 def Regime.literalEq (r : Regime) (D : List WfIri) : Literal → Literal → Bool :=
   match r with
-  | .simple            => literalStrictEq
-  | .d | .rdf          => literalValueEq D
-  | .rdfs | .rdfsPlus  => dtValueLeq D
+  | .simple                    => literalStrictEq
+  | .d                         => literalValueEq D
+  | .rdf | .rdfs | .rdfsPlus   => dtValueLeq D
 
 /-- What a blank node may range over under a regime: anything, except
 (under D) an ill-formed recognised literal (§7: such a literal denotes

@@ -12,10 +12,11 @@ membership (is this value in that datatype's space?).
 
 `modelledDatatypes` lists exactly the IRIs this module knows a lexical
 space and value space for: `xsd:string`, `rdf:langString`,
-`xsd:integer`, `xsd:int`, `xsd:decimal`, `xsd:boolean`, and
+`xsd:integer`, `xsd:int`, `xsd:decimal`, `xsd:boolean`,
 `rdf:XMLLiteral` (RDF 1.1 Concepts §5.1: "well-balanced, self-contained
 XML content" — decided by wrapping the lexical form in an element and
-running the Lean XML parser, `XML/Parser.lean`). A caller that is asked
+running the Lean XML parser, `XML/Parser.lean`), and — RDF 1.2 —
+`xsd:double`, `xsd:float` and `rdf:JSON`. A caller that is asked
 to recognise any OTHER datatype must say so (the harness reports
 `unsupported`), not silently treat it as opaque.
 
@@ -56,15 +57,24 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 import L4Factoidal.RDF.Core
 import L4Factoidal.XML.Parser
 import L4Factoidal.NatBounds
+import L4Factoidal.XSD.IEEE754
+import L4Factoidal.JSON.Parser
 
 namespace L4Factoidal.RDF
 
 /-- `xsd:int` — XSD 1.1 §3.4.17. -/
 def xsdInt : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#int", rfl⟩
 
+/-- `xsd:float` — XSD 1.1 §3.3.4 (binary32). -/
+def xsdFloat : WfIri := ⟨"http://www.w3.org/2001/XMLSchema#float", rfl⟩
+
+/-- `rdf:JSON` — RDF 1.2 Concepts §5.3. -/
+def rdfJSON : WfIri := ⟨"http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON", rfl⟩
+
 /-- The datatype IRIs this module models — see the header. -/
 def modelledDatatypes : List WfIri :=
-  [xsdString, rdfLangString, xsdInteger, xsdInt, xsdDecimal, xsdBoolean, rdfXMLLiteral]
+  [xsdString, rdfLangString, xsdInteger, xsdInt, xsdDecimal, xsdBoolean,
+   rdfXMLLiteral, xsdDouble, xsdFloat, rdfJSON]
 
 /-- `D` with the two datatypes every D-interpretation recognises. -/
 def withMinimalD (D : List WfIri) : List WfIri :=
@@ -158,6 +168,45 @@ def xmlLiteralWellFormed (lex : String) : Bool :=
   | .ok _    => true
   | .error _ => false
 
+/-! ## `xsd:double` / `xsd:float` / `rdf:JSON` lexical spaces
+
+The VALUE spaces of these three are decided elsewhere
+(`RDF/Entailment.lean`'s `dtValueLeq`, over `XSD.IEEE754.doubleValueEq`
+/ `floatValueEq` and `rdfJsonValueEq`). What belongs HERE is the
+LEXICAL space — the question `literalIllFormed` asks — and the two are
+different questions: a value comparison is total on arbitrary strings
+by construction (`XSD.IEEE754` falls back to string equality for a
+lexical it cannot parse), so it can never report ill-formedness.
+
+Listing an IRI in `modelledDatatypes` without its lexical space would
+make every literal of that datatype count as WELL-FORMED, malformed
+ones included, in a suite that contains malformed-literal fixtures.
+That is why the three IRIs were held out of the list until now, and why
+they are added in the same commit as the three predicates below. -/
+
+/-- XSD 1.1 §3.3.5 (`double`) and §3.3.4 (`float`) share one lexical
+space: `NaN`, `INF` / `+INF` / `-INF`, or a decimal or scientific
+numeral. `XSD.IEEE754.parseLexical` decides exactly that grammar —
+it returns `none` for anything else, which is what makes it usable as
+the lexical-space test and not only as the first half of a value
+comparison. Note what it REJECTS and XSD also rejects: `Infinity`,
+`nan`, an empty mantissa, an empty or non-integer exponent. -/
+def doubleFloatLexicalOk (lex : String) : Bool :=
+  (L4Factoidal.XSD.parseLexical lex).isSome
+
+/-- RDF 1.2 Concepts §5.3: the lexical space of `rdf:JSON` is the set
+of strings that are grammatical JSON (RFC 8259 / ECMA-404), decided by
+the Lean JSON parser. Its value space is the JSON values, compared
+after canonicalization — objects unordered, arrays ordered, numbers by
+IEEE-754 binary64 — which is `RDF/Entailment.lean`'s `rdfJsonValueEq`. -/
+def rdfJsonLexicalOk (lex : String) : Bool :=
+  (L4Factoidal.JSON.parseJson? lex).isSome
+
+/-- The three datatypes whose lexical space is decided by the two
+predicates above rather than by the numeric / XML / boolean arms. -/
+def isIeeeOrJsonDatatype (d : WfIri) : Bool :=
+  d == xsdDouble || d == xsdFloat || d == rdfJSON
+
 /-! ## Well-formedness under D -/
 
 /-- Is `l` ILL-FORMED under `D`: its datatype is recognised (in `D`)
@@ -169,6 +218,9 @@ model is never checked either — the CALLER must refuse such a `D`
 def literalIllFormed (D : List WfIri) (l : Literal) : Bool :=
   D.contains l.datatype &&
   (if isNumericDatatype l.datatype then (numericValue? l).isNone
+   else if l.datatype == xsdDouble || l.datatype == xsdFloat then
+     !doubleFloatLexicalOk l.lexicalForm
+   else if l.datatype == rdfJSON then !rdfJsonLexicalOk l.lexicalForm
    else if l.datatype == rdfXMLLiteral then !xmlLiteralWellFormed l.lexicalForm
    else if l.datatype == xsdBoolean then
      !(l.lexicalForm == "true" || l.lexicalForm == "false" ||
