@@ -1227,6 +1227,191 @@ theorem segmentsCross_intervals {a b c d : Point}
       Scaled.min_at' _ _ _ hcy hdy, Scaled.max_at' _ _ _ hay hby]
     exact hidy.2
 
+/-- **A point in both boxes, for any two intersecting segments.** The four
+`inSegBBox` branches of `segmentsIntersect` hand over an endpoint directly.
+The proper-crossing branch has no such vertex — two squares meeting in a plus
+shape cross with no vertex of either inside the other — so the witness is
+built from the interval overlap `segmentsCross_intervals` gives: the larger of
+the two interval minima on each axis lies in both intervals, hence in both
+boxes. The true crossing point is rational and a `Scaled` is a decimal, so it
+is never computed. -/
+theorem segmentsIntersect_common_point {B1 B2 : BBox} {a b c d : Point}
+    (ha : B1.contains a = true) (hb : B1.contains b = true)
+    (hc : B2.contains c = true) (hd : B2.contains d = true)
+    (h : segmentsIntersect a b c d = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [BBox.contains, Bool.and_eq_true] at ha hb hc hd
+  obtain ⟨⟨⟨a1, a2⟩, a3⟩, a4⟩ := ha
+  obtain ⟨⟨⟨b1, b2⟩, b3⟩, b4⟩ := hb
+  obtain ⟨⟨⟨c1, c2⟩, c3⟩, c4⟩ := hc
+  obtain ⟨⟨⟨d1, d2⟩, d3⟩, d4⟩ := hd
+  have hA : B1.contains a = true := by simp [BBox.contains, a1, a2, a3, a4]
+  have hB : B1.contains b = true := by simp [BBox.contains, b1, b2, b3, b4]
+  have hC : B2.contains c = true := by simp [BBox.contains, c1, c2, c3, c4]
+  have hD : B2.contains d = true := by simp [BBox.contains, d1, d2, d3, d4]
+  simp only [segmentsIntersect] at h
+  by_cases hp : ((orientSign a b c != orientSign a b d) &&
+      (orientSign c d a != orientSign c d b)) = true
+  · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hp
+    obtain ⟨hx1, hx2, hy1, hy2⟩ := segmentsCross_intervals hp.1 hp.2
+    refine ⟨⟨Scaled.max (Scaled.min a.x b.x) (Scaled.min c.x d.x),
+             Scaled.max (Scaled.min a.y b.y) (Scaled.min c.y d.y)⟩, ?_, ?_⟩
+    · simp only [BBox.contains, Bool.and_eq_true]
+      refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
+      · exact Scaled.le_trans (Scaled.le_min a1 b1) (Scaled.le_max_left _ _)
+      · exact Scaled.max_le (Scaled.le_trans (Scaled.min_le_left _ _) a2)
+          (Scaled.le_trans hx2 (Scaled.max_le a2 b2))
+      · exact Scaled.le_trans (Scaled.le_min a3 b3) (Scaled.le_max_left _ _)
+      · exact Scaled.max_le (Scaled.le_trans (Scaled.min_le_left _ _) a4)
+          (Scaled.le_trans hy2 (Scaled.max_le a4 b4))
+    · simp only [BBox.contains, Bool.and_eq_true]
+      refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
+      · exact Scaled.le_trans (Scaled.le_min c1 d1) (Scaled.le_max_right _ _)
+      · exact Scaled.max_le (Scaled.le_trans hx1 (Scaled.max_le c2 d2))
+          (Scaled.le_trans (Scaled.min_le_left _ _) c2)
+      · exact Scaled.le_trans (Scaled.le_min c3 d3) (Scaled.le_max_right _ _)
+      · exact Scaled.max_le (Scaled.le_trans hy1 (Scaled.max_le c4 d4))
+          (Scaled.le_trans (Scaled.min_le_left _ _) c4)
+  · simp only [Bool.not_eq_true] at hp
+    rw [if_neg (by simp [hp])] at h
+    simp only [Bool.or_eq_true, Bool.and_eq_true] at h
+    rcases h with ((h | h) | h) | h
+    · exact ⟨c, inSegBBox_contains hA hB h.2, hC⟩
+    · exact ⟨d, inSegBBox_contains hA hB h.2, hD⟩
+    · exact ⟨a, hA, inSegBBox_contains hC hD h.2⟩
+    · exact ⟨b, hB, inSegBBox_contains hC hD h.2⟩
+
+/-! ### 5c. From a crossing pair of boundaries to a point in both boxes
+
+Every lemma here is the same induction: a path hands its consecutive vertex
+pairs to the level below, and each level keeps the two boxes fixed. -/
+
+theorem segmentCrossesPath_common_point {B1 B2 : BBox} {a b : Point}
+    (ha : B1.contains a = true) (hb : B1.contains b = true) :
+    ∀ (l : List Point), B2.covers l → segmentCrossesPath a b l = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro l
+  induction l with
+  | nil => intro _ h; simp [segmentCrossesPath] at h
+  | cons c t ih =>
+      intro hcov h
+      cases t with
+      | nil => simp [segmentCrossesPath] at h
+      | cons d rest =>
+          simp only [segmentCrossesPath, Bool.or_eq_true] at h
+          rcases h with hseg | hrest
+          · exact segmentsIntersect_common_point ha hb (hcov c (by simp))
+              (hcov d (by simp)) hseg
+          · exact ih (fun q hq => hcov q (List.mem_cons_of_mem _ hq)) hrest
+
+theorem segmentCrossesRings_common_point {B1 B2 : BBox} {a b : Point}
+    (ha : B1.contains a = true) (hb : B1.contains b = true) :
+    ∀ (rs : List Ring), (∀ r ∈ rs, B2.covers r) → segmentCrossesRings a b rs = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro rs
+  induction rs with
+  | nil => intro _ h; simp [segmentCrossesRings] at h
+  | cons r rest ih =>
+      intro hcov h
+      simp only [segmentCrossesRings, Bool.or_eq_true] at h
+      rcases h with hr | hrest
+      · exact segmentCrossesPath_common_point ha hb r (hcov r (by simp)) hr
+      · exact ih (fun r' hr' => hcov r' (by simp [hr'])) hrest
+
+theorem segmentCrossesPolygonBoundary_common_point {B1 B2 : BBox} {a b : Point}
+    {poly : Polygon} (ha : B1.contains a = true) (hb : B1.contains b = true)
+    (hcov : ∀ r ∈ poly.ext :: poly.holes, B2.covers r)
+    (h : segmentCrossesPolygonBoundary a b poly = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [segmentCrossesPolygonBoundary, Bool.or_eq_true] at h
+  rcases h with hext | hholes
+  · exact segmentCrossesPath_common_point ha hb poly.ext (hcov poly.ext (by simp)) hext
+  · exact segmentCrossesRings_common_point ha hb poly.holes
+      (fun r hr => hcov r (by simp [hr])) hholes
+
+theorem ringCrossesPolygonBoundary_common_point {B1 B2 : BBox} {poly : Polygon}
+    (hcov2 : ∀ r ∈ poly.ext :: poly.holes, B2.covers r) :
+    ∀ (l : Ring), B1.covers l → ringCrossesPolygonBoundary l poly = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro l
+  induction l with
+  | nil => intro _ h; simp [ringCrossesPolygonBoundary] at h
+  | cons a t ih =>
+      intro hcov h
+      cases t with
+      | nil => simp [ringCrossesPolygonBoundary] at h
+      | cons b rest =>
+          simp only [ringCrossesPolygonBoundary, Bool.or_eq_true] at h
+          rcases h with hseg | hrest
+          · exact segmentCrossesPolygonBoundary_common_point (hcov a (by simp))
+              (hcov b (by simp)) hcov2 hseg
+          · exact ih (fun q hq => hcov q (List.mem_cons_of_mem _ hq)) hrest
+
+theorem ringsCrossPolygonBoundary_common_point {B1 B2 : BBox} {poly : Polygon}
+    (hcov2 : ∀ r ∈ poly.ext :: poly.holes, B2.covers r) :
+    ∀ (rs : List Ring), (∀ r ∈ rs, B1.covers r) →
+      ringsCrossPolygonBoundary rs poly = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro rs
+  induction rs with
+  | nil => intro _ h; simp [ringsCrossPolygonBoundary] at h
+  | cons r rest ih =>
+      intro hcov h
+      simp only [ringsCrossPolygonBoundary, Bool.or_eq_true] at h
+      rcases h with hr | hrest
+      · exact ringCrossesPolygonBoundary_common_point hcov2 r (hcov r (by simp)) hr
+      · exact ih (fun r' hr' => hcov r' (by simp [hr'])) hrest
+
+/-- **Crossing boundaries yield a common point of the two boxes.** This is the
+disjunct of `polygonsIntersect` that hands over no vertex. -/
+theorem polygonBoundariesCross_common_point {B1 B2 : BBox} {p1 p2 : Polygon}
+    (hcov1 : ∀ r ∈ p1.ext :: p1.holes, B1.covers r)
+    (hcov2 : ∀ r ∈ p2.ext :: p2.holes, B2.covers r)
+    (h : polygonBoundariesCross p1 p2 = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [polygonBoundariesCross, Bool.or_eq_true] at h
+  rcases h with hext | hholes
+  · exact ringCrossesPolygonBoundary_common_point hcov2 p1.ext
+      (hcov1 p1.ext (by simp)) hext
+  · exact ringsCrossPolygonBoundary_common_point hcov2 p1.holes
+      (fun r hr => hcov1 r (by simp [hr])) hholes
+
+/-- A vertex of the path that is non-exterior to the polygon lies in both
+boxes: in `B1` because `B1` covers the path, in `B2` by the ray-cast lemma. -/
+theorem anyVertexInPolygon_common_point {B1 B2 : BBox} {poly : Polygon}
+    (hcov2 : ∀ r ∈ poly.ext :: poly.holes, B2.covers r)
+    (hclosed : isClosedLine poly.ext = true) :
+    ∀ (l : List Point), B1.covers l → anyVertexInPolygon l poly = true →
+      ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  intro l
+  induction l with
+  | nil => intro _ h; simp [anyVertexInPolygon] at h
+  | cons p rest ih =>
+      intro hcov h
+      simp only [anyVertexInPolygon, Bool.or_eq_true] at h
+      rcases h with hp | hrest
+      · refine ⟨p, hcov p (by simp), ?_⟩
+        simp only [bne_iff_ne, ne_eq] at hp
+        exact polygonClass_ne_exterior_contains hcov2 hclosed hp
+      · exact ih (fun q hq => hcov q (List.mem_cons_of_mem _ hq)) hrest
+
+/-- **THE POLYGON PAIR.** Two simple polygons the exact test calls
+intersecting have a point that both bounding boxes contain — vertex witness
+for the first two disjuncts, constructed interval point for the third. -/
+theorem polygonsIntersect_common_point {B1 B2 : BBox} {p1 p2 : Polygon}
+    (hcov1 : ∀ r ∈ p1.ext :: p1.holes, B1.covers r)
+    (hcov2 : ∀ r ∈ p2.ext :: p2.holes, B2.covers r)
+    (hcl1 : isClosedLine p1.ext = true) (hcl2 : isClosedLine p2.ext = true)
+    (h : polygonsIntersect p1 p2 = true) :
+    ∃ r, B1.contains r = true ∧ B2.contains r = true := by
+  simp only [polygonsIntersect, Bool.or_eq_true] at h
+  rcases h with (h1 | h2) | h3
+  · exact anyVertexInPolygon_common_point hcov2 hcl2 p1.ext (hcov1 p1.ext (by simp)) h1
+  · obtain ⟨r, ha, hb⟩ :=
+      anyVertexInPolygon_common_point hcov1 hcl1 p2.ext (hcov2 p2.ext (by simp)) h2
+    exact ⟨r, hb, ha⟩
+  · exact polygonBoundariesCross_common_point hcov1 hcov2 h3
+
 /-! ## 6. The trust surface
 
 Only Lean's own three axioms. Nothing here is admitted. -/
@@ -1239,5 +1424,7 @@ Only Lean's own three axioms. Nothing here is admitted. -/
 #print axioms BBox.ofRings_covers
 #print axioms int_cross_axis
 #print axioms segmentsCross_intervals
+#print axioms segmentsIntersect_common_point
+#print axioms polygonsIntersect_common_point
 
 end L4Factoidal.Geo
