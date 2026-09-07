@@ -1387,3 +1387,64 @@ theorem decode?_encode? (manifest : Manifest) (bytes : ByteArray)
 #print axioms decode?_encode?
 
 end L4Factoidal.Storage.ShardManifest
+
+/-! ## Toward replacing the quadratic duplicate scan
+
+`ShardManifest.valid` decides "no artifact key plays two roles" twice, both
+times as `keys.length == keys.eraseDups.length`, and `List.eraseDups` compares
+every surviving key against every earlier one. On the published SKOS manifest
+those two scans are the whole cost: 300 s wall for one `storeManifestInspect`,
+and 36.6 s when both are replaced by `ShardManifest.noDupKeysFast` (measured
+2026-09-07 on the real 25.5 MB manifest, same answer from both).
+
+The replacement is NOT wired, because `valid` is the predicate that rejects a
+malformed manifest and an unproved substitution there could accept one the
+specification rejects. Wiring it needs
+
+    ShardManifest.noDupKeysFast keys = (keys.length == keys.eraseDups.length)
+
+and Lean 4.33.1 core carries no bridge at all between `List.eraseDups` and
+`List.Nodup` -- no `Sublist` lemma, no `Nodup` lemma, no
+`eraseDups_eq_self_of_nodup`; `exact?` finds none of them. The chain is five
+lemmas. The first is proved here; the remaining four are stated as the work
+order.
+
+1. `eraseDups_sublist` -- PROVED below.
+2. `l.eraseDups.Nodup`: same induction; `nodup_cons` needs
+   `a ∉ (as.filter (!· == a)).eraseDups`, which is `mem_eraseDups` then
+   `mem_filter`.
+3. `l.Nodup → l.eraseDups = l`: same induction; `nodup_cons` gives `a ∉ as`,
+   so `as.filter (!· == a) = as`.
+4. `(l.length == l.eraseDups.length) = decide l.Nodup`: forward from 1 with
+   `Sublist.eq_of_length` then 2; backward from 3.
+5. `adjacentDistinctKeys (l.mergeSort le) = decide l.Nodup`: carry `Nodup`
+   across the sort with the core lemmas `mergeSort_perm` and `Perm.nodup_iff`
+   (both present), then relate adjacent-distinct to pairwise-distinct under
+   `mergeSort_sorted`. This step needs antisymmetry of `String.le`, which is
+   the part not yet checked for.
+-/
+
+open List in
+/-- `List.eraseDups` keeps a sublist of its input. Core states this for
+    neither `eraseDups` nor `eraseDupsBy`. Proved on a length bound because
+    the recursion is not structural: `eraseDups_cons` recurses into a
+    `filter` of the tail, not the tail. -/
+theorem eraseDups_sublist {α : Type} [BEq α] [LawfulBEq α] :
+    ∀ (n : Nat) (l : List α), l.length ≤ n → l.eraseDups.Sublist l := by
+  intro n
+  induction n with
+  | zero => intro l h; cases l with
+            | nil => simp
+            | cons a as => simp at h
+  | succ n ih =>
+      intro l h
+      cases l with
+      | nil => simp
+      | cons a as =>
+          rw [List.eraseDups_cons]
+          have hlen : (as.filter (fun b => !(b == a))).length ≤ n := by
+            have := List.length_filter_le (fun b => !(b == a)) as
+            simp at h
+            omega
+          have h1 := ih (as.filter (fun b => !(b == a))) hlen
+          exact List.Sublist.cons_cons a (h1.trans List.filter_sublist)
