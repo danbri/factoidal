@@ -47,23 +47,32 @@ TOTAL:                       1181 pass, 266 fail, 2 skip, 8 unsupported (out of 
 
 ## 2b. The `type-*` catalogs under `--dl`, which is the F\* regime
 
-Measured 2026-09-07, `lake exe l4owl-probe --dl`, default caps
-(`--cap-ms 30000`). The run was stopped by the operator on a disk-space
-floor part-way through `type-consistency.rdf`, so that catalog has no
-`--dl` figure yet.
+Measured 2026-09-07, `l4owl-probe --dl`, default caps
+(`--cap-ms 30000`). `type-consistency.rdf` is measured at
+`--refute-budget 16` rather than the default 64: at the default it does
+not finish inside 40 minutes on this machine, and `--cap-ms` bounds the
+CLOSURE only — the probe puts no wall-clock bound on the refuter, so a
+slow case has nothing to trip. A smaller refuter budget can only LOSE
+refutations, so its 531 pass, 48 fail is a LOWER BOUND on the
+default-budget figure.
 
 | catalog / unit | Lean RL | Lean `--dl` | F\* DL |
 |---|---|---|---|
 | `type-inconsistency.rdf` Inconsistency | 38 pass, 89 fail | **116 pass, 11 fail** | 126 pass, 1 fail |
 | `type-positive-entailment.rdf` PE | 129 pass, 75 fail | **157 pass, 47 fail** | 195 pass, 9 fail |
 | `type-positive-entailment.rdf` Consistency | 204 pass, 0 fail | 204 pass, 0 fail | 199 pass, 5 fail |
-| `type-consistency.rdf` (all units) | 503 pass, 76 fail | not measured | 558 pass, 21 fail |
+| `type-consistency.rdf` (all units) | 503 pass, 76 fail | **531 pass, 48 fail** (`--refute-budget 16`) | 558 pass, 21 fail |
 
 So the regime accounts for 78 of the 89 `type-inconsistency` failures
 and 28 of the 75 `type-positive-entailment` PE failures. The Lean
 `--dl` figures also BEAT F\* on `type-positive-entailment`'s
 ConsistencyTest section (204 pass, 0 fail against 199 pass, 5 fail —
 F\*'s five are `unsupported` cap escapes, #326).
+
+On `type-consistency.rdf` the `--dl` closure alone (RL closure plus the
+materialisation pass) is 505 pass, 74 fail, and the refuter takes it to
+531 pass, 48 fail. Against F\*'s 558 pass, 21 fail that is a gap of at
+most 27 units, measured at the reduced budget.
 
 ## 3. The like-for-like gap: profile catalogs, RL against RL
 
