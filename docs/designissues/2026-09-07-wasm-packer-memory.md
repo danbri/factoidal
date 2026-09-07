@@ -332,3 +332,86 @@ against a target of 514 MB (twice the native packer) and a floor of
 allocator setting.
 
 `-sMAXIMUM_MEMORY` moves the panic and touches no line of this record.
+
+## 9. Cause and fix
+
+### 9.1 The bisect
+
+`l4_heap_tags_c` after each step of one pack, two repetitions in one
+module instance, 20 MB N-Quads prefix (109,804 rows), IBK5, 64 KiB
+feeds, 64 MiB batch. The pack loop must run on a worker thread with
+`resourceLimits.stackSizeMb` raised, as `pack-host.mjs` does; on the
+main thread the ingest pass overflows the stack.
+
+| step | mpz objects | 8-byte blocks | live |
+|---|---|---|---|
+| start | 2,522 | 5,348 | 5.3 MiB |
+| prepass, per feed and at `packEndPass` | 2,522 | 5,371 | 5.3 MiB |
+| ingest feed 64 | 2,522 | 97,720 | 15.1 MiB |
+| ingest feed 128 | 2,522 | 190,045 | 24.8 MiB |
+| ingest feed 192 | 202,339 | 393,854 | 32.1 MiB |
+| ingest feed 256 | 499,198 | 714,554 | 46.3 MiB |
+| ingest feed 320 (last) | 714,876 | 1,005,334 | 61.7 MiB |
+| ingest `packEndPass`, drained | 1,705,847 | 1,647,662 | 70.7 MiB |
+| `packFinish`, drained | 1,709,007 | 1,650,821 | 70.8 MiB |
+| `packClose` | 1,709,007 | 1,649,313 | 70.1 MiB |
+| repetition 2, `packClose` | 3,415,492 | 3,293,285 | 135.0 MiB |
+
+The count rises only while blocks are published — at the per-block cut
+inside a feed, and at the `packEndPass` which publishes every open run.
+No step releases any of it.
+
+### 9.2 What the objects are
+
+A second instrument reads the values. Lean's GMP-free `mpz` on wasm32
+is `bool m_sign; size_t m_size; mpn_digit * m_digits` after the object
+header, so a JavaScript scan of `HEAPU8` for a byte-7 tag of 250
+recovers every live one and its digits. The scan finds exactly the
+1,709,007 the histogram counts, and they hold TWO values:
+
+| value | count after one pack |
+|---|---|
+| `4294967296` (2 ^ 32) | 1,646,462 |
+| `4294967295` (2 ^ 32 - 1) | 62,525 |
+
+The 8-byte blocks are their two-digit magnitude arrays.
+
+### 9.3 The retaining structure: there is none
+
+They are not retained, they are LEAKED, and the leak is in the code the
+Lean compiler emits for a `Nat` LITERAL at or above 2 ^ 31. Example, the
+emitted C for `TermLocalIndexWire.fitsU32`:
+
+    LEAN_EXPORT uint8_t ..._fitsU32(lean_object* v_n_121_){
+    v___x_122_ = lean_cstr_to_nat("4294967296");
+    v___x_123_ = lean_nat_dec_lt(v_n_121_, v___x_122_);
+    return v___x_123_;
+    }
+
+`lean_nat_dec_lt` borrows both arguments and the function returns
+without releasing `v___x_122_`. On a 64-bit target the literal is an
+unboxed scalar and there is nothing to release, which is why every
+native measurement was bounded and why nothing else in the tree noticed.
+On wasm32 it is a 32-byte object plus an 8-byte digit array, allocated
+and abandoned on every call.
+
+That explains every property section 6 measured: the count grows with
+the rows published rather than with the bytes fed; the pre-pass, which
+publishes nothing, produces none; `packClose` releases none, because
+nothing holds them; and the batch size does not move the total.
+
+### 9.4 The fix
+
+A TOP-LEVEL definition is built once in the module initialiser and
+marked persistent, and the call site then reads a global. `@[noinline]`
+is what stops the compiler folding the definition back into the call
+site — measured: without it the emitted code is the inline literal
+again. `@[reducible]` beside it keeps the literal transparent to the
+proofs about those functions.
+
+`L4Factoidal/NatBounds.lean` holds `two32`, and the executable
+comparisons in the block codecs, the manifest, the delta log, the paged
+term dictionary and the COTTAS writers use it instead of the literal or
+`UInt32.size`. `TermWireV2.maxBlobBytes` and `Syntax.literalFuel` were
+already definitions and only needed `@[noinline]`: the compiler had been
+inlining them into `PackStream` and the Turtle literal readers.
