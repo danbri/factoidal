@@ -326,10 +326,9 @@ pass — the streaming N-Quads fold
 accumulation and block encoding — with `l4_heap_tags_c` after each,
 which the shipping module exports.
 
-The gate stands at 1.06 GB of peak resident set for the 700 MB prefix,
+The gate stood at 1.06 GB of peak resident set for the 700 MB prefix,
 against a target of 514 MB (twice the native packer) and a floor of
-1 GB. It is missed by 6% and follows the repair in section 6, not an
-allocator setting.
+1 GB. Section 9 closes it: 305 MB, measured.
 
 `-sMAXIMUM_MEMORY` moves the panic and touches no line of this record.
 
@@ -415,3 +414,51 @@ term dictionary and the COTTAS writers use it instead of the literal or
 `UInt32.size`. `TermWireV2.maxBlobBytes` and `Syntax.literalFuel` were
 already definitions and only needed `@[noinline]`: the compiler had been
 inlining them into `PackStream` and the Turtle literal readers.
+
+### 9.5 Before and after
+
+Three packs of the same 20 MB N-Quads prefix (109,804 rows), IBK5,
+64 MiB batch, in ONE module instance, heap-tag histogram after each
+`packClose`:
+
+| repetition | mpz before | live before | mpz after | live after |
+|---|---|---|---|---|
+| 1 | 1,709,007 | 70.1 MiB | 29 | 5.2 MiB |
+| 2 | 3,415,492 | 135.0 MiB | 29 | 5.2 MiB |
+| 3 | 5,121,977 | 199.8 MiB | 29 | 5.2 MiB |
+
+The 29 remaining objects are the module's own initialisers and do not
+grow. Live bytes after `packClose` are now the same 5.2 MiB the module
+starts from, so a pack returns the module to its starting state.
+
+Linear memory still steps up across repetitions (191 -> 229 -> 275 MB
+for the three packs above) while live bytes stay at 5.2 MiB. That
+residue is allocator fragmentation, the same effect section 6.4 records
+for `datasetOpen`, and it is a different problem from this one.
+
+### 9.6 The 700 MB pack
+
+`SCRATCH/oom/prefix700t.nq` (734,003,186 bytes), IBK5, 64 MiB batch,
+through `npm/factoidal/bin/factoidal.mjs pack`, `/usr/bin/time -l`:
+
+| module | peak RSS | wall clock | generation |
+|---|---|---|---|
+| before this landing | 1,062,567,936 | 517 s | 4,016 artifacts, 518,790,565 bytes, 4,282,588 rows |
+| with the fix | 305,168,384 | 540 s | the same |
+
+The native packer's figure is 257 MB, so the module now costs 1.19x the
+native packer on this input rather than 4.1x. Section 8's gate — twice
+the native packer, 514 MB — is met with 209 MB to spare. The wall clock
+is 4% longer and is build-to-build noise; reading a global is cheaper
+than parsing a decimal string, so nothing here should be slower.
+
+### 9.7 What is left of the same class
+
+Two `Int` bounds outside the pack path still compile to an inline
+literal and leak one object per call on wasm32:
+`XSD/Facets.lean` and `SHACL/Validation.lean`, both the
+`xsd:unsignedInt` facet bound `4294967295`, one per typed-literal facet
+check. They are named here rather than changed with this landing,
+because they carry their own proofs and are not on the packer's path.
+Any new `Nat` or `Int` literal at or above 2 ^ 31 in executable code
+should be a `@[reducible, noinline]` definition for the same reason.
