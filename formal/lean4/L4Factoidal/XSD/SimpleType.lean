@@ -251,6 +251,35 @@ def valueOfFuel : Nat → SimpleType → String → Option Val
 
 def valueOf (t : SimpleType) (lit : String) : Option Val := valueOfFuel 8 t lit
 
+/-- Does any part of the type carry an `assert` (§4.3.12)? Such a type
+cannot be decided here — the assertion needs XPath 2.0 over the value —
+so a caller reports it rather than scoring it. -/
+def hasAssertionFuel : Nat → SimpleType → Bool
+  | 0, _ => false
+  | fuel + 1, t =>
+    t.facets.hasAssertion ||
+    (match t with
+     | .atomic _ _ => false
+     | .list it _ => hasAssertionFuel fuel it
+     | .union ms _ => ms.any (hasAssertionFuel fuel))
+
+def SimpleType.hasAssertion (t : SimpleType) : Bool := hasAssertionFuel 8 t
+
+/-- Every `pattern` in the type that the XSD regular-expression parser
+cannot read. Such a pattern makes its group vacuous, so a caller counts
+these rather than treating the verdict as scored. -/
+def unreadablePatternsOfFuel : Nat → SimpleType → List String
+  | 0, _ => []
+  | fuel + 1, t =>
+    unreadablePatterns t.facets.patterns ++
+    (match t with
+     | .atomic _ _ => []
+     | .list it _ => unreadablePatternsOfFuel fuel it
+     | .union ms _ => ms.flatMap (unreadablePatternsOfFuel fuel))
+
+def SimpleType.unreadablePatternsOf (t : SimpleType) : List String :=
+  unreadablePatternsOfFuel 8 t
+
 /-- Is the literal ·locally valid· with respect to the simple type? -/
 def validate (t : SimpleType) (lit : String) : Bool := (valueOf t lit).isSome
 

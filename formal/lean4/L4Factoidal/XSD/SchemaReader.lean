@@ -125,8 +125,10 @@ structure SchemaDoc where
   /-- Named `simpleType` definitions, by name. -/
   named    : List (String × Node)
   /-- Top-level `element` declarations: name, `type` attribute, inline
-  `simpleType` child. -/
-  elements : List (String × Option String × Option Node)
+  `simpleType` child, and the declaration node itself (for the Part 1
+  properties a datatype validator must NOT decide — `fixed`, `default`,
+  `nillable`). -/
+  elements : List (String × Option String × Option Node × Node)
   klass    : SchemaClass
 deriving Inhabited
 
@@ -134,9 +136,17 @@ deriving Inhabited
 def isXsdQName (bs : NsBindings) (qn : String) : Bool :=
   resolvePrefix bs (prefixOf qn) == some xsdNamespace
 
-/-- The built-in a QName names, if it names one. -/
+/-- The built-in a QName names, if it names one that a schema document
+may USE. §3.4.1: `xs:anyAtomicType` is a special type that "must not be
+used as the {base type definition} of any user-defined type" and is not
+available as a type reference; a schema that names it is in error, and
+the suite's `simple050` and `simple053` groups say so. -/
 def builtinOfQName? (bs : NsBindings) (qn : String) : Option Builtin :=
-  if isXsdQName bs qn then builtinOfName? (localOf qn) else none
+  if isXsdQName bs qn then
+    match builtinOfName? (localOf qn) with
+    | some .anyAtomicType => none
+    | other => other
+  else none
 
 /-- Resolve a `simpleType` node into a `SimpleType`. `fuel` bounds the
 chain of named-type references. -/
@@ -249,7 +259,8 @@ def readSchema (doc : Document) : Option SchemaDoc :=
           if localOf (tagOf c) == "element" then
             (attrOf "name" c).map (fun n =>
               (n, attrOf "type" c,
-               (elementChildren c).find? (fun g => localOf (tagOf g) == "simpleType")))
+               (elementChildren c).find? (fun g => localOf (tagOf g) == "simpleType"),
+             c))
           else none)
         some { bindings := bs, named := named, elements := elems,
                klass := classifySchema root }
@@ -259,7 +270,7 @@ def readSchema (doc : Document) : Option SchemaDoc :=
 def elementType? (doc : SchemaDoc) (name : String) : Option SimpleType :=
   match doc.elements.find? (fun e => e.1 == name) with
   | none => none
-  | some (_, tyQn, inline) =>
+  | some (_, tyQn, inline, _) =>
       match tyQn with
       | some qn =>
           match builtinOfQName? doc.bindings qn with
@@ -272,5 +283,15 @@ def elementType? (doc : SchemaDoc) (name : String) : Option SimpleType :=
           match inline with
           | some st => readSimpleType 16 doc st
           | none => none
+
+/-- The element declaration's §3.3.1 value constraint (`fixed` or
+`default`). An instance validated against a declaration that carries
+one is not deciding a DATATYPE question — the outcome turns on the
+Part 1 value constraint — so the runner buckets it. -/
+def elementValueConstraint? (doc : SchemaDoc) (name : String) : Option String :=
+  match doc.elements.find? (fun e => e.1 == name) with
+  | none => none
+  | some (_, _, _, node) =>
+      (attrOf "fixed" node).orElse (fun _ => attrOf "default" node)
 
 end L4Factoidal.XSD

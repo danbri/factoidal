@@ -28,8 +28,9 @@ rather than counting as a failure:
     rejected, so the instance outcome is not defined.
   * `version-1.0` — the group applies to XSD 1.0 only; this engine
     implements 1.1, in which the answer may differ.
-  * `unreadable` — the instance or schema document does not parse, or
-    the element declaration is not found.
+  * `unreadable` — the instance or schema document does not parse, the
+    element declaration is not found, or the schema names a type that
+    may not be used in a schema document (`xs:anyAtomicType`, §3.4.1).
   * `not-simple` — the instance's document element has element
     children, so it is not a datatype instance.
 
@@ -54,6 +55,10 @@ structure Counts where
   version10  : Nat := 0
   unreadable : Nat := 0
   notSimple  : Nat := 0
+  assertion  : Nat := 0
+  badPattern : Nat := 0
+  nilled     : Nat := 0
+  valueConstraint : Nat := 0
   schemaTests : Nat := 0
 deriving Repr, Inhabited
 
@@ -63,6 +68,10 @@ def Counts.add (a b : Counts) : Counts :=
     mixed := a.mixed + b.mixed, schemaInvalid := a.schemaInvalid + b.schemaInvalid,
     version10 := a.version10 + b.version10, unreadable := a.unreadable + b.unreadable,
     notSimple := a.notSimple + b.notSimple,
+    assertion := a.assertion + b.assertion,
+    badPattern := a.badPattern + b.badPattern,
+    nilled := a.nilled + b.nilled,
+    valueConstraint := a.valueConstraint + b.valueConstraint,
     schemaTests := a.schemaTests + b.schemaTests }
 
 /-- Per-datatype tally, keyed by the built-in's local name (or
@@ -125,6 +134,14 @@ def textOf : Node → String
       | .cdata s => s
       | _        => ""))
   | _ => ""
+
+/-- An instance whose document element carries `xsi:nil="true"` is
+valid when the element declaration is nillable, which is a Part 1
+property of the declaration and not a datatype question. -/
+def isNilled : Node → Bool
+  | .element _ attrs _ =>
+      attrs.any (fun a => (a.name == "nil" || a.name.endsWith ":nil") && a.value == "true")
+  | _ => false
 
 def hasElementChild : Node → Bool
   | .element _ _ cs => cs.any (fun c => match c with | .element _ _ _ => true | _ => false)
@@ -211,6 +228,19 @@ def runGroup (base : String) (group : Node) (verbose : Bool) : IO GroupResult :=
                 | none => r := { r with counts := { r.counts with
                                    unreadable := r.counts.unreadable + 1 } }
                 | some ty =>
+                  if (elementValueConstraint? schema (localOf (tagOf root))).isSome then
+                    r := { r with counts := { r.counts with
+                             valueConstraint := r.counts.valueConstraint + 1 } }
+                  else if ty.hasAssertion then
+                    r := { r with counts := { r.counts with
+                             assertion := r.counts.assertion + 1 } }
+                  else if !ty.unreadablePatternsOf.isEmpty then
+                    r := { r with counts := { r.counts with
+                             badPattern := r.counts.badPattern + 1 } }
+                  else if isNilled root then
+                    r := { r with counts := { r.counts with
+                             nilled := r.counts.nilled + 1 } }
+                  else
                   let expected := (expectedValidity group it).getD "valid"
                   let got := validate ty (textOf root)
                   let ok := (got && expected == "valid") || (!got && expected == "invalid")
@@ -267,7 +297,7 @@ def main (args : List String) : IO UInt32 := do
     for rel in refs do
       let r ← runTestSet suiteDir rel verbose
       if r.counts.scored > 0 || r.counts.structures > 0 then
-        IO.println s!"{rel}: {r.counts.pass} pass, {r.counts.fail} fail (of {r.counts.scored} scored); structures {r.counts.structures}, mixed {r.counts.mixed}, schema-invalid {r.counts.schemaInvalid}, version-1.0 {r.counts.version10}, unreadable {r.counts.unreadable}, not-simple {r.counts.notSimple}"
+        IO.println s!"{rel}: {r.counts.pass} pass, {r.counts.fail} fail (of {r.counts.scored} scored); structures {r.counts.structures}, mixed {r.counts.mixed}, schema-invalid {r.counts.schemaInvalid}, version-1.0 {r.counts.version10}, unreadable {r.counts.unreadable}, not-simple {r.counts.notSimple}, assertion {r.counts.assertion}, unreadable-pattern {r.counts.badPattern}, nilled {r.counts.nilled}, value-constraint {r.counts.valueConstraint}"
       total := total.add r.counts
       tally := tally.merge r.tally
     IO.println ""
@@ -276,6 +306,6 @@ def main (args : List String) : IO UInt32 := do
       IO.println s!"  {k}: {p} pass, {f} fail (of {p + f})"
     IO.println ""
     IO.println s!"XSD datatype instance tests: {total.pass} pass, {total.fail} fail (out of {total.scored} scored)"
-    IO.println s!"not scored: structures {total.structures}, mixed {total.mixed}, schema-invalid {total.schemaInvalid}, version-1.0 {total.version10}, unreadable {total.unreadable}, not-simple {total.notSimple}"
+    IO.println s!"not scored: structures {total.structures}, mixed {total.mixed}, schema-invalid {total.schemaInvalid}, version-1.0 {total.version10}, unreadable {total.unreadable}, not-simple {total.notSimple}, assertion {total.assertion}, unreadable-pattern {total.badPattern}, nilled {total.nilled}, value-constraint {total.valueConstraint}"
     IO.println s!"schema tests seen (not scored in this run): {total.schemaTests}"
     return 0
