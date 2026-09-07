@@ -277,4 +277,85 @@ theorem refuted_not_consistent {R : RoleAxioms} {A : List Assertion}
   intro ⟨δ, I, ν, hR, hM⟩
   exact refuted_sound h I ν hR hM
 
+/-! ## Negation-goal laws (2026-09-07)
+
+`OWL/NegationGoals.lean` turns each content assertion of a
+PositiveEntailment conclusion into refutation goals, on the contract
+`P ⊨ A  ⟺  P ∪ ¬A unsatisfiable` (that module's header). The
+builders added on 2026-09-07 — `owl:disjointWith`,
+`owl:propertyDisjointWith`, `rdfs:domain`, `rdfs:range`,
+`owl:differentFrom`, `owl:sameAs` — each rest on one law: an
+interpretation REFUTES the conclusion form exactly when it MODELS the
+goal form. Those laws are stated and proved here, over the same
+`Interp`/`Interp.sem` Direct-Semantics model notion the clash calculus
+above uses (OWL 2 Direct Semantics, https://www.w3.org/TR/owl2-direct-semantics/
+Tables 5 and 6).
+
+What these theorems do NOT say: they are laws about the FORM of the
+axiom and its goal, not a soundness proof of the RDF-graph builder.
+Closing that gap needs a Direct-Semantics satisfaction relation on RDF
+graphs, which this tree does not have; § 11 of
+`docs/designissues/2026-09-07-lean-owl-corpus-gap.md` records it as an
+open obligation rather than an assumption. -/
+
+/-- `DisjointClasses(C D)` fails in `I` exactly when some element is
+    in both — which is what the goal graph asserts of a fresh
+    individual. -/
+theorem disjointGoal_iff {δ : Type} (I : Interp δ) (c d : Concept) :
+    (¬ ∀ x, I.sem c x → ¬ I.sem d x) ↔ ∃ x, I.sem c x ∧ I.sem d x := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn => h (fun x hc hd => hn ⟨x, hc, hd⟩))
+  · intro ⟨x, hc, hd⟩ h
+    exact h x hc hd
+
+/-- `DisjointObjectProperties(P Q)` fails exactly when some pair is in
+    both extensions — the goal's fresh edge pair. -/
+theorem propDisjointGoal_iff {δ : Type} (I : Interp δ) (p q : Role) :
+    (¬ ∀ x y, I.role p x y → ¬ I.role q x y)
+      ↔ ∃ x y, I.role p x y ∧ I.role q x y := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn => h (fun x y hp hq => hn ⟨x, y, hp, hq⟩))
+  · intro ⟨x, y, hp, hq⟩ h
+    exact h x y hp hq
+
+/-- `ObjectPropertyRange(P C)` fails exactly when some `P`-edge has an
+    object outside `C` — the goal's `a P b` with `b : ¬C`. -/
+theorem rangeGoal_iff {δ : Type} (I : Interp δ) (r : Role) (c : Concept) :
+    (¬ ∀ x y, I.role r x y → I.sem c y)
+      ↔ ∃ x y, I.role r x y ∧ I.sem (.neg c) y := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn =>
+      h (fun x y hr => Classical.byContradiction (fun hc => hn ⟨x, y, hr, hc⟩)))
+  · intro ⟨x, y, hr, hc⟩ h
+    exact hc (h x y hr)
+
+/-- `ObjectPropertyDomain(P C)` fails exactly when some `P`-edge has a
+    subject outside `C` — the goal's `a P b` with `a : ¬C`. -/
+theorem domainGoal_iff {δ : Type} (I : Interp δ) (r : Role) (c : Concept) :
+    (¬ ∀ x y, I.role r x y → I.sem c x)
+      ↔ ∃ x y, I.role r x y ∧ I.sem (.neg c) x := by
+  constructor
+  · intro h
+    exact Classical.byContradiction (fun hn =>
+      h (fun x y hr => Classical.byContradiction (fun hc => hn ⟨x, y, hr, hc⟩)))
+  · intro ⟨x, y, hr, hc⟩ h
+    exact hc (h x y hr)
+
+/-- `DifferentIndividuals(a b)` fails exactly when the two names
+    denote one element — which is what `a owl:sameAs b` asserts. The
+    goal builder for a `owl:differentFrom` conclusion emits exactly
+    that triple. -/
+theorem diffGoal_iff {δ : Type} (I : Interp δ) (ν : Ind → δ) (a b : Ind) :
+    ¬ Satisfies I ν (.diff a b) ↔ ν a = ν b := by
+  simp [Satisfies]
+
+/-- The other direction, for a `owl:sameAs` conclusion: identity fails
+    exactly when the two names are different individuals. -/
+theorem sameGoal_iff {δ : Type} (I : Interp δ) (ν : Ind → δ) (a b : Ind) :
+    ¬ (ν a = ν b) ↔ Satisfies I ν (.diff a b) := by
+  simp [Satisfies]
+
 end L4Factoidal.OWL
