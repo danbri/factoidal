@@ -582,7 +582,15 @@ def Regime.closure (r : Regime) (D cmps : List WfIri) (g : Graph) : Graph :=
   | .simple   => g
   | .d        => g
   | .rdf      => rdfClosure cmps g
-  | .rdfs     => rdfsRegimeClosure D cmps g
+  -- `.rdfs` is `fullClosure` — the closure its soundness theorems are
+  -- about (`Unified/SparqlAdequacy.regime_sound_rdfs`,
+  -- `unified_rdfs_closure_sound`). The RDF 1.2 `rdf:reifies`-range
+  -- step was inserted here on 2026-09-07 and the tree stopped
+  -- building: the proof could not see through the extra step, and
+  -- widening a closure a soundness theorem is stated about is a
+  -- semantic change, not a refactor. The step lives in `.rdfsPlus`,
+  -- which carries no such theorem.
+  | .rdfs     => fullClosure D cmps g
   | .rdfsPlus => rdfsPlusRegimeClosure D cmps g
 
 /-- The literal comparison a regime matches with.

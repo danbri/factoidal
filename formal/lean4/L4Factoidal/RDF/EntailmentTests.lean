@@ -313,8 +313,15 @@ def plainLit (lex : String) (dt : WfIri) : Literal :=
 -- `reifies-range`: `:a rdf:reifies :b` |- `:b rdf:type rdfs:Proposition`.
 #guard reifiesPropOf ⟨.iri exA, rdfReifiesIri, .iri exB⟩ ==
   [⟨.iri exB, rdfType, .iri rdfsPropositionIri⟩]
-#guard regimeEntails .rdfs D0 [⟨.iri exA, rdfReifiesIri, .iri exB⟩]
+-- Under `.rdfsPlus`, not `.rdfs`: the RDF 1.2 reifies-range step is a
+-- WIDENING of the RDFS closure, and `.rdfs` must stay `fullClosure`,
+-- which `Unified/SparqlAdequacy.regime_sound_rdfs` is stated about.
+#guard regimeEntails .rdfsPlus D0 [⟨.iri exA, rdfReifiesIri, .iri exB⟩]
   [⟨.iri exB, rdfType, .iri rdfsPropositionIri⟩] == true
+
+-- and NOT under `.rdfs`, which is the plain RDFS closure.
+#guard regimeEntails .rdfs D0 [⟨.iri exA, rdfReifiesIri, .iri exB⟩]
+  [⟨.iri exB, rdfType, .iri rdfsPropositionIri⟩] == false
 
 -- `opaque-iri`: `owl:sameAs` substitutes even inside a triple term's
 -- interior. `:clark :reports <<( :superman :can :fly )>>` +
