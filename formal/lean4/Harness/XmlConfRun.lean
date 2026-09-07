@@ -202,9 +202,11 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
                 if entityNotUtf8 then
                   c := Counts.add c { notUtf8 := 1 }
                 else
-                let accepted := match parseXMLWith resolve text with
-                  | .ok _    => true
-                  | .error _ => false
+                let outcome := parseXMLWith resolve text
+                let accepted := outcome.toOption.isSome
+                let why := match outcome with
+                  | .ok _    => ""
+                  | .error e => e.message
                 -- A NON-VALIDATING parser accepts `valid` AND
                 -- `invalid`: the second violates the DTD, which this
                 -- parser is not asked to check.
@@ -214,7 +216,7 @@ def runManifest (root : String) (rel : String) (verbose : Bool) : IO Counts := d
                 else
                   c := Counts.add c { scored := 1, fail := 1 }
                   if verbose then
-                    IO.println s!"FAIL {id} ({ty}): {uri} was {if accepted then "accepted" else "rejected"}"
+                    IO.println s!"FAIL {id} ({ty}): {uri} was {if accepted then "accepted" else "rejected"}{if why == "" then "" else " -- " ++ why}"
       return c
 
 def main (args : List String) : IO UInt32 := do

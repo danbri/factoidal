@@ -2189,10 +2189,20 @@ def parseXMLWith (resolve : Resolver) (input : String) : Except XmlError Documen
   match collectMisc s pos1 [] fuel with
   | .err m p => .error { message := m, position := p }
   | .ok pre1 pos2 =>
-    let (doctype, posDt) :=
-      match parseDoctype resolve s pos2 with
-      | .ok d p => (some d, p)
-      | .err _ _ => (none, pos2)
+    -- A DOCTYPE that IS present and malformed reports ITS OWN error.
+    -- Discarding it and carrying on left the element parser to reject
+    -- the document at character 1 with `expected XML name start
+    -- character`, so every defect inside a document type declaration
+    -- reached the caller under one wrong message. The VERDICT is the
+    -- same either way — the element parser was going to reject the
+    -- `<!DOCTYPE` text it was handed — but the reason was not.
+    match (if peekLit "<!DOCTYPE" s pos2 then
+             match parseDoctype resolve s pos2 with
+             | .ok d p  => PResult.ok (some d) p
+             | .err m p => PResult.err m p
+           else PResult.ok none pos2) with
+    | .err m p => .error { message := m, position := p }
+    | .ok doctype posDt =>
     let ents := (doctype.map (·.entities)).getD []
     match collectMisc s posDt [] fuel with
     | .err m p => .error { message := m, position := p }
