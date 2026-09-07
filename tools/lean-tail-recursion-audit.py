@@ -188,9 +188,23 @@ INDUCTIVE = re.compile(r"^(?:inductive|structure)\s+([A-Za-z_][A-Za-z0-9_'.]*)")
 LENGTH_TYPES = ("List ", "Array ", "ByteArray", "String", "Substring", "List(", "Array(")
 
 
+CSIMP = re.compile(
+    r"@\[csimp\][^\n]*\n?\s*theorem\s+[A-Za-z_][A-Za-z0-9_'!?.]*\s*:?[^:]*:\s*"
+    r"@([A-Za-z_][A-Za-z0-9_'!?.]*)\s*=\s*@([A-Za-z_][A-Za-z0-9_'!?.]*)")
+
+
 def index_lean():
-    """mangled-name -> dict(lean, file, line, sig, partial)."""
+    """mangled-name -> dict(lean, file, line, sig, partial).
+
+    Also collects the `@[csimp]` replacements.  A definition named by the
+    LEFT of a csimp theorem is a SPECIFICATION: it stays in the tree for the
+    proofs to be about, the code generator emits the right-hand constant
+    instead, and its surviving self-call is on no shipping path.  Reporting
+    it as a live stack risk is a false positive -- and one that would keep
+    the gate red after a repair, which is how a gate gets switched off.
+    """
     idx = {}
+    replaced = {}
     tree_types = set()
     for root, dirs, files in os.walk(LEAN_DIR):
         dirs[:] = [d for d in dirs if d not in (".lake", ".git")]
@@ -202,6 +216,9 @@ def index_lean():
             ns = []
             with open(path, "r", errors="replace") as fh:
                 lines = fh.readlines()
+            text = "".join(lines)
+            for lhs, rhs in CSIMP.findall(text):
+                replaced[lhs.split(".")[-1]] = rhs.split(".")[-1]
             for i, line in enumerate(lines):
                 m = NAMESPACE.match(line)
                 if m:
@@ -231,7 +248,7 @@ def index_lean():
                     "sig": " ".join(sig.split()),
                     "partial": line.lstrip().startswith("partial") or " partial def" in line,
                 }
-    return idx, tree_types
+    return idx, tree_types, replaced
 
 
 COUNTER_SIG = re.compile(r"\bNat\b")
@@ -388,7 +405,7 @@ def main():
         sys.stderr.write("no .c files under %s -- refusing to report a zero\n" % IR_DIR)
         return 2
 
-    lean_idx, tree_types = index_lean()
+    lean_idx, tree_types, csimp_replaced = index_lean()
     if not lean_idx:
         sys.stderr.write("no Lean declarations found under %s -- refusing to report\n" % LEAN_DIR)
         return 2
@@ -428,6 +445,10 @@ def main():
             continue
         entry = lookup(sym)
         cls, note = classify(entry, tree_types)
+        short = (entry["lean"].split(".")[-1] if entry else readable(sym).split("_")[-1])
+        if short in csimp_replaced:
+            cls = "replaced"
+            note = "specification; the code generator emits %s (@[csimp])" % csimp_replaced[short]
         leanfile = entry["file"] if entry else ""
         rows.append({
             "risk": risk(entry, cls, readable(sym), d["self"] + d["selfclosure"]),
@@ -482,23 +503,23 @@ def main():
         per_class[r["class"]] += 1
     print("By class")
     print("--------")
-    for c in ("length", "depth", "counter", "bounded", "unknown"):
+    for c in ("length", "depth", "counter", "bounded", "replaced", "unknown"):
         print("  %-9s %4d" % (c, per_class.get(c, 0)))
     print()
 
     per_area = defaultdict(lambda: defaultdict(int))
     for r in rows:
         per_area[r["area"]][r["class"]] += 1
-    print("By area (length / depth / counter / bounded / unknown)")
-    print("-----------------------------------------------------")
+    print("By area (length / depth / counter / bounded / replaced / unknown)")
+    print("----------------------------------------------------------------")
     names = [n for n, _ in AREAS] + ["everything else"]
     for a in names:
         d = per_area.get(a)
         if not d:
             continue
-        print("  %-26s %4d %4d %4d %4d %4d" % (
+        print("  %-26s %4d %4d %4d %4d %4d %4d" % (
             a, d.get("length", 0), d.get("depth", 0), d.get("counter", 0),
-            d.get("bounded", 0), d.get("unknown", 0)))
+            d.get("bounded", 0), d.get("replaced", 0), d.get("unknown", 0)))
     print()
 
     ranked = sorted(rows, key=lambda r: (-r["risk"], r["area"], r["decl"]))
