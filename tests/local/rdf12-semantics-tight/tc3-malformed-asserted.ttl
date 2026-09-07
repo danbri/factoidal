@@ -1,0 +1,5 @@
+prefix : <http://example.com/ns#>
+prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# TC-3 control. Byte-identical to rdf-semantics/malformed-literal-control.ttl.
+:a :b "c"^^xsd:integer.

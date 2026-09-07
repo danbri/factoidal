@@ -1,0 +1,9 @@
+prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+prefix : <http://example.com/ns#>
+
+# TC-1 reading A -- the RDF 1.2 Turtle annotation-syntax expansion, i.e.
+# what turtle12-eval-annotation-01 in the SAME upstream commit says
+# `:s :p :o {| :r :z |}` denotes. This is the reading Factoidal implements.
+:a :b :c .
+_:r rdf:reifies <<( :a :b :c )>> .
+_:r :p1 :o1 .

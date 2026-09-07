@@ -1,0 +1,6 @@
+prefix : <http://example.com/ns#>
+prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# TC-3. Byte-identical to rdf-semantics/malformed-literal.ttl: a literal
+# that is ill-formed for a recognized datatype, inside a triple term.
+:a1 :p1 <<( :a :b "c"^^xsd:integer )>>.

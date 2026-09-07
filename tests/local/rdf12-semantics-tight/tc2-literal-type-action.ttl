@@ -1,0 +1,5 @@
+prefix : <http://example.com/ns#>
+prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# TC-2 action. Byte-identical to rdf-semantics/canonical-literal-control.ttl.
+:a :b "42"^^xsd:integer.

@@ -1,0 +1,8 @@
+prefix : <http://example.com/ns#>
+
+# TC-1 reading B -- byte-identical to rdf-semantics/test007r2.ttl, the
+# graph the vendored `annotation` entry names as mf:result. Nothing in the
+# action mentions :a1, and the action has no triple whose predicate is :p1
+# with a triple-term object, so reading B is NOT entailed by the action
+# under ANY entailment regime in RDF 1.2 Semantics.
+:a1 :p1 <<( :a :b :c )>>.

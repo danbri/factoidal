@@ -283,6 +283,12 @@ type test_case = {
      list for every other test type, and for rdf-mt entries that omit
      the triple or spell it "( )". *)
   recognized_datatypes : string list;
+  (* rdf12 rdf-semantics only: the entry spelled `mf:result false`, i.e.
+     "the action graph is INCONSISTENT under the recognized datatypes",
+     rather than "the action graph entails this result file". Distinct
+     from `result_file = None` for an absent mf:result, which is a Skip.
+     Consumed by the Positive/NegativeEntailmentTest arm. *)
+  result_false : bool;
 }
 
 let mf_ns = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#"
@@ -582,10 +588,16 @@ let extract_test_cases manifest_dir graph =
 
     let recognized_datatypes = extract_iri_list graph entry_subj (mf_ns ^ "recognizedDatatypes") in
 
+    (* `mf:result false` -- an inconsistency test, not a missing result. *)
+    let result_false = match result_objs with
+      | T_Literal l :: _ -> l.lexical_form = "false"
+      | _ -> false in
+
     Some { name; test_type; test_type_detail; query_file;
            data_files; named_data_files; result_file; manifest_dir;
            update_result_default_files; update_result_named_files;
-           service_data; protocol_comment; recognized_datatypes }
+           service_data; protocol_comment; recognized_datatypes;
+           result_false }
   ) entry_nodes
 
 (* Extract mf:assumedTestBase from manifest graph, if present *)
@@ -2975,6 +2987,14 @@ let rdf_tests_base =
    rdf11; the rdf12 subtree carries its own leaf manifests (e.g.
    rdf-n-triples/syntax/manifest.ttl). *)
 let rdf12_tests_base =
+  (* RDF12_TESTS_BASE overrides the vendored root. Used by the local
+     tight-case suite (tests/local/rdf12-semantics-tight), a W3C-shaped
+     manifest directory carrying MINIMAL fixtures for the spec readings
+     the vendored suite cannot decide. The vendored tree is never edited
+     (third-party vendoring policy). *)
+  match Sys.getenv_opt "RDF12_TESTS_BASE" with
+  | Some d when d <> "" -> d
+  | _ ->
   let candidates = [
     "third_party/testing/w3c/rdf/rdf12";
     "../../third_party/testing/w3c/rdf/rdf12";
@@ -3308,9 +3328,35 @@ let run_rdf12_test assumed_base tc =
     (match entails_fn with
      | None -> Skip (Printf.sprintf "entailment regime '%s' not yet supported" regime)
      | Some efn ->
+       (* `mf:result false` asks a different question: is the ACTION graph
+          D-inconsistent under the recognized datatypes? A graph asserting a
+          literal ill-formed for a recognized datatype has no model. Answered
+          by the F*-extracted RDF.Entailment.Regime.rdf_inconsistent, which
+          recurses into triple-term objects (the malformed-literal fixture
+          puts the ill-formed literal inside a triple term). No semantics
+          live in this runner: the arm reads the graph, calls the extracted
+          predicate, and grades. *)
+       if tc.result_false then
+         (match read_file tc.query_file with
+          | None -> Skip "Action file missing"
+          | Some action_content ->
+            (try
+              let base = make_turtle_base_tc assumed_base tc.manifest_dir tc.query_file in
+              let action_g = parse_turtle_12 action_content base in
+              let inconsistent = RDF_Entailment_Regime.rdf_inconsistent action_g in
+              if tc.test_type = "PositiveEntailmentTest" then
+                (if inconsistent then Pass
+                 else Fail (Printf.sprintf
+                   "Should be inconsistent but is not (action %d triples)"
+                   (List.length action_g)))
+              else
+                (if not inconsistent then Pass
+                 else Fail "Should be consistent but is not")
+            with e -> Fail (Printf.sprintf "Error: %s" (Printexc.to_string e))))
+       else
        (match read_file tc.query_file, tc.result_file with
         | None, _ -> Skip "Action file missing"
-        | _, None -> Skip "No result file (mf:result false — inconsistency test)"
+        | _, None -> Skip "No result file"
         | Some action_content, Some rf ->
           (match read_file rf with
            | None -> Skip (Printf.sprintf "Result file missing: %s" rf)

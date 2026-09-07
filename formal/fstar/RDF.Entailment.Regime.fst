@@ -26,13 +26,27 @@ module RDF.Entailment.Regime
 //   * owl:sameAs closure (RDFS-Plus) — IRIs are transparent, INCLUDING
 //     inside triple terms, so equal IRIs are inter-substitutable.
 //
-// NOT covered here (need a generalized-RDF term model with literal /
-// triple-term SUBJECTS, which RDF.Term.subject = S_IRI | S_BNode does not
-// admit): `literal-type` (`"42" rdf:type xsd:integer`) and
-// `triple-terms-propositions` (`<<(..)>> rdf:type rdfs:Proposition`).
-// Also not covered: IEEE-754 float/double value semantics (±0, round-to-
-// even, infinity) and rdf:JSON canonicalization — those are the remaining
-// D-entailment fixtures (a separate value-model effort).
+// GENERALIZED-RDF ANTECEDENT (added 2026-09-07). RDF 1.2 Semantics states
+// its semantic conditions over a term universe in which a triple term or a
+// literal can be the SUBJECT of a derived triple -- e.g. "triple terms
+// denote instances of rdfs:Proposition" needs `<<( s p o )>> rdf:type
+// rdfs:Proposition`. RDF.Term.triple cannot hold that, because
+// RDF.Term.subject = S_IRI | S_BNode (which is correct: no RDF 1.2
+// concrete syntax can WRITE such a triple). The regime layer therefore
+// closes the antecedent into `gtriple` -- a subject-generalized triple --
+// and runs the homomorphism against that. The CONSEQUENT stays an
+// ordinary `list triple`, because it is always parsed from a concrete
+// syntax; a blank node in the consequent may bind to a triple term, which
+// is how `triple-terms-propositions` is discharged.
+//
+// NOT covered here: `literal-type` (`"42"^^xsd:integer rdf:type
+// xsd:integer`) -- the gtriple model now admits it, but the vendored
+// manifest entry for that test is unreadable (upstream typo, see the
+// design record 2026-09-07-rdf12-sparql12-semantics-fstar.md), so the
+// rule would be unmeasurable; and the `annotation` / `annotation-unfolded`
+// fixtures, whose expected graphs contradict the RDF 1.2 Turtle
+// annotation-syntax expansion that the SAME upstream commit's Turtle
+// eval oracles define (same design record, tight case TC-1).
 
 open RDF.Graph.Executable
 open RDF.Term
@@ -253,19 +267,180 @@ let apply_sameas_pair (acc : list triple) (p : (wf_iri & wf_iri)) : list triple 
 let owl_closure (ts : list triple) : list triple =
   fold_left apply_sameas_pair ts (sameas_pairs ts)
 
+// ---- Generalized-RDF antecedent (RDF 1.2 Semantics) --------------------
+
+// A subject-generalized triple: the subject is an arbitrary rdf_term, so a
+// triple term (or a literal) can carry a derived type assertion. Only the
+// ANTECEDENT is generalized -- see the module banner.
+noeq type gtriple = { gs : rdf_term; gp : wf_iri; go : rdf_term }
+
+let gtriple_of_triple (t : triple) : gtriple =
+  { gs = subj_as_term t.s; gp = t.p; go = t.o }
+
+// Subject match against a GENERALIZED ground subject. Same three cases as
+// RDF.Entailment.Simple.match_subj, with the ground side widened from
+// `subject` to `rdf_term`: a consequent blank node may therefore bind to a
+// triple term, and a consequent IRI still matches only the same IRI.
+// `bnd` gates what a blank node may range over, exactly as in the
+// object-position matcher (a malformed recognized-datatype literal
+// denotes nothing, so nothing may range over it).
+let match_subj_g (bnd : rdf_term -> bool) (b : binding) (ps : subject) (gs : rdf_term)
+  : option binding =
+  match ps with
+  | S_BNode lbl ->
+    (match assoc lbl b with
+     | Some t -> if rdf_term_eq t gs then Some b else None
+     | None   -> if bnd gs then Some ((lbl, gs) :: b) else None)
+  | S_IRI i ->
+    (match gs with
+     | T_IRI j -> if i = j then Some b else None
+     | _       -> None)
+
+let match_gtriple (leq : bool -> literal -> literal -> bool)
+                  (bnd : rdf_term -> bool)
+                  (b : binding) (tb : triple) (ta : gtriple) : option binding =
+  if tb.p = ta.gp then
+    (match match_subj_g bnd b tb.s ta.gs with
+     | Some b1 -> match_term leq bnd false b1 tb.o ta.go
+     | None    -> None)
+  else None
+
+// Backtracking search over a generalized antecedent. Structurally the same
+// as RDF.Entailment.Simple.try_match / try_alts (same lexicographic
+// measure %[remaining consequent triples; remaining candidates]); only the
+// candidate type changes.
+let rec try_match_g (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> bool)
+                    (bs : list triple) (b : binding) (a : list gtriple)
+  : Tot bool (decreases %[length bs; 1 + length a]) =
+  match bs with
+  | [] -> true
+  | tb :: rest -> try_alts_g leq bnd bs tb rest b a a
+and try_alts_g (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> bool)
+               (bs : list triple) (tb : triple)
+               (rest : list triple { length rest < length bs }) (b : binding)
+               (a : list gtriple) (cand : list gtriple)
+  : Tot bool (decreases %[length bs; length cand]) =
+  match cand with
+  | [] -> false
+  | ta :: more ->
+    (match match_gtriple leq bnd b tb ta with
+     | Some b1 -> if try_match_g leq bnd rest b1 a then true
+                  else try_alts_g leq bnd bs tb rest b a more
+     | None    -> try_alts_g leq bnd bs tb rest b a more)
+
+let entails_g (leq : bool -> literal -> literal -> bool) (bnd : rdf_term -> bool)
+              (a : list gtriple) (b : list triple) : bool =
+  try_match_g leq bnd b [] a
+
+// ---- RDF 1.2 semantic condition: triple terms denote propositions ------
+
+// Every triple term OCCURRING in the graph, including nested ones. RDF 1.2
+// admits a triple term only in object position, so the scan starts at the
+// object and recurses through the triple term's own object.
+let rec tt_occurrences (t : rdf_term) : Tot (list rdf_term) (decreases t) =
+  match t with
+  | T_TripleTerm _ _ o -> t :: tt_occurrences o
+  | _                  -> []
+
+let graph_tt_occurrences (ts : list triple) : list rdf_term =
+  collect (fun (t : triple) -> tt_occurrences t.o) ts
+
+// RDF 1.2 Semantics: a triple term denotes a proposition, so every triple
+// term occurring in the graph is an instance of rdfs:Proposition. This is
+// the semantic condition the `rdf:reifies` RANGE axiom is a corollary of;
+// `rdf12_reifies_closure` above covers the range corollary for IRI /
+// blank-node reified objects, and this covers the triple terms themselves,
+// which are not expressible as `triple` subjects.
+let proposition_gtriples (ts : list triple) : list gtriple =
+  map (fun (tt : rdf_term) ->
+         { gs = tt; gp = rdf_type_iri; go = T_IRI rdfs_proposition_iri })
+      (graph_tt_occurrences ts)
+
+
+// ---- RDF 1.2 semantic condition: literals denote datatype instances ----
+
+// The datatypes this engine RECOGNIZES: exactly the ones
+// XSD.Datatypes.literal_ill_formed decides well-formedness for. For any
+// other datatype IRI, `literal_ill_formed` answers false for every lexical
+// form, which is the correct answer for an UNrecognized datatype (nothing
+// is known to be ill-formed) but is not a licence to assert a type.
+let is_recognized_datatype (dt : wf_iri) : bool =
+  dt = xsd_boolean || dt = xsd_dateTime || dt = xsd_float || dt = xsd_double ||
+  is_decimal_derived_datatype dt
+
+// RDF 1.2 Semantics, D-interpretation condition: a well-formed literal with
+// a recognized datatype d denotes a value in the value space of d, so it is
+// an instance of d. Emitted only for literals in ASSERTED object position,
+// not for literals inside a triple term: a triple term does not assert its
+// component triple, so no type assertion about its object is licensed.
+let literal_type_gtriples (ts : list triple) : list gtriple =
+  collect (fun (t : triple) ->
+    match t.o with
+    | T_Literal l ->
+      if is_recognized_datatype l.datatype
+         && not (literal_ill_formed l.datatype l.lexical_form)
+      then [ ({ gs = T_Literal l; gp = rdf_type_iri; go = T_IRI l.datatype } <: gtriple) ]
+      else []
+    | _ -> []) ts
+
+// The "RDF" regime antecedent, generalized: the graph itself plus the
+// datatype-instance assertions and the triple-term proposition assertions.
+// (Triple terms denote propositions under every regime that recognizes the
+// RDF 1.2 vocabulary; the RDFS regime adds the RDFS rule driver on top.)
+let rdf_regime_gclosure (ts : list triple) : list gtriple =
+  map gtriple_of_triple ts @ literal_type_gtriples ts @ proposition_gtriples ts
+
+// The RDFS-regime antecedent, generalized: the ordinary RDFS closure
+// embedded as gtriples, plus the triple-term proposition assertions.
+//
+// Residual incompleteness, stated rather than hidden: the proposition
+// assertions are emitted AFTER the RDFS fixed point, so an RDFS rule
+// cannot fire ON them (e.g. `rdfs:Proposition rdfs:subClassOf X` would not
+// give `<<(..)>> rdf:type X`). Closing that needs the rule driver itself to
+// run over gtriples; no fixture in the tree exercises the shape.
+let rdfs_regime_gclosure (ts : list triple) : list gtriple =
+  let closed = rdfs_regime_closure ts in
+  rdf_regime_gclosure closed
+
+// ---- RDF 1.2 D-inconsistency -------------------------------------------
+
+// A literal that is ill-formed for its (recognized) datatype denotes
+// nothing, so a graph asserting one has no model: it is D-inconsistent and
+// D-entails every graph. RDF 1.2 Semantics keeps this true for a malformed
+// literal sitting INSIDE a triple term (the `malformed-literal` fixture --
+// "Malformed literals are allowed in triple terms, but cause
+// inconsistency"), so the scan recurses into triple-term objects.
+//
+// This is a SEPARATE predicate, deliberately NOT folded into `entails_rdf`.
+// The vendored suite grades `malformed-literal-bnode-neg` and
+// `malformed-literal-no-spurious` as NegativeEntailmentTests over the same
+// inconsistent graph; making `entails_rdf` return true for everything on
+// an inconsistent antecedent would make those two contradictory. The
+// suite's `mf:result false` entries are the ones that ask about
+// inconsistency, and only those consult this function.
+let rec term_ill_formed (t : rdf_term) : Tot bool (decreases t) =
+  match t with
+  | T_Literal l        -> literal_ill_formed l.datatype l.lexical_form
+  | T_TripleTerm _ _ o -> term_ill_formed o
+  | _                  -> false
+
+let rdf_inconsistent (ts : list triple) : bool =
+  existsb (fun (t : triple) -> term_ill_formed t.o) ts
+
 // ---- Regime entrypoints ------------------------------------------------
 
 // RDF (D-)entailment: recognized-datatype value equality (position-aware)
 // + no blank-node ranging over malformed literals.
 let entails_rdf (a b : list triple) : bool =
-  entails_with dt_value_leq bnd_rdf a b
+  entails_g dt_value_leq bnd_rdf (rdf_regime_gclosure a) b
 
 // RDFS entailment: + the RDFS rule driver (rdfs2/3/5/7/9/11 + the
 // container-membership slice) + the RDF 1.2 reifies-range step.
 let entails_rdfs (a b : list triple) : bool =
-  entails_with dt_value_leq bnd_rdf (rdfs_regime_closure a) b
+  entails_g dt_value_leq bnd_rdf (rdfs_regime_gclosure a) b
 
 // RDFS-Plus entailment: the RDFS-regime closure + owl:sameAs (IRI
 // transparency, including inside triple terms).
 let entails_rdfs_plus (a b : list triple) : bool =
-  entails_with dt_value_leq bnd_rdf (owl_closure (rdfs_regime_closure a)) b
+  let closed = owl_closure (rdfs_regime_closure a) in
+  entails_g dt_value_leq bnd_rdf (rdf_regime_gclosure closed) b

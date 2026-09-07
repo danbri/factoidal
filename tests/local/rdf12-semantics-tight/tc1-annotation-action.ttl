@@ -1,0 +1,5 @@
+prefix : <http://example.com/ns#>
+
+# TC-1 action. Byte-identical to
+# third_party/testing/w3c/rdf/rdf12/rdf-semantics/test007a.ttl.
+:a :b :c {| :p1 :o1 |}.

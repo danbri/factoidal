@@ -1,0 +1,6 @@
+prefix : <http://example.com/ns#>
+
+# TC-1 second half. Byte-identical to rdf-semantics/test007a2.ttl, the
+# action of the vendored `annotation-unfolded` entry.
+:a :b :c.
+:a1 :p1 <<( :a :b :c )>>.
