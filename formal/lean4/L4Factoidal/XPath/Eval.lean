@@ -200,13 +200,21 @@ def isReverse : Ax → Bool
 
 /-! ## String helpers -/
 
-private def substrChars (s : String) (from' len : Int) : String :=
+/-- §4.2 `substring()`'s character selection, worked in `Num` rather
+    than `Int`: `lo`/`len` are already rounded, and `hi := lo + len`
+    goes through `Num.add`, which is where ±Infinity and NaN get the
+    IEEE answer (`x + +Inf = +Inf`, `-Inf + +Inf = NaN`) for free. A
+    character at 1-based position `p` is kept when `lo ≤ p < hi`,
+    using `Num.le`/`Num.lt` so a NaN bound excludes every position
+    (NaN compares false to everything) instead of an `Int`-only
+    implementation silently treating an infinite length as "no
+    characters" the way a fixed sentinel bound would. -/
+private def substrChars (s : String) (lo len : Num) : String :=
+  let hi := Num.add lo len
   let cs := s.toList
-  let lo := max 1 from'
-  let hi := from' + len
   String.ofList ((cs.zipIdx).filterMap (fun (c, i) =>
-    let p : Int := (i : Int) + 1
-    if lo ≤ p && p < hi then some c else none))
+    let p := Num.finite ((i : Int) + 1) 0
+    if Num.le lo p && Num.lt p hi then some c else none))
 
 private def isWsC (c : Char) : Bool :=
   c == ' ' || c == '\t' || c == '\n' || c == '\r'
@@ -506,13 +514,9 @@ partial def evalCall (c : Ctx) (f : String) (args : List Expr) : Option Value :=
         | some i => String.ofList (a.toStr.toList.drop (i + b.toStr.toList.length))
         | none   => ""))
   | "substring", [a, b] =>
-      some (.str (match Num.roundN b.toNum with
-        | .finite m 0 => substrChars a.toStr m 1000000000
-        | _           => ""))
+      some (.str (substrChars a.toStr (Num.roundN b.toNum) Num.posInf))
   | "substring", [a, b, l] =>
-      some (.str (match Num.roundN b.toNum, Num.roundN l.toNum with
-        | .finite m 0, .finite k 0 => substrChars a.toStr m k
-        | _, _                     => ""))
+      some (.str (substrChars a.toStr (Num.roundN b.toNum) (Num.roundN l.toNum)))
   | "translate", [a, b, cc] => some (.str (translateStr a.toStr b.toStr cc.toStr))
   | "floor", [v]   => some (.num (Num.floorN v.toNum))
   | "ceiling", [v] => some (.num (Num.ceilingN v.toNum))
