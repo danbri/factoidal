@@ -3,7 +3,7 @@
 #   fly volumes create skosall_data -a factoidal-skosall -r lhr -s 150
 #   fly secrets set -a factoidal-skosall R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... \
 #       R2_SECRET_ACCESS_KEY=... R2_BUCKET=skosdex001
-#   fly deploy -c deploy/fly/skosall/fly.toml
+#   fly deploy -c deploy/fly/skosall/fly.toml --build-arg FACTOIDAL_REF=<sha>
 #
 # The machine runs build-skosall.sh once and stops. Every step leaves a
 # stamp under /data/state, so a redeploy resumes where it stopped.
@@ -13,8 +13,20 @@ primary_region = "lhr"
 [build]
   dockerfile = "Dockerfile"
 
+  [build.args]
+    # The danbri/factoidal ref the image's first stage builds the native
+    # Lean packer from. A branch, a tag or a full commit SHA; override on
+    # the command line with `--build-arg FACTOIDAL_REF=<sha>` to pin a
+    # deploy to one commit. Building it is most of the image build time
+    # (see README.md).
+    FACTOIDAL_REF = "claude/main"
+
 [env]
-  # Source bytes between publication batches. Bounds the packer's memory.
+  # Source bytes between publication batches. Bounds the packer's memory:
+  # the native packer measured 397 MB of peak footprint at this batch size
+  # on 1.5 GB of source. The WebAssembly module has no such bound, which is
+  # why the pack and activate steps use the native binaries
+  # (docs/designissues/2026-09-07-wasm-packer-memory.md).
   FACTOIDAL_BATCH_BYTES = "268435456"
   # Where the generation lands in the bucket.
   R2_PREFIX = "skosall"

@@ -10,9 +10,14 @@
 #   2 graphed   skosdex's own `graphed` step: one .nq.gz per scheme, quads in
 #               the scheme's named graph, blank nodes prefixed by slug
 #   3 source    concatenate into one N-Quads file (about 65 GB for everything)
-#   4 pack      factoidal pack --layout ibk5 (the npm engine; 2.3x slower
-#               than the native tool, measured 2026-09-05, and needs no Lean)
-#   5 activate  factoidal activate: verifies every artifact, writes CURRENT
+#   4 pack      l4block-shard-pack ... ibk5 --batch-bytes N, the NATIVE Lean
+#               packer built into the image. The WebAssembly module cannot
+#               finish 37 GB (docs/designissues/2026-09-07-wasm-packer-memory.md);
+#               the native packer measured 397 MB of peak footprint at 256 MiB
+#               batches on 1.5 GB of source. `factoidal pack` is the fallback
+#               if the binary is absent.
+#   5 activate  l4block-shard-activate: verifies every artifact, writes
+#               CURRENT. `factoidal activate` is the same fallback.
 #   6 sync      rclone sync to r2:$R2_BUCKET/$R2_PREFIX
 #
 # Dry run: ONLY="iptc-colorspace iptc-signal" limits steps 2-3 to those slugs
@@ -29,6 +34,10 @@ GEN=gen-1
 SKOSDEX_REF=${SKOSDEX_REF:-claude/main}
 BATCH=${FACTOIDAL_BATCH_BYTES:-268435456}
 ONLY=${ONLY:-}
+# The native Lean tools, built into the image by the Dockerfile's first
+# stage. Overridable so a checkout's own .lake/build/bin can be used.
+NATIVE_PACK=${NATIVE_PACK:-/opt/factoidal/bin/l4block-shard-pack}
+NATIVE_ACTIVATE=${NATIVE_ACTIVATE:-/opt/factoidal/bin/l4block-shard-activate}
 mkdir -p "$STATE" "$LOGS" "$STORE"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*"; }
@@ -37,6 +46,7 @@ mark() { date -u +%FT%TZ > "$STATE/$1.done"; }
 fail() { log "FAILED: $*"; exit 1; }
 
 log "build-skosall start data=$DATA ref=$SKOSDEX_REF batch=$BATCH only='${ONLY}'"
+if [ -x "$NATIVE_PACK" ]; then log "engine: native Lean packer at $NATIVE_PACK"; else log "engine: no native packer; the WebAssembly @factoidal/core route"; fi
 # HOLD=1 keeps the machine up without running the pipeline, so the volume
 # can be inspected over `fly ssh console` (a failed pack leaves /data/logs
 # and all.nq in place; the machine otherwise stops on exit).
@@ -92,28 +102,47 @@ if ! done_step source; then
   mark source
 fi
 
-# 4 pack
+# 4 pack. The done-marker is written only on success (`fail` exits first), so
+# a re-run after a failed pack repacks from scratch; `rm -rf` below makes that
+# a clean generation directory rather than a resumed one.
 if ! done_step pack; then
   rm -rf "$STORE/$GEN"
-  rc=0; factoidal pack "$ALL" "$STORE/$GEN" --layout ibk5 --batch-bytes "$BATCH" \
-    2>&1 | tee "$LOGS/pack.log" || rc=$?
-  if [ "$rc" -eq 2 ]; then
-    # 0.7.0 documents --batch-bytes and refuses it (usage, exit 2); 0.7.1
-    # accepts it. Fall back to the engine's default batch (64 MiB in the
-    # module), which bounds memory the same way with more, smaller blocks.
-    log "pack: this @factoidal/core refuses --batch-bytes; packing at the engine default"
-    rm -rf "$STORE/$GEN"
-    rc=0; factoidal pack "$ALL" "$STORE/$GEN" --layout ibk5 2>&1 | tee "$LOGS/pack.log" || rc=$?
+  rc=0
+  if [ -x "$NATIVE_PACK" ]; then
+    log "pack: route=native $NATIVE_PACK layout=ibk5 batch-bytes=$BATCH"
+    "$NATIVE_PACK" "$ALL" "$STORE/$GEN" ibk5 --batch-bytes "$BATCH" \
+      2>&1 | tee "$LOGS/pack.log" || rc=$?
+    [ "$rc" -eq 0 ] || fail "l4block-shard-pack rc=$rc"
+  else
+    log "pack: route=wasm (no native packer at $NATIVE_PACK); @factoidal/core, layout=ibk5 batch-bytes=$BATCH"
+    factoidal pack "$ALL" "$STORE/$GEN" --layout ibk5 --batch-bytes "$BATCH" \
+      2>&1 | tee "$LOGS/pack.log" || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      # 0.7.0 documents --batch-bytes and refuses it (usage, exit 2); 0.7.1
+      # accepts it. Fall back to the engine's default batch (64 MiB in the
+      # module), which bounds memory the same way with more, smaller blocks.
+      log "pack: this @factoidal/core refuses --batch-bytes; packing at the engine default"
+      rm -rf "$STORE/$GEN"
+      rc=0; factoidal pack "$ALL" "$STORE/$GEN" --layout ibk5 2>&1 | tee "$LOGS/pack.log" || rc=$?
+    fi
+    [ "$rc" -eq 0 ] || fail "factoidal pack rc=$rc"
   fi
-  [ "$rc" -eq 0 ] || fail "factoidal pack rc=$rc"
   log "pack: $(du -sh "$STORE/$GEN" | cut -f1) in $(ls "$STORE/$GEN" | wc -l) files"
   mark pack
 fi
 
-# 5 activate
+# 5 activate. Both routes take the collection root then the generation name.
 if ! done_step activate; then
-  rc=0; factoidal activate "$STORE" "$GEN" 2>&1 | tee "$LOGS/activate.log" || rc=$?
-  [ "$rc" -eq 0 ] || fail "factoidal activate rc=$rc"
+  rc=0
+  if [ -x "$NATIVE_ACTIVATE" ]; then
+    log "activate: route=native $NATIVE_ACTIVATE"
+    "$NATIVE_ACTIVATE" "$STORE" "$GEN" 2>&1 | tee "$LOGS/activate.log" || rc=$?
+    [ "$rc" -eq 0 ] || fail "l4block-shard-activate rc=$rc"
+  else
+    log "activate: route=wasm (no native tool at $NATIVE_ACTIVATE); factoidal activate"
+    factoidal activate "$STORE" "$GEN" 2>&1 | tee "$LOGS/activate.log" || rc=$?
+    [ "$rc" -eq 0 ] || fail "factoidal activate rc=$rc"
+  fi
   [ "$(cat "$STORE/CURRENT")" = "$GEN" ] || fail "CURRENT is not $GEN"
   log "activate: CURRENT=$(cat "$STORE/CURRENT")"
   mark activate
