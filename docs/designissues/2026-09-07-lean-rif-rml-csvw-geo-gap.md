@@ -184,7 +184,7 @@ this worktree by running the probe, not quoted from a report.
 
 | area | before | after | F\* comparison |
 | --- | --- | --- | --- |
-| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | 33 pass, 1 fail (of 34 decided); 11 undecided, 0 not read, 1 local override | 42 pass, 0 fail, 1 local override, 3 skip (of 46) |
+| RIF Core | 24 pass, 2 fail (of 26 decided); 13 undecided, 1 not read, 6 not attempted | **42 pass, 0 fail (of 42 decided); 3 undecided, 0 not read, 1 local override** (2026-09-07 session 2) | 42 pass, 0 fail, 1 local override, 3 skip (of 46) |
 | RML core | 60 pass (of 60 compared); 1 not read, 15 not attempted | unchanged | 76 pass (of 76) |
 | RML io | not run | not run | 17 pass, 1 fail, 55 skip (of 73) |
 | CSVW validation | not run | **281 pass, 1 fail, 0 skip (of 282)** | 281 pass, 1 fail (of 282) |
@@ -207,39 +207,106 @@ this worktree by running the probe, not quoted from a report.
   below. Registry rows: `docs/theorem-registry.md`, section
   "GeoSPARQL bounding-box index".
 * **RIF** — the 6 `ImportRejectionTest` cases,
+  `geof:envelope`, all fuel-bounded rather than `partial`.
+* **RIF** — every id the F\* tree decides, plus two it skips
+  (`Builtins_List`, `NestedListsAreNotFlatLists`). 42 pass, 0 fail
+  (out of 42 decided) on 2026-09-07; three ids stay undecided and are
+  listed with their causes in the ledger-status table above.
+  Previously closed in the first session: the 6 `ImportRejectionTest` cases,
   `OWL_Combination_Vocabulary_Separation_Inconsistency_1` and `_2`, and
   `RDF_Combination_Constant_Equivalence_Graph_Entailment`.
   `RDF_Combination_Constant_Equivalence_4` moved from FAIL to the
   local-override bucket, which is where the F\* tree already had it.
 
+## RIF Core: the 12 open ids, by cause (2026-09-07, session 2)
+
+Branch `wt/finish-rif2`. Measured start: `lake -d formal/lean4 exe l4rif`
+gives **33 pass, 1 fail (out of 34 decided), 11 undecided, 1 local
+override** against the F\* runner's **42 pass, 0 fail, 1 local
+override, 3 skip (out of 46)**.
+
+The table below is written BEFORE any engine change in this session.
+Each row names what the id needs, by RIF-DTB section where the need is
+a built-in, and the F\* verdict for the same id from
+`bin/rif-runner/README.md`. The "built-ins used" lists printed by
+`l4rif --verbose` are CANDIDATES; the cause column below was read from
+each fixture's own `-premise.rifps`, which is the measurement the
+Bool-threaded `blocked` flag cannot give.
+
+| id | Lean before | cause, measured from the fixture | F\* verdict |
+| --- | --- | --- | --- |
+| `Factorial_Forward_Chaining` | undecided | NOT a built-in gap. `And(...)` puts `External(pred:numeric-greater-than-or-equal(?N1 0))` FIRST, with `?N1` unbound, and `matchFormula` folds conjuncts strictly left to right, so the built-in is called on an unground argument and reports `unknown`. Also needs `?N = External(func:numeric-add(?N1 1))` as a BIND: `matchAtom .equal` only compares two ground sides. RIF-BLD §3.2 makes `And` a set-like conjunction, so conjunct order carries no semantics | pass (ledger: "Equal-as-BIND") |
+| `IRI_from_RDF_Literal` | undecided | `External(pred:iri-string(?z ?x))` with `?x` a bound string and `?z` unbound. RIF-DTB §4.3 `pred:iri-string` relates an IRI to its string; `Conformance`/`boundFix` already list it in `bindingBuiltins` for safeness, but `matchAtom` has no binding-pattern execution for it | pass |
+| `Builtins_XMLLiteral` | undecided | `External(rdf:XMLLiteral("<br></br>"^^xs:string))` — a constructor cast whose datatype IRI is in the RDF namespace. `builtinName` maps only `func:`, `pred:` and `xs:`, so an `rdf:` cast returns `none` and `groundTm` reports blocked. RIF-DTB §5 (constructors) covers `rdf:XMLLiteral` and `rdf:PlainLiteral` alongside the XSD ones | pass |
+| `Builtins_Binary` | undecided | `xs:base64Binary` has no lexical space in `inLexicalSpace` (it returns `none`, i.e. undecided), and the fixture both tests `pred:is-literal-base64Binary` and casts to it. XSD 1.1 §3.3.16 gives the lexical space (groups of four Base64 characters, final group padded with `=`) | pass |
+| `Builtins_Numeric` | undecided | `func:numeric-divide` (RIF-DTB §4.4) is not in `evalFunc`, so `groundTm` blocks. Also `2 = External(func:numeric-divide(6 3))` needs `Equal` to compare by VALUE across `xs:integer` and `xs:decimal`, which `matchAtom .equal`'s structural `==` does not | pass |
+| `Builtins_String` | undecided | thirteen RIF-DTB §4.5 functions absent from `evalFunc`: `compare`, `string-join`, `substring` (2- and 3-argument), `encode-for-uri`, `iri-to-uri`, `escape-html-uri`, `substring-before`, `substring-after`, `replace`; and one §4.6 predicate, `matches`. `replace` and `matches` need the XPath regex engine, which the Lean tree already has at `L4Factoidal/Regex/XPath.lean` (`compile`/`isMatch`/`replace`, the same engine SPARQL `REGEX`/`REPLACE` use) | pass |
+| `Builtins_PlainLiteral` | undecided | RIF-DTB §4.7: `func:PlainLiteral-compare` and `pred:matches-language-range` are absent; the `rdf:PlainLiteral` constructor cast hits the same `builtinName` namespace gap as `Builtins_XMLLiteral`; and `func:string-from-PlainLiteral` / `func:lang-from-PlainLiteral` are applied by the fixture to an `xs:string` argument, which the current guard rejects | pass |
+| `EBusiness_Contract` | FAIL (not entailed, must be) | the dateTime slice: `pred:is-literal-dateTime` applied to `"2008-07-22Z"^^xs:date` must hold (RIF-DTB §3.2 — `xs:date` values are `xs:dateTime` values at midnight, and the Approved fixture depends on it); `func:subtract-dateTimes` (§4.8) giving an `xs:dayTimeDuration`; `func:days-from-duration` (§4.8). The arity-3 `cpt:delivered` is NOT a gap in Lean — `RIF.Syntax.Atom.pos` carries a `List Tm` of any length, so the n-ary reification the F\* tree needed here is unnecessary | pass |
+| `Builtins_List` | undecided | RIF-DTB §4.9 list functions: `get`, `sublist`, `append`, `concatenate`, `insert-before`, `remove`, `index-of`, `union`, `distinct-values`, `intersect`, `except`. `is-list`, `list-contains`, `make-list`, `count`, `reverse` are already decided | **skip**, named `List` |
+| `Builtins_Time` | undecided | the whole RIF-DTB §4.8 date/time/duration family, about 60 built-ins | **skip**, named `is-literal-dateTimeStamp` |
+| `Modeling_Brain_Anatomy` | undecided | imports under `http://www.w3.org/ns/entailment/OWL-Direct`. The rule body needs `rdf:type MaterialAnatomicalEntity` on individuals the ontology asserts only through `rdf:type Gyrus` + `rdfs:subClassOf`. F\* closes the imported graph under OWL-RL plus tableau materialisation before merging | pass |
+| `Non-Annotation_Entailment` | undecided | a `NegativeEntailmentTest` importing under OWL-Direct. The imported graph declares `dc:title` an `owl:OntologyProperty`, so under the OWL 2 Direct Semantics its use is an ONTOLOGY ANNOTATION and carries no semantic condition (OWL 2 Structural Specification §10, Direct Semantics §2.1) — the rule body `?x[dc:title -> ?y]` therefore has no fact to match and the conclusion does not follow. Answering `doesNotHold` needs the annotation filter AND a statement that the rest of the imported graph is inside the implemented fragment | pass |
+
+Two of the twelve are ids the F\* tree SKIPS with a named missing
+built-in (`Builtins_List`, `Builtins_Time`). Under the parity rule
+they may stay undecided in Lean only while the same built-ins are
+named. The other ten are Lean gaps against a passing F\* verdict.
+
+### Ledger status, measured after the session's last commit
+
+`lake -d formal/lean4 exe l4rif`: **42 pass, 0 fail (out of 42
+decided), 3 undecided, 1 local override**, from 33 pass, 1 fail (out
+of 34 decided), 11 undecided, 1 local override. `l4sparql-probe`
+unchanged at 403 pass, 0 fail (out of 403). Hygiene clean,
+`partial def` 172 against the baseline 172.
+
+Against the F\* runner's 42 pass, 0 fail, 1 local override, 3 skip
+(out of 46): every id F\* decides, Lean now decides with the same
+verdict. Two ids F\* SKIPS -- `Builtins_List` and
+`NestedListsAreNotFlatLists`, both naming the `List` construct -- Lean
+decides, so the Lean tree is two cases ahead of the F\* tree on this
+corpus. The two counts differ in their denominator because the F\*
+runner reports 46 cases including three `PositiveSyntaxTest` and
+`NegativeSyntaxTest` files it counts separately; the id-by-id table
+below is the comparison that does not depend on that.
+
+| id | after this session | note |
+| --- | --- | --- |
+| `Factorial_Forward_Chaining` | PASS | conjunct deferral plus `Equal`-as-BIND, `74e100afb` |
+| `IRI_from_RDF_Literal` | PASS | `pred:iri-string` binding-pattern execution, `74e100afb` |
+| `Builtins_Numeric` | PASS | `func:numeric-divide` and exact decimal arithmetic, `67e1ac179` |
+| `Builtins_Binary` | PASS | the `xs:base64Binary` lexical space, `67e1ac179` |
+| `Builtins_XMLLiteral` | PASS | the RDF-namespace constructors, `67e1ac179` |
+| `Builtins_PlainLiteral` | PASS | `func:PlainLiteral-compare`, `pred:matches-language-range`, one `plainParts` reader for both symbol spaces, `ffd5bd9a0` |
+| `Builtins_String` | PASS | thirteen RIF-DTB 4.5 functions plus `pred:matches`, the two regex ones over `L4Factoidal.Regex.XPath`, `b079016f1` |
+| `EBusiness_Contract` | PASS | the RIF-DTB 4.8 slice: `pred:is-literal-dateTime` over an `xs:date`, `func:subtract-dateTimes`, `func:days-from-duration`, `9c422ac9a`. The arity-3 relation needed nothing -- `Atom.pos` carries a `List Tm` of any length |
+| `Builtins_List` | PASS | the RIF-DTB 4.9 list functions, `624af1762`. **Ahead of F\***, which skips this id |
+| `NestedListsAreNotFlatLists` | PASS | was already decided by Lean. **Ahead of F\***, which skips it. Not vacuous: the premise fact `ex:p(List(ex:a List(ex:b)))` IS derived, and the goal `ex:p(List(ex:a ex:b))` fails to match it structurally |
+| `Builtins_Time` | undecided | OPEN. The rest of RIF-DTB 4.8, about sixty built-ins over durations, timezones and field extraction. F\* skips this id too, naming `is-literal-dateTimeStamp`; the two trees are level here |
+| `Modeling_Brain_Anatomy` | undecided | OPEN. Needs the imported graph closed under OWL-RL before it becomes facts, which is what the F\* runner's `apply_import_closure` does. `L4Factoidal/OWL/` has the material; wiring it into `Harness/RifRun.lean`'s import step is the change |
+| `Non-Annotation_Entailment` | undecided | OPEN. Needs the OWL-Direct annotation filter: `dc:title` is declared an `owl:OntologyProperty` in the imported graph, so under the Direct Semantics its use carries no semantic condition and the rule body has no fact to match. Answering `doesNotHold` also needs a statement that the rest of that graph is inside the implemented fragment, which is why this is not a one-line filter |
+| `RDF_Combination_Constant_Equivalence_4` | local override | unchanged. A corpus data defect, dispositioned the same way the F\* tree disposes of it |
+
+**One reporting limit stays open.** `entails` threads a `Bool`, so an
+undecided verdict still cannot say WHICH built-in blocked it; the
+runner prints the built-ins a case USES and labels them candidates.
+For `Builtins_Time` the design-record row above carries the measured
+cause instead. Threading the blocking IRI through
+`groundTm`/`matchAtom`/`step`/`closure` is the change that would let
+the verdict name its own cause the way the F\* skips do, and it was
+not made here.
+
+
 ### Open, by test id
 
-**RIF (12 cases short of F\*).** One fail: `EBusiness_Contract`, which
-needs the dateTime slice (`is-literal-dateTime` accepting `xs:date`
-operands at midnight, `func:subtract-dateTimes`,
-`func:days-from-duration`) and n-ary reification for its arity-3
-`cpt:delivered` relation. Eleven undecided: `Builtins_Numeric`,
-`Builtins_String`, `Builtins_Binary`, `Builtins_PlainLiteral`,
-`Builtins_XMLLiteral`, `Builtins_List`, `Builtins_Time`,
-`IRI_from_RDF_Literal`, `Factorial_Forward_Chaining`,
-`Modeling_Brain_Anatomy` and `Non-Annotation_Entailment`. F\* skips
-only `Builtins_List` and `Builtins_Time` (naming
-`is-literal-dateTimeStamp`); the rest are Lean gaps.
-
-`Factorial_Forward_Chaining` is the one to look at first, and it is
-NOT a built-in gap: it names only `numeric-add`, `numeric-multiply`
-and `numeric-greater-than-or-equal`, and `RIF/Builtins.lean`
-implements all three. The F\* ledger records the same case needing
-`Equal`-as-BIND (`?N = External(func:numeric-add(?N1 1))`), an engine
-feature rather than a built-in.
-
-**An engine limit worth naming.** `entails` threads a Bool through
-`groundTm`/`matchAtom`/`step`/`closure`, so it can say a built-in
-blocked a rule but not WHICH. The runner now prints the built-in IRIs
-a case uses, clearly labelled as candidates rather than as the
-measured cause. Threading the blocking IRI itself is the change that
-would let an undecided verdict name its own cause the way the F\*
-skips do.
+**RIF.** SUPERSEDED on 2026-09-07 by the section
+"RIF Core: the 12 open ids, by cause" above and its ledger-status
+table. What that paragraph described as twelve open ids is now three:
+`Builtins_Time`, `Modeling_Brain_Anatomy` and
+`Non-Annotation_Entailment`. The reporting limit it names -- `entails`
+threads a `Bool` and cannot say WHICH built-in blocked a rule -- is
+still open.
 
 **RML.** `RMLTC0027b-JSON` stays not-read: its own `output.nq` writes
 `<http://example.com/Person/Emily Smith>`, and an IRIREF may not
