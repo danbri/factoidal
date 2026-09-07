@@ -141,6 +141,34 @@ def loadImportClosure (cdir : String) (files : List String) (root : L4Factoidal.
           | .error _ => graphs := graphs ++ [[]]
   return { root := root, importedRifRoots := rifRoots, importedGraphs := graphs }
 
+/-- A conclusion companion, in either of the two names the corpus uses.
+Excluded from the imported graphs: it is what must be PROVED. -/
+def isConclusionFile (f : String) : Bool :=
+  f.endsWith "-conclusion.ttl" || f.endsWith "-nonconclusion.ttl"
+
+/-- A conclusion that is an RDF GRAPH rather than a RIF condition. One
+Approved case has this shape: no `-conclusion.rifps` was ever published
+for it, and the vendored `-conclusion.ttl` beside it carries the
+conclusion (see the PROVENANCE.md in that directory). Every triple
+becomes a frame atom and the conjunction is the goal, which is the
+same reading `RIF.Core.Translation.graph_to_bgp` gives it in the F*
+tree. -/
+def tmOfGround : GTerm → Tm
+  | .const l sp   => .const l sp
+  | .list xs      => .list (xs.map tmOfGround)
+  | .fapp f sp xs => .fapp f sp (xs.map tmOfGround)
+
+def goalOfGraph (g : List Triple) : Option Formula :=
+  match g.filterMap (fun t =>
+          match gOfTerm t.o with
+          | none   => none
+          | some o =>
+            some (Formula.atom (.frame (tmOfGround (gOfSubject t.s))
+                                       (tmOfGround (gIri t.p.val))
+                                       (tmOfGround o)))) with
+  | []  => none
+  | fs  => some (.and fs)
+
 /-! ## Local overrides
 
 `tests/local-overrides/rif/<TestName>.override` records a documented
@@ -256,14 +284,22 @@ def main (args : List String) : IO UInt32 := do
                 match ← readOne "-conclusion.rifps" with
                 | some c => pure (some c)
                 | none   => readOne "-nonconclusion.rifps")
-              match csrc? with
-              | none => t := { t with notRead := t.notRead + 1 }
-              | some csrc =>
+              -- A conclusion published only as an RDF graph.
+              let cgraph? ← (do
+                match files.find? (fun f => f.endsWith "-conclusion.ttl") with
+                | none   => pure none
+                | some f => (IO.FS.readFile (cdir ++ "/" ++ f)).map some)
+              if csrc?.isNone && cgraph?.isNone then
+                t := { t with notRead := t.notRead + 1 }
+              else
                 -- Any Turtle beside the case is an IMPORTed graph.
                 let mut imported : List Triple := []
                 let mut extraPrefixes : List (String × String) := []
                 for f in files do
-                  if f.endsWith ".ttl" then
+                  -- A `-conclusion.ttl` / `-nonconclusion.ttl` is the
+                  -- QUESTION, not an import. Merging it into the facts
+                  -- would make the case entail itself.
+                  if f.endsWith ".ttl" && !(isConclusionFile f) then
                     let tsrc ← IO.FS.readFile (cdir ++ "/" ++ f)
                     extraPrefixes := extraPrefixes ++ turtlePrefixes tsrc
                     match parseTurtle tsrc none with
@@ -276,10 +312,29 @@ def main (args : List String) : IO UInt32 := do
                 | .ok doc =>
                     let ctx : Ctx :=
                       { base := doc.base, prefixes := doc.prefixes ++ extraPrefixes }
-                    match parseFormulaText ctx csrc with
+                    -- The conclusion, from the RIF condition when the
+                    -- corpus published one and from the vendored RDF
+                    -- graph when it did not.
+                    let goal? : Except String Formula :=
+                      match csrc? with
+                      | some csrc =>
+                          match parseFormulaText ctx csrc with
+                          | .error e => .error e.msg
+                          | .ok f    => .ok f
+                      | none =>
+                          match cgraph? with
+                          | none => .error "no conclusion"
+                          | some gsrc =>
+                            match parseTurtle gsrc none with
+                            | .error e => .error s!"conclusion graph — {e}"
+                            | .ok cg =>
+                              match goalOfGraph cg with
+                              | none   => .error "the conclusion graph has no usable triple"
+                              | some f => .ok f
+                    match goal? with
                     | .error e =>
                         t := { t with notRead := t.notRead + 1 }
-                        IO.println s!"NOT READ {kind}/{name}: conclusion — {e.msg}"
+                        IO.println s!"NOT READ {kind}/{name}: conclusion — {e}"
                     | .ok goal =>
                         -- An `Import` naming the RDFS entailment
                         -- regime means the imported graph is
