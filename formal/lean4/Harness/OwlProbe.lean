@@ -158,6 +158,7 @@ import L4Factoidal.XML.Document
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.OWL.Materialise
+import L4Factoidal.OWL.Comprehension
 import L4Factoidal.OWL.Refute
 import L4Factoidal.OWL.NegationGoals
 import L4Factoidal.OWL.FunctionalSyntax
@@ -978,7 +979,22 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : N
       let (res, m) ← premiseClosure cat c capMs rg
       match res with
       | .error o => return Verdict.same o m
-      | .ok r =>
+      | .ok r0 =>
+        -- The comprehension / existential-witness layer, applied ONCE
+        -- over the stable closure and to PositiveEntailmentTest only
+        -- (`L4Factoidal/OWL/Comprehension.lean` header: folding it into
+        -- the fixpoint costs the refuter its budget, measured in F* at
+        -- 124 pass, 3 fail -> 63 pass, 64 fail on DL
+        -- `type-inconsistency.rdf`). One plain re-closure afterwards
+        -- lets ordinary rows see the witnesses' shape triples; it does
+        -- NOT re-run the layer, so this cannot iterate.
+        let r ← do
+          let gw := L4Factoidal.OWL.Comp.comprehensionLayer r0.graph
+          if gw.length == r0.graph.length then pure r0 else
+            let t2 ← IO.monoMsNow
+            let r2 ← closureIO gw closureFuel (t2 + capMs)
+            pure { r2 with rounds := r0.rounds + r2.rounds,
+                           capped := r0.capped || r2.capped }
         let gc := if isDirectOnly c then excludeAnnotationTriples gc0 else gc0
         let m := { m with triplesParsed := m.triplesParsed + gc0.length }
         -- `strict`: one mapping for the whole conclusion graph
