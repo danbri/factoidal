@@ -285,6 +285,22 @@ needs a `test:semantics` mode threaded through the closure. That is a
 different size of job and was not safe to start inside the remaining
 window.
 
+**The `type-inconsistency` gap that survives `--dl`.** Eleven ids, all
+`no clash row fired`, against F\*'s 126 pass, 1 fail:
+`Inconsistent Disjoint Dataproperties`,
+`Inconsistent String Pattern with Disjoint Dataproperties`,
+`Minus Infinity is not in owl:real`, `one=two`,
+`WebOnt-description-logic-035`, `-040`, `-108`, `-502`, `-504`, `-909`,
+`-910`. Two of those are not clean F\* passes either: `-909` is the
+disputed fixture recorded as pending in
+`docs/claude-rules/current-state.md`
+(<https://github.com/danbri/factoidal/issues/299>), and `-910` is the
+one test the F\* `type-inconsistency` log's
+`HARNESS-DIAG-OWL … refuter_escapes:1` names. The remaining nine are
+the real target for the next pass: the datatype-facet family
+(`owl:real`, string patterns, disjoint data properties) and the
+`WebOnt-description-logic` tableau family.
+
 **Where a published result looks wrong.**
 
 1. The F\* `dt-range-clash` check is unsound as written (§ 5). No corpus
