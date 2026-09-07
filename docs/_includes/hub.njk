@@ -882,6 +882,36 @@ const fn = {
     return (await this.loadL4()).call(op, args);
   },
   /**
+   * The dispatch ABI plus ONE contiguous byte region in and one out
+   * (hub post 54). The ops whose input is artifact bytes rather than
+   * text -- `storeQuery` is the one a notebook reaches for -- take
+   * their bytes this way: written straight into the wasm heap with no
+   * encoding, with `args` saying which window of the region belongs to
+   * which artifact. Lean bounds-checks every window, so a wrong offset
+   * is an ordinary refusal and never a memory fault.
+   *
+   * Returns the loader's {envelope, bytes} pair unchanged. Most ops
+   * answer with an empty `bytes`.
+   */
+  async l4CallBlobIO(op, args, blobIn) {
+    return (await this.loadL4()).callBlobIO(op, args, blobIn);
+  },
+  /**
+   * Open a Shardborough generation that lives under an HTTP base URL
+   * (hub post 54). Delegates to the store-over-HTTP host of
+   * `@factoidal/core`, mirrored under /npm/factoidal/ so the page loads
+   * it same-origin; the engine is this page's own, so one wasm module
+   * serves the whole notebook. The host fetches CURRENT, the manifest
+   * and exactly the artifacts the ENGINE's plan names, and checks each
+   * one against the SHA-256 the manifest commits before the bytes reach
+   * the module.
+   */
+  async openStoreOverHttp(baseUrl, options) {
+    const module = await import("{{ '/npm/factoidal/store-http/index.mjs' | url }}");
+    const engine = await this.loadL4();
+    return module.openStoreOverHttp(baseUrl, Object.assign({ engine }, options || {}));
+  },
+  /**
    * Parse an RDF document into a Lean-side dataset handle (hub posts
    * 36/38; issue #585's page-level half: WHY ARE WE PARSING TTL TO
    * JSON NOT A GRAPH API -- owner, 2026-08-25). Mirrors `fn.parse`'s

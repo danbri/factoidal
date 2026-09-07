@@ -81,7 +81,7 @@ percent-encodes every character outside the unreserved set, `/` included, so
 an expanded value never introduces a path segment.
 [RFC 3986 §3.3](https://www.rfc-editor.org/rfc/rfc3986#section-3.3) makes `/`
 the segment delimiter, so the segment structure of an instantiated IRI is
-fixed by the template and not by the data. Level 2's `{+var}` and `{#var}`
+fixed by the template and not by the data. Level 2's `{+var}` and `&#123;#var}`
 would break that, and with it the matcher's determinism and the interval
 argument in §4.
 
