@@ -253,6 +253,22 @@ def owlObjectProperty : WfIri :=
 def owlDatatypeProperty : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#DatatypeProperty", rfl⟩
 
+/-! ### The two OWL 2 bottom properties
+
+`owl:bottomObjectProperty` and `owl:bottomDataProperty` have the EMPTY
+extension in every interpretation (OWL 2 Direct Semantics §2.1 Table 4;
+RDF-Based Semantics §5.2). No W3C table row names them — they are used
+by `RLRules.ExtClash.bottomProp`, a sound extension row, not by any
+row of Tables 4-8. -/
+
+/-- `owl:bottomObjectProperty`. -/
+def owlBottomObjectProperty : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#bottomObjectProperty", rfl⟩
+
+/-- `owl:bottomDataProperty`. -/
+def owlBottomDataProperty : WfIri :=
+  ⟨"http://www.w3.org/2002/07/owl#bottomDataProperty", rfl⟩
+
 /-- `owl:Restriction` — the class of restriction class expressions. -/
 def owlRestriction : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#Restriction", rfl⟩

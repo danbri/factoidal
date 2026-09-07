@@ -490,4 +490,139 @@ reasons about abstractly. The clash verdict is compared the same way. -/
 #guard detectClashI (Index.ofGraph
   [⟨S iX, owlSameAs, O iY⟩, ⟨S iX, owlDifferentFrom, O iY⟩]) == true
 
+/-! ## The three sound extension rows
+
+Each family asserts BOTH a graph the row fires on AND the nearest graph
+it must NOT fire on, per the `measuring-inference` discipline: a clash
+row that fires on everything passes every positive check ever written.
+The negative half is what makes the positive half evidence. -/
+
+private def bnodeR : Subject := Subject.bnode "r"
+
+private def litStr (v : String) : Term :=
+  Term.literal ⟨{ lexicalForm := v, datatype := xsdString,
+                  langTag := none, direction := none }, rfl⟩
+
+private def litInt (v : String) : Term :=
+  Term.literal ⟨{ lexicalForm := v, datatype := xsdInteger,
+                  langTag := none, direction := none }, rfl⟩
+
+-- dt-range: an xsd:integer range with an xsd:string value.
+#guard detectClashExt
+  [⟨S pP, rdfsRange, O xsdInteger⟩, ⟨S iX, pP, litStr "aString"⟩]
+-- ... and not when the value is in the range's family.
+#guard !detectClashExt
+  [⟨S pP, rdfsRange, O xsdInteger⟩, ⟨S iX, pP, litInt "3"⟩]
+-- ... and never inside the numeric tower, whose members OVERLAP: the
+-- F* check would clash this pair, `xsdValueSpacesDisjoint` does not.
+#guard !detectClashExt
+  [⟨S pP, rdfsRange, O xsdNonNegativeInteger⟩,
+   ⟨S iX, pP, Term.literal ⟨{ lexicalForm := "5", datatype := xsdIntIri,
+                              langTag := none, direction := none }, rfl⟩⟩]
+-- ... and not on the range declaration alone (no edge to violate it).
+#guard !detectClashExt [⟨S pP, rdfsRange, O xsdInteger⟩]
+
+-- bottom-prop: someValuesFrom on owl:bottomObjectProperty, with a
+-- member of the restriction.
+#guard detectClashExt
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+-- ... and not without a member.
+#guard !detectClashExt
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩]
+-- ... and not on an ordinary property.
+#guard !detectClashExt
+  [⟨bnodeR, owlOnProperty, O pP⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+-- ... and not when the restriction puts NO existential obligation on
+-- its members (allValuesFrom is satisfied vacuously).
+#guard !detectClashExt
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlAllValuesFrom, O owlThing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+-- ... and not at cardinality 0, which asserts no edge exists.
+#guard !detectClashExt
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlMinCardinality, Term.literal litNni0⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+-- ... and it does fire at cardinality 1.
+#guard detectClashExt
+  [⟨bnodeR, owlOnProperty, O owlBottomDataProperty⟩,
+   ⟨bnodeR, owlMinCardinality, Term.literal litNni1⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+
+-- cls-svf-bot: someValuesFrom owl:Nothing, with a member.
+#guard detectClashExt
+  [⟨bnodeR, owlOnProperty, O pP⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlNothing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+-- ... and not without a member.
+#guard !detectClashExt
+  [⟨bnodeR, owlOnProperty, O pP⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlNothing⟩]
+-- ... and not with a non-empty filler.
+#guard !detectClashExt
+  [⟨bnodeR, owlOnProperty, O pP⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O cA⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+
+-- thing-nothing: owl:Thing equivalent to owl:Nothing, either direction.
+#guard detectClashExt
+  [⟨S owlThing, owlEquivalentClass, O owlNothing⟩]
+#guard detectClashExt
+  [⟨S owlNothing, owlEquivalentClass, O owlThing⟩]
+-- ... and NOT on owl:Nothing rdfs:subClassOf owl:Thing, which the
+-- closure emits for every class and which is a theorem, not a clash.
+#guard !detectClashExt
+  [⟨S owlNothing, rdfsSubClassOf, O owlThing⟩,
+   ⟨S owlThing, rdfsSubClassOf, O owlThing⟩]
+-- ... and not on an ordinary equivalence with either constant.
+#guard !detectClashExt [⟨S cA, owlEquivalentClass, O owlNothing⟩]
+#guard !detectClashExt [⟨S owlThing, owlEquivalentClass, O cA⟩]
+
+-- The table decision is UNCHANGED by all three: none of these graphs
+-- is an OWL 2 RL Table 8 clash.
+#guard !detectClash
+  [⟨S pP, rdfsRange, O xsdInteger⟩, ⟨S iX, pP, litStr "aString"⟩]
+#guard !detectClash
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+#guard !detectClash
+  [⟨bnodeR, owlOnProperty, O pP⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlNothing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]
+#guard !detectClash [⟨S owlThing, owlEquivalentClass, O owlNothing⟩]
+
+-- `inconsistentPlus` closes first and then asks: the bottom-property
+-- row needs cax-sco to have put the member into the restriction.
+#guard inconsistentPlus
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S cA, rdfsSubClassOf, bnodeR.toTerm⟩,
+   ⟨S iX, rdfType, O cA⟩] 3
+-- ... and the same graph without the subclass edge, whose member never
+-- reaches the restriction, is not decided inconsistent.
+#guard !inconsistentPlus
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S iX, rdfType, O cA⟩] 3
+-- The table-only decision does not see either.
+#guard !inconsistent
+  [⟨bnodeR, owlOnProperty, O owlBottomObjectProperty⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlThing⟩,
+   ⟨S cA, rdfsSubClassOf, bnodeR.toTerm⟩,
+   ⟨S iX, rdfType, O cA⟩] 3
+
+-- The store and index mirrors agree with the list decision.
+#guard detectClashPlusI (Index.ofGraph
+  [⟨bnodeR, owlOnProperty, O pP⟩,
+   ⟨bnodeR, owlSomeValuesFrom, O owlNothing⟩,
+   ⟨S iX, rdfType, bnodeR.toTerm⟩]) == true
+#guard detectClashPlusI (Index.ofGraph gDw) == detectClashPlus gDw
+#guard detectClashPlusI (Index.ofGraph gSco) == detectClashPlus gSco
+
 end L4Factoidal.OWL.RL

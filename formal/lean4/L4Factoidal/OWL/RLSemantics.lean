@@ -1526,6 +1526,47 @@ def RlNCondPrpFpLit : Prop :=
        i.iext (i.iIri p) x (i.iLit l1) ∧
        i.iext (i.iIri p) x (i.iLit l2))
 
+/-! ### The three sound extension rows
+
+Conditions for `RLRules.ExtClash`, kept in their OWN bundle. They are
+not rows of Tables 4-8, so `Unified/OwlRlSchema.owlRlSchema_conditions`
+— which discharges `RlClashConditions` field by field from RL schema
+satisfaction — has nothing to discharge them from, and they must not be
+smuggled into `RlClashConditions`. Each is what the OWL 2 semantics of
+the vocabulary it names already forces, stated as the premises never
+holding together. -/
+
+/-- **dt-range** `[ext]`. Carries the `xsdValueSpacesDisjoint` decision
+as a hypothesis, as `RlNCondPrpFpLit` carries
+`valuesProvablyDistinct`: the value-space disjointness of two XSD
+datatypes is a fact about the datatype map, not about the graph. -/
+def RlNCondDtRange : Prop :=
+  ∀ (p d : WfIri) (x : i.idom) (l : WfLiteral),
+    xsdValueSpacesDisjoint l.val.datatype d = true →
+    ¬ (i.iext (i.iIri rdfsRange) (i.iIri p) (i.iIri d) ∧
+       i.iext (i.iIri p) x (i.iLit l))
+
+/-- **bottom-prop** `[ext]`. -/
+def RlNCondBottomProp : Prop :=
+  ∀ (p q : WfIri) (r u v : i.idom),
+    isBottomProperty p = true →
+    (∃ vt : Term, existentialObligation q vt = true) →
+    ¬ (i.iext (i.iIri owlOnProperty) r (i.iIri p) ∧
+       i.iext (i.iIri q) r v ∧ icext i u r)
+
+/-- **cls-svf-bot** `[ext]`. -/
+def RlNCondSvfBot : Prop :=
+  ∀ (r u : i.idom),
+    ¬ (i.iext (i.iIri owlSomeValuesFrom) r (i.iIri owlNothing) ∧
+       icext i u r)
+
+/-- **thing-nothing** `[ext]`. The OWL 2 Direct Semantics domain is
+non-empty, so the class of everything and the class of nothing are
+never equivalent. -/
+def RlNCondThingNothing : Prop :=
+  ¬ i.iext (i.iIri owlEquivalentClass) (i.iIri owlThing) (i.iIri owlNothing) ∧
+  ¬ i.iext (i.iIri owlEquivalentClass) (i.iIri owlNothing) (i.iIri owlThing)
+
 end ClashConditions
 
 /-- **The clash-condition bundle**: one field per `Clash` row. -/
@@ -1547,6 +1588,14 @@ structure RlClashConditions (i : Interp) : Prop where
   eqDiff3 : RlNCondEqDiff3 i
   prpAdp : RlNCondPrpAdp i
   prpFpLit : RlNCondPrpFpLit i
+
+/-- **The extension-clash bundle**: one field per `ExtClash` row. Kept
+apart from `RlClashConditions` — see the note on `RlNCondDtRange`. -/
+structure RlExtClashConditions (i : Interp) : Prop where
+  dtRange : RlNCondDtRange i
+  bottomProp : RlNCondBottomProp i
+  svfBot : RlNCondSvfBot i
+  thingNothing : RlNCondThingNothing i
 
 /-! ## Truth of the collection premises under the conditions -/
 
@@ -2323,5 +2372,39 @@ theorem rl_clash_holds_false {i : Interp} (hcc : RlClashConditions i)
       have u3 := hA _ h2
       simp only [TripleHolds, denotTerm] at u1 u2 u3
       exact hcc.prpFpLit p _ l1 l2 hne ⟨u1, u2, u3⟩
+
+/-- **Extension-clash truth-refutation**: a graph carrying an
+`ExtClash` configuration is false under every assignment in every
+interpretation meeting the three extension conditions. Companion of
+`rl_clash_holds_false`; the two bundles are kept apart because
+`RlExtClashConditions` is not discharged by RL schema satisfaction. -/
+theorem rl_ext_clash_holds_false {i : Interp} (hec : RlExtClashConditions i)
+    {g : Graph} {A : BnodeAssignment i.idom}
+    (hA : HoldsAll i A g) (h : ExtClash g) : False := by
+  cases h with
+  | @dtRange p d x l hrng hedge hdisj =>
+      have t1 := hA _ hrng
+      have t2 := hA _ hedge
+      simp only [TripleHolds, denotTerm, denotSubject] at t1 t2
+      exact hec.dtRange p d _ l hdisj ⟨t1, t2⟩
+  | @bottomProp r u p q v honp hbot hobl hex hmem =>
+      have t1 := hA _ honp
+      have t2 := hA _ hobl
+      have t3 := hA _ hmem
+      simp only [TripleHolds, denotTerm, denot_toTerm] at t1 t2 t3
+      exact hec.bottomProp p q _ _ _ hbot ⟨v, hex⟩ ⟨t1, t2, t3⟩
+  | @svfBot r u hsvf hmem =>
+      have t1 := hA _ hsvf
+      have t2 := hA _ hmem
+      simp only [TripleHolds, denotTerm, denot_toTerm] at t1 t2
+      exact hec.svfBot _ _ ⟨t1, t2⟩
+  | thingNothing h =>
+      rcases h with h | h
+      · have t := hA _ h
+        simp only [TripleHolds, denotTerm, denotSubject] at t
+        exact hec.thingNothing.1 t
+      · have t := hA _ h
+        simp only [TripleHolds, denotTerm, denotSubject] at t
+        exact hec.thingNothing.2 t
 
 end L4Factoidal.OWL.RL

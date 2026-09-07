@@ -83,6 +83,15 @@ F* runner does (`let base = info.iri`).
   without RDF-BASED) drop conclusion triples whose predicate the
   conclusion graph itself declares an `owl:AnnotationProperty` /
   `owl:OntologyProperty` (port of `OWL_DirectMapping_Filter`).
+The clash decision the three judges below consult is
+`OWL.RL.detectClashPlusI` (2026-09-07): the seventeen OWL 2 RL table
+rows OR the three sound extension rows (dt-range, bottom-property,
+cls-svf-bot) that `OWL.Closure.fsti`'s `is_inconsistent` checks (10),
+(11) and (12) already gave the F* RL regime.
+`RLTheorems.detectClashPlus_sound` proves a `true` verdict is a real
+`Clash` or a real `ExtClash`. See
+`docs/designissues/2026-09-07-lean-owl-corpus-gap.md`.
+
 * NegativeEntailmentTest — PASS iff at least one triple of the
   `rdfXmlNonConclusionOntology` is MISSING from the closure. An absence
   verdict on a closure that hit the budget is a FAIL here (F* #326:
@@ -1062,7 +1071,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb 
   match res with
   | .error o => return Verdict.same o m
   | .ok r =>
-    let clash := detectClashI r.index
+    let clash := detectClashPlusI r.index
     -- Where the refuter is on it is consulted here too. A refutation
     -- of a premise the catalog asserts CONSISTENT is a defect in the
     -- refuter, and it has to be visible as a failure — a refuter
@@ -1091,7 +1100,7 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (r
   match res with
   | .error o => return Verdict.same o m
   | .ok r =>
-    let clash := detectClashI r.index
+    let clash := detectClashPlusI r.index
     let refuted := rg.refuter && L4Factoidal.OWL.Refute.refute r.graph rb == some false
     let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0) }
     let closureOutcome : Harness.Outcome :=

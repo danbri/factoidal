@@ -2272,6 +2272,105 @@ theorem detectClash_sound {g : Graph} (h : detectClash g = true) : Clash g := by
   obtain ⟨d, hd, hc⟩ := h
   exact clashFrom_sound hd hc
 
+/-! ## The three sound extension rows
+
+`Clash` is the OWL 2 RL table; `ExtClash` is the three sound extension
+rows (`RLRules`). `detectClashExt` decides them, and
+`detectClashPlus_sound` is the statement the corpus probe relies on:
+one `true` verdict, two possible reasons, both real. -/
+
+/-- **dt-range** `[ext]`. The `xsdValueSpacesDisjoint` side condition is
+carried through unchanged; the constructor takes the decision, as
+`Clash.prpFpLit` does. -/
+theorem dtRangeClashAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : dtRangeClashAt g d = true) : ExtClash g := by
+  unfold dtRangeClashAt at h
+  split at h
+  · rename_i hp
+    rw [beq_iff_eq] at hp
+    simp only [List.any_eq_true] at h
+    obtain ⟨p, hpi, dr, hdi, u, hu, l, hl, hdisj⟩ := h
+    obtain ⟨hug, hup⟩ := mem_withPred hu
+    exact ExtClash.dtRange
+      (mem_of_parts hd (mem_subjIri hpi) hp (mem_asIri hdi))
+      (mem_of_parts hug rfl hup (mem_asLit hl)) hdisj
+  · simp at h
+
+/-- **bottom-prop** `[ext]`. -/
+theorem bottomPropClashAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : bottomPropClashAt g d = true) : ExtClash g := by
+  unfold bottomPropClashAt at h
+  split at h
+  · rename_i hp
+    rw [beq_iff_eq] at hp
+    rw [List.any_eq_true] at h
+    obtain ⟨q, hqi, hq⟩ := h
+    rw [Bool.and_eq_true, Bool.and_eq_true] at hq
+    obtain ⟨⟨hbot, hobl⟩, hmem⟩ := hq
+    rw [List.any_eq_true] at hobl hmem
+    obtain ⟨t, htg, hto⟩ := hobl
+    obtain ⟨m, hmg, hmo⟩ := hmem
+    rw [Bool.and_eq_true, beq_iff_eq] at hto
+    rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hmo
+    exact ExtClash.bottomProp
+      (mem_of_parts hd rfl hp (mem_asIri hqi)) hbot
+      (mem_of_parts htg hto.1 rfl rfl) hto.2
+      (mem_of_parts hmg rfl hmo.1 hmo.2)
+  · simp at h
+
+/-- **cls-svf-bot** `[ext]`. -/
+theorem clsSvfBotAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : clsSvfBotAt g d = true) : ExtClash g := by
+  unfold clsSvfBotAt at h
+  rw [Bool.and_eq_true, Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at h
+  obtain ⟨⟨hp, ho⟩, hmem⟩ := h
+  rw [List.any_eq_true] at hmem
+  obtain ⟨m, hmg, hmo⟩ := hmem
+  rw [Bool.and_eq_true, beq_iff_eq, beq_iff_eq] at hmo
+  exact ExtClash.svfBot (mem_of_parts hd rfl hp ho)
+    (mem_of_parts hmg rfl hmo.1 hmo.2)
+
+/-- **thing-nothing** `[ext]`. -/
+theorem thingNothingClashAt_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : thingNothingClashAt g d = true) : ExtClash g := by
+  unfold thingNothingClashAt at h
+  rw [Bool.and_eq_true, Bool.or_eq_true, Bool.and_eq_true, Bool.and_eq_true,
+    beq_iff_eq, beq_iff_eq, beq_iff_eq, beq_iff_eq, beq_iff_eq] at h
+  obtain ⟨hp, hso⟩ := h
+  rcases hso with ⟨hs, ho⟩ | ⟨hs, ho⟩
+  · exact ExtClash.thingNothing (Or.inl (mem_of_parts hd hs hp ho))
+  · exact ExtClash.thingNothing (Or.inr (mem_of_parts hd hs hp ho))
+
+/-- Every extension-row verdict for one driving triple is a real
+`ExtClash`. -/
+theorem extClashFrom_sound {g : Graph} {d : Triple} (hd : d ∈ g)
+    (h : extClashFrom g d = true) : ExtClash g := by
+  simp only [extClashFrom, List.any_eq_true, extClashRows, List.mem_cons,
+    List.not_mem_nil, or_false] at h
+  obtain ⟨b, hb, hv⟩ := h
+  rcases hb with rfl | rfl | rfl | rfl
+  · exact dtRangeClashAt_sound hd hv
+  · exact bottomPropClashAt_sound hd hv
+  · exact clsSvfBotAt_sound hd hv
+  · exact thingNothingClashAt_sound hd hv
+
+/-- **Extension-clash soundness.** -/
+theorem detectClashExt_sound {g : Graph} (h : detectClashExt g = true) :
+    ExtClash g := by
+  simp only [detectClashExt, List.any_eq_true] at h
+  obtain ⟨d, hd, hc⟩ := h
+  exact extClashFrom_sound hd hc
+
+/-- **The decision the corpus probe consults is sound.** A `true`
+verdict is a real table clash or a real extension clash — never
+nothing. -/
+theorem detectClashPlus_sound {g : Graph} (h : detectClashPlus g = true) :
+    Clash g ∨ ExtClash g := by
+  rw [detectClashPlus, Bool.or_eq_true] at h
+  rcases h with h | h
+  · exact Or.inl (detectClash_sound h)
+  · exact Or.inr (detectClashExt_sound h)
+
 /-! ## Section 10 — collection-walk fuel
 
 The direction the T4 proof needs and the soundness proofs do not: that
