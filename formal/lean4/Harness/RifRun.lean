@@ -403,7 +403,17 @@ def main (args : List String) : IO UInt32 := do
                               IO.println s!"FAIL {kind}/{name}: not entailed, and must be"
                         | .undecided why =>
                             t := { t with undecided := t.undecided + 1 }
-                            if verbose then IO.println s!"UNDECIDED {kind}/{name}: {why}"
+                            -- Name the built-ins the case USES. They
+                            -- are candidates, not the measured cause:
+                            -- the engine threads a Bool, so it cannot
+                            -- say which one blocked.
+                            let used := externalIrisUsed rules goal
+                            let usedStr :=
+                              if used.isEmpty then ""
+                              else if verbose then
+                                " — built-ins used: " ++ String.intercalate ", " used
+                              else s!" — {used.length} built-ins used, --verbose names them"
+                            IO.println s!"UNDECIDED {kind}/{name}: {why}{usedStr}"
   let decided := t.pass + t.fail
   IO.println ""
   IO.println s!"rif-core DECIDED: {t.pass} pass, {t.fail} fail (out of {decided} decided)"
