@@ -548,3 +548,150 @@ patterns, disjoint data properties) and the `WebOnt-description-logic`
 tableau family, two of which (`-909`, `-910`) are not clean F\* passes
 either.
 
+
+## 10. The 92 `--dl` failures by mechanism, 2026-09-07 night
+
+Method: `lake exe l4owl-probe --dl type-inconsistency.rdf
+type-positive-entailment.rdf type-consistency.rdf` from
+`formal/lean4/`, default budgets. Every `FAIL` line carries the FIRST
+conclusion triple the closure did not contain, or the clash-row
+message; the grouping below is by the reasoning step that triple
+needs, read against `OWL/Refute.lean` and
+`OWL/NegationGoals.lean`. The F\* verdict column is the committed log
+`formal/fstar/ocaml-output/owl_type_*_results.log`.
+
+**The 92 units are 52 distinct ids.** A `PositiveEntailmentTest` id
+appears in BOTH `type-positive-entailment.rdf` and
+`type-consistency.rdf`, so each PE id costs 2 units; the 11
+`InconsistencyTest` ids and the 1 `ConsistencyTest` id cost 1 each.
+40 PE ids × 2 + 11 + 1 = 92. Any repair of a PE id is therefore worth
+two units.
+
+### 10.1 Where the refuter is never asked (28 PE ids, 56 units)
+
+`negationGoals` answers `none` for these, so `--dl` falls back to the
+closure verdict and the tableau is not run at all. `none` has two
+causes, and they are different repairs.
+
+**(a) The conclusion's content predicate has no goal builder — 6 ids,
+12 units.** `negateContentTriple` covers class membership,
+`rdfs:subClassOf`, `owl:equivalentClass`, `rdfs:subPropertyOf`,
+`owl:equivalentProperty`, a named-subject `owl:complementOf` /
+`owl:unionOf` / `owl:intersectionOf`, and a plain property assertion.
+Everything else falls through to `none`.
+
+| test id | conclusion predicate | F\* |
+|---|---|---|
+| `WebOnt-AllDifferent-001` | `owl:differentFrom` | PASS |
+| `WebOnt-distinctMembers-001` | `owl:differentFrom` | PASS |
+| `WebOnt-differentFrom-002` | `owl:differentFrom` | PASS |
+| `rdfbased-sem-restrict-maxqcr-inst-obj-one` | `owl:sameAs` | PASS |
+| `WebOnt-I5.21-002` | `owl:disjointWith` | PASS |
+| `WebOnt-I5.24-004` | `rdfs:range` | PASS |
+
+**(b) The conclusion has NO content triple at all — 12 ids, 24 units.**
+`isStructuralTriple` classifies `rdf:type <meta type>` as scaffolding,
+`isMetaTypeIri` lists the property characteristics and `owl:Thing`,
+and `isStructuralPredicate` lists every class-expression builder. A
+conclusion made only of such triples yields `contentTriples = []` and
+`negationGoals = none`.
+
+| test id | conclusion | F\* |
+|---|---|---|
+| `WebOnt-FunctionalProperty-004` | `prop rdf:type owl:FunctionalProperty` | PASS |
+| `WebOnt-InverseFunctionalProperty-004` | `prop rdf:type owl:InverseFunctionalProperty` | PASS |
+| `WebOnt-SymmetricProperty-002` | `p rdf:type owl:SymmetricProperty` | PASS |
+| `WebOnt-I5.8-004` | `john rdf:type owl:Thing` | PASS |
+| `WebOnt-I5.8-010` | `john rdf:type owl:Thing` | PASS |
+| `WebOnt-AnnotationProperty-002` | `_:b1 rdf:type owl:Thing` | PASS |
+| `WebOnt-Class-001` | `rdfs:Class rdf:type owl:Class` | FAIL |
+| `WebOnt-Class-003` | `ex rdf:type rdfs:Class` | FAIL |
+| `WebOnt-I5.5-001` | `rdf:first rdf:type owl:FunctionalProperty` | PASS |
+| `WebOnt-I5.5-002` | `rdf:rest rdf:type owl:FunctionalProperty` | PASS |
+| `WebOnt-imports-010` | `owl:imports rdf:type rdf:Property` | PASS |
+| `WebOnt-Nothing-002` | `_:b0 owl:oneOf rdf:nil` | PASS |
+
+The last six are RDF-Based-semantics claims about the OWL and RDF
+vocabularies themselves, not Direct-Semantics axioms: a Direct
+Semantics reasoner has no `rdf:first` to type. F\* answers them from
+its RDF-vocabulary axiom table, not from its tableau. `WebOnt-Class-001`
+and `-003` neither engine passes.
+
+**(c) The conclusion asserts an ANONYMOUS class expression or list
+cell the premise never writes — 10 ids, 20 units.** Same shape as § 7's
+cluster C3 (comprehension), but in the DL regime; `negationGoals` sees
+only structural triples again.
+
+| test id | first missing triple | F\* |
+|---|---|---|
+| `WebOnt-description-logic-901` | `_:b1 owl:intersectionOf _:b3` | PASS |
+| `WebOnt-description-logic-903` | `_:b1 owl:intersectionOf _:b3` | PASS |
+| `WebOnt-I5.24-002` | `_:b0 owl:intersectionOf _:b1` | PASS |
+| `WebOnt-I5.24-003` | `_:b1 owl:allValuesFrom A` | PASS |
+| `WebOnt-unionOf-003` | `A-and-B owl:unionOf _:b1` | PASS |
+| `WebOnt-unionOf-004` | `A-and-B owl:oneOf _:b1` | PASS |
+| `WebOnt-cardinality-006` | `_:b0 owl:cardinality "1"^^xsd:nonNegativeInteger` | PASS |
+| `WebOnt-extra-credit-003` | `_:b1 rdf:first N` | FAIL |
+| `WebOnt-extra-credit-004` | `_:b1 rdf:first N` | FAIL |
+| `WebOnt-someValuesFrom-003` | no single blank-node mapping serves every conclusion triple | PASS |
+
+### 10.2 Where the refuter is asked and does not close (12 PE ids, 24 units)
+
+`negationGoals` builds goals; `tableauConsistent` answers `some true`
+or `none` on at least one of them. These are the tableau's own
+incompleteness, and each names a rule.
+
+| test id | conclusion | rule it needs | F\* |
+|---|---|---|---|
+| `Consistent-but-all-unsat` | `2a rdfs:subClassOf owl:Nothing` | nominals + counting (`owl:oneOf` size against inverse-functional chains) | PASS |
+| `New-Feature-DisjointUnion-001` | `Stewie rdf:type Boy` | `owl:disjointUnionOf` — no axiom builder reads it | PASS |
+| `WebOnt-unionOf-002` | `John rdf:type B` | union branching over a named class, with the disjunct closed by a nominal | PASS |
+| `WebOnt-oneOf-003` | `myT rdf:type T2` | nominal (`owl:oneOf`) branching | PASS |
+| `WebOnt-oneOf-004` | `i p "4"^^xsd:integer` | nominal branching over a data range | PASS |
+| `WebOnt-complementOf-001` | `B owl:complementOf A` | the coverage half `¬A ⊑ B` — needs a nominal-free universal witness | PASS |
+| `WebOnt-equivalentProperty-004` | `p owl:equivalentProperty q` | role inclusion both ways from `rdfs:subPropertyOf` pairs; the `¬q(a,b)` encoding needs a role successor the search does not build | PASS |
+| `WebOnt-equivalentProperty-005` | as above | as above | PASS |
+| `WebOnt-I5.3-014` | `x rdfs:subClassOf y` | subsumption through an `owl:imports` chain | FAIL |
+| `WebOnt-I5.3-015` | `p rdfs:subPropertyOf q` | as above | FAIL |
+| `WebOnt-I5.8-017` | `xx yy "1"^^xsd:decimal` | datatype VALUE equality on literals (`"1"^^xsd:decimal` vs `"1.0"`) | FAIL |
+| `WebOnt-extra-credit-002` | `N-times-M owl:sameAs "345"^^xsd:int` | arithmetic over datatype values | FAIL |
+
+### 10.3 InconsistencyTest, 11 ids, 11 units
+
+| test id | mechanism | F\* |
+|---|---|---|
+| `Inconsistent Disjoint Dataproperties` | datatype facets: `>= 10` and `<= 10` force one value into two disjoint data properties | PASS |
+| `Inconsistent String Pattern with Disjoint Dataproperties` | datatype facets: `xsd:pattern a(b\|c)` against disjoint data properties | PASS |
+| `Minus Infinity is not in owl:real` | `owl:real` excludes the infinities; negative property assertion excludes 0 | PASS |
+| `one=two` | nominals + inverse-functional counting (the class `a` is `{i,j,k}`, and a 1:1/2:1 chain over it) | PASS |
+| `WebOnt-description-logic-035` | SHIQ ≤-rule over NAMED individuals | PASS |
+| `WebOnt-description-logic-040` | as above, 1537 triples | PASS |
+| `WebOnt-description-logic-108` | as above | PASS |
+| `WebOnt-description-logic-502` | as above, 1114 triples | PASS |
+| `WebOnt-description-logic-504` | as above, 1336 triples | PASS |
+| `WebOnt-description-logic-909` | disputed fixture, <https://github.com/danbri/factoidal/issues/299> | pending |
+| `WebOnt-description-logic-910` | the one F\* `refuter_escapes` case | FAIL |
+
+### 10.4 ConsistencyTest, 1 unit
+
+`type-consistency.rdf` carries one ConsistencyTest failure, unchanged
+from § 9; it is a cap escape, not a wrong verdict.
+
+### 10.5 The mechanism ledger, largest first
+
+| mechanism | PE ids | Inc ids | units | where the repair goes |
+|---|---|---|---|---|
+| missing goal builder (§ 10.1a) | 6 | 0 | 12 | `OWL/NegationGoals.lean` |
+| comprehension in a conclusion (§ 10.1c) | 10 | 0 | 20 | a PE-only materialisation pass |
+| RDF-vocabulary meta claims (§ 10.1b) | 12 | 0 | 24 | an RDF/OWL vocabulary axiom table |
+| nominals + counting | 4 | 2 | 10 | `OWL/Refute.lean` + `OWL/CountingOracle.lean` |
+| SHIQ ≤-rule over named individuals | 0 | 5 | 5 | `OWL/Refute.lean` `isMergeableTerm` |
+| datatype facets and value equality | 2 | 3 | 7 | `OWL/Refute.lean` + `XSD/Datatypes.lean` |
+| role inclusion / imports subsumption | 4 | 0 | 8 | `OWL/Refute.lean` |
+| arithmetic, disputed, cap | 2 | 1 | 6 | not planned |
+
+Two of the eight rows are not Lean gaps against F\*: F\* also fails
+`WebOnt-Class-001`, `-003`, `-extra-credit-002`, `-003`, `-004`,
+`WebOnt-I5.3-014`, `-015`, `WebOnt-I5.8-017` and
+`WebOnt-description-logic-910`, and `-909` is disputed. That is
+9 ids — 17 units — where neither engine answers.
