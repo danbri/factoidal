@@ -124,6 +124,7 @@ SELECT ?c ?def WHERE {
   ];
   const sampleBase = new URL("../assets/store/sample/", location.href).href;
   const r2Base = "https://pub-ce682919a85f481f9864add9d9a66737.r2.dev/skosall/";
+  const demoBase = "https://pub-ce682919a85f481f9864add9d9a66737.r2.dev/demo/acdh-dyas/";
   const liveMode = document.body.dataset.hubMode === "live";
 
   const root = html`<section class="store-http-demo">
@@ -169,7 +170,8 @@ SELECT ?c ?def WHERE {
     </label>
     <div class="actions">
       <button type="button" class="secondary use-sample">Use the bundled sample store</button>
-      <button type="button" class="secondary use-r2">Use the skosdex store in R2</button>
+      <button type="button" class="secondary use-demo">Use a single vocabulary in R2 (DYAS, 40k triples — opens instantly)</button>
+      <button type="button" class="secondary use-r2">Use the full skosdex store in R2 (219M triples — slow to open)</button>
     </div>
     <label>Question
       <select class="shape"></select>
@@ -341,6 +343,12 @@ SELECT ?c ?def WHERE {
   baseInput.addEventListener("change", () => { opened = null; openedBase = null; });
   root.querySelector(".use-sample").addEventListener("click", () => {
     baseInput.value = sampleBase; opened = null; openedBase = null;
+  });
+  root.querySelector(".use-demo").addEventListener("click", () => {
+    baseInput.value = demoBase; opened = null; openedBase = null;
+    status.textContent = liveMode
+      ? "The DYAS Humanities Thesaurus (CC BY 4.0): 39,821 triples in 170 artifacts, a 19 KB manifest. This is the whole store-over-HTTP path against a real vocabulary in R2, at interactive size."
+      : "This strict page cannot fetch a cross-origin URL. Open the live twin of this page to reach R2.";
   });
   root.querySelector(".use-r2").addEventListener("click", () => {
     baseInput.value = r2Base; opened = null; openedBase = null;
