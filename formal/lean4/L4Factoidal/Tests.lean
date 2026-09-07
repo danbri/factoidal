@@ -9,6 +9,8 @@ cases the F* source treats specially.
 -/
 import L4Factoidal.SPARQL.Invariants
 import L4Factoidal.OWL.RLClosureIndexed
+import L4Factoidal.OWL.RLTheorems
+import L4Factoidal.OWL.RLSemantics
 import L4Factoidal.RDFS.FullClosureTheorems
 
 namespace L4Factoidal.Tests
@@ -172,6 +174,10 @@ output for each is at most Lean's own `propext` / `Quot.sound` /
 #print axioms L4Factoidal.RDF.Literal.termEq_iff_eq
 #print axioms L4Factoidal.OWL.RL.indexedClosure_eq
 #print axioms L4Factoidal.OWL.RL.detectClashI_closureI
+#print axioms L4Factoidal.OWL.RL.detectClashPlus_sound
+#print axioms L4Factoidal.OWL.RL.detectClashExt_sound
+#print axioms L4Factoidal.OWL.RL.rl_ext_clash_holds_false
+#print axioms L4Factoidal.OWL.RL.detectClashPlusI_eq
 #print axioms L4Factoidal.RDFS.fullComplete_of_saturated
 #print axioms L4Factoidal.RDFS.fullClosure_complete_of_saturated
 #print axioms L4Factoidal.RDFS.fullClosure_mono_of_saturated
