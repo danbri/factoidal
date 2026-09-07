@@ -285,6 +285,30 @@ needs a `test:semantics` mode threaded through the closure. That is a
 different size of job and was not safe to start inside the remaining
 window.
 
+**Two of the 18 are already decided by machinery this tree has.**
+`l4owl-probe --rl-refute` on the three profile catalogs:
+
+```
+                    closure alone      closure or refutation
+profile-RL.rdf      121 pass,  5 fail  121 pass,  5 fail (of 126)
+profile-EL.rdf      111 pass,  9 fail  113 pass,  7 fail (of 121, 1 skip)
+profile-QL.rdf       83 pass,  4 fail   83 pass,  4 fail (of  87)
+TOTAL               315 pass, 18 fail  317 pass, 16 fail (of 334)
+```
+
+The two the refuter decides are `bnode2somevaluesfrom`
+(PositiveEntailmentTest) and `New-Feature-Keys-002`
+(InconsistencyTest), both printed `DECIDED-BY-REFUTER`, so each is a
+real refutation and not a pass by absence. They are NOT counted as
+closed above, and the probe default is not being changed to pick them
+up: the F\* RL regime never consults `dl_refutes` either
+(`owl_runner.ml` line 1032, `Regime_RL -> false`), so scoring the Lean
+profile catalogs with the refuter on would compare two different
+procedures. The decision to keep the two score lines apart is
+`docs/designissues/2026-09-04-owl-rl-resplit.md`. What this measurement
+says is that the remaining profile gap is 16 units of missing rules
+plus 2 units of regime choice, not 18 units of missing rules.
+
 **The `type-inconsistency` gap that survives `--dl`.** Eleven ids, all
 `no clash row fired`, against F\*'s 126 pass, 1 fail:
 `Inconsistent Disjoint Dataproperties`,
