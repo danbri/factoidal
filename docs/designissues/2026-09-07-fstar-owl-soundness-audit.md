@@ -413,6 +413,15 @@ rather than from an argument.
   the `.fst` and correctly did not commit the `.ml`. Re-extract any
   module whose `.fst` moved since the last full extraction.
 * **Do not score under load.** Section 6's caveat.
+* **The rebuilt binaries were NOT committed.** Scoring here used a
+  `bin/darwin-arm64/owl_runner` built from a TARGETED extraction of the
+  three changed modules on top of the committed `.ml` files, not from a
+  full `extract` (`RDF.Store.Columnar.DeltaLog.fst` does not verify on
+  darwin-arm64, so a full extract is not available on this host). Per
+  anti-pattern 33 a binary from a partial extraction must not be
+  committed, so `formal/fstar/ocaml-output/` and `bin/` were restored to
+  their committed state at the end. The committed binaries still carry
+  the pre-fix closure; rebuild on a host where a full extract runs.
 * **A test binary chosen by `-x` is not a runnable binary.**
   `formal/fstar/ocaml-output/factoidal` is a committed symlink into one
   platform's `bin/` directory, so `-x` passes everywhere and the binary
