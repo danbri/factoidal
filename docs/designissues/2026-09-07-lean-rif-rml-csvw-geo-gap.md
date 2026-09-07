@@ -380,3 +380,77 @@ larger consumer, and a session that measures only `.lake` concludes it
 has room when it does not. Check `df` itself, and when it is low,
 `du -sh /private/tmp/claude-*/*` before assuming the worktrees are at
 fault.
+
+## CSVW validation: the 16 undecided tests, one row each
+
+Date: 2026-09-07, branch `wt/finish-csvw`. Measured in this worktree:
+`lake -d formal/lean4 exe l4csvw-validate` is **266 pass, 14 fail, 2
+skip (out of 282)** — positive 76 pass of 76, warning 59 pass, 1 fail,
+1 skip of 61, negative 131 pass, 13 fail, 1 skip of 145. The F\* tree
+is 281 pass, 1 fail of 282. `l4csvw-rdf` and `l4csvw-json` are 270
+pass of 270 each, with 0 over-strict cross-check reports.
+
+This table is written BEFORE the engine changes, so a later commit can
+say which rows it turned green and be checked against the row it
+claimed.
+
+Spec references: **DM** = Model for Tabular Data
+(https://www.w3.org/TR/tabular-data-model/), **MV** = Metadata
+Vocabulary (https://www.w3.org/TR/tabular-metadata/).
+
+### Cluster A — raw-JSON structural rules (5 tests)
+
+| id | kind | what the test expects | what Lean does | the spec sentence |
+| --- | --- | --- | --- | --- |
+| `test094` | warning | `"tables": [{…}, 1]`. The non-object array item is IGNORED with a warning; the group still holds one valid table, so the document CONFORMS | `checkTableGroup` raises `err "tables must hold table objects"` — the document is rejected | MV §5: "Any items within an array that are not valid objects of the type expected are ignored." |
+| `test100` | negative | `"columns"` is a single object, not an array. Proceed as if an EMPTY array had been supplied — a schema of 0 columns against a 5-column CSV, which a validator MUST reject | `checkSchema` reads `columns` with `\| _ => []`, so a non-array is silently the empty column list and NO finding is raised | MV §5.2: "If the supplied value of an array property is not an array … compliant applications MUST issue a warning and proceed as if the property had been supplied with an empty array." |
+| `test107` | negative | `"tableSchema": 1`. Proceed as if an empty object had been supplied; a validator MUST then reject | `checkTable` calls `checkSchema` on the integer; every `field?` lookup inside returns `none`, so no finding is raised | MV §5.2: "If the supplied value of an object property is not a string or object … compliant applications MUST issue a warning and proceed as if the property had been specified as an object with no properties." |
+| `test109` | negative | column 1 has `"titles": {"a-bad-language": "GID"}`. `a-bad-language` is not a well-formed BCP 47 tag, so the title is unusable and a validator MUST raise an error | `checkTitles` emits `warn`, not `err`, on an invalid language key — a warning does not fail a document | MV §5.1.3: natural-language property objects have "properties … [that] MUST be language codes as defined by [BCP47]". |
+| `test111` | negative | column 1 has `"titles": 1`. A titles value that is not a string, array or object is a validation error | `checkTitles` matches only `.object`; every other JSON type falls through to `[]` | MV §5.1.3 / §5.2: "If the supplied value of a natural language property is not a string, array or object … compliant applications MUST issue a warning and proceed as if the property had been specified as an empty array." |
+
+### Cluster B — table-description compatibility (4 tests)
+
+DM §5.4.3 (Table Description Compatibility) and the §6 validator
+duty: "if `TM` is not compatible with `EM` validators MUST raise an
+error, other processors MUST generate a warning and continue
+processing". Lean's `checkDataTable` implements only the WIDTH half of
+§5.4.3 (`declaredNonVirt.length != actualWidth`); the per-column
+title/name half is absent, and `Validate.lean`'s own section comment
+says so ("NOT covered yet … title/header-language compatibility").
+
+| id | kind | what the test expects | what Lean does | the spec sentence |
+| --- | --- | --- | --- | --- |
+| `test124` | negative | metadata columns carry `name` (`GID1`, `on_street1`, …) and NO titles; `tree-ops.csv` carries titles and no names. A validator MUST reject | no per-column check runs; the widths match (5 = 5), so the document conforms | DM §5.4.3: a column description with a name but no titles is compatible only if that name is the one the CSV's own title encodes to. |
+| `test127` | negative | metadata titles `Surname`, `Family Name` against CSV header `Surname`, `FamilyName`. Column 2 has an empty title intersection | as above — widths match, so it conforms | DM §5.4.3: "there is a non-empty case-sensitive intersection between the titles values". |
+| `test147` | negative | metadata titles are lower-cased (`gid`, `on street`, …) against `GID`, `On Street`. The intersection is empty because the match is CASE-SENSITIVE | as above | DM §5.4.3, same sentence — "case-sensitive". |
+| `test148` | negative | table `"lang": "de"`; column 2 has `"titles": {"en": "On Street"}`. The header cell carries the table's `de`, and `en` does not match `de` | as above | DM §5.4.3: "matches MUST have a matching language; `und` matches any language, and languages match if they are equal when truncated, as defined in [BCP47], to the length of the shortest language tag." |
+
+### Cluster C — foreign-key referential integrity (4 tests)
+
+DM §6.4.9: "Validators MUST raise errors for each row that does not
+have a referenced row for each of the foreign keys on the table in
+which the row appears." Lean has `checkForeignKeyTarget`, which checks
+only that the reference NAMES an existing table and column. Nothing
+compares the values.
+
+| id | kind | what the test expects | what Lean does | the spec sentence |
+| --- | --- | --- | --- | --- |
+| `test257` | negative | a foreign-key value in `test257.csv` has NO referenced row in the target table | the reference resolves, so the document conforms; no value is compared | DM §6.4.9, quoted above. |
+| `test258` | negative | a foreign-key value matches MORE THAN ONE row in the target table | as above | DM §6.4.9: the referenced row must be unique — "a referenced row", singular. |
+| `test034` | negative | the Public Sector Roles example; `organizations.csv` "intentionally contains an invalid reference". The foreign keys live in EXTERNAL schema files reached by `schemaReference` | as above, and additionally the `foreignKeys` are in `gov.uk/schema/*.json`, which the raw-JSON walk never sees because `tableSchema` is a URL string | DM §6.4.9 plus MV §5.5: a `schemaReference` names the schema whose table the key points into. |
+| `test035` | negative | the same document in minimal mode | as above | as above. |
+
+### Cluster D — the datatype string, and the two skips (3 tests)
+
+| id | kind | what the test expects | what Lean does | the spec sentence |
+| --- | --- | --- | --- | --- |
+| `test308` | negative | `"datatype": "http://example.org/bad/datatype"` — a datatype STRING that is not a built-in name is an error | `checkDatatype` warns and never rejects, deliberately: `test238` is a WarningValidationTest whose datatype string is `http://example.org/datatype`, an equally non-built-in absolute URL that MUST conform | MV §5.11.1 vs the `test238` entry's own comment ("MUST be one of the built-in datatypes … **or an absolute URL**"). The two entries state the rule differently and their values differ only in the URL path, so no value-agnostic rule separates them. F\* fails this test for the same reason (`.github/test-suites/csvw-validation.yaml`). Expected to REMAIN failing. |
+| `test092` | negative (SKIP) | `test092-metadata.json` is on disk and is deliberately MALFORMED JSON. "All compliant applications MUST generate errors and stop processing if a metadata document does not use valid JSON syntax" — so the document does not conform and the negative test passes | `CsvwValidateRun.runOne`'s `readMeta` returns `none` for BOTH "file absent" and "file did not parse"; the caller reads `none` as `metaMissing` and reports SKIP. A harness defect, not an engine gap | MV §6.1 / the entry's own comment, quoted. |
+| `test119` | warning (SKIP) | `test119/csv-metadata.json` does not reference `test119/action.csv`, so it MUST be ignored and the bare CSV conforms | the fallback branch builds the CSV path as `suiteRelative requested e.action`, resolving `test119/action.csv` against a base that ALREADY ends in it — producing `test119/test119/action.csv`, which is not on disk, so the entry is skipped. A harness path defect | DM §5.2: "If the metadata file found at this location does not explicitly include a reference to the requested tabular data file then it MUST be ignored." |
+
+### Target
+
+282 pass, 0 fail, 0 skip is not reachable while `test308` stands: it
+is a corpus contradiction with `test238`, evidenced above and recorded
+independently on the F\* side. The target is therefore **281 pass, 1
+fail (`test308`), 0 skip** — parity with F\*.
