@@ -103,6 +103,63 @@ private def matchTms (s : Subst) : List Tm → List GTerm → Option Subst × Bo
        | (some s1, b) => let (r, b2) := matchTms s1 ps ts; (r, b || b2))
   | _, _ => (none, false)
 
+/-! ## Equality in a rule body is equality of VALUES
+
+RIF-BLD §3.5 reads `=` as equality in the domain of interpretation,
+and RIF-DTB §2.4 gives the numeric datatypes one value space ordered
+by `xs:decimal` containment. `2 = External(func:numeric-divide(6 3))`
+is therefore true although the two sides carry different datatype
+IRIs, and comparing the constants structurally made
+`Builtins_Numeric` derive nothing.
+
+The lexical-form-plus-family arm covers the string family, where
+`xs:language`'s value space is contained in `xs:string`'s. -/
+def gEqValue (a b : GTerm) : Bool :=
+  if a == b then true
+  else match numericLex a, numericLex b with
+    | some x, some y => L4Factoidal.CSVW.decimalCompare x y == some .eq
+    | _, _ =>
+      match a, b with
+      | .const l1 s1, .const l2 s2 =>
+          l1 == l2 &&
+          (match xsdLocal s1, xsdLocal s2 with
+           | some c1, some c2 => xsdFamily c1 == xsdFamily c2
+           | _, _             => false)
+      | _, _ => false
+
+/-! ## `pred:iri-string` BINDS, it does not only test
+
+RIF-DTB §4.3 relates an IRI to the string of its characters, and
+RIF Core's safeness rules give it a binding pattern in both
+directions: with one side bound the other is determined.
+`RIF/Engine.lean`'s `bindingBuiltins` already said so for the SAFENESS
+check, but `matchAtom` only ever TESTED, so
+`External(pred:iri-string(?z ?x))` with `?x` bound left `?z` unbound
+and reported the built-in as blocked. -/
+def iriStringBind (s : Subst) (args : List Tm) : Option (List Subst × Bool) :=
+  match args with
+  | [.var v, other] =>
+      if (lookupVar s v).isSome then none
+      else (match groundTm s other with
+            | (some (.const lex sp), b) =>
+                if sp == xsdNs ++ "string" then
+                  some (match extend s v (gIri lex) with
+                        | some s' => ([s'], b)
+                        | none    => ([], b))
+                else some ([], true)
+            | (_, _) => none)
+  | [other, .var v] =>
+      if (lookupVar s v).isSome then none
+      else (match groundTm s other with
+            | (some (.const lex sp), b) =>
+                if sp == iriSpace then
+                  some (match extend s v (gStr lex) with
+                        | some s' => ([s'], b)
+                        | none    => ([], b))
+                else some ([], true)
+            | (_, _) => none)
+  | _ => none
+
 /-- Every substitution extending `s` under which the atom holds. -/
 def matchAtom (facts : Facts) (s : Subst) (a : Atom) : List Subst × Bool :=
   match a with
@@ -110,6 +167,9 @@ def matchAtom (facts : Facts) (s : Subst) (a : Atom) : List Subst × Bool :=
       (match builtinName fn with
        | none => ([], true)
        | some nm =>
+           match (if nm == "iri-string" then iriStringBind s args else none) with
+           | some r => r
+           | none =>
            let rs := args.map (groundTm s)
            let blocked := rs.any (·.2)
            (match rs.foldr (fun r acc => match r.1, acc with
@@ -120,10 +180,36 @@ def matchAtom (facts : Facts) (s : Subst) (a : Atom) : List Subst × Bool :=
                           | .yes     => ([s], blocked)
                           | .no      => ([], blocked)
                           | .unknown => ([], true))))
+  -- An `Equal` whose left or right side is an UNBOUND variable is a
+  -- BIND, not a test: `?N = External(func:numeric-add(?N1 1))` is how
+  -- `Factorial_Forward_Chaining` carries a computed value into the
+  -- head. With both sides ground it is a value comparison.
   | .equal x y =>
-      (match groundTm s x, groundTm s y with
-       | (some a', b1), (some b', b2) => (if a' == b' then [s] else [], b1 || b2)
-       | (_, b1), (_, b2) => ([], b1 || b2))
+      (match x, y with
+       | .var v, _ =>
+           if (lookupVar s v).isSome then
+             (match groundTm s x, groundTm s y with
+              | (some a', b1), (some b', b2) => (if gEqValue a' b' then [s] else [], b1 || b2)
+              | (_, b1), (_, b2) => ([], b1 || b2))
+           else (match groundTm s y with
+                 | (some g, b) => (match extend s v g with
+                                   | some s' => ([s'], b)
+                                   | none    => ([], b))
+                 | (none, b)   => ([], b))
+       | _, .var v =>
+           if (lookupVar s v).isSome then
+             (match groundTm s x, groundTm s y with
+              | (some a', b1), (some b', b2) => (if gEqValue a' b' then [s] else [], b1 || b2)
+              | (_, b1), (_, b2) => ([], b1 || b2))
+           else (match groundTm s x with
+                 | (some g, b) => (match extend s v g with
+                                   | some s' => ([s'], b)
+                                   | none    => ([], b))
+                 | (none, b)   => ([], b))
+       | _, _ =>
+           (match groundTm s x, groundTm s y with
+            | (some a', b1), (some b', b2) => (if gEqValue a' b' then [s] else [], b1 || b2)
+            | (_, b1), (_, b2) => ([], b1 || b2)))
   | .pos fn sp args =>
       facts.foldl (fun (acc, blk) f => match f with
         | .pos fn2 sp2 args2 =>
@@ -155,12 +241,89 @@ def matchAtom (facts : Facts) (s : Subst) (a : Atom) : List Subst × Bool :=
              | (none, b)    => (acc, blk || b))
         | _ => (acc, blk)) ([], false)
 
+/-! ## A conjunction is a SET of conjuncts, not a sequence
+
+RIF-BLD §3.2 gives `And` no order, so a built-in call or an `Equal`
+may be written before the atom that binds its variables --
+`Factorial_Forward_Chaining` opens its body with
+`External(pred:numeric-greater-than-or-equal(?N1 0))` and binds `?N1`
+two conjuncts later. Folding the conjuncts strictly left to right
+called the built-in on an unground argument, got `unknown` back, and
+reported the whole case UNDECIDED.
+
+The repair evaluates the ordinary atoms first and then applies the
+conditions in whatever order becomes EVALUABLE, to a fixed point. A
+condition that never becomes evaluable still reports blocked, which is
+the same conservative answer as before for a genuinely missing
+built-in. -/
+
+/-- Is a term ground under `s`? Used only to decide whether a
+    condition can run yet, never to compute a value. -/
+def tmGround (s : Subst) (t : Tm) : Bool := (groundTm s t).1.isSome
+
+/-- Can this condition run under `s`? A built-in needs every argument
+    ground, unless it is `pred:iri-string` with exactly one side an
+    unbound variable. An `Equal` needs both sides ground, or one side
+    ground with the other an unbound variable, which is the BIND. -/
+def condEvaluable (s : Subst) : Atom → Bool
+  | .externalPred fn args =>
+      (match builtinName fn, args with
+       | some "iri-string", [.var v, other] =>
+           (lookupVar s v).isNone && tmGround s other || args.all (tmGround s)
+       | some "iri-string", [other, .var v] =>
+           (lookupVar s v).isNone && tmGround s other || args.all (tmGround s)
+       | _, _ => args.all (tmGround s))
+  | .equal x y =>
+      (match x, y with
+       | .var v, _ => ((lookupVar s v).isNone && tmGround s y) || (tmGround s x && tmGround s y)
+       | _, .var v => ((lookupVar s v).isNone && tmGround s x) || (tmGround s x && tmGround s y)
+       | _, _      => tmGround s x && tmGround s y)
+  | _ => true
+
+/-- The first evaluable condition and the rest, order otherwise kept. -/
+def splitEvaluable (s : Subst) : List Atom → Option (Atom × List Atom)
+  | []      => none
+  | a :: rest =>
+      if condEvaluable s a then some (a, rest)
+      else (splitEvaluable s rest).map (fun (b, r) => (b, a :: r))
+
+/-- Apply the pending conditions to a fixed point. Fuel is the pending
+    count, since each step removes one. -/
+def runConds (facts : Facts) : Nat → Subst → List Atom → List Subst × Bool
+  | _,        s, []      => ([s], false)
+  | 0,        _, _ :: _  => ([], true)
+  | fuel + 1, s, pending =>
+      match splitEvaluable s pending with
+      | none          => ([], true)
+      | some (a, rest) =>
+          let (ss, b) := matchAtom facts s a
+          let rs := ss.map (fun s' => runConds facts fuel s' rest)
+          (rs.flatMap (·.1), b || rs.any (·.2))
+
+def isCondAtom : Formula → Bool
+  | .atom (.externalPred _ _) => true
+  | .atom (.equal _ _)        => true
+  | _                         => false
+
 def matchFormula (facts : Facts) (s : Subst) : Formula → List Subst × Bool
   | .atom a => matchAtom facts s a
   | .and fs =>
-      fs.foldl (fun (acc, blk) f =>
-        let rs := acc.map (fun s' => matchFormula facts s' f)
-        (rs.flatMap (·.1), blk || rs.any (·.2))) ([s], false)
+      let conds : List Atom := fs.filterMap (fun f =>
+        match f with
+        | .atom (.externalPred fn args) => some (.externalPred fn args)
+        | .atom (.equal x y)            => some (.equal x y)
+        | _                             => none)
+      -- The generator pass folds over `fs` ITSELF, skipping the
+      -- conditions in place rather than filtering them out first: the
+      -- recursive call must sit under a fold on the constructor's own
+      -- argument for Lean to see it decrease.
+      let (ss, blk) := fs.foldl (fun (acc, b) f =>
+        if isCondAtom f then (acc, b)
+        else
+          let rs := acc.map (fun s' => matchFormula facts s' f)
+          (rs.flatMap (·.1), b || rs.any (·.2))) ([s], false)
+      let rs := ss.map (fun s' => runConds facts conds.length s' conds)
+      (rs.flatMap (·.1), blk || rs.any (·.2))
   | .or fs =>
       let rs := fs.map (fun f => matchFormula facts s f)
       (rs.flatMap (·.1), rs.any (·.2))
