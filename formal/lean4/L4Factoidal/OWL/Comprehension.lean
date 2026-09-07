@@ -53,6 +53,7 @@ follows.
 | `svf-thing-mat` | any data edge `x P y` | the restriction `SomeValuesFrom(P, owl:Thing)` and `x`'s membership in it | 8.4 |
 | `svf-thing-wit` | `x rdf:type ?r`, `?r owl:someValuesFrom owl:Thing`, `?r owl:onProperty P` | a successor edge `x P _:w` | — |
 | `hasself-synth` | a self-loop `x P x` | the restriction `HasSelf(P)` and `x`'s membership in it | 8.4 |
+| `prp-key-thing` | `owl:Thing owl:hasKey (P…)` | `owl:sameAs` between two named individuals agreeing on every key property | — |
 
 `svf-thing-wit` needs no comprehension condition: `owl:someValuesFrom
 owl:Thing` membership IS the assertion that a successor exists
@@ -355,6 +356,49 @@ def pdwDiffFor (g : Graph) (d : Triple) : List Triple :=
              | os :: _ => some (⟨os, owlDifferentFrom, t.o⟩ : Triple)
              | [] => none)))
 
+/-! ## Row 3b — `prp-key-thing`, a key on `owl:Thing`
+
+The OWL 2 RL row `prp-key` needs `T(?x, rdf:type, ?c)` for the key's
+class `?c`. When `?c` is `owl:Thing` no RL row supplies that premise:
+`cls-thing` types `owl:Thing` an `owl:Class` and stops there, and
+nothing types an individual into `owl:Thing`. So a key declared on
+`owl:Thing` — which is how `HasKey(owl:Thing () (:hasSSN))` maps to RDF
+— never fires, and the RL profile is incomplete on it.
+
+`owl:Thing` is the universal class: RDF-Based Semantics § 5.2 sets
+`ICEXT(I(owl:Thing)) = IOT`, the set of all individuals, and Direct
+Semantics § 2.2 gives `(owl:Thing)^C = Δ_I`. So the missing premise
+holds of every individual, and the row's class-membership condition is
+discharged by the semantics rather than by a triple. This row is
+`prp-key` with that condition read off the semantics instead of looked
+up.
+
+`HasKey` applies to NAMED individuals (Structural Specification § 9.5:
+the key semantics quantifies over individuals denoted by IRIs), so the
+row ranges over IRI subjects only, which is also what keeps it
+quadratic in named individuals rather than in all resources.
+
+Targets `New-Feature-Keys-001`. Its sibling `New-Feature-Keys-002` adds
+`Peter owl:differentFrom Peter_Griffin` to the same premise and is an
+InconsistencyTest; this layer is PositiveEntailmentTest-only, so
+Keys-002 needs a CLASH row and is not closed here. -/
+
+def iriSubjects (g : Graph) : List WfIri :=
+  dedupIris ((subjectsOf g).flatMap subjIri)
+
+def prpKeyThingFor (g : Graph) (d : Triple) : List Triple :=
+  if d.p == owlHasKey && d.s == Subject.iri owlThing then
+    (listSeqs g d.o (listFuel g)).flatMap (fun terms =>
+      (nonEmpty (allIris terms)).flatMap (fun preds =>
+        let inds := iriSubjects g
+        inds.flatMap (fun x =>
+          inds.flatMap (fun y =>
+            if x == y then []
+            else if sharesKeyValuesB g (Subject.iri x) (Subject.iri y) preds
+                 then [(⟨Subject.iri x, owlSameAs, Term.iri y⟩ : Triple)]
+                 else []))))
+  else []
+
 /-! ## Rows 4 and 5 — `owl:someValuesFrom owl:Thing` (§ 8.4)
 
 `owl:Thing` is the universal class, so `x P y` for ANY `y` puts `x` in
@@ -437,7 +481,7 @@ blank node and read `base` only; they run before stage 4 because the
 `owl:AllDifferent` row consumes the `owl:differentFrom` facts they
 produce. -/
 def stage3For (base : Graph) (d : Triple) : List Triple :=
-  pdwDiffFor base d
+  pdwDiffFor base d ++ prpKeyThingFor base d
 
 /-- Stage 4: the three comprehension rows. `compUni1For` and
 `compTrpChainFor` read the driving triple alone; `compAdfCliqueFor`

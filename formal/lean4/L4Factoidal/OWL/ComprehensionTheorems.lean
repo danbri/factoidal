@@ -113,6 +113,16 @@ inductive CompStar (base : Graph) : Triple → Prop where
       (h2 : CompStar base ⟨x, p2, o2⟩)
       (ho1 : o1 = o1s.toTerm)
       (hne : o1 ≠ o2) : CompStar base ⟨o1s, owlDifferentFrom, o2⟩
+  /-- **prp-key-thing** — the OWL 2 RL `prp-key` row with its
+  class-membership premise discharged from `ICEXT(I(owl:Thing))` being
+  the set of all individuals (RDF-Based Semantics § 5.2) rather than
+  looked up. `sharesKeyValues` is the DECISION, as in `prp-key` itself. -/
+  | prpKeyThing {g : Graph} {x y : WfIri} {preds : List WfIri} {lst : Term}
+      (hg : ∀ u ∈ g, CompStar base u)
+      (hkey : CompStar base ⟨Subject.iri owlThing, owlHasKey, lst⟩)
+      (hshare : sharesKeyValuesB g (Subject.iri x) (Subject.iri y) preds = true)
+      (hne : x ≠ y) :
+      CompStar base ⟨Subject.iri x, owlSameAs, Term.iri y⟩
   /-- **svf-thing-mat** — `owl:Thing` is the universal class, so any
   `P`-edge puts its subject in `SomeValuesFrom(P, owl:Thing)`, which
   § 8.4 provides. -/
@@ -332,12 +342,39 @@ theorem layerStage2_sound (base : Graph) :
   intro d hd t ht
   exact svfThingWitFor_sound h1 (h1 d hd) ht
 
+theorem prpKeyThingFor_sound {base g : Graph} {d t : Triple}
+    (hg : ∀ u ∈ g, CompStar base u) (hd : CompStar base d)
+    (ht : t ∈ prpKeyThingFor g d) : CompStar base t := by
+  simp only [prpKeyThingFor] at ht
+  split at ht
+  case isFalse => simp at ht
+  case isTrue hcond =>
+    simp only [Bool.and_eq_true, beq_iff_eq] at hcond
+    simp only [List.mem_flatMap] at ht
+    obtain ⟨_, _, preds, _, x, _, y, _, ht⟩ := ht
+    split at ht
+    case isTrue => simp at ht
+    case isFalse hxy =>
+      split at ht
+      case isFalse => simp at ht
+      case isTrue hsh =>
+        simp only [List.mem_singleton] at ht
+        subst ht
+        refine CompStar.prpKeyThing (preds := preds) (lst := d.o) hg ?_ hsh
+          (by simp only [beq_iff_eq] at hxy; exact hxy)
+        have : (⟨Subject.iri owlThing, owlHasKey, d.o⟩ : Triple) = d := by
+          cases d; simp_all
+        rw [this]; exact hd
+
 theorem layerStage3_sound (base : Graph) :
     ∀ t ∈ layerStage3 base, CompStar base t := by
   have hbase : ∀ u ∈ base, CompStar base u := fun _ h => CompStar.base h
   refine foldl_addAll_sound _ base _ (layerStage2_sound base) ?_
   intro d hd t ht
-  exact pdwDiffFor_sound hbase (hbase d hd) ht
+  simp only [stage3For] at ht
+  rcases List.mem_append.mp ht with ht | ht
+  · exact pdwDiffFor_sound hbase (hbase d hd) ht
+  · exact prpKeyThingFor_sound hbase (hbase d hd) ht
 
 /-- **The layer emits nothing outside the relation.** This is what the
 probe's PositiveEntailmentTest pass rests on: a conclusion matched
