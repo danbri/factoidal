@@ -2270,6 +2270,43 @@ def normalizeLineEndings : List Char → List Char
   | c :: rest => c :: normalizeLineEndings rest
   | [] => []
 
+/-- The COMPILED form of `normalizeLineEndings`: one accumulator, so the
+pre-pass costs no C stack.
+
+This pre-pass runs over the WHOLE document before any parsing, so its
+depth is the document's character count.  In the shipped wasm module
+that put the RDF/XML parser's ceiling at about 7,000 characters of
+input, whatever the input contained -- not at 2,000 entity references,
+which is how <https://github.com/danbri/factoidal/issues/673> reads the
+symptom.  A document of 500 plain sibling elements and a document of
+12,000 characters of ordinary text both die here, and neither has an
+entity in it.
+
+`normalizeLineEndings` stays the specification; `@[csimp]` below is what
+the code generator uses. -/
+def normalizeLineEndingsTR : List Char → List Char → List Char
+  | '\r' :: '\n' :: rest, acc => normalizeLineEndingsTR rest ('\n' :: acc)
+  | '\r' :: rest, acc => normalizeLineEndingsTR rest ('\n' :: acc)
+  | c :: rest, acc => normalizeLineEndingsTR rest (c :: acc)
+  | [], acc => acc.reverse
+
+theorem normalizeLineEndingsTR_eq (cs : List Char) : ∀ (acc : List Char),
+    normalizeLineEndingsTR cs acc = acc.reverse ++ normalizeLineEndings cs := by
+  fun_induction normalizeLineEndings cs with
+  | case1 rest ih => intro acc; simp [normalizeLineEndingsTR, ih]
+  | case2 rest h ih => intro acc; simp [normalizeLineEndingsTR, ih]
+  | case3 c rest h1 h2 ih => intro acc; simp [normalizeLineEndingsTR, ih]
+  | case4 => intro acc; simp [normalizeLineEndingsTR]
+
+def normalizeLineEndingsImpl (cs : List Char) : List Char :=
+  normalizeLineEndingsTR cs []
+
+@[csimp] theorem normalizeLineEndings_eq_normalizeLineEndingsImpl :
+    @normalizeLineEndings = @normalizeLineEndingsImpl := by
+  funext cs
+  show _ = normalizeLineEndingsTR cs []
+  simp [normalizeLineEndingsTR_eq]
+
 /-- §4.3.3 / Appendix F: a UTF-8 entity may begin with a byte-order
 mark, which is not part of the document's markup or character data and
 is consumed before parsing begins — at position 0 ONLY. The same
