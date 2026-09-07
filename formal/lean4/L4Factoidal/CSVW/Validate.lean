@@ -565,12 +565,12 @@ different rules — plus a `format`-as-regex check for the string-like
 bases that `formatConvert`'s `.noFormat` branch does not itself parse
 (tabular-metadata §5.11.3, test154).
 
-NOT covered yet: multi-table foreign-key referential integrity
-(cross-table, `formal/fstar/CSVW.Validate.fst`'s `cv_check_table_fks`)
-and title/header-language compatibility (`cv_title_compat`) — both
-read the raw metadata JSON's `foreignKeys` / column `titles` in ways
-this port's decoded `TableSchema` does not yet carry. Left for a
-follow-up once the failing-test list says they cost real tests. -/
+Also covered, since 2026-09-07: DM §5.4.3 per-column table-description
+compatibility (`titleCompat`) and DM §6.6 cross-table foreign-key
+referential integrity (`checkForeignKeys`). The decoded `TableSchema`
+now carries `foreignKeys`, so a schema fetched through a
+`tableSchema` URL brings its keys with it and no raw-JSON second pass
+is needed. -/
 
 /-- Bases whose `format` facet is a REGULAR EXPRESSION the raw value
     must match (tabular-metadata §5.11.3), for the bases
@@ -777,6 +777,24 @@ def titleCompat (dl : String) (colsMeta : List Column) (header : List String)
             else [err ("column name incompatible with CSV header: " ++ ht0)]
         | none => [])
 
+/-- One table's non-virtual columns as (name, inherited properties,
+    the column's cells in row order). Shared by the per-table data
+    checks and by the foreign-key check, so both sides of a key are
+    built the same way and a value is never compared against a
+    differently-derived one. -/
+def tableColumnData (g : TableGroup) (t : TableDesc) (tbl : Table)
+    : List (String × Inherited × List String) :=
+  let fieldCount := match tbl.header.head? with
+    | some h => h.cells.length
+    | none   => match tbl.rows.head? with
+      | some r => r.cells.length
+      | none   => 0
+  let headers := (tbl.header.head?).map (·.cells) |>.getD []
+  let cols := nonVirtualColumns t.schema fieldCount
+  cols.zipIdx.map (fun (c, j) =>
+    (dataColumnName headers j c, effectiveInherited g t t.schema c,
+     tbl.rows.map (fun r => r.cells.getD j "")))
+
 /-- Every data-level finding for one table: cell formats, required
     columns, primary-key uniqueness (single and composite), and
     schema/CSV width compatibility (test278). A table whose declared
@@ -785,18 +803,9 @@ def titleCompat (dl : String) (colsMeta : List Column) (header : List String)
     a required check over a misaligned column list would blame the
     wrong column. -/
 def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding :=
-  let fieldCount := match tbl.header.head? with
-    | some h => h.cells.length
-    | none   => match tbl.rows.head? with
-      | some r => r.cells.length
-      | none   => 0
   let headers := (tbl.header.head?).map (·.cells) |>.getD []
-  let cols := nonVirtualColumns t.schema fieldCount
   let dataRows := tbl.rows
-  let colData : List (String × Inherited × List String) :=
-    cols.zipIdx.map (fun (c, j) =>
-      (dataColumnName headers j c, effectiveInherited g t t.schema c,
-       dataRows.map (fun r => r.cells.getD j "")))
+  let colData : List (String × Inherited × List String) := tableColumnData g t tbl
   let cellErrs := colData.flatMap (fun (nm, inh, vals) => checkCellsForColumn inh nm vals)
   let colVals := colData.map (fun (nm, _, vals) => (nm, vals))
   let pkNames := t.schema.map (·.primaryKey) |>.getD []
@@ -825,11 +834,79 @@ def checkDataTable (g : TableGroup) (t : TableDesc) (tbl : Table) : List Finding
     else []
   cellErrs ++ pkErrs ++ reqErrs ++ widthErr ++ titleErrs
 
+/-- The last slash-separated segment of a URL. -/
+def basenameOf (s : String) : String :=
+  (s.splitOn "/").getLast?.getD s
+
+private def lookupStr (k : String) : List (String × String) → Option String
+  | []            => none
+  | (k2, v) :: tl => if k2 == k then some v else lookupStr k tl
+
+/-- One composite value per row over the named columns, in row order.
+    An empty list when any named column is absent from the table — a
+    reference this port cannot resolve makes NO claim rather than a
+    false one. -/
+def compositeValues (cols : List (String × List String)) (names : List String)
+    : List String :=
+  let vlists := names.filterMap (fun n => (cols.find? (fun p => p.1 == n)).map (·.2))
+  if vlists.length != names.length || vlists.isEmpty then [] else zipJoin vlists
+
+/-- DM §6.6 foreign-key referential integrity, across the group's
+    tables: "Validators MUST raise errors … for each row that does not
+    have a UNIQUE referenced row for each of the foreign keys on the
+    table in which the row appears." Both halves of "unique" are
+    errors — no referenced row (test257) and more than one (test258).
+
+    A reference names its target either by `resource`, the target
+    table's own `url` (test257/test258), or by `schemaReference`, the
+    URL of the SCHEMA that target uses (test034/test035, whose keys and
+    schemas live in external `gov.uk/schema/*.json` files). The second
+    form is resolved through the group's own tables: a table records
+    the schema URL it was given, so the schema's basename identifies
+    the table that uses it.
+
+    Only the EMPTY cell is exempt. A column's `null` value is NOT: DM
+    §6.6 requires a unique referenced row for every row, with no
+    exemption for a cell that the column's `null` annotation makes
+    null, and test034/test035 are exactly that case — `senior-roles.csv`
+    declares `"null": "xx"` on `reportsTo` and carries the value `xx`,
+    which matches no `ref`. Exempting null values there would make both
+    tests conform. The F* module reads the rule the same way.
+
+    A `suppressOutput` table raises no findings of its own, matching
+    `checkData`, but remains available as a key's TARGET. -/
+def checkForeignKeys (g : TableGroup) (tables : List (TableDesc × Table))
+    : List Finding :=
+  let schemaMap : List (String × String) :=
+    tables.filterMap (fun (t, _) => t.schemaRef.map (fun r => (basenameOf r, t.url)))
+  let valuesOf : List (String × List (String × List String)) :=
+    tables.map (fun (t, tbl) =>
+      (t.url, (tableColumnData g t tbl).map (fun (nm, _, vals) => (nm, vals))))
+  tables.flatMap (fun (t, tbl) =>
+    if t.suppress == some true then [] else
+    let localCols := (tableColumnData g t tbl).map (fun (nm, _, vals) => (nm, vals))
+    ((t.schema.map (·.foreignKeys)).getD []).flatMap (fun fk =>
+      let target : Option String :=
+        fk.reference.resource.orElse (fun _ =>
+          fk.reference.schemaReference.bind (fun sr => lookupStr (basenameOf sr) schemaMap))
+      match target.bind (fun u => (valuesOf.find? (fun p => p.1 == u)).map (·.2)) with
+      | none => []
+      | some targetCols =>
+          let localVals := compositeValues localCols fk.columnReference
+          let refVals := compositeValues targetCols fk.reference.columnReference
+          localVals.flatMap (fun lv =>
+            if lv == "" then [] else
+            match (refVals.filter (· == lv)).length with
+            | 0 => [err ("foreign key value has no referenced row: " ++ lv)]
+            | 1 => []
+            | _ => [err ("foreign key value references multiple rows: " ++ lv)])))
+
 /-- Every data-level finding across a table group's tables. A table
     with `suppressOutput` is read for other checks (foreign keys, not
     yet ported here) but contributes no findings of its own — matching
     `csvw_table_suppressed`'s role in the F* module. -/
 def checkData (g : TableGroup) (tables : List (TableDesc × Table)) : List Finding :=
   tables.flatMap (fun (t, tbl) => if t.suppress == some true then [] else checkDataTable g t tbl)
+    ++ checkForeignKeys g tables
 
 end L4Factoidal.CSVW

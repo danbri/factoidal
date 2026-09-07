@@ -330,11 +330,30 @@ def strList (j : Json) : List String :=
   | .array a  => a.filterMap jStr?
   | _         => []
 
+/-- MV §5.5.1 one `foreignKeys` member. A member that is not an
+    object, or that carries no `reference` object, describes no key and
+    is dropped — MV §5: items in an array that are not valid objects of
+    the expected type are ignored. (`Validate.checkSchema` reports the
+    same shapes as warnings; this is the decode side of the same rule.) -/
+def parseForeignKey? (j : Json) : Option ForeignKey :=
+  match jField? "reference" j with
+  | some (.object rs) =>
+      let r : Json := .object rs
+      some { columnReference := (jField? "columnReference" j).map strList |>.getD []
+             reference :=
+               { resource        := jStrField? "resource" r
+                 schemaReference := jStrField? "schemaReference" r
+                 columnReference := (jField? "columnReference" r).map strList |>.getD [] } }
+  | _ => none
+
 def parseSchema (ctx : Ctx) (j : Json) : TableSchema :=
   { columns := match jField? "columns" j with
       | some (.array cs) => cs.map (parseColumn ctx)
       | _                => []
     primaryKey := (jField? "primaryKey" j).map strList |>.getD []
+    foreignKeys := match jField? "foreignKeys" j with
+      | some (.array fks) => fks.filterMap parseForeignKey?
+      | _                 => []
     rowTitles  := (jField? "rowTitles" j).map strList |>.getD []
     aboutUrlBase := jLinkField? "aboutUrl" j
     inherited  := parseInherited j
