@@ -206,13 +206,138 @@ ratifies these tests unchanged, Concepts §3.3 needs a sentence about
 triple-term interiors; if it ratifies Concepts as written,
 `opaque-dir-language-string` has the wrong polarity.
 
+## 4. Second tight test case — a malformed literal inside a triple term
+
+`malformed-literal-no-spurious` and `malformed-literal-bnode-neg` are
+both `mf:NegativeEntailmentTest`, regime `"RDF"`,
+`mf:recognizedDatatypes (xsd:integer)`, and both take the same action
+graph:
+
+```
+:a1 :p1 <<( :a :b "c"^^xsd:integer )>>.
+```
+
+`"c"^^xsd:integer` is malformed and `xsd:integer` is recognised. The
+tests require that this graph does NOT entail
+
+```
+:a1 :p1 <<( :a :b "d"^^xsd:integer )>>.      (no-spurious)
+:a1 :p1 <<( :a :b _:x )>>.                   (bnode-neg)
+```
+
+### The two readings
+
+**Reading A — the graph is D-inconsistent (what the Lean tree does).**
+RDF 1.2 Semantics §7: an ill-typed literal of a recognised datatype
+denotes nothing, so a graph using one is satisfied by no
+D-interpretation, and an unsatisfiable graph entails EVERY graph. Both
+conclusions follow, so both tests fail. This is the current
+`DInterpCond` clause 2, whose reach into a triple term's interior was a
+deliberate landing (the issue-602 repair, noted at
+`Unified/DSchema.lean`'s soundness section), and
+`dEntailsMt_illtyped_native` is stated about it.
+
+**Reading B — the interior of a triple term is not asserted (what the
+suite requires).** A triple term is a TERM naming a proposition, and
+the proposition is not asserted — which the suite states separately in
+`triple-term-not-asserted` (positive, and passing). Under this reading
+only a literal in the object position of an ASSERTED triple can make a
+graph D-inconsistent, the action graph is satisfiable, and neither
+conclusion follows.
+
+### The choice made — none yet, and why
+
+Reading B is very probably right, and it is what the fixtures'
+`rdfs:comment` says ("Malformed literals within triple terms do not
+lead to spurious entailment"). It is NOT taken in this session because
+it is not an engine repair: `DInterpCond` clause 2 is the SPECIFICATION
+side of the model theory, `dEntailsMt_illtyped_native` and
+`regimeEntails_d_sound_mt` are stated about it, and
+`Unified.unified_adequate_d` sits downstream. Narrowing it is sound for
+the executable procedure (it removes a disjunct, so `regimeEntails`
+answers `true` less often) but it changes what the model theory MEANS,
+and the reach into the interior was landed on purpose. Reversing a
+deliberate modelling decision belongs in a change that re-derives the
+theorems, not in the last hour of a session.
+
+⚠️ **Open, with its test ids**: `malformed-literal-no-spurious`,
+`malformed-literal-bnode-neg`. The work is: restrict `DInterpCond`
+clause 2 (and `hasIllFormedLiteral`, currently
+`t.o.mentionedLiterals.any`) to the asserted object position, re-prove
+`dEntailsMt_illtyped_native` and `regimeEntails_d_sound_mt`, and check
+`triple-term-not-asserted` and `malformed-literal` (both currently
+passing) do not move.
+
+## 5. Additional open-source 1.2 test material — surveyed, none vendorable
+
+The directive asked for additional open-source RDF 1.2 / SPARQL 1.2 /
+RDF-star tests. Surveyed 2026-09-07; the result is negative, and the
+negative is recorded so the search is not repeated.
+
+| source | licence | verdict |
+| --- | --- | --- |
+| `w3c-cg/rdf-star` `tests/` | W3C 3-clause BSD (LICENSE.md) | The archived CG predecessor of the suite we already vendor; near-total filename overlap. 8 files have no current-manifest match, provenance unverified. |
+| other `w3c/rdf-tests` branches | same | All behind current main; stale work in progress, nothing new. |
+| `apache/jena` `jena-arq/testing/` | Apache-2.0 | RDF 1.2 test data is embedded in `.java` files. Its 8 TriX-star fixtures are genuinely new syntax coverage, but TriX is not an in-scope concrete syntax here and they carry no manifest. |
+| `eclipse-rdf4j/rdf4j` | BSD-3-Clause | Its RDF-star fixtures are vendor result dialects, not spec conformance; W3C data is fetched at build time. |
+| `oxigraph/oxigraph` `testsuite/` | MIT OR Apache-2.0 | Its `rdf-tests` entry is a submodule of `w3c/rdf-tests` — a mirror. Its own tests are parser robustness with no star / reifier / triple-term / base-direction content. |
+| `RDFLib/rdflib` | BSD-3-Clause | No 1.2 fixtures of its own; its TriX-star files are Jena's. |
+| `rdfjs/N3.js` | MIT | Assertions inline in JavaScript; no fixture files to vendor. |
+| `dotnetrdf/dotnetrdf` | MIT (`License.txt`) | A byte-for-byte copy of the same CG suite as row 1. |
+| `filip26/titanium-*` | Apache-2.0 | RDFC-1.0 tooling; no RDF 1.2 material. |
+
+**Nothing was vendored, and `tools/ensure-test-env.sh` is unchanged.**
+The one item worth a later look, not urgent: Jena's Apache-2.0
+TriX-star fixtures, if TriX ever becomes an in-scope syntax.
+
 ## Status
 
-Filled in per commit below.
+Final for the 2026-09-07 session. Every number below was measured in
+this worktree by running the runner named, not quoted from a report.
 
 | suite | before | after |
 | --- | --- | --- |
-| `rdf-semantics` | 21 pass, 11 fail, 0 skip, 15 unsupported (of 47) | (in progress) |
+| `rdf-semantics` | 21 pass, 11 fail, 0 skip, **15 unsupported** (of 47) | **40 pass, 7 fail, 0 skip, 0 unsupported** (of 47) |
+| RDF 1.2 syntax/eval/c14n (9 leaf suites) | 324 pass, 0 fail (of 324) | 324 pass, 0 fail (of 324) |
+| SPARQL 1.2 (10 leaf suites) | 254 pass, 0 fail (of 254) | 254 pass, 0 fail (of 254) |
 
-Unchanged gates, re-measured each commit: RDF 1.2 syntax/eval/c14n
-324 pass 0 fail (of 324); SPARQL 1.2 254 pass 0 fail (of 254).
+**RDF 1.2 and SPARQL 1.2 total: 618 pass, 7 fail, 0 unsupported (of
+625).**
+
+### The commits
+
+1. `docs(rdf12)` — this record, with the measured baseline.
+2. `lean(rdf12)` — `xsd:double` / `xsd:float` / `rdf:JSON` lexical
+   spaces, and the `RDF` regime's D-value comparator. 21 → 36 pass, 15
+   unsupported → 0.
+3. `lean(rdf12)` — language-tag case at term identity, and the
+   triple-term interior tightening. 36 → 40 pass.
+
+### The tight test cases written
+
+* § 3 — `opaque-language-string` vs `opaque-dir-language-string`.
+  Implemented (Reading 1); both readings pinned as `#guard`s in
+  `L4Factoidal/RDF/EntailmentTests.lean`.
+* § 4 — `malformed-literal-no-spurious` / `malformed-literal-bnode-neg`.
+  Not implemented; the reason and the work are stated above.
+
+### Open, by test id
+
+| test ids | cause | note |
+| --- | --- | --- |
+| `malformed-literal-no-spurious`, `malformed-literal-bnode-neg` | § 4 above | Needs `DInterpCond` clause 2 narrowed and its theorems re-derived. |
+| `literal-type` | A literal must denote an instance of its datatype: `:a :b "42"^^xsd:integer` entails `:a :b _:x . _:x rdf:type xsd:integer.` This is the RDF-entailment rule that types a literal's denotation, which the closure does not emit. | Tractable; no theorem in the way. |
+| `annotation`, `annotation-unfolded` | The expected result names an IRI reifier where the action's `{\| \|}` shorthand makes a fresh blank node. | The F\* tree fails both identically. |
+| `triple-terms-propositions` | Needs a literal or triple term in SUBJECT position; `Triple.s : Subject` cannot represent either. | Term-model limit, shared with the F\* tree. |
+| `reifies-range` | The `rdf:reifies` range step lives in `Regime.rdfsPlus`, not `.rdfs`, because `.rdfs` is the closure `Unified/SparqlAdequacy.regime_sound_rdfs` is stated about. | Recover by proving the widened closure sound, not by moving the step. |
+
+### Gates, re-measured at the final commit
+
+`lake build` green, 0 errors; hygiene clean (`sorry` 0, user `axiom` 0,
+`native_decide` 0, `unsafe` 0, `partial def` 172 against baseline 172);
+SPARQL 1.1 `l4w3c` 631 pass, 0 fail (of 631); `l4sparql-probe` 403
+pass, 0 fail (of 403); `l4rdfxml-probe` 132 of 132 eval-isomorphic and
+41 of 41 reject-negative; `l4turtle-probe` 242 of 242 parse-positive,
+115 of 115 reject-negative, 108 of 108 eval-iso; `l4rdfc-probe` 63 of
+63 rdfc10 eval, 21 of 21 map eval, 1 of 1 sha384, 1 of 1 negative;
+`l4rdfs-semi` 6 of 6.
