@@ -2914,6 +2914,35 @@ Quot.sound` under `#print axioms`. Probe: `lake -d formal/lean4 exe
 l4geo` — 37 pass, 0 fail (out of 37), the same 37 assertions as the
 F\* `geosparql-v0` pin file.
 
+## OWL 2 comprehension and existential witnesses (Lean 4, 2026-09-07)
+
+The PositiveEntailmentTest-only layer of `L4Factoidal/OWL/Comprehension.lean`
+and its specification in `ComprehensionTheorems.lean`. Design record:
+[`designissues/2026-09-07-lean-owl-corpus-gap.md`](designissues/2026-09-07-lean-owl-corpus-gap.md).
+
+`CompStar` is kept apart from `RLRules.Derives` for the reason
+`RLRules.ExtClash` is kept apart from `RLRules.Clash`: these rows mint
+blank nodes and rest on OWL 2 RDF-Based Semantics § 8 comprehension
+conditions that the RL profile does not assume, so putting them in
+`Derives` would widen what the RL profile claims and break
+`RLSemantics.rl_derives_holds`, whose conclusion extends the assignment
+at two reserved label families only.
+
+| Theorem | Module | Engine anchor | Status | Fragment / hypotheses |
+|---|---|---|---|---|
+| `comprehensionLayer_sound` — every triple the layer returns is a premise or a `CompStar` consequence of premises | `OWL/ComprehensionTheorems.lean` | `Comp.comprehensionLayer` | ✅ PROVED | none |
+| `layerStage1_sound` / `layerStage2_sound` / `layerStage3_sound` — one per stratification stage | same | `Comp.layerStage1`–`3` | ✅ PROVED | none |
+| `foldl_addAll_sound` — a stage preserves "every triple is `CompStar`" | same | `RL.addAll` | ✅ PROVED | the row's own soundness |
+| `compUni1For_sound` (§ 8.2 + 8.1), `compTrpChainFor_sound` (§ 5.10 + 8.1), `compAdfCliqueFor_sound` (§ 5.7 + 8.1), `pdwDiffFor_sound` (§ 5.10), `prpKeyThingFor_sound` (§ 5.2 + Structural Specification 9.5), `svfThingMatFor_sound` (§ 8.4), `svfThingWitFor_sound` (§ 5.4), `hasSelfSynthFor_sound` (§ 5.4 + 8.4) | same | the eight row functions | ✅ PROVED (all eight) | none beyond a `CompStar` driving triple |
+| `pairwiseDifferent_sound` — the `owl:AllDifferent` row's executable side condition unpacks into the graph facts it names | same | `Comp.pairwiseDifferent` | ✅ PROVED | none |
+| **Model-theoretic soundness of `CompStar`** — under an interpretation meeting the § 8 comprehension conditions and an assignment extended at the six reserved label families, `CompStar base t` holds whenever `base` does | — | — | 🔴 NOT ATTEMPTED | needs a `compExtend` decoding six label families (`RLSemantics.rlExtend` does two) and one condition per row |
+
+The last row is the standing gap. Until it lands each row's semantic
+licence is the specification citation in `Comprehension.lean`'s header
+table, which is the standing of the F\* engine's own comprehension layer
+(`OWL.Closure.fsti` § 20b). It is recorded here rather than left to
+inference, per anti-pattern 29.
+
 ## 10. JOSE, DPoP and Solid-OIDC over HACL\* — Lean tree
 
 Landed 2026-09-06. Design record:

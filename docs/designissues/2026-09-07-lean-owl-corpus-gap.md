@@ -379,3 +379,172 @@ the real target for the next pass: the datatype-facet family
    because the F\* engine reaches the same verdict through a real
    derivation (the `sameAs` rule above) rather than through the empty
    conclusion.
+
+## 8. Status — 2026-09-07 evening, after C2, C3, C4 and half of C5
+
+**Scores.** Full probe, default RL regime, `lake exe l4owl-probe` from
+`formal/lean4/`:
+
+```
+                              start of day       after C1           now
+profile-RL.rdf                120 pass,  6 fail  121 pass,  5 fail  126 pass, 0 fail (of 126)
+profile-EL.rdf                105 pass, 15 fail  111 pass,  9 fail  118 pass, 2 fail (of 121, 1 skip)
+profile-QL.rdf                 82 pass,  5 fail   83 pass,  4 fail   87 pass, 0 fail (of  87)
+type-positive-entailment.rdf  333 pass, 75 fail  333 pass, 75 fail  342 pass,66 fail (of 412, 4 unsupported)
+type-inconsistency.rdf         38 pass, 89 fail   44 pass, 83 fail   44 pass,83 fail (of 128, 1 skip)
+type-consistency.rdf          503 pass, 76 fail  503 pass, 76 fail  512 pass,67 fail (of 583, 4 unsupported)
+TOTAL                        1181 pass,266 fail 1195 pass,252 fail 1229 pass,218 fail (of 1457)
+```
+
+`profile-RL.rdf` and `profile-QL.rdf` are **complete**: 126 of 126 and
+87 of 87, with 0 fail in every one of the four test types.
+`profile-EL.rdf` is 118 of 121 with 1 skip and 2 fail.
+
+Every ConsistencyTest and NegativeEntailmentTest section is unmoved
+across the whole day (76, 72, 58, 204, 351 pass with 0, 0, 0, 0, 1 fail;
+6, 6, 3, 23 pass with 0 fail). That is the check that matters for both
+kinds of change made here: a derivation row must not derive something a
+premise asserts consistent, and a conclusion FILTER must not make a
+negative test's conclusion easier to contain.
+
+**Closed today, beyond C1.**
+
+* **C2 — someValuesFrom existential witnesses** and **C3 —
+  comprehension**, commit `owl(lean): the comprehension and
+  existential-witness layer, PE-only`. New modules
+  `L4Factoidal/OWL/Comprehension.lean` (eight rows in four stages,
+  applied ONCE over the stable closure by `judgePositive` alone) and
+  `L4Factoidal/OWL/ComprehensionTheorems.lean` (`CompStar` and
+  `comprehensionLayer_sound`).
+
+  C3 needed two rows the gap analysis had not named. The conclusion of
+  `New-Feature-Disjoint{Data,Object}Properties-002` is a three-member
+  `owl:AllDifferent` axiom, and nothing in the Lean closure produced the
+  `owl:differentFrom` facts to build it from: the RL table states only
+  the CLASH `prp-adp`, never its contrapositive. So the layer carries
+  `pdw-diff`, the two contrapositives of `owl:propertyDisjointWith`
+  (shared value, shared subject), before the `owl:AllDifferent` row.
+
+  A note on how F\* passes those two, because the routes differ. F\*'s
+  `eq-diff-adf` emits PAIRWISE two-member `owl:AllDifferent` scaffolds
+  and its runner matches conclusions per-triple, so three pairwise
+  witnesses satisfy a three-member conclusion pattern without any
+  three-cell list existing. The Lean probe's default is the STRICT rule
+  (one blank-node mapping for the whole conclusion graph, RDF 1.1
+  Semantics interpolation lemma), under which a pairwise scaffold does
+  not serve. The Lean row therefore builds the actual member list — and,
+  because `owl:members` is a sequence whose order in a conclusion
+  document is arbitrary, emits every permutation up to four members
+  rather than one sorted order. A pass that depended on the engine's
+  sort order agreeing with the conclusion would be a pass by
+  coincidence.
+
+* **C4 — `WebOnt-I4.6-005-Direct`**, commit `owl(lean): the built-in
+  annotation properties are annotation properties`. `excludeAnnotation
+  Triples` dropped a triple only when the graph itself typed the
+  predicate `owl:AnnotationProperty`; the nine built-in annotation
+  properties of Structural Specification § 5.5 carry no declaration
+  triple, so `rdfs:comment` survived. Under the Direct Semantics an
+  annotation assertion has no effect on the interpretation, so an
+  annotation triple in a DIRECT-only conclusion is neither entailed nor
+  refuted — which is what the test's own `test:description` says.
+
+  **The F\* rule was NOT ported, deliberately.**
+  `owl_rule_named_equivalent_class_to_sameAs` (`OWL.Closure.fsti` line
+  2848) emits `C owl:sameAs D` from `C owl:equivalentClass D` for named
+  classes under a DIRECT gate. That is unsound under both semantics.
+  `EquivalentClasses(C D)` says the two class expressions have the same
+  extension; it does not say the two IRIs denote the same resource.
+  Under the Direct Semantics with punning the class and individual
+  readings of an IRI are independent, so coextension says nothing about
+  `SameAs`; under the RDF-Based Semantics `owl:equivalentClass` is
+  § 5.8's condition on `ICEXT`, again not identity. The rule's DIRECT
+  gate exists because `WebOnt-I4.6-004`, an RDF-Based
+  NegativeEntailmentTest, would otherwise break — a description of what
+  the gate avoids, not of what licenses the rule. This is the second
+  entry in § 7's "where a published result looks wrong": the F\* score
+  is right and the derivation behind it is not.
+
+* **Half of C5 — `prp-key` on `owl:Thing`**, commit `owl(lean): a key on
+  owl:Thing fires, and the refuter gets a wall clock`. `prp-key` needs
+  `T(?x, rdf:type, ?c)`; when `?c` is `owl:Thing` no RL row supplies it.
+  `ICEXT(I(owl:Thing))` is the set of all individuals (RDF-Based
+  Semantics § 5.2), so the premise is discharged by the semantics rather
+  than looked up, over IRI subjects (HasKey is about named individuals,
+  Structural Specification § 9.5). Closes `New-Feature-Keys-001`.
+
+* **The refuter's wall clock**, same commit. `--refute-budget` bounds
+  BRANCH expansions; it does not bound the cost of one expansion, which
+  is why `type-consistency.rdf --dl` did not finish in 40 minutes while
+  `--cap-ms` bounded only the closure. `--refute-ms` (default 20000)
+  stops the judge waiting on one call. The bound is on the HARNESS: the
+  abandoned task runs until the process exits, because Lean cannot
+  interrupt a pure computation. A timeout withholds a verdict, so the
+  bound can only lose refutations, and each one prints a
+  `REFUTER-WALLCLOCK` line.
+
+**Still open.**
+
+* **The other half of C5 — `New-Feature-Keys-002`** (EL
+  InconsistencyTest, 1 unit). Same premise as Keys-001 plus
+  `Peter owl:differentFrom Peter_Griffin`. The PE-only layer never sees
+  an InconsistencyTest, so this needs an `ExtClash` row: a key on
+  `owl:Thing`, two individuals agreeing on every key property, and an
+  `owl:differentFrom` between them. Five files, the shape the C1 clash
+  rows took.
+* **`WebOnt-someValuesFrom-003`** (EL PE, 1 unit). Premise:
+  `person ≡ ∃parent.person`, `fred a person`. Conclusion: two nested
+  witness edges, `fred parent _:y`, `_:y parent _:z`, both typed
+  `owl:Thing`. The layer's `svf-thing-wit` row covers the filler
+  `owl:Thing` only; this needs the general `svf2` existential witness
+  with a NAMED filler class, chained to depth two, which is a
+  depth-capped rule (F\*'s `owl_rule_svf2_existential_witness`) and not
+  a one-pass row. It is the one profile-catalog unit the F\* engine
+  passes and this tree does not.
+* **The model-theoretic soundness of `CompStar`** — see the OWL
+  comprehension section of `docs/theorem-registry.md`.
+
+## 9. The `type-*` catalogs under `--dl`, measured 2026-09-07 evening
+
+`lake exe l4owl-probe --dl type-inconsistency.rdf
+type-positive-entailment.rdf type-consistency.rdf` from
+`formal/lean4/`, at the DEFAULT budgets (`--cap-ms 30000`,
+`--refute-budget 64`, `--refute-ms 20000`). This is the regime the
+committed F\* logs used for these three catalogs (§ 1).
+
+**The whole run takes 8 min 37 s wall clock.** On the morning's tree
+`type-consistency.rdf --dl` at the default refute budget did not finish
+in 40 minutes, which is why § 2b measured it at `--refute-budget 16`
+and could only report a lower bound. Two things changed. The comprehension
+layer closes PE units in the closure, so fewer of them reach the
+refuter at all; and `--refute-ms` bounds a single call. **The wall clock
+tripped on no case in this run** (`grep -c REFUTER-WALLCLOCK` is 0), so
+every figure below is a full-budget figure, not a withheld one.
+
+| catalog / unit | Lean RL | Lean `--dl` closure alone | Lean `--dl` closure or refutation | F\* DL |
+|---|---|---|---|---|
+| `type-inconsistency.rdf` Inconsistency | 44 pass, 83 fail | 49 pass, 78 fail | **116 pass, 11 fail** (1 skip, of 128) | 126 pass, 1 fail |
+| `type-positive-entailment.rdf` PE | 138 pass, 66 fail | 138 pass, 66 fail | **164 pass, 40 fail** (2 unsupported, of 206) | 195 pass, 9 fail |
+| `type-positive-entailment.rdf` Consistency | 204 pass, 0 fail | 204 pass, 0 fail | **204 pass, 0 fail** (2 unsupported, of 206) | 199 pass, 5 fail |
+| `type-consistency.rdf` PE | 138 pass, 66 fail | 138 pass, 66 fail | **164 pass, 40 fail** (of 206) | — |
+| `type-consistency.rdf` NE | 23 pass, 0 fail | 23 pass, 0 fail | **23 pass, 0 fail** (of 23) | — |
+| `type-consistency.rdf` Consistency | 351 pass, 1 fail | 351 pass, 1 fail | **351 pass, 1 fail** (2 unsupported, of 354) | — |
+| all three catalogs | — | 905 pass, 209 fail | **1022 pass, 92 fail** (1 skip, 8 unsupported, of 1123) | 558 + 195 + 199 + 126 … see § 1 |
+
+The `--dl` figure still BEATS F\* on `type-positive-entailment.rdf`'s
+ConsistencyTest section (204 pass, 0 fail against 199 pass, 5 fail —
+F\*'s five are cap escapes,
+<https://github.com/danbri/factoidal/issues/326>).
+
+The two score lines the probe prints under `--dl` are kept apart on
+purpose: the closure is a sound consequence operator complete for the
+RL profile, the refuter is a different procedure with a different
+completeness claim, and a single number mixing them makes neither claim
+statable (`docs/designissues/2026-09-04-owl-rl-resplit.md`).
+
+The eleven `type-inconsistency` ids the refuter does not reach are
+unchanged from § 7: the datatype-facet family (`owl:real`, string
+patterns, disjoint data properties) and the `WebOnt-description-logic`
+tableau family, two of which (`-909`, `-910`) are not clean F\* passes
+either.
+

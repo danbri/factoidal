@@ -158,6 +158,7 @@ import L4Factoidal.XML.Document
 import L4Factoidal.OWL.RLClosure
 import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.OWL.Materialise
+import L4Factoidal.OWL.Comprehension
 import L4Factoidal.OWL.Refute
 import L4Factoidal.OWL.NegationGoals
 import L4Factoidal.OWL.FunctionalSyntax
@@ -473,11 +474,37 @@ def graphInClosure? (cl : Graph) (gc : Graph) : Option Bool :=
     let (ok, left) := searchMapping cl (orderPats gc) [] matchBudget
     if ok then some true else if left == 0 then none else some false
 
+/-- The BUILT-IN annotation properties: OWL 2 Structural Specification
+and Functional-Style Syntax (W3C Rec. 2012-12-11) § 5.5, "the following
+IRIs are used as annotation properties". A document does not declare
+them — they are annotation properties by the specification, and the
+OWL 2 Mapping to RDF Graphs writes no `rdf:type owl:AnnotationProperty`
+triple for them. So a filter that only reads declarations cannot see
+them, which is what `WebOnt-I4.6-005-Direct` exposed. -/
+def builtinAnnotationProperties : List WfIri :=
+  [ rdfsLabel, rdfsComment, rdfsSeeAlso, rdfsIsDefinedBy,
+    owlDeprecated, owlVersionInfo, owlPriorVersion,
+    owlBackwardCompatibleWith, owlIncompatibleWith ]
+
 /-- Port of `OWL_DirectMapping_Filter.exclude_annotation_triples`: drop
-the triples whose predicate the graph itself types as an annotation or
-ontology property. -/
+the triples whose predicate is an annotation property — declared as one
+by the graph itself, or built in.
+
+Under the Direct Semantics an annotation assertion is an
+`AnnotationAssertion` axiom, and OWL 2 Direct Semantics § 2.1 gives the
+axiom closure of an ontology WITHOUT its annotations: annotations have
+no effect on the interpretation, so no annotation assertion is entailed
+or refuted by anything. Dropping them from a DIRECT-only conclusion is
+therefore the Direct Semantics' own reading of that conclusion, and it
+is what `WebOnt-I4.6-005-Direct`'s `test:description` states in so many
+words: "the direct semantics ignore annotations in the conclusion
+ontology". The filter applies to DIRECT-only cases and nowhere else —
+the RDF-Based sibling `WebOnt-I4.6-005` has the identical premise and
+conclusion and is a NegativeEntailmentTest, because under the RDF-Based
+Semantics `rdfs:comment` is an ordinary triple. -/
 def excludeAnnotationTriples (g : Graph) : Graph :=
   let isAnn (p : WfIri) : Bool :=
+    builtinAnnotationProperties.contains p ||
     g.any (fun t => t.s == Subject.iri p && t.p == rdfType &&
       (t.o == Term.iri owlAnnotationProperty || t.o == Term.iri owlOntologyProperty))
   g.filter (fun t => !isAnn t.p)
@@ -947,6 +974,70 @@ inductive RefuteWhy where
   | noGoals
   deriving DecidableEq, Repr
 
+/-! ## A wall-clock bound on the refuter
+
+`--refute-budget` bounds the tableau's BRANCH expansions, and it is
+threaded, so it bounds the shape of the search. It does not bound the
+COST of one expansion: `existsDistinctSubset`, `allDiffPairViolation`
+and the datatype-constraint folds are each superlinear in the closure,
+so a single expansion on a large premise can run for minutes. That is
+why `type-consistency.rdf --dl` at the default budget did not finish in
+40 minutes on 2026-09-07 while `--cap-ms` sat there bounding only the
+closure.
+
+The bound here is on the HARNESS, not inside the tableau: the call runs
+in its own task and the judge stops waiting after `refuteMs`. The
+abandoned task keeps running until the process exits — Lean cannot
+interrupt a pure computation, and `IO.cancel` is a request a
+`partial def` loop never observes — so this buys a bounded WALL CLOCK
+per case, not bounded total work. It is stated that way because a
+reader who assumed otherwise would mis-read a long run's CPU time.
+
+A timed-out call returns the same verdict a budget-out returns: no
+verdict. The refuter then decides nothing, and the closure's verdict
+stands, which is the withholding rule the module header states. So the
+bound can only LOSE refutations; it can never manufacture one. Every
+timeout prints a `REFUTER-WALLCLOCK` line, so a score computed under it
+says which cases it withheld on. -/
+
+/-- Default wall clock for one refuter call, overridable with
+`--refute-ms N`. -/
+def defaultRefuteMs : Nat := 20000
+
+/-- Poll a task to completion or to `steps` five-millisecond waits. -/
+def pollTask {α : Type} (t : Task (Except IO.Error α)) (steps : Nat)
+    : IO (Option α) := do
+  let mut got : Option α := none
+  let mut done := false
+  for _ in [0:steps] do
+    if !done then
+      if ← IO.hasFinished t then
+        done := true
+        match t.get with
+        | .ok v => got := some v
+        | .error _ => got := none
+      else
+        IO.sleep 5
+  pure got
+
+/-- `Refute.refute` under the wall clock. The `match` inside the task
+is what FORCES the result: `pure (refute …)` would hand back an
+unevaluated thunk and the work would happen in the polling thread. -/
+def refuteBounded (ms : Nat) (label : String) (g : Graph) (rb : Nat)
+    : IO (Option Bool) := do
+  let t ← IO.asTask (do
+    match L4Factoidal.OWL.Refute.refute g rb with
+    | some true  => pure (some true)
+    | some false => pure (some false)
+    | none       => pure none)
+  match ← pollTask t (ms / 5 + 1) with
+  | some v => pure v
+  | none =>
+    IO.cancel t
+    IO.println s!"REFUTER-WALLCLOCK {label}: abandoned after {ms} ms \
+({g.length} triples, budget {rb}); no verdict"
+    pure none
+
 def refuteEntailsWhy (closure : Graph) (gc : Graph) (rb : Nat) : RefuteWhy :=
   match L4Factoidal.OWL.Refute.negationGoals (renameConclusionBNodes gc) with
   | none       => .noGoals
@@ -961,8 +1052,26 @@ def refuteEntailsWhy (closure : Graph) (gc : Graph) (rb : Nat) : RefuteWhy :=
       | other => other
     goals.foldl step .entailed
 
+/-- `refuteEntailsWhy` under the same wall clock; a timeout is
+`.budget`, the verdict that withholds. -/
+def refuteEntailsWhyBounded (ms : Nat) (label : String) (closure : Graph)
+    (gc : Graph) (rb : Nat) : IO RefuteWhy := do
+  let t ← IO.asTask (do
+    match refuteEntailsWhy closure gc rb with
+    | .entailed     => pure RefuteWhy.entailed
+    | .countermodel => pure RefuteWhy.countermodel
+    | .budget       => pure RefuteWhy.budget
+    | .noGoals      => pure RefuteWhy.noGoals)
+  match ← pollTask t (ms / 5 + 1) with
+  | some v => pure v
+  | none =>
+    IO.cancel t
+    IO.println s!"REFUTER-WALLCLOCK {label}: abandoned after {ms} ms \
+({closure.length} triples, budget {rb}); no verdict"
+    pure RefuteWhy.budget
+
 def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
-    (strict : Bool)
+    (rms : Nat) (strict : Bool)
     : IO Verdict := do
   if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
   match (match c.conclusion with
@@ -978,7 +1087,22 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : N
       let (res, m) ← premiseClosure cat c capMs rg
       match res with
       | .error o => return Verdict.same o m
-      | .ok r =>
+      | .ok r0 =>
+        -- The comprehension / existential-witness layer, applied ONCE
+        -- over the stable closure and to PositiveEntailmentTest only
+        -- (`L4Factoidal/OWL/Comprehension.lean` header: folding it into
+        -- the fixpoint costs the refuter its budget, measured in F* at
+        -- 124 pass, 3 fail -> 63 pass, 64 fail on DL
+        -- `type-inconsistency.rdf`). One plain re-closure afterwards
+        -- lets ordinary rows see the witnesses' shape triples; it does
+        -- NOT re-run the layer, so this cannot iterate.
+        let r ← do
+          let gw := L4Factoidal.OWL.Comp.comprehensionLayer r0.graph
+          if gw.length == r0.graph.length then pure r0 else
+            let t2 ← IO.monoMsNow
+            let r2 ← closureIO gw closureFuel (t2 + capMs)
+            pure { r2 with rounds := r0.rounds + r2.rounds,
+                           capped := r0.capped || r2.capped }
         let gc := if isDirectOnly c then excludeAnnotationTriples gc0 else gc0
         let m := { m with triplesParsed := m.triplesParsed + gc0.length }
         -- `strict`: one mapping for the whole conclusion graph
@@ -1012,7 +1136,7 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : N
         -- conformance relation itself to be tried: entailment by
         -- refutation. Only `entailed` overrides; anything else leaves
         -- the containment verdict in place.
-        let w := refuteEntailsWhy r.graph gc rb
+        let w ← refuteEntailsWhyBounded rms c.id r.graph gc rb
         let m := { m with peNoGoals := m.peNoGoals + (if w == .noGoals then 1 else 0),
                           peBudget := m.peBudget + (if w == .budget then 1 else 0),
                           peCountermodel :=
@@ -1024,7 +1148,7 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : N
           -- pass on such a case proves nothing about the conclusion.
           -- `premise_alone=false` is the reading that keeps the pass
           -- meaningful.
-          let alone := L4Factoidal.OWL.Refute.refute r.graph rb == some false
+          let alone := (← refuteBounded rms c.id r.graph rb) == some false
           IO.println s!"PE-BY-REFUTATION {c.id}: premise_alone_refuted={alone} \
 (closure {r.graph.length} triples)"
           return { regime := .pass, closure := closureOutcome,
@@ -1065,7 +1189,7 @@ def judgeNegative (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime)
           return Verdict.same (.fail s!"closure-gap: every non-conclusion triple was derived (unexpected entailment)") m
 
 def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
-    : IO Verdict := do
+    (rms : Nat) : IO Verdict := do
   if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
   let (res, m) ← premiseClosure cat c capMs rg
   match res with
@@ -1077,7 +1201,10 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb 
     -- refuter, and it has to be visible as a failure — a refuter
     -- scored only on the cases it is meant to close cannot be caught
     -- fabricating a contradiction.
-    let refuted := rg.refuter && L4Factoidal.OWL.Refute.refute r.graph rb == some false
+    let refuted ←
+      if rg.refuter then
+        pure ((← refuteBounded rms c.id r.graph rb) == some false)
+      else pure false
     let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
     let closureOutcome : Harness.Outcome :=
       if clash then
@@ -1093,7 +1220,7 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb 
     else return Verdict.same closureOutcome m
 
 def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
-    : IO Verdict := do
+    (rms : Nat) : IO Verdict := do
   if isFunctionalUnread c then return Verdict.same (.unsupported "functional-syntax") {}
   if isRdfBasedOnly c then return Verdict.same (.skip "semantics-rdf-based-only") {}
   let (res, m) ← premiseClosure cat c capMs rg
@@ -1101,7 +1228,10 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (r
   | .error o => return Verdict.same o m
   | .ok r =>
     let clash := detectClashPlusI r.index
-    let refuted := rg.refuter && L4Factoidal.OWL.Refute.refute r.graph rb == some false
+    let refuted ←
+      if rg.refuter then
+        pure ((← refuteBounded rms c.id r.graph rb) == some false)
+      else pure false
     let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0) }
     let closureOutcome : Harness.Outcome :=
       if clash then .pass
@@ -1120,12 +1250,12 @@ def testTypes : List String :=
   ["PositiveEntailmentTest", "NegativeEntailmentTest", "ConsistencyTest", "InconsistencyTest"]
 
 def judge (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
-    (strict : Bool)
+    (rms : Nat) (strict : Bool)
     : String → IO Verdict
-  | "PositiveEntailmentTest" => judgePositive cat c capMs rg rb strict
+  | "PositiveEntailmentTest" => judgePositive cat c capMs rg rb rms strict
   | "NegativeEntailmentTest" => judgeNegative cat c capMs rg strict
-  | "ConsistencyTest"        => judgeConsistency cat c capMs rg rb
-  | "InconsistencyTest"      => judgeInconsistency cat c capMs rg rb
+  | "ConsistencyTest"        => judgeConsistency cat c capMs rg rb rms
+  | "InconsistencyTest"      => judgeInconsistency cat c capMs rg rb rms
   | ty                       => pure (Verdict.same (.unsupported s!"test type {ty}") {})
 
 /-- The cause tag of a FAIL reason: the text before the first `:`. -/
@@ -1165,14 +1295,14 @@ def bumpType (l : List (String × Harness.Score)) (ty : String) (o : Harness.Out
   | none   => l ++ [(ty, Harness.Score.bump {} o)]
 
 def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (rg : Regime) (rb : Nat)
-    (strict : Bool) (verbose : Bool)
+    (rms : Nat) (strict : Bool) (verbose : Bool)
     : IO CatalogResult := do
   let t0 ← IO.monoMsNow
   let mut r : CatalogResult := {}
   for c in cat.cases do
     for ty in testTypes do
       if c.types.contains ty then
-        let v ← judge cat c capMs rg rb strict ty
+        let v ← judge cat c capMs rg rb rms strict ty
         let o := v.regime
         let m := v.measure
         let label := s!"{c.id} [{ty}]"
@@ -1294,6 +1424,11 @@ structure Opts where
   regime : Regime := Regime.rl
   /-- `--refute-budget N`: the refuter's per-premise budget. -/
   refuteBudget : Nat := defaultRefuteBudget
+  /-- `--refute-ms N`: the wall clock allowed for ONE refuter call.
+  `--refute-budget` bounds the search shape; this bounds how long one
+  expansion may take. A timeout withholds a verdict — see
+  `refuteBounded`. -/
+  refuteMs : Nat := defaultRefuteMs
   /-- `--tbox-census`: count the refuter's work per case instead of
   timing it. Prints, for every case, the TBox size, how many of its
   axioms are structurally distinct, the node and label counts of the
@@ -1324,6 +1459,7 @@ def parseArgs : List String → Opts → Opts
       parseArgs rest { o with tboxCensus := true, regime := Regime.dl }
   | "--strict-match" :: rest, o => parseArgs rest { o with strictMatch := true }
   | "--wildcard-match" :: rest, o => parseArgs rest { o with strictMatch := false }
+  | "--refute-ms" :: n :: rest, o => parseArgs rest { o with refuteMs := n.toNat!.max 1 }
   | "--refute-budget" :: n :: rest, o =>
       parseArgs rest { o with refuteBudget := n.toNat!.max 1 }
   | a :: rest, o =>
@@ -1517,7 +1653,8 @@ unrelated triple absent = {!unrelatedAbsent}"
       | none => notRead := notRead ++ [name]
       | some cat =>
         printCensus name cat.cases
-        let r ← runCatalog name cat o.capMs o.regime o.refuteBudget o.strictMatch o.verbose
+        let r ← runCatalog name cat o.capMs o.regime o.refuteBudget o.refuteMs
+                  o.strictMatch o.verbose
         total := total.add r.score
         totalClosure := totalClosure.add r.closureScore
         totalRefPass := totalRefPass + r.refuterPasses
