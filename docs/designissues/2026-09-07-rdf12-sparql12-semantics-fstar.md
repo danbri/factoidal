@@ -440,3 +440,68 @@ with RDFS, both failed when first written, and both pass now.
 - Upstream reports to `w3c/rdf-tests` for TC-1 and TC-2 are not filed.
 - The two suites in section 5 are not vendored.
 - Proposition assertions do not re-enter the RDFS fixed point (section 3).
+
+## 7. Per-test outcomes, for the Lean/F\* diff
+
+The list the coordinator needs to find where the two trees disagree. F\*
+tree, `bin/darwin-arm64/w3c_runner --rdf12entail`, after this landing. The
+47th test, `literal-type`, is not listed because the runner never sees it:
+its vendored manifest block is unreadable (TC-2), so it has no name to
+report and counts as the one skip.
+
+| Test | F\* |
+|---|---|
+| `all-identical-triple-terms-are-the-same` | PASS |
+| `annotated-asserted` | PASS |
+| `annotation` | FAIL |
+| `annotation-unfolded` | FAIL |
+| `bnodes-in-triple-term-object` | PASS |
+| `bnodes-in-triple-term-subject` | PASS |
+| `bnodes-in-triple-term-subject-and-object` | PASS |
+| `bnodes-in-triple-term-subject-and-object-fail` | PASS |
+| `constrained-bnodes-in-triple-term-fail` | PASS |
+| `constrained-bnodes-in-triple-term-object` | PASS |
+| `constrained-bnodes-in-triple-term-subject` | PASS |
+| `constrained-bnodes-on-literal` | PASS |
+| `different-bnodes-same-triple-term` | PASS |
+| `double-infinity` | PASS |
+| `double-round-different` | PASS |
+| `double-round-same` | PASS |
+| `double-zero` | PASS |
+| `float-infinity` | PASS |
+| `float-round-different` | PASS |
+| `float-round-same` | PASS |
+| `float-zero` | PASS |
+| `json-array-unordered` | PASS |
+| `json-infinity` | PASS |
+| `json-object-unordered` | PASS |
+| `json-round-different` | PASS |
+| `json-round-same` | PASS |
+| `json-zero` | PASS |
+| `json-zero-array` | PASS |
+| `malformed-literal` | PASS |
+| `malformed-literal-accepted` | PASS |
+| `malformed-literal-bnode-neg` | PASS |
+| `malformed-literal-control` | PASS |
+| `malformed-literal-no-spurious` | PASS |
+| `opaque-dir-language-string` | PASS |
+| `opaque-dir-language-string-control` | PASS |
+| `opaque-iri` | PASS |
+| `opaque-iri-control` | PASS |
+| `opaque-language-string` | PASS |
+| `opaque-language-string-control` | PASS |
+| `opaque-literal` | PASS |
+| `opaque-literal-control` | PASS |
+| `reifies-range` | PASS |
+| `same-bnode-same-quoted-term` | PASS |
+| `triple-term-not-asserted` | PASS |
+| `triple-terms-no-spurious` | PASS |
+| `triple-terms-propositions` | PASS |
+
+Both fails are TC-1, the upstream annotation-expansion defect. Every other
+vendored test passes.
+
+The tight-case suite is 9 pass, 0 fail (out of 9); its entries are named in
+`.github/test-suites/local-rdf12-semantics-tight.yaml`. Running the same
+nine against the Lean tree is the sharper comparison, because five of them
+state a decision rather than reproduce a fixture.
