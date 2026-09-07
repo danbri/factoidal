@@ -36,6 +36,7 @@ rather than about the port.
 import L4Factoidal.Math.Series
 import L4Factoidal.Math.Diff
 import L4Factoidal.MathML.FromXml
+import L4Factoidal.MathML.Present
 import L4Factoidal.XML.Parser
 
 namespace L4Factoidal.Math.Toan
@@ -128,33 +129,53 @@ def envOf (ps : List (String × (Int × Int))) : String → Option (Int × Int) 
 def evalAt (env : List (String × (Int × Int))) (e : Expr) : Option Value :=
   eval (envOf env) e
 
-/-! ## The serializer hooks
+/-! ## The serializer checks
 
-`MathML.Present.fst` has no Lean counterpart yet. Each hook below
-reports the missing function by name; when the port lands, the body
-becomes the real comparison and the expected data above it does not
-move. -/
+`MathML/Present.lean` is the Lean counterpart of `MathML.Present.fst`.
+Until it landed each of these reported the missing function by name;
+the expected data did not move when they were switched to the real
+comparison. -/
+
+/-- Does `hay` contain `needle`? The `.ml` file's own `contains`
+    (line 245), which is a substring test and not a regular
+    expression. -/
+def contains (needle hay : String) : Bool := (hay.splitOn needle).length > 1
 
 /-- Presentation MathML, exact expected document (`.ml` line 332). -/
-def presCheck (cat name : String) (ml : Nat) (_e : Expr) (_expectedInner : String) : Case :=
-  chkMissing cat name ml "L4Factoidal.MathML.toPresentationMathML"
+def presCheck (cat name : String) (ml : Nat) (e : Expr) (expectedInner : String) : Case :=
+  chkEq cat name ml (mathDoc expectedInner) (toPresentationMathML e)
 
-/-- Presentation MathML, `contains` predicate over the rendered string. -/
-def presContains (cat name : String) (ml : Nat) (_e : Expr)
-    (_needle : String) (_want : Bool) : Case :=
-  chkMissing cat name ml "L4Factoidal.MathML.toPresentationMathML"
+/-- Presentation MathML, `contains` predicate over the rendered
+    string. `want` is whether the needle SHOULD be there. -/
+def presContains (cat name : String) (ml : Nat) (e : Expr)
+    (needle : String) (want : Bool) : Case :=
+  chkTrue cat name ml (contains needle (toPresentationMathML e) == want)
 
-/-- Presentation MathML is well-formed XML by our own parser. -/
-def presWellFormed (cat name : String) (ml : Nat) (_e : Expr) (_startsWithMath : Bool) : Case :=
-  chkMissing cat name ml "L4Factoidal.MathML.toPresentationMathML"
+/-- Presentation MathML is well-formed XML by our own parser. With
+    `startsWithMath`, the weaker `<math` / `</math>` shape check the
+    `.ml` runs alongside it. -/
+def presWellFormed (cat name : String) (ml : Nat) (e : Expr) (startsWithMath : Bool) : Case :=
+  let m := toPresentationMathML e
+  if startsWithMath then
+    chkTrue cat name ml (contains "<math" m && contains "</math>" m)
+  else
+    chkTrue cat name ml (L4Factoidal.XML.isWellFormed m)
 
 /-- Content MathML, `contains` predicate over the rendered string. -/
-def contentContains (cat name : String) (ml : Nat) (_e : Expr) (_needle : String) : Case :=
-  chkMissing cat name ml "L4Factoidal.MathML.toContentMathML"
+def contentContains (cat name : String) (ml : Nat) (e : Expr) (needle : String) : Case :=
+  chkTrue cat name ml (contains needle (toContentMathML e))
 
-/-- `key (simplify (parse (content e))) = key (simplify e)` (`.ml` 293). -/
-def contentRoundTrip (cat name : String) (ml : Nat) (_e : Expr) : Case :=
-  chkMissing cat name ml "L4Factoidal.MathML.toContentMathML"
+/-- `key (simplify (parse (content e))) = key (simplify e)` (`.ml`
+    line 293). A document that does not parse, or that the decoder
+    cannot map back, fails naming which of the two happened. -/
+def contentRoundTrip (cat name : String) (ml : Nat) (e : Expr) : Case :=
+  let src := toContentMathML e
+  if !(L4Factoidal.XML.isWellFormed src) then
+    { cat, name, ml, outcome := .fail "the serialized content MathML does not parse" }
+  else
+    match parseMathML src with
+    | none    => { cat, name, ml, outcome := .fail "the decoder does not map it back" }
+    | some e2 => chkEq cat name ml (key (simplify e)) (key (simplify e2))
 
 /-! ## 1. The two motivating examples (`.ml` 92-124) -/
 
@@ -313,9 +334,6 @@ def contentRoundTrips : List Case :=
 
 /-! ## 7. Relations, abs, factorial, exp, the diff sentinel (`.ml` 332-390) -/
 
-def mathmlDoc (s : String) : String :=
-  "<math xmlns=\"http://www.w3.org/1998/Math/MathML\">" ++ s ++ "</math>"
-
 def newOps : List Case :=
   [ presCheck "present-new-ops" "eq(x,y)" 337
       (erel "eq" ex ey) "<mi>x</mi><mo>=</mo><mi>y</mi>"
@@ -422,13 +440,49 @@ def contentNewOps : List Case :=
       "to_content_mathml(eq(x,y)) uses <eq/>" 449 (erel "eq" ex ey) "<eq/>"
   ]
 
+/-! ## 8. Operator tokens the F* battery leaves unpinned
+
+Found by perturbing the port and watching the score not move: changing
+the invisible-times separator from `&#x2062;` to `&#x22C5;` left the
+battery at 110 pass, 0 fail. No `check_pres` case in
+`tests/unit/toan_tests.ml` renders a `times`, a `divide`, a `power`, a
+`root` or an n-ary function application with an exact expected string,
+so a wrong token in any of them is invisible to the transcribed
+checks.
+
+These four are NOT transcriptions. They are read off
+`formal/fstar/MathML.Present.fst` directly -- `pres_times_rest` line
+248, `divide` line 202, `power` line 207, `pres_apply` line 243 -- and
+they exist so the same perturbation fails next time. They are counted
+in the score like any other check and marked with the F* line rather
+than an `.ml` line.
+
+The category is `present-fstar-tokens`; the `ml` field carries the
+`MathML.Present.fst` line, not a `toan_tests.ml` line. -/
+
+def fstarTokens : List Case :=
+  [ presCheck "present-fstar-tokens"
+      "times uses the INVISIBLE TIMES separator &#x2062; (Present.fst:248)" 248
+      (emul ex ey) "<mi>x</mi><mo>&#x2062;</mo><mi>y</mi>"
+  , presCheck "present-fstar-tokens"
+      "divide is an mfrac with mrow-wrapped parts (Present.fst:202)" 202
+      (ediv ex ey) "<mfrac><mrow><mi>x</mi></mrow><mrow><mi>y</mi></mrow></mfrac>"
+  , presCheck "present-fstar-tokens"
+      "power is an msup with mrow-wrapped parts (Present.fst:207)" 207
+      (epow ex (ei 2)) "<msup><mrow><mi>x</mi></mrow><mrow><mn>2</mn></mrow></msup>"
+  , presCheck "present-fstar-tokens"
+      "a function application uses APPLY FUNCTION &#x2061; (Present.fst:243)" 243
+      (fapp1 "sin" ex)
+      "<mrow><mi>sin</mi><mo>&#x2061;</mo><mo>(</mo><mi>x</mi><mo>)</mo></mrow>"
+  ]
+
 /-! ## The whole battery -/
 
 def allCases : List Case :=
   motivating ++ emptyRange ++ coeffMerge ++ coeffMergeSoundness ++
   idempotence ++ simplifySoundness ++ presentWellFormed ++ presentParens ++
   contentRoundTrips ++ newOps ++ newOpsWellFormed ++ newOpsRoundTrips ++
-  contentNewOps
+  contentNewOps ++ fstarTokens
 
 def caseCount : Nat := allCases.length
 def passCount : Nat := (allCases.filter Case.ok).length

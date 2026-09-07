@@ -76,7 +76,24 @@ def pres : Expr → String
   | .rat n d => renderRat n d
   | .bool b  => "<mi>" ++ (if b then "true" else "false") ++ "</mi>"
   | .sym s   => "<mi>" ++ escapeXmlFull s ++ "</mi>"
+  -- §4.4.10 literals. They are not in `MathML.Present.fst`, whose
+  -- header records that no `<matrix>` or `<vector>` node could reach
+  -- it; the Lean `Expr` DOES carry them, so they are rendered rather
+  -- than dropped. A matrix is a fenced `<mtable>`, a vector a fenced
+  -- one-column `<mtable>`, which is the Presentation form §3.5.1
+  -- gives for both.
+  | .mat rws =>
+      "<mrow><mo>(</mo><mtable>" ++ presRows rws ++ "</mtable><mo>)</mo></mrow>"
+  | .vec xs =>
+      "<mrow><mo>(</mo><mtable>" ++ presCells xs ++ "</mtable><mo>)</mo></mrow>"
   | .app fn args =>
+      -- The generic function-application rendering, as a thunk. It is
+      -- the fallback of every arm below, and it must be written once
+      -- HERE, before `args` is destructured: inside an inner match the
+      -- termination checker can no longer relate the reconstructed
+      -- list to `args`, and the measure `sizeOf args < sizeOf (.app fn
+      -- args)` stops being provable.
+      let fallback : Unit → String := fun _ => presApply fn args
       if fn == "plus" then
         match args with
         | []       => renderInt 0
@@ -85,7 +102,7 @@ def pres : Expr → String
         match args with
         | [a]    => "<mo>-</mo>" ++ fenced 2 (prec a) (pres a)
         | [a, b] => fenced 1 (prec a) (pres a) ++ "<mo>-</mo>" ++ fenced 2 (prec b) (pres b)
-        | _      => presApply fn args
+        | _      => fallback ()
       else if fn == "times" then
         match args with
         | []        => renderInt 1
@@ -93,61 +110,78 @@ def pres : Expr → String
       else if fn == "divide" then
         match args with
         | [a, b] => "<mfrac><mrow>" ++ pres a ++ "</mrow><mrow>" ++ pres b ++ "</mrow></mfrac>"
-        | _      => presApply fn args
+        | _      => fallback ()
       else if fn == "power" then
         match args with
         | [a, b] =>
             "<msup><mrow>" ++ fenced 4 (prec a) (pres a) ++ "</mrow><mrow>" ++
             pres b ++ "</mrow></msup>"
-        | _ => presApply fn args
+        | _ => fallback ()
       else if fn == "root" then
         match args with
         | [a]    => "<msqrt><mrow>" ++ pres a ++ "</mrow></msqrt>"
         | [d, a] => "<mroot><mrow>" ++ pres a ++ "</mrow><mrow>" ++ pres d ++ "</mrow></mroot>"
-        | _      => presApply fn args
+        | _      => fallback ()
       else if isRelation fn then
         -- An infix chain. An operand is fenced only when it is itself
         -- a relation, whose precedence 0 is below the 1 required here.
         match args with
         | a :: rest => fenced 1 (prec a) (pres a) ++ presJoin (relationToken fn) 1 rest
-        | []        => presApply fn args
+        | []        => fallback ()
       else if fn == "abs" then
         -- |x| : atomic, no internal fencing — the bars delimit it.
         match args with
         | [a] => "<mrow><mo>|</mo>" ++ pres a ++ "<mo>|</mo></mrow>"
-        | _   => presApply fn args
+        | _   => fallback ()
       else if fn == "factorial" then
         -- n! : atomic; the operand is fenced if it binds looser.
         match args with
         | [a] => fenced 4 (prec a) (pres a) ++ "<mo>!</mo>"
-        | _   => presApply fn args
+        | _   => fallback ()
       else if fn == "exp" then
         -- e^x as a superscript, matching power's visual form.
         match args with
         | [a] => "<msup><mi>e</mi><mrow>" ++ pres a ++ "</mrow></msup>"
-        | _   => presApply fn args
+        | _   => fallback ()
       else if fn == "diff_unsupported" then
         -- `Math/Diff.lean`'s explicit "no rule" marker. It surfaces as
         -- a visible error box rather than leaking as a generic
         -- function application that reads like a real derivative.
         "<merror><mtext>unsupported derivative</mtext></merror>"
-      else presApply fn args
+      else fallback ()
+termination_by e => (sizeOf e, 0)
 
 /-- The remaining operands of an infix operator, each preceded by the
     operator token and fenced against `minp`. -/
 def presJoin (tok : String) (minp : Int) : List Expr → String
   | []        => ""
   | a :: rest => tok ++ fenced minp (prec a) (pres a) ++ presJoin tok minp rest
+termination_by es => (sizeOf es, 1)
 
 /-- `f(a, b, ..)`: atomic, arguments comma-separated. -/
 def presApply (fn : String) (args : List Expr) : String :=
   "<mrow><mi>" ++ escapeXmlFull fn ++ "</mi><mo>&#x2061;</mo><mo>(</mo>" ++
   presApplyArgs args ++ "<mo>)</mo></mrow>"
+termination_by (sizeOf args, 2)
 
 def presApplyArgs : List Expr → String
   | []        => ""
   | [a]       => pres a
   | a :: rest => pres a ++ "<mo>,</mo>" ++ presApplyArgs rest
+termination_by es => (sizeOf es, 1)
+
+/-- One `<mtr>` per row of a matrix literal. -/
+def presRows : List (List Expr) → String
+  | []        => ""
+  | r :: rest => "<mtr>" ++ presCells r ++ "</mtr>" ++ presRows rest
+termination_by rws => (sizeOf rws, 1)
+
+/-- One `<mtd>` per entry. A vector literal is one entry per ROW, so
+    the cells are wrapped a row at a time there. -/
+def presCells : List Expr → String
+  | []        => ""
+  | a :: rest => "<mtd>" ++ pres a ++ "</mtd>" ++ presCells rest
+termination_by es => (sizeOf es, 1)
 
 end
 
@@ -178,10 +212,21 @@ def content : Expr → String
   | .bool b  => if b then "<true/>" else "<false/>"
   | .sym s   => "<ci>" ++ escapeXmlFull s ++ "</ci>"
   | .app fn args => "<apply>" ++ contentOp fn ++ contentArgs args ++ "</apply>"
+  -- §4.4.10.2 and §4.4.10.1. `FromXml.lean` reads both back, so these
+  -- round-trip like every other node.
+  | .mat rws => "<matrix>" ++ contentRows rws ++ "</matrix>"
+  | .vec xs  => "<vector>" ++ contentArgs xs ++ "</vector>"
+termination_by e => sizeOf e
 
 def contentArgs : List Expr → String
   | []        => ""
   | a :: rest => content a ++ contentArgs rest
+termination_by es => sizeOf es
+
+def contentRows : List (List Expr) → String
+  | []        => ""
+  | r :: rest => "<matrixrow>" ++ contentArgs r ++ "</matrixrow>" ++ contentRows rest
+termination_by rws => sizeOf rws
 
 end
 
