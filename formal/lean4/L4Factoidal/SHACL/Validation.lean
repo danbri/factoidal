@@ -47,6 +47,7 @@ No `sorry`, no `axiom`, no `native_decide`, no `partial`.
 import L4Factoidal.SHACL.Shapes
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.Regex.XPath
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.SHACL
 
@@ -231,7 +232,7 @@ def literalIllFormed (dt : WfIri) (lex : String) : Bool :=
   else if dt == xsdShort then !intLexicalInRange lex (some (-32768)) (some 32767)
   else if dt == xsdByte then !intLexicalInRange lex (some (-128)) (some 127)
   else if dt == xsdUnsignedLong then !intLexicalInRange lex (some 0) (some 18446744073709551615)
-  else if dt == xsdUnsignedInt then !intLexicalInRange lex (some 0) (some 4294967295)
+  else if dt == xsdUnsignedInt then !intLexicalInRange lex (some 0) (some L4Factoidal.two32m1Int)
   else if dt == xsdUnsignedShort then !intLexicalInRange lex (some 0) (some 65535)
   else if dt == xsdUnsignedByte then !intLexicalInRange lex (some 0) (some 255)
   else if dt == xsdNonNegativeInteger then !intLexicalInRange lex (some 0) none

@@ -43,6 +43,7 @@ Modelling them as one line would let `"1.0"^^xsd:float` be proved
 equal to `"1.0"^^xsd:decimal`, which OWL 2 denies.
 -/
 import L4Factoidal.RDF.Core
+import L4Factoidal.NatBounds
 
 namespace L4Factoidal.XSD
 
@@ -228,7 +229,7 @@ def baseIntervalFor (dt : WfIri) : Interval :=
   else if dt == xsdShort then { lo := .incl (-32768), hi := .incl 32767 }
   else if dt == xsdUnsignedShort then { lo := .incl 0, hi := .incl 65535 }
   else if dt == xsdInt then { lo := .incl (-2147483648), hi := .incl 2147483647 }
-  else if dt == xsdUnsignedInt then { lo := .incl 0, hi := .incl 4294967295 }
+  else if dt == xsdUnsignedInt then { lo := .incl 0, hi := .incl L4Factoidal.two32m1Int }
   else if dt == xsdNonNegativeInteger then { lo := .incl 0 }
   else if dt == xsdPositiveInteger then { lo := .incl 1 }
   else if dt == xsdNonPositiveInteger then { hi := .incl 0 }

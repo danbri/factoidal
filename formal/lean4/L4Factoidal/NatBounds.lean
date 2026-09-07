@@ -53,4 +53,17 @@ theorem two32_eq : two32 = 4294967296 := rfl
 
 theorem two32_eq_uint32Size : two32 = UInt32.size := rfl
 
+/-- `2 ^ 32 - 1` — the `xsd:unsignedInt` inclusive upper bound
+(XSD 1.1 §3.4.19). Used by the `Nat`-typed callers. -/
+@[reducible, noinline] def two32m1 : Nat := 4294967295
+
+theorem two32m1_eq : two32m1 = 4294967295 := rfl
+
+/-- `2 ^ 32 - 1` as an `Int`, for the `xsd:unsignedInt` facet checks
+that compare against an `Int` lexical value (`XSD.Facets.baseIntervalFor`,
+`SHACL.Validation.literalIllFormed`). -/
+@[reducible, noinline] def two32m1Int : Int := 4294967295
+
+theorem two32m1Int_eq : two32m1Int = 4294967295 := rfl
+
 end L4Factoidal
