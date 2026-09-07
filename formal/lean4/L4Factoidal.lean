@@ -508,3 +508,13 @@ import L4Factoidal.Unified.RifEmbed
 -- importing them here makes every one of those checks a build gate.
 import L4Factoidal.LWS.Tests
 import L4Factoidal.Solid.Tests
+
+-- XMPP / GC3 (https://github.com/danbri/factoidal/ ... xmpp/DESIGN.md
+-- moved to L4Factoidal/XMPP/README.md). Fresh implementation, not built
+-- on any existing server; loosely coupled to the rest of L4Factoidal
+-- (reuses L4Factoidal.XML for wire parsing, nothing else yet).
+import L4Factoidal.XMPP.Jid
+import L4Factoidal.XMPP.Wire
+import L4Factoidal.XMPP.Core
+import L4Factoidal.XMPP.Sasl
+import L4Factoidal.XMPP.Gc3
