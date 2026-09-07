@@ -1001,6 +1001,66 @@ theorem polygonClass_ne_exterior_contains {p : Point} {poly : Polygon} {b : BBox
       rw [hext] at h
       simp at h
 
+/-! ## 5b. Two crossing segments, in integer arithmetic
+
+`segmentsIntersect` accepts a PROPER crossing with no `inSegBBox` conjunct:
+the four orientation signs alone. That branch is the one the module header
+named as open. It is closed here, and the argument is the parametric one
+rather than a separating axis.
+
+Write the four determinants as `u = orient a b c`, `v = orient a b d`,
+`w = orient c d a`, `z = orient c d b`, all at one shared scale, and put
+`D = v - u`. Then `D` is the cross product of the two direction vectors,
+`z = w - D`, and the point where the two LINES meet has
+`D * p.x = D * c.x - u * (d.x - c.x)` and also `D * p.x = D * a.x + w *
+(b.x - a.x)` — one polynomial identity, no division. A proper crossing puts
+`u` and `v` on opposite sides of zero and likewise `z` and `w`, which pins
+`D * p.x` between `D * c.x` and `D * d.x` AND between `D * a.x` and
+`D * b.x`. Dividing by `D` gives the two coordinate intervals a common value,
+which is all the bounding boxes need. The same holds on the `y` axis.
+
+Nothing here computes `p` itself: `p.x` is rational and a `Scaled` is a
+decimal, so the witness the index consumes is built from the endpoint
+coordinates instead (`Scaled.max` of the two interval minima). -/
+
+/-- `D * p` lies between `D * c` and `D * d`, where `p` is the crossing
+parameter written without division. `u ≤ 0 ≤ v` is the straddle condition
+normalised so that `D = v - u` is positive. -/
+private theorem seg_bounds (D u v c d P : Int)
+    (hu : u ≤ 0) (hv : 0 ≤ v) (hD : D = v - u)
+    (hP : P = D * c - u * (d - c)) :
+    D * min c d ≤ P ∧ P ≤ D * max c d := by
+  have e1 : P - D * c = (-u) * (d - c) := by grind
+  have e2 : D * d - P = v * (d - c) := by grind
+  rcases Int.le_total c d with h | h
+  · rw [Int.min_eq_left h, Int.max_eq_right h]
+    have h1 : 0 ≤ (-u) * (d - c) := Int.mul_nonneg (by omega) (by omega)
+    have h2 : 0 ≤ v * (d - c) := Int.mul_nonneg hv (by omega)
+    exact ⟨Int.sub_nonneg.mp (e1 ▸ h1), Int.sub_nonneg.mp (e2 ▸ h2)⟩
+  · rw [Int.min_eq_right h, Int.max_eq_left h]
+    have h1 : (-u) * (d - c) ≤ 0 :=
+      Int.mul_nonpos_of_nonneg_of_nonpos (by omega) (by omega)
+    have h2 : v * (d - c) ≤ 0 := Int.mul_nonpos_of_nonneg_of_nonpos hv (by omega)
+    exact ⟨Int.sub_nonneg.mp (by omega : (0:Int) ≤ P - D * d),
+           Int.sub_nonneg.mp (by omega : (0:Int) ≤ D * c - P)⟩
+
+/-- ONE AXIS OF A PROPER CROSSING. The two segments' coordinate intervals on
+this axis overlap. `a b` are the first segment's endpoint coordinates on the
+axis, `c d` the second's; `u v w z` are the four determinants and `P` is
+`D` times the crossing coordinate, supplied in both of its equal forms. -/
+theorem int_cross_axis
+    (a b c d u v w z P : Int)
+    (hu : u ≤ 0) (hv : 0 ≤ v) (hz : z ≤ 0) (hw : 0 ≤ w)
+    (hD : 0 < v - u) (hzw : z = w - (v - u))
+    (hP : P = (v - u) * c - u * (d - c))
+    (hQ : P = (v - u) * a + w * (b - a)) :
+    min a b ≤ max c d ∧ min c d ≤ max a b := by
+  have hcd := seg_bounds (v - u) u v c d P hu hv rfl hP
+  have hab := seg_bounds (v - u) (-w) (-z) a b P (by omega) (by omega) (by omega)
+    (by grind)
+  exact ⟨Int.le_of_mul_le_mul_left (Int.le_trans hab.1 hcd.2) hD,
+         Int.le_of_mul_le_mul_left (Int.le_trans hcd.1 hab.2) hD⟩
+
 /-! ## 6. The trust surface
 
 Only Lean's own three axioms. Nothing here is admitted. -/
@@ -1011,5 +1071,6 @@ Only Lean's own three axioms. Nothing here is admitted. -/
 #print axioms BBox.overlaps_of_common_point
 #print axioms BBox.ofPoints_covers
 #print axioms BBox.ofRings_covers
+#print axioms int_cross_axis
 
 end L4Factoidal.Geo
