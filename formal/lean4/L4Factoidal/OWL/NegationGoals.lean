@@ -231,6 +231,54 @@ def propInclusionGoal (base : Graph) (p q : WfIri) : Graph :=
   | some ts => (edge :: ts) ++ base
   | none    => edge :: base
 
+/-! ### Axiom conclusions whose negation is a fresh-witness assertion
+(2026-09-07)
+
+Six conclusion predicates fell through `negateContentTriple` to `none`
+before this landing, which made `negationGoals` answer `none` for the
+whole conclusion and left the tableau unasked
+(`docs/designissues/2026-09-07-lean-owl-corpus-gap.md` § 10.1a). Each
+builder below negates one OWL 2 Direct Semantics axiom (Table 6 of
+https://www.w3.org/TR/owl2-direct-semantics/) into an assertion on
+FRESH names, and the law it rests on is proved in
+`OWL/TableauTheorems.lean`:
+
+| conclusion | goal | law |
+|---|---|---|
+| `C owl:disjointWith D` | fresh `x : C`, `x : D` | `disjointGoal_iff` |
+| `P owl:propertyDisjointWith Q` | fresh `a P b`, `a Q b` | `propDisjointGoal_iff` |
+| `p rdfs:range C` | fresh `a p b`, `b : ¬C` | `rangeGoal_iff` |
+| `p rdfs:domain C` | fresh `a p b`, `a : ¬C` | `domainGoal_iff` |
+| `a owl:differentFrom b` | `a owl:sameAs b` | `diffGoal_iff` |
+| `a owl:sameAs b` | `a owl:differentFrom b` | `sameGoal_iff` |
+
+The two equality builders emit no fresh name: the negation of a claim
+about two NAMED individuals is a claim about the same two. -/
+
+/-- Refutation goal for `C owl:disjointWith D`: a fresh individual in
+    both class expressions. -/
+def disjointClassesGoal (base : Graph) (c d : Term) : Graph :=
+  let x : Subject := .bnode peSubFreshBNode
+  [ ⟨x, rdfType, c⟩, ⟨x, rdfType, d⟩ ] ++ base
+
+/-- Refutation goal for `P owl:propertyDisjointWith Q`: a fresh pair
+    in both role extensions. -/
+def disjointPropertiesGoal (base : Graph) (p q : WfIri) : Graph :=
+  let a : Subject := .bnode pePropABNode
+  let b : Term := .bnode pePropBBNode
+  [ ⟨a, p, b⟩, ⟨a, q, b⟩ ] ++ base
+
+/-- Refutation goal for `p rdfs:domain C` (`onSubject = true`) and
+    `p rdfs:range C` (`onSubject = false`): a fresh `p`-edge whose
+    subject (resp. object) is in the complement of `C`. -/
+def propertyDomainRangeGoal (base : Graph) (p : WfIri) (c : Term)
+    (onSubject : Bool) : Graph :=
+  let a : Subject := .bnode pePropABNode
+  let b : Subject := .bnode pePropBBNode
+  let neg : Subject := .bnode peNegClassBNode
+  [ ⟨a, p, b.toTerm⟩, ⟨neg, owlComplementOf, c⟩,
+    ⟨if onSubject then a else b, rdfType, .bnode peNegClassBNode⟩ ] ++ base
+
 /-- One content assertion → the refutation goals it expands to (a
     conjunction — every goal required). `none` = unsupported shape.
     Port of `negate_content_triple`; each arm's Direct Semantics
@@ -319,6 +367,27 @@ def negateContentTriple (base : Graph) (t : Triple)
         [ ce, ⟨x, rdfType, .bnode peBoolCeBNode⟩,
           compS, ⟨x, rdfType, .bnode peNegClassBNodeB⟩ ] ++ base
       some [g1, g2]
+  else if t.p == owlDisjointWith then
+    -- `C ⊓ D ⊑ ⊥` fails iff some individual is in both.
+    some [disjointClassesGoal base t.s.toTerm t.o]
+  else if t.p == owlPropertyDisjointWith then
+    match t.s, t.o with
+    | .iri p, .iri q => some [disjointPropertiesGoal base p q]
+    | _, _           => none
+  else if t.p == rdfsDomain || t.p == rdfsRange then
+    -- The fresh object of the goal edge is a bnode INDIVIDUAL, so a
+    -- data range as `C` is out of the encoding and falls to `none`.
+    match t.s, t.o with
+    | .iri p, .iri c => some [propertyDomainRangeGoal base p (.iri c)
+                                (t.p == rdfsDomain)]
+    | .iri p, .bnode b => some [propertyDomainRangeGoal base p (.bnode b)
+                                  (t.p == rdfsDomain)]
+    | _, _           => none
+  else if t.p == owlDifferentFrom then
+    -- Its negation is the identity of the same two names.
+    some [⟨t.s, owlSameAs, t.o⟩ :: base]
+  else if t.p == owlSameAs then
+    some [⟨t.s, owlDifferentFrom, t.o⟩ :: base]
   else if isNegatablePropertyAssertion t then
     -- `s p o` → ¬p(s,o) on the existing named terms.
     match negPairTriples t.s t.p t.o with

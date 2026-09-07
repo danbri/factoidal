@@ -324,11 +324,19 @@ private def gNoSubProperty : Graph :=
 
 #guard !(refuted gNoSubProperty)
 
-/-! A NAMED individual is never a merge candidate. Its graph-asserted
-edges cannot be rewritten, and a clash read off a half-merged state
-is fabricated. -/
-#guard !(isMergeableTerm (.iri exP1))
+/-! A named individual IS a merge candidate since 2026-09-07. The
+merge records an identification and `labelsOf` / `successorsOf` pool
+the group, so no state is half-rewritten; and offering only blank
+nodes left every successor pair involving a named individual outside
+the `≤`-rule's branch cover, which is what makes "every offered merge
+closes" an argument at all (design record § 11.6).
+
+A LITERAL is never a candidate: a literal and an IRI denote in
+disjoint domains under OWL 2 Direct Semantics § 2.2, and two literals
+with different values are already `provablyDistinct`. -/
+#guard isMergeableTerm (.iri exP1)
 #guard isMergeableTerm (bnT "w")
+#guard !(isMergeableTerm (cardLit "1"))
 
 /-! ## Closure scaffolding is inert
 
