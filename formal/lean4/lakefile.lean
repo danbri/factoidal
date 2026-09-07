@@ -323,6 +323,10 @@ extern_lib libl4exthost pkg := do
 
 @[default_target] lean_exe «l4xmlconf» where root := `Harness.XmlConfRun
 
+-- The W3C XML Schema Test Suite, Part 2 Datatypes slice: suite.xml ->
+-- the *Meta/*.testSet manifests -> the datatype-only test groups.
+@[default_target] lean_exe «l4xsd-datatypes» where root := `Harness.XsdDatatypesRun
+
 @[default_target] lean_exe «l4shex» where root := `Harness.ShExRun
 
 -- ISO Schematron conformance runner: Schematron/FromXml reads the

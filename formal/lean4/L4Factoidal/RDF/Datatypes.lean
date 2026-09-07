@@ -58,6 +58,7 @@ import L4Factoidal.RDF.Core
 import L4Factoidal.XML.Parser
 import L4Factoidal.NatBounds
 import L4Factoidal.XSD.IEEE754
+import L4Factoidal.XSD.Datatypes
 import L4Factoidal.JSON.Parser
 
 namespace L4Factoidal.RDF
@@ -81,64 +82,31 @@ def withMinimalD (D : List WfIri) : List WfIri :=
   let base := if D.contains xsdString then D else D ++ [xsdString]
   if base.contains rdfLangString then base else base ++ [rdfLangString]
 
-/-! ## Numeric lexical forms -/
+/-! ## Numeric lexical forms
+
+The lexical spaces and the numeric value model are `XSD.Datatypes`'s,
+not a second copy: `NumVal` IS `XSD.Dec` (`mantissa × 10^-scale`,
+normalised), and the two parsers below are the §3.3.3 and §3.3.13
+lexical mappings of that module. What stays HERE is the RDF-specific
+part — §7's rule that the whiteSpace facet is NOT applied, so
+`XSD.lexicalMap` is called and never `XSD.lexicalMapWs`. -/
 
 /-- A normalised decimal value: `mantissa × 10⁻ˢᶜᵃˡᵉ`, fraction with no
-trailing zeros (so equality of values is equality of the pair). -/
-structure NumVal where
-  mantissa : Int
-  scale    : Nat
-  deriving DecidableEq, Repr
+trailing zeros (`XSD.Dec`). -/
+abbrev NumVal := L4Factoidal.XSD.Dec
 
-/-- Strip trailing zeros from the fraction. -/
-def NumVal.normalize : NumVal → Nat → NumVal
-  | v, 0 => v
-  | v, fuel + 1 =>
-      if v.scale > 0 && v.mantissa % 10 == 0
-      then NumVal.normalize ⟨v.mantissa / 10, v.scale - 1⟩ fuel
-      else v
-
-def digitsToNat (cs : List Char) : Nat :=
-  cs.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
-
-/-- XSD `integer` lexical space (§3.4.13): `[+-]? [0-9]+`, nothing
-else — no whitespace, no exponent, no point. -/
+/-- XSD `integer` lexical space (§3.4.13), through the one lexical
+mapping. -/
 def parseIntegerLexical (s : String) : Option Int :=
-  let cs := s.toList
-  let (neg, digits) :=
-    match cs with
-    | '-' :: rest => (true, rest)
-    | '+' :: rest => (false, rest)
-    | _           => (false, cs)
-  if digits.isEmpty || !digits.all Char.isDigit then none
-  else
-    let n : Int := digitsToNat digits
-    some (if neg then -n else n)
+  L4Factoidal.XSD.parseIntegerLex s
 
-/-- XSD `decimal` lexical space (§3.3.3): `[+-]? ([0-9]+ ('.' [0-9]*)? |
-'.' [0-9]+)`. Returns the normalised value. -/
+/-- XSD `decimal` lexical space (§3.3.3), through the one lexical
+mapping. Returns the normalised value. -/
 def parseDecimalLexical (s : String) : Option NumVal :=
-  let cs := s.toList
-  let (neg, body) :=
-    match cs with
-    | '-' :: rest => (true, rest)
-    | '+' :: rest => (false, rest)
-    | _           => (false, cs)
-  let intPart := body.takeWhile (fun c => c != '.')
-  let rest := body.drop intPart.length
-  let fracPart := match rest with | '.' :: f => some f | [] => some [] | _ => none
-  match fracPart with
-  | none => none
-  | some frac =>
-    if !intPart.all Char.isDigit || !frac.all Char.isDigit then none
-    else if intPart.isEmpty && frac.isEmpty then none
-    else
-      let m : Int := digitsToNat (intPart ++ frac)
-      let v : NumVal := ⟨if neg then -m else m, frac.length⟩
-      some (v.normalize (frac.length + 1))
+  L4Factoidal.XSD.parseDecimalLex s
 
 /-- XSD `int` bounds (§3.4.17). -/
-def intInRange (i : Int) : Bool := L4Factoidal.two31NegInt ≤ i && i ≤ 2147483647
+def intInRange (i : Int) : Bool := L4Factoidal.XSD.inIntBounds .int i
 
 /-- The numeric value of a literal of a modelled numeric datatype;
 `none` when the lexical form is not in the datatype's lexical space or
@@ -192,7 +160,7 @@ the lexical-space test and not only as the first half of a value
 comparison. Note what it REJECTS and XSD also rejects: `Infinity`,
 `nan`, an empty mantissa, an empty or non-integer exponent. -/
 def doubleFloatLexicalOk (lex : String) : Bool :=
-  (L4Factoidal.XSD.parseLexical lex).isSome
+  (L4Factoidal.XSD.lexicalMap .double lex).isSome
 
 /-- RDF 1.2 Concepts §5.3: the lexical space of `rdf:JSON` is the set
 of strings that are grammatical JSON (RFC 8259 / ECMA-404), decided by

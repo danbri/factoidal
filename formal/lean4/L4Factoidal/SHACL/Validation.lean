@@ -48,6 +48,7 @@ import L4Factoidal.SHACL.Shapes
 import L4Factoidal.SPARQL.Expr
 import L4Factoidal.Regex.XPath
 import L4Factoidal.NatBounds
+import L4Factoidal.XSD.Datatypes
 
 namespace L4Factoidal.SHACL
 
@@ -224,24 +225,9 @@ def dtCmp (a b : String) : Option Int :=
 
 /-- The XSD ill-formed-literal test for the datatypes the F* knows. -/
 def literalIllFormed (dt : WfIri) (lex : String) : Bool :=
-  if dt == xsdBoolean then !(lex == "true" || lex == "false" || lex == "1" || lex == "0")
-  else if dt == xsdInteger then !isIntegerLexical lex
-  else if dt == xsdDecimal then !isDecimalLexical lex
-  else if dt == xsdLong then !intLexicalInRange lex (some L4Factoidal.two63NegInt) (some L4Factoidal.two63m1Int)
-  else if dt == xsdInt then !intLexicalInRange lex (some L4Factoidal.two31NegInt) (some 2147483647)
-  else if dt == xsdShort then !intLexicalInRange lex (some (-32768)) (some 32767)
-  else if dt == xsdByte then !intLexicalInRange lex (some (-128)) (some 127)
-  else if dt == xsdUnsignedLong then !intLexicalInRange lex (some 0) (some L4Factoidal.two64m1Int)
-  else if dt == xsdUnsignedInt then !intLexicalInRange lex (some 0) (some L4Factoidal.two32m1Int)
-  else if dt == xsdUnsignedShort then !intLexicalInRange lex (some 0) (some 65535)
-  else if dt == xsdUnsignedByte then !intLexicalInRange lex (some 0) (some 255)
-  else if dt == xsdNonNegativeInteger then !intLexicalInRange lex (some 0) none
-  else if dt == xsdPositiveInteger then !intLexicalInRange lex (some 1) none
-  else if dt == xsdNonPositiveInteger then !intLexicalInRange lex none (some 0)
-  else if dt == xsdNegativeInteger then !intLexicalInRange lex none (some (-1))
-  else if dt == xsdDateTime then (dtParseMs lex).isNone
-  else if dt == xsdFloat || dt == xsdDouble then !isFloatLexical lex
-  else false
+  match L4Factoidal.XSD.builtinOfIri? dt.val with
+  | some b => (L4Factoidal.XSD.lexicalMap b lex).isNone
+  | none   => false
 
 /-! ## §4.3 value-range comparison (port of `numeric_cmp_le` / `_lt`) -/
 

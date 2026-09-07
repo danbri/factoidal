@@ -160,6 +160,7 @@ command, and the command is named.
 | ShEx validation | 1182 pass, 0 fail (out of 1182 decided), 0 not read — re-measured 2026-08-26, see Addendum 4 | `lake exe l4shex` |
 | XML conformance | 1840 pass, 22 fail (out of 1862 in profile) | `lake exe l4xmlconf` |
 | RIF Core | 24 pass, 2 fail (out of 26 decided) | `lake exe l4rif` |
+| XML Schema 1.1 Part 2 datatypes | 18951 pass, 5 fail (out of 18956 scored instance tests) | `lake exe l4xsd-datatypes` |
 
 ## What changed in the tree, not just in the scores
 

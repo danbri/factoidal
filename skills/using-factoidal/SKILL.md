@@ -100,7 +100,8 @@ theorem and `#guard`). Executables land in
 natively), `l4w3c` (W3C manifest runner), and per-spec probes
 (`l4rdfc-probe`, `l4jsonld-probe`, `l4owl-probe`, `l4shacl`, `l4shex`,
 `l4rml`, `l4rif`, `l4xslt`, `l4xmlconf`, `l4jsonschema`, `l4mathml`,
-`l4schematron`, `l4csvw-rdf`, `l4csvw-json`, `l4vc-probe`, …). W3C
+`l4schematron`, `l4csvw-rdf`, `l4csvw-json`, `l4vc-probe`,
+`l4xsd-datatypes`, …). W3C
 test fixtures are git submodules: run `tools/ensure-test-env.sh`
 first; with the fixtures absent every suite reports zero tests
 discovered and the score means nothing.

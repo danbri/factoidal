@@ -111,6 +111,22 @@ def charEscape (letter : Nat) : Option Nat :=
   else if letter = cpQuestion then some 0x3F
   else none
 
+/-- XML 1.0 `[4] NameStartChar`, as codepoint ranges — the class XML
+Schema Appendix G calls `\i` ("the set of initial name characters"),
+which is `NameStartChar` plus `:`. -/
+def nameStartCharRanges : List (Nat × Nat) :=
+  [ (0x3A, 0x3A), (0x41, 0x5A), (0x5F, 0x5F), (0x61, 0x7A),
+    (0xC0, 0xD6), (0xD8, 0xF6), (0xF8, 0x2FF), (0x370, 0x37D),
+    (0x37F, 0x1FFF), (0x200C, 0x200D), (0x2070, 0x218F),
+    (0x2C00, 0x2FEF), (0x3001, 0xD7FF), (0xF900, 0xFDCF),
+    (0xFDF0, 0xFFFD), (0x10000, 0xEFFFF) ]
+
+/-- XML 1.0 `[4a] NameChar`, the class Appendix G calls `\c`. -/
+def nameCharRanges : List (Nat × Nat) :=
+  nameStartCharRanges ++
+  [ (0x2D, 0x2E), (0x30, 0x39), (0xB7, 0xB7), (0x300, 0x36F),
+    (0x203F, 0x2040) ]
+
 /-- Multi-character class escapes `\d \D \s \S \w \W` as codepoint ranges
 (F* `class_escape_ranges`). `\s = {#x9 #xA #xD #x20}` (XSD);
 `\w = [A-Za-z0-9_]` (ECMAScript); `\D \S \W` are the complements. -/
@@ -123,6 +139,10 @@ def classEscapeRanges (letter : Nat) : Option (List (Nat × Nat)) :=
   else if letter = 0x77 then some [(0x30, 0x39), (0x41, 0x5A), (0x5F, 0x5F), (0x61, 0x7A)]  -- \w
   else if letter = 0x57 then
     some (complementRanges [(0x30, 0x39), (0x41, 0x5A), (0x5F, 0x5F), (0x61, 0x7A)]) -- \W
+  else if letter = 0x69 then some nameStartCharRanges                                -- \i
+  else if letter = 0x49 then some (complementRanges nameStartCharRanges)             -- \I
+  else if letter = 0x63 then some nameCharRanges                                     -- \c
+  else if letter = 0x43 then some (complementRanges nameCharRanges)                  -- \C
   else none
 
 /-- Escape as an ATOM (top-level `\...`) (F* `parse_escape_atom`). -/
