@@ -891,3 +891,80 @@ whose `rdfs:range` goal builds but does not close.
 against a baseline of 172); `l4rdfs-semi` 6 of 6; SHACL 1.0 core 98
 pass, 0 fail (out of 98); SHACL 1.2 rules 88 pass, 0 fail (out of 88);
 `#print axioms` on all eight new theorems.
+
+## 13. Status — 2026-09-07, after the named-restriction TBox entry
+
+`collectAxiomsS` read axioms off `rdfs:subClassOf`,
+`owl:equivalentClass`, `owl:disjointWith` and `owl:complementOf`
+triples only. A restriction written DIRECTLY on a named class, with no
+axiom triple beside it, produced no TBox entry: the node typed `z`
+took the label `.named z` from `initState`, the bound never became a
+label, and no cardinality rule could fire. That is
+`rdfbased-sem-restrict-maxqcr-inst-obj-one`, whose premise is
+`w rdf:type z` with `z owl:maxQualifiedCardinality 1`,
+`z owl:onProperty p`, `z owl:onClass c` on the IRI `z` itself.
+
+`Refute.namedRestrictionAxioms` adds, for every IRI subject carrying
+`owl:onProperty`, the two inclusions between that class name and the
+restriction it writes. The OWL 2 mapping to RDF (Table 13) reads the
+markers as the class expression whatever the subject is; when the
+subject is an IRI the triples say the named class IS that restriction,
+so both inclusions hold. Only `owl:onProperty` subjects are read: a
+named-subject `owl:unionOf` / `owl:intersectionOf` / `owl:oneOf` /
+`owl:complementOf` marker is left to the arms that already decide it.
+
+### Final scores, `--dl`, DEFAULT budgets
+
+`lake exe l4owl-probe --dl type-inconsistency.rdf
+type-positive-entailment.rdf type-consistency.rdf` from
+`formal/lean4/`, one process, `--cap-ms 30000`, `--refute-budget 64`,
+`--refute-ms 20000`.
+
+| catalog | § 9 (start) | now |
+|---|---|---|
+| `type-inconsistency.rdf` | 116 pass, 11 fail | 116 pass, 11 fail (1 skip, of 128) |
+| `type-positive-entailment.rdf` | 368 pass, 40 fail | **373 pass, 35 fail** (4 unsupported, of 412) |
+| `type-consistency.rdf` | 538 pass, 41 fail | **543 pass, 36 fail** (4 unsupported, of 583) |
+| all three | 1022 pass, 92 fail | **1032 pass, 82 fail** (1 skip, 8 unsupported, of 1123) |
+| closure alone | 905 pass, 209 fail | 905 pass, 209 fail (unchanged, as it must be) |
+
+`refuter_flips_to_fail=0` on every catalog and on the total. Five ids
+closed, ten units: `WebOnt-AllDifferent-001`,
+`WebOnt-differentFrom-002`, `WebOnt-distinctMembers-001`,
+`WebOnt-I5.21-002`, `rdfbased-sem-restrict-maxqcr-inst-obj-one`.
+
+**Default RL regime, all six catalogs:** 1229 pass, 218 fail, 2 skip,
+8 unsupported (out of 1457) — unchanged, and it must be: the refuter
+is not consulted there.
+
+### Wall clock, stated plainly
+
+| tree | `--dl`, three catalogs, default budgets |
+|---|---|
+| § 9, start of this work | 8 min 37 s |
+| after the six goal builders and the ≤-rule cover | 15 min 49 s |
+| after the named-restriction TBox entry | **19 min 56 s** |
+
+**This is over the fifteen-minute target and the cause is the work
+itself, not a timeout.** `pe_refuter_budget=0` on every catalog: no
+goal hit `--refute-ms`. `pe_no_negation_goal` fell from 33 to 22, so
+about thirty units that used to return `.noGoals` in microseconds now
+run one tableau per conclusion conjunct, and `WebOnt-I5.21-002` alone
+runs 66 goals over a 518-triple closure; the named-restriction entry
+then grew the TBox that `onePass` folds over per node and per label.
+At `--refute-ms 3000` the same three catalogs take 14 min 20 s with
+the same scores, because nothing was decided by the extra budget.
+
+Two mitigations are available and neither is taken here, so that the
+score and the speed stay separate measurements:
+
+1. hoist the premise closure out of the per-goal `closure ++ goal`
+   concatenation — `initState`, `collectAxioms` and
+   `immediateInconsistency` are recomputed over the whole closure once
+   per goal, and the closure part of each is identical across the
+   goals of one unit;
+2. decide a conclusion's goals against one shared saturation of the
+   closure instead of one per goal.
+
+Both are performance work against a fixed verdict, measurable against
+the table above.

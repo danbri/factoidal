@@ -1283,6 +1283,41 @@ def parseNnf (st : Store) (t : Term) : ClassExpr := nnf (parseClassExpr st t 32)
 def parseNnfSubject (st : Store) (s : Subject) : ClassExpr :=
   nnf (parseCeOfSubject st s)
 
+/-- A NAMED class that carries the restriction markers itself.
+
+    The OWL 2 RDF mapping (Table 13 of https://www.w3.org/TR/owl2-mapping-to-rdf/)
+    reads `z owl:onProperty p . z owl:maxQualifiedCardinality 1 .
+    z owl:onClass c` as the class expression, whatever `z` is; when
+    `z` is an IRI the triples say that the class `z` IS that
+    restriction, so `CEXT(z)` and the restriction's extension are the
+    same set and the inclusion holds in both directions.
+
+    `collectAxiomsS` reads axioms off `rdfs:subClassOf`,
+    `owl:equivalentClass`, `owl:disjointWith` and `owl:complementOf`
+    triples only, so a restriction written directly on a named class,
+    with no axiom triple beside it, produced no TBox entry at all: the
+    node typed `z` got the label `.named z` from `initState`, the
+    bound never became a label, and no cardinality rule could fire.
+    That is the shape of `rdfbased-sem-restrict-maxqcr-inst-obj-one`.
+
+    Only `owl:onProperty` subjects are read here. A named-subject
+    `owl:unionOf` / `owl:intersectionOf` / `owl:complementOf` /
+    `owl:oneOf` marker is left to the arms below, whose treatment of
+    it is already decided and measured. -/
+def namedRestrictionAxioms (us : List WfIri) (st : Store)
+    : List (ClassExpr × ClassExpr) :=
+  let subs := (st.graph.filterMap (fun t =>
+    if t.p == owlOnProperty then
+      match t.s with
+      | .iri c   => some c
+      | .bnode _ => none
+    else none)).eraseDups
+  subs.flatMap (fun c =>
+    match parseNnfSubjectWith us st (.iri c) with
+    | .unknown => []
+    | .named d => if d == c then [] else [(.named c, .named d), (.named d, .named c)]
+    | ce       => [(.named c, ce), (ce, .named c)])
+
 /-- Store-parameterised: the graph it reads is `st.graph`.
 
     Every lookup below runs through `st`, so the store decides the
@@ -1292,6 +1327,7 @@ def parseNnfSubject (st : Store) (s : Subject) : ClassExpr :=
     two agree. -/
 def collectAxiomsS (st : Store) : List (ClassExpr × ClassExpr) :=
   let us := unsatNamedClassesS st
+  namedRestrictionAxioms us st ++
   st.graph.flatMap (fun t =>
     if t.p == rdfsSubClassOf then
       [(parseNnfSubjectWith us st t.s, parseNnfWith us st t.o)]
