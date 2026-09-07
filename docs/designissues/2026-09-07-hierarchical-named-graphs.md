@@ -13,6 +13,11 @@ Design record only. The Lean sketch is
 types, the grammar, the matcher, the order, the view, and the theorem
 statements. No implementation has landed and no gate has been run.
 
+
+Tracking issue: <https://github.com/danbri/factoidal/issues/660>. The Lean
+sketch `formal/lean4/L4Factoidal/RDF/GraphPatterns.lean` compiles under
+`lake env lean` (checked 2026-09-07, 0 errors).
+
 ## 0. What the specifications do and do not give us
 
 [RDF 1.1 Concepts §4](https://www.w3.org/TR/rdf11-concepts/#section-dataset)
