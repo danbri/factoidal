@@ -279,7 +279,40 @@ this build rather than harming it. And purging cannot help, because
 `_mi_prim_decommit` is a no-op by construction. **No allocator option
 is a fix, and none is shipped.**
 
-## 7. What is open
+## 7. The 700 MB reproduction does not reproduce
+
+Section 1 records that the module stops with `INTERNAL PANIC: out of
+memory` 436 MB into the ingest pass, at 1.99 GB. Re-run on 2026-09-07
+against `SCRATCH/oom/prefix700t.nq` (734,003,186 bytes), IBK5, 64 MiB
+batch, through `npm/factoidal/bin/factoidal.mjs pack`, it does not:
+
+| module | verdict | peak RSS | wall clock |
+|---|---|---|---|
+| the module committed before this landing | completes | 1,099,366,400 | 576 s |
+| the module this landing commits | completes | 1,062,567,936 | 517 s |
+
+Both write 4,016 artifacts, 518,790,565 bytes, 4,282,588 rows — the
+same generation. The 3% difference between them is build-to-build; this
+landing makes no behaviour change and does not claim it.
+
+So the reported panic is not a property of the committed module on this
+input. Either the input differed (section 1 names `prefix700.nq`, and
+only `prefix700t.nq` is now on disk), or the invocation did, or the
+module measured was not the committed one. **A reproduction that no
+longer reproduces is a fact about the record, not about the engine**:
+until the failing invocation is recovered, the panic is unconfirmed and
+the working figure for a 700 MB pack is 1.06 GB of peak resident set,
+against the native packer's 257 MB.
+
+That leaves the retention in section 6 measured and real, and its
+consequence smaller than assumed: the packer costs 4.1x the native
+packer on this input rather than failing on it. The live bytes are also
+sublinear in the source over the whole file — 385 MiB after 100 MB
+would project to 2.7 GB at 700 MB, and the run peaks at 1.06 GB — so
+the per-quad figure in section 6.3 is a rate at the head of the file,
+not a constant.
+
+## 8. What is open
 
 The cause is localised and not closed. What is known: 15.6 `mpz`
 objects per quad, allocated in the pack's parse-and-publish pass, are
@@ -293,8 +326,9 @@ pass — the streaming N-Quads fold
 accumulation and block encoding — with `l4_heap_tags_c` after each,
 which the shipping module exports.
 
-The gate is unchanged and unmet: the 700 MB prefix stops at 1.99 GB. At
-3.85 bytes of live heap per source byte it cannot pass, so the gate
-follows the repair rather than an allocator setting.
+The gate stands at 1.06 GB of peak resident set for the 700 MB prefix,
+against a target of 514 MB (twice the native packer) and a floor of
+1 GB. It is missed by 6% and follows the repair in section 6, not an
+allocator setting.
 
 `-sMAXIMUM_MEMORY` moves the panic and touches no line of this record.
