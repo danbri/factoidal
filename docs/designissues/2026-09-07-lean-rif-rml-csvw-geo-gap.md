@@ -292,6 +292,62 @@ copied into the literal, `rdfms-xml-literal-namespaces` expects unused
 ones dropped. No byte comparison passes both. Only a namespace-aware
 comparison does, which is what the specification asks for anyway.
 
+### BLOCKER: `lake build` over the whole tree is RED
+
+Two modules fail to build at `751d81c21`. Neither is in any probe's
+transitive closure, so every per-target build and every probe in this
+session was green while the tree was not. Both are genuine proof
+obligations created by this session's engine changes, not cosmetic
+breaks. Fix these before anything else on this branch.
+
+**1. `L4Factoidal/Unified/DSchema.lean:281`** — type mismatch in
+`regimeEntails_d_sound_mt`. The proof asserts
+
+```
+regimeEntails Regime.d D g h
+  = (hasIllFormedLiteral D g || entailsWith (literalValueEq D) … )
+```
+
+by definitional equality. That stopped holding when
+`Regime.literalEq` (in `RDF/Entailment.lean`, commit `d0bd06d22`)
+changed every non-`simple` regime from `literalValueEq D` to
+`dtValueLeq D`. This is not a rename: `dtValueLeq` is a STRICTLY
+LARGER literal equality, and a larger literal equality makes
+entailment MORE permissive, so soundness does not carry over on its
+own. `entailsWith_valueEq_sound` is stated for `literalValueEq`.
+Two ways out, and the choice is a real decision:
+
+* narrow `Regime.literalEq` so `.d` keeps `literalValueEq D` and only
+  the regimes the rdf-semantics fixtures need (`.rdfs`, `.rdfsPlus`)
+  get `dtValueLeq` — most likely to keep both the theorem and the 3
+  extra passes, and the first thing to try; or
+* prove `entailsWith` sound under `dtValueLeq`, which is the real
+  theorem if the D-regime is meant to use it.
+
+**2. `L4Factoidal/Storage/GeoBBoxIndex.lean:291`** — unsolved goals in
+the `within` case of the bounding-box refinement proof. The Polygon /
+Polygon arm added to `sfWithinBase` and `sfIntersectsBase` (in
+`Geo/Topology.lean`, inside commit `47b9d2c3a`) introduces a case the
+proof does not discharge:
+
+```
+h : polygonBoundariesCross poly1 poly2 = false
+    ∧ (match poly1.ext with
+       | rep :: tail => some (polygonClass rep poly2 != PtClass.exterior)
+       | [] => none) = some true
+```
+
+The obligation is the honest one: a polygon within a polygon must have
+its bounding box inside the other's, so the index may not prune it.
+
+**Why this was not caught.** Four agents shared one worktree on a disk
+at its floor, and each was told to build only its own target to keep
+off the shared Lake lock. That instruction bought throughput and paid
+for it here: a target-scoped build cannot see a module that only
+DEPENDS on what you changed. The rule that follows — one whole-tree
+`lake build` before the last commit of a session, however green the
+targeted ones were, and never a session that ends without one.
+
 ### Two working-method failures from this session
 
 **A commit carried files its subject does not name.** Commit
