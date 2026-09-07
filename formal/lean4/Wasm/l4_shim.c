@@ -26,6 +26,7 @@ Lean-level errors come back as a JSON document with an "error" key, so
 the boundary itself never has to carry an exception.
 */
 #include <lean/lean.h>
+#include <lean/mimalloc.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -297,6 +298,91 @@ void mi_process_info(size_t *elapsed_msecs, size_t *user_msecs,
 #endif
 
 L4_EXPORT void l4_collect(int force) { mi_collect(force != 0); }
+
+/* mimalloc's own statistics, as text. `mi_process_info` answers commit
+   totals but no figure for BYTES IN USE, and that is the figure which
+   separates "the packer still references it" from "the allocator holds
+   it free". `mi_stats_print_out` prints both (reserved, committed,
+   touched, and with MI_STAT above 1 the requested-malloc total), so the
+   text is captured into a buffer and returned. Measuring instrument:
+   the counters read zero unless mimalloc was compiled with MI_STAT. */
+typedef struct { char *buf; size_t len, cap; } l4_sbuf;
+
+static void l4_sbuf_out(const char *msg, void *arg) {
+    l4_sbuf *b = (l4_sbuf *)arg;
+    size_t n = strlen(msg);
+    if (b->len + n + 1 > b->cap) {
+        size_t cap = b->cap ? b->cap * 2 : 4096;
+        while (cap < b->len + n + 1) cap *= 2;
+        char *p = (char *)realloc(b->buf, cap);
+        if (p == NULL) return;
+        b->buf = p; b->cap = cap;
+    }
+    memcpy(b->buf + b->len, msg, n);
+    b->len += n;
+    b->buf[b->len] = 0;
+}
+
+L4_EXPORT char *l4_mem_stats_c(void) {
+    l4_sbuf b = { NULL, 0, 0 };
+    mi_stats_merge();
+    mi_stats_print_out(l4_sbuf_out, &b);
+    if (b.buf == NULL) return strdup("");
+    return b.buf;
+}
+
+/* A histogram of the LIVE heap by Lean object tag. `l4_mem_stats_c`
+   answers how many bytes are still allocated; this answers what they
+   are. Every live mimalloc block is visited and its eighth byte read:
+   on both targets that byte is the `m_tag` field of `lean_object`'s
+   header (tags 245..254 are closure, array, struct_array, scalar_array,
+   string, mpz, thunk, task, ref, external; 0..244 are constructor
+   tags). Blocks that are not Lean objects -- the module's own malloc
+   regions -- land on whatever byte happens to sit there, so read a
+   dominant row, not a single one. Measuring instrument, not part of the
+   RDF ABI. */
+typedef struct { size_t count[256]; size_t bytes[256]; } l4_taghist;
+
+static bool l4_tag_visit(const mi_heap_t *heap, const mi_heap_area_t *area,
+                         void *block, size_t block_size, void *arg) {
+    (void)heap; (void)area;
+    if (block == NULL) return true;
+    l4_taghist *h = (l4_taghist *)arg;
+    unsigned tag = ((const unsigned char *)block)[7];
+    h->count[tag] += 1;
+    h->bytes[tag] += block_size;
+    return true;
+}
+
+L4_EXPORT char *l4_heap_tags_c(void) {
+    static l4_taghist h;
+    memset(&h, 0, sizeof h);
+    mi_heap_visit_blocks(mi_heap_get_default(), true, l4_tag_visit, &h);
+    size_t cap = 8192, len = 0;
+    char *buf = (char *)malloc(cap);
+    if (buf == NULL) return NULL;
+    len += (size_t)snprintf(buf, cap, "{\"ok\":true,\"tags\":[");
+    bool first = true;
+    for (unsigned t = 0; t < 256; t++) {
+        if (h.count[t] == 0) continue;
+        if (len + 96 > cap) break;
+        len += (size_t)snprintf(buf + len, cap - len,
+                                "%s{\"tag\":%u,\"count\":%zu,\"bytes\":%zu}",
+                                first ? "" : ",", t, h.count[t], h.bytes[t]);
+        first = false;
+    }
+    if (len + 4 <= cap) snprintf(buf + len, cap - len, "]}");
+    return buf;
+}
+
+/* Set one mimalloc option at run time, by its `mi_option_t` ordinal.
+   The module has no environment, so `MIMALLOC_*` variables cannot reach
+   it; this is how a one-variable allocator experiment is run without a
+   rebuild. Call it before the first allocation that matters. Carries no
+   format decision. */
+L4_EXPORT void l4_mi_option_set(int option, int value) {
+    mi_option_set((mi_option_t)option, (long)value);
+}
 
 L4_EXPORT char *l4_mem_report_c(void) {
     size_t elapsed = 0, user = 0, sys = 0, rss = 0, peak_rss = 0;

@@ -42,8 +42,28 @@ export const FEED_BYTES = 65536
 function memNote (engine, line) {
   const path = process.env.L4_PACK_MEM
   if (!path) return
-  const heap = engine._module ? engine._module.HEAPU8.byteLength : -1
-  appendFileSync(path, `${line} ${heap}\n`)
+  const m = engine._module
+  const heap = m ? m.HEAPU8.byteLength : -1
+  appendFileSync(path, `${line} ${heap}${m ? allocatorNote(m) : ''}\n`)
+}
+
+/** mimalloc's own totals, appended to a trace line when the module
+ *  exports them. `heap` alone cannot say whether the packer references
+ *  the bytes or the allocator holds them free; `reserved`, `committed`
+ *  and the requested-malloc total do. The counters read zero unless the
+ *  module was built with `L4_WASM_MIMALLOC_CFLAGS=-DMI_STAT=2`. */
+function allocatorNote (m) {
+  if (typeof m._l4_mem_stats_c !== 'function') return ''
+  const ptr = m._l4_mem_stats_c()
+  if (!ptr) return ''
+  let text
+  try { text = m.UTF8ToString(ptr) } finally { m._l4_free_result(ptr) }
+  const field = (name) => {
+    const row = text.split('\n').find((l) => l.trim().startsWith(name + ':'))
+    return row ? row.trim().replace(/\s+/g, ' ') : ''
+  }
+  return ' | ' + ['reserved', 'committed', 'touched', 'malloc']
+    .map(field).filter(Boolean).join(' | ')
 }
 
 /** An error the pack operations reported, with the engine's own words. */
