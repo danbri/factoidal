@@ -408,6 +408,51 @@ def uniqueArtifactKeys (entries : List Entry) : Bool :=
       (entry.geoIndex.map ArtifactRef.key).toList
   keys.length == keys.eraseDups.length
 
+/-- Adjacent-distinct over an ascending list of keys. -/
+def adjacentDistinctKeys : List ArtifactKey → Bool
+  | [] | [_] => true
+  | a :: b :: rest => a != b && adjacentDistinctKeys (b :: rest)
+
+/-- The keys `uniqueArtifactKeys` checks, as one list. Both the specification
+    and the fast twin read this, so neither can drift from the other's notion
+    of which strings are compared. -/
+def artifactKeyList (entries : List Entry) : List ArtifactKey :=
+  entries.flatMap fun entry =>
+    entry.artifact.key :: (entry.subjectIndex.map ArtifactRef.key).toList ++
+      (entry.termIndex.map ArtifactRef.key).toList ++
+      (entry.objectIndex.map ArtifactRef.key).toList ++
+      (entry.literalIndex.map ArtifactRef.key).toList ++
+      (entry.geoIndex.map ArtifactRef.key).toList
+
+/-- The same decision as `uniqueArtifactKeys`, in `n log n` instead of `n²`.
+
+    `uniqueArtifactKeys` asks `keys.length == keys.eraseDups.length`, and
+    `List.eraseDups` compares every surviving key against every earlier one.
+    The published SKOS manifest carries about 150,000 artifact keys, so that
+    is on the order of 10^10 String comparisons: `/usr/bin/sample` puts every
+    sampled frame of a 300-second `storeManifestInspect` inside it.
+
+    NOT YET WIRED. `@[csimp]` requires
+      `uniqueArtifactKeys = uniqueArtifactKeysFast`
+    and Lean 4.33.1 core does not carry the three lemmas that proof needs:
+    `List.eraseDups` has no `Sublist` lemma, no `Nodup` lemma, and no
+    `eraseDups_eq_self_of_nodup`. `exact?` finds none of the three. The route
+    is: prove `l.eraseDups.Sublist l` by induction on `eraseDups_cons` with
+    `filter_sublist`; get `l.eraseDups = l` from `Sublist.eq_of_length`;
+    conclude `l.length == l.eraseDups.length ↔ l.Nodup`; carry `Nodup` across
+    `mergeSort` with the core lemmas `mergeSort_perm` and `Perm.nodup_iff`
+    (both present); finish with sortedness against `adjacentDistinctKeys`.
+    Until that closes, `valid` keeps calling the quadratic specification --
+    an unproved replacement inside a validity predicate would let a manifest
+    that the specification rejects be accepted, which is the one failure this
+    check exists to prevent. -/
+def noDupKeysFast (keys : List ArtifactKey) : Bool :=
+  adjacentDistinctKeys (keys.mergeSort (fun a b => decide (a.value ≤ b.value)))
+
+/-- The `n log n` twin of `uniqueArtifactKeys`. -/
+def uniqueArtifactKeysFast (entries : List Entry) : Bool :=
+  noDupKeysFast (artifactKeyList entries)
+
 /-- Structural acceptance before any host artifact is opened. -/
 def artifactValidFor (version : Nat) (artifact : ArtifactRef) : Bool :=
   artifact.bytes > 0 && artifact.sha256.size == 32 &&
