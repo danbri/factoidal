@@ -271,15 +271,128 @@ Summary: of 22, **19 are parser defects** in four related areas
 (text declarations, parameter entities, the external-entity table) and
 **3 are profile decisions** (`rmt-e2e-61`, `hst-lhs-007`, `ext02`).
 
-## Status
+## Status, at the end of the 2026-09-07 session
 
-| area | probe | before (2026-09-07) | after | closed | open |
-| --- | --- | --- | --- | --- | --- |
-| XPath 1.0 | `l4xpath` (new) | no runner existed | see below | | |
-| XSLT 1.0 default | `l4xslt` | 84 pass, 3 fail (of 87 decided) | | | `copy-3102`, `namespace-4801`, `node-1601` |
-| XSLT 1.0 Xalan | `l4xslt --base …xslt1-xalan` | 1134 pass, 284 fail (of 1418 decided), 259 refused | | | clusters above |
-| MathML Content | `l4mathml` | 56 pass, 0 fail (of 56); 25 not attempted | | | the 25 linear-algebra cases |
-| XML 1.0 conformance | `l4xmlconf` | 1840 pass, 22 fail (of 1862 in profile) | | | 19 defects, 3 profile decisions |
+| area | probe | before | after | out of |
+| --- | --- | --- | --- | --- |
+| XPath 1.0 | `l4xpath` (new) | no runner existed; 89 pass, 11 fail on first run | **100 pass, 0 fail** | 100 |
+| MathML Content | `l4mathml` | 56 pass, 0 fail; 25 not attempted | **81 pass, 0 fail** | 81 |
+| XML 1.0 conformance | `l4xmlconf` | 1840 pass, 22 fail | **1853 pass, 9 fail** | 1862 in profile |
+| XSLT 1.0 default | `l4xslt` | 84 pass, 3 fail | 84 pass, 3 fail | 87 decided |
+| XSLT 1.0 Xalan | `l4xslt --base …xslt1-xalan` | not run through Lean | **1134 pass, 284 fail, 259 refused** | 1418 decided of 1690 |
 
-The "after" column and the closed/open columns are filled in by the
-fix commits that follow this one, each naming its own tests.
+XPath and MathML now equal the F* scores (100 of 100, and 81 of 81).
+
+### Closed
+
+* **XPath 1.0** — the 100-case battery is ported and all 100 pass.
+  Four defects were found and fixed by running it: an unbound test
+  prefix compared against a constant sentinel so an undeclared prefix
+  could never match; `substring()` with an infinite length falling
+  into an empty-string catch-all instead of being worked through
+  `Num`; relational operators always coercing through `number()` when
+  both operands are strings; and namespace-node presentation order,
+  which is fixed in the slot index `normalize` sorts on, not
+  downstream.
+* **MathML** — all 25 linear-algebra cases. All are Content markup;
+  none is presentation.
+* **XML conformance, 13 of the 22.** `[77] TextDecl` is now enforced
+  on external entities and the external subset (10 cases); the two
+  section 4.3.3 encoding conflicts a UTF-8-only parser CAN decide
+  (`rmt-e2e-61`, `hst-lhs-007`); and section 4.3.4, an entity
+  declaring version 1.1 inside a 1.0 document (`rmt-e2e-38`).
+
+### Two corrections to this document's own first version
+
+1. **Only ONE of the 22 is a profile decision, not three.**
+   `rmt-e2e-61` and `hst-lhs-007` were filed as profile decisions on
+   the reasoning that a UTF-8-only parser cannot read a declared
+   encoding. That was backwards. Reading UTF-8 only is exactly what
+   decides them: the entity in hand DECODED as UTF-8, so a declaration
+   of UTF-16 contradicts the bytes that were read, and a UTF-8 byte
+   order mark with a declaration naming anything else is the same
+   contradiction from the other side. Both are now enforced. `ext02`
+   is the only genuine profile decision: external entities in a
+   different encoding need transcoding.
+2. **`rmt-e2e-38` was filed under the text-declaration cluster and is
+   not one.** Its entity carries a WELL-FORMED text declaration; what
+   is wrong is that it says version 1.1 inside an XML 1.0 document
+   (section 4.3.4). Fixed separately.
+
+Both corrections come from reading the actual fixture files rather
+than the suite's one-line descriptions. A cluster assignment made from
+a description is a hypothesis.
+
+### Open, with test ids
+
+* **XML conformance, 9 remaining.**
+  * Parameter-entity machinery, 6: `not-wf-not-sa-009`,
+    `ibm-not-wf-p28a-ibm28an01.xml` (section 2.8 `[28a]`, WFC PE
+    Between Declarations), `valid-not-sa-023`, `rmt-e3e-13` (the 3e
+    erratum: once an internal PE reference appears, an undeclared
+    entity is only a validity error, so a non-validating parser must
+    ACCEPT), `rmt-e2e-18` and `o-p28pass5` (the same machinery reached
+    through an external subset). The parser does not track
+    parameter-entity boundaries; that is one piece of work covering
+    all six.
+  * WFC Entity Declared against an external declaration, 2:
+    `ibm-not-wf-P32-ibm32n09.xml` (section 2.9),
+    `ibm-not-wf-P68-ibm68n06.xml` (section 4.1 `[68]`).
+  * `ext02` — the profile decision above.
+* **WFC "No External Entity References" (section 3.1 `[41]`) is still
+  unimplemented**, even though `ibm-not-wf-P41-ibm41n10.xml` and
+  `ibm-not-wf-P41-ibm41n11.xml` are now green. They reject because
+  their entity file independently violates `[77]`, not because of the
+  constraint they name. Counting them as closing that constraint would
+  be wrong.
+* **XSLT default corpus, 3.** Two are not defects and one is:
+  * `node-1601` and `copy-3102` differ from the gold files only in
+    the ORDER of namespace nodes and namespace declarations. XPath 1.0
+    section 5.4 makes the relative order of namespace nodes
+    IMPLEMENTATION-DEPENDENT; the gold files pin Xalan's order
+    (declaration order, `xml` first) and this engine's documented
+    order is default first, then prefixes ascending with `xml`
+    included — which the XPath battery itself pins. Changing it to
+    match the gold files would break three XPath cases and would not
+    be more conformant. These are corpus-order differences, not
+    defects.
+  * `namespace-4801` IS a defect: a literal result element does not
+    carry its in-scope namespace declarations to the output
+    (XSLT 1.0 section 7.1.1). It is very likely the same defect as the
+    57-of-130 `namespace` cluster on the Xalan mirror.
+* **XSLT Xalan mirror, 284 failures and 259 refusals**, clustered
+  above. The largest actionable clusters are `output` (69 of 102),
+  `namespace` (57 of 130), `attribset` (43 of 47), and the two
+  categories with nothing implemented at all, `impincl` (10 of 10,
+  `xsl:import`/`xsl:include`/`xsl:apply-imports`) and `reluri` (8 of
+  8). The largest single refusal reason is `xsl:number`, 99 cases.
+
+### A structural duplication introduced by this session, to repair
+
+`L4Factoidal/MathML/Matrix.lean` was written new for the 25
+linear-algebra cases. `L4Factoidal/Math/Matrix.lean` ALREADY EXISTED
+— a port of `formal/fstar/Math.Matrix.fst` with the same operations
+over the same exact rationals, plus shape theorems and a dynamic
+`MRes` layer, and its own docstring says "The Content MathML front end
+maps `matrix`/`vector`/`apply` trees onto the operations below". It
+was missed because the search for existing work covered
+`L4Factoidal/MathML/` and not `L4Factoidal/Math/`.
+
+`Math.Matrix` imports `MathML.Core`, so `MathML.Core` cannot import
+it. The duplication is a consequence of putting the linear-algebra
+evaluation inside `Core.eval`. The repair is to move the `.mat` /
+`.vec` evaluation OUT of `Core.eval` into a MathML front end above
+`Math.Matrix` — the module `Math.Matrix` already describes — and
+delete `MathML/Matrix.lean`. The 25 cases and their expected values do
+not change; only which module computes them does.
+
+Until that repair lands, the shipping behaviour is correct and the 81
+cases pass, but there are two implementations of exact-rational linear
+algebra in the tree and only one of them carries the shape theorems.
+
+### A method note that cost time
+
+Extending `MathML.Expr` with `.mat` and `.vec` broke exhaustiveness in
+three `Math` modules. Rebuilding the module that DECLARES a shared
+inductive does not verify the change; only a full `lake build` does.
+Three per-module builds were green while the tree was broken.
