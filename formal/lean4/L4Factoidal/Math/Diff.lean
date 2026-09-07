@@ -49,6 +49,11 @@ partial def diff (x : String) : Expr → Expr
   | .rat _ _ => .int 0
   | .bool _  => .int 0
   | .sym n   => if n == x then .int 1 else .int 0
+  -- Differentiating a matrix or vector ENTRYWISE is the standard
+  -- reading, and it is the only one this module can state without
+  -- deciding what the term denotes. The shape is preserved.
+  | .vec xs  => .vec (diffList x xs)
+  | .mat rws => .mat (rws.map (diffList x))
   | .app "plus" args => .app "plus" (diffList x args)
   | .app "minus" args =>
       (match args with

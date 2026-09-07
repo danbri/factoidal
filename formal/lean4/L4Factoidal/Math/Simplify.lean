@@ -54,6 +54,10 @@ partial def exprKey : Expr → String
   | .bool b    => "2b:" ++ (if b then "t" else "f")
   | .sym s     => "3s:" ++ s
   | .app fn as => "4a:" ++ fn ++ "(" ++ exprKeyList as ++ ")"
+  -- A matrix and a vector with the same entries are DIFFERENT terms,
+  -- so their keys differ in the tag, not only in the entries.
+  | .vec xs    => "5v:[" ++ exprKeyList xs ++ "]"
+  | .mat rws   => "6m:[" ++ exprKeyList (rws.map Expr.vec) ++ "]"
 
 partial def exprKeyList : List Expr → String
   | []     => ""
@@ -237,6 +241,11 @@ def simplifyOther (fn : String) (args : List Expr) : Expr :=
     match eval (fun _ => none) (.app fn args) with
     | some (.num v)  => valueToLit v
     | some (.bool b) => .bool b
+    -- A matrix- or vector-valued fold is not a LITERAL this module
+    -- can write back, so the application stays as it is rather than
+    -- being replaced by a term that means something else.
+    | some (.vecv _) => .app fn args
+    | some (.matv _) => .app fn args
     | none           => .app fn args      -- undefined: stays symbolic
   else
     match fn, args with
@@ -259,6 +268,11 @@ partial def simplify : Expr → Expr
   | .bool b    => .bool b
   | .sym s     => .sym s
   | .app fn as => simplifyApp fn (simplifyList as)
+  -- Entries are expressions and are normalised; the SHAPE is left
+  -- exactly as written, because dropping or merging a row would
+  -- change which operations the term admits.
+  | .vec xs    => .vec (simplifyList xs)
+  | .mat rws   => .mat (rws.map simplifyList)
 
 partial def simplifyList : List Expr → List Expr
   | []     => []
