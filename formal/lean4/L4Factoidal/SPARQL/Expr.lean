@@ -106,6 +106,7 @@ cites the spec section it implements, and names track the spec's
 vocabulary rather than implementation jargon.
 -/
 import L4Factoidal.SPARQL.Algebra
+import L4Factoidal.Fn.String
 import L4Factoidal.Syntax.IriResolve
 import L4Factoidal.Crypto.SHA2
 import L4Factoidal.Crypto.MD5
@@ -641,19 +642,11 @@ def findSubstringPos (needle : List Char) : List Char → Nat → Option Nat
 
 /-- §17.4.3.13 STRBEFORE's string part: everything before the first
 occurrence, or `""` when there is none. -/
-def strBeforeRaw (s arg : String) : String :=
-  if arg.length = 0 then ""
-  else match findSubstringPos arg.toList s.toList 0 with
-    | none => ""
-    | some pos => String.ofList (s.toList.take pos)
+def strBeforeRaw (s arg : String) : String := Fn.String.substringBefore s arg
 
 /-- §17.4.3.14 STRAFTER's string part: everything after the first
 occurrence, or `""` when there is none. -/
-def strAfterRaw (s arg : String) : String :=
-  if arg.length = 0 then s
-  else match findSubstringPos arg.toList s.toList 0 with
-    | none => ""
-    | some pos => String.ofList (s.toList.drop (pos + arg.length))
+def strAfterRaw (s arg : String) : String := Fn.String.substringAfter s arg
 
 /-- §17.4.3.3 SUBSTR: 1-BASED start index, optional length; positions
 outside the string clamp rather than erroring. Port of
@@ -672,44 +665,14 @@ def substrSpec (s : String) (start : Nat) (len : Option Nat) : String :=
 
 /-! ### §17.4.3.15 ENCODE_FOR_URI -/
 
-def nibbleToHex (n : Nat) : Char :=
-  if n < 10 then Char.ofNat (n + 48) else Char.ofNat (n - 10 + 65)
-
-/-- RFC 3986 unreserved characters — the set ENCODE_FOR_URI leaves
-alone. -/
-def isUriUnreserved (c : Char) : Bool :=
-  let code := c.toNat
-  (code ≥ 65 && code ≤ 90) || (code ≥ 97 && code ≤ 122) ||
-  (code ≥ 48 && code ≤ 57) ||
-  code == 45 || code == 95 || code == 46 || code == 126
-
-def percentEncodeByte (b : Nat) : List Char :=
-  ['%', nibbleToHex (b / 16), nibbleToHex (b % 16)]
-
-/-- Percent-encode one codepoint as its UTF-8 bytes. -/
-def percentEncodeChar (c : Char) : List Char :=
-  let code := c.toNat
-  if code < 0x80 then percentEncodeByte code
-  else if code < 0x800 then
-    percentEncodeByte (0xC0 + code / 64) ++ percentEncodeByte (0x80 + code % 64)
-  else if code < 0x10000 then
-    percentEncodeByte (0xE0 + code / 4096) ++
-    percentEncodeByte (0x80 + (code / 64) % 64) ++
-    percentEncodeByte (0x80 + code % 64)
-  else
-    percentEncodeByte (0xF0 + code / 262144) ++
-    percentEncodeByte (0x80 + (code / 4096) % 64) ++
-    percentEncodeByte (0x80 + (code / 64) % 64) ++
-    percentEncodeByte (0x80 + code % 64)
-
-def encodeUriChars : List Char → List Char
-  | [] => []
-  | c :: rest =>
-      if isUriUnreserved c then c :: encodeUriChars rest
-      else percentEncodeChar c ++ encodeUriChars rest
-
-def strEncodeUri (s : String) : String := String.ofList (encodeUriChars s.toList)
-
+/-- §17.4.3.15 `ENCODE_FOR_URI` cites F&O §5.4.5 `fn:encode-for-uri`
+unchanged, and RIF-DTB 4.7 `func:encode-for-uri` cites the same
+function. The percent-encoding, the RFC 3986 unreserved set and the
+UTF-8 expansion used to be written out again here; they are
+`Fn.String.encodeForUri`, and `Fn/Theorems.lean` holds the theorem
+that says so, so a second copy stops the build rather than drifting
+in silence. -/
+def strEncodeUri (s : String) : String := Fn.String.encodeForUri s
 /-! ### §17.4.3.10 langMatches — RFC 4647 basic filtering -/
 
 /-- `langMatches(tag, range)`: `"*"` matches any non-empty tag;
@@ -717,12 +680,7 @@ otherwise the tag matches the range exactly or as an extended
 sub-tag, comparing case-insensitively (BCP 47 tags are ASCII, so
 Lean's `String.toLower` is exact here). Port of
 `fn_langMatches_spec`. -/
-def fnLangMatches (tag range : String) : Bool :=
-  if range == "*" then tag.length > 0
-  else
-    let ltag := tag.toLower
-    let lrange := range.toLower
-    ltag == lrange || strStartsWith ltag (lrange ++ "-")
+def fnLangMatches (tag range : String) : Bool := Fn.String.langMatchesBasic tag range
 
 /-! ## The scaled-decimal numeric model — SPARQL 1.1 §17.1 / XSD 1.1
 

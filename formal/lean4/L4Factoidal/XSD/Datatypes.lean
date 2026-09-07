@@ -921,7 +921,15 @@ def fvalCmp (a b : Fval) : Option Ordering :=
 1970-01-01. -/
 def daysFromCivil (y : Int) (m d : Nat) : Int :=
   let y' : Int := if m ≤ 2 then y - 1 else y
-  let era : Int := (if y' ≥ 0 then y' else y' - 399) / 400
+  -- Hinnant's algorithm takes the era with a TRUNCATING division and
+  -- writes `y' - 399` to emulate a floor. Lean 4's `Int` `/` is
+  -- EUCLIDEAN, so with `/` the adjustment fires a second time and the
+  -- era comes out one too low for every `y'` in `[-399, -1]`:
+  -- `daysFromCivil (-44) 3 15` was one day short of the right answer.
+  -- Found 2026-09-07 by the `civilFromDays`/`daysFromCivil` round-trip
+  -- guard in `L4Factoidal/Fn/DateTime.lean`. `Int.tdiv` is named
+  -- explicitly so the direction cannot drift again.
+  let era : Int := Int.tdiv (if y' ≥ 0 then y' else y' - 399) 400
   let yoe : Int := y' - era * 400
   let mp : Nat := (m + 9) % 12
   let doy : Int := (153 * (mp : Int) + 2) / 5 + (d : Int) - 1
