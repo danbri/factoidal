@@ -1061,6 +1061,62 @@ theorem int_cross_axis
   exact ⟨Int.le_of_mul_le_mul_left (Int.le_trans hab.1 hcd.2) hD,
          Int.le_of_mul_le_mul_left (Int.le_trans hcd.1 hab.2) hD⟩
 
+/-- The straddle conditions without the sign normalisation: either order of
+`u, v` (and of `w, z`) is accepted, and the positive-`D` orientation is
+recovered by reading the first segment backwards. -/
+theorem int_cross_axis_gen (a b c d u v w z : Int)
+    (huv : (u ≤ 0 ∧ 0 ≤ v) ∨ (v ≤ 0 ∧ 0 ≤ u))
+    (hwz : (z ≤ 0 ∧ 0 ≤ w) ∨ (w ≤ 0 ∧ 0 ≤ z))
+    (hne : u ≠ v) (hzw : z = w - (v - u))
+    (hid : (v - u) * c - u * (d - c) = (v - u) * a + w * (b - a)) :
+    min a b ≤ max c d ∧ min c d ≤ max a b := by
+  rcases Int.lt_trichotomy u v with hlt | heq | hgt
+  · have h1 : u ≤ 0 ∧ 0 ≤ v := by omega
+    have h2 : z ≤ 0 ∧ 0 ≤ w := by omega
+    exact int_cross_axis a b c d u v w z _ h1.1 h1.2 h2.1 h2.2 (by omega) hzw rfl
+      (by omega)
+  · exact absurd heq hne
+  · have h1 : (-u) ≤ 0 ∧ 0 ≤ (-v) := by omega
+    have h2 : w ≤ 0 ∧ 0 ≤ z := by omega
+    have hid2 : ((-v) - (-u)) * c - (-u) * (d - c)
+        = ((-v) - (-u)) * b + z * (a - b) := by grind
+    have := int_cross_axis b a c d (-u) (-v) z w _ h1.1 h1.2 h2.1 h2.2
+      (by omega) (by omega) rfl hid2
+    omega
+
+/-! ### `Scaled.min` and `Scaled.max` at a shared scale -/
+
+theorem Scaled.min_scale_le (x y : Scaled) (s : Nat) (hx : x.scale ≤ s)
+    (hy : y.scale ≤ s) : (Scaled.min x y).scale ≤ s := by
+  unfold Scaled.min; split <;> assumption
+
+theorem Scaled.max_scale_le (x y : Scaled) (s : Nat) (hx : x.scale ≤ s)
+    (hy : y.scale ≤ s) : (Scaled.max x y).scale ≤ s := by
+  unfold Scaled.max; split <;> assumption
+
+theorem Scaled.min_at' (x y : Scaled) (s : Nat) (hx : x.scale ≤ s) (hy : y.scale ≤ s) :
+    (Scaled.min x y).at' s = Min.min (x.at' s) (y.at' s) := by
+  unfold Scaled.min
+  by_cases h : Scaled.le x y = true
+  · rw [if_pos h, Int.min_eq_left ((Scaled.le_iff_at'_of_ge x y s hx hy).mp h)]
+  · simp only [Bool.not_eq_true] at h
+    have hyx := Scaled.le_total x y h
+    rw [if_neg (by simp [h]),
+        Int.min_eq_right ((Scaled.le_iff_at'_of_ge y x s hy hx).mp hyx)]
+
+theorem Scaled.max_at' (x y : Scaled) (s : Nat) (hx : x.scale ≤ s) (hy : y.scale ≤ s) :
+    (Scaled.max x y).at' s = Max.max (x.at' s) (y.at' s) := by
+  unfold Scaled.max
+  by_cases h : Scaled.ge x y = true
+  · rw [Scaled.ge_eq_le_swap] at h
+    rw [if_pos (by rw [Scaled.ge_eq_le_swap]; exact h),
+        Int.max_eq_left ((Scaled.le_iff_at'_of_ge y x s hy hx).mp h)]
+  · rw [Scaled.ge_eq_le_swap] at h
+    simp only [Bool.not_eq_true] at h
+    have hxy := Scaled.le_total y x h
+    rw [if_neg (by rw [Scaled.ge_eq_le_swap]; simp [h]),
+        Int.max_eq_right ((Scaled.le_iff_at'_of_ge x y s hx hy).mp hxy)]
+
 /-! ## 6. The trust surface
 
 Only Lean's own three axioms. Nothing here is admitted. -/
