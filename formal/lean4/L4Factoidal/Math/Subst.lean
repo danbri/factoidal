@@ -22,6 +22,10 @@ partial def subst (x : String) (v : Expr) : Expr → Expr
   | .bool b    => .bool b
   | .sym name  => if name == x then v else .sym name
   | .app fn as => .app fn (substList x v as)
+  -- A matrix or vector LITERAL substitutes entry by entry: its
+  -- entries are expressions and may name the symbol.
+  | .vec xs    => .vec (substList x v xs)
+  | .mat rws   => .mat (rws.map (substList x v))
 
 partial def substList (x : String) (v : Expr) : List Expr → List Expr
   | []      => []

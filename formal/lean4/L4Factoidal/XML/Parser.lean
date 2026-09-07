@@ -1503,16 +1503,99 @@ def parseNotationDecl (s : Chars) (pos : Nat) : PResult Unit :=
     the old behaviour: no external resource is read. -/
 abbrev Resolver := String → Option String
 
-/-- `[78] extParsedEnt ::= TextDecl? content`. The optional
-    `[77] TextDecl` is not content and is dropped before the text is
-    reparsed; left in place it reads as a PI whose target is `xml`,
-    which `parsePi` rejects. -/
-def stripTextDecl (t : String) : String :=
-  if t.startsWith "<?xml" then
-    match t.splitOn "?>" with
-    | _ :: rest => String.intercalate "?>" rest
-    | []        => t
-  else t
+/-- The pseudo-attribute NAMES of a text declaration body, in the
+    order written. `[77]` is not `[41] Attribute` — the names are
+    fixed, the order is fixed, and a value is a literal — so the scan
+    only has to collect `name =` occurrences. -/
+def textDeclAttrs (cs : List Char) : List (String × String) :=
+  let rec go : Nat → List Char → List (String × String)
+    | 0, _ => []
+    | _, [] => []
+    | f + 1, c :: rest =>
+        if isNameStartChar c then
+          let nm := c :: rest.takeWhile isNameChar
+          let after := (rest.dropWhile isNameChar).dropWhile isXmlSpace
+          match after with
+          | '=' :: more =>
+              -- Skip the literal so a value containing a name-like
+              -- word is not read as another pseudo-attribute.
+              let more := more.dropWhile isXmlSpace
+              match more with
+              | q :: body =>
+                  if q == '"' || q == '\'' then
+                    (String.ofList nm, String.ofList (body.takeWhile (· != q)))
+                      :: go f ((body.dropWhile (· != q)).drop 1)
+                  else (String.ofList nm, "") :: go f more
+              | [] => [(String.ofList nm, "")]
+          | _ => go f rest
+        else go f rest
+  go (cs.length + 1) cs
+
+/-- `[77] TextDecl ::= '<?xml' VersionInfo? EncodingDecl S? '?>'`,
+    XML 1.0 §4.3.1.
+
+    Every external parsed entity and the external DTD subset MAY begin
+    with a text declaration, and when one is there it is constrained:
+    `encoding` is REQUIRED, `version` is optional and must come FIRST,
+    and `standalone` is not permitted at all — that pseudo-attribute
+    belongs to `[23] XMLDecl`, which only a document entity may carry.
+
+    The parser previously deleted the declaration without reading it
+    (`stripTextDecl`), so every malformed one was accepted. Seven
+    conformance cases turned on that alone.
+
+    Returns the entity text with a valid declaration removed, or the
+    reason it is not a text declaration.
+
+    A `?>` is looked for only BEFORE the first `<`: an unterminated
+    declaration must not be closed by a `?>` belonging to a processing
+    instruction further down the entity. -/
+def readTextDecl (t : String) : Except String String :=
+  let cs := t.toList
+  -- `<?xml` is only a text declaration when a space follows it;
+  -- `<?xmlfoo ...?>` is a processing instruction with its own target.
+  if !(t.startsWith "<?xml") then .ok t
+  else match cs.drop 5 with
+  | c :: _ =>
+      if !(isXmlSpace c) then .ok t
+      else
+        let head := (cs.drop 5).takeWhile (· != '<')
+        let body := head.takeWhile (· != '?')
+        -- The terminator must be `?>` and must be inside that head.
+        let closed :=
+          let rec seek : Nat → List Char → Bool
+            | 0, _ => false
+            | _, [] => false
+            | f + 1, '?' :: '>' :: _ => true
+            | f + 1, _ :: r => seek f r
+          seek (head.length + 1) head
+        if !closed then
+          .error "a text declaration must be closed by '?>' ([77] TextDecl, XML 1.0 section 4.3.1)"
+        else
+          let attrs := textDeclAttrs body
+          let names := attrs.map (·.1)
+          let version? := (attrs.find? (fun a => a.1 == "version")).map (·.2)
+          if names.contains "standalone" then
+            .error "an external entity's text declaration may not carry 'standalone' ([77] TextDecl; standalone belongs to [23] XMLDecl)"
+          else if !(names.contains "encoding") then
+            .error "a text declaration must carry 'encoding' ([77] TextDecl, EncodingDecl is not optional)"
+          else if names != ["encoding"] && names != ["version", "encoding"] then
+            .error "a text declaration is 'version'? then 'encoding', in that order and nothing else ([77] TextDecl)"
+          -- XML 1.0 section 4.3.4 (Version Information in Entities):
+          -- an XML 1.0 document may not contain an entity that
+          -- declares version 1.1. This parser's scored profile is XML
+          -- 1.0 (an XML 1.1 document is out of profile and is never
+          -- scored), so every document reaching here is 1.0 and no
+          -- document version has to be threaded in.
+          else if version? == some "1.1" then
+            .error "an XML 1.0 document may not contain an entity whose text declaration says version 1.1 (XML 1.0 section 4.3.4)"
+          else
+            -- Drop through the terminator, which the check above
+            -- proved is present in the head.
+            match t.splitOn "?>" with
+            | _ :: rest => .ok (String.intercalate "?>" rest)
+            | []        => .ok t
+  | [] => .ok t
 
 /-- `[9] EntityValue` → REPLACEMENT TEXT (§4.5).
 
@@ -1694,18 +1777,24 @@ def parseEntityDecl (resolve : Resolver) (internal : Bool) (s : Chars) (pos : Na
                     -- reference to it rejects — which is what the
                     -- parser did before, and is still what it does
                     -- when nothing can be fetched.
-                    let fetched := (resolve sysId).map stripTextDecl
-                    match fetched with
+                    match resolve sysId with
                     | none      => .ok (ents, pes) p'
-                    | some text =>
+                    | some raw  =>
+                      match readTextDecl raw with
+                      -- A malformed `[77] TextDecl` in the entity is
+                      -- a fatal error in the DOCUMENT that declares
+                      -- the entity, not a reason to leave it
+                      -- undeclared.
+                      | .error m   => .err m p'
+                      | .ok text =>
                         if isPE then
-                          .ok (ents, (match lookupEntity name pes with
-                                      | some _ => pes
-                                      | none   => (name, text) :: pes)) p'
+                            .ok (ents, (match lookupEntity name pes with
+                                        | some _ => pes
+                                        | none   => (name, text) :: pes)) p'
                         else
-                          .ok ((match lookupEntity name ents with
-                                | some _ => ents
-                                | none   => (name, text) :: ents), pes) p'
+                            .ok ((match lookupEntity name ents with
+                                  | some _ => ents
+                                  | none   => (name, text) :: ents), pes) p'
 
 /-- Where a declaration subset ENDS. The three are different
     productions and confusing them changes the verdict:
@@ -1949,7 +2038,13 @@ def parseDoctype (resolve : Resolver) (s : Chars) (pos : Nat) : PResult Doctype 
             match (match sysId.bind resolve with
                    | none      => PResult.ok (ents, pes, ids) p5
                    | some text =>
-                       let raw : Chars := (stripTextDecl text).toList.toArray
+                       -- `[30] extSubset ::= TextDecl? extSubsetDecl`
+                       -- carries the same `[77]` constraint as an
+                       -- external entity does.
+                       match readTextDecl text with
+                       | .error m => PResult.err ("in the external subset: " ++ m) p5
+                       | .ok body =>
+                       let raw : Chars := body.toList.toArray
                        let arr : Chars :=
                          (peScan resolve raw 0 pes [] (raw.size + 1)).toList.toArray
                        match parseSubset resolve .eof arr 0 ents pes ids (arr.size + 1) with
@@ -2013,6 +2108,44 @@ def skipBom : List Char → List Char
   | c :: rest => if c.toNat == 0xFEFF then rest else c :: rest
   | [] => []
 
+/-- XML 1.0 §4.3.3 (Character Encoding in Entities), applied to the
+    DOCUMENT entity.
+
+    This parser reads UTF-8 only, and that is exactly what lets it
+    decide two of the errors §4.3.3 names. The entity in hand
+    DECODED as UTF-8, so:
+
+      * a declaration of UTF-16 contradicts the bytes that were read.
+        §4.3.3: "it is a fatal error if an XML entity is determined to
+        be in UTF-16 and contains no byte order mark". Nothing that
+        decodes as UTF-8 without a UTF-16 byte order mark is in
+        UTF-16.
+      * a UTF-8 byte order mark with an encoding declaration naming
+        anything else is the same contradiction from the other side.
+        §4.3.3: "it is a fatal error when an XML entity ... begins
+        with a byte order mark and the encoding declaration names a
+        different encoding".
+
+    An encoding this parser simply cannot read is a DIFFERENT matter
+    and is not decided here: the entity does not decode, and the
+    runner counts it out of profile rather than as a failure.
+
+    Encoding names are case-insensitive (§4.3.3). -/
+def encodingConflict (hadBom : Bool) (declared : Option String) : Option String :=
+  match declared with
+  | none   => none
+  | some e =>
+      let e := e.toLower
+      let isUtf16 := e == "utf-16" || e == "utf-16be" || e == "utf-16le"
+      let isUtf8  := e == "utf-8" || e == "utf8"
+      if isUtf16 then
+        some ("the encoding declaration names " ++ e ++ " but the entity is not in UTF-16 "
+              ++ "and carries no UTF-16 byte order mark (XML 1.0 section 4.3.3)")
+      else if hadBom && !isUtf8 then
+        some ("the entity begins with a UTF-8 byte order mark but its encoding declaration names "
+              ++ e ++ " (XML 1.0 section 4.3.3)")
+      else none
+
 /-! ## `[1] document` -/
 
 /-- Parse a whole XML document.
@@ -2034,7 +2167,13 @@ absent constructs, not errors. A declaration or DOCTYPE that IS present
 but malformed leaves the cursor where it was, and the element parser
 then rejects the document from there. -/
 def parseXMLWith (resolve : Resolver) (input : String) : Except XmlError Document :=
-  let chars := normalizeLineEndings (skipBom input.toList)
+  let raw := input.toList
+  -- Whether a byte order mark was there is needed by §4.3.3 below,
+  -- and `skipBom` consumes it.
+  let hadBom := match raw with
+    | c :: _ => c.toNat == 0xFEFF
+    | []     => false
+  let chars := normalizeLineEndings (skipBom raw)
   let s : Chars := chars.toArray
   let fuel := s.size + 1
   -- The declaration, if present, must be the very first thing: no
@@ -2044,6 +2183,9 @@ def parseXMLWith (resolve : Resolver) (input : String) : Except XmlError Documen
     match parseXmlDecl s 0 with
     | .ok d p => (some d, p)
     | .err _ _ => (none, 0)
+  match encodingConflict hadBom (decl.bind (·.encoding)) with
+  | some m => .error { message := m, position := 0 }
+  | none   =>
   match collectMisc s pos1 [] fuel with
   | .err m p => .error { message := m, position := p }
   | .ok pre1 pos2 =>
