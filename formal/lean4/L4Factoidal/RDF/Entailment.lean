@@ -585,19 +585,30 @@ def Regime.closure (r : Regime) (D cmps : List WfIri) (g : Graph) : Graph :=
   | .rdfs     => rdfsRegimeClosure D cmps g
   | .rdfsPlus => rdfsPlusRegimeClosure D cmps g
 
-/-- The literal comparison a regime matches with. Every non-`simple`
-regime now uses `dtValueLeq` (D-value equality extended with
-double/float/JSON) rather than the plain `literalValueEq` — a strict
-superset of the old behaviour: `dtValueLeq` falls back to
-`literalValueEq D` for every datatype pair it does not special-case,
-so this cannot change a verdict `literalValueEq` already gave (the
-double/float/JSON datatypes were never members of `modelledDatatypes`,
-so `recognizedDatatypesOf` in `Harness/Run.lean` refused them before
-either function ever ran). -/
+/-- The literal comparison a regime matches with.
+
+`.simple` matches literals by their SYNTAX (RDF 1.1 Semantics §5.1:
+simple interpretations give a literal no value beyond itself).
+`.d` and `.rdf` use `literalValueEq D` — D-value equality over the
+datatypes `RDF.Datatypes` models. `.rdfs` and `.rdfsPlus` use
+`dtValueLeq D`, which extends that with `xsd:double` / `xsd:float` /
+`rdf:JSON` value equality.
+
+**Why `.d` is not given `dtValueLeq`.** `dtValueLeq` is a strictly
+LARGER literal equality, and a larger literal equality makes
+entailment MORE permissive — so a soundness result does not transfer
+from the smaller one to the larger just because the larger extends it.
+`Unified/DSchema.regimeEntails_d_sound_mt` proves the D-regime sound
+against the model theory through `entailsWith_valueEq_sound`, which is
+stated for `literalValueEq`. Widening `.d` broke that proof on
+2026-09-07, and the tree did not build for it. The regimes that carry
+no soundness theorem may be widened; `.d` may not, until
+`entailsWith` is proved sound under `dtValueLeq` itself. -/
 def Regime.literalEq (r : Regime) (D : List WfIri) : Literal → Literal → Bool :=
   match r with
-  | .simple => literalStrictEq
-  | _       => dtValueLeq D
+  | .simple            => literalStrictEq
+  | .d | .rdf          => literalValueEq D
+  | .rdfs | .rdfsPlus  => dtValueLeq D
 
 /-- What a blank node may range over under a regime: anything, except
 (under D) an ill-formed recognised literal (§7: such a literal denotes
