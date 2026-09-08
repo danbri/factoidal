@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-09-08 10:31 UTC",
-  "commit": "384bc4a163ba6ecfedf18fd654e485b8bd61c08f",
+  "timestamp": "2026-09-08 12:02 UTC",
+  "commit": "8d4adac12c6d2436cf4e6638c87cd7a2b369e101",
   "branch": "claude/main",
   "totals": {
     "sparql":   {"pass":631,"fail":0,"skip":0,"unsupported":0,"total":631},
@@ -54,7 +54,7 @@
     "jsonld_compact": {"pass":245,"fail":0,"skip":1,"total":246,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#compaction-algorithm"},
     "jsonld_flatten": {"pass":58,"fail":0,"skip":0,"total":58,"present":true,"spec":"https://www.w3.org/TR/json-ld11-api/#flattening-algorithm"},
     "hdt_stage4_parity":{"pass":6,"fail":0,"skip":0,"total":6,"present":true,"spec":"internal (HDT backend parity vs in-memory)"},
-    "hub_browser_bundle":{"pass":416,"fail":0,"skip":0,"total":416,"present":true,"spec":"internal (node --test tests/hub)"},
+    "hub_browser_bundle":{"pass":422,"fail":0,"skip":0,"total":422,"present":true,"spec":"internal (node --test tests/hub)"},
     "npm_package":    {"pass":252,"fail":0,"skip":2,"total":254,"present":true,"spec":"internal (node --test npm/factoidal/test)"}
   },
   "suites": {
@@ -143,7 +143,7 @@
     "jsonld_flatten": {"name":"jsonld_flatten","pass":58,"fail":0,"skip":0,"total":58},
     "grddl_stage1": {"name":"grddl_stage1","pass":18,"fail":50,"skip":0,"total":68},
     "hdt_stage4_parity": {"name":"hdt_stage4_parity","pass":6,"fail":0,"skip":0,"total":6},
-    "hub_browser_bundle": {"name":"hub_browser_bundle","pass":416,"fail":0,"skip":0,"total":416},
+    "hub_browser_bundle": {"name":"hub_browser_bundle","pass":422,"fail":0,"skip":0,"total":422},
     "npm_package": {"name":"npm_package","pass":252,"fail":0,"skip":2,"total":254},
     "geosparql": {"name":"geosparql","pass":37,"fail":0,"skip":0,"total":37},
     "xpath_unit": {"name":"xpath_unit","pass":100,"fail":0,"skip":0,"total":100},
