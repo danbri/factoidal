@@ -205,6 +205,7 @@ extern_lib libl4exthost pkg := do
              `Wasm.Ops.Reason, `Wasm.Ops.Canon, `Wasm.Ops.CL,
              `Wasm.Ops.Block,
              `Wasm.Ops.Store,
+             `Wasm.Ops.NamedGraphQueryTests,
              `Wasm.Ops.StoreHandles,
              `Wasm.Ops.Proof,
              `Wasm.Ops.Handles,
