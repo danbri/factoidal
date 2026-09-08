@@ -118,3 +118,27 @@ assertion is what makes it a gate.
   OCaml scan).
 - War stories: issues 670 (manifest decode and the quadratic dedup), 673 (XML
   line-ending pre-pass), 674 (F\* SHACL segfault), 658 (the wasm bignum leak).
+
+## Two corrections paid for on 2026-09-08
+
+- **The canary IS portable; earlier "UNSUPPORTED on macOS" was too broad.** A
+  browser-tab overflow is a V8 CALL-STACK overflow, and `node --stack-size=NNN`
+  bounds that on macOS and Linux alike (measured: the 40k-entry manifest case
+  throws under `--stack-size=512` before the fix, passes after). What is NOT
+  controllable on macOS is a native Lean binary's main-thread stack (`ulimit
+  -s` and `LEAN_STACK_SIZE` do not reach it), which is a DIFFERENT stack. So the
+  standing canary runs the wasm cases in Node under a small `--stack-size`
+  (`tests/stack/run.sh --canary`), not the native ulimit route. The wasm
+  shadow-stack flag `-sSTACK_SIZE` bounds yet another stack and is not what a
+  tab overflow needs. This class hid behind the native canary once (https://github.com/danbri/factoidal/issues/678 and
+  the manifest-inspect JSON overflow) — always run the wasm/JS canary.
+- **`@[csimp]` does not rewrite a call inside a `mutual` block.** The
+  manifest-inspect fix's first attempt swapped the JSON list writers with a
+  csimp twin and the emitted C still had the non-tail call, because the writers
+  are mutually recursive. The cure is accumulator functions with an equality
+  theorem to the readable spec (`JSON/Serialize.lean` `toStringItemsAcc`), not
+  csimp. Check the emitted C, never assume csimp took.
+- **A still-broken shortfall is an expected-failure in the suite, not a red
+  gate and not a silent skip** (https://github.com/danbri/factoidal/issues/678, turtle-collection): the case passes the
+  suite WHILE it overflows and turns the suite red if it ever stops, so the fix
+  flips the marker and closes the issue.

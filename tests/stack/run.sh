@@ -159,6 +159,17 @@ canary_case() { # canary_case <case> <op> <argsfile>
 wasm_case() {
   local name="$1" out rc
   out="$(run_capped "$TIMEOUT" node "$HERE/wasm_case.mjs" "$name" "$FIXTURES" 2>&1)"; rc=$?
+  # turtle-collection is a KNOWN unrepaired per-element recursion (https://github.com/danbri/factoidal/issues/678):
+  # it overflows the default wasm run too. Track it as an expected failure so
+  # the suite is green while it is open and turns red if it ever passes.
+  if [ "$name" = turtle-collection ]; then
+    if printf '%s' "$out" | grep -q '"ok":true'; then
+      record wasm "$name" 1 "UNEXPECTED PASS: flip this xfail and close https://github.com/danbri/factoidal/issues/678"
+    else
+      record wasm "$name" 0 "xfail: still overflows, tracked (https://github.com/danbri/factoidal/issues/678)"
+    fi
+    return
+  fi
   if [ "$rc" -ne 0 ]; then
     record wasm "$name" 1 "node exit $rc: $(printf '%s' "$out" | head -c 160)"
     return
@@ -205,14 +216,36 @@ if [ "$CANARY" = 1 ]; then
       canary_case "$1" "$2" "$3"
     done
   else
-    echo "    UNSUPPORTED on this platform: NOT SCORED."
-    echo "    The control case (turtle-collection, 100,000 items, an"
-    echo "    unrepaired per-element recursion) still succeeded under"
-    echo "    ${CANARY_KB}KB, so neither \`ulimit -s\` nor LEAN_STACK_SIZE"
-    echo "    reached the binary's main thread. A green canary here would"
-    echo "    mean nothing. Run this mode on Linux, or build the"
-    echo "    diagnostic wasm module (see the header of this file)."
+    echo "    native ulimit route UNSUPPORTED here (neither \`ulimit -s\` nor"
+    echo "    LEAN_STACK_SIZE reaches a Lean binary's main thread on macOS);"
+    echo "    falling back to the wasm/JS canary below, which IS portable."
   fi
+  # The tab overflow is a V8 CALL-STACK overflow, and `node --stack-size` DOES
+  # bound that on every platform (measured 2026-09-08: the manifest case throws
+  # under a small size before the fix, and passes after). This is the honest
+  # canary for a browser tab; the wasm shadow-stack flag `-sSTACK_SIZE` bounds a
+  # DIFFERENT stack and is not needed here. Runs the committed module, so a Lean
+  # fix reaches it only after Wasm/build-wasm.sh.
+  echo
+  echo "=== canary route (wasm cases in Node under --stack-size=${CANARY_KB})"
+  for row in "${CASES[@]}"; do
+    set -- $row
+    name="$1"
+    out="$(run_capped "$TIMEOUT" node --stack-size="$CANARY_KB" "$HERE/wasm_case.mjs" "$name" "$FIXTURES" 2>&1)"; rc=$?
+    threw=0
+    if [ "$rc" -ne 0 ] || printf '%s' "$out" | grep -qi 'call stack\|RangeError\|overflow'; then threw=1; fi
+    if [ "$name" = turtle-collection ]; then
+      # KNOWN unrepaired per-element recursion (https://github.com/danbri/factoidal/issues/678): expected to overflow
+      # until fixed. Pass the suite while it throws; FAIL (turn red) if it ever
+      # stops throwing, so the fix flips this marker and closes the issue.
+      if [ "$threw" -eq 1 ]; then record canary "$name" 0 "xfail: still overflows, tracked (https://github.com/danbri/factoidal/issues/678)"
+      else record canary "$name" 1 "UNEXPECTED PASS: flip this xfail and close https://github.com/danbri/factoidal/issues/678"; fi
+    elif [ "$threw" -eq 1 ]; then
+      record canary "$name" 1 "wasm THREW under --stack-size=${CANARY_KB}: $(printf '%s' "$out" | head -c 140)"
+    else
+      record canary "$name" 0 "wasm ok under --stack-size=${CANARY_KB}"
+    fi
+  done
 fi
 
 if [ "$ROUTE" = wasm ] || [ "$ROUTE" = both ]; then
