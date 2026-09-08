@@ -304,6 +304,77 @@ Items 1 and 2 are the ones that make the browser path usable at this
 scale; 3 is what makes it usable without a worker; 4 is what makes it
 fast.
 
+## The second overflow
+
+The manifest-decode overflow above was fixed first: `decodeEntries`,
+`decodeGraphNames`, `decodeBlobList` and `decodeBlobRefList` were made
+iterative and wired by `@[csimp]` (commit history around `977e48aa9`).
+After that fix, the rebuilt module (digest `b3353fe2`) still throws
+`Maximum call stack size exceeded` inside `storeManifestInspect` on the
+real 36,106-entry manifest at Node's DEFAULT stack (about 1 MB, the size a
+browser tab gives). It throws after about 6.9 s, i.e. AFTER the hexadecimal
+decode completes, so the survivor is a per-entry recursion, not the hex
+path.
+
+### The functions ruled out
+
+Read from the emitted C (`.lake/build/ir/**/*.c`), a direct tail self-call
+becomes `goto _start;`; a real recursive C call consumes one frame per step.
+`tools/lean-tail-recursion-audit.py` classifies each.
+
+- `Wasm/Ops/Support.lean` `bytesOfHexCharsGo?` — the `do`-bind tail call is
+  compiled to `goto _start;`. It is a loop. It is innocent. This matches the
+  6.9 s timing: the 51 MB hexadecimal string is decoded before the throw.
+- `ShardManifest.lean` `adjacentDistinctKeys`, `blobsAscending`,
+  `contiguousOrdinals`, `uniquePredicates` — each recurses as the right side
+  of `&&`, which is tail position, and each compiles to `goto _start;`. All
+  loops.
+- `ShardManifest.lean` `noDupKeys` (`List.eraseDups`) — NOT reached at
+  runtime. `valid` reads the specification `uniqueArtifactKeys`, and
+  `sbm10ManifestFields` reads `noDupKeys`, but both are replaced by
+  `@[csimp]` with the sorted `noDupKeysFast` (mergeSort plus
+  `adjacentDistinctKeys`). The quadratic `eraseDups` scan is not in the
+  generated code.
+
+Native runs never hit any of this: the Lean executable runs the computation
+on a pthread whose stack is large, so `ulimit -s 512` on the main thread
+still succeeds. The overflow is genuine deep wasm-to-wasm recursion; V8
+counts each wasm frame against its own call-stack limit, which is why it
+surfaces as a JavaScript `RangeError`.
+
+### The function found
+
+`L4Factoidal/JSON/Serialize.lean`, the compact writer:
+
+```
+def toStringItems : List Json -> String
+  | []        => ""
+  | [x]       => toStringCompact x
+  | x :: rest => toStringCompact x ++ "," ++ toStringItems rest
+```
+
+`a ++ b ++ c` is `(a ++ b) ++ c`, so `toStringItems rest` is the RIGHT
+argument of the outer `++`, NOT a tail call. It recurses once per array
+element. `storeManifestInspect` serialises its output as a `Json.array` of
+36,106 entry objects, so rendering the RESULT recurses 36,106 deep and
+overflows. `toStringFields` (object members), and the pretty-writer twins
+`toStringItemsPretty` and `toStringFieldsPretty`, have the same `++`-right
+shape. `tools/lean-tail-recursion-audit.py` classifies all four as
+`length`, risk 5. The scanner named them; the earlier search missed them
+because it filtered on the storage and store-op files and not on
+`L4Factoidal/JSON/`.
+
+### The fix
+
+Each of the four keeps its readable specification unchanged. A
+tail-recursive accumulator twin (`...Impl`) is added beside it, proved
+equal through an accumulator lemma over `String.append_assoc` and
+`String.append_empty`, and wired by `@[csimp]` so the code generator emits
+the loop while every proof about the specification is unchanged. This is
+the same shape as the `decodeEntries` fix. `escapeString` is left as is: it
+folds with `List.foldl` (tail-safe) and is a per-string, not a per-entry,
+cost.
+
 ## What this note does NOT claim
 
 - No write path. Publishing a generation over HTTP, and the conditional
