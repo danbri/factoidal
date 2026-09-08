@@ -92,6 +92,28 @@ Object key order is exactly as stored (see module header); this is
 NOT `jcanon_serialize`'s canonicalisation (`jcanon_sort_fields`) —
 compact means "no insignificant whitespace", not "canonical form". -/
 
+/-!
+### Stack safety of the list writers
+
+`toStringItems`/`toStringFields` (the readable specifications) recurse as
+the RIGHT operand of `++` (`a ++ "," ++ f rest` is `(a ++ ",") ++ f rest`),
+so the recursive call is NOT in tail position: the code generator emits one
+C stack frame per list element. `storeManifestInspect` renders a
+`Json.array` of 36,106 entry objects, so serialising THAT result recursed
+36,106 deep and overflowed a tab-sized (about 1 MB) call stack — the second
+overflow of `docs/designissues/2026-09-07-store-over-http.md`. A native run
+never hit it because the Lean executable runs on a large pthread stack.
+
+`toStringCompact` therefore calls tail-recursive accumulator forms
+(`toStringItemsAcc`/`toStringFieldsAcc`): a direct self-tail-call, which the
+code generator compiles to a loop (`goto _start`) even inside a `mutual`
+block. The readable specifications are kept and proved equal to the
+accumulator forms below (`toStringItemsAcc_eq`/`toStringFieldsAcc_eq`), so
+`toStringCompact` renders exactly the specified string and every downstream
+round-trip theorem is unchanged. Same shape as the `decodeEntries` fix in
+`ShardManifest.lean`.
+-/
+
 mutual
 
 /-- Serialise a `Json` value to its compact (no whitespace) RFC 8259
@@ -103,21 +125,76 @@ def toStringCompact : Json → String
   | .bool false => "false"
   | .number lex => lex
   | .string s   => "\"" ++ escapeString s ++ "\""
-  | .array items  => "[" ++ toStringItems items ++ "]"
-  | .object fields => "{" ++ toStringFields fields ++ "}"
+  | .array items  => "[" ++ toStringItemsAcc items "" ++ "]"
+  | .object fields => "{" ++ toStringFieldsAcc fields "" ++ "}"
 
+/-- READABLE SPECIFICATION of the array-item writer (comma-separated, no
+whitespace). NOT the runtime path — `toStringCompact` calls
+`toStringItemsAcc`; this is kept for `toStringItemsAcc_eq`. -/
 def toStringItems : List Json → String
   | []        => ""
   | [x]       => toStringCompact x
   | x :: rest => toStringCompact x ++ "," ++ toStringItems rest
 
+/-- READABLE SPECIFICATION of the object-member writer. NOT the runtime
+path; kept for `toStringFieldsAcc_eq`. -/
 def toStringFields : List (String × Json) → String
   | []              => ""
   | [(k, v)]        => "\"" ++ escapeString k ++ "\":" ++ toStringCompact v
   | (k, v) :: rest  =>
     "\"" ++ escapeString k ++ "\":" ++ toStringCompact v ++ "," ++ toStringFields rest
 
+/-- Tail-recursive array-item writer. The self-call is the last expression,
+so it compiles to a loop; one C frame regardless of the list length. -/
+def toStringItemsAcc : List Json → String → String
+  | [], acc        => acc
+  | [x], acc       => acc ++ toStringCompact x
+  | x :: rest, acc => toStringItemsAcc rest (acc ++ toStringCompact x ++ ",")
+
+/-- Tail-recursive object-member writer. -/
+def toStringFieldsAcc : List (String × Json) → String → String
+  | [], acc             => acc
+  | [(k, v)], acc       => acc ++ "\"" ++ escapeString k ++ "\":" ++ toStringCompact v
+  | (k, v) :: rest, acc =>
+      toStringFieldsAcc rest
+        (acc ++ "\"" ++ escapeString k ++ "\":" ++ toStringCompact v ++ ",")
+
 end
+
+/-- The accumulator is a prefix: `toStringItemsAcc l acc = acc ++ toStringItems l`.
+Closes by `String.append_assoc` / `String.append_empty`. -/
+theorem toStringItemsAcc_eq (l : List Json) (acc : String) :
+    toStringItemsAcc l acc = acc ++ toStringItems l := by
+  induction l generalizing acc with
+  | nil => simp [toStringItemsAcc, toStringItems, String.append_empty]
+  | cons x rest ih =>
+    cases rest with
+    | nil => simp [toStringItemsAcc, toStringItems]
+    | cons y rest' =>
+        simp only [toStringItemsAcc, toStringItems, ih, String.append_assoc]
+
+theorem toStringFieldsAcc_eq (l : List (String × Json)) (acc : String) :
+    toStringFieldsAcc l acc = acc ++ toStringFields l := by
+  induction l generalizing acc with
+  | nil => simp [toStringFieldsAcc, toStringFields, String.append_empty]
+  | cons kv rest ih =>
+    cases rest with
+    | nil =>
+        obtain ⟨k, v⟩ := kv
+        simp [toStringFieldsAcc, toStringFields, String.append_assoc]
+    | cons kv2 rest' =>
+        obtain ⟨k, v⟩ := kv
+        simp only [toStringFieldsAcc, toStringFields, ih, String.append_assoc]
+
+/-- `toStringCompact` renders arrays exactly as the readable specification. -/
+theorem toStringCompact_array (items : List Json) :
+    toStringCompact (.array items) = "[" ++ toStringItems items ++ "]" := by
+  simp [toStringCompact, toStringItemsAcc_eq, String.empty_append]
+
+/-- `toStringCompact` renders objects exactly as the readable specification. -/
+theorem toStringCompact_object (fields : List (String × Json)) :
+    toStringCompact (.object fields) = "{" ++ toStringFields fields ++ "}" := by
+  simp [toStringCompact, toStringFieldsAcc_eq, String.empty_append]
 
 /-- `j.toString` — the default (compact) serialisation. -/
 def Json.toString (j : Json) : String := toStringCompact j
@@ -145,16 +222,20 @@ def toStringPrettyAt (depth : Nat) : Json → String
   | .number lex => lex
   | .string s   => "\"" ++ escapeString s ++ "\""
   | .array []    => "[]"
-  | .array items => "[\n" ++ toStringItemsPretty (depth + 1) items ++ "\n" ++ indentOf depth ++ "]"
+  | .array items => "[\n" ++ toStringItemsPrettyAcc (depth + 1) items "" ++ "\n" ++ indentOf depth ++ "]"
   | .object []     => "{}"
-  | .object fields => "{\n" ++ toStringFieldsPretty (depth + 1) fields ++ "\n" ++ indentOf depth ++ "}"
+  | .object fields => "{\n" ++ toStringFieldsPrettyAcc (depth + 1) fields "" ++ "\n" ++ indentOf depth ++ "}"
 
+/-- READABLE SPECIFICATION of the pretty array-item writer. NOT the runtime
+path; kept for `toStringItemsPrettyAcc_eq`. -/
 def toStringItemsPretty (depth : Nat) : List Json → String
   | []        => ""
   | [x]       => indentOf depth ++ toStringPrettyAt depth x
   | x :: rest =>
     indentOf depth ++ toStringPrettyAt depth x ++ ",\n" ++ toStringItemsPretty depth rest
 
+/-- READABLE SPECIFICATION of the pretty object-member writer. NOT the
+runtime path; kept for `toStringFieldsPrettyAcc_eq`. -/
 def toStringFieldsPretty (depth : Nat) : List (String × Json) → String
   | []             => ""
   | [(k, v)]       =>
@@ -163,7 +244,49 @@ def toStringFieldsPretty (depth : Nat) : List (String × Json) → String
     indentOf depth ++ "\"" ++ escapeString k ++ "\": " ++ toStringPrettyAt depth v ++ ",\n"
       ++ toStringFieldsPretty depth rest
 
+/-- Tail-recursive pretty array-item writer (same reason as
+`toStringItemsAcc`; not on the inspect path, which is compact). -/
+def toStringItemsPrettyAcc (depth : Nat) : List Json → String → String
+  | [], acc        => acc
+  | [x], acc       => acc ++ indentOf depth ++ toStringPrettyAt depth x
+  | x :: rest, acc =>
+      toStringItemsPrettyAcc depth rest
+        (acc ++ indentOf depth ++ toStringPrettyAt depth x ++ ",\n")
+
+/-- Tail-recursive pretty object-member writer. -/
+def toStringFieldsPrettyAcc (depth : Nat) : List (String × Json) → String → String
+  | [], acc             => acc
+  | [(k, v)], acc       =>
+      acc ++ indentOf depth ++ "\"" ++ escapeString k ++ "\": " ++ toStringPrettyAt depth v
+  | (k, v) :: rest, acc =>
+      toStringFieldsPrettyAcc depth rest
+        (acc ++ indentOf depth ++ "\"" ++ escapeString k ++ "\": "
+          ++ toStringPrettyAt depth v ++ ",\n")
+
 end
+
+theorem toStringItemsPrettyAcc_eq (depth : Nat) (l : List Json) (acc : String) :
+    toStringItemsPrettyAcc depth l acc = acc ++ toStringItemsPretty depth l := by
+  induction l generalizing acc with
+  | nil => simp [toStringItemsPrettyAcc, toStringItemsPretty, String.append_empty]
+  | cons x rest ih =>
+    cases rest with
+    | nil => simp [toStringItemsPrettyAcc, toStringItemsPretty, String.append_assoc]
+    | cons y rest' =>
+        simp only [toStringItemsPrettyAcc, toStringItemsPretty, ih, String.append_assoc]
+
+theorem toStringFieldsPrettyAcc_eq (depth : Nat) (l : List (String × Json)) (acc : String) :
+    toStringFieldsPrettyAcc depth l acc = acc ++ toStringFieldsPretty depth l := by
+  induction l generalizing acc with
+  | nil => simp [toStringFieldsPrettyAcc, toStringFieldsPretty, String.append_empty]
+  | cons kv rest ih =>
+    cases rest with
+    | nil =>
+        obtain ⟨k, v⟩ := kv
+        simp [toStringFieldsPrettyAcc, toStringFieldsPretty, String.append_assoc]
+    | cons kv2 rest' =>
+        obtain ⟨k, v⟩ := kv
+        simp only [toStringFieldsPrettyAcc, toStringFieldsPretty, ih, String.append_assoc]
 
 /-- `j.toStringPretty` — 2-space-indented, multi-line serialisation. -/
 def Json.toStringPretty (j : Json) : String := toStringPrettyAt 0 j
