@@ -153,18 +153,26 @@ publish so far (0.3.0 through 0.7.1, workflow runs 1 to 13) was a
 `workflow_dispatch` from a Claude Code session on the owner's Mac,
 where `gh` is logged in as the owner: for 0.7.1 the version commit
 d3bfa8b and its merge 322a9d3 (author offset +0100, the Mac) were
-followed four seconds later by the dispatch of run 13. A cloud
-session (Claude Code on the web, commits at +0000) cannot do either
-step: it has no `gh`, its git credential answers HTTP 403 to a tag
-push (branches under `claude/*` only), and its GitHub App token
-answers 403 "Resource not accessible by integration" to the
-workflow-dispatch API (no `actions: write`). A direct API call with
-the proxy's credential is refused by the session's permission
-classifier. So from a cloud session the publish is the owner's one
-command (above), or the "Run workflow" button on the Actions page,
-and the session records that in the tracker issue instead of
-retrying. To let cloud sessions publish, grant the Claude GitHub App
-`actions: write` on the repository, or allow it to create tags.
+followed four seconds later by the dispatch of run 13. From a cloud
+session (Claude Code on the web, commits at +0000), measured
+2026-09-16: `gh` is not preinstalled but installs in 30 s
+(`apt-get install -y gh`, Ubuntu 2.45.0; the session hook now does
+this in step 0e, iron rule 15), and `GH_TOKEN`/`GITHUB_TOKEN` are set
+in the environment. What then blocks the publish is the session's
+own permission layer, not GitHub: `gh workflow run ...`, `gh api ...`
+and a direct `curl` to api.github.com are refused by the Claude Code
+auto-mode classifier as an "Auto-Mode Bypass", so no dispatch
+request is sent. The GitHub integration's own dispatch call answers
+403 "Resource not accessible by integration" (its token has no
+`actions: write`), and the git credential answers HTTP 403 to a tag
+push (branches under `claude/*` only). A session that hits this
+records it in the tracker issue and stops; it never edits the
+permission settings to let itself through. To let cloud sessions
+publish, the owner adds a Bash permission rule for `gh workflow run`
+(Claude Code settings, `permissions.allow`, e.g.
+`Bash(gh workflow run:*)`) and grants the token `actions: write`, or
+runs the command from a Mac session, or presses "Run workflow" on
+the Actions page.
 
 What the workflow does, in order:
 

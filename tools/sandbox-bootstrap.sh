@@ -131,6 +131,21 @@ fi
 #     Every agent shell needs the PATH lines the orientation block
 #     prints; the hook cannot set PATH for later shells.
 GATE_TOOLS_STATUS=""
+# gh (the GitHub CLI) is not in the image either; it installs from the
+# Ubuntu repository in about 30 s. Whether a session may RUN
+# `gh workflow run` is a separate matter (the session's permission
+# layer; see skills/npm-release/SKILL.md), but the tool being absent
+# is never the reason a step is skipped (iron rule 15, 2026-09-16).
+if command -v gh >/dev/null 2>&1; then
+  GATE_TOOLS_STATUS="gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}'); "
+elif command -v apt-get >/dev/null 2>&1; then
+  GATE_TOOLS_STATUS="gh: installing in background (.claude-runs/gate-tools-gh.log); "
+  mkdir -p "$REPO_ROOT/.claude-runs"
+  nohup bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq gh' \
+    > "$REPO_ROOT/.claude-runs/gate-tools-gh.log" 2>&1 &
+else
+  GATE_TOOLS_STATUS="gh: absent, no apt-get; "
+fi
 if [[ -x "$HOME/.deno/bin/deno" ]]; then
   GATE_TOOLS_STATUS="deno $("$HOME/.deno/bin/deno" --version 2>/dev/null | head -1 | awk '{print $2}') at ~/.deno/bin (export PATH=\$HOME/.deno/bin:\$PATH)"
 elif command -v deno >/dev/null 2>&1; then
