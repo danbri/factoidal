@@ -1,0 +1,15 @@
+{
+  "ontologySize": 2203,
+  "circuitSize": 1486,
+  "portRowsLength": 230,
+  "arcRowsLength": 107,
+  "modelElementsLength": 89,
+  "modelArcsLength": 107,
+  "apiItems": {
+    "strictParse": false,
+    "parseReturnsPrefixes": false,
+    "turtleUsesSourcePrefixes": false,
+    "decimalShorthand": false,
+    "datasetHandle": false
+  }
+}
