@@ -1,0 +1,40 @@
+# examples/basic.ttl
+#
+# The smallest circuit that does something: input, a resonant filter, a
+# saturator, output. A starting point to edit rather than a demonstration.
+
+@prefix val:   <http://purl.org/stuff/valis/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix units: <http://lv2plug.in/ns/extensions/units#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix :      <urn:valis:basic#> .
+
+:basic a val:Circuit ;
+    rdfs:label "Basic" ;
+    val:element :in , :vcf , :drive , :out ;
+    val:arc :a1 , :a2 , :a3 .
+
+:in  a val:Input .
+:vcf a val:Ladder ; val:cutoff 800.0 ; val:resonance 0.4 ; val:drive 1.0 .
+
+# A diode pair rather than a tanh: it clips symmetrically at a real forward
+# voltage, so the character comes from the device rather than from a curve.
+:drive a val:DiodePair ; val:seriesResistance 2200.0 .
+
+:out a val:Output .
+
+:a1 a val:Arc ; val:from [ val:node :in    ; val:port "out" ] ;
+                val:to   [ val:node :vcf   ; val:port "in"  ] .
+:a2 a val:Arc ; val:from [ val:node :vcf   ; val:port "out" ] ;
+                val:to   [ val:node :drive ; val:port "in"  ] .
+:a3 a val:Arc ; val:from [ val:node :drive ; val:port "out" ] ;
+                val:to   [ val:node :out   ; val:port "in"  ] .
+
+:p0 a val:Param ; val:slot 0 ; val:target :vcf ; val:property val:cutoff ;
+    lv2:name "Cutoff" ; lv2:symbol "cutoff" ; units:unit units:hz .
+
+:p1 a val:Param ; val:slot 1 ; val:target :vcf ; val:property val:resonance ;
+    lv2:name "Resonance" ; lv2:symbol "resonance" .
+
+:p2 a val:Param ; val:slot 2 ; val:target :vcf ; val:property val:drive ;
+    lv2:name "Drive" ; lv2:symbol "drive" .
