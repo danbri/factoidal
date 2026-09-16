@@ -289,7 +289,9 @@ post needs a new binding.
 ### The `fn` typed surface in full
 
 ```
-fn.parse(text: string, options?: {format?: string, baseIRI?: string}) -> Promise<Dataset>
+fn.parse(text: string, options?: {format?: string, baseIRI?: string, lenient?: boolean}) -> Promise<Dataset>
+  // strict by default (issue #344): a syntax error rejects with a ParseError
+  // (line/column/offset); {lenient: true} recovers, with dataset.diagnostics
 
 fn.query(dataset: Dataset, sparql: string, options?: {entail?: 'none'|'RDFS'|'OWL-RL'})
   -> Promise<Map<string, Term>[]>   // SELECT
