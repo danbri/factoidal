@@ -2,6 +2,77 @@
 
 ## Unreleased
 
+**Behaviour change: parsing is strict by default.** `parse()` (and
+every function that parses text input) now rejects on a syntax error,
+an undeclared prefix, or a relative IRI with no `baseIRI` in effect,
+instead of silently dropping the affected statements. The error is a
+new `class ParseError extends Error` (`name`, `line`, `column`,
+`offset`, `format` — position fields present for Turtle/TriG/
+N-Triples/N-Quads, absent for RDF/XML and JSON-LD, which carry a
+message only), exported from every entry point (`index.js`/`.mjs`,
+`wasm.js`, `l4-core.js`, `api.js`/`.mjs`, `lite.js`/`.mjs`, and
+`browser.js`, which declares its own copy since it has no imports).
+Pass `{lenient: true}` to `parse()` to recover instead: the returned
+Dataset holds whatever the parser recovered, and the new
+`dataset.diagnostics` array lists what was skipped (needs the
+npm-entry engine bundle's `parseDocument` export). Issues
+[344](https://github.com/danbri/factoidal/issues/344),
+[680](https://github.com/danbri/factoidal/issues/680),
+[681](https://github.com/danbri/factoidal/issues/681).
+
+**Dataset handles.** `openDataset(data, {format?, baseIRI?})` parses
+once and keeps the result indexed in the engine, so repeated
+`query()`/`update()`/`serialize()` calls against the returned
+`DatasetHandle` skip both the re-parse and the SPARQL-index rebuild a
+fresh `query(ds, ...)` call pays every time (measured ~2x faster per
+call on a 2,000-triple two-pattern join in this session — see
+`tests/perf/npm_handle_vs_stateless.mjs`). `query(data, sparql,
+options)`, `serialize(data, options)` and `canonicalize(data)` also
+accept a `DatasetHandle` directly; `update(handle, ...)` rejects with
+a `TypeError`, since `update()` always returns a fresh Dataset while
+`handle.update()` mutates the handle in place. `select.js` (the F*/
+Lean backend selector) deliberately does not route `openDataset()` —
+a handle is opened against one engine's own entry object, so there is
+no "same handle on the other engine" to fall through to.
+
+**Prefixes and Turtle literal shorthand.** `Dataset` gains `.prefixes`
+(the declared map from parsing, `{}` for N-Triples/N-Quads) and
+`.diagnostics` (own, non-enumerable properties, so `JSON.stringify()`/
+`toArray()` are unaffected either way). `serialize(data, {format:
+'turtle', prefixes?, literalShorthand?})` uses caller prefix pairs
+(dropping unused caller namespaces, skipping caller labels when
+auto-generating `nsN:` ones) when given, or automatically when `data`
+is a Dataset with non-empty `.prefixes`; `literalShorthand` (default
+`true`) controls whether `xsd:integer`/`decimal`/`double`/`boolean`
+literals with a Turtle-grammar-matching lexical form print bare.
+`DatasetHandle.serialize()` has the same options.
+
+**New entry point `@factoidal/core/lite`** (`lite.js`/`.mjs`/`.d.ts`):
+a smaller npm-entry ABI bundle (`factoidal-npm-entry-lite.js`, about
+half the gzip size of the full bundle — see README.md's "Choosing a
+bundle: full or lite") implementing the core surface (`parse`,
+`query`, `update`, `serialize`, `canonicalize`, `graphs`,
+`canonicalHash`, `openDataset`/`DatasetHandle`, the extension-function
+and SERVICE-endpoint registration functions, `capabilities`) with no
+SHACL, ShEx, OWL closure, JSON-LD, RDF/XML, CSVW, RML, RIF, XML,
+XPath, VC crypto, COTTAS, or CLI bundle (no entailment regimes, no
+`queryHdt`). `capabilities()` gains `profile` (`'full'` | `'lite'`),
+`abiVersion`, `datasetHandles`, `parseDiagnostics`, `turtlePrefixes`.
+Issue [684](https://github.com/danbri/factoidal/issues/684).
+
+**`browser.js`: `query()` and `toRdf()` route through the npm-entry
+ABI.** Whenever the persistent ABI bundle is available (already on
+`globalThis`, or fetched by `loadNpmEntry()`), `query()` with `entail:
+'none'` and `output: 'json'` (both defaults), and every `toRdf()`
+call, now go through it instead of the eval-per-call CLI bundle —
+falling back to the CLI bundle only when loading the ABI fails. This
+makes the classic-`<script>` route (README.md's "Bundlers and Content
+Security Policy" §b) CSP-safe for parsing and SELECT/ASK too, not only
+for the operations already ABI-routed. New `openDataset(text,
+{format?, baseIRI?})` on `browser.js` returns a handle with `query`/
+`update`/`serialize`/`close` over the same ABI. Issue
+[682](https://github.com/danbri/factoidal/issues/682) (second half).
+
 Three new entry points, for two storage protocols:
 
 * `@factoidal/core/lws` — a Node `http` server for the

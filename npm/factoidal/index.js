@@ -228,6 +228,9 @@ module.exports = {
   closeCottas: api.closeCottas,
   toCottas: api.toCottas,
   capabilities: api.capabilities,
+  openDataset: api.openDataset,
+  DatasetHandle: api.DatasetHandle,
+  ParseError: api.ParseError,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,
   // Legacy raw surface

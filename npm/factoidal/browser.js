@@ -83,6 +83,27 @@ const DATA_FORMAT_EXT = {
 const OUTPUT_FORMATS = new Set(['json', 'csv', 'tsv', 'xml', 'table', 'ntriples']);
 const ENTAIL_VALUES  = new Set(['none', 'RDFS', 'OWL-RL', 'x-rdfscore', 'x-rdfsplus']);
 
+/**
+ * A parse (or dataset-handle ABI) failure that carries a position
+ * (issue #344): `line`/`column`/`offset` are set when the failing
+ * engine call reported one (Turtle, TriG, N-Triples, N-Quads);
+ * `undefined` for an RDF/XML or JSON-LD failure, or any non-parse
+ * engine error, which stay a plain `Error`. Mirrors
+ * npm/factoidal/lib/api.js's ParseError -- this module is
+ * self-contained (no imports), so it carries its own copy.
+ */
+export class ParseError extends Error {
+  constructor(message, info) {
+    super(message);
+    this.name = 'ParseError';
+    const i = info || {};
+    this.line = i.line;
+    this.column = i.column;
+    this.offset = i.offset;
+    this.format = i.format;
+  }
+}
+
 function extForFormat(fmt) {
   const key = String(fmt || 'turtle').toLowerCase();
   if (!(key in DATA_FORMAT_EXT)) {
@@ -318,6 +339,29 @@ export async function query(dataString, queryString, options) {
     return queryViaAbi(dataString, queryString, { dataFormat, output, sparql12 });
   }
 
+  // Issue #682 (second half): whenever the persistent npm-entry ABI is
+  // available -- already registered on globalThis, or fetched by
+  // loadNpmEntry() -- route the common case (no entailment closure,
+  // SPARQL-Results-JSON output) through it instead of the eval-per-
+  // call CLI bundle. This is what makes the classic-script route
+  // CSP-safe for parse and SELECT/ASK too (see README.md's "Bundlers
+  // and Content Security Policy"). Falls back to the CLI bundle below
+  // only when loading the entry fails (network error, or a page that
+  // never shipped factoidal-npm-entry.js at all) -- entailment
+  // regimes and non-JSON outputs always use the CLI bundle, since the
+  // ABI has neither.
+  if (entail === 'none' && output === 'json') {
+    let abi = null;
+    try {
+      abi = await loadNpmEntry();
+    } catch (_e) {
+      abi = null;
+    }
+    if (abi && typeof abi.queryDataset === 'function') {
+      return queryViaAbi(dataString, queryString, { dataFormat, output, sparql12 });
+    }
+  }
+
   const { ext, rdf12 } = extAnd12(dataFormat);
   const dataPath = '/static/data.' + ext;
 
@@ -415,7 +459,17 @@ async function dumpNQuads(mode, text, options) {
  * `canonical_nquads` -- sorted, not RDFC-1.0 canonical bnode labels;
  * see canonicalize() for that). Default format is 'jsonld' since this
  * export exists mainly for the JSON-LD playground's "toRdf" step, but
- * any DATA_FORMAT_EXT format works.
+ * any DATA_FORMAT_EXT format works. A syntax error rejects with a
+ * ParseError (issue #344) whenever the npm-entry ABI answers it (see
+ * below); the CLI-bundle fallback path rejects with a plain Error, as
+ * before.
+ *
+ * Routes through the persistent npm-entry ABI (issue #682, second
+ * half) whenever it is available -- parseToDatasetJson() IS this
+ * function's job already (parse, then print N-Quads) -- falling back
+ * to the eval-per-call CLI bundle only when loading the entry fails.
+ * The *12 RDF 1.2 opt-in format tags (e.g. 'turtle12') pass straight
+ * through to the ABI unchanged, same as query()'s ABI path.
  *
  * @param {string} text
  * @param {{format?: string, baseIRI?: string}} [options]
@@ -424,6 +478,19 @@ async function dumpNQuads(mode, text, options) {
 export async function toRdf(text, options) {
   if (typeof text !== 'string') {
     throw new TypeError('toRdf: text must be a string');
+  }
+  const opts = options || {};
+  let abi = null;
+  try {
+    abi = await loadNpmEntry();
+  } catch (_e) {
+    abi = null;
+  }
+  if (abi && typeof abi.parseToDatasetJson === 'function') {
+    const format = opts.format || 'jsonld';
+    const baseIRI = opts.baseIRI || '';
+    return abiEntryResult(
+      abi.parseToDatasetJson(text, format, baseIRI), 'toRdf').nquads;
   }
   return dumpNQuads('--dump-nq', text, options);
 }
@@ -697,6 +764,92 @@ export async function loadNpmEntry() {
 }
 
 /* ---------------------------------------------------------------
+   Dataset handles (issue #680): parse once, then query()/update()/
+   serialize() many times against the engine's own cached, indexed
+   copy instead of re-parsing text and rebuilding the SPARQL index on
+   every call. Needs the npm-entry ABI. Results use the SAME shapes
+   query() above returns for JSON output (SPARQL Results JSON for
+   SELECT, {head:{},boolean} for ASK, N-Quads text for CONSTRUCT).
+   --------------------------------------------------------------- */
+
+/**
+ * Open a dataset handle over the persistent npm-entry ABI.
+ * @param {string} text
+ * @param {{format?: string, baseIRI?: string}} [options]
+ * @returns {Promise<{
+ *   handle: string, count: number, prefixes: object,
+ *   query: (sparql: string, options?: {sparql12?: boolean}) => Promise<object|string>,
+ *   update: (updateText: string) => Promise<number>,
+ *   serialize: (options?: {format?: string}) => Promise<string>,
+ *   close: () => Promise<void>,
+ * }>}
+ */
+export async function openDataset(text, options) {
+  if (typeof text !== 'string') {
+    throw new TypeError('openDataset: text must be a string');
+  }
+  const opts = options || {};
+  const format = opts.format || 'turtle';
+  const baseIRI = opts.baseIRI || '';
+  const abi = await loadNpmEntry();
+  if (typeof abi.datasetOpen !== 'function') {
+    throw new Error(
+      'openDataset: this npm-entry bundle predates dataset handles ' +
+      '(issue #680) — rebuild.');
+  }
+  const opened = abiEntryResult(abi.datasetOpen(text, format, baseIRI), 'openDataset');
+  const handle = opened.handle;
+  let closed = false;
+  function assertOpen(who) {
+    if (closed) throw new Error(`${who}: dataset handle '${handle}' is closed`);
+  }
+  return {
+    handle,
+    count: opened.count,
+    prefixes: opened.prefixes || {},
+    async query(sparql, queryOptions) {
+      assertOpen('query');
+      if (typeof sparql !== 'string') {
+        throw new TypeError('openDataset().query: sparql must be a string');
+      }
+      const qo = queryOptions || {};
+      const sparql12 = qo.sparql12 === true || String(qo.version || '') === '1.2';
+      const fn = sparql12 ? abi.datasetQuery12 : abi.datasetQuery;
+      if (typeof fn !== 'function') {
+        throw new Error(
+          `openDataset().query: this npm-entry bundle lacks datasetQuery${sparql12 ? '12' : ''}.`);
+      }
+      const r = await withExtensionRounds(() => abiEntryResult(fn(handle, sparql), 'query'));
+      if (r.kind === 'ask') return { head: {}, boolean: r.boolean };
+      if (r.kind === 'construct') return r.nquads;
+      return r.srj;
+    },
+    async update(updateText) {
+      assertOpen('update');
+      if (typeof updateText !== 'string') {
+        throw new TypeError('openDataset().update: updateText must be a string');
+      }
+      const r = abiEntryResult(abi.datasetUpdate(handle, updateText), 'update');
+      return r.count;
+    },
+    async serialize(serializeOptions) {
+      assertOpen('serialize');
+      const so = serializeOptions || {};
+      const fmt = so.format || 'nquads';
+      const r = abiEntryResult(abi.datasetSerialize(handle, fmt), 'serialize');
+      return fmt === 'turtle' ? r.turtle : r.nquads;
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      if (typeof abi.datasetClose === 'function') {
+        abiEntryResult(abi.datasetClose(handle), 'close');
+      }
+    },
+  };
+}
+
+/* ---------------------------------------------------------------
    SPARQL 1.1 §17.6 extension functions (issue #463) + SERVICE
    endpoint snapshots (issue #57 family) — browser side.
 
@@ -717,7 +870,14 @@ let serviceEndpointsActive = false;
 
 function abiEntryResult(jsonText, what) {
   const r = JSON.parse(jsonText);
-  if (!r.ok) throw new Error(`${what}: ${r.error}`);
+  if (!r.ok) {
+    if (r.line !== undefined || r.offset !== undefined) {
+      throw new ParseError(`${what}: ${r.error}`, {
+        line: r.line, column: r.column, offset: r.offset, format: r.format,
+      });
+    }
+    throw new Error(`${what}: ${r.error}`);
+  }
   return r;
 }
 
@@ -895,7 +1055,9 @@ async function queryViaAbi(dataString, queryString, opts) {
     if (opts.output === 'json') {
       throw new Error(
         'query: CONSTRUCT with output "json" is not supported on the ' +
-        'extension/SERVICE registry path');
+        "npm-entry ABI path (extension functions/SERVICE endpoints, or " +
+        "the default entail:'none'+output:'json' routing) -- use a " +
+        "different output format, e.g. 'ntriples'");
     }
     return r.nquads;
   }

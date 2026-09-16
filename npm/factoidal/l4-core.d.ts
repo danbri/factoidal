@@ -14,6 +14,9 @@ import {
   SerializeOptions,
   Bindings,
   ShaclValidateResult,
+  DatasetHandle,
+  ParseError,
+  QueryInput,
 } from './index';
 
 export {
@@ -25,20 +28,35 @@ export {
   QueryOptions,
   SerializeOptions,
   Bindings,
+  DatasetHandle,
+  ParseError,
+  QueryInput,
 };
 
 export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 export function query(
-  data: DataInput,
+  data: QueryInput,
   sparql: string,
   options?: QueryOptions
 ): Promise<Bindings[] | boolean | Dataset>;
+/** `data` must NOT be a DatasetHandle -- call `handle.update()` directly instead. */
 export function update(data: DataInput, sparql: string): Promise<Dataset>;
-export function serialize(
+/**
+ * Open a dataset handle against the Lean engine (issue #680). The
+ * Lean engine's own gaps (https://github.com/danbri/factoidal/issues/685):
+ * no `line`/`column`/`offset` on a parse error (the position is
+ * inside the message text only), no `prefixes`, no
+ * `literalShorthand`/`prefixes` option on `handle.serialize()`.
+ */
+export function openDataset(
   data: DataInput,
+  options?: { format?: DataFormat; baseIRI?: string }
+): Promise<DatasetHandle>;
+export function serialize(
+  data: QueryInput,
   options?: SerializeOptions
 ): Promise<string>;
-export function canonicalize(data: DataInput): Promise<string>;
+export function canonicalize(data: QueryInput): Promise<string>;
 export function graphs(data: DataInput): Promise<string[]>;
 export function canonicalHash(data: DataInput): Promise<string>;
 export function owlClosure(

@@ -11,6 +11,7 @@ import cjs from './api.js';
 
 export const createApi   = cjs.createApi;
 export const buildApi    = cjs.buildApi;
+export const ParseError  = cjs.ParseError;
 export const Dataset     = cjs.Dataset;
 export const dataFactory = cjs.dataFactory;
 export const version     = cjs.version;
