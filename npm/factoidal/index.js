@@ -234,4 +234,5 @@ module.exports = {
   queryRaw,
   // Metadata
   version,
+  engine: api.engine,
 };

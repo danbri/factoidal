@@ -28,6 +28,35 @@ built, so the first slice serves public resources and unauthenticated
 writes. Issue
 [659](https://github.com/danbri/factoidal/issues/659).
 
+New entry point `@factoidal/core/api`: `createApi(entry, options?)`
+wires the typed `parse`/`query`/`serialize`/... surface around an
+already-loaded npm-entry ABI object, with no `fetch` and no `new
+Function(src)` eval — the route for a bundler (esbuild, webpack,
+Rollup) or a page under `Content-Security-Policy: script-src 'self'`.
+`entry` accepts the `factoidalNpmEntry` object itself, a Promise of
+it, or a zero-argument function returning either. `browser.js`'s
+`loadNpmEntry()` now checks `globalThis.factoidalNpmEntry` before
+fetching anything, so a classic `<script src="factoidal-npm-entry.js">`
+tag (or the new `setNpmEntry(abi)`) makes every `browser.js` operation
+already routed through that ABI CSP-safe too. `package.json`'s
+`exports` map gains `./api` and direct subpaths for
+`factoidal-npm-entry.js`/`.wasm.js`/`.wasm.assets/*` (already shipped
+in `files`, not previously importable as package subpaths). Every
+typed entry point (`factoidal`, `factoidal/wasm`, `factoidal/api`,
+`factoidal/l4-core`) now reports `version` and `engine`. See
+README.md's "Bundlers and Content Security Policy" section. Proved
+against a real headless-Chromium page under that CSP header
+(`tests/web-demos/bundler_csp_smoke.sh`) and against esbuild's bundler
+(`test/bundler-esbuild.test.mjs`). Issue
+[682](https://github.com/danbri/factoidal/issues/682).
+
+README.md documents `parse()`'s output order (canonical/sorted
+N-Quads, not document order) and the blank-node label scheme
+(`_anonN` in document order for anonymous nodes, `p<k>_d<n>_` scope
+prefixes, no RDF meaning beyond within-dataset identity), pinned by
+`test/parse-order.test.js`. No behavior changed. Issue
+[683](https://github.com/danbri/factoidal/issues/683).
+
 ## 0.7.1 — 2026-09-06
 
 `factoidal pack --batch-bytes N` was documented in 0.7.0 and refused by the

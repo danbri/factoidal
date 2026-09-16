@@ -607,11 +607,27 @@ export async function queryDataset(files, queryString, options) {
 // full ABI contract). The CLI bundle above (runFactoidalCli / query /
 // toRdf / canonicalize) covers most of the surface with a fresh bundle
 // eval per call; a few operations (RIF Core saturation today) are only
-// exposed through this persistent ABI, so this loader fetches + evals
-// factoidal-npm-entry.js once and reads the `factoidalNpmEntry` object
-// it registers on globalThis -- same registration Node's index.js reads
-// off `module.exports.factoidalNpmEntry` / `globalThis.factoidalNpmEntry`
-// (see npm/factoidal/index.js's loadEntry()).
+// exposed through this persistent ABI, so this loader needs the ABI
+// object exactly once, via either of two routes (issue #682):
+//
+//   1. Classic <script>. A page loads the bundle itself, with no eval
+//      by this module at all:
+//        <script src="factoidal-npm-entry.js"></script>
+//      (a plain, non-module script: factoidal-npm-entry.js registers
+//      on `globalThis` when there is no CommonJS `module` in scope --
+//      see its own build, bin/npm-entry/entry_jsoo.ml.) loadNpmEntry()
+//      checks globalThis.factoidalNpmEntry FIRST and returns it
+//      directly if present, before ever touching fetch/eval. A page
+//      can also call setNpmEntry(abi) itself once it has the object
+//      by some other means (a bundler import, a Worker postMessage).
+//   2. fetch + `new Function(src)` eval, same registration Node's
+//      index.js reads off `module.exports.factoidalNpmEntry` /
+//      `globalThis.factoidalNpmEntry` (see npm/factoidal/index.js's
+//      loadEntry()). This is the fallback when route 1 wasn't used,
+//      and it needs `unsafe-eval` in the page's
+//      `Content-Security-Policy` -- a page that cannot grant that
+//      needs route 1, or the bundler entry point (`factoidal/api`,
+//      README.md's "Bundlers and Content Security Policy" section).
 // ---------------------------------------------------------------------
 
 let _npmEntryUrl = new URL('./factoidal-npm-entry.js', import.meta.url).href;
@@ -627,14 +643,38 @@ export function setFactoidalNpmEntryUrl(url) {
 }
 
 /**
- * Fetch + evaluate factoidal-npm-entry.js exactly once, returning the
- * `factoidalNpmEntry` ABI object it registers on globalThis. Optional:
- * everything the CLI bundle can do works without it.
+ * Inject an already-resolved factoidalNpmEntry ABI object -- e.g. one
+ * a bundler wired in directly (see `factoidal/api`'s createApi()), or
+ * one a classic `<script src="factoidal-npm-entry.js">` tag already
+ * registered on globalThis and the page read off it itself -- and
+ * reset the cached loader promise so the next loadNpmEntry() call
+ * returns it with no fetch and no eval. Passing a falsy value clears
+ * the override, falling back to the globalThis probe / fetch+eval
+ * routes documented above.
+ *
+ * @param {object|null|undefined} abi
+ */
+export function setNpmEntry(abi) {
+  _npmEntryPromise = abi ? Promise.resolve(abi) : null;
+}
+
+/**
+ * Resolve the `factoidalNpmEntry` ABI object exactly once: first by
+ * checking whether a classic `<script src="factoidal-npm-entry.js">`
+ * tag (or setNpmEntry()) already put it on globalThis, no fetch or
+ * eval needed either way; only then falling back to fetch +
+ * `new Function(src)` eval, which needs `unsafe-eval` in the page's
+ * CSP. Optional: everything the CLI bundle can do works without it.
  *
  * @returns {Promise<object>} the factoidalNpmEntry ABI object.
  */
 export async function loadNpmEntry() {
   if (_npmEntryPromise) return _npmEntryPromise;
+  const preloaded = globalThis.factoidalNpmEntry;
+  if (preloaded && typeof preloaded.queryDataset === 'function') {
+    _npmEntryPromise = Promise.resolve(preloaded);
+    return _npmEntryPromise;
+  }
   _npmEntryPromise = fetch(_npmEntryUrl)
     .then((r) => {
       if (!r.ok) {
@@ -2259,7 +2299,7 @@ export const version = '0.1.0';
 export default {
   query, toRdf, canonicalize, runFactoidalCli, setFactoidalUrl, getFactoidalUrl,
   encodeTextAsBundleBytes, queryDataset, version,
-  loadNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
+  loadNpmEntry, setNpmEntry, setFactoidalNpmEntryUrl, rifSmoke, rifEval,
   shaclValidate, shexValidate, didKeyResolve, owlClosure,
   coreRdfsClosure, coreRdfsCheck, rdfsPlusClosure, rhoDfClosure, rhoDfFragmentCheck,
   tableauMaterialise, tableauDlInconsistent, owlIsConsistent, owlEntails, rmlMap, jsonldToRdf,

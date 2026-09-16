@@ -149,6 +149,7 @@ module.exports = {
   dataFactory: rdfjs.dataFactory,
   wasmAvailable: engine.wasmAvailable,
   version,
+  engine: api.engine,
   // Test-only hook: the raw npm-entry ABI object (deltaBatchToHex,
   // deltaMergeApplyBrowser, shaclValidate, ...) loaded straight off
   // the wasm bundle, bypassing buildApi()'s Dataset-shaped surface.
