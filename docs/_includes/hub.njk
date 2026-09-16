@@ -1182,8 +1182,19 @@ const fn = {
   /**
    * Serialize a dataset (engine-produced bytes, sorted N-Quads order).
    * Mirrors npm/factoidal/lib/api.js's `serialize(data, options)`.
+   * NOTE: this JSDoc deliberately never writes an inline object-type
+   * annotation as two adjacent open-brace characters -- Nunjucks reads
+   * that pair anywhere in this file, JS comment or not, as the start of
+   * a template expression, and fails the whole page's build. Same
+   * family as docs/web/hub/README.md's trap about this comment's own
+   * closing sequence appearing early inside itself -- a different pair
+   * of characters, same cause, and the reason this note avoids BOTH
+   * pairs rather than naming either one literally.
    * @param {Dataset|string} data
-   * @param {{format?: 'nquads'|'turtle', inputFormat?: string, prefixes?: object}} [options]
+   * @param {object} [options]
+   * @param {'nquads'|'turtle'} [options.format]
+   * @param {string} [options.inputFormat]
+   * @param {object} [options.prefixes]
    * @returns {Promise<string>}
    *   'turtle' (prefix-compacted, subject-grouped -- entry_jsoo.ml's
    *   serializeTurtle -> RDF_Turtle_Serialize.turtle_of_graph_auto)

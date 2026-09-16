@@ -395,6 +395,82 @@ block from a built page (anchor on the line that is exactly
 the CSP `<!-- -->` comment near the top of the file — an easy
 false-negative) and running `node --check` on it.
 
+### Trap: an open double-brace inside a JSDoc type annotation breaks the whole Eleventy build
+
+Same family as the `*/` trap above, a different delimiter and a
+different parser. Nunjucks — the template engine `hub.njk` is rendered
+through, and (via `docs/.eleventy.js`'s `markdownTemplateEngine: "njk"`)
+every hub post's Markdown file too — scans the raw file text for its own
+tag delimiters before anything downstream ever sees JavaScript, a
+comment, or a Markdown code span; it does not know a `/** ... */` block
+is a comment or that backticks mark inline code. A TypeScript-style
+inline object-type JSDoc annotation — a curly-brace type that itself
+opens with another curly brace, to describe an object shape — reads to
+Nunjucks as the start of one of its own tags. The build fails with a
+generic `(./_includes/hub.njk) [Line N, Column M] expected variable
+end`, on every page the site builds. This is not caught by `node
+--check`, nor by any check (including the previous section's own
+verification recipe) that strips Nunjucks delimiters out before
+checking the JavaScript underneath — that never asks whether Nunjucks
+itself can parse the file. Caught the same day it was written
+(2026-09-16, the `fn.serialize` doc comment,
+danbri/factoidal#687) only because
+`tests/web-demos/hub_browser_all.sh` runs the real Eleventy build; a
+JS-only syntax check would have shipped it.
+
+Fix: never place two brace characters next to each other in this file,
+or in a hub post's Markdown, outside a genuine Nunjucks tag — not even
+inside a JSDoc comment, a Markdown code span, or a code fence. Split a
+JSDoc object-typed parameter into one line giving its own type as the
+plain word `object`, plus one line per field giving that field's own
+type. The only reliable check is running the actual Eleventy build, or
+searching the file by hand for two open-brace or two close-brace
+characters (or an open-brace immediately followed by a percent sign, or
+a percent sign immediately followed by a close-brace) in immediate
+succession, and confirming every match is a genuine, already-valid
+Nunjucks tag.
+
+### Trap: a function call wrapped directly around a dotted chain hides the chain's own name from the reactive-cell analyzer
+
+`reactive-cells.mjs`'s `collectLocals()` finds an arrow function's own
+parameter list with a pattern that looks for "open paren, anything that
+is not a close paren, close paren, arrow" — it has no notion of nested
+parentheses, so it cannot tell where a parameter list actually starts;
+it only knows where the *first* close paren after some open paren
+happens to land. For a cell that writes `pretty(rows.map((el) => ...))`
+that mismatch is invisible: the analyzer's naive scan starting at
+`pretty`'s own open paren runs forward until the first close paren it
+meets, which is the arrow's own, and — because an arrow token happens
+to follow it — the scan stops there and treats everything in between
+(`rows.map((el`) as if it were one parameter list, adding `rows`,
+`map` AND `el` as local bindings. `el` really is the parameter; `rows`
+and `map` are not, and if `rows` happens to be the exact name of
+another cell — as `model` was, in `model.elements.map((el) => ...)` —
+that cell silently drops out of the dependency graph. The runtime
+compiles and runs the cell anyway, with no `model` parameter on the
+generated function, and the browser throws `ReferenceError: model is
+not defined` — a `node --test` run of `runReactivePost()` reproduces
+the exact same wrong `inputs` list (this is shared, not browser-only
+code), so it did not need the browser sweep to be caught, only a
+closer look at the reactive-cell analyzer's own computed inputs for
+each cell.
+
+The failure only shows up when the wrapping call's own close paren is
+*not* the first one the naive scan reaches — `pretty(Object.values(x).
+map((c) => ...))` is safe, because `Object.values(x)`'s own close paren
+comes first, is not followed by an arrow, and the failed attempt moves
+the scan on to the real `map((c) => ...)` correctly. `pretty(x.method(
+(p) => ...))`, with nothing else between the outer call and the arrow's
+own parameter list, is exactly the unsafe shape. Fix: never pass a
+chained method call straight to an outer function call when the chain
+starts with a cell's own name — compute the chain into a local
+`const` first (`const rows = model.elements.map((el) => ...); return
+pretty(rows);`), so the cell name never sits inside the same
+mis-scanned span as an arrow's parameter list. Found and fixed the same
+day as the two traps above, hub post 55, danbri/factoidal#687; not
+specific to that post — any existing or future post with this shape
+carries the same defect.
+
 ### The `pretty()` rendering option
 
 Every cell can return raw arrays/objects and let the Inspector render

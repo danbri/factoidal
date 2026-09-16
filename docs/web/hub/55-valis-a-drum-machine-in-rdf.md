@@ -189,11 +189,24 @@ model = daw.circuitModel(circuit, arcRows)
 ```
 
 ```observable-js
-return pretty(model.elements.map((el) => ({ element: el.local, type: el.type })));
+{
+  // Computing the row array in its own statement, rather than passing
+  // "model.elements.map(...)" straight to pretty(), is deliberate: the
+  // post's reactive-cell analyzer is regex-based and mis-scans a
+  // function call wrapped directly around a chained method call as one
+  // long parameter list, hiding "model" as a real dependency. See the
+  // daw library cell's arcQueryRows/circuitMdl comment for the same
+  // hazard from a different angle.
+  const rows = model.elements.map((el) => ({ element: el.local, type: el.type }));
+  return pretty(rows);
+}
 ```
 
 ```observable-js
-return pretty(model.arcs.map((a) => ({ from: a.from, to: a.to, depth: a.depth })));
+{
+  const rows = model.arcs.map((a) => ({ from: a.from, to: a.to, depth: a.depth }));
+  return pretty(rows);
+}
 ```
 
 ## Editing the circuit: UPDATE, then Turtle
