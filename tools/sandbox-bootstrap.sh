@@ -147,11 +147,11 @@ else
   GATE_TOOLS_STATUS="gh: absent, no apt-get; "
 fi
 if [[ -x "$HOME/.deno/bin/deno" ]]; then
-  GATE_TOOLS_STATUS="deno $("$HOME/.deno/bin/deno" --version 2>/dev/null | head -1 | awk '{print $2}') at ~/.deno/bin (export PATH=\$HOME/.deno/bin:\$PATH)"
+  GATE_TOOLS_STATUS="${GATE_TOOLS_STATUS}deno $("$HOME/.deno/bin/deno" --version 2>/dev/null | head -1 | awk '{print $2}') at ~/.deno/bin (export PATH=\$HOME/.deno/bin:\$PATH)"
 elif command -v deno >/dev/null 2>&1; then
-  GATE_TOOLS_STATUS="deno $(deno --version 2>/dev/null | head -1 | awk '{print $2}') on PATH"
+  GATE_TOOLS_STATUS="${GATE_TOOLS_STATUS}deno $(deno --version 2>/dev/null | head -1 | awk '{print $2}') on PATH"
 else
-  GATE_TOOLS_STATUS="deno: installing in background (.claude-runs/gate-tools-deno.log; then export PATH=\$HOME/.deno/bin:\$PATH)"
+  GATE_TOOLS_STATUS="${GATE_TOOLS_STATUS}deno: installing in background (.claude-runs/gate-tools-deno.log; then export PATH=\$HOME/.deno/bin:\$PATH)"
   mkdir -p "$REPO_ROOT/.claude-runs"
   nohup bash -c 'curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh -s -- -y' \
     > "$REPO_ROOT/.claude-runs/gate-tools-deno.log" 2>&1 &
