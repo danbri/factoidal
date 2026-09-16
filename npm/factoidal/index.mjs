@@ -26,6 +26,7 @@ export const Dataset       = cjs.Dataset;
 export const dataFactory   = cjs.dataFactory;
 export const queryRaw      = cjs.queryRaw;
 export const version       = cjs.version;
+export const engine        = cjs.engine;
 
 // Validation / inference / mapping engines (need the npm-entry bundle).
 export const shaclValidate      = cjs.shaclValidate;

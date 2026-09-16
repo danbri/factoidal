@@ -114,6 +114,8 @@ export const dataFactory: DataFactory;
 /** True if the wasm loader + .wasm asset are present. */
 export function wasmAvailable(): boolean;
 export const version: string;
+/** Always 'wasm' for this entry point; see index.d.ts's `engine` doc. */
+export const engine: string;
 
 declare const _default: {
   parse: typeof parse;
@@ -126,5 +128,6 @@ declare const _default: {
   dataFactory: DataFactory;
   wasmAvailable: typeof wasmAvailable;
   version: string;
+  engine: string;
 };
 export default _default;

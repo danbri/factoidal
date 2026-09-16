@@ -108,3 +108,8 @@ third_party/jsonld-context-cache/.index.lock
 .jena-cache/
 tests/xmpp/node_modules/
 tests/xmpp/package-lock.json
+
+# esbuild devDependency for the bundler CSP smoke test (issue #682) --
+# installed by `npm install` inside npm/factoidal, not committed.
+# npm/factoidal/package-lock.json IS committed.
+npm/factoidal/node_modules/

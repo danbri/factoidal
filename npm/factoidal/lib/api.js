@@ -2294,6 +2294,12 @@ function buildApi(driver) {
     capabilities,
     Dataset,
     dataFactory,
+    // Metadata (issue #682): the same two fields on every driver's
+    // typed surface, so a caller can log/report which package version
+    // and which engine (js/wasm/entry/l4) answered a call without a
+    // separate require('../package.json').
+    version: require('../package.json').version,
+    engine: driver.engineName,
   };
 }
 

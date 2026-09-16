@@ -1005,6 +1005,11 @@ export function queryRaw(
 /** Package version string, e.g. '0.1.0-alpha.0'. */
 export const version: string;
 
+/** Which driver answered this typed surface: 'js' here, 'wasm' from
+ * 'factoidal/wasm', 'entry' from createApi() in 'factoidal/api', or
+ * 'lean4-wasm' from 'factoidal/l4-core'. */
+export const engine: string;
+
 declare const _default: {
   parse: typeof parse;
   query: typeof query;
@@ -1064,5 +1069,6 @@ declare const _default: {
   dataFactory: DataFactory;
   queryRaw: typeof queryRaw;
   version: string;
+  engine: string;
 };
 export default _default;
