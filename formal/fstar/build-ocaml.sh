@@ -1127,7 +1127,7 @@ if [[ "$STEP" == "all" || "$STEP" == "compile" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml \
     Parser_OWLFunctional.ml \
     RDF_Turtle_Serialize.ml \
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml \
+    Parser_NQuads.ml Parser_TriG.ml Parser_Diagnostics.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml \
     Parser_SRX.ml Parser_CSVResults.ml \
     SPARQL_JSON_Escape.ml \
     Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml Parser_JSONLD_Html.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONLD_Frame.ml JSONSchema_Validate.ml \
@@ -2305,7 +2305,7 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     RDF_Geo_Types.ml RDF_Geo_BBox.ml Parser_WKT.ml RDF_Geo_Topology.ml RDF_Geo_Functions.ml
     Parser_OWLFunctional.ml
     RDF_Turtle_Serialize.ml
-    Parser_NQuads.ml Parser_TriG.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml
+    Parser_NQuads.ml Parser_TriG.ml Parser_Diagnostics.ml Parser_XML.ml XML_Wellformedness.ml XML_Namespaces.ml Parser_XPath.ml XPath_Eval.ml XSLT_Transform.ml Schematron_Validate.ml Parser_RDFXML.ml Math_Expr.ml Math_Subst.ml Math_Diff.ml Math_Simplify.ml Math_Matrix.ml MathML_Content.ml Math_Series.ml MathML_Present.ml Math_Sigmoid.ml
     Parser_SRX.ml Parser_CSVResults.ml
     SPARQL_JSON_Escape.ml
     Parser_JSON.ml Parser_JSONResults.ml JSONLD_Loader.ml JSONLD_Context.ml JSONLD_Expand.ml Parser_JSONLD.ml Parser_JSONLD_Html.ml JSONLD_Compact.ml JSONLD_Flatten.ml JSONLD_FromRdf.ml JSONLD_Frame.ml JSONSchema_Validate.ml
