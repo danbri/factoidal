@@ -849,6 +849,12 @@ session.
   about 534 GB), what stays live to the end of a pack, and why a memory
   curve fitted without a point an order of magnitude above the others read
   as sublinear and was wrong.
+- [`docs/designissues/2026-09-16-npm-usability-and-bundle-profiles.md`](docs/designissues/2026-09-16-npm-usability-and-bundle-profiles.md)
+  — the six npm usability defects reported by the DAW session and what
+  landed for each: strict parsing with positions, dataset handles, prefixes
+  both ways, the bundler entry, the lite bundle profile; the measured sizes
+  and query costs; the answer to the bundle-granularity question; the Valis
+  licence record. Update it when a profile or the parse contract changes.
 - [`docs/w3c-glossary.md`](docs/w3c-glossary.md) — the cross-spec
   architectural vocabulary: lexical space / value space / lexical
   mapping, entailment and models, open-world and no-unique-name,

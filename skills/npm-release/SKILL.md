@@ -281,6 +281,9 @@ cheapest command that proves the shipped wasm loads and answers.
 - F\* bundle and package population: `formal/fstar/build-ocaml.sh`
   (`js`, `wasm`, `npm` steps), and
   [`skills/build-and-test/SKILL.md`](../build-and-test/SKILL.md).
+- Bundle profiles (full and lite), the entry ABI contract and the
+  measured sizes: [`docs/designissues/2026-09-16-npm-usability-and-bundle-profiles.md`](../../docs/designissues/2026-09-16-npm-usability-and-bundle-profiles.md)
+  and `bin/npm-entry/README.md`.
 - Publish workflows: `.github/workflows/npm-publish.yml` and
   `.github/workflows/npm-publish-lean.yml`.
 - The persisted store the command drives:
