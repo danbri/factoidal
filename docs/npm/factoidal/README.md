@@ -1,6 +1,6 @@
 # @factoidal/core
 
-> First published cut (0.1.0). The API surface is early and may
+> Release 0.3.0. The API surface is early and may
 > change before 1.0. This package was previously developed in-tree
 > under the placeholder names `factoidal` and `@danbri/foafos`; it was
 > never published under those names. See [CHANGELOG.md](CHANGELOG.md).
@@ -245,6 +245,45 @@ error. Async functions run over the synchronous verified engine
 through a bounded, memoised re-evaluation loop — within one query
 every call with the same arguments sees one stable answer.
 
+### The same functions against the Lean engine and a persisted store
+
+The registration above serves the F\* engine's in-memory `query()`. The
+Lean engine has its own registry, and it reaches every Lean query path,
+including a store handle — so a registered function can filter rows read
+off disk:
+
+```js
+import { loadEngine } from '@factoidal/core/bin/engine.mjs'
+import { openStore, openStoreHandle } from '@factoidal/core/bin/store.mjs'
+import { registerExtensionFunction, withExtensionFunctions }
+  from '@factoidal/core/bin/ext.mjs'
+
+const engine = await loadEngine()
+const handle = openStoreHandle(engine, openStore('/path/to/store'))
+
+registerExtensionFunction(engine, 'http://example.org/fn/endsWithZed',
+  ([label]) => label.value.endsWith('z'))
+
+const answer = handle.query(`
+  PREFIX ex:   <http://example.org/fn/>
+  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+  SELECT ?c ?l WHERE { ?c skos:prefLabel ?l FILTER(ex:endsWithZed(?l)) }`)
+```
+
+The argument and result encoding, the §17.6 error rules and the
+async re-evaluation loop are the same as above, so one function serves
+both engines. Two differences to plan around:
+
+- **Registration is per engine instance**, not per handle or per query.
+  A server that answers for more than one caller uses
+  `withExtensionFunctions(engine, map, body)`, which registers, runs and
+  clears in a `finally`, or loads one engine per caller.
+- **Every call crosses into JavaScript**, so a function in a FILTER runs
+  once per row. Measure before putting one on a large scan.
+
+Design, with the determinism and scope rules in full:
+[`docs/designissues/2026-09-04-lean-extension-functions.md`](../../docs/designissues/2026-09-04-lean-extension-functions.md).
+
 ## Functional API (fn)
 
 `@factoidal/core/fn` is a strictly functional variant of the API above:
@@ -312,6 +351,16 @@ Two engines now ship in one package. `factoidal` and `factoidal/wasm`
 are the F\*-extracted engine, unchanged. The subpaths below are the
 Lean 4 engine (`L4Factoidal`, compiled to wasm).
 
+`factoidal/l4` also exposes two deliberately narrow physical helpers:
+`scanIBK2Predicate(ibk2Hex, predicateIri)` for the predecessor format and
+`scanIBK3Predicate(ibk3Hex, predicateIri, blankNodeScope)` for the current
+predicate-local format. They validate one canonical RDF block and scan its
+named predicate, returning N-Triples and a row count. The IBK3 source scope
+must be shared across blocks partitioned from one RDF import unit and differ
+across unrelated units; this preserves document-scoped blank-node identity
+when fragments are composed. The hexadecimal argument is a portable
+diagnostic ABI, not the intended high-throughput buffer interface.
+
 ```js
 const l4 = require('factoidal/l4-core');       // Lean engine, same API shape
 const { select } = require('factoidal/select'); // choose an engine per call
@@ -357,6 +406,351 @@ Lean tree behind them is larger than that — the CL/IKL and unified
 model-theory modules run to about 22,000 lines — but only these reach
 JavaScript today. Everything else in the Lean tree is used through
 `parse`/`query`/`closure`, or not exposed at all.
+
+## The `factoidal` command: querying a persisted store
+
+Installing this package puts a `factoidal` command on PATH. It reads a
+**Shardborough** store — the on-disk format the Lean `l4block-*` tools
+write — with no native binary: JavaScript reads the files and moves the
+bytes, and the Lean engine running as WebAssembly makes every format
+decision (parsing the manifest, choosing the blocks, verifying their
+SHA-256, evaluating the SPARQL).
+
+> This command is not the native F\* `factoidal` binary that the API
+> table below refers to. That one is `bin/<platform>/factoidal` in the
+> repository and takes subcommands such as `shex` and `compact`. This
+> one takes `version`, `sample-store`, `inspect` and `query`.
+
+### First query, with nothing else to download
+
+The package carries an activated store, so a fresh install answers a
+SPARQL query at once:
+
+```console
+$ npm install @factoidal/core
+$ npx factoidal query "$(npx factoidal sample-store)" \
+    'SELECT ?c ?l
+     WHERE { ?c <http://www.w3.org/2004/02/skos/core#inScheme>
+                <http://cv.iptc.org/newscodes/videocodec/> ;
+                <http://www.w3.org/2004/02/skos/core#prefLabel> ?l .
+             FILTER(langMatches(lang(?l), "en")) }
+     LIMIT 4'
+c                                               l
+<http://cv.iptc.org/newscodes/videocodec/c001>  "Analogue Black and White"@en-gb
+<http://cv.iptc.org/newscodes/videocodec/c002>  "PAL"@en-gb
+<http://cv.iptc.org/newscodes/videocodec/c003>  "NTSC"@en-gb
+<http://cv.iptc.org/newscodes/videocodec/c004>  "SECAM"@en-gb
+```
+
+`factoidal sample-store` prints the path; `--json` adds what was
+recorded when the store was packed. From JavaScript:
+
+```js
+import { sampleStorePath, sampleStoreFacts } from '@factoidal/core/sample-store'
+```
+
+The store holds 4,434 triples in 13 predicate blocks: five IPTC
+NewsCodes vocabularies, published by the IPTC under CC BY 4.0 and taken
+from [danbri/skosdex](https://github.com/danbri/skosdex). See `NOTICE`.
+
+### Any other store
+
+```console
+$ factoidal inspect ./mystore
+store ./mystore
+generation gen-1 (activated through CURRENT)
+manifest manifest.sbm2, 2372 bytes, wire version 6
+layout predicate-ibk3-ptd1-sri2-tli1-oli2-merkle-v0
+blank-node profile (none recorded)
+term registry local-ibk3-ptd1-v0
+fixed-chunk Merkle commitment yes
+5 entries, 393775 bytes, 6455 rows
+generation directory holds 42 files, 846592 bytes
+
+#  rows  bytes   kind  graphs  predicate
+0  1800  110085  IBK3  -       http://www.wikidata.org/prop/direct/P31
+1  719   35535   IBK3  -       http://www.wikidata.org/prop/direct/P361
+...
+
+$ factoidal query ./mystore 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
+mode ibk3-paged-merkle-full-manifest(5), 5 artifacts, 393775 bytes read, plan declares 6455 block rows
+n
+"6455"^^<http://www.w3.org/2001/XMLSchema#integer>
+1 row
+```
+
+`STORE` is a collection root: the directory holding `CURRENT`. The plan
+line goes to stderr, so stdout carries only the result; `--quiet`
+removes it.
+
+| Option | What it does |
+|---|---|
+| `--format table` | default; a human display of the results |
+| `--format json` | SELECT prints the engine's SPARQL 1.1 Query Results JSON; ASK and CONSTRUCT print the operation's envelope |
+| `--format nquads` | CONSTRUCT only: the graph the engine serialized |
+| `--format turtle` | CONSTRUCT only: that graph through the engine's own Turtle writer |
+| `--explain` | print the artifacts the query needs and the open mode, and stop |
+| `--limit N` | print at most N table rows; the total is always named |
+| `--file PATH` | read the query text from a file |
+| `--generation NAME` | read that generation rather than the activated one |
+
+Under Deno, run the file directly; `inspect` and `query` need only
+`--allow-read`:
+
+```console
+$ deno run --allow-read node_modules/@factoidal/core/bin/factoidal.mjs query ./mystore 'ASK { ?s ?p ?o }'
+```
+
+### What the command answers for, and what it does not
+
+* **Every artifact is verified.** The engine refuses the whole query
+  when a block's bytes do not hash to the SHA-256 the manifest commits,
+  and names the artifact.
+* **Three caps.** One call reads at most 64 artifacts, 8388608 artifact
+  bytes and 100000 rows. A query over any of them is refused before a
+  single file is read, with the cap and the value named. Nothing is
+  truncated.
+* **Committed artifacts only.** A store carrying uncompacted delta-log
+  updates is not served by this path; use the native `l4block-*` tools.
+* **`pack`, `activate`, `update` and `compact` exit 3.** They need
+  WebAssembly operations that do not exist yet
+  (https://github.com/danbri/factoidal/issues/641).
+* **Node's WebAssembly frame budget.** Some evaluator paths recurse once
+  per row. Measured 2026-09-03 on a 6455-row store, `SELECT ?s ?p ?o
+  WHERE { ?s ?p ?o }` overflows the stack under Node's default while
+  `SELECT *`, or the same query with a `LIMIT`, does not, and Deno
+  clears all of them. The command reports it and exits 1 rather than
+  crashing; `node --stack-size=4000` clears it.
+
+Measured 2026-09-03 on macOS arm64, the 6455-triple `sequence_variant`
+store, `SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`, whole process
+including start-up: 220 ms through this command, 33 ms through the
+native `l4block-id-v3-query`.
+
+### Holding a store open: verify once, answer many
+
+`queryStore` is stateless. Every call transfers the artifacts again, and
+the engine hashes, decodes and indexes them again. A process that answers
+many questions against one generation — a chat bot, an MCP server, a
+SPARQL endpoint — pays all of that for every question, and none of it
+depends on the question.
+
+A **store handle** holds that work. `openStoreHandle` verifies each
+artifact against the SHA-256 the manifest commits, decodes each block and
+indexes the rows, once. `handle.query()` then answers from what it
+retained. Several stores can be open at the same time.
+
+```js
+import { loadEngine } from '@factoidal/core/bin/engine.mjs'
+import { openStore, openStoreHandle, listStoreHandles } from '@factoidal/core/store'
+
+const engine = await loadEngine()
+
+// Two stores, open at once, held for the life of the process.
+const skos = openStoreHandle(engine, openStore('./skos-store'))
+const docs = openStoreHandle(engine, openStore('./docs-store'))
+
+console.log(listStoreHandles(engine))
+// { ok: true, handles: [ {handle:'s1', bytes:…, rows:…}, {handle:'s2', …} ],
+//   bytes: …, rows: …, handleCap: 8, bytesCap: 134217728 }
+
+const PREFIX = 'PREFIX skos: <http://www.w3.org/2004/02/skos/core#>'
+
+function labelsMatching (handle, needle) {
+  const answer = handle.query(`${PREFIX}
+    SELECT ?c ?l WHERE {
+      GRAPH ?g { ?c skos:prefLabel ?l }
+      FILTER(CONTAINS(LCASE(STR(?l)), "${needle.toLowerCase()}"))
+    } LIMIT 10`)
+  return answer.srj.results.bindings
+}
+
+// Many questions, each a new search string. None of them re-reads a block.
+for (const needle of ['water', 'forest', 'railway', 'volcano']) {
+  console.log(needle, labelsMatching(skos, needle).length)
+}
+console.log(docs.query(`${PREFIX} SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }`))
+
+skos.close()
+docs.close()
+```
+
+`openStoreHandle(engine, store, options)` takes:
+
+| option | effect |
+|---|---|
+| (none) | open every artifact the manifest declares |
+| `{ sparql }` | open only the artifacts that query's plan names |
+| `{ keys }` | open exactly these artifact keys |
+
+`queryStoreHandle(engine, handle, sparql)`, `closeStoreHandle(engine,
+handle)` and `listStoreHandles(engine)` are the same operations for a
+caller that holds only the handle id.
+
+**Measured 2026-09-04**, macOS arm64, Node 22, the 141-graph SKOS store,
+`skos:prefLabel` block of 5,571,302 bytes and 45,806 rows, one
+`CONTAINS` query per row, a DIFFERENT search string every time:
+
+| | stateless `queryStore` | handle |
+|---|---|---|
+| first query (open + query) | 1376 ms | 1363 ms |
+| second query, different search string | 1376 ms | 95 ms |
+| tenth query, all different | 1382 ms | 103 ms |
+| ten queries, total | 13962 ms | 2277 ms |
+
+**What a handle buys.** It removes the per-query digest check, block
+decode and index build. With the LGI1 literal index (below) a search is
+also sub-linear rather than a scan, so a handle plus the index is what
+makes repeated search on a large store interactive.
+
+**Residency.** Retaining a decoded block costs memory. Measured on the
+same store: 76 MiB resident with the engine loaded and no handle, 170 MiB
+with the handle open — about 94 MiB for a 5.5 MB packed block, and
+evaluation peaks higher again (346 MiB during the queries above). At
+corpus scale the marginal figure is smaller, because that one is carrying
+the fixed cost of the process: measured 2026-09-05 on a 7,315,251-quad
+store, one handle over 257 blocks and 103,341,302 retained artifact bytes
+peaked at 1,675,345,920 bytes resident — 16.2 bytes resident per retained
+byte.
+
+The caps are on ARTIFACT bytes, which is what the manifest declares: 8
+open handles, and 134217728 (128 MiB) retained artifact bytes across all
+of them. There is NO cap on the number of artifacts a handle retains; a
+count bounds nothing that the bytes do not
+(https://github.com/danbri/factoidal/issues/657). 128 MiB is half the
+wasm32 address space divided by that measured multiplier, and it admits
+the 257-block corpus-wide set above. A cap is a refusal naming the cap
+and the value that tripped it; no handle is ever evicted to make room for
+another. `listStoreHandles` is how a server sees its own residency.
+
+**One call at a time.** The WebAssembly module is single-threaded. Two
+`query()` calls cannot overlap; a server queues them.
+
+### A handle on a large store: the worker route
+
+Several engine paths recurse once per manifest entry and once per row.
+Against a large collection that exceeds the default call stack of Node
+and of Deno, and the failure is `Maximum call stack size exceeded`.
+**Measured 2026-09-05**, macOS arm64, Node 22.22.2, on a 7,315,251-quad
+collection of 3,286 blocks in 204 graphs: `storeQueryPlan` alone
+overflows on plain `node`, before one artifact byte is read.
+`node --stack-size=60000` clears the plan, the open and every query.
+
+`openStoreHandleOnWorker` removes the flag. It holds the engine and the
+handle on a `worker_threads` thread with `resourceLimits.stackSizeMb`,
+the route `factoidal pack` already takes
+([issue 649](https://github.com/danbri/factoidal/issues/649)). A handle
+is state inside the wasm instance and an instance does not cross a
+thread boundary, so the handle lives where the raised stack is, and
+`query()` and `close()` are messages to it.
+
+```js
+import { openStoreHandleOnWorker, closeSharedStoreWorkerSession }
+  from '@factoidal/core/store-worker'
+
+// No runtime flag. One worker thread, shared by every handle opened
+// this way, so a caller that opens several stores pays for one thread
+// and one copy of the module.
+const handle = await openStoreHandleOnWorker('/path/to/store', {
+  sparql: 'SELECT ?c ?l WHERE { GRAPH <urn:g> { ?c ?p ?l } }'
+})
+const answer = await handle.query(`${PREFIX}
+  SELECT ?c ?l WHERE { GRAPH <urn:g> { ?c skos:prefLabel ?l }
+    FILTER(CONTAINS(LCASE(STR(?l)), "volcan")) } LIMIT 8`)
+await handle.close()
+await closeSharedStoreWorkerSession()
+```
+
+| option | effect |
+|---|---|
+| `{sparql}`, `{keys}` | the same artifact choice `openStoreHandle` takes |
+| `{generation}` | open a generation that has not been activated |
+| `{session}` | open into a session you started with `openStoreWorkerSession()` |
+| `{ownWorker: true}` | give this handle its own thread and its own copy of the module |
+| `{worker: false}` | open in this process, with no thread |
+
+What it costs, all **measured 2026-09-05** on the same machine, against
+the bundled sample store so the overhead is not lost in the query:
+
+| | in process | on a worker |
+|---|---|---|
+| one-shot query (thread start + engine load + query) | 163 ms | 220 ms |
+| handle open (thread start + engine load + open) | 124 ms | 236 ms |
+| every query after the open | 1 ms | 1 ms |
+
+So the thread and its second copy of the engine cost about 110 ms once,
+and the message round trip is under a millisecond. Three further costs:
+every call is asynchronous where the in-process handle is synchronous;
+an extension function registered on the main thread's engine
+(`bin/ext.mjs`) is not visible to the worker's engine; and the worker
+keeps the process alive until `close()`.
+
+**Deno takes a different route.** Deno's `node:worker_threads` shim
+accepts `resourceLimits.stackSizeMb` and raises almost nothing with it —
+measured by counting frames to the overflow inside the worker, Node
+reaches 41,195 frames by default and 696,555 at `stackSizeMb` 64, where
+Deno reaches 10,835 and 13,837. `openStoreHandleOnWorker` therefore
+gives a Deno caller an in-process handle behind the same asynchronous
+interface, and the process supplies the stack:
+
+```
+deno run --allow-read --v8-flags=--stack-size=65536 your-program.mjs
+```
+
+**A one-shot `factoidal query` pays none of this.** It builds no handle,
+so it runs in process and only retries on a worker if the runtime runs
+out of frames; under Deno it re-executes itself once with a raised V8
+stack, which needs `--allow-run` and `--allow-env`. `--no-worker` turns
+the retry off. See
+[issue 653](https://github.com/danbri/factoidal/issues/653).
+
+## Linked Web Storage 1.0 and the Solid Protocol
+
+Three new entry points serve two storage protocols over HTTP. Each is a
+socket and nothing more: every protocol decision — status codes, `Link`
+relations, `Last-Modified`, containment triples, the PATCH blank-node
+refusal, Web Access Control, CORS — is made by the Lean engine and
+reaches the host as a `{status, headers, body}` record.
+
+| entry point | what it serves |
+| --- | --- |
+| `@factoidal/core/lws` | [Linked Web Storage 1.0 core](https://w3c.github.io/lws-protocol/lws10-core/), a Node `http` server |
+| `@factoidal/core/solid/server` | [Solid Protocol v0.11.0](https://solidproject.org/TR/protocol) server conformance class |
+| `@factoidal/core/solid/client` | Solid Protocol client conformance class, over `fetch` |
+
+```js
+import { listen } from '@factoidal/core/solid/server'
+import { createSolidClient } from '@factoidal/core/solid/client'
+
+const running = await listen({ port: 3000 })
+const client = await createSolidClient({ baseIri: running.origin })
+await client.replace('/notes/one', '<#it> <#p> "v" .', 'text/turtle')
+const read = await client.read('/notes/one')
+await running.close()
+```
+
+From the command:
+
+```
+factoidal lws-serve   DIR [--port N] [--base IRI]
+factoidal solid-serve DIR [--port N] [--base IRI] [--owner WEBID]
+factoidal solid-client <get|put|post|delete|discover> URL [--file PATH]
+```
+
+**State today.** The protocol operations live in the Lean engine and
+reach this package through the WebAssembly dispatch ABI
+(`lwsOpen`/`lwsStep`/`lwsClose`, `solidOpen`/`solidStep`/`solidClose`,
+`solidClientRequest`/`solidClientResponse`). A module built before those
+operations landed answers `unknown op`; each entry point reports that
+through its `…OpsAvailable(engine)` probe and the commands exit 3 with
+the reason. `DIR` is the storage directory and is not read or written
+yet: the first slice keeps the resource tree in the engine handle.
+Solid-OIDC token verification is a host job that is not built, so the
+first slice serves public resources and unauthenticated writes.
+
+Details: `lws/README.md`, `solid/server/README.md`,
+`solid/client/README.md`, and the conformance ledger at
+[`docs/lws-solid-conformance.md`](https://github.com/danbri/factoidal/blob/main/docs/lws-solid-conformance.md).
 
 ## API (draft)
 
@@ -523,14 +917,114 @@ value transforms:
   API; the `_*` functions (e.g. `_deltaLogCorruptLastForTest`) are
   test-only and intentionally left untyped.
 
-### GeoSPARQL
+### GeoSPARQL — six topological functions
 
-There is no separate GeoSPARQL function: the `geof:` functions
-(`geof:sfWithin`, `geof:sfDisjoint`, `geof:distance`, `geof:envelope`,
-…) are built into the SPARQL engine and work through ordinary
-`query()` / `fn.query()` — e.g.
-`query(data, 'PREFIX geof: <http://www.opengis.net/def/function/geosparql/> SELECT ?a ?b WHERE { … FILTER(geof:sfWithin(?a, ?b)) }')`.
-Nothing to import; nothing "missing".
+The `geof:` functions below are built into the SPARQL engine and need no
+import. They work through `query()` / `fn.query()` AND against a
+persisted store through `factoidal query`, because both paths evaluate
+in the same environment.
+
+    geof:sfEquals   geof:sfDisjoint   geof:sfIntersects
+    geof:sfTouches  geof:sfWithin     geof:sfContains
+
+```sparql
+PREFIX geof: <http://www.opengis.net/def/function/geosparql/>
+PREFIX geo:  <http://www.opengis.net/ont/geosparql#>
+SELECT ?a WHERE {
+  ?a :footprint ?w
+  FILTER(geof:sfWithin(?w, "POLYGON((0 0,0 2,2 2,2 0,0 0))"^^geo:wktLiteral))
+}
+```
+
+**What is NOT there**, stated so nobody plans around it: no
+`geof:distance`, `geof:buffer`, `geof:envelope`, `geof:boundary`,
+`geof:convexHull` or any other non-topological measure; no
+`geof:relate` with a DE-9IM matrix; no coordinate reference system
+handling beyond what the WKT literal carries; no GML literals. Geometry
+comes from a WKT parser, so a shapefile, GeoJSON or GML source must be
+converted to `geo:wktLiteral` before it is loaded.
+
+### Full text: SPARQL's own functions, over a character-gram index
+
+`CONTAINS`, `STRSTARTS`, `STRENDS` and `REGEX` (SPARQL 1.1 §17.4.3) are
+the way to search text. There is no `text:query`-style extension and you
+do not ask for the index: where the query shape allows it, the planner
+uses the **LGI1** literal index the packer writes beside each block.
+
+LGI1 holds character 3-grams of the case-folded lexical form, and it is a
+CANDIDATE FILTER rather than a decider — it answers a superset and the
+engine re-evaluates your original `FILTER` on those rows, so the answer
+is exactly the answer a scan gives. Tokens would not do: `CONTAINS` is a
+substring test, and "underwater" contains "water" without being the
+token "water".
+
+Measured 2026-09-05, full skosdex corpus (7,315,251 quads, 3,286 blocks,
+204 named graphs, 1.0 GB), through a store handle on plain `node`:
+
+| search | rows | time |
+|---|---|---|
+| `water` | 5 | 645 ms |
+| `glacier` | 0 | 670 ms |
+| `bicycle` | 2 | 617 ms |
+
+A miss costs what a hit costs, because both are index lookups rather than
+scans. On a 45,806-row block the same search was about 180 ms of scan
+before the index and 1.8 ms after it.
+
+**It falls back to a scan**, silently and correctly, for: a needle under
+3 characters, a variable needle, `REGEX`, `UCASE`, `!CONTAINS`,
+`CONTAINS` under `||`, a filter on a variable not bound in object
+position, and any block whose generation has no `.lgi1` sidecar. The
+index costs about 55% of the block bytes.
+
+### Geometry: the GBI1 bounding-box index
+
+The same construction for `geof:`. Each `geo:wktLiteral` object's
+bounding box is indexed, and five of the six topological functions are
+filtered by it — `sfIntersects`, `sfWithin`, `sfContains`, `sfTouches`,
+`sfEquals`. Measured 74x to 94x against a scan, with a miss at 82x.
+
+**`sfDisjoint` is refused and falls back to a scan**, deliberately: it
+accepts exactly the rows a box can exclude, so a box test inverts and
+would drop answers. A non-overlapping pair of boxes proves geometries
+disjoint, but that saves work inside a scan rather than reducing the
+candidate set.
+
+### Wire version 10: large literals, RDF 1.2 terms, zone maps
+
+A generation packed at wire version 10 (`--layout ibk5`) carries three
+things earlier versions do not. Everything below is read by the command
+and by `bin/store.mjs` without a flag; wire versions 9 and earlier are
+read exactly as before.
+
+**Out-of-line literals.** A literal whose lexical form is at most 65,536
+UTF-8 bytes is stored inside the block. A longer one is stored as one
+file beside it, `blob-<sha256 hex>.lit`, holding exactly those bytes; the
+block keeps only the byte length and the SHA-256, and the manifest blob
+table commits the file. The name is the content address, so the same
+literal in twenty blocks is one file. `factoidal inspect` prints how many
+such files a generation holds and their total size, and the plan a query
+produces lists them under `blobKeys` beside `keys` and `sidecarKeys` — a
+host reading a store itself must fetch all three. A blob that is missing
+or whose bytes hash differently REFUSES the query; it is never answered
+with a shortened literal.
+
+Above 4,294,967,295 bytes the packer refuses the literal and names its
+subject and predicate. That ceiling, and every other one, is stated in
+`docs/designissues/2026-09-05-wire-version-10-scale.md` section 2.
+
+**RDF 1.2 terms.** A triple term (`<<( :a :p :b )>>`) and a directional
+language literal (`"..."@ar--rtl`) are stored and read back. Wire version
+9 refuses both.
+
+**Zone maps.** Each manifest entry carries the smallest and the largest
+subject key and object key of its block, truncated to 64 bytes. A query
+with a constant subject or object skips every block whose range cannot
+hold it, from the manifest alone, with no block read. The plan reports
+how many entries were dropped that way as `zoneExcluded`. Selectivity
+depends on the source order: a subject-grouped or graph-grouped file
+gives disjoint ranges per block, a shuffled one gives overlapping ranges
+and a scan, which is correct and no worse than wire version 9.
 
 ## Limits (deliberate, documented)
 
