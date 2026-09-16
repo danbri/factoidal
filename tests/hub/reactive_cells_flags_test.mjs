@@ -56,3 +56,29 @@ test('parseCellFlags: an unrecognized bare word or key="value" pair is ignored',
 test('parseCellFlags: an empty title value is a real, non-null title', () => {
   assert.deepEqual(parseCellFlags('title=""'), { closed: false, title: '' });
 });
+
+// ---------------------------------------------------------------------
+// Expected failure (https://github.com/danbri/factoidal/issues/690): the
+// local-binding scan takes a nested call's argument list for an arrow
+// parameter list, so `model` below is recorded as a local and not wired
+// as a reactive input. The convention is skills/test-suites/SKILL.md,
+// "Expected failures": this case FAILS the suite when it unexpectedly
+// passes, so the flip to a plain assertion and the issue closure cannot
+// be forgotten.
+// ---------------------------------------------------------------------
+import { analyzeCell } from '../../docs/web/hub/reactive-cells.mjs';
+
+function xfail(name, issueUrl, fn) {
+  test(`xfail: ${name} (${issueUrl})`, async (t) => {
+    let failed = false;
+    try { await fn(t); } catch (error) { failed = true; t.diagnostic(`expected failure: ${String(error.message).slice(0, 160)}`); }
+    assert.ok(failed, `unexpected pass: ${name} now works — flip this xfail to an assertion and close ${issueUrl}`);
+  });
+}
+
+xfail('analyzeCell: an arrow function inside a nested call keeps the outer argument as a reference, not a local',
+  'https://github.com/danbri/factoidal/issues/690', () => {
+    const info = analyzeCell('return pretty(model.elements.map((el) => el.local));');
+    assert.ok(info.refs.includes('model'), 'model must be a reference of the cell');
+    assert.ok(!info.locals.has('model'), 'model must not be recorded as a local');
+  });

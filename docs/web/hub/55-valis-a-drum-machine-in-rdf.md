@@ -268,8 +268,8 @@ from inside a cell: does a broken parse reject rather than answer an empty
 dataset ([#344](https://github.com/danbri/factoidal/issues/344)); does a
 parsed dataset carry the prefixes it read, and does a Turtle serialization
 reuse them instead of inventing `ns1:`
-([#681](https://github.com/danbri/factoidal/issues/681)); does a decimal
-like `440.0` print bare instead of `"440.0"^^xsd:decimal`
+([#681](https://github.com/danbri/factoidal/issues/681)); do the circuit's
+decimals (for example `55.0`) print bare instead of `"55.0"^^xsd:decimal`
 ([#681](https://github.com/danbri/factoidal/issues/681)); and does the
 typed API expose a parse-once, query-many dataset handle
 ([#680](https://github.com/danbri/factoidal/issues/680)). Every check is a
@@ -298,7 +298,12 @@ apiItems = {
     items.turtleUsesSourcePrefixes = false;
   }
   try {
-    items.decimalShorthand = turtleOut.includes("440.0") && !turtleOut.includes('"440.0"');
+    // Bare decimals in the output (for example `55.0`) and no quoted
+    // `"..."^^xsd:decimal` form left: the serializer prints the circuit's
+    // own decimal literals in Turtle's shorthand.
+    const bareDecimal = /(^|[\s,;(])-?[0-9]+\.[0-9]+(?=[\s,;)]|\s*\.\s*$)/m.test(turtleOut);
+    const quotedDecimal = /\^\^(xsd:decimal|<http:\/\/www\.w3\.org\/2001\/XMLSchema#decimal>)/.test(turtleOut);
+    items.decimalShorthand = bareDecimal && !quotedDecimal;
   } catch (err) {
     items.decimalShorthand = false;
   }
