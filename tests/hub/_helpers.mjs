@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 // `ttl` in one cell, reference it from `graph = parse(ttl)` in the next)
 // rather than only the standalone runObservableCell() path below.
 import { Runtime } from '../../third_party/observable/dist/runtime.esm.js';
-import { analyzeCell, cellInputs, makeDefinition } from '../../docs/web/hub/reactive-cells.mjs';
+import { analyzeCell, cellInputs, makeDefinition, parseCellFlags } from '../../docs/web/hub/reactive-cells.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -44,16 +44,42 @@ export const HUB_POST_DIR = path.join(__dirname, '..', '..', 'docs', 'web', 'hub
  * document order, from a hub post's Markdown file. Mirrors
  * docs/_includes/hub.njk's `code.language-observable-js` selector at
  * the source level (before Eleventy/Markdown-it render it to HTML).
+ * The fence line may carry flags after the language
+ * (```observable-js closed title="..."; see parseCellFlags() below) --
+ * this returns only the cell body. Use
+ * extractObservableCellsWithFlags() for the flags too.
  *
  * @param {string} postFilename e.g. '01-triples-rdf-from-first-principles.md'
  * @returns {string[]} cell source bodies, in order
  */
 export function extractObservableCells(postFilename) {
   const text = fs.readFileSync(path.join(HUB_POST_DIR, postFilename), 'utf8');
-  const re = /```observable-js\n([\s\S]*?)```/g;
+  const re = /```observable-js[^\n]*\n([\s\S]*?)```/g;
   const cells = [];
   let m;
   while ((m = re.exec(text)) !== null) cells.push(m[1]);
+  return cells;
+}
+
+/**
+ * Same as extractObservableCells(), but also returns each cell's fence
+ * flags. docs/.eleventy.js's fence renderer carries the same
+ * fence-line text through to the browser as the `data-hub-cell-flags`
+ * attribute; parseCellFlags() (docs/web/hub/reactive-cells.mjs) is the
+ * one parser both sides call, so this pins the identical flags
+ * docs/_includes/hub.njk's mountCell() will read.
+ *
+ * @param {string} postFilename e.g. '47-writing-hub-notebooks.md'
+ * @returns {{source: string, flags: {closed: boolean, title: string|null}}[]}
+ */
+export function extractObservableCellsWithFlags(postFilename) {
+  const text = fs.readFileSync(path.join(HUB_POST_DIR, postFilename), 'utf8');
+  const re = /```observable-js([^\n]*)\n([\s\S]*?)```/g;
+  const cells = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    cells.push({ source: m[2], flags: parseCellFlags(m[1].trim()) });
+  }
   return cells;
 }
 

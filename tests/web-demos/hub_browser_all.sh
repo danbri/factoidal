@@ -185,8 +185,16 @@ cat >"$DRIVER_PATH" <<'DRIVER_EOF'
 // file the shell script also wrote, so nothing here depends on shell
 // string interpolation.
 import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_IMPORT_SPEC);
+// Same parser docs/.eleventy.js's fence rule, docs/_includes/hub.njk's
+// mountCell(), and tests/hub/_helpers.mjs's
+// extractObservableCellsWithFlags() all call
+// (https://github.com/danbri/factoidal/issues/686), imported directly
+// from source (DOM-free, no build step needed) so this driver decides
+// "closed" the same way the page does.
+const { parseCellFlags } = await import(pathToFileURL(process.env.REACTIVE_CELLS_PATH).href);
 
 const PORT = process.env.HUB_BROWSER_ALL_PORT_RESOLVED;
 const POSTS = JSON.parse(readFileSync(process.env.POSTS_JSON_PATH, 'utf8'));
@@ -348,6 +356,52 @@ for (const slug of POSTS) {
   const rejected = cells.filter((c) => c.errored && !allow.allowedCellIndices.has(c.idx));
   const badPageErrors = pageErrors.filter((m) => !allow.pageerrorAllow.some((re) => re.test(m)));
 
+  // Folded-cell checks (https://github.com/danbri/factoidal/issues/686):
+  // every ```observable-js cell flagged `closed` on its fence line
+  // mounts inside a collapsed <details class="observable-cell-fold">
+  // (docs/_includes/hub.njk's mountCell()). Confirm each one started
+  // collapsed with no error inside it, then confirm clicking its
+  // <summary> opens it. Own-capped like every other page interaction
+  // above -- a post with zero folded cells passes this trivially (the
+  // loop body never runs).
+  const foldResult = await ownRace((async () => {
+    const handles = await page.$$('details.observable-cell-fold');
+    let checked = 0;
+    let reason = null;
+    for (const handle of handles) {
+      const flagsRaw = (await handle.getAttribute('data-hub-cell-flags')) || '';
+      if (!parseCellFlags(flagsRaw).closed) {
+        await handle.dispose();
+        continue;
+      }
+      checked++;
+      const before = await handle.evaluate((el) => ({
+        open: el.open,
+        hasError: !!el.querySelector('.observable-cell-error'),
+      }));
+      if (!reason && before.open) {
+        reason = 'a closed-by-default folded cell was already open before interaction';
+      }
+      if (!reason && before.hasError) {
+        reason = 'a closed-by-default folded cell contains .observable-cell-error while collapsed';
+      }
+      if (!reason) {
+        await handle.evaluate((el) => el.querySelector('summary').click());
+        const openAfter = await handle.evaluate((el) => el.open);
+        if (!openAfter) {
+          reason = 'a closed-by-default folded cell did not open after its summary was clicked';
+        }
+      }
+      await handle.dispose();
+      if (reason) break;
+    }
+    return { checked, reason };
+  })(), 15000);
+  const foldChecked = (!foldResult.timedOut && foldResult.ok) ? foldResult.value.checked : 0;
+  const foldFailReason = foldResult.timedOut
+    ? `folded-cell check did not complete within 15000ms`
+    : (foldResult.ok ? foldResult.value.reason : `folded-cell check errored: ${foldResult.error}`);
+
   let failReason = null;
   if (badPageErrors.length > 0) {
     failReason = `pageerror: ${badPageErrors[0]}`;
@@ -360,10 +414,13 @@ for (const slug of POSTS) {
       const stillEmpty = cells.filter((c) => c.text.length === 0).length;
       failReason = `cells did not settle within ${CELL_SETTLE_TIMEOUT_MS}ms (${stillEmpty}/${cells.length} still empty)`;
     }
+  } else if (foldFailReason) {
+    failReason = `folded cell: ${foldFailReason}`;
   }
 
+  const foldNote = ` (${foldChecked} folded cell${foldChecked === 1 ? '' : 's'} checked)`;
   if (failReason) {
-    console.log(`FAIL ${slug}: ${failReason}`);
+    console.log(`FAIL ${slug}: ${failReason}${foldNote}`);
     if (consoleErrors.length > 0) {
       console.log(`  console.error (${consoleErrors.length} total): ${consoleErrors[0].slice(0, 200)}`);
     }
@@ -373,7 +430,7 @@ for (const slug of POSTS) {
     if (settleTimedOut && allow.allowTimeout) {
       note = ` (ALLOWLISTED, KNOWN-BUG: ${allow.reason.slice(0, 120)}...)`;
     }
-    console.log(`PASS ${slug}${note}`);
+    console.log(`PASS ${slug}${note}${foldNote}`);
     pass++;
   }
 
@@ -392,6 +449,7 @@ DRIVER_RC=0
 PLAYWRIGHT_IMPORT_SPEC="$PLAYWRIGHT_IMPORT_SPEC" \
 HUB_BROWSER_ALL_PORT_RESOLVED="$PORT" \
 POSTS_JSON_PATH="$POSTS_JSON_PATH" \
+REACTIVE_CELLS_PATH="$REPO_ROOT/docs/web/hub/reactive-cells.mjs" \
   timeout 900 node "$DRIVER_PATH" || DRIVER_RC=$?
 
 exit "$DRIVER_RC"
