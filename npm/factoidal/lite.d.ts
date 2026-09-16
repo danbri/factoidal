@@ -40,7 +40,7 @@ export {
  * #344); see index.d.ts's `parse()` doc comment for the ParseError
  * shape and the `lenient` option.
  */
-export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
+export function parse(text: string, options?: ParseOptions | DataFormat): Promise<Dataset>;
 
 /**
  * Run a SPARQL 1.1 query. `data` may be a DatasetHandle from
@@ -49,7 +49,7 @@ export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 export function query(
   data: QueryInput,
   sparql: string,
-  options?: QueryOptions
+  options?: QueryOptions | DataFormat
 ): Promise<Bindings[] | boolean | Dataset>;
 
 /** Register a custom SPARQL extension function (SPARQL 1.1 §17.6, issue #463). */
@@ -81,25 +81,25 @@ export function clearServiceEndpoints(): Promise<void>;
 export function update(
   data: DataInput,
   updateText: string,
-  options?: { format?: DataFormat }
+  options?: { format?: DataFormat } | DataFormat
 ): Promise<Dataset>;
 
 /** Open a dataset handle (issue #680); see index.d.ts's `openDataset()` doc comment. */
 export function openDataset(
   data: DataInput,
-  options?: { format?: DataFormat; baseIRI?: string }
+  options?: { format?: DataFormat; baseIRI?: string } | DataFormat
 ): Promise<DatasetHandle>;
 
 /** Serialize a dataset. `data` may be a DatasetHandle. */
 export function serialize(
   data: QueryInput,
-  options?: SerializeOptions
+  options?: SerializeOptions | NonNullable<SerializeOptions['format']>
 ): Promise<string>;
 
 /** RDFC-1.0 dataset canonicalization. `data` may be a DatasetHandle. */
 export function canonicalize(
   data: QueryInput,
-  options?: { format?: DataFormat }
+  options?: { format?: DataFormat } | DataFormat
 ): Promise<string>;
 
 /** Enumerate the named graphs of an already-parsed Dataset. */

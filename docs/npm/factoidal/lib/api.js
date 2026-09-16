@@ -80,6 +80,20 @@ function extForFormat(fmt) {
   return DATA_FORMAT_EXT[key];
 }
 
+// Where a function takes an options object, a bare string names the
+// format: serialize(ds, 'turtle') is serialize(ds, { format: 'turtle' }).
+// Until 0.8.0 the string was read as an empty options object, so
+// serialize(ds, 'turtle') produced N-Quads with no error (found by the
+// 0.8.0 release probe). Any other non-object value is a caller error and
+// is reported as one, naming the function.
+function optionsOf(fn, options) {
+  if (options == null) return {};
+  if (typeof options === 'string') return { format: options };
+  if (typeof options === 'object') return options;
+  throw new TypeError(
+    `${fn}: options must be an object or a format string, got ${typeof options}`);
+}
+
 function engineError(prefix, res) {
   const msg = (res.stderr || res.stdout ||
     `factoidal exited with code ${res.exitCode}`).trim();
@@ -311,7 +325,7 @@ class DatasetHandle {
    */
   async serialize(options) {
     this._assertOpen('serialize');
-    const opts = options || {};
+    const opts = optionsOf('DatasetHandle.serialize', options);
     const rawOut = String(opts.format || 'nquads').toLowerCase();
     const outFormat = rawOut === 'ttl' ? 'turtle' : rawOut;
     if (outFormat !== 'nquads' && outFormat !== 'turtle') {
@@ -584,7 +598,7 @@ function buildApi(driver) {
   // stay document-scoped (the per-document renaming is F*'s
   // RDF.Dataset.Merge.rename_dataset_bnodes, applied at engine load).
   function toDocs(data, options) {
-    const opts = options || {};
+    const opts = optionsOf('data', options);
     const items = Array.isArray(data) ? data : [data];
     return items.map((item, i) => {
       if (item instanceof Dataset) {
@@ -686,7 +700,7 @@ function buildApi(driver) {
     if (typeof text !== 'string') {
       throw new TypeError('parse: text must be a string');
     }
-    const opts = options || {};
+    const opts = optionsOf('parse', options);
     const ext = extForFormat(opts.format);
     const baseIRI = opts.baseIRI || '';
     const bnodePrefix = freshBnodePrefix();
@@ -739,7 +753,7 @@ function buildApi(driver) {
     if (typeof sparql !== 'string') {
       throw new TypeError('query: sparql must be a string');
     }
-    const opts = options || {};
+    const opts = optionsOf('query', options);
     const entail = opts.entail || 'none';
     // x-ikl-* is NOT IMPLEMENTED. It is not withheld by policy.
     //
@@ -890,7 +904,8 @@ function buildApi(driver) {
     }
     const e = await entry();
     if (!e) throw pendingError('SPARQL UPDATE');
-    const docs = toDocs(data, options);
+    const opts = optionsOf('update', options);
+    const docs = toDocs(data, opts);
     let nq = '';
     for (const d of docs) {
       if (d.ext === 'nq') { nq += d.content; continue; }
@@ -899,7 +914,6 @@ function buildApi(driver) {
         'update(parse)');
       nq += r.nquads;
     }
-    const opts = options || {};
     const sparql12 = opts.sparql12 === true || String(opts.version || '') === '1.2';
     if (sparql12 && typeof e.updateDataset12 !== 'function') {
       throw new Error(
@@ -934,7 +948,7 @@ function buildApi(driver) {
     const e = await entry();
     if (!e) throw pendingError('openDataset (dataset handles)');
     requireEntryFn(e, 'datasetOpen', 'openDataset');
-    const opts = options || {};
+    const opts = optionsOf('openDataset', options);
 
     if (data instanceof Dataset) {
       const r = entryResult(e.datasetOpen(data.toNQuads(), 'nquads', ''), 'openDataset');
@@ -974,7 +988,7 @@ function buildApi(driver) {
    *   Turtle-grammar-matching lexical form print bare.
    */
   async function serialize(data, options) {
-    const opts = options || {};
+    const opts = optionsOf('serialize', options);
     if (data instanceof DatasetHandle) {
       return data.serialize(opts);
     }
@@ -1037,7 +1051,7 @@ function buildApi(driver) {
     if (data instanceof DatasetHandle) {
       return data.canonicalize();
     }
-    const docs = toDocs(data, options);
+    const docs = toDocs(data, optionsOf('canonicalize', options));
 
     const e = await entry();
     if (e) {

@@ -225,7 +225,7 @@ export interface QueryOptions {
  * message only for RDF/XML and JSON-LD). `options.lenient` recovers
  * instead; see ParseOptions.
  */
-export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
+export function parse(text: string, options?: ParseOptions | DataFormat): Promise<Dataset>;
 
 /**
  * Run a SPARQL 1.1 query.
@@ -240,7 +240,7 @@ export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 export function query(
   data: QueryInput,
   sparql: string,
-  options?: QueryOptions
+  options?: QueryOptions | DataFormat
 ): Promise<Bindings[] | boolean | Dataset>;
 
 /**
@@ -316,7 +316,7 @@ export function clearServiceEndpoints(): Promise<void>;
 export function update(
   data: DataInput,
   updateText: string,
-  options?: { format?: DataFormat }
+  options?: { format?: DataFormat } | DataFormat
 ): Promise<Dataset>;
 
 /**
@@ -333,7 +333,7 @@ export function update(
  */
 export function openDataset(
   data: DataInput,
-  options?: { format?: DataFormat; baseIRI?: string }
+  options?: { format?: DataFormat; baseIRI?: string } | DataFormat
 ): Promise<DatasetHandle>;
 
 /**
@@ -366,7 +366,7 @@ export class DatasetHandle {
     format?: 'nquads' | 'turtle' | 'ttl';
     prefixes?: Record<string, string>;
     literalShorthand?: boolean;
-  }): Promise<string>;
+  } | 'nquads' | 'turtle' | 'ttl'): Promise<string>;
   /** Materialize the stored dataset as a heap Dataset. */
   toDataset(): Promise<Dataset>;
   /** RDFC-1.0 canonical N-Quads of the stored dataset. */
@@ -377,7 +377,8 @@ export class DatasetHandle {
 
 export interface SerializeOptions {
   /**
-   * Output format. Default: 'nquads'. 'turtle' (prefix-compacted,
+   * Output format. Default: 'nquads'. A bare string in place of the
+   * options object names the format: serialize(ds, 'turtle'). 'turtle' (prefix-compacted,
    * subject-grouped) needs the npm-entry bundle and flattens every
    * named graph into the default graph — use 'nquads' when graph names
    * must survive.
@@ -408,7 +409,7 @@ export interface SerializeOptions {
  */
 export function serialize(
   data: QueryInput,
-  options?: SerializeOptions
+  options?: SerializeOptions | NonNullable<SerializeOptions['format']>
 ): Promise<string>;
 
 /**
@@ -419,7 +420,7 @@ export function serialize(
  */
 export function canonicalize(
   data: QueryInput,
-  options?: { format?: DataFormat }
+  options?: { format?: DataFormat } | DataFormat
 ): Promise<string>;
 
 /**
