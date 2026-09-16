@@ -105,14 +105,16 @@ module.exports = function(eleventyConfig) {
   // so it can also be reused by non-notebook documentation pages.
   eleventyConfig.addPassthroughCopy("web/hub/assets/sparql-result-elements.mjs");
 
-  // Pass-through the store-over-HTTP host of @factoidal/core (hub post
-  // 54's fn.openStoreOverHttp target). ONE copy of the file, in the npm
-  // package where it is tested; this puts it under the same
-  // /npm/factoidal/ path the rest of the package mirror uses, so the page
-  // imports it same-origin with no CDN and no second copy in git.
-  eleventyConfig.addPassthroughCopy({
-    "../npm/factoidal/store-http": "npm/factoidal/store-http"
-  });
+  // The store-over-HTTP host of @factoidal/core (hub post 54's
+  // fn.openStoreOverHttp target) reaches /npm/factoidal/store-http/
+  // through the package mirror above: `build-ocaml.sh npm` copies the
+  // package's `files` list, store-http included, into docs/npm/factoidal/.
+  // Until 2026-09-16 this file also had its own passthrough from
+  // ../npm/factoidal/store-http, from before the mirror carried it; once
+  // the mirror was regenerated with it, Eleventy 3 refused the build
+  // ("Multiple passthrough copy files are trying to write to the same
+  // output file", deploy-pages run 3945 on the 0.8.0 merge). One source
+  // per output path: the mirror.
 
   // Pass-through the sample Shardborough store the package ships (13
   // predicate blocks of IPTC NewsCodes SKOS, CC BY 4.0 -- provenance in
