@@ -148,6 +148,24 @@ Trigger it in one of two ways:
 - `gh workflow run npm-publish.yml --repo danbri/factoidal`
 - push a tag matching `npm-v*`
 
+**Which environment can trigger it (established 2026-09-16).** Every
+publish so far (0.3.0 through 0.7.1, workflow runs 1 to 13) was a
+`workflow_dispatch` from a Claude Code session on the owner's Mac,
+where `gh` is logged in as the owner: for 0.7.1 the version commit
+d3bfa8b and its merge 322a9d3 (author offset +0100, the Mac) were
+followed four seconds later by the dispatch of run 13. A cloud
+session (Claude Code on the web, commits at +0000) cannot do either
+step: it has no `gh`, its git credential answers HTTP 403 to a tag
+push (branches under `claude/*` only), and its GitHub App token
+answers 403 "Resource not accessible by integration" to the
+workflow-dispatch API (no `actions: write`). A direct API call with
+the proxy's credential is refused by the session's permission
+classifier. So from a cloud session the publish is the owner's one
+command (above), or the "Run workflow" button on the Actions page,
+and the session records that in the tracker issue instead of
+retrying. To let cloud sessions publish, grant the Claude GitHub App
+`actions: write` on the repository, or allow it to create tags.
+
 What the workflow does, in order:
 
 1. checks out with `submodules: recursive` — the package's own
