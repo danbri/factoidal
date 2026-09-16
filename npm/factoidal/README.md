@@ -1168,6 +1168,32 @@ depends on the source order: a subject-grouped or graph-grouped file
 gives disjoint ranges per block, a shuffled one gives overlapping ranges
 and a scan, which is correct and no worse than wire version 9.
 
+## Bundle sizes
+
+(Issue [684](https://github.com/danbri/factoidal/issues/684).)
+
+`tools/bundle-sizes.sh` measures raw and `gzip -9` byte sizes for the
+bundles this package ships and writes
+[`docs/test-results/bundle-sizes.json`](../../docs/test-results/bundle-sizes.json).
+Re-run it after a rebuild; the table below is that file's content as
+of the commit noted underneath it, not a live value.
+
+| Bundle | Raw | gzip -9 |
+|---|---:|---:|
+| `factoidal-npm-entry.js` (js_of_ocaml, npm-entry ABI) | 1145.2 KB | 336.4 KB |
+| `factoidal.js` (js_of_ocaml, CLI bundle) | 1044.1 KB | 307.4 KB |
+| `factoidal-npm-entry.wasm.js` (wasm_of_ocaml loader, npm-entry ABI) | 40.3 KB | 13.7 KB |
+| `factoidal-npm-entry.wasm.assets/*.wasm` (its code asset) | 1414.8 KB | 355.5 KB |
+| `factoidal.wasm.js` (wasm_of_ocaml loader, CLI bundle) | 38.0 KB | 12.7 KB |
+| `factoidal.wasm.assets/*.wasm` (its code asset) | 1334.0 KB | 324.9 KB |
+| `l4-assets/l4factoidal.wasm` (Lean 4 engine) | 6210.8 KB | 1174.6 KB |
+| `l4-assets/l4factoidal.mjs` (Lean 4 loader) | 62.9 KB | 17.9 KB |
+
+Measured 2026-09-16 at commit `feaafe8c`. A "lite" bundle (a smaller
+build for the common parse/SELECT/ASK/CONSTRUCT surface, without the
+full XSLT/XPath/CSVW/RIF/VC surface) is tracked against the same issue
+and adds its own row here once it exists.
+
 ## Limits (deliberate, documented)
 
 - **In-memory only.** ~1.2 KB RAM per quad (measured); 1M quads ≈
