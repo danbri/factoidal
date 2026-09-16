@@ -178,3 +178,22 @@ can exist, and what the best practice is.
 - Lean parity (positioned errors, prefixes, `serializeTurtleWith`, shorthand)
   is pinned as expected failures in `npm/factoidal/test/l4-core.test.js`
   naming https://github.com/danbri/factoidal/issues/685.
+- The 0.8.0 release probe (the skill's tarball install, then the typed API
+  by hand) found that `serialize(ds, 'turtle')` returned N-Quads with no
+  error: a string where the options object goes was read as an empty object.
+  A bare string now means `{ format: <string> }` in `parse`, `query`,
+  `update`, `openDataset`, `serialize`, `canonicalize` and
+  `DatasetHandle.serialize`; any other non-object value throws a `TypeError`
+  naming the function. Pinned by
+  `npm/factoidal/test/options-format-string.test.js`. The browser entry
+  (`browser.js`) keeps its own option vocabulary (`dataFormat`, `output`,
+  `engine`) and is unchanged.
+- The publish workflow re-extracts every F\* module and refuses drift. The
+  "Check F\* Extraction" workflow had been red on `claude/main` since
+  2026-09-07 (runs 200 and 201): the committed `OWL_Closure.ml` and
+  `OWL_DirectMapping_Filter.ml` lagged the OWL soundness audit's `.fst`
+  changes. Both are re-extracted in commit 93f012e (same toolchain as the
+  workflow, F\* 2025.12.15 and z3 4.13.3, local diffstat identical to CI's),
+  and the 0.8.0 bundles are built from that extraction, so 0.8.0 is the first
+  package that carries the audited OWL rules. The native binaries still
+  predate the audit until the `claude/main` shadow build rebuilds them.

@@ -1,16 +1,16 @@
 {
-  "measuredAt": "2026-09-16T18:16:10Z",
-  "gitSha": "f6121b3e22fc7a43bd0f3e2036ab806d8a1934b2",
+  "measuredAt": "2026-09-16T19:52:50Z",
+  "gitSha": "af2018a2b95e4824f93d8264e2e74d9017e85c9d",
   "bundles": [
     {
       "path": "npm/factoidal/factoidal-npm-entry.js",
-      "rawBytes": 1179316,
-      "gzipBytes": 346901
+      "rawBytes": 1178726,
+      "gzipBytes": 346639
     },
     {
       "path": "npm/factoidal/factoidal.js",
-      "rawBytes": 1070921,
-      "gzipBytes": 315353
+      "rawBytes": 1070256,
+      "gzipBytes": 315124
     },
     {
       "path": "npm/factoidal/factoidal-npm-entry.wasm.js",
@@ -18,19 +18,19 @@
       "gzipBytes": 15644
     },
     {
-      "path": "npm/factoidal/factoidal-npm-entry.wasm.assets/code-c44406124dd71785d292.wasm",
-      "rawBytes": 1459608,
-      "gzipBytes": 367954
+      "path": "npm/factoidal/factoidal-npm-entry.wasm.assets/code-388eb5f8e15768eed5bd.wasm",
+      "rawBytes": 1459041,
+      "gzipBytes": 367761
     },
     {
       "path": "npm/factoidal/factoidal.wasm.js",
       "rawBytes": 42767,
-      "gzipBytes": 14518
+      "gzipBytes": 14517
     },
     {
-      "path": "npm/factoidal/factoidal.wasm.assets/code-9ff72817fb05101692af.wasm",
-      "rawBytes": 1366036,
-      "gzipBytes": 332314
+      "path": "npm/factoidal/factoidal.wasm.assets/code-dcb1d1caf3982c81c816.wasm",
+      "rawBytes": 1366907,
+      "gzipBytes": 332622
     },
     {
       "path": "npm/factoidal/l4-assets/l4factoidal.wasm",
@@ -44,8 +44,8 @@
     },
     {
       "path": "npm/factoidal/factoidal-npm-entry-lite.js",
-      "rawBytes": 595343,
-      "gzipBytes": 173219
+      "rawBytes": 595344,
+      "gzipBytes": 173279
     },
     {
       "path": "npm/factoidal/factoidal-npm-entry-lite.wasm.js",

@@ -182,16 +182,19 @@ Run these from the repository root, with the numbers each one must
 produce. A number that has moved is a finding to explain, not a number
 to overwrite.
 
-| Gate | Command | Expected, measured 2026-09-03 |
+| Gate | Command | Expected, measured 2026-09-16 (0.8.0) |
 | --- | --- | --- |
-| hub notebooks | `node --test tests/hub/*_test.mjs` | 414 pass, 0 fail, 1 skipped (out of 415) |
-| package suite | `cd npm/factoidal && npm test` | 252 pass, 0 fail, 2 skipped (out of 254) |
-| store host | `node tests/store-host/conformance.mjs` | 29 pass, 0 fail, 0 skipped (out of 29) under Node, and the same under Deno |
-| the command | `node tests/store-host/cli.mjs` | 13 pass, 0 fail, 0 skipped (out of 13) under Node, and the same under Deno |
-| tarball | `cd npm/factoidal && npm pack --dry-run` | the `files` list above, 62 files |
+| hub notebooks | `node --test tests/hub/*_test.mjs` | 436 pass, 4 fail, 1 skipped (out of 441); the 4 are post17/post18 commit-citation checks that fail only on a shallow clone (0 fail on a full clone) |
+| package suite | `cd npm/factoidal && npm test` | 340 pass, 0 fail, 2 skipped (out of 342) |
+| npm-entry smoke | `node bin/npm-entry/smoke.mjs docs/fstar-extracted/factoidal-npm-entry.js` and the same with `factoidal-npm-entry-lite.js` | 33 pass, 0 fail (out of 33) for each bundle |
+| store host | `node tests/store-host/conformance.mjs` | 24 pass, 0 fail, 10 skipped (out of 34) under Node; Deno was not installed in the 2026-09-16 container, so its run is unmeasured there (2026-09-03: 29 pass, 0 fail (out of 29) under both) |
+| the command | `node tests/store-host/cli.mjs` | 7 pass, 0 fail, 1 skipped (out of 8) under Node; Deno as above (2026-09-03: 13 pass, 0 fail (out of 13) under both) |
+| tarball | `cd npm/factoidal && npm pack --dry-run` | the `files` list above, 193 files (62 on 2026-09-03, before the lite profile, the `api` entry and the mirror of the wasm assets) |
 | wasm copies | the tail of `build-wasm.sh` | "all committed wasm copies agree" |
-| Lean native | `bash formal/lean4/Wasm/native-smoke.sh` | see the script's own report |
-| browser surface | `tests/web-demos/hub_browser_all.sh` | the node harness cannot see browser-only gaps; run this too |
+| Lean native | `bash formal/lean4/Wasm/native-smoke.sh` | see the script's own report; needs `lake` on PATH (`export PATH=$HOME/.elan/bin:$PATH`), absent from the 2026-09-16 container |
+| browser surface | `tests/web-demos/hub_browser_all.sh` | 54 pass, 0 fail (out of 54 posts); the node harness cannot see browser-only gaps; run this too |
+| bundler and CSP page | `tests/web-demos/bundler_csp_smoke.sh` | PASS, exit 0 |
+| extraction drift | the `Check F\* Extraction` workflow on the release commit, or `./build-ocaml.sh extract --force-full` followed by `git diff --stat -- 'formal/fstar/ocaml-output/*.ml'` | no diff. The publish workflow runs this same check and refuses to publish on drift; it was red on `claude/main` from 2026-09-07 to the 0.8.0 preparation (two OWL modules, re-extracted in commit 93f012e) |
 
 The package suite runs again inside `npm publish` through
 `prepublishOnly`, so a failure there aborts the publish after the

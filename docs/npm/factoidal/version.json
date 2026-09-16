@@ -1,7 +1,7 @@
 {
-  "version": "0.7.1",
-  "gitSha": "4fd09c38be7d01363cb4e80b60de72087f6af98b",
-  "builtAt": "2026-09-16T18:11:50Z",
+  "version": "0.8.0",
+  "gitSha": "93f012e2083638a3f87f341ec52d2c2570ecc7d4",
+  "builtAt": "2026-09-16T19:59:17Z",
   "claims": {
     "schema": "1",
     "statement": "Proved sound with respect to an independent F* formalization of the W3C RDF/RDFS/OWL semantics, under the stated fragment restrictions and the trust surface recorded in docs/theorem-registry.md — never claimed as a complete formally verified implementation of RDF semantics (docs/theorem-registry.md § Calibrated claims).",
@@ -96,6 +96,6 @@
         "status": "complete, measured equivalent native+Node"
       }
     ],
-    "notClaimed": "A complete formally verified implementation of RDF semantics. See docs/theorem-registry.md § Trust surface for the assume-val count (~146, mostly COTTAS/HDT storage I/O per iron rule #11), the extraction-step caveat (fstar.exe --codegen OCaml is not itself re-verified), and the rdf-mt / W3C conformance suites this registry relies on as the independent runtime check. CLAUDE.md's standing qualifier applies: parser and algebra spec verified in F*; the on-disk backend carries unverified OCaml-side optimization layers being migrated back to F*."
+    "notClaimed": "A complete formally verified implementation of RDF semantics. See docs/theorem-registry.md § Trust surface for the assume-val count (82 declarations, measured 2026-09-16 with the command in CLAUDE.md iron rule #3; mostly COTTAS/HDT storage I/O per iron rule #11), the extraction-step caveat (fstar.exe --codegen OCaml is not itself re-verified), and the rdf-mt / W3C conformance suites this registry relies on as the independent runtime check. CLAUDE.md's standing qualifier applies: parser and algebra spec verified in F*; the on-disk backend carries unverified OCaml-side optimization layers being migrated back to F*."
   }
 }

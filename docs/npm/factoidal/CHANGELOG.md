@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-09-16
 
 **Behaviour change: parsing is strict by default.** `parse()` (and
 every function that parses text input) now rejects on a syntax error,
@@ -127,6 +127,28 @@ N-Quads, not document order) and the blank-node label scheme
 prefixes, no RDF meaning beyond within-dataset identity), pinned by
 `test/parse-order.test.js`. No behavior changed. Issue
 [683](https://github.com/danbri/factoidal/issues/683).
+
+A bare string where `parse`, `query`, `update`, `openDataset`,
+`serialize`, `canonicalize` or `DatasetHandle.serialize` take an
+options object now means `{ format: <string> }`, so
+`serialize(ds, 'turtle')` is `serialize(ds, { format: 'turtle' })`.
+Until now the string was read as an empty options object and
+`serialize(ds, 'turtle')` returned N-Quads with no error (found by the
+0.8.0 release probe). Any other non-object value throws a `TypeError`
+naming the function. Pinned by `test/options-format-string.test.js`.
+
+The shipped bundles are built from a fresh extraction of the F\* OWL
+closure source. The committed OCaml for `OWL.Closure` and
+`OWL.DirectMapping.Filter` had lagged the `.fst` files since the
+2026-09-07 OWL soundness audit (commit 709f3c4; the "Check F\* Extraction"
+workflow was red on `claude/main` from that date, runs 200 and 201),
+so 0.7.1 was built from the pre-audit rules. Observable in this
+release: the rule that derived `owl:sameAs` between named classes
+from `owl:equivalentClass` is removed, datatype-range clashes are
+decided by XSD value-space disjointness (`xsd_value_spaces_disjoint`),
+and the direct-mapping filter also excludes the built-in OWL annotation
+properties, not only declared ones. The npm-publish workflow re-extracts and refuses drift,
+so this correction is a precondition of the release.
 
 ## 0.7.1 — 2026-09-06
 
@@ -695,7 +717,7 @@ Known limits, measured:
   format-compatibility gate rejected stores written by the current js
   bundle (caught by the wasm/js parity test in `test/`).
 
-## Unreleased
+## Between 0.1.0-alpha.0 and 0.1.0 — unpublished
 
 - Package renamed from the placeholder `@danbri/foafos` to `factoidal`
   (issue #403). The package was never published under the old name, so
