@@ -410,6 +410,20 @@
     "reason": "declared log_path missing: None"
    }
   },
+  "local-rdf12-semantics-tight": {
+   "name": "Local \u2014 RDF 1.2 Semantics tight cases",
+   "spec": "https://www.w3.org/TR/rdf12-semantics/",
+   "log_path": "formal/fstar/ocaml-output/rdf12_semantics_tight.log",
+   "domain": "RDF",
+   "coverage": {
+    "pass": null,
+    "fail": null,
+    "skip": null,
+    "total": null,
+    "source": "unresolved",
+    "reason": "declared log_path missing: formal/fstar/ocaml-output/rdf12_semantics_tight.log"
+   }
+  },
   "local-serializer-unicode": {
    "name": "Local \u2014 Serializer UTF-8 passthrough (issue 271)",
    "spec": "internal",
@@ -2269,7 +2283,7 @@
     "formal/fstar/OWL.Closure.fst",
     "formal/fstar/OWL.Closure.fsti"
    ],
-   "loc": 7165,
+   "loc": 7210,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -2277,7 +2291,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/OWL_Closure.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 339,
+   "shipping_function_count": 340,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -4320,7 +4334,7 @@
    "files": [
     "formal/fstar/OWL.DirectMapping.Filter.fst"
    ],
-   "loc": 72,
+   "loc": 100,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -4328,7 +4342,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/OWL_DirectMapping_Filter.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 4,
+   "shipping_function_count": 6,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -4491,7 +4505,7 @@
    "files": [
     "formal/fstar/OWL.RL.Spec.fst"
    ],
-   "loc": 1749,
+   "loc": 1758,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "fully-erased",
@@ -4809,6 +4823,10 @@
     },
     {
      "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "foundational-path"
     },
     {
@@ -5394,6 +5412,37 @@
      "how": "direct-trigger"
     }
    ]
+  },
+  {
+   "module": "Parser.Diagnostics",
+   "files": [
+    "formal/fstar/Parser.Diagnostics.fst"
+   ],
+   "loc": 242,
+   "provenance": "fstar-authored",
+   "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
+   "extraction": "extracted",
+   "extraction_oracle_available": true,
+   "extracted_ml": "formal/fstar/ocaml-output/Parser_Diagnostics.ml",
+   "in_build_module_list": false,
+   "foundational_path": false,
+   "shipping_function_count": 8,
+   "declarative_relation_count": 0,
+   "unclassified_definition_count": 0,
+   "assume_val_active": 0,
+   "assume_val_names": [],
+   "assume_other_active": 0,
+   "admissions_active": 0,
+   "admission_sites": [],
+   "lax_or_admit_pragmas": [],
+   "merely_tot": true,
+   "local_refinement_lemma_count": 0,
+   "local_refinement_lemma_names": [],
+   "algorithm_correctness_theorems": [],
+   "internal_refinement_theorems": [],
+   "w3c_refinement_theorems": [],
+   "assurance_tier": "merely-tot",
+   "suites": []
   },
   {
    "module": "Parser.FastString",
@@ -7076,6 +7125,10 @@
      "how": "direct-trigger"
     },
     {
+     "suite": "local-rdf12-semantics-tight",
+     "how": "foundational-path"
+    },
+    {
      "suite": "local-serializer-unicode",
      "how": "foundational-path"
     },
@@ -8169,6 +8222,10 @@
     },
     {
      "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "foundational-path"
     },
     {
@@ -10503,6 +10560,10 @@
    "suites": [
     {
      "suite": "local-parser-unicode",
+     "how": "direct-trigger"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "direct-trigger"
     },
     {
@@ -13812,7 +13873,7 @@
    "files": [
     "formal/fstar/RDF.Entailment.Regime.fst"
    ],
-   "loc": 272,
+   "loc": 519,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -13820,7 +13881,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Entailment_Regime.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 26,
+   "shipping_function_count": 46,
    "declarative_relation_count": 0,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -13839,6 +13900,10 @@
    "suites": [
     {
      "suite": "local-negative-test-vacuity",
+     "how": "direct-trigger"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "direct-trigger"
     }
    ]
@@ -14283,7 +14348,12 @@
     }
    ],
    "assurance_tier": "w3c-refinement",
-   "suites": []
+   "suites": [
+    {
+     "suite": "local-rdf12-semantics-tight",
+     "how": "direct-trigger"
+    }
+   ]
   },
   {
    "module": "RDF.Entailment.Simple.Boundary",
@@ -14617,6 +14687,10 @@
     },
     {
      "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "foundational-path"
     },
     {
@@ -15883,6 +15957,10 @@
     },
     {
      "suite": "local-parser-unicode",
+     "how": "foundational-path"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "foundational-path"
     },
     {
@@ -19552,7 +19630,7 @@
    "files": [
     "formal/fstar/RDF.Turtle.Serialize.fst"
    ],
-   "loc": 503,
+   "loc": 686,
    "provenance": "fstar-authored",
    "provenance_basis": "file lives under formal/fstar/ and is not under any vendored third-party directory",
    "extraction": "extracted",
@@ -19560,7 +19638,7 @@
    "extracted_ml": "formal/fstar/ocaml-output/RDF_Turtle_Serialize.ml",
    "in_build_module_list": true,
    "foundational_path": false,
-   "shipping_function_count": 28,
+   "shipping_function_count": 42,
    "declarative_relation_count": 1,
    "unclassified_definition_count": 0,
    "assume_val_active": 0,
@@ -22094,6 +22172,10 @@
    "suites": [
     {
      "suite": "local-negative-test-vacuity",
+     "how": "direct-trigger"
+    },
+    {
+     "suite": "local-rdf12-semantics-tight",
      "how": "direct-trigger"
     }
    ]
@@ -28896,6 +28978,10 @@
    "w3c_refinement_theorems": [],
    "assurance_tier": "merely-tot",
    "suites": [
+    {
+     "suite": "local-rdf12-semantics-tight",
+     "how": "direct-trigger"
+    },
     {
      "suite": "rif",
      "how": "direct-trigger"
@@ -65408,8 +65494,8 @@
   }
  ],
  "totals": {
-  "modules": 224,
-  "files": 236,
+  "modules": 225,
+  "files": 237,
   "assume_val_active": 81,
   "assume_other_active": 4,
   "admissions_active": 0,
@@ -65417,7 +65503,7 @@
   "modules_with_w3c_refinement_theorem": 11,
   "modules_with_algorithm_correctness_theorem": 45,
   "modules_with_internal_refinement_theorem": 23,
-  "modules_merely_tot": 122,
+  "modules_merely_tot": 123,
   "w3c_refinement_theorem_count": 322,
   "internal_refinement_theorem_count": 163,
   "algorithm_correctness_theorem_count": 364,
@@ -65446,11 +65532,11 @@
    "algorithm-correctness": 29,
    "internal-refinement": 13,
    "local-lemmas-only": 13,
-   "merely-tot": 122,
+   "merely-tot": 123,
    "specification-and-proof": 17,
    "unclassified": 19,
    "w3c-refinement": 11
   }
  },
- "commit": "c618f71d2"
+ "commit": "53ec4268b"
 }
