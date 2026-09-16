@@ -40,6 +40,23 @@ export type EntailRegime = 'none' | 'RDFS' | 'OWL-RL';
 /** CLI output formats the browser query paths accept. */
 export type OutputFormat = 'json' | 'csv' | 'tsv' | 'xml' | 'table' | 'ntriples';
 
+/**
+ * A parse (or dataset-handle ABI) failure that carries a position
+ * (issue #344): `line`/`column`/`offset` are set when the failing
+ * engine call reported one (Turtle, TriG, N-Triples, N-Quads);
+ * `undefined` for an RDF/XML or JSON-LD failure, or any non-parse
+ * engine error, which stay a plain `Error`. `name` is `'ParseError'`.
+ * This module is self-contained (no imports), so it declares its own
+ * copy rather than re-exporting index.d.ts's.
+ */
+export class ParseError extends Error {
+  readonly name: 'ParseError';
+  readonly line?: number;
+  readonly column?: number;
+  readonly offset?: number;
+  readonly format?: string;
+}
+
 /** One document for the fake filesystem (runFactoidalCli). */
 export interface CliFile {
   /** Must start with '/static/'. */
@@ -92,6 +109,14 @@ export function runFactoidalCli(
  * Run a SPARQL query against one in-memory RDF document. Returns parsed
  * SPARQL-Results JSON when `output` is 'json' (default), the raw output
  * string otherwise.
+ *
+ * Issue #682 (second half): whenever the persistent npm-entry ABI is
+ * available -- already on `globalThis`, or fetched by loadNpmEntry() --
+ * and `entail` is 'none' (default) with `output` 'json' (default),
+ * this routes through the ABI instead of the eval-per-call CLI
+ * bundle, making the classic-script route CSP-safe. Falls back to the
+ * CLI bundle only when loading the entry fails. A syntax error
+ * rejects with a ParseError when the ABI answered it.
  */
 export function query(
   dataString: string,
@@ -99,7 +124,13 @@ export function query(
   options?: { dataFormat?: string; entail?: EntailRegime; output?: OutputFormat }
 ): Promise<SparqlResultsJson | string>;
 
-/** Parse a document and dump sorted N-Quads (default input format: 'jsonld'). */
+/**
+ * Parse a document and dump sorted N-Quads (default input format:
+ * 'jsonld'). Routes through the persistent npm-entry ABI whenever it
+ * is available (issue #682, second half), falling back to the CLI
+ * bundle only when loading the entry fails. A syntax error rejects
+ * with a ParseError when the ABI answered it.
+ */
 export function toRdf(
   text: string,
   options?: { format?: string; baseIRI?: string }
@@ -159,6 +190,42 @@ export function loadNpmEntry(): Promise<Record<string, (...args: string[]) => st
  * `abi` clears the override.
  */
 export function setNpmEntry(abi: Record<string, (...args: string[]) => string> | null | undefined): void;
+
+/**
+ * A dataset kept open and indexed in the persistent npm-entry ABI
+ * (issue #680), from openDataset(). Query results use the same
+ * shapes query() above returns for `output:'json'` (SPARQL Results
+ * JSON for SELECT, `{head:{},boolean}` for ASK, N-Quads text for
+ * CONSTRUCT). Every method rejects once the handle is closed.
+ */
+export interface DatasetHandleBrowser {
+  /** The opaque engine handle id (e.g. "h1"). */
+  readonly handle: string;
+  /** Quad count as of open() (not refreshed by update() on this lightweight handle). */
+  readonly count: number;
+  /** Prefixes recorded at open. */
+  readonly prefixes: Record<string, string>;
+  query(
+    sparql: string,
+    options?: { sparql12?: boolean; version?: string }
+  ): Promise<SparqlResultsJson | { head: {}; boolean: boolean } | string>;
+  /** Apply a SPARQL 1.1 Update in place. Returns the new quad count. */
+  update(updateText: string): Promise<number>;
+  serialize(options?: { format?: 'nquads' | 'turtle' }): Promise<string>;
+  close(): Promise<void>;
+}
+
+/**
+ * Open a dataset handle over the persistent npm-entry ABI (issue
+ * #680): parse `text` once, then run many query()/update()/
+ * serialize() calls against the engine's own cached, indexed copy.
+ * Needs the npm-entry ABI (loadNpmEntry()) -- rejects if it cannot be
+ * loaded, same as any other ABI-only export below.
+ */
+export function openDataset(
+  text: string,
+  options?: { format?: string; baseIRI?: string }
+): Promise<DatasetHandleBrowser>;
 
 /** RIF Core smoke saturation (a fixed capability probe, no user input). */
 export function rifSmoke(): Promise<{
