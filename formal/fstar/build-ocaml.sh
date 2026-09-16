@@ -2380,9 +2380,11 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     w3c_runner.byte
     factoidal.byte
     npm_entry.byte
+    npm_entry_lite.byte
     ../../../docs/fstar-extracted/w3c-runner.js
     ../../../docs/fstar-extracted/factoidal.js
     ../../../docs/fstar-extracted/factoidal-npm-entry.js
+    ../../../docs/fstar-extracted/factoidal-npm-entry-lite.js
   )
   JS_SOURCES=(
     "${FSTAR_MODULES[@]}"
@@ -2391,7 +2393,10 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     ../../../bin/factoidal-serve/factoidal_serve_jsoo.ml
     ../../../bin/factoidal-http-client/factoidal_http_client_jsoo.ml
     ../../../bin/factoidal-cli/factoidal_cli.ml
+    ../../../bin/npm-entry/entry_core.ml
+    ../../../bin/npm-entry/entry_extras.ml
     ../../../bin/npm-entry/entry_jsoo.ml
+    ../../../bin/npm-entry/entry_lite_jsoo.ml
     parquet_zstd_stubs_jsoo.c
     hacl_stubs_jsoo.c
     fstar_int_stubs.js
@@ -2464,13 +2469,25 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
     fi
     grep -i error _ocamlc_factoidal.log || true
 
-    # Build npm-entry bytecode (bin/npm-entry/entry_jsoo.ml): the
-    # persistent string/JSON ABI for the npm package. Needs the
-    # js_of_ocaml library for Js.export / Js.wrap_callback.
+    # Build npm-entry bytecode (bin/npm-entry/entry_core.ml +
+    # entry_extras.ml + entry_jsoo.ml, https://github.com/danbri/factoidal/issues/684):
+    # the persistent string/JSON ABI for the npm package, full profile.
+    # Needs the js_of_ocaml library for Js.export / Js.wrap_callback.
+    # Order matters: entry_core.ml first (entry_extras.ml references
+    # Entry_core.*), entry_jsoo.ml last (it references both modules).
+    # -I ../../../bin/npm-entry: ocamlc writes each cross-directory
+    # source's .cmi/.cmo next to that SOURCE file, not into cwd, so
+    # without this entry_extras.ml (which `open`s Entry_core) and
+    # entry_jsoo.ml (which references both) cannot find the earlier
+    # modules' interfaces even though they compiled moments before in
+    # this same invocation ("Unbound module Entry_core").
     run_with_heartbeat "ocamlc npm_entry.byte" "_ocamlc_npm_entry.log" -- \
       ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,js_of_ocaml -linkpkg -w -8-14-26 \
       -custom parquet_zstd_stubs_jsoo.c hacl_stubs_jsoo.c \
+      -I ../../../bin/npm-entry \
       "${FSTAR_MODULES[@]}" \
+      ../../../bin/npm-entry/entry_core.ml \
+      ../../../bin/npm-entry/entry_extras.ml \
       ../../../bin/npm-entry/entry_jsoo.ml \
       -o npm_entry.byte
     grep -i error _ocamlc_npm_entry.log || true
@@ -2524,6 +2541,78 @@ if [[ "$STEP" == "all" || "$STEP" == "js" ]]; then
       -o ../../../docs/fstar-extracted/factoidal-npm-entry.js
     grep -v "Warning \[deprecated" _jsoo_npm_entry.log | grep -v "^$" || true
     echo "  Built: docs/fstar-extracted/factoidal-npm-entry.js ($(wc -c < ../../../docs/fstar-extracted/factoidal-npm-entry.js) bytes)"
+
+    # Lite npm-entry bundle (https://github.com/danbri/factoidal/issues/684):
+    # bin/npm-entry/entry_core.ml + entry_lite_jsoo.ml ONLY (no
+    # entry_extras.ml). Every FSTAR_MODULES unit is compiled to a
+    # scratch bytecode object in _lite_cmo/ (gitignored by the existing
+    # *.cmo/*.cmi rules) and archived into one .cma; the final link runs
+    # WITHOUT -linkall, so only the units entry_core.ml/entry_lite_jsoo.ml
+    # transitively reference are pulled from the archive -- that omission
+    # (SHACL/ShEx/OWL closures+tableau/RIF/JSON-LD/XML/XPath/CSVW/RML/VC/
+    # DID/COTTAS/delta-log/XSLT/MathML/XForms/JSON Schema/Schematron/TOAN/
+    # matrix/sigmoid, all entry_extras.ml-only) is the size lever.
+    rm -rf _lite_cmo
+    mkdir -p _lite_cmo
+    run_with_heartbeat "ocamlc lite per-module .cmo (${#FSTAR_MODULES[@]} units)" "_ocamlc_lite_cmo.log" -- \
+      bash -c '
+        set -euo pipefail
+        for m in "$@"; do
+          base="${m%.ml}"
+          ocamlfind ocamlc -c -w -8-14-26 -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,js_of_ocaml \
+            -I _lite_cmo -o "_lite_cmo/${base}.cmo" "$m"
+          # -o places both .cmo and .cmi from the basename in the same
+          # directory in every ocamlc version this project has run on;
+          # this is a defensive fallback, not the expected path.
+          if [[ ! -f "_lite_cmo/${base}.cmi" && -f "${base}.cmi" ]]; then
+            cp "${base}.cmi" "_lite_cmo/${base}.cmi"
+          fi
+        done
+      ' _ "${FSTAR_MODULES[@]}"
+    grep -i error _ocamlc_lite_cmo.log || true
+
+    LITE_CMO_LIST=()
+    for m in "${FSTAR_MODULES[@]}"; do
+      LITE_CMO_LIST+=("_lite_cmo/${m%.ml}.cmo")
+    done
+    run_with_heartbeat "ocamlc factoidal_fstar.cma" "_ocamlc_lite_cma.log" -- \
+      ocamlfind ocamlc -a -o _lite_cmo/factoidal_fstar.cma "${LITE_CMO_LIST[@]}"
+    grep -i error _ocamlc_lite_cma.log || true
+
+    # -I ../../../bin/npm-entry: same reason as the full build above --
+    # entry_lite_jsoo.ml needs entry_core.ml's .cmi, which lands next
+    # to its source, not in cwd.
+    run_with_heartbeat "ocamlc npm_entry_lite.byte" "_ocamlc_npm_entry_lite.log" -- \
+      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,uucp,js_of_ocaml -linkpkg -w -8-14-26 \
+      -custom parquet_zstd_stubs_jsoo.c hacl_stubs_jsoo.c \
+      -I _lite_cmo -I ../../../bin/npm-entry \
+      _lite_cmo/factoidal_fstar.cma \
+      ../../../bin/npm-entry/entry_core.ml \
+      ../../../bin/npm-entry/entry_lite_jsoo.ml \
+      -o npm_entry_lite.byte
+    grep -i error _ocamlc_npm_entry_lite.log || true
+
+    run_with_heartbeat "js_of_ocaml npm-entry-lite" "_jsoo_npm_entry_lite.log" -- \
+      js_of_ocaml \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      fstar_int_stubs.js \
+      fstar_hash_stubs.js \
+      fstar_utf8_output_stubs.js \
+      vendor/fzstd.umd.js \
+      parquet_zstd_stubs.js \
+      hacl_stubs.js \
+      npm_entry_lite.byte \
+      -o ../../../docs/fstar-extracted/factoidal-npm-entry-lite.js
+    grep -v "Warning \[deprecated" _jsoo_npm_entry_lite.log | grep -v "^$" || true
+    echo "  Built: docs/fstar-extracted/factoidal-npm-entry-lite.js ($(wc -c < ../../../docs/fstar-extracted/factoidal-npm-entry-lite.js) bytes)"
+
+    FULL_ENTRY_RAW=$(wc -c < ../../../docs/fstar-extracted/factoidal-npm-entry.js)
+    FULL_ENTRY_GZIP=$(gzip -9 -c ../../../docs/fstar-extracted/factoidal-npm-entry.js | wc -c)
+    LITE_ENTRY_RAW=$(wc -c < ../../../docs/fstar-extracted/factoidal-npm-entry-lite.js)
+    LITE_ENTRY_GZIP=$(gzip -9 -c ../../../docs/fstar-extracted/factoidal-npm-entry-lite.js | wc -c)
+    echo "  Bundle size (full js):  ${FULL_ENTRY_RAW} bytes raw / ${FULL_ENTRY_GZIP} bytes gzip -9"
+    echo "  Bundle size (lite js):  ${LITE_ENTRY_RAW} bytes raw / ${LITE_ENTRY_GZIP} bytes gzip -9"
 
     echo "  Built: docs/fstar-extracted/w3c-runner.js ($(wc -c < ../../../docs/fstar-extracted/w3c-runner.js) bytes)"
     echo "  Built: docs/fstar-extracted/factoidal.js   ($(wc -c < ../../../docs/fstar-extracted/factoidal.js) bytes)"
@@ -2656,6 +2745,25 @@ if [[ "$STEP" == "wasm-factoidal" ]]; then
       -o ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
     python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
   fi
+
+  # Lite npm-entry wasm mirror (https://github.com/danbri/factoidal/issues/684).
+  # Same shims as the full entry above; npm_entry_lite.byte comes from
+  # the `js` step's lite build (entry_core.ml + entry_lite_jsoo.ml,
+  # linked from _lite_cmo/factoidal_fstar.cma without -linkall).
+  if [[ -f npm_entry_lite.byte ]]; then
+    run_with_heartbeat "wasm_of_ocaml npm-entry-lite" "_waoc_npm_entry_lite.log" -- \
+      wasm_of_ocaml compile \
+      +zarith_stubs_js/biginteger.js \
+      +zarith_stubs_js/runtime.js \
+      wasm_runtime/zarith_runtime_wasm.js \
+      wasm_runtime/zarith_runtime.wat \
+      wasm_runtime/stdint_uint32_runtime.wat \
+      fstar_int_stubs.js \
+      hacl_stubs.js \
+      npm_entry_lite.byte \
+      -o ../../../docs/fstar-extracted/factoidal-npm-entry-lite.wasm.js
+    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal-npm-entry-lite.wasm.js
+  fi
   cd ..
   record_phase_timing "wasm-factoidal" "$PHASE_START_WASM_FACTOIDAL" "$EXTRACT_COUNT"
   echo ""
@@ -2732,6 +2840,22 @@ if [[ "$STEP" == "npm" ]]; then
     rm -rf "$NPMDIR/factoidal-npm-entry.wasm.assets"
     cp -R "$JSDIR/factoidal-npm-entry.wasm.assets" "$NPMDIR/factoidal-npm-entry.wasm.assets"
     echo "  Copied: $JSDIR/factoidal-npm-entry.wasm.assets/ -> $NPMDIR/factoidal-npm-entry.wasm.assets/ ($(ls -1 "$NPMDIR/factoidal-npm-entry.wasm.assets" | wc -l | tr -d ' ') file(s))"
+  fi
+
+  # Lite npm-entry bundle (https://github.com/danbri/factoidal/issues/684)
+  # -- optional-if-present, same pattern as the full copies above.
+  if [[ -f "$JSDIR/factoidal-npm-entry-lite.js" ]]; then
+    cp "$JSDIR/factoidal-npm-entry-lite.js" "$NPMDIR/factoidal-npm-entry-lite.js"
+    echo "  Copied: $JSDIR/factoidal-npm-entry-lite.js -> $NPMDIR/factoidal-npm-entry-lite.js ($(wc -c < "$NPMDIR/factoidal-npm-entry-lite.js") bytes)"
+  fi
+  if [[ -f "$JSDIR/factoidal-npm-entry-lite.wasm.js" ]]; then
+    cp "$JSDIR/factoidal-npm-entry-lite.wasm.js" "$NPMDIR/factoidal-npm-entry-lite.wasm.js"
+    echo "  Copied: $JSDIR/factoidal-npm-entry-lite.wasm.js -> $NPMDIR/factoidal-npm-entry-lite.wasm.js ($(wc -c < "$NPMDIR/factoidal-npm-entry-lite.wasm.js") bytes)"
+  fi
+  if [[ -d "$JSDIR/factoidal-npm-entry-lite.wasm.assets" ]]; then
+    rm -rf "$NPMDIR/factoidal-npm-entry-lite.wasm.assets"
+    cp -R "$JSDIR/factoidal-npm-entry-lite.wasm.assets" "$NPMDIR/factoidal-npm-entry-lite.wasm.assets"
+    echo "  Copied: $JSDIR/factoidal-npm-entry-lite.wasm.assets/ -> $NPMDIR/factoidal-npm-entry-lite.wasm.assets/ ($(ls -1 "$NPMDIR/factoidal-npm-entry-lite.wasm.assets" | wc -l | tr -d ' ') file(s))"
   fi
 
   # Packaging invariant: every entry in package.json "files" must

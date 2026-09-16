@@ -293,9 +293,16 @@ test('post18: entry_jsoo.ml exports the delta-log ABI AND the toCottas BaseWrite
   assert.match(entry, /"deltaMergeApplyBrowser"/);
   // toCottas was added since an earlier version of this post claimed
   // no BaseWriter existed in the browser. It now does: the export wraps
-  // the same pure-Tot serializer the native CLI uses.
+  // the same pure-Tot serializer the native CLI uses. Since
+  // https://github.com/danbri/factoidal/issues/684's module split, the
+  // export TABLE ("toCottas" the key) lives in entry_jsoo.ml, but the
+  // implementation calling the BaseWriter serializer moved to
+  // entry_extras.ml (the full bundle links both, so the grounding claim
+  // "the code path exists and reaches the browser" still holds).
   assert.match(entry, /"toCottas"/);
-  assert.match(entry, /RDF_CottasStore_BaseWriter\.serialize_cottas_v2/);
+  const extras = fs.readFileSync(
+    path.join(REPO_ROOT, 'bin', 'npm-entry', 'entry_extras.ml'), 'utf8');
+  assert.match(extras, /RDF_CottasStore_BaseWriter\.serialize_cottas_v2/);
 });
 
 test('post18: RDF.CottasStore.BaseWriter.fst exists and is the module the zero-Python claim cites', () => {
