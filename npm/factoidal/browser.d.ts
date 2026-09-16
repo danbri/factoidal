@@ -144,8 +144,21 @@ export function queryHdt(
 
 /** Override where `factoidal-npm-entry.js` is fetched from. */
 export function setFactoidalNpmEntryUrl(url: string): void;
-/** Fetch + evaluate the npm-entry bundle once, returning its ABI object. */
+/**
+ * Resolve the npm-entry ABI object once: a classic
+ * `<script src="factoidal-npm-entry.js">` tag's `globalThis.factoidalNpmEntry`
+ * (or a prior setNpmEntry() call) first, no fetch or eval either way;
+ * only then fetch + evaluate the bundle, which needs `unsafe-eval` in
+ * the page's Content-Security-Policy (issue #682).
+ */
 export function loadNpmEntry(): Promise<Record<string, (...args: string[]) => string>>;
+/**
+ * Inject an already-resolved npm-entry ABI object (from a bundler, a
+ * classic `<script>` tag the page read itself, a Worker message, ...)
+ * so loadNpmEntry() returns it with no fetch and no eval. A falsy
+ * `abi` clears the override.
+ */
+export function setNpmEntry(abi: Record<string, (...args: string[]) => string> | null | undefined): void;
 
 /** RIF Core smoke saturation (a fixed capability probe, no user input). */
 export function rifSmoke(): Promise<{
@@ -457,6 +470,7 @@ declare const _default: {
   queryDataset: typeof queryDataset;
   version: string;
   loadNpmEntry: typeof loadNpmEntry;
+  setNpmEntry: typeof setNpmEntry;
   setFactoidalNpmEntryUrl: typeof setFactoidalNpmEntryUrl;
   rifSmoke: typeof rifSmoke;
   rifEval: typeof rifEval;
