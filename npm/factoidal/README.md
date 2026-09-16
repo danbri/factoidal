@@ -308,6 +308,51 @@ const q = quad(blankNode("x"),
 // (add/delete/has/match/size/iteration).
 ```
 
+## Blank nodes, labels and statement order
+
+(Issue [683](https://github.com/danbri/factoidal/issues/683).)
+
+`parse()`'s returned Dataset does not preserve the source document's
+statement order. The npm-entry ABI's `parseToDatasetJson` answers
+`RDF_Canonical.canonical_nquads` (`formal/fstar/RDF.Canonical.fst`),
+which sorts and deduplicates lines before `Dataset.fromNQuads` ever
+sees the text — by the time a caller has the Dataset, there is no
+as-written order left in it to read back. `toNQuads()`/`serialize()`
+reflect this same sorted order.
+
+Blank-node labels, by contrast, DO trace parse order, though they
+still carry no RDF meaning (see below):
+
+- An anonymous node (`[ ... ]`, or a collection `( ... )`'s cons
+  cells) gets a label `_anonN`, N counting from 0 in DOCUMENT order —
+  the order its `[]` was encountered while parsing top to bottom
+  (`formal/fstar/Parser.Turtle.fst`'s `fresh_bnode`, via
+  `turtle_state.bnode_counter`).
+- A labelled blank node (`_:foo`) keeps that label as written; it is
+  never renumbered.
+- Every label is then prefixed twice: `d<n>_` once per parsed document
+  (`RDF_Dataset_Merge.rename_dataset_bnodes`, invoked by
+  `bin/npm-entry/entry_jsoo.ml`'s `scope_dataset_bnodes` — one call to
+  `parseToDatasetJson` is one document, so one `n`), then `p<k>_` once
+  per npm `parse()`/`query()` call (`lib/api.js`'s
+  `freshBnodePrefix()`) — giving a final label such as `p7_d7__anon43`.
+
+These labels are stable for a given document parsed against a given
+engine build (the same text, parsed at the same point in a process's
+lifetime, gets the same label), but per RDF 1.1 Concepts §3.4 a blank
+node identifies a resource without a global name — nothing may depend
+on the specific string, only on within-dataset identity (the same
+label appearing on more than one term in the same Dataset). Two
+different parses of the same document (two different calls, or two
+different engine builds) are not guaranteed to produce the same label
+text, only the same graph up to blank-node relabeling (RDF 1.1
+Concepts §3.6, "isomorphic").
+
+`test/parse-order.test.js` pins both facts: three `[]` nodes' label
+suffixes follow document order regardless of their subjects'
+alphabetical order, and `toNQuads()`'s six lines come back
+lexicographically sorted, not in document order.
+
 ## Custom extension functions (SPARQL 1.1 §17.6)
 
 Register your own functions by IRI (the

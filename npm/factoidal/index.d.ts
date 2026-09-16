@@ -158,7 +158,12 @@ export interface QueryOptions {
   entail?: EntailRegime;
 }
 
-/** Parse one RDF document into a Dataset. */
+/**
+ * Parse one RDF document into a Dataset. The returned Dataset's quad
+ * order is sorted (canonical N-Quads order), not document order;
+ * anonymous blank-node labels (`_anonN`) DO reflect document order.
+ * See README.md's "Blank nodes, labels and statement order".
+ */
 export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 
 /**
