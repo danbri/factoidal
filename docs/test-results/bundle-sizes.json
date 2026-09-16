@@ -1,16 +1,16 @@
 {
-  "measuredAt": "2026-09-16T17:58:43Z",
-  "gitSha": "ec389c422a434ca15af2c0a24d8e60cb03faf2fc",
+  "measuredAt": "2026-09-16T18:16:10Z",
+  "gitSha": "f6121b3e22fc7a43bd0f3e2036ab806d8a1934b2",
   "bundles": [
     {
       "path": "npm/factoidal/factoidal-npm-entry.js",
-      "rawBytes": 1179299,
-      "gzipBytes": 346914
+      "rawBytes": 1179316,
+      "gzipBytes": 346901
     },
     {
       "path": "npm/factoidal/factoidal.js",
-      "rawBytes": 1156283,
-      "gzipBytes": 381952
+      "rawBytes": 1070921,
+      "gzipBytes": 315353
     },
     {
       "path": "npm/factoidal/factoidal-npm-entry.wasm.js",
