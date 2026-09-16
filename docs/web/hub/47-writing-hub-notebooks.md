@@ -30,8 +30,11 @@ notebookDataset = fn.parse(notebookTurtle)
 ```
 
 ```observable-js
-const rows = await fn.query(notebookDataset, `# The ex:name of every subject in the dataset declared by the cell above.
-SELECT ?name WHERE { ?s <http://example.org/name> ?name }`);
+rows = fn.query(notebookDataset, `# The ex:name of every subject in the dataset declared by the cell above.
+SELECT ?name WHERE { ?s <http://example.org/name> ?name }`)
+```
+
+```observable-js
 return pretty(rows);
 ```
 
@@ -47,12 +50,46 @@ syntax examples. Browser pages are sandboxed and normally make no network
 requests; a post that intentionally allows a third-party dependency must
 declare and test that boundary.
 
+## Closed cells and library cells at the end
+
+A fence line can carry flags after the language: `closed` mounts the cell
+collapsed, and `title="..."` sets the summary line a reader sees before
+opening it. Use `closed` for a cell whose value a reader is more likely to
+call than to read line by line — a helper library, a large fixture.
+
+A closed cell does not have to be defined before the cells that use it.
+`hub.njk` mounts a post's cells in two passes: pass 1 registers every cell's
+declared name, then pass 2 mounts every cell and hands it to the reactive
+runtime, which computes the dependency order from those names rather than
+from document order. The cell below calls `notebookHelpers.count(rows)`;
+`notebookHelpers` is defined in the closed cell at the very end of this
+post, and it still resolves, because the runtime resolves each variable's
+inputs by name, not by mount order. The one requirement: the defining cell
+must be a *named* cell (`name = ...`), so there is a name for this one to
+reference.
+
+```observable-js
+notebookRowCount = notebookHelpers.count(rows)
+```
+
+Put a library cell last when its content would otherwise push the post's
+actual subject further down the page — several small helper functions, a
+large block of fixture data, anything meant to be reused rather than read
+on first pass.
+
 ## The test contract
 
 Every post with cells has a Node test under `tests/hub/`. It extracts the
 literal fenced source from the Markdown and executes it against the same typed
 API used in the browser. That pins the page's examples to real results rather
 than allowing prose and code to drift apart. The implementation details and
-full authoring reference remain in [`README.md`](README/).
+full authoring reference remain in [`README.md`](../README/).
 
 For a richer reactive example, see [post 26](../26-reactive-cells-declare-once-use-everywhere/).
+
+```observable-js closed title="Library: notebook helpers"
+notebookHelpers = ({
+  count: (rows) => rows.length,
+  labels: (rows) => rows.map((row) => row.get('name').value),
+})
+```

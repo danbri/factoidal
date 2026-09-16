@@ -271,6 +271,33 @@ module.exports = function(eleventyConfig) {
     });
   });
 
+  // Fence flags for observable-js cells
+  // (https://github.com/danbri/factoidal/issues/686). A fence line may
+  // carry flags after the language:
+  //   ```observable-js closed title="Library: circuit helpers"
+  // docs/web/hub/reactive-cells.mjs's parseCellFlags() is what actually
+  // reads these; this rule only has to carry the raw text through onto
+  // the rendered <code> element so docs/_includes/hub.njk's mountCell()
+  // can read it back client-side. It wraps whatever fence renderer is
+  // already registered (markdown-it's own built-in one) instead of
+  // replacing it, so any other fence behavior stays intact, and it
+  // never touches token.info's first word -- markdown-it's own fence
+  // renderer already takes only that first word for the `class`
+  // attribute, so `class="language-observable-js"` is unaffected either
+  // way and every existing `pre > code.language-observable-js` selector
+  // keeps matching.
+  eleventyConfig.amendLibrary("md", (md) => {
+    const defaultFence = md.renderer.rules.fence || md.renderer.renderToken.bind(md.renderer);
+    md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+      const token = tokens[idx];
+      const info = token.info ? md.utils.unescapeAll(token.info).trim() : "";
+      const m = /^observable-js(?:\s+(.*))?$/.exec(info);
+      const rest = m && m[1] ? m[1].trim() : "";
+      if (rest) token.attrSet("data-hub-cell-flags", rest);
+      return defaultFence(tokens, idx, options, env, self);
+    };
+  });
+
   // Stamp docs/sw.js (already landed in _site/sw.js by the passthrough
   // copy above) with the real BUILD_VERSION and a precache URL list
   // built from what this build actually emitted — never a guessed or
