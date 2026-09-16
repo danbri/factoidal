@@ -6,11 +6,12 @@
 # subject-grouped Turtle serializer, wired up as `factoidal dump-turtle
 # FILE` (bin/factoidal-cli/factoidal_cli.ml). The correctness anchor is
 # round-trip: parse(turtle_of_graph(g)) must be isomorphic to g. This
-# script exercises that for three fixtures via the committed binary:
+# script exercises that for four fixtures via the committed binary:
 #
 #   1. non-ASCII literals + escaped quote/newline/tab
 #   2. blank nodes (including a comma-grouped multi-object predicate)
 #   3. 1000 triples (200 subjects x 5 predicates) — smoke perf ceiling
+#   4. numeric/boolean literal shorthand round trip (issue #681)
 #
 # For each fixture: canonicalize the original, dump-turtle it, then
 # canonicalize the dump-turtle output and byte-compare against the
@@ -123,6 +124,36 @@ FIXTURE3_START=$(date +%s)
 roundtrip_check "1k" "${WORKDIR}/fixture3_1k.nt"
 FIXTURE3_END=$(date +%s)
 echo "INFO 1k-roundtrip-wall-seconds=$((FIXTURE3_END - FIXTURE3_START))"
+
+# --- Fixture 4: literal-shorthand round trip (issue #681) ------------
+# dump-turtle calls RDF_Turtle_Serialize.turtle_of_graph_auto, which as
+# of #681 defaults to bare INTEGER/DECIMAL/DOUBLE/BooleanLiteral
+# shorthand whenever the lexical form matches the matching Turtle
+# grammar terminal. Covers both directions: the shorthand cases (01,
+# +5, .5, 1.0E3, 1e3, true) and the stays-quoted cases (5. has no
+# fraction digit; "1e3"^^xsd:decimal is not a DECIMAL; a leading or
+# trailing space; a non-numeric lexical form typed xsd:integer).
+# This script runs against the COMMITTED native binary, which predates
+# #681, so this fixture is exercised only after the next
+# build-ocaml.sh extract+compile cycle picks up
+# formal/fstar/RDF.Turtle.Serialize.fst. See
+# https://github.com/danbri/factoidal/issues/681.
+cat > "${WORKDIR}/fixture4_literal_shorthand.nt" <<'EOF'
+<http://ex.example/s> <http://ex.example/p> "220.0"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://ex.example/s> <http://ex.example/p> "01"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.example/s> <http://ex.example/p> "+5"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.example/s> <http://ex.example/p> ".5"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://ex.example/s> <http://ex.example/p> "5."^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://ex.example/s> <http://ex.example/p> "1e3"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://ex.example/s> <http://ex.example/p> "1.0E3"^^<http://www.w3.org/2001/XMLSchema#double> .
+<http://ex.example/s> <http://ex.example/p> "1e3"^^<http://www.w3.org/2001/XMLSchema#double> .
+<http://ex.example/s> <http://ex.example/p> "true"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+<http://ex.example/s> <http://ex.example/p> "1"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+<http://ex.example/s> <http://ex.example/p> " 7"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.example/s> <http://ex.example/p> "7 "^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://ex.example/s> <http://ex.example/p> "abc"^^<http://www.w3.org/2001/XMLSchema#integer> .
+EOF
+roundtrip_check "literal-shorthand" "${WORKDIR}/fixture4_literal_shorthand.nt" no-semicolons
 
 echo "pass=${pass_count} fail=${fail_count}"
 if [[ "${fail_count}" -ne 0 ]]; then
