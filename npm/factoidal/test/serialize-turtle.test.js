@@ -117,3 +117,30 @@ test('serialize turtle: parse-then-serialize keeps the source prefixes', async (
   assert.match(ttl, /\bex:s\b/);
   assert.match(ttl, /\bfoaf:knows\b/);
 });
+
+// Expected failure (owner rule 2026-09-07: a stated shortfall is a failing
+// test plus an open issue). The writer collects the xsd: prefix from the
+// datatype IRIs before literal shorthand removes them from the printed
+// text, so the declaration survives with no reference. Flip to a real
+// assertion and close the issue when the F* writer is fixed.
+const ISSUE_691 = 'https://github.com/danbri/factoidal/issues/691';
+test(`xfail: serialize turtle: no unused @prefix xsd: when shorthand elides every typed literal (${ISSUE_691})`, async (t) => {
+  if (!(await entryAvailable())) { t.skip('npm-entry bundle not present'); return; }
+  const ds = await factoidal.parse(
+    '@prefix ex: <http://ex/> .\nex:a ex:b 1.5, 42 .\n', { format: 'turtle' });
+  const ttl = await factoidal.serialize(ds, { format: 'turtle' });
+  let failure = null;
+  try {
+    assert.match(ttl, /\b1\.5\b/, 'shorthand is on: the decimal prints bare');
+    const body = ttl.split('\n').filter((line) => !line.startsWith('@prefix')).join('\n');
+    assert.doesNotMatch(body, /\bxsd:/, 'no term uses the xsd: prefix');
+    assert.doesNotMatch(ttl, /@prefix xsd:/, 'so no xsd: declaration is emitted');
+  } catch (error) {
+    failure = error;
+  }
+  if (failure) {
+    t.diagnostic(`expected failure: ${String(failure.message).slice(0, 200)}`);
+    return;
+  }
+  assert.fail(`unexpected pass: flip this xfail to a real assertion and close ${ISSUE_691}`);
+});
