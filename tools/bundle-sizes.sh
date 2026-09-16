@@ -19,11 +19,10 @@
 # Usage:
 #   tools/bundle-sizes.sh
 #
-# A "lite" bundle row (also part of issue #684) is added by whichever
-# change builds that bundle; this script does not build anything
-# itself, only measures what is already on disk (run
-# `formal/fstar/build-ocaml.sh npm` / `Wasm/build-wasm.sh` first if a
-# path below is missing).
+# The "lite" bundle rows (issue #684) landed alongside npm/factoidal/
+# lite.js -- this script does not build anything itself, only measures
+# what is already on disk (run `formal/fstar/build-ocaml.sh npm` /
+# `Wasm/build-wasm.sh` first if a path below is missing).
 
 set -uo pipefail
 
@@ -43,6 +42,9 @@ PATHS=(
   "GLOB:npm/factoidal/factoidal.wasm.assets/*.wasm"
   "npm/factoidal/l4-assets/l4factoidal.wasm"
   "npm/factoidal/l4-assets/l4factoidal.mjs"
+  "npm/factoidal/factoidal-npm-entry-lite.js"
+  "npm/factoidal/factoidal-npm-entry-lite.wasm.js"
+  "GLOB:npm/factoidal/factoidal-npm-entry-lite.wasm.assets/*.wasm"
 )
 
 resolve_glob() {
