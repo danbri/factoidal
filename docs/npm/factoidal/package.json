@@ -1,6 +1,6 @@
 {
   "name": "@factoidal/core",
-  "version": "0.2.0",
+  "version": "0.8.0",
   "description": "Factoidal: a linked information system with graph data and the Web at its heart - RDF parsing, SPARQL 1.1 query, canonicalization and entailment for Node and the browser (JS + Wasm), grounded in F* and Lean 4. Parser and algebra spec verified in F*; on-disk backend has unverified OCaml-side optimization layers being migrated back to F*.",
   "keywords": [
     "sparql",
@@ -29,6 +29,9 @@
   "module": "./index.mjs",
   "browser": "./browser.js",
   "types": "./index.d.ts",
+  "bin": {
+    "factoidal": "./bin/factoidal.mjs"
+  },
   "exports": {
     ".": {
       "types": "./index.d.ts",
@@ -40,6 +43,18 @@
     "./wasm": {
       "types": "./wasm.d.ts",
       "default": "./wasm.js"
+    },
+    "./lite": {
+      "types": "./lite.d.ts",
+      "import": "./lite.mjs",
+      "require": "./lite.js",
+      "default": "./lite.js"
+    },
+    "./api": {
+      "types": "./api.d.ts",
+      "import": "./api.mjs",
+      "require": "./api.js",
+      "default": "./api.js"
     },
     "./rdfjs": "./rdfjs.js",
     "./fn": {
@@ -57,6 +72,12 @@
     "./factoidal.js": "./factoidal.js",
     "./factoidal.wasm.js": "./factoidal.wasm.js",
     "./factoidal.wasm.assets/*": "./factoidal.wasm.assets/*",
+    "./factoidal-npm-entry.js": "./factoidal-npm-entry.js",
+    "./factoidal-npm-entry.wasm.js": "./factoidal-npm-entry.wasm.js",
+    "./factoidal-npm-entry.wasm.assets/*": "./factoidal-npm-entry.wasm.assets/*",
+    "./factoidal-npm-entry-lite.js": "./factoidal-npm-entry-lite.js",
+    "./factoidal-npm-entry-lite.wasm.js": "./factoidal-npm-entry-lite.wasm.js",
+    "./factoidal-npm-entry-lite.wasm.assets/*": "./factoidal-npm-entry-lite.wasm.assets/*",
     "./package.json": "./package.json",
     "./l4": {
       "types": "./l4.d.ts",
@@ -67,9 +88,37 @@
       "default": "./l4-core.js"
     },
     "./l4-assets/*": "./l4-assets/*",
+    "./store-host": "./store-host/index.mjs",
+    "./store-host/paths": "./store-host/paths.mjs",
+    "./xmpp": "./xmpp/index.mjs",
     "./select": {
       "types": "./select.d.ts",
       "default": "./select.js"
+    },
+    "./sample-store": {
+      "types": "./sample-store.d.ts",
+      "default": "./sample-store.mjs"
+    },
+    "./store": {
+      "default": "./bin/store.mjs"
+    },
+    "./store-worker": {
+      "default": "./bin/store-worker-host.mjs"
+    },
+    "./pack": {
+      "default": "./bin/pack.mjs"
+    },
+    "./engine": {
+      "default": "./bin/engine.mjs"
+    },
+    "./lws": {
+      "default": "./lws/server.mjs"
+    },
+    "./solid/server": {
+      "default": "./solid/server/index.mjs"
+    },
+    "./solid/client": {
+      "default": "./solid/client/index.mjs"
     }
   },
   "files": [
@@ -78,6 +127,12 @@
     "index.d.ts",
     "wasm.js",
     "wasm.d.ts",
+    "lite.js",
+    "lite.mjs",
+    "lite.d.ts",
+    "api.js",
+    "api.mjs",
+    "api.d.ts",
     "rdfjs.js",
     "fn.js",
     "fn.d.ts",
@@ -89,6 +144,10 @@
     "select.js",
     "select.d.ts",
     "lib/",
+    "bin/",
+    "lws/",
+    "solid/",
+    "store-host/",
     "browser.js",
     "browser.d.ts",
     "browser-wasm.js",
@@ -98,12 +157,19 @@
     "factoidal-npm-entry.js",
     "factoidal-npm-entry.wasm.js",
     "factoidal-npm-entry.wasm.assets/",
+    "factoidal-npm-entry-lite.js",
+    "factoidal-npm-entry-lite.wasm.js",
+    "factoidal-npm-entry-lite.wasm.assets/",
     "hacl-init.js",
     "hacl-wasm/",
     "version.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "sample-store.mjs",
+    "sample-store.d.ts",
+    "sample-store/",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=20"
@@ -111,9 +177,12 @@
   "sideEffects": false,
   "scripts": {
     "build": "cd ../../formal/fstar && ./build-ocaml.sh npm",
-    "test": "node --test 'test/*.test.js'",
+    "test": "node --test 'test/*.test.js' 'test/*.test.mjs'",
     "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
     "prepublishOnly": "npm test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   },
   "publishConfig": {
     "access": "public"

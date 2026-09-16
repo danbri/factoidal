@@ -37,7 +37,7 @@
 // bytes change.
 
 // Stamped by formal/lean4/Wasm/build-wasm.sh step 9 -- do not hand-edit.
-const WASM_VERSION = "91fb323ec932";
+const WASM_VERSION = "6201b6c477e8";
 
 import createModule from './l4factoidal.mjs';
 
@@ -72,8 +72,6 @@ export function loadL4() {
     const Module = await createModule(moduleArg);
 
     const cVersion = Module.cwrap('l4_version_c', 'number', []);
-    const cBgpQuery = Module.cwrap('l4_bgp_query_c', 'number', ['string', 'string']);
-    const cCall = Module.cwrap('l4_call_c', 'number', ['string', 'string']);
     const cFree = Module.cwrap('l4_free_result', null, ['number']);
     const cInit = Module.cwrap('l4_init', 'number', []);
 
@@ -88,6 +86,27 @@ export function loadL4() {
     };
 
     const asJson = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
+
+    // Emscripten's cwrap `string` converter uses the WebAssembly stack.
+    // Multi-megabyte RDF/block requests can therefore overflow STACK_SIZE
+    // before Lean sees them. Allocate input UTF-8 on the wasm heap instead;
+    // the C shim copies each input into a Lean String synchronously, so these
+    // buffers can be released as soon as the exported call returns.
+    const callWithHeapStrings = (fn, texts) => {
+      const pointers = [];
+      try {
+        for (const text of texts) {
+          const size = Module.lengthBytesUTF8(text) + 1;
+          const ptr = Module._malloc(size);
+          if (!ptr) throw new Error('l4factoidal: could not allocate a WASM input buffer');
+          Module.stringToUTF8(text, ptr, size);
+          pointers.push(ptr);
+        }
+        return fn(...pointers);
+      } finally {
+        for (let i = pointers.length - 1; i >= 0; i--) Module._free(pointers[i]);
+      }
+    };
 
     return {
       /** The Lean-side ABI version string. */
@@ -105,7 +124,9 @@ export function loadL4() {
        * @throws      if the Lean side reports a decoding error
        */
       bgpQuery(data, bgp) {
-        const parsed = JSON.parse(take(cBgpQuery(asJson(data), asJson(bgp))));
+        const resultPtr = callWithHeapStrings(Module._l4_bgp_query_c,
+          [asJson(data), asJson(bgp)]);
+        const parsed = JSON.parse(take(resultPtr));
         if (parsed.error) throw new Error(`l4factoidal: ${parsed.error}`);
         return parsed;
       },
@@ -122,9 +143,108 @@ export function loadL4() {
        * @throws      if the Lean side reports {"ok":false,"error":...}
        */
       call(op, args) {
-        const parsed = JSON.parse(take(cCall(op, JSON.stringify(args))));
+        const resultPtr = callWithHeapStrings(Module._l4_call_c,
+          [op, JSON.stringify(args)]);
+        const parsed = JSON.parse(take(resultPtr));
         if (parsed.ok === false) throw new Error(`l4factoidal: ${parsed.error}`);
         return parsed;
+      },
+
+      /**
+       * The dispatch ABI, plus ONE contiguous byte region.
+       *
+       * For ops whose input is block bytes rather than text
+       * (`storeQuery`; the `ops` reflection lists them under
+       * `blobOps`). The bytes are written straight into the wasm heap
+       * with no encoding — no hex, no base64 — and copied once into a
+       * Lean ByteArray on the Lean side. Which bytes belong to which
+       * artifact is said in `args`, as {"key","offset","len"} windows
+       * into the region; Lean bounds-checks every one of them, so this
+       * call cannot pass a stale or out-of-range pointer.
+       *
+       * @param op    the method name, e.g. "storeQuery"
+       * @param args  array of positional STRING arguments
+       * @param blob  Uint8Array (or ArrayBuffer) of the concatenated bytes
+       * @returns     the parsed {"ok":true,...} envelope
+       * @throws      if the Lean side reports {"ok":false,"error":...}
+       */
+      callBlob(op, args, blob) {
+        const bytes = blob instanceof Uint8Array ? blob : new Uint8Array(blob ?? 0);
+        const blobPtr = bytes.length > 0 ? Module._malloc(bytes.length) : 0;
+        if (bytes.length > 0 && !blobPtr) {
+          throw new Error('l4factoidal: could not allocate a WASM blob buffer');
+        }
+        try {
+          if (bytes.length > 0) Module.HEAPU8.set(bytes, blobPtr);
+          const resultPtr = callWithHeapStrings(
+            (opPtr, argsPtr) => Module._l4_call_blob_c(opPtr, argsPtr, blobPtr, bytes.length),
+            [op, JSON.stringify(args)]);
+          const parsed = JSON.parse(take(resultPtr));
+          if (parsed.ok === false) throw new Error(`l4factoidal: ${parsed.error}`);
+          return parsed;
+        } finally {
+          if (blobPtr) Module._free(blobPtr);
+        }
+      },
+
+      /**
+       * The dispatch ABI, plus ONE byte region IN and ONE byte region
+       * OUT.
+       *
+       * For the ops of `L4Wasm.blobIoOpNames` (the `ops` envelope lists
+       * them under `blobIoOps`), whose RESULT is bytes rather than
+       * text. The bytes leave the module raw — no hex, no base64 — and
+       * are copied out of the wasm heap into a fresh Uint8Array before
+       * the module's buffer is released. The copy is required: the heap
+       * is detached and replaced when the module grows, so a subarray
+       * view of it can go stale between calls.
+       *
+       * Every other op answers as `call` does, with an empty region.
+       *
+       * @param op     the method name, e.g. "blobEcho"
+       * @param args   array of positional STRING arguments
+       * @param blobIn Uint8Array (or ArrayBuffer) carried IN; may be omitted
+       * @returns      { envelope, bytes } — the parsed {"ok":true,...}
+       *               envelope and a Uint8Array of the out region
+       * @throws       if the Lean side reports {"ok":false,"error":...}
+       */
+      callBlobIO(op, args, blobIn) {
+        const bytes = blobIn instanceof Uint8Array
+          ? blobIn
+          : new Uint8Array(blobIn ?? 0);
+        // Two 32-bit out parameters, uint8_t **out_ptr and size_t
+        // *out_len, in one 8-byte cell.
+        const outCell = Module._malloc(8);
+        if (!outCell) throw new Error('l4factoidal: could not allocate the out-parameter cell');
+        const blobPtr = bytes.length > 0 ? Module._malloc(bytes.length) : 0;
+        if (bytes.length > 0 && !blobPtr) {
+          Module._free(outCell);
+          throw new Error('l4factoidal: could not allocate a WASM blob buffer');
+        }
+        let outPtr = 0;
+        try {
+          Module.setValue(outCell, 0, 'i32');
+          Module.setValue(outCell + 4, 0, 'i32');
+          if (bytes.length > 0) Module.HEAPU8.set(bytes, blobPtr);
+          const resultPtr = callWithHeapStrings(
+            (opPtr, argsPtr) => Module._l4_call_blob_io_c(
+              opPtr, argsPtr, blobPtr, bytes.length, outCell, outCell + 4),
+            [op, JSON.stringify(args)]);
+          outPtr = Module.getValue(outCell, 'i32') >>> 0;
+          const outLen = Module.getValue(outCell + 4, 'i32') >>> 0;
+          const envelope = JSON.parse(take(resultPtr));
+          if (envelope.ok === false) throw new Error(`l4factoidal: ${envelope.error}`);
+          // slice() copies; HEAPU8 is replaced wholesale when the
+          // module's memory grows, so a view would not survive.
+          const region = outPtr !== 0 && outLen > 0
+            ? Module.HEAPU8.slice(outPtr, outPtr + outLen)
+            : new Uint8Array(0);
+          return { envelope, bytes: region };
+        } finally {
+          if (outPtr) Module._l4_free_blob(outPtr);
+          if (blobPtr) Module._free(blobPtr);
+          Module._free(outCell);
+        }
       },
 
       /** Escape hatch for tests: the raw Emscripten module. */

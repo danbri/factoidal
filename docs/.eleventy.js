@@ -64,6 +64,13 @@ module.exports = function(eleventyConfig) {
   // simplified, re-keyed) rather than an unmodified vendored file.
   eleventyConfig.addPassthroughCopy("web/hub/assets/geo");
 
+  // Pass-through the vendored Valis vocabulary and example circuits
+  // (third_party/valis/ -- MIT, see its PROVENANCE.md) so hub post 55's
+  // live cells can fetch them same-origin. Same pattern as the Leaflet
+  // passthrough above: one copy of the bytes stays under third_party/,
+  // this passthrough is the only thing that puts them under docs/.
+  eleventyConfig.addPassthroughCopy({ "../third_party/valis": "web/hub/assets/valis" });
+
   // Pass-through the vendored wikifn-fstar compiled engine (hub post
   // 35's fn.loadWikifunctions target; provenance + licence in
   // docs/web/hub/assets/wikifn/README.md).
@@ -75,6 +82,14 @@ module.exports = function(eleventyConfig) {
   // Emscripten glue resolves l4factoidal.wasm from its OWN basename,
   // so renaming either one breaks loading in every runtime.
   eleventyConfig.addPassthroughCopy("web/hub/assets/l4");
+
+  // Pass-through the Valis DAW engine modules (hub post 55: compiler,
+  // DSP, AudioWorklet processor, audio host, sequencer -- the owner's
+  // clean-room JavaScript reimplementation of the Valis engine, see
+  // docs/web/hub/assets/valis-daw/README.md and
+  // third_party/valis/PROVENANCE.md). Same-origin so the page's
+  // script-src 'self' CSP can addModule() the worklet file directly.
+  eleventyConfig.addPassthroughCopy("web/hub/assets/valis-daw");
 
   // Pass-through the COTTAS demo corpus (hub post 42's fixture: a
   // 4,000-triple, four-graph TriG corpus, and the generator script
@@ -254,6 +269,33 @@ module.exports = function(eleventyConfig) {
         inline.children.push(link);
       }
     });
+  });
+
+  // Fence flags for observable-js cells
+  // (https://github.com/danbri/factoidal/issues/686). A fence line may
+  // carry flags after the language:
+  //   ```observable-js closed title="Library: circuit helpers"
+  // docs/web/hub/reactive-cells.mjs's parseCellFlags() is what actually
+  // reads these; this rule only has to carry the raw text through onto
+  // the rendered <code> element so docs/_includes/hub.njk's mountCell()
+  // can read it back client-side. It wraps whatever fence renderer is
+  // already registered (markdown-it's own built-in one) instead of
+  // replacing it, so any other fence behavior stays intact, and it
+  // never touches token.info's first word -- markdown-it's own fence
+  // renderer already takes only that first word for the `class`
+  // attribute, so `class="language-observable-js"` is unaffected either
+  // way and every existing `pre > code.language-observable-js` selector
+  // keeps matching.
+  eleventyConfig.amendLibrary("md", (md) => {
+    const defaultFence = md.renderer.rules.fence || md.renderer.renderToken.bind(md.renderer);
+    md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+      const token = tokens[idx];
+      const info = token.info ? md.utils.unescapeAll(token.info).trim() : "";
+      const m = /^observable-js(?:\s+(.*))?$/.exec(info);
+      const rest = m && m[1] ? m[1].trim() : "";
+      if (rest) token.attrSet("data-hub-cell-flags", rest);
+      return defaultFence(tokens, idx, options, env, self);
+    };
   });
 
   // Stamp docs/sw.js (already landed in _site/sw.js by the passthrough

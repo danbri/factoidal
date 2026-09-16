@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "//": "The Lean engine's loader (l4factoidal.js) and Emscripten glue are ES modules. The parent package sets no \"type\", so .js there is CommonJS; this file scopes the module type to this directory. Without it Node prints a MODULE_TYPELESS_PACKAGE_JSON warning on stderr every time the engine is loaded, which the `factoidal` command does on every query. formal/lean4/Wasm/build-wasm.sh copies the three engine files into this directory by name and does not touch this one."
+}

@@ -276,3 +276,50 @@ export function makeDefinition(inputs, body) {
   // eslint-disable-next-line no-new-func
   return new Function(...inputs, "return (async () => {\n" + body + "\n})();");
 }
+
+// ---------------------------------------------------------------------
+// Fence flags (https://github.com/danbri/factoidal/issues/686): a cell
+// can be marked closed-by-default, with an optional summary title, by
+// words after the language on its fence line:
+//
+//   ```observable-js closed
+//   ```observable-js closed title="Library: circuit helpers"
+//
+// Two callers share this parser and therefore always agree on the same
+// two flags:
+//   - docs/.eleventy.js's markdown-it fence rule reads the fence info
+//     string (already stripped of the leading "observable-js" word) at
+//     build time and re-emits it as the `<code>` element's
+//     `data-hub-cell-flags` attribute.
+//   - docs/_includes/hub.njk's mountCell() reads that attribute value
+//     back at mount time; tests/hub/_helpers.mjs's
+//     extractObservableCellsWithFlags() reads the fence line directly
+//     from the post's Markdown source.
+// Both pass the SAME shape of string in: everything after the language
+// word, unparsed.
+// ---------------------------------------------------------------------
+
+/**
+ * Parse a cell's fence flags.
+ * @param {string} info  the fence info string with the language word
+ *   already removed, or a `data-hub-cell-flags` attribute value -- both
+ *   are the same text.
+ * @returns {{closed: boolean, title: string|null}}
+ */
+export function parseCellFlags(info) {
+  const flags = { closed: false, title: null };
+  if (!info) return flags;
+  // Either a `key="value"` pair (value may contain spaces) or a bare
+  // word. A word this doesn't recognise is ignored, so a future flag
+  // can be added without breaking a post written before it existed.
+  const re = /([A-Za-z_][\w-]*)\s*=\s*"([^"]*)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(info)) !== null) {
+    if (m[1] !== undefined) {
+      if (m[1] === "title") flags.title = m[2];
+    } else if (m[3] === "closed") {
+      flags.closed = true;
+    }
+  }
+  return flags;
+}

@@ -22,10 +22,14 @@ export const canonicalize  = cjs.canonicalize;
 export const graphs        = cjs.graphs;
 export const canonicalHash = cjs.canonicalHash;
 export const capabilities  = cjs.capabilities;
+export const openDataset   = cjs.openDataset;
+export const DatasetHandle = cjs.DatasetHandle;
+export const ParseError    = cjs.ParseError;
 export const Dataset       = cjs.Dataset;
 export const dataFactory   = cjs.dataFactory;
 export const queryRaw      = cjs.queryRaw;
 export const version       = cjs.version;
+export const engine        = cjs.engine;
 
 // Validation / inference / mapping engines (need the npm-entry bundle).
 export const shaclValidate      = cjs.shaclValidate;

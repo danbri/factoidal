@@ -2,11 +2,51 @@
 
 ## Status
 
-Design proposal with a measured pilot. The pilot entry source is
-parked at [`bin/npm-entry-core/entry_core_jsoo.ml`](../../bin/npm-entry-core/entry_core_jsoo.ml)
-(compiles clean, smoke-tested under Node; not yet wired into
-`build-ocaml.sh` — wiring lands with this design's implementation
-wave). Owner directive: implemented standards must not force
+Landed 2026-09-16 (https://github.com/danbri/factoidal/issues/684) as
+two profiles, full and lite, superseding the pilot at
+`bin/npm-entry-core/` (deleted). `bin/npm-entry/entry_core.ml` carries
+the shared parse (strict-by-default,
+https://github.com/danbri/factoidal/issues/344)/query/update/
+serialize/dataset-handle
+(https://github.com/danbri/factoidal/issues/680) surface;
+`bin/npm-entry/entry_extras.ml` carries everything else (SHACL, ShEx,
+OWL/RDFS/rho-df closures + tableau, RIF, JSON-LD, RDF/XML, XML/XPath,
+CSVW, RML, the delta-log browser-persistence ops, COTTAS, VC/DID
+crypto, XSLT, MathML, XForms, JSON Schema, Schematron, TOAN, matrix,
+sigmoid); `entry_jsoo.ml` (full) and `entry_lite_jsoo.ml` (lite) are
+the two export tables, both under the SAME JS global
+`factoidalNpmEntry` — open decision 5 below is SETTLED this way: one
+name, a `profile` field ("full" | "lite") distinguishes the bundle.
+Measured 2026-09-16 (js_of_ocaml, Node/V8 build; `wc -c` raw,
+`gzip -9 | wc -c` compressed):
+
+| bundle | raw | gzip -9 | vs full (raw) |
+|---|---|---|---|
+| `factoidal-npm-entry.js` (full) | 1,179,299 B | 346,914 B | 100% |
+| `factoidal-npm-entry-lite.js` (lite) | 595,343 B | 173,219 B | 50.5% |
+
+The lite link (no `-linkall`; `entry_core.ml` + `entry_lite_jsoo.ml`
+against a `.cma` archive of every `FSTAR_MODULES` unit) pulls in 81 of
+188 compiled units, against all 188 for the full bundle
+(`ocamlobjinfo npm_entry_lite.byte`'s "Imported units" intersected
+with `FSTAR_MODULES`). This 50.5% figure reads HIGHER than the
+2026-07-05 pilot's 40%-of-then-current-full because the ABI surface is
+much larger (full query/update/dataset-handle support, not bare
+parse+serialize) and because OCaml links whole compilation units, not
+functions: `OWL_QueryRewrite` (kept so query semantics never diverge
+between profiles — `query_dataset_mode` always applies
+`rewrite_query`) transitively pulls in all of `OWL_Closure`, and
+`SPARQL11_Store`'s single `dataset_backend` type (one variant per
+storage backend: in-memory indexed, COTTAS on-disk, ...) transitively
+pulls in the COTTAS/RML/HDT glue modules those OTHER variants need,
+even though the lite ABI surface only ever constructs the in-memory
+indexed one. §9 below (module-level vs. function-level DCE) already
+named this; it is now a measured cost, not a guess: js_of_ocaml's own
+function-level dead-code elimination still runs on top of the OCaml
+link, so the unreachable code inside those pulled-in modules does not
+all survive into the final `.js`, but the modules being linked at all
+is what a future finer-grained split would need to avoid to shrink
+further. Owner directive: implemented standards must not force
 consumers to load huge libraries for modest tasks.
 
 ## 1. The problem
@@ -174,22 +214,39 @@ figure for every entry. The refactor is not a prerequisite — the
 pilot proves the win without it — but each landed slice tightens
 the matrix above.
 
-## 8. build-ocaml.sh additions (describe only, not implemented here)
+## 8. build-ocaml.sh additions — IMPLEMENTED 2026-09-16
 
-Inside the existing `js` step, after the current `npm_entry.byte`
-block: a loop over an `ENTRY_POINTS` array
-(`core:bin/npm-entry-core/entry_core_jsoo.ml`, `query:…`, …) that
-(1) runs the same `ocamlfind ocamlc -package …,js_of_ocaml -linkpkg`
-invocation per entry — `-custom parquet_zstd_stubs_jsoo.c` and the
-fzstd shims only for entries whose module set reaches
-`Parquet_Footer`; (2) runs the same `js_of_ocaml` invocation to
-`docs/fstar-extracted/factoidal-npm-entry-<name>.js`; (3) appends
-each artifact to `JS_TARGETS`/`JS_SOURCES` so the freshness check
-covers it. The `wasm-factoidal` step gets the mirror loop. The
-npm-copy step copies each bundle + wasm asset dir into
-`npm/factoidal/`. One `.byte` per entry adds roughly a minute each
-to the js step; acceptable, and the freshness check skips them when
-sources are unchanged.
+Landed as two profiles (full, lite) rather than the six-entry
+`ENTRY_POINTS` matrix §3 sketched — see the Status paragraph and open
+decision 1 below. The matrix stays as a menu for a possible THIRD
+profile if a measured need appears; nothing commits to building every
+row in it.
+
+Inside the existing `js` step, after the `npm_entry.byte` (full)
+block: every `FSTAR_MODULES` unit is compiled with `ocamlfind ocamlc
+-c` into a scratch `_lite_cmo/` bytecode object (gitignored by the
+existing `*.cmi`/`*.cmo`/`*.cma` rules), archived into one `.cma`, then
+linked with `bin/npm-entry/entry_core.ml` + `entry_lite_jsoo.ml`
+WITHOUT `-linkall` — §2's "one `.byte` per capability, each linking
+the same extracted `.ml` set" mechanism, applied to two coarse
+profiles (module-level OCaml linking) instead of one `.byte` per
+ABI-level capability grouping; js_of_ocaml's own function-level
+dead-code elimination still runs on top, inside whichever modules the
+OCaml link pulled in (see the Status paragraph for what module-level
+granularity costs in practice). `JS_TARGETS`/`JS_SOURCES` cover the
+four `bin/npm-entry/*.ml` files and the lite `.byte`/`.js` so the
+freshness check sees them; `-I ../../../bin/npm-entry` is needed on
+both the full and lite link commands because ocamlc writes each
+cross-directory source's `.cmi`/`.cmo` next to that source, not into
+`cwd`, so `entry_extras.ml`/`entry_jsoo.ml`/`entry_lite_jsoo.ml`
+cannot otherwise find `entry_core.ml`'s interface. The
+`wasm-factoidal` step mirrors the lite build (guarded on
+`npm_entry_lite.byte` existing, same shims as the full entry). The
+npm-copy step copies the lite bundle + wasm asset dir into
+`npm/factoidal/`, optional-if-present like the full copy. The lite
+per-module compile loop (188 units) adds a few minutes to the `js`
+step; the freshness check still skips the whole rebuild when sources
+are unchanged.
 
 ## 9. CI size-budget gate
 

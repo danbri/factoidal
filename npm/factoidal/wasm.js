@@ -145,10 +145,14 @@ module.exports = {
   closeCottas: api.closeCottas,
   toCottas: api.toCottas,
   capabilities: api.capabilities,
+  openDataset: api.openDataset,
+  DatasetHandle: api.DatasetHandle,
+  ParseError: api.ParseError,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,
   wasmAvailable: engine.wasmAvailable,
   version,
+  engine: api.engine,
   // Test-only hook: the raw npm-entry ABI object (deltaBatchToHex,
   // deltaMergeApplyBrowser, shaclValidate, ...) loaded straight off
   // the wasm bundle, bypassing buildApi()'s Dataset-shaped surface.

@@ -77,13 +77,15 @@ test('l4-core.d.ts declares nothing l4-core.js does not implement', () => {
 test('l4-core.js implements nothing that l4-core.d.ts leaves untyped', () => {
   const declared = declaredValueNames(path.join(__dirname, '..', 'l4-core.d.ts'));
   const runtime = runtimeNames(require('../l4-core.js'));
-  // Dataset is exported as a value (class) by l4-core.js but typed via
-  // the `export { Dataset, ... }` re-export from './index' in
-  // l4-core.d.ts, which declaredValueNames's regex cannot see (same
-  // situation as fn.d.ts's FnDataset); treat it as typed here without
-  // widening TYPE_ONLY for the index.d.ts checks.
+  // Dataset/DatasetHandle/ParseError are exported as values (classes)
+  // by l4-core.js but typed via the `export { Dataset, DatasetHandle,
+  // ParseError, ... }` re-export from './index' in l4-core.d.ts, which
+  // declaredValueNames's regex cannot see (same situation as
+  // fn.d.ts's FnDataset); treat them as typed here without widening
+  // TYPE_ONLY for the index.d.ts checks.
+  const REEXPORTED_CLASSES = new Set(['Dataset', 'DatasetHandle', 'ParseError']);
   const untyped = [...runtime].filter(
-    (n) => !declared.has(n) && !TYPE_ONLY.has(n) && n !== 'Dataset');
+    (n) => !declared.has(n) && !TYPE_ONLY.has(n) && !REEXPORTED_CLASSES.has(n));
   assert.deepEqual(untyped, [],
     `l4-core.js exports names undeclared in l4-core.d.ts: ${untyped.join(', ')}`);
 });
@@ -118,6 +120,44 @@ test('select.js implements nothing that select.d.ts leaves untyped', () => {
   const untyped = [...runtime].filter((n) => !declared.has(n) && !TYPE_ONLY.has(n));
   assert.deepEqual(untyped, [],
     `select.js exports names undeclared in select.d.ts: ${untyped.join(', ')}`);
+});
+
+test('api.d.ts declares nothing api.js does not implement', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'api.d.ts'));
+  const runtime = runtimeNames(require('../api.js'));
+  const missing = [...declared].filter((n) => !runtime.has(n));
+  assert.deepEqual(missing, [],
+    `api.d.ts declares names absent from api.js: ${missing.join(', ')}`);
+});
+
+test('api.js implements nothing that api.d.ts leaves untyped', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'api.d.ts'));
+  const runtime = runtimeNames(require('../api.js'));
+  const untyped = [...runtime].filter((n) => !declared.has(n) && !TYPE_ONLY.has(n));
+  assert.deepEqual(untyped, [],
+    `api.js exports names undeclared in api.d.ts: ${untyped.join(', ')}`);
+});
+
+test('lite.d.ts declares nothing lite.js does not implement', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'lite.d.ts'));
+  const runtime = runtimeNames(require('../lite.js'));
+  const missing = [...declared].filter((n) => !runtime.has(n));
+  assert.deepEqual(missing, [],
+    `lite.d.ts declares names absent from lite.js: ${missing.join(', ')}`);
+});
+
+test('lite.js implements nothing that lite.d.ts leaves untyped', () => {
+  const declared = declaredValueNames(path.join(__dirname, '..', 'lite.d.ts'));
+  const runtime = runtimeNames(require('../lite.js'));
+  // Dataset/DatasetHandle/ParseError are re-exported via `export {
+  // ... } from './index'`, same situation as l4-core.d.ts (see that
+  // test's comment) -- declaredValueNames's regex cannot see a
+  // re-export.
+  const REEXPORTED_CLASSES = new Set(['Dataset', 'DatasetHandle', 'ParseError']);
+  const untyped = [...runtime].filter(
+    (n) => !declared.has(n) && !TYPE_ONLY.has(n) && !REEXPORTED_CLASSES.has(n));
+  assert.deepEqual(untyped, [],
+    `lite.js exports names undeclared in lite.d.ts: ${untyped.join(', ')}`);
 });
 
 test('the VC crypto surface is typed on both index.d.ts and fn.d.ts', () => {

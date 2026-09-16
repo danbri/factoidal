@@ -155,15 +155,145 @@ let lemma_ts_abbreviate_iri_pname_safe table iri =
     else ()
 
 // ---------------------------------------------------------------
-// 2. Term / subject / predicate rendering.
-//
-// Numeric and boolean literals are NOT sugared to bare `42` / `true`
-// this slice — quoted+datatype form is correctness-over-sugar (owner
-// brief). The datatype IRI itself IS prefix-abbreviated, since that's
-// pure compaction with no ambiguity risk.
+// 1a. Render options (issue #681): a caller-supplied prefix table that
+// wins over the auto-derived one, and grammar-guarded bare-literal
+// shorthand for INTEGER / DECIMAL / DOUBLE / BooleanLiteral.
 // ---------------------------------------------------------------
 
-let rec ts_term_to_turtle (table : prefix_table) (t : rdf_term) : Tot string (decreases t) =
+noeq type turtle_render_options = {
+  tro_prefixes : prefix_table;       // caller-supplied (namespace, "label:") pairs; win over auto-derived ones
+  tro_literal_shorthand : bool;      // bare INTEGER / DECIMAL / DOUBLE / BooleanLiteral when the lexical form qualifies
+}
+
+// https://github.com/danbri/factoidal/issues/681 — shorthand ON by
+// default. Supersedes the 2026-07-04 quoted-only decision this module
+// carried until now (see the section-2 banner below).
+let turtle_render_defaults : turtle_render_options =
+  { tro_prefixes = []; tro_literal_shorthand = true }
+
+// Turtle terminals (https://www.w3.org/TR/turtle/#sec-grammar-grammar):
+//   INTEGER        ::= [+-]? [0-9]+
+//   DECIMAL        ::= [+-]? [0-9]* '.' [0-9]+
+//   DOUBLE         ::= [+-]? ( [0-9]+ '.' [0-9]* EXPONENT | '.' [0-9]+ EXPONENT | [0-9]+ EXPONENT )
+//   EXPONENT       ::= [eE] [+-]? [0-9]+
+//   BooleanLiteral ::= 'true' | 'false'
+// Each checker below is a total byte-level scan over the whole lexical
+// form (fs_byte_length / fs_byte_at, the same FastString primitives
+// last_ns_split_from below uses) and accepts it only when the terminal
+// consumes the ENTIRE string — a leading/trailing space, or any byte
+// left over past the matched terminal, falls through to false.
+
+let ts_digit_byte (b : nat) : bool = b >= 0x30 && b <= 0x39
+
+// [0-9]* starting at pos; returns the position one past the last digit
+// consumed (== pos itself when no digit sits there).
+let rec ts_scan_digits (s : string) (len : nat) (pos : nat) : Tot nat (decreases (len - pos)) =
+  if pos >= len then pos
+  else if ts_digit_byte (fs_byte_at s pos) then ts_scan_digits s len (pos + 1)
+  else pos
+
+// EXPONENT ::= [eE] [+-]? [0-9]+ , anchored at pos and required to
+// consume exactly to len (no byte left over after the exponent).
+let ts_exponent_suffix (s : string) (len : nat) (pos : nat) : bool =
+  if pos >= len then false
+  else
+    let e = fs_byte_at s pos in
+    if not (e = 0x65 || e = 0x45) then false             // 'e' or 'E'
+    else
+      let spos = pos + 1 in
+      if spos >= len then false
+      else
+        let sb = fs_byte_at s spos in
+        let dpos = if sb = 0x2B || sb = 0x2D then spos + 1 else spos in
+        if dpos >= len then false
+        else ts_scan_digits s len dpos = len
+
+// End position of an optional leading '+'/'-' (0 when the string is
+// empty or has no sign byte).
+let ts_optional_sign_end (s : string) (len : nat) : nat =
+  if len = 0 then 0
+  else
+    let b0 = fs_byte_at s 0 in
+    if b0 = 0x2B || b0 = 0x2D then 1 else 0
+
+let is_turtle_integer_lexical (s : string) : Tot bool =
+  let len = fs_byte_length s in
+  let dpos = ts_optional_sign_end s len in
+  if len = 0 || dpos >= len then false
+  else ts_scan_digits s len dpos = len
+
+let is_turtle_decimal_lexical (s : string) : Tot bool =
+  let len = fs_byte_length s in
+  let dpos = ts_optional_sign_end s len in
+  if len = 0 || dpos >= len then false
+  else
+    let ipos = ts_scan_digits s len dpos in                    // [0-9]*
+    if ipos >= len || fs_byte_at s ipos <> 0x2E then false     // needs a '.'
+    else
+      let fpos = ipos + 1 in
+      let fend = ts_scan_digits s len fpos in                  // [0-9]+
+      fend > fpos && fend = len
+
+let is_turtle_double_lexical (s : string) : Tot bool =
+  let len = fs_byte_length s in
+  let dpos = ts_optional_sign_end s len in
+  if len = 0 || dpos >= len then false
+  else
+    let c = fs_byte_at s dpos in
+    if c = 0x2E then
+      // '.' [0-9]+ EXPONENT
+      let fpos = dpos + 1 in
+      if fpos >= len then false
+      else
+        let fend = ts_scan_digits s len fpos in
+        fend > fpos && ts_exponent_suffix s len fend
+    else if ts_digit_byte c then
+      // [0-9]+ ( '.' [0-9]* )? EXPONENT — covers both the digit+ '.'
+      // digit* EXPONENT and the digit+ EXPONENT (no dot) alternatives.
+      let iend = ts_scan_digits s len dpos in
+      if iend < len && fs_byte_at s iend = 0x2E then
+        let fpos = iend + 1 in
+        let fend = ts_scan_digits s len fpos in
+        ts_exponent_suffix s len fend
+      else
+        ts_exponent_suffix s len iend
+    else false
+
+let is_turtle_boolean_lexical (s : string) : Tot bool =
+  s = "true" || s = "false"
+
+// Some bare text when the datatype is xsd:integer / xsd:decimal /
+// xsd:double / xsd:boolean AND the lexical form matches the matching
+// terminal; None otherwise (the caller prints the quoted form).
+// https://github.com/danbri/factoidal/issues/681
+let literal_shorthand (l : literal) : option string =
+  if l.datatype = xsd_integer && is_turtle_integer_lexical l.lexical_form then
+    Some l.lexical_form
+  else if l.datatype = xsd_decimal && is_turtle_decimal_lexical l.lexical_form then
+    Some l.lexical_form
+  else if l.datatype = xsd_double && is_turtle_double_lexical l.lexical_form then
+    Some l.lexical_form
+  else if l.datatype = xsd_boolean && is_turtle_boolean_lexical l.lexical_form then
+    Some l.lexical_form
+  else None
+
+// ---------------------------------------------------------------
+// 2. Term / subject / predicate rendering.
+//
+// Numeric and boolean literals ARE sugared to the bare Turtle form
+// (`42`, `true`) when `shorthand` is set AND the lexical form matches
+// the grammar terminal for the literal's datatype (`literal_shorthand`
+// above) — https://github.com/danbri/factoidal/issues/681, superseding
+// this module's 2026-07-04 quoted-only decision. When the lexical form
+// does not qualify (e.g. `"5."^^xsd:decimal`, or a value with a
+// leading/trailing space) the quoted+datatype form is printed
+// unchanged, so the printed text always reads back to the same
+// (lexical form, datatype) pair. The datatype IRI itself IS
+// prefix-abbreviated in the quoted form, since that's pure compaction
+// with no ambiguity risk.
+// ---------------------------------------------------------------
+
+let rec ts_term_to_turtle (table : prefix_table) (shorthand : bool) (t : rdf_term) : Tot string (decreases t) =
   match t with
   | T_IRI i -> ts_abbreviate_iri table i
   | T_BNode b -> "_:" ^ b
@@ -180,14 +310,17 @@ let rec ts_term_to_turtle (table : prefix_table) (t : rdf_term) : Tot string (de
        "\"" ^ esc ^ "\"@" ^ tag ^ ds
      | None ->
        if l.datatype = xsd_string then "\"" ^ esc ^ "\""
-       else "\"" ^ esc ^ "\"^^" ^ ts_abbreviate_iri table l.datatype)
+       else
+         match (if shorthand then literal_shorthand l else None) with
+         | Some bare -> bare
+         | None -> "\"" ^ esc ^ "\"^^" ^ ts_abbreviate_iri table l.datatype)
   | T_TripleTerm s p o ->
     // RDF 1.2 triple term `<<( s p o )>>` (Turtle 1.2 object position).
     let subj_str = (match s with
                     | S_IRI i   -> ts_abbreviate_iri table i
                     | S_BNode b -> "_:" ^ b) in
     let pred_str = (if p = rdf_type then "a" else ts_abbreviate_iri table p) in
-    "<<( " ^ subj_str ^ " " ^ pred_str ^ " " ^ ts_term_to_turtle table o ^ " )>>"
+    "<<( " ^ subj_str ^ " " ^ pred_str ^ " " ^ ts_term_to_turtle table shorthand o ^ " )>>"
 
 let ts_subject_to_turtle (table : prefix_table) (s : subject) : Tot string =
   match s with
@@ -279,7 +412,7 @@ let finish_subj (st : subj_state) : string =
   let chunks = List.Tot.rev (finish_pred st) in
   st.ss_subj_text ^ " " ^ join_with " ;\n    " chunks ^ " .\n\n"
 
-let rec walk_triples (table : prefix_table) (sorted : rdf_graph)
+let rec walk_triples (table : prefix_table) (shorthand : bool) (sorted : rdf_graph)
     (st : option subj_state) (acc : list string)
   : Tot (list string) (decreases sorted) =
   match sorted with
@@ -288,35 +421,35 @@ let rec walk_triples (table : prefix_table) (sorted : rdf_graph)
      | None -> acc
      | Some s -> finish_subj s :: acc)
   | t :: rest ->
-    let obj_text = ts_term_to_turtle table t.o in
+    let obj_text = ts_term_to_turtle table shorthand t.o in
     (match st with
      | None ->
        let st' = { ss_subj = t.s; ss_subj_text = ts_subject_to_turtle table t.s;
                    ss_cur_pred = t.p; ss_cur_pred_text = ts_predicate_to_turtle table t.p;
                    ss_cur_objs = [obj_text]; ss_pred_chunks = [] } in
-       walk_triples table rest (Some st') acc
+       walk_triples table shorthand rest (Some st') acc
      | Some s ->
        if subject_eq s.ss_subj t.s then
          if s.ss_cur_pred = t.p then
            let s' = { s with ss_cur_objs = obj_text :: s.ss_cur_objs } in
-           walk_triples table rest (Some s') acc
+           walk_triples table shorthand rest (Some s') acc
          else
            let pred_chunks' = finish_pred s in
            let s' = { s with ss_cur_pred = t.p;
                              ss_cur_pred_text = ts_predicate_to_turtle table t.p;
                              ss_cur_objs = [obj_text];
                              ss_pred_chunks = pred_chunks' } in
-           walk_triples table rest (Some s') acc
+           walk_triples table shorthand rest (Some s') acc
        else
          let block = finish_subj s in
          let st' = { ss_subj = t.s; ss_subj_text = ts_subject_to_turtle table t.s;
                      ss_cur_pred = t.p; ss_cur_pred_text = ts_predicate_to_turtle table t.p;
                      ss_cur_objs = [obj_text]; ss_pred_chunks = [] } in
-         walk_triples table rest (Some st') (block :: acc))
+         walk_triples table shorthand rest (Some st') (block :: acc))
 
-let render_triples (table : prefix_table) (g : rdf_graph) : Tot string =
+let render_triples (table : prefix_table) (shorthand : bool) (g : rdf_graph) : Tot string =
   let sorted = List.Tot.sortWith triple_cmp g in
-  let blocks = walk_triples table sorted None [] in
+  let blocks = walk_triples table shorthand sorted None [] in
   String.concat "" (List.Tot.rev blocks)
 
 // ---------------------------------------------------------------
@@ -329,12 +462,12 @@ let rec render_prefix_header (table : prefix_table) : Tot (list string) (decreas
   | (ns, abbr) :: rest ->
     ("@prefix " ^ abbr ^ " <" ^ ns ^ "> .\n") :: render_prefix_header rest
 
-val turtle_of_graph : list (string * string) -> rdf_graph -> Tot string
-let turtle_of_graph table g =
+val turtle_of_graph : list (string * string) -> bool -> rdf_graph -> Tot string
+let turtle_of_graph table shorthand g =
   let header_lines = render_prefix_header table in
   let header = String.concat "" header_lines in
   let sep = (match header_lines with [] -> "" | _ -> "\n") in
-  let body = render_triples table g in
+  let body = render_triples table shorthand g in
   header ^ sep ^ body
 
 // ---------------------------------------------------------------
@@ -446,13 +579,57 @@ let digit_char (n : nat{n < 10}) : string =
   | 0 -> "0" | 1 -> "1" | 2 -> "2" | 3 -> "3" | 4 -> "4"
   | 5 -> "5" | 6 -> "6" | 7 -> "7" | 8 -> "8" | _ -> "9"
 
-let rec assign_labels (idx : nat{idx < 10}) (namespaces : list (string * nat))
-  : Tot (list (string * string)) (decreases namespaces) =
+// NOT List.Tot.splitAt: F-star's splitAt is total for any n, but it
+// extracts to BatList.split_nth, which THROWS when n exceeds the
+// list length (crashed live 2026-07-04 on graphs with fewer than 8
+// fresh namespaces). take_at_most is total in both worlds.
+let rec take_at_most (n : nat) (l : list (string * nat))
+  : Tot (list (string * nat)) (decreases l) =
+  if n = 0 then []
+  else match l with
+       | [] -> []
+       | hd :: tl -> hd :: take_at_most (n - 1) tl
+
+// Auto-numbered labels "ns1:".."ns8:", skipping any label already
+// reserved by the caller's table or the well-known-prefix table
+// (issue #681) — so a caller label "ns1:" is never reassigned to a
+// different namespace. `reserved` and `idx` both stay fixed across the
+// skip-a-reserved-label retry, so the decreases metric combines the
+// namespace list shrinking (every successful assignment) with the
+// idx<10 bound shrinking (every retry) into one strictly-decreasing nat.
+let rec assign_labels_avoiding (reserved : list string) (idx : nat{idx < 10})
+    (namespaces : list (string * nat))
+  : Tot (list (string * string)) (decreases (List.Tot.length namespaces + (9 - idx))) =
   match namespaces with
   | [] -> []
   | (ns, _) :: rest ->
-    if idx < 9 then (ns, "ns" ^ digit_char idx ^ ":") :: assign_labels (idx + 1) rest
-    else []  // table is capped well below 9 entries; defensive stop
+    if idx >= 9 then []  // table is capped well below 9 entries; defensive stop
+    else
+      let label = "ns" ^ digit_char idx ^ ":" in
+      if List.Tot.mem label reserved then
+        assign_labels_avoiding reserved (idx + 1) namespaces
+      else
+        (ns, label) :: assign_labels_avoiding reserved (idx + 1) rest
+
+// Does any IRI in the graph fall under namespace `ns`?
+let rec ts_any_iri_uses_ns (iris : list string) (ns : string) : Tot bool (decreases iris) =
+  match iris with
+  | [] -> false
+  | i :: rest -> if ts_starts_with_strict i ns then true else ts_any_iri_uses_ns rest ns
+
+// The caller's pairs whose namespace some IRI of the graph uses, kept
+// in the caller's order; first occurrence of a namespace wins (a
+// namespace repeated later in the caller's table is dropped even if
+// the first occurrence went unused), and a namespace no IRI uses is
+// not emitted at all.
+let rec ts_user_used (iris : list string) (caller : prefix_table) (seen_ns : list string)
+  : Tot prefix_table (decreases caller) =
+  match caller with
+  | [] -> []
+  | (ns, label) :: rest ->
+    if List.Tot.mem ns seen_ns then ts_user_used iris rest seen_ns
+    else if ts_any_iri_uses_ns iris ns then (ns, label) :: ts_user_used iris rest (ns :: seen_ns)
+    else ts_user_used iris rest (ns :: seen_ns)
 
 // A small, self-contained set of well-known namespaces, preferred over
 // auto-numbered labels when present in the graph. Deliberately NOT
@@ -474,29 +651,35 @@ let well_known_prefixes : prefix_table = [
 let known_prefixes_used (present_namespaces : list string) : list (string * string) =
   List.Tot.filter (fun (ns, _) -> List.Tot.mem ns present_namespaces) well_known_prefixes
 
-let turtle_of_graph_auto (g : rdf_graph) : Tot string =
+// The generalisation of turtle_of_graph_auto (issue #681):
+// opts.tro_prefixes wins over the auto-derived table, and
+// opts.tro_literal_shorthand switches bare numeric/boolean printing
+// on or off.
+let turtle_of_graph_opts (opts : turtle_render_options) (g : rdf_graph) : Tot string =
   let iris = collect_iris_acc g [] in
   let candidates = candidate_namespaces_acc iris [] in
   let sorted_candidates = List.Tot.sortWith String.compare candidates in
   let counted = count_runs sorted_candidates in
   let present_ns = List.Tot.map fst counted in
-  let known = known_prefixes_used present_ns in
+  let user_used = ts_user_used iris opts.tro_prefixes [] in
+  let user_used_ns = List.Tot.map fst user_used in
+  let user_used_labels = List.Tot.map snd user_used in
+  let known0 = known_prefixes_used present_ns in
+  let known = List.Tot.filter
+    (fun (ns, label) -> not (List.Tot.mem ns user_used_ns) && not (List.Tot.mem label user_used_labels))
+    known0 in
   let known_ns = List.Tot.map fst known in
+  let known_labels = List.Tot.map snd known in
+  let covered_ns = user_used_ns @ known_ns in
   let counted_by_freq = List.Tot.sortWith count_desc_compare counted in
-  let fresh = List.Tot.filter (fun (ns, _) -> not (List.Tot.mem ns known_ns)) counted_by_freq in
-  let known_len = List.Tot.length known in
-  let budget : nat = if known_len >= 8 then 0 else 8 - known_len in
-  // NOT List.Tot.splitAt: F-star's splitAt is total for any n, but it
-  // extracts to BatList.split_nth, which THROWS when n exceeds the
-  // list length (crashed live 2026-07-04 on graphs with fewer than 8
-  // fresh namespaces). take_at_most is total in both worlds.
-  let rec take_at_most (n : nat) (l : list (string * nat))
-    : Tot (list (string * nat)) (decreases l) =
-    if n = 0 then []
-    else match l with
-         | [] -> []
-         | hd :: tl -> hd :: take_at_most (n - 1) tl in
+  let fresh = List.Tot.filter (fun (ns, _) -> not (List.Tot.mem ns covered_ns)) counted_by_freq in
+  let covered_len = List.Tot.length user_used + List.Tot.length known in
+  let budget : nat = if covered_len >= 8 then 0 else 8 - covered_len in
   let fresh_top = take_at_most budget fresh in
-  let auto = assign_labels 1 fresh_top in
-  let table = known @ auto in
-  turtle_of_graph table g
+  let reserved_labels = user_used_labels @ known_labels in
+  let auto = assign_labels_avoiding reserved_labels 1 fresh_top in
+  let table = user_used @ known @ auto in
+  turtle_of_graph table opts.tro_literal_shorthand g
+
+let turtle_of_graph_auto (g : rdf_graph) : Tot string =
+  turtle_of_graph_opts turtle_render_defaults g

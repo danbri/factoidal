@@ -2170,64 +2170,6 @@ let owl_rule_named_sameAs_to_equivClass (g : RDF_Graph.rdf_graph)
 let owl_semantics_direct : Prims.string= "DIRECT"
 let owl_semantics_rdf_based : Prims.string= "RDF-BASED"
 let owl_semantics_rdf_based_full : Prims.string= "RDF-BASED-FULL"
-let owl_rule_named_equivClass_to_sameAs_mode (g : RDF_Graph.rdf_graph)
-  (ig : RDF_Indexed.indexed_graph) (mode : Prims.string) :
-  RDF_Graph.rdf_graph=
-  if
-    (mode = owl_semantics_rdf_based) || (mode = owl_semantics_rdf_based_full)
-  then g
-  else
-    (let is_class i =
-       let types =
-         RDF_Indexed.find_objects_indexed ig (RDF_Term.S_IRI i)
-           RDFS_Closure.rdf_type in
-       FStar_List_Tot_Base.existsb
-         (fun x ->
-            RDF_Term.rdf_term_eq x (RDF_Term.T_IRI RDFS_Closure.owl_Class))
-         types in
-     let has_extra_property i =
-       FStar_List_Tot_Base.existsb
-         (fun t ->
-            match t.RDF_Triple.s with
-            | RDF_Term.S_IRI si ->
-                ((((si = i) && (t.RDF_Triple.p <> RDFS_Closure.rdf_type)) &&
-                    (t.RDF_Triple.p <> owl_equivalentClass))
-                   && (t.RDF_Triple.p <> RDFS_Closure.rdfs_subClassOf))
-                  && (t.RDF_Triple.p <> owl_sameAs)
-            | RDF_Term.S_BNode uu___1 -> false) g in
-     FStar_List_Tot_Base.fold_left
-       (fun acc t ->
-          if t.RDF_Triple.p = owl_equivalentClass
-          then
-            match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
-            | (RDF_Term.S_IRI c_iri, RDF_Term.T_IRI d_iri) ->
-                (if
-                   (((c_iri <> d_iri) && (is_class c_iri)) &&
-                      (is_class d_iri))
-                     &&
-                     ((has_extra_property c_iri) ||
-                        (has_extra_property d_iri))
-                 then
-                   let t1 =
-                     {
-                       RDF_Triple.s = (RDF_Term.S_IRI c_iri);
-                       RDF_Triple.p = owl_sameAs;
-                       RDF_Triple.o = (RDF_Term.T_IRI d_iri)
-                     } in
-                   let t2 =
-                     {
-                       RDF_Triple.s = (RDF_Term.S_IRI d_iri);
-                       RDF_Triple.p = owl_sameAs;
-                       RDF_Triple.o = (RDF_Term.T_IRI c_iri)
-                     } in
-                   RDF_Graph.add_triple_unchecked
-                     (RDF_Graph.add_triple_unchecked acc t1) t2
-                 else acc)
-            | (uu___1, uu___2) -> acc
-          else acc) g g)
-let owl_rule_named_equivClass_to_sameAs (g : RDF_Graph.rdf_graph)
-  (ig : RDF_Indexed.indexed_graph) : RDF_Graph.rdf_graph=
-  owl_rule_named_equivClass_to_sameAs_mode g ig owl_semantics_direct
 let rec decode_iri_list (g : RDF_Graph.rdf_graph)
   (ig : RDF_Indexed.indexed_graph) (head_subj : RDF_Term.subject)
   (fuel : Prims.nat) :
@@ -3826,8 +3768,7 @@ let owl_rl_closure_step_mode (g : RDF_Graph.rdf_graph) (mode : Prims.string)
   let g3a = owl_rule_inverseOf_domain_range_flip g3_comp ig in
   let g4 = owl_rule_symmetric_property g3a ig in
   let g5 = owl_rule_transitive_property g4 ig in
-  let g5a = owl_rule_named_equivClass_to_sameAs_mode g5 ig mode in
-  let g6 = owl_rule_sameAs_reflexivity g5a ig in
+  let g6 = owl_rule_sameAs_reflexivity g5 ig in
   let g7 = owl_rule_sameAs_symmetry g6 ig in
   let g7a = owl_rule_differentFrom_symmetry g7 ig in
   let g8 = owl_rule_sameAs_transitivity g7a ig in
@@ -4726,6 +4667,39 @@ let xsd_is_subtype (d1 : RDF_Term.wf_iri) (d2 : RDF_Term.wf_iri) :
   Prims.bool=
   xsd_is_subtype_fuel d1 d2
     ((FStar_List_Tot_Base.length xsd_hierarchy_edges) + Prims.int_one)
+let xsd_numeric_datatypes : RDF_Term.wf_iri Prims.list=
+  [RDF_Term.xsd_double;
+  RDF_Term.xsd_decimal;
+  RDF_Term.xsd_integer;
+  xsd_long;
+  xsd_int;
+  xsd_short;
+  xsd_byte;
+  xsd_nonNegativeInteger;
+  xsd_positiveInteger;
+  xsd_unsignedLong;
+  xsd_unsignedInt;
+  xsd_unsignedShort;
+  xsd_unsignedByte;
+  xsd_nonPositiveInteger;
+  xsd_negativeInteger]
+let xsd_value_space_family (d : RDF_Term.wf_iri) :
+  Prims.nat FStar_Pervasives_Native.option=
+  if d = RDF_Term.xsd_string
+  then FStar_Pervasives_Native.Some Prims.int_zero
+  else
+    if d = RDF_Term.xsd_boolean
+    then FStar_Pervasives_Native.Some Prims.int_one
+    else
+      if FStar_List_Tot_Base.mem d xsd_numeric_datatypes
+      then FStar_Pervasives_Native.Some (Prims.of_int (2))
+      else FStar_Pervasives_Native.None
+let xsd_value_spaces_disjoint (d1 : RDF_Term.wf_iri) (d2 : RDF_Term.wf_iri) :
+  Prims.bool=
+  match ((xsd_value_space_family d1), (xsd_value_space_family d2)) with
+  | (FStar_Pervasives_Native.Some f1, FStar_Pervasives_Native.Some f2) ->
+      f1 <> f2
+  | (uu___, uu___1) -> false
 let owl_bottomObjectProperty_iri : RDF_Term.wf_iri=
   "http://www.w3.org/2002/07/owl#bottomObjectProperty"
 let owl_bottomDataProperty_iri : RDF_Term.wf_iri=
@@ -4979,18 +4953,13 @@ let is_inconsistent (g : RDF_Graph.rdf_graph) : Prims.bool=
                                                       with
                                                       | RDF_Term.T_Literal
                                                           lit ->
-                                                          ((FStar_List_Tot_Base.mem
-                                                              lit.RDF_Term.datatype
-                                                              xsd_all_datatypes)
-                                                             &&
-                                                             (Prims.op_Negation
-                                                                (lit.RDF_Term.datatype
-                                                                   = d_range)))
+                                                          (FStar_List_Tot_Base.mem
+                                                             lit.RDF_Term.datatype
+                                                             xsd_all_datatypes)
                                                             &&
-                                                            (Prims.op_Negation
-                                                               (xsd_is_subtype
-                                                                  lit.RDF_Term.datatype
-                                                                  d_range))
+                                                            (xsd_value_spaces_disjoint
+                                                               lit.RDF_Term.datatype
+                                                               d_range)
                                                       | uu___9 -> false)) g)
                                        | (uu___9, uu___10) -> false)) g in
                              if has_dt_range_clash

@@ -473,9 +473,23 @@ function nquadsToQuads(text, options) {
 // ---------------------------------------------------------------------
 
 class Dataset {
-  constructor(quads) {
+  constructor(quads, options) {
     this._quads = [];
     if (quads) for (const q of quads) this.add(q);
+    const opts = options || {};
+    // Own, non-enumerable properties (issue #680/#681): a frozen
+    // snapshot of the prefixes/diagnostics the engine reported at
+    // parse time, so JSON.stringify()/toArray() (and any caller
+    // enumerating own enumerable keys) see only the quads, exactly as
+    // before this landed.
+    Object.defineProperty(this, 'prefixes', {
+      value: Object.freeze({ ...(opts.prefixes || {}) }),
+      enumerable: false, writable: false, configurable: false,
+    });
+    Object.defineProperty(this, 'diagnostics', {
+      value: Object.freeze((opts.diagnostics || []).slice()),
+      enumerable: false, writable: false, configurable: false,
+    });
   }
   get size() {
     return this._quads.length;
@@ -517,7 +531,7 @@ class Dataset {
     return this.toNQuads();
   }
   static fromNQuads(text, options) {
-    return new Dataset(nquadsToQuads(text, options));
+    return new Dataset(nquadsToQuads(text, options), options);
   }
 }
 

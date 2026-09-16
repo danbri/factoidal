@@ -1,0 +1,1088 @@
+# examples/909.ttl
+#
+# TR-909 drum synthesiser — functional circuit model.
+#
+# Architecture notes:
+#
+# Bass Drum: the original uses a triangle-wave VCO with asymmetric diode
+# shaping. A fast pitch envelope sweeps from the attack peak down to the body
+# frequency, giving the characteristic thump. An AsymClip stage models the
+# diode waveshaping in the original's output circuit.
+#
+# Toms: same bridged-T resonant network (TwinTBridge) as the TR-808.
+#
+# Snare: two sine oscillators at 180 Hz and 200 Hz are mixed before the tone
+# VCA. Their 20 Hz beat produces the characteristic pitch wobble. White noise
+# through a bandpass filter feeds a separate noise VCA (the "snappy" path),
+# each with its own envelope.
+#
+# Hi-Hats: six square-wave oscillators are tuned to inharmonic frequency ratios
+# identified in circuit analyses: 562, 834, 1124, 1395, 1668 and 1995 Hz
+# (ratios 1 : 1.483 : 2.0 : 2.483 : 2.9668 : 3.5503). A high-pass filter
+# removes the fundamental and low partials.
+#
+# General MIDI channel 10 note map:
+#   36  Bass Drum
+#   37  Rim Shot
+#   38  Snare Drum
+#   39  Hand Clap
+#   41  Low Tom
+#   43  Mid Tom
+#   50  High Tom
+#   42  Closed Hi-Hat
+#   46  Open Hi-Hat
+
+@prefix val:   <http://purl.org/stuff/valis/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix units: <http://lv2plug.in/ns/extensions/units#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix :      <urn:valis:909#> .
+
+:tr909 a val:Circuit ;
+    rdfs:label "TR-909" ;
+    val:element
+        # Bass Drum
+        :bdGate , :bdOsc , :bdPitchEnv , :bdPitchScale ,
+        :bdAmpEnv , :bdSat , :bdVca , :bdLevel , :bdPan ,
+        # Snare Drum
+        :sdGate ,
+        :sdOsc1 , :sdOsc2 , :sdOscMix ,
+        :sdNoise , :sdBpf ,
+        :sdToneEnv , :sdToneVca ,
+        :sdNoiseEnv , :sdNoiseVca ,
+        :sdMix , :sdLevel , :sdPan ,
+        # Rim Shot
+        :rsGate , :rsNoise , :rsHpf , :rsEnv , :rsVca , :rsLevel , :rsPan ,
+        # Hand Clap
+        :cpGate , :cpNoise , :cpBpf , :cpEnv , :cpVca , :cpLevel , :cpPan ,
+        # Low Tom
+        :ltGate , :ltOsc , :ltPitchEnv , :ltPitchScale , :ltAmpEnv , :ltVca , :ltLevel , :ltPan ,
+        # Mid Tom
+        :mtGate , :mtOsc , :mtPitchEnv , :mtPitchScale , :mtAmpEnv , :mtVca , :mtLevel , :mtPan ,
+        # High Tom
+        :htGate , :htOsc , :htPitchEnv , :htPitchScale , :htAmpEnv , :htVca , :htLevel , :htPan ,
+        # Closed Hi-Hat
+        :chGate , :chOsc1 , :chOsc2 , :chOsc3 , :chOsc4 , :chOsc5 , :chOsc6 ,
+        :chMix , :chHpf , :chEnv , :chVca , :chLevel , :chPan ,
+        # Open Hi-Hat
+        :ohGate , :ohOsc1 , :ohOsc2 , :ohOsc3 , :ohOsc4 , :ohOsc5 , :ohOsc6 ,
+        :ohMix , :ohHpf , :ohEnv , :ohVca , :ohLevel , :ohPan , :ohChoke ,
+        # Output stage
+        :mix , :out ;
+    val:arc
+        # Bass Drum
+        :aBdGatePitchEnv , :aBdGateAmpEnv ,
+        :aBdPitchEnvScale , :aBdScaleOsc ,
+        :aBdOscSat , :aBdSatVca , :aBdAmpEnvVca , :aBdVcaLevel , :aBdLevelPan , :aBdPanMixL , :aBdPanMixR ,
+        # Snare Drum
+        :aSdGateToneEnv , :aSdGateNoiseEnv ,
+        :aSdOsc1OscMix , :aSdOsc2OscMix ,
+        :aSdOscMixToneVca , :aSdToneEnvToneVca ,
+        :aSdNoiseBpf , :aSdBpfNoiseVca , :aSdNoiseEnvNoiseVca ,
+        :aSdToneVcaMix , :aSdNoiseVcaMix , :aSdMixLevel , :aSdLevelPan , :aSdPanMixL , :aSdPanMixR ,
+        # Rim Shot
+        :aRsGateEnv , :aRsNoiseHpf , :aRsHpfVca , :aRsEnvVca , :aRsVcaLevel , :aRsLevelPan , :aRsPanMixL , :aRsPanMixR ,
+        # Hand Clap
+        :aCpGateEnv , :aCpNoiseBpf , :aCpBpfVca , :aCpEnvVca , :aCpVcaLevel , :aCpLevelPan , :aCpPanMixL , :aCpPanMixR ,
+        # Low Tom
+        :aLtGatePitchEnv , :aLtGateAmpEnv , :aLtGateTwinT ,
+        :aLtPitchEnvScale , :aLtScaleOsc ,
+        :aLtOscVca , :aLtAmpEnvVca , :aLtVcaLevel , :aLtLevelPan , :aLtPanMixL , :aLtPanMixR ,
+        # Mid Tom
+        :aMtGatePitchEnv , :aMtGateAmpEnv , :aMtGateTwinT ,
+        :aMtPitchEnvScale , :aMtScaleOsc ,
+        :aMtOscVca , :aMtAmpEnvVca , :aMtVcaLevel , :aMtLevelPan , :aMtPanMixL , :aMtPanMixR ,
+        # High Tom
+        :aHtGatePitchEnv , :aHtGateAmpEnv , :aHtGateTwinT ,
+        :aHtPitchEnvScale , :aHtScaleOsc ,
+        :aHtOscVca , :aHtAmpEnvVca , :aHtVcaLevel , :aHtLevelPan , :aHtPanMixL , :aHtPanMixR ,
+        # Closed Hi-Hat
+        :aChGateEnv ,
+        :aChOsc1Mix , :aChOsc2Mix , :aChOsc3Mix , :aChOsc4Mix , :aChOsc5Mix , :aChOsc6Mix ,
+        :aChMixHpf , :aChHpfVca , :aChEnvVca , :aChVcaLevel , :aChLevelPan , :aChPanMixL , :aChPanMixR ,
+        # Open Hi-Hat
+        :aOhGateChoke , :aChGateChoke , :aOhChokeEnv ,
+        :aOhOsc1Mix , :aOhOsc2Mix , :aOhOsc3Mix , :aOhOsc4Mix , :aOhOsc5Mix , :aOhOsc6Mix ,
+        :aOhMixHpf , :aOhHpfVca , :aOhEnvVca , :aOhVcaLevel , :aOhLevelPan , :aOhPanMixL , :aOhPanMixR ,
+        # Output
+        :aMixOutL , :aMixOutR .
+
+################################################################
+# Bass Drum  (MIDI note 36)                                    #
+#                                                              #
+# The original uses a triangle-wave VCO with a fast pitch      #
+# envelope sweep from ~210 Hz to ~55 Hz, followed by           #
+# asymmetric diode shaping in the output stage.                #
+################################################################
+
+:bdGate a val:NoteGate ; val:note 36 .
+
+# Triangle oscillator (shape 3). Pitch is set entirely by the control arc
+# from bdPitchScale; the baked frequency is the fallback if the arc is absent.
+:bdOsc a val:Oscillator ;
+    val:shape 3 ;
+    val:frequency 55.0 .
+
+# Very fast pitch drop: from the attack peak to the body frequency.
+:bdPitchEnv a val:Envelope ;
+    val:attack  0.2 ;         # ms
+    val:decay   20.0 ;        # ms — fast drop gives the characteristic thump
+    val:sustain 0.0 ;
+    val:release 2.0 .
+
+# min = body pitch (Tune control), max = attack pitch peak.
+:bdPitchScale a val:Scale ;
+    val:min 55.0 ;            # Hz — body frequency
+    val:max 210.0 .           # Hz — attack peak
+
+:bdAmpEnv a val:Envelope ;
+    val:attack  1.0 ;
+    val:decay   500.0 ;       # ms — amplitude decay
+    val:sustain 0.0 ;
+    val:release 100.0 .
+
+# Asymmetric diode shaping — positive half clips sooner than negative,
+# matching the waveshaping diodes in the original's output stage.
+:bdSat a val:AsymClip ;
+    val:drive  3.0 ;
+    val:posVf  0.25 ;         # lower forward voltage = clips positive half sooner
+    val:negVf  0.55 .
+
+:bdVca a val:VCA .
+
+:bdLevel a val:Gain ; val:gain 0.0 .
+:bdPan a val:Pan ; val:pan 0.0 .
+
+################################################################
+# Snare Drum  (MIDI note 38)                                   #
+#                                                              #
+# Two detuned sine oscillators (180 Hz + 200 Hz) give the tone #
+# path. Their 20 Hz beating is the defining character of the   #
+# 909 snare. White noise through a bandpass filter forms the   #
+# "snappy" path. Each path has its own envelope and VCA.       #
+################################################################
+
+:sdGate a val:NoteGate ; val:note 38 .
+
+# Two-oscillator tone section. The 20 Hz beat between them creates
+# the characteristic wobble during the decay.
+:sdOsc1 a val:Oscillator ;
+    val:shape     0 ;         # sine
+    val:frequency 180.0 .
+
+:sdOsc2 a val:Oscillator ;
+    val:shape     0 ;
+    val:frequency 200.0 .
+
+:sdOscMix a val:Mixer .      # sums the two oscillators
+
+# Tone path: longer decay shapes the body of the snare.
+:sdToneEnv a val:Envelope ;
+    val:attack  0.2 ;
+    val:decay   250.0 ;
+    val:sustain 0.0 ;
+    val:release 10.0 .
+
+:sdToneVca a val:VCA .
+
+# Noise path: bandpass centred around 2 kHz, shorter decay = "snappy".
+:sdNoise a val:Noise ;
+    val:colour 0 .            # white
+
+:sdBpf a val:StateVariable ;
+    val:cutoff    2000.0 ;
+    val:resonance 0.5 .
+
+:sdNoiseEnv a val:Envelope ;
+    val:attack  0.1 ;
+    val:decay   80.0 ;        # Snappy control
+    val:sustain 0.0 ;
+    val:release 5.0 .
+
+:sdNoiseVca a val:VCA .
+
+:sdMix a val:Mixer .          # sums tone + noise outputs
+
+:sdLevel a val:Gain ; val:gain -6.0 .
+:sdPan a val:Pan ; val:pan 0.0 .
+
+################################################################
+# Rim Shot  (MIDI note 37)                                     #
+#                                                              #
+# White noise through a high-pass filter gives the dry click   #
+# of a stick on the drum rim. Very short decay.                #
+################################################################
+
+:rsGate a val:NoteGate ; val:note 37 .
+
+:rsNoise a val:Noise ;
+    val:colour 0 .
+
+# HPF at 1.2 kHz removes the low-end thud, leaving the click.
+:rsHpf a val:OnePole ;
+    val:cutoff 1200.0 ;
+    val:mode   1 .            # 1 = highpass
+
+:rsEnv a val:Envelope ;
+    val:attack  0.1 ;
+    val:decay   20.0 ;
+    val:sustain 0.0 ;
+    val:release 3.0 .
+
+:rsVca a val:VCA .
+
+:rsLevel a val:Gain ; val:gain -6.0 .
+:rsPan a val:Pan ; val:pan -0.3 .
+
+################################################################
+# Hand Clap  (MIDI note 39)                                    #
+#                                                              #
+# White noise through a resonant bandpass. The original circuit #
+# produces multiple short bursts; approximated here as a single #
+# filtered noise burst with a fast decay.                      #
+################################################################
+
+:cpGate a val:NoteGate ; val:note 39 .
+
+:cpNoise a val:Noise ;
+    val:colour 0 .
+
+:cpBpf a val:StateVariable ;
+    val:cutoff    1200.0 ;
+    val:resonance 1.2 .       # higher resonance sharpens the "slap" character
+
+:cpEnv a val:Envelope ;
+    val:attack  0.1 ;
+    val:decay   80.0 ;
+    val:sustain 0.0 ;
+    val:release 8.0 .
+
+:cpVca a val:VCA .
+
+:cpLevel a val:Gain ; val:gain -6.0 .
+:cpPan a val:Pan ; val:pan 0.3 .
+
+################################################################
+# Low Tom  (MIDI note 41)                                      #
+#                                                              #
+# Same architecture as the Bass Drum: sine oscillator with a   #
+# pitch sweep. Lower body frequency, medium decay.             #
+################################################################
+
+:ltGate a val:NoteGate ; val:note 41 .
+
+:ltOsc a val:TwinTBridge ;
+    val:decay 500.0 .
+
+:ltPitchEnv a val:Envelope ;
+    val:attack  0.2 ;
+    val:decay   20.0 ;
+    val:sustain 0.0 ;
+    val:release 2.0 .
+
+:ltPitchScale a val:Scale ;
+    val:min 70.0 ;            # Hz — body pitch
+    val:max 200.0 .           # Hz — attack peak
+
+:ltAmpEnv a val:Envelope ;
+    val:attack  1.0 ;
+    val:decay   500.0 ;
+    val:sustain 0.0 ;
+    val:release 800.0 .       # must outlast the TwinTBridge decay (500 ms)
+
+:ltVca a val:VCA .
+
+:ltLevel a val:Gain ; val:gain -3.0 .
+:ltPan a val:Pan ; val:pan -0.5 .
+
+################################################################
+# Mid Tom  (MIDI note 43)                                      #
+################################################################
+
+:mtGate a val:NoteGate ; val:note 43 .
+
+:mtOsc a val:TwinTBridge ;
+    val:decay 350.0 .
+
+:mtPitchEnv a val:Envelope ;
+    val:attack  0.2 ;
+    val:decay   18.0 ;
+    val:sustain 0.0 ;
+    val:release 2.0 .
+
+:mtPitchScale a val:Scale ;
+    val:min 110.0 ;
+    val:max 300.0 .
+
+:mtAmpEnv a val:Envelope ;
+    val:attack  1.0 ;
+    val:decay   350.0 ;
+    val:sustain 0.0 ;
+    val:release 600.0 .       # must outlast the TwinTBridge decay (350 ms)
+
+:mtVca a val:VCA .
+
+:mtLevel a val:Gain ; val:gain -3.0 .
+:mtPan a val:Pan ; val:pan 0.0 .
+
+################################################################
+# High Tom  (MIDI note 50)                                     #
+################################################################
+
+:htGate a val:NoteGate ; val:note 50 .
+
+:htOsc a val:TwinTBridge ;
+    val:decay 250.0 .
+
+:htPitchEnv a val:Envelope ;
+    val:attack  0.2 ;
+    val:decay   15.0 ;
+    val:sustain 0.0 ;
+    val:release 2.0 .
+
+:htPitchScale a val:Scale ;
+    val:min 160.0 ;
+    val:max 420.0 .
+
+:htAmpEnv a val:Envelope ;
+    val:attack  1.0 ;
+    val:decay   250.0 ;
+    val:sustain 0.0 ;
+    val:release 400.0 .       # must outlast the TwinTBridge decay (250 ms)
+
+:htVca a val:VCA .
+
+:htLevel a val:Gain ; val:gain -3.0 .
+:htPan a val:Pan ; val:pan 0.5 .
+
+################################################################
+# Closed Hi-Hat  (MIDI note 42)                                #
+#                                                              #
+# Six square-wave oscillators at inharmonic ratios derived      #
+# from circuit analysis of the original:                       #
+#   562 Hz × {1, 1.483, 2.0, 2.483, 2.9668, 3.5503}           #
+# High-pass at 7 kHz leaves only the upper metallic partials.  #
+# Very short decay.                                            #
+################################################################
+
+:chGate a val:NoteGate ; val:note 42 .
+
+:chOsc1 a val:Oscillator ; val:shape 2 ; val:frequency  562.0 .   # square
+:chOsc2 a val:Oscillator ; val:shape 2 ; val:frequency  834.0 .
+:chOsc3 a val:Oscillator ; val:shape 2 ; val:frequency 1124.0 .
+:chOsc4 a val:Oscillator ; val:shape 2 ; val:frequency 1395.0 .
+:chOsc5 a val:Oscillator ; val:shape 2 ; val:frequency 1668.0 .
+:chOsc6 a val:Oscillator ; val:shape 2 ; val:frequency 1995.0 .
+
+:chMix a val:Mixer .
+
+:chHpf a val:StateVariable ;
+    val:cutoff    7000.0 ;
+    val:resonance 0.4 .
+
+:chEnv a val:Envelope ;
+    val:attack  0.1 ;
+    val:decay   45.0 ;
+    val:sustain 0.0 ;
+    val:release 5.0 .
+
+:chVca a val:VCA .
+
+:chLevel a val:Gain ; val:gain -9.0 .
+:chPan a val:Pan ; val:pan -0.2 .
+
+################################################################
+# Open Hi-Hat  (MIDI note 46)                                  #
+#                                                              #
+# Identical spectral source to the closed hat. Longer decay.   #
+# The original circuit includes a choke that mutes the open    #
+# hat when the closed hat triggers; this needs a control gate  #
+# combiner element before it can be modelled correctly.        #
+################################################################
+
+:ohGate a val:NoteGate ; val:note 46 .
+
+:ohOsc1 a val:Oscillator ; val:shape 2 ; val:frequency  562.0 .
+:ohOsc2 a val:Oscillator ; val:shape 2 ; val:frequency  834.0 .
+:ohOsc3 a val:Oscillator ; val:shape 2 ; val:frequency 1124.0 .
+:ohOsc4 a val:Oscillator ; val:shape 2 ; val:frequency 1395.0 .
+:ohOsc5 a val:Oscillator ; val:shape 2 ; val:frequency 1668.0 .
+:ohOsc6 a val:Oscillator ; val:shape 2 ; val:frequency 1995.0 .
+
+:ohMix a val:Mixer .
+
+:ohHpf a val:StateVariable ;
+    val:cutoff    7000.0 ;
+    val:resonance 0.4 .
+
+:ohEnv a val:Envelope ;
+    val:attack  0.1 ;
+    val:decay   500.0 ;
+    val:sustain 0.0 ;
+    val:release 40.0 .
+
+:ohVca a val:VCA .
+
+:ohLevel a val:Gain ; val:gain -9.0 .
+:ohPan a val:Pan ; val:pan 0.2 .
+:ohChoke a val:Choke .
+
+################################################################
+# Output stage                                                 #
+################################################################
+
+:mix a val:Mixer .
+:out a val:Output .
+
+################################################################
+# Bass Drum arcs                                               #
+################################################################
+
+:aBdGatePitchEnv a val:Arc ;
+    val:from [ val:node :bdGate    ; val:port "gate" ] ;
+    val:to   [ val:node :bdPitchEnv ; val:port "gate" ] .
+
+:aBdGateAmpEnv a val:Arc ;
+    val:from [ val:node :bdGate   ; val:port "gate" ] ;
+    val:to   [ val:node :bdAmpEnv ; val:port "gate" ] .
+
+:aBdPitchEnvScale a val:Arc ;
+    val:from [ val:node :bdPitchEnv   ; val:port "out" ] ;
+    val:to   [ val:node :bdPitchScale ; val:port "in"  ] .
+
+:aBdScaleOsc a val:Arc ;
+    val:from [ val:node :bdPitchScale ; val:port "out"       ] ;
+    val:to   [ val:node :bdOsc        ; val:port "frequency" ] .
+
+:aBdOscSat a val:Arc ;
+    val:from [ val:node :bdOsc ; val:port "out" ] ;
+    val:to   [ val:node :bdSat ; val:port "in"  ] .
+
+:aBdSatVca a val:Arc ;
+    val:from [ val:node :bdSat ; val:port "out" ] ;
+    val:to   [ val:node :bdVca ; val:port "in"  ] .
+
+:aBdAmpEnvVca a val:Arc ;
+    val:from [ val:node :bdAmpEnv ; val:port "out" ] ;
+    val:to   [ val:node :bdVca    ; val:port "cv"  ] .
+
+:aBdVcaLevel a val:Arc ;
+    val:from [ val:node :bdVca ; val:port "out" ] ;
+    val:to   [ val:node :bdLevel ; val:port "in"  ] .
+
+:aBdLevelPan a val:Arc ;
+    val:from [ val:node :bdLevel ; val:port "out" ] ;
+    val:to   [ val:node :bdPan   ; val:port "in"  ] .
+
+:aBdPanMixL a val:Arc ;
+    val:from [ val:node :bdPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aBdPanMixR a val:Arc ;
+    val:from [ val:node :bdPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Snare Drum arcs                                              #
+################################################################
+
+:aSdGateToneEnv a val:Arc ;
+    val:from [ val:node :sdGate    ; val:port "velocity" ] ;
+    val:to   [ val:node :sdToneEnv ; val:port "gate" ] .
+
+:aSdGateNoiseEnv a val:Arc ;
+    val:from [ val:node :sdGate     ; val:port "velocity" ] ;
+    val:to   [ val:node :sdNoiseEnv ; val:port "gate" ] .
+
+# Both oscillators sum in the oscillator mixer.
+:aSdOsc1OscMix a val:Arc ;
+    val:from [ val:node :sdOsc1  ; val:port "out" ] ;
+    val:to   [ val:node :sdOscMix ; val:port "in"  ] .
+
+:aSdOsc2OscMix a val:Arc ;
+    val:from [ val:node :sdOsc2  ; val:port "out" ] ;
+    val:to   [ val:node :sdOscMix ; val:port "in"  ] .
+
+:aSdOscMixToneVca a val:Arc ;
+    val:from [ val:node :sdOscMix  ; val:port "out" ] ;
+    val:to   [ val:node :sdToneVca ; val:port "in"  ] .
+
+:aSdToneEnvToneVca a val:Arc ;
+    val:from [ val:node :sdToneEnv ; val:port "out" ] ;
+    val:to   [ val:node :sdToneVca ; val:port "cv"  ] .
+
+:aSdNoiseBpf a val:Arc ;
+    val:from [ val:node :sdNoise ; val:port "out" ] ;
+    val:to   [ val:node :sdBpf   ; val:port "in"  ] .
+
+# Bandpass output of the filter feeds the noise VCA.
+:aSdBpfNoiseVca a val:Arc ;
+    val:from [ val:node :sdBpf     ; val:port "bp"  ] ;
+    val:to   [ val:node :sdNoiseVca ; val:port "in"  ] .
+
+:aSdNoiseEnvNoiseVca a val:Arc ;
+    val:from [ val:node :sdNoiseEnv ; val:port "out" ] ;
+    val:to   [ val:node :sdNoiseVca  ; val:port "cv"  ] .
+
+# Tone and noise outputs sum in the snare local mixer.
+:aSdToneVcaMix a val:Arc ;
+    val:from [ val:node :sdToneVca ; val:port "out" ] ;
+    val:to   [ val:node :sdMix     ; val:port "in"  ] .
+
+:aSdNoiseVcaMix a val:Arc ;
+    val:from [ val:node :sdNoiseVca ; val:port "out" ] ;
+    val:to   [ val:node :sdMix      ; val:port "in"  ] .
+
+:aSdMixLevel a val:Arc ;
+    val:from [ val:node :sdMix ; val:port "out" ] ;
+    val:to   [ val:node :sdLevel ; val:port "in"  ] .
+
+:aSdLevelPan a val:Arc ;
+    val:from [ val:node :sdLevel ; val:port "out" ] ;
+    val:to   [ val:node :sdPan   ; val:port "in"  ] .
+
+:aSdPanMixL a val:Arc ;
+    val:from [ val:node :sdPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aSdPanMixR a val:Arc ;
+    val:from [ val:node :sdPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Rim Shot arcs                                                #
+################################################################
+
+:aRsGateEnv a val:Arc ;
+    val:from [ val:node :rsGate ; val:port "velocity" ] ;
+    val:to   [ val:node :rsEnv  ; val:port "gate" ] .
+
+:aRsNoiseHpf a val:Arc ;
+    val:from [ val:node :rsNoise ; val:port "out" ] ;
+    val:to   [ val:node :rsHpf   ; val:port "in"  ] .
+
+:aRsHpfVca a val:Arc ;
+    val:from [ val:node :rsHpf ; val:port "out" ] ;
+    val:to   [ val:node :rsVca ; val:port "in"  ] .
+
+:aRsEnvVca a val:Arc ;
+    val:from [ val:node :rsEnv ; val:port "out" ] ;
+    val:to   [ val:node :rsVca ; val:port "cv"  ] .
+
+:aRsVcaLevel a val:Arc ;
+    val:from [ val:node :rsVca ; val:port "out" ] ;
+    val:to   [ val:node :rsLevel ; val:port "in"  ] .
+
+:aRsLevelPan a val:Arc ;
+    val:from [ val:node :rsLevel ; val:port "out" ] ;
+    val:to   [ val:node :rsPan   ; val:port "in"  ] .
+
+:aRsPanMixL a val:Arc ;
+    val:from [ val:node :rsPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aRsPanMixR a val:Arc ;
+    val:from [ val:node :rsPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Hand Clap arcs                                               #
+################################################################
+
+:aCpGateEnv a val:Arc ;
+    val:from [ val:node :cpGate ; val:port "velocity" ] ;
+    val:to   [ val:node :cpEnv  ; val:port "gate" ] .
+
+:aCpNoiseBpf a val:Arc ;
+    val:from [ val:node :cpNoise ; val:port "out" ] ;
+    val:to   [ val:node :cpBpf   ; val:port "in"  ] .
+
+:aCpBpfVca a val:Arc ;
+    val:from [ val:node :cpBpf ; val:port "bp"  ] ;
+    val:to   [ val:node :cpVca ; val:port "in"  ] .
+
+:aCpEnvVca a val:Arc ;
+    val:from [ val:node :cpEnv ; val:port "out" ] ;
+    val:to   [ val:node :cpVca ; val:port "cv"  ] .
+
+:aCpVcaLevel a val:Arc ;
+    val:from [ val:node :cpVca ; val:port "out" ] ;
+    val:to   [ val:node :cpLevel ; val:port "in"  ] .
+
+:aCpLevelPan a val:Arc ;
+    val:from [ val:node :cpLevel ; val:port "out" ] ;
+    val:to   [ val:node :cpPan   ; val:port "in"  ] .
+
+:aCpPanMixL a val:Arc ;
+    val:from [ val:node :cpPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aCpPanMixR a val:Arc ;
+    val:from [ val:node :cpPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Low Tom arcs                                                 #
+################################################################
+
+:aLtGatePitchEnv a val:Arc ;
+    val:from [ val:node :ltGate    ; val:port "velocity" ] ;
+    val:to   [ val:node :ltPitchEnv ; val:port "gate" ] .
+
+:aLtGateAmpEnv a val:Arc ;
+    val:from [ val:node :ltGate  ; val:port "velocity" ] ;
+    val:to   [ val:node :ltAmpEnv ; val:port "gate" ] .
+
+:aLtGateTwinT a val:Arc ;
+    val:from [ val:node :ltGate ; val:port "velocity" ] ;
+    val:to   [ val:node :ltOsc  ; val:port "trigger" ] .
+
+:aLtPitchEnvScale a val:Arc ;
+    val:from [ val:node :ltPitchEnv   ; val:port "out" ] ;
+    val:to   [ val:node :ltPitchScale ; val:port "in"  ] .
+
+:aLtScaleOsc a val:Arc ;
+    val:from [ val:node :ltPitchScale ; val:port "out"       ] ;
+    val:to   [ val:node :ltOsc        ; val:port "frequency" ] .
+
+:aLtOscVca a val:Arc ;
+    val:from [ val:node :ltOsc ; val:port "out" ] ;
+    val:to   [ val:node :ltVca ; val:port "in"  ] .
+
+:aLtAmpEnvVca a val:Arc ;
+    val:from [ val:node :ltAmpEnv ; val:port "out" ] ;
+    val:to   [ val:node :ltVca    ; val:port "cv"  ] .
+
+:aLtVcaLevel a val:Arc ;
+    val:from [ val:node :ltVca ; val:port "out" ] ;
+    val:to   [ val:node :ltLevel ; val:port "in"  ] .
+
+:aLtLevelPan a val:Arc ;
+    val:from [ val:node :ltLevel ; val:port "out" ] ;
+    val:to   [ val:node :ltPan   ; val:port "in"  ] .
+
+:aLtPanMixL a val:Arc ;
+    val:from [ val:node :ltPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aLtPanMixR a val:Arc ;
+    val:from [ val:node :ltPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Mid Tom arcs                                                 #
+################################################################
+
+:aMtGatePitchEnv a val:Arc ;
+    val:from [ val:node :mtGate    ; val:port "velocity" ] ;
+    val:to   [ val:node :mtPitchEnv ; val:port "gate" ] .
+
+:aMtGateAmpEnv a val:Arc ;
+    val:from [ val:node :mtGate  ; val:port "velocity" ] ;
+    val:to   [ val:node :mtAmpEnv ; val:port "gate" ] .
+
+:aMtGateTwinT a val:Arc ;
+    val:from [ val:node :mtGate ; val:port "velocity" ] ;
+    val:to   [ val:node :mtOsc  ; val:port "trigger" ] .
+
+:aMtPitchEnvScale a val:Arc ;
+    val:from [ val:node :mtPitchEnv   ; val:port "out" ] ;
+    val:to   [ val:node :mtPitchScale ; val:port "in"  ] .
+
+:aMtScaleOsc a val:Arc ;
+    val:from [ val:node :mtPitchScale ; val:port "out"       ] ;
+    val:to   [ val:node :mtOsc        ; val:port "frequency" ] .
+
+:aMtOscVca a val:Arc ;
+    val:from [ val:node :mtOsc ; val:port "out" ] ;
+    val:to   [ val:node :mtVca ; val:port "in"  ] .
+
+:aMtAmpEnvVca a val:Arc ;
+    val:from [ val:node :mtAmpEnv ; val:port "out" ] ;
+    val:to   [ val:node :mtVca    ; val:port "cv"  ] .
+
+:aMtVcaLevel a val:Arc ;
+    val:from [ val:node :mtVca ; val:port "out" ] ;
+    val:to   [ val:node :mtLevel ; val:port "in"  ] .
+
+:aMtLevelPan a val:Arc ;
+    val:from [ val:node :mtLevel ; val:port "out" ] ;
+    val:to   [ val:node :mtPan   ; val:port "in"  ] .
+
+:aMtPanMixL a val:Arc ;
+    val:from [ val:node :mtPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aMtPanMixR a val:Arc ;
+    val:from [ val:node :mtPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# High Tom arcs                                                #
+################################################################
+
+:aHtGatePitchEnv a val:Arc ;
+    val:from [ val:node :htGate    ; val:port "velocity" ] ;
+    val:to   [ val:node :htPitchEnv ; val:port "gate" ] .
+
+:aHtGateAmpEnv a val:Arc ;
+    val:from [ val:node :htGate  ; val:port "velocity" ] ;
+    val:to   [ val:node :htAmpEnv ; val:port "gate" ] .
+
+:aHtGateTwinT a val:Arc ;
+    val:from [ val:node :htGate ; val:port "velocity" ] ;
+    val:to   [ val:node :htOsc  ; val:port "trigger" ] .
+
+:aHtPitchEnvScale a val:Arc ;
+    val:from [ val:node :htPitchEnv   ; val:port "out" ] ;
+    val:to   [ val:node :htPitchScale ; val:port "in"  ] .
+
+:aHtScaleOsc a val:Arc ;
+    val:from [ val:node :htPitchScale ; val:port "out"       ] ;
+    val:to   [ val:node :htOsc        ; val:port "frequency" ] .
+
+:aHtOscVca a val:Arc ;
+    val:from [ val:node :htOsc ; val:port "out" ] ;
+    val:to   [ val:node :htVca ; val:port "in"  ] .
+
+:aHtAmpEnvVca a val:Arc ;
+    val:from [ val:node :htAmpEnv ; val:port "out" ] ;
+    val:to   [ val:node :htVca    ; val:port "cv"  ] .
+
+:aHtVcaLevel a val:Arc ;
+    val:from [ val:node :htVca ; val:port "out" ] ;
+    val:to   [ val:node :htLevel ; val:port "in"  ] .
+
+:aHtLevelPan a val:Arc ;
+    val:from [ val:node :htLevel ; val:port "out" ] ;
+    val:to   [ val:node :htPan   ; val:port "in"  ] .
+
+:aHtPanMixL a val:Arc ;
+    val:from [ val:node :htPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aHtPanMixR a val:Arc ;
+    val:from [ val:node :htPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Closed Hi-Hat arcs                                           #
+################################################################
+
+:aChGateEnv a val:Arc ;
+    val:from [ val:node :chGate ; val:port "velocity" ] ;
+    val:to   [ val:node :chEnv  ; val:port "gate" ] .
+
+:aChOsc1Mix a val:Arc ;
+    val:from [ val:node :chOsc1 ; val:port "out" ] ;
+    val:to   [ val:node :chMix  ; val:port "in"  ] .
+
+:aChOsc2Mix a val:Arc ;
+    val:from [ val:node :chOsc2 ; val:port "out" ] ;
+    val:to   [ val:node :chMix  ; val:port "in"  ] .
+
+:aChOsc3Mix a val:Arc ;
+    val:from [ val:node :chOsc3 ; val:port "out" ] ;
+    val:to   [ val:node :chMix  ; val:port "in"  ] .
+
+:aChOsc4Mix a val:Arc ;
+    val:from [ val:node :chOsc4 ; val:port "out" ] ;
+    val:to   [ val:node :chMix  ; val:port "in"  ] .
+
+:aChOsc5Mix a val:Arc ;
+    val:from [ val:node :chOsc5 ; val:port "out" ] ;
+    val:to   [ val:node :chMix  ; val:port "in"  ] .
+
+:aChOsc6Mix a val:Arc ;
+    val:from [ val:node :chOsc6 ; val:port "out" ] ;
+    val:to   [ val:node :chMix  ; val:port "in"  ] .
+
+:aChMixHpf a val:Arc ;
+    val:from [ val:node :chMix ; val:port "out" ] ;
+    val:to   [ val:node :chHpf ; val:port "in"  ] .
+
+:aChHpfVca a val:Arc ;
+    val:from [ val:node :chHpf ; val:port "hp"  ] ;
+    val:to   [ val:node :chVca ; val:port "in"  ] .
+
+:aChEnvVca a val:Arc ;
+    val:from [ val:node :chEnv ; val:port "out" ] ;
+    val:to   [ val:node :chVca ; val:port "cv"  ] .
+
+:aChVcaLevel a val:Arc ;
+    val:from [ val:node :chVca ; val:port "out" ] ;
+    val:to   [ val:node :chLevel ; val:port "in"  ] .
+
+:aChLevelPan a val:Arc ;
+    val:from [ val:node :chLevel ; val:port "out" ] ;
+    val:to   [ val:node :chPan   ; val:port "in"  ] .
+
+:aChPanMixL a val:Arc ;
+    val:from [ val:node :chPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aChPanMixR a val:Arc ;
+    val:from [ val:node :chPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Open Hi-Hat arcs                                             #
+################################################################
+
+:aOhGateChoke a val:Arc ;
+    val:from [ val:node :ohGate  ; val:port "velocity" ] ;
+    val:to   [ val:node :ohChoke ; val:port "gate" ] .
+
+:aChGateChoke a val:Arc ;
+    val:from [ val:node :chGate  ; val:port "velocity" ] ;
+    val:to   [ val:node :ohChoke ; val:port "choke" ] .
+
+:aOhChokeEnv a val:Arc ;
+    val:from [ val:node :ohChoke ; val:port "out"  ] ;
+    val:to   [ val:node :ohEnv   ; val:port "gate" ] .
+
+:aOhOsc1Mix a val:Arc ;
+    val:from [ val:node :ohOsc1 ; val:port "out" ] ;
+    val:to   [ val:node :ohMix  ; val:port "in"  ] .
+
+:aOhOsc2Mix a val:Arc ;
+    val:from [ val:node :ohOsc2 ; val:port "out" ] ;
+    val:to   [ val:node :ohMix  ; val:port "in"  ] .
+
+:aOhOsc3Mix a val:Arc ;
+    val:from [ val:node :ohOsc3 ; val:port "out" ] ;
+    val:to   [ val:node :ohMix  ; val:port "in"  ] .
+
+:aOhOsc4Mix a val:Arc ;
+    val:from [ val:node :ohOsc4 ; val:port "out" ] ;
+    val:to   [ val:node :ohMix  ; val:port "in"  ] .
+
+:aOhOsc5Mix a val:Arc ;
+    val:from [ val:node :ohOsc5 ; val:port "out" ] ;
+    val:to   [ val:node :ohMix  ; val:port "in"  ] .
+
+:aOhOsc6Mix a val:Arc ;
+    val:from [ val:node :ohOsc6 ; val:port "out" ] ;
+    val:to   [ val:node :ohMix  ; val:port "in"  ] .
+
+:aOhMixHpf a val:Arc ;
+    val:from [ val:node :ohMix ; val:port "out" ] ;
+    val:to   [ val:node :ohHpf ; val:port "in"  ] .
+
+:aOhHpfVca a val:Arc ;
+    val:from [ val:node :ohHpf ; val:port "hp"  ] ;
+    val:to   [ val:node :ohVca ; val:port "in"  ] .
+
+:aOhEnvVca a val:Arc ;
+    val:from [ val:node :ohEnv ; val:port "out" ] ;
+    val:to   [ val:node :ohVca ; val:port "cv"  ] .
+
+:aOhVcaLevel a val:Arc ;
+    val:from [ val:node :ohVca ; val:port "out" ] ;
+    val:to   [ val:node :ohLevel ; val:port "in"  ] .
+
+:aOhLevelPan a val:Arc ;
+    val:from [ val:node :ohLevel ; val:port "out" ] ;
+    val:to   [ val:node :ohPan   ; val:port "in"  ] .
+
+:aOhPanMixL a val:Arc ;
+    val:from [ val:node :ohPan ; val:port "left" ] ;
+    val:to   [ val:node :mix   ; val:port "left" ] .
+
+:aOhPanMixR a val:Arc ;
+    val:from [ val:node :ohPan ; val:port "right" ] ;
+    val:to   [ val:node :mix   ; val:port "right" ] .
+
+################################################################
+# Output arcs                                                  #
+################################################################
+
+:aMixOutL a val:Arc ;
+    val:from [ val:node :mix ; val:port "left" ] ;
+    val:to   [ val:node :out ; val:port "left" ] .
+
+:aMixOutR a val:Arc ;
+    val:from [ val:node :mix ; val:port "right" ] ;
+    val:to   [ val:node :out ; val:port "right" ] .
+
+################################################################
+# Host parameters                                              #
+################################################################
+
+# ── Bass Drum ────────────────────────────────────────────────────────────────
+
+:pBdDecay a val:Param ; val:slot 1 ;
+    val:target :bdAmpEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "bd_decay" ; val:section "Bass Drum" ;
+    units:unit units:ms ; lv2:minimum 50.0 ; lv2:maximum 2000.0 .
+
+:pBdTune a val:Param ; val:slot 2 ;
+    val:target :bdPitchScale ; val:property val:min ;
+    lv2:name "Tune" ; lv2:symbol "bd_tune" ; val:section "Bass Drum" ;
+    units:unit units:hz ; lv2:minimum 30.0 ; lv2:maximum 120.0 .
+
+:pBdDrive a val:Param ; val:slot 3 ;
+    val:target :bdSat ; val:property val:drive ;
+    lv2:name "Drive" ; lv2:symbol "bd_drive" ; val:section "Bass Drum" ;
+    lv2:minimum 0.5 ; lv2:maximum 10.0 .
+
+:pBdLevel a val:Param ; val:slot 15 ;
+    val:target :bdLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "bd_level" ; val:section "Bass Drum" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pBdPan a val:Param ; val:slot 24 ;
+    val:target :bdPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "bd_pan" ; val:section "Bass Drum" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Snare ────────────────────────────────────────────────────────────────────
+
+:pSdToneDecay a val:Param ; val:slot 4 ;
+    val:target :sdToneEnv ; val:property val:decay ;
+    lv2:name "Tone Decay" ; lv2:symbol "sd_tone_decay" ; val:section "Snare" ;
+    units:unit units:ms ; lv2:minimum 20.0 ; lv2:maximum 1000.0 .
+
+:pSdSnappy a val:Param ; val:slot 5 ;
+    val:target :sdNoiseEnv ; val:property val:decay ;
+    lv2:name "Snappy" ; lv2:symbol "sd_snappy" ; val:section "Snare" ;
+    units:unit units:ms ; lv2:minimum 10.0 ; lv2:maximum 300.0 .
+
+:pSdTone a val:Param ; val:slot 6 ;
+    val:target :sdBpf ; val:property val:cutoff ;
+    lv2:name "Tone" ; lv2:symbol "sd_tone" ; val:section "Snare" ;
+    units:unit units:hz ; lv2:minimum 500.0 ; lv2:maximum 6000.0 .
+
+:pSdLevel a val:Param ; val:slot 16 ;
+    val:target :sdLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "sd_level" ; val:section "Snare" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pSdPan a val:Param ; val:slot 25 ;
+    val:target :sdPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "sd_pan" ; val:section "Snare" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Rim Shot ─────────────────────────────────────────────────────────────────
+
+:pRsDecay a val:Param ; val:slot 7 ;
+    val:target :rsEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "rs_decay" ; val:section "Rim Shot" ;
+    units:unit units:ms ; lv2:minimum 5.0 ; lv2:maximum 100.0 .
+
+:pRsLevel a val:Param ; val:slot 17 ;
+    val:target :rsLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "rs_level" ; val:section "Rim Shot" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pRsPan a val:Param ; val:slot 26 ;
+    val:target :rsPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "rs_pan" ; val:section "Rim Shot" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Hand Clap ────────────────────────────────────────────────────────────────
+
+:pCpDecay a val:Param ; val:slot 8 ;
+    val:target :cpEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "cp_decay" ; val:section "Hand Clap" ;
+    units:unit units:ms ; lv2:minimum 10.0 ; lv2:maximum 300.0 .
+
+:pCpLevel a val:Param ; val:slot 18 ;
+    val:target :cpLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "cp_level" ; val:section "Hand Clap" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pCpPan a val:Param ; val:slot 27 ;
+    val:target :cpPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "cp_pan" ; val:section "Hand Clap" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Low Tom ──────────────────────────────────────────────────────────────────
+
+:pLtDecay a val:Param ; val:slot 9 ;
+    val:target :ltAmpEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "lt_decay" ; val:section "Low Tom" ;
+    units:unit units:ms ; lv2:minimum 50.0 ; lv2:maximum 2000.0 .
+
+:pLtLevel a val:Param ; val:slot 19 ;
+    val:target :ltLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "lt_level" ; val:section "Low Tom" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pLtPan a val:Param ; val:slot 28 ;
+    val:target :ltPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "lt_pan" ; val:section "Low Tom" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Mid Tom ──────────────────────────────────────────────────────────────────
+
+:pMtDecay a val:Param ; val:slot 10 ;
+    val:target :mtAmpEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "mt_decay" ; val:section "Mid Tom" ;
+    units:unit units:ms ; lv2:minimum 50.0 ; lv2:maximum 2000.0 .
+
+:pMtLevel a val:Param ; val:slot 20 ;
+    val:target :mtLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "mt_level" ; val:section "Mid Tom" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pMtPan a val:Param ; val:slot 29 ;
+    val:target :mtPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "mt_pan" ; val:section "Mid Tom" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── High Tom ─────────────────────────────────────────────────────────────────
+
+:pHtDecay a val:Param ; val:slot 11 ;
+    val:target :htAmpEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "ht_decay" ; val:section "High Tom" ;
+    units:unit units:ms ; lv2:minimum 30.0 ; lv2:maximum 1000.0 .
+
+:pHtLevel a val:Param ; val:slot 21 ;
+    val:target :htLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "ht_level" ; val:section "High Tom" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pHtPan a val:Param ; val:slot 30 ;
+    val:target :htPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "ht_pan" ; val:section "High Tom" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Closed HH ────────────────────────────────────────────────────────────────
+
+:pChDecay a val:Param ; val:slot 12 ;
+    val:target :chEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "ch_decay" ; val:section "Closed HH" ;
+    units:unit units:ms ; lv2:minimum 5.0 ; lv2:maximum 200.0 .
+
+:pChLevel a val:Param ; val:slot 22 ;
+    val:target :chLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "ch_level" ; val:section "Closed HH" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pChPan a val:Param ; val:slot 31 ;
+    val:target :chPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "ch_pan" ; val:section "Closed HH" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .
+
+# ── Open HH ──────────────────────────────────────────────────────────────────
+
+:pOhDecay a val:Param ; val:slot 13 ;
+    val:target :ohEnv ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "oh_decay" ; val:section "Open HH" ;
+    units:unit units:ms ; lv2:minimum 100.0 ; lv2:maximum 3000.0 .
+
+:pOhBright a val:Param ; val:slot 14 ;
+    val:target :ohHpf ; val:property val:cutoff ;
+    lv2:name "Brightness" ; lv2:symbol "oh_bright" ; val:section "Open HH" ;
+    units:unit units:hz ; lv2:minimum 2000.0 ; lv2:maximum 14000.0 .
+
+:pOhLevel a val:Param ; val:slot 23 ;
+    val:target :ohLevel ; val:property val:gain ;
+    lv2:name "Level" ; lv2:symbol "oh_level" ; val:section "Open HH" ;
+    units:unit units:db ; lv2:minimum -60.0 ; lv2:maximum 12.0 .
+
+:pOhPan a val:Param ; val:slot 32 ;
+    val:target :ohPan ; val:property val:pan ;
+    lv2:name "Pan" ; lv2:symbol "oh_pan" ; val:section "Open HH" ;
+    lv2:minimum -1.0 ; lv2:maximum 1.0 .

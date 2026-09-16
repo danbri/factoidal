@@ -355,6 +355,66 @@
     display: none;
   }
 
+  /* Folding chrome (https://github.com/danbri/factoidal/issues/686):
+     a cell flagged `closed` on its fence line mounts collapsed, with a
+     summary line and a toggle to open it -- see mountCell() below and
+     docs/web/hub/README.md's "Closed cells and the fold wrapper".
+     A native <details>/<summary> already implements focus handling and
+     Enter/Space toggling, so there is no custom key handling here.
+     `list-style: none` plus the WebKit-only marker rule below remove
+     the browser's own disclosure triangle in every engine so the
+     `::before` triangle is the only one drawn. `flex-wrap: wrap` on the
+     summary matches `.observable-cell-toolbar` above, for the same
+     reason: a long title must never force page-level horizontal
+     scroll on a ~390px phone. */
+  .observable-cell-fold {
+    margin: 0 0 1.4em;
+  }
+  .observable-cell-fold > summary.observable-cell-fold-summary {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+    box-sizing: border-box;
+    min-height: 44px;
+    width: 100%;
+    padding: 0.5em 0.8em;
+    font: inherit;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: #2d6a4f;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .observable-cell-fold > summary.observable-cell-fold-summary::-webkit-details-marker {
+    display: none;
+  }
+  .observable-cell-fold > summary.observable-cell-fold-summary::before {
+    content: "\25b8";
+    display: inline-block;
+    flex: none;
+    transition: transform 0.15s ease;
+  }
+  .observable-cell-fold[open] > summary.observable-cell-fold-summary::before {
+    transform: rotate(90deg);
+  }
+  .observable-cell-fold > summary.observable-cell-fold-summary:hover {
+    background: #eef6f1;
+  }
+  .observable-cell-fold > summary.observable-cell-fold-summary:active {
+    background: #e2efe8;
+  }
+  .observable-cell-fold > pre {
+    margin-top: 0.6em;
+  }
+  .observable-cell-fold-error > summary.observable-cell-fold-summary {
+    border-color: #c0392b;
+    color: #c0392b;
+  }
+
   /* Reader-added cells (the "Add a cell" affordance): the reader can
      append their own live cells running in the same fn/Factoidal/Plot/
      d3/pretty scope as the pinned cells, and remove the ones they added.
@@ -404,6 +464,10 @@
     .observable-cell-hint { color: #98a2ad; }
     .observable-cell-editor { background: #1a1e23; border-color: #333a42; border-left-color: #7fd0a7; }
     .observable-cell-editor:focus { outline-color: #7fd0a7; }
+    .observable-cell-fold > summary.observable-cell-fold-summary { background: #1a1e23; border-color: #333a42; color: #7fd0a7; }
+    .observable-cell-fold > summary.observable-cell-fold-summary:hover { background: #232830; }
+    .observable-cell-fold > summary.observable-cell-fold-summary:active { background: #272d36; }
+    .observable-cell-fold-error > summary.observable-cell-fold-summary { border-color: #e07060; color: #e07060; }
     .hub-user-cells { border-top-color: #333a42; }
     .hub-user-cells-intro { color: #98a2ad; }
   }
@@ -471,7 +535,7 @@ import * as stdlib from "{{ '/vendor/observable/stdlib.esm.js' | url }}";
 // with the Node pinning harness (tests/hub/_helpers.mjs) so the browser
 // and the tests can never disagree about dependency inference. See
 // docs/web/hub/reactive-cells.mjs for the compiler and its limits.
-import { analyzeCell, cellInputs, makeDefinition } from "{{ '/vendor/hub/reactive-cells.mjs' | url }}";
+import { analyzeCell, cellInputs, makeDefinition, parseCellFlags } from "{{ '/vendor/hub/reactive-cells.mjs' | url }}";
 
 const runtime = new Runtime();
 const main = runtime.module();
@@ -1116,6 +1180,70 @@ const fn = {
     return new FnDataset(r.nquads);
   },
   /**
+   * Serialize a dataset (engine-produced bytes, sorted N-Quads order).
+   * Mirrors npm/factoidal/lib/api.js's `serialize(data, options)`.
+   * NOTE: this JSDoc deliberately never writes an inline object-type
+   * annotation as two adjacent open-brace characters -- Nunjucks reads
+   * that pair anywhere in this file, JS comment or not, as the start of
+   * a template expression, and fails the whole page's build. Same
+   * family as docs/web/hub/README.md's trap about this comment's own
+   * closing sequence appearing early inside itself -- a different pair
+   * of characters, same cause, and the reason this note avoids BOTH
+   * pairs rather than naming either one literally.
+   * @param {Dataset|string} data
+   * @param {object} [options]
+   * @param {'nquads'|'turtle'} [options.format]
+   * @param {string} [options.inputFormat]
+   * @param {object} [options.prefixes]
+   * @returns {Promise<string>}
+   *   'turtle' (prefix-compacted, subject-grouped -- entry_jsoo.ml's
+   *   serializeTurtle -> RDF_Turtle_Serialize.turtle_of_graph_auto)
+   *   flattens every named graph into the default graph (Turtle has no
+   *   named-graph notion); use 'nquads' (the default) when graph names
+   *   must survive. Needs the npm-entry engine bundle -- reaches for
+   *   `Factoidal.loadNpmEntry()`'s raw ABI internally, the same entry
+   *   `update` above uses.
+   */
+  async serialize(data, options) {
+    const opts = options || {};
+    const outFormat = String(opts.format || "nquads").toLowerCase();
+    if (outFormat !== "nquads" && outFormat !== "turtle") {
+      throw new TypeError("serialize: format must be 'nquads' or 'turtle'");
+    }
+    const abi = await Factoidal.loadNpmEntry();
+    let nq;
+    if (data && typeof data.toNQuads === "function") {
+      nq = data.toNQuads();
+    } else {
+      const parsed = JSON.parse(
+        abi.parseToDatasetJson(String(data), opts.inputFormat || "turtle", ""));
+      if (!parsed.ok) throw new Error(`serialize(parse): ${parsed.error}`);
+      nq = parsed.nquads;
+    }
+    if (outFormat === "turtle") {
+      if (opts.prefixes && typeof abi.serializeTurtleWith === "function") {
+        const r = JSON.parse(
+          abi.serializeTurtleWith(nq, JSON.stringify({ prefixes: opts.prefixes })));
+        if (!r.ok) throw new Error(`serialize: ${r.error}`);
+        return r.turtle;
+      }
+      if (typeof abi.serializeTurtle !== "function") {
+        throw new Error(
+          "serialize: the loaded factoidal-npm-entry bundle predates Turtle serialization");
+      }
+      const r = JSON.parse(abi.serializeTurtle(nq));
+      if (!r.ok) throw new Error(`serialize: ${r.error}`);
+      return r.turtle;
+    }
+    if (typeof abi.serializeNQuads !== "function") {
+      throw new Error(
+        "serialize: the loaded factoidal-npm-entry bundle predates N-Quads serialization");
+    }
+    const r = JSON.parse(abi.serializeNQuads(nq));
+    if (!r.ok) throw new Error(`serialize: ${r.error}`);
+    return r.nquads;
+  },
+  /**
    * Feature probe for the npm-entry engine bundle backing this page
    * (mirrors npm/factoidal/lib/api.js's `capabilities()` -- a
    * `typeof entry.X === 'function'` check per feature, not a blanket
@@ -1634,7 +1762,17 @@ function mountCell(codeEl, index) {
   // cells can reference it) or a stable per-index fallback for an
   // anonymous cell. It's fixed at mount; editing the body re-runs under
   // the same name so dependents stay wired.
-  const runtimeName = analyzeCell(currentSource).name || ("hubCell" + index);
+  const declaredName = analyzeCell(currentSource).name;
+  const runtimeName = declaredName || ("hubCell" + index);
+
+  // Fence flags (https://github.com/danbri/factoidal/issues/686):
+  // docs/.eleventy.js's fence renderer carries a ```observable-js
+  // fence line's flags through as this data attribute; parseCellFlags()
+  // is the same parser docs/.eleventy.js's own build-time text and
+  // tests/hub/_helpers.mjs's extractObservableCellsWithFlags() use, so
+  // all three agree on the same two flags.
+  const flagsRaw = codeEl.dataset.hubCellFlags || "";
+  const flags = parseCellFlags(flagsRaw);
 
   // --- Editable source: a textarea seeded from the shipped code,
   // swapped in for the static <pre> by the Edit toggle. A textarea
@@ -1737,9 +1875,31 @@ function mountCell(codeEl, index) {
     }
   }
 
-  pre.insertAdjacentElement("afterend", editor);
-  editor.insertAdjacentElement("afterend", toolbar);
-  toolbar.insertAdjacentElement("afterend", container);
+  // Folding chrome (https://github.com/danbri/factoidal/issues/686):
+  // wrap the cell's four blocks in <details>, with a leading <summary>
+  // ahead of them -- same DOM order inside as the flat layout above
+  // had, so tests/web-demos/*.sh's sibling-based walks
+  // (container.previousElementSibling === toolbar, etc.) are unaffected.
+  // Every cell mounts `open` except one flagged `closed`; a reader can
+  // always toggle it via the native <details>/<summary> behavior (no
+  // custom key handling needed -- it's focusable and responds to
+  // Enter/Space on its own).
+  const details = document.createElement("details");
+  details.className = "observable-cell-fold";
+  details.setAttribute("data-hub-cell-flags", flagsRaw);
+  details.open = !flags.closed;
+
+  const summary = document.createElement("summary");
+  summary.className = "observable-cell-fold-summary";
+  summary.textContent =
+    flags.title || (declaredName ? "Cell " + declaredName : "Cell " + (index + 1));
+  details.appendChild(summary);
+
+  pre.insertAdjacentElement("beforebegin", details);
+  details.appendChild(pre);
+  details.appendChild(editor);
+  details.appendChild(toolbar);
+  details.appendChild(container);
 
   // The Inspector is wrapped by createOutput() above: a runtime error
   // (thrown during the cell's async body, on the initial run or any
@@ -1747,6 +1907,26 @@ function mountCell(codeEl, index) {
   // a later successful Run clears it, and the output-format toggle can
   // re-render the cached value without re-running the cell.
   const inspector = output.inspector;
+
+  // Layered on top of createOutput()'s own wrapping above (which reads
+  // .fulfilled/.rejected fresh on every settle -- see
+  // runtime.esm.js's variable_fulfilled/variable_rejected -- so a
+  // second layer here is safe): a rejected run also opens this cell's
+  // <details> and marks it with observable-cell-fold-error, so a
+  // reader is not left looking at a collapsed failure. A later
+  // successful run clears the mark but leaves the <details> open --
+  // it does not close itself back up.
+  const priorFulfilled = inspector.fulfilled;
+  const priorRejected = inspector.rejected;
+  inspector.fulfilled = (value) => {
+    details.classList.remove("observable-cell-fold-error");
+    priorFulfilled(value);
+  };
+  inspector.rejected = (error, varName) => {
+    details.classList.add("observable-cell-fold-error");
+    details.open = true;
+    priorRejected(error, varName);
+  };
 
   function runCell() {
     const source = editing ? editor.value : currentSource;
@@ -1760,6 +1940,8 @@ function mountCell(codeEl, index) {
     } catch (err) {
       container.classList.add("observable-cell-error");
       container.textContent = "Cell parse error: " + err.message;
+      details.classList.add("observable-cell-fold-error");
+      details.open = true;
       return;
     }
     try {
@@ -1775,6 +1957,8 @@ function mountCell(codeEl, index) {
     } catch (err) {
       container.classList.add("observable-cell-error");
       container.textContent = "Cell define error: " + err.message;
+      details.classList.add("observable-cell-fold-error");
+      details.open = true;
     }
   }
 
@@ -1784,6 +1968,8 @@ function mountCell(codeEl, index) {
   } catch (err) {
     container.classList.add("observable-cell-error");
     container.textContent = "Cell parse error: " + err.message;
+    details.classList.add("observable-cell-fold-error");
+    details.open = true;
     return;
   }
 
@@ -1792,6 +1978,8 @@ function mountCell(codeEl, index) {
   } catch (err) {
     container.classList.add("observable-cell-error");
     container.textContent = "Cell define error: " + err.message;
+    details.classList.add("observable-cell-fold-error");
+    details.open = true;
   }
 }
 

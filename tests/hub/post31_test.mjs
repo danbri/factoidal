@@ -33,14 +33,23 @@ test('post31: Turtle 1.2 parses to 7 quads (2 claims + reifier expansion + base 
   assert.equal(dataset.size, 7);
 });
 
-test('post31: Mode_11 (default) silently skips the 1.2 constructs — opt-in is load-bearing', async () => {
-  const m11 = await factoidal.parse(TTL, { format: 'turtle' });
+test('post31: Mode_11 (default) rejects the 1.2-only syntax with a ParseError — opt-in is load-bearing', async () => {
+  // Strict parsing (issue #344): plain "turtle" (RDF 1.1) does not
+  // silently drop the triple-term/reifier lines and keep the rest --
+  // it rejects the WHOLE document, with a line and column pinpointing
+  // where RDF 1.1 syntax stops making sense.
+  await assert.rejects(
+    factoidal.parse(TTL, { format: 'turtle' }),
+    (err) => {
+      assert.equal(err.name, 'ParseError');
+      assert.equal(err.line, 4);
+      assert.equal(err.column, 3);
+      assert.match(err.message, /expected subject at line 4, column 3/);
+      return true;
+    }
+  );
   const m12 = await factoidal.parse(TTL, { format: 'turtle12' });
   assert.equal(m12.size, 7);
-  // The lenient 1.1 parser drops the triple-term claims + reifier line,
-  // keeping only the two title triples — no triple terms at all.
-  assert.equal(m11.size, 2);
-  assert.ok(![...m11].some((q) => q.object.termType === 'Quad'), 'Mode_11 has no triple terms');
   assert.ok([...m12].some((q) => q.object.termType === 'Quad'), 'Mode_12 has triple terms');
 });
 
@@ -94,22 +103,35 @@ test('post31: the annotation confidence is readable as a plain triple', async ()
 
 const cells = extractObservableCells(POST_FILE);
 
-test('post31: post has 6 live cells (ttl + dataset + 4 query cells)', () => {
-  assert.equal(cells.length, 6, `expected 6 live cells, found ${cells.length}`);
+test('post31: post has 7 live cells (ttl + mode11Rejects + dataset + 4 query cells)', () => {
+  assert.equal(cells.length, 7, `expected 7 live cells, found ${cells.length}`);
 });
 
-test('post31: dependency inference wires ttl -> dataset -> every query cell', () => {
+test('post31: dependency inference wires ttl -> mode11Rejects, ttl -> dataset -> every query cell', () => {
   const post = runReactivePost(cells, { fn: factoidal, pretty });
-  assert.deepEqual(post.names.slice(0, 2), ['ttl', 'dataset']);
-  assert.ok(post.infos[1].refs.includes('ttl'), 'dataset cell references ttl');
-  for (const i of [2, 3, 4, 5]) {
+  assert.deepEqual(post.names.slice(0, 3), ['ttl', 'mode11Rejects', 'dataset']);
+  assert.ok(post.infos[1].refs.includes('ttl'), 'mode11Rejects cell references ttl');
+  assert.ok(post.infos[2].refs.includes('ttl'), 'dataset cell references ttl');
+  for (const i of [3, 4, 5, 6]) {
     assert.ok(post.infos[i].refs.includes('dataset'), `cell ${i + 1} references dataset`);
   }
 });
 
-test('post31 cell 3 (bind whole triple term): 2 rows, statement renders as <<( )>>', async () => {
+test('post31 cell 2 (mode11Rejects): renders the ParseError name, line and column', async () => {
   const post = runReactivePost(cells, { fn: factoidal, pretty });
-  const result = await post.value(post.names[2]);
+  const result = await post.value(post.names[1]);
+  assert.equal(result.kind, 'table');
+  assert.deepEqual(result.columns, ['key', 'value']);
+  const asObject = Object.fromEntries(result.rows);
+  assert.equal(asObject.outcome, 'rejected');
+  assert.equal(asObject.name, 'ParseError');
+  assert.equal(asObject.line, 4);
+  assert.equal(asObject.column, 3);
+});
+
+test('post31 cell 4 (bind whole triple term): 2 rows, statement renders as <<( )>>', async () => {
+  const post = runReactivePost(cells, { fn: factoidal, pretty });
+  const result = await post.value(post.names[3]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['who', 'statement']);
   assert.equal(result.rows.length, 2);
@@ -118,26 +140,26 @@ test('post31 cell 3 (bind whole triple term): 2 rows, statement renders as <<( )
   }
 });
 
-test('post31 cell 4 (match inside triple term): 2 rows, 4 columns', async () => {
+test('post31 cell 5 (match inside triple term): 2 rows, 4 columns', async () => {
   const post = runReactivePost(cells, { fn: factoidal, pretty });
-  const result = await post.value(post.names[3]);
+  const result = await post.value(post.names[4]);
   assert.equal(result.kind, 'table');
   assert.deepEqual(result.columns, ['who', 's', 'p', 'o']);
   assert.equal(result.rows.length, 2);
 });
 
-test('post31 cell 5 (isTRIPLE): 2 rows, both true', async () => {
+test('post31 cell 6 (isTRIPLE): 2 rows, both true', async () => {
   const post = runReactivePost(cells, { fn: factoidal, pretty });
-  const result = await post.value(post.names[4]);
+  const result = await post.value(post.names[5]);
   assert.equal(result.rows.length, 2);
   for (const row of result.rows) {
     assert.ok(row.some((c) => String(c).includes('true')), 'isQuoted is true');
   }
 });
 
-test('post31 cell 6 (annotation confidence): 0.99', async () => {
+test('post31 cell 7 (annotation confidence): 0.99', async () => {
   const post = runReactivePost(cells, { fn: factoidal, pretty });
-  const result = await post.value(post.names[5]);
+  const result = await post.value(post.names[6]);
   assert.equal(result.rows.length, 1);
   assert.ok(String(result.rows[0][0]).includes('0.99'));
 });

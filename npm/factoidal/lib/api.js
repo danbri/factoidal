@@ -80,6 +80,20 @@ function extForFormat(fmt) {
   return DATA_FORMAT_EXT[key];
 }
 
+// Where a function takes an options object, a bare string names the
+// format: serialize(ds, 'turtle') is serialize(ds, { format: 'turtle' }).
+// Until 0.8.0 the string was read as an empty options object, so
+// serialize(ds, 'turtle') produced N-Quads with no error (found by the
+// 0.8.0 release probe). Any other non-object value is a caller error and
+// is reported as one, naming the function.
+function optionsOf(fn, options) {
+  if (options == null) return {};
+  if (typeof options === 'string') return { format: options };
+  if (typeof options === 'object') return options;
+  throw new TypeError(
+    `${fn}: options must be an object or a format string, got ${typeof options}`);
+}
+
 function engineError(prefix, res) {
   const msg = (res.stderr || res.stdout ||
     `factoidal exited with code ${res.exitCode}`).trim();
@@ -159,6 +173,213 @@ function bindingsFromSrj(srj) {
   });
 }
 
+// ---------------------------------------------------------------------
+// Strict parsing (issue #344) -- ParseError, and the shared envelope
+// unwrapper every engine call (F* and Lean 4) routes through.
+// ---------------------------------------------------------------------
+
+/**
+ * A parse (or ABI-level) failure that carries a position: `line`/
+ * `column`/`offset` when the failing engine call reported one (a
+ * parseToDatasetJson/parseDocument/datasetOpen error over Turtle,
+ * TriG, N-Triples or N-Quads), else `undefined`. RDF/XML and JSON-LD
+ * failures, and any non-parse engine error, stay plain Error --
+ * entryResult() below is what decides which one to throw.
+ */
+class ParseError extends Error {
+  constructor(message, info) {
+    super(message);
+    this.name = 'ParseError';
+    const i = info || {};
+    this.line = i.line;
+    this.column = i.column;
+    this.offset = i.offset;
+    this.format = i.format;
+    if (typeof Error.captureStackTrace === 'function') {
+      Error.captureStackTrace(this, ParseError);
+    }
+  }
+}
+
+// Unwrap one npm-entry ABI JSON envelope ({"ok":true,...} |
+// {"ok":false,"error":...}). A `line` or `offset` member on the error
+// envelope means the failing call was a parse (Turtle/TriG/N-Triples/
+// N-Quads carry a position; RDF/XML and JSON-LD carry a message only)
+// -- throw ParseError so a caller can branch on position without
+// string-matching the message. Every other failure stays a plain
+// Error, as before. Pure (no per-driver state), so every buildApi()
+// instance and DatasetHandle share this one function.
+function entryResult(jsonText, what) {
+  const r = JSON.parse(jsonText);
+  if (!r.ok) {
+    if (r.line !== undefined || r.offset !== undefined) {
+      throw new ParseError(`${what}: ${r.error}`, {
+        line: r.line, column: r.column, offset: r.offset, format: r.format,
+      });
+    }
+    throw new Error(`${what}: ${r.error}`);
+  }
+  return r;
+}
+
+// ---------------------------------------------------------------------
+// Dataset handles (issue #680) -- parse once via openDataset(), then
+// query()/update()/serialize() many times against the engine's own
+// cached, indexed copy instead of re-parsing N-Quads text and
+// rebuilding the SPARQL index on every call (mirrors
+// formal/lean4/Wasm/Ops/Handles.lean's op names/envelopes on the Lean
+// side; entry_jsoo.ml's header comment has the full ABI contract).
+//
+// Module-level (like ParseError above), not defined inside buildApi():
+// every method here needs only `entryResult`/`bindingsFromSrj`/
+// `Dataset`/`pendingError`, which are all free of per-driver state.
+// The two exceptions -- `freshBnodePrefix` (so toDataset()'s blank
+// nodes don't collide with another parse from the same api instance)
+// and `withExtensionRounds` (the same async-extension-function
+// trampoline query()/update() use, since a handle's engine object `e`
+// is the SAME entry object those register against) -- are per-driver
+// closures, so openDataset() passes them in at construction time.
+// ---------------------------------------------------------------------
+class DatasetHandle {
+  constructor(e, handle, size, prefixes, freshBnodePrefix, withExtensionRounds) {
+    this._e = e;
+    this._handle = handle;
+    this._size = size;
+    this._prefixes = Object.freeze({ ...(prefixes || {}) });
+    this._closed = false;
+    this._freshBnodePrefix = freshBnodePrefix;
+    this._withExtensionRounds = withExtensionRounds;
+  }
+  /** The opaque engine handle id (e.g. "h1"). */
+  get handle() { return this._handle; }
+  /** Quad count as of the last open()/update(). */
+  get size() { return this._size; }
+  /** Prefixes recorded at open (or carried over from a Dataset argument). */
+  get prefixes() { return this._prefixes; }
+  /** True once close() has run -- every other method rejects after. */
+  get closed() { return this._closed; }
+
+  _assertOpen(who) {
+    if (this._closed) {
+      throw new Error(`DatasetHandle.${who}: handle '${this._handle}' is closed`);
+    }
+  }
+
+  /**
+   * Run a SPARQL 1.1 query against the stored dataset (no re-parse, no
+   * backend rebuild).
+   * @param {string} sparql
+   * @param {{sparql12?: boolean, version?: string}} [options]
+   * @returns {Promise<Array<Map<string, object>>|boolean|Dataset>}
+   */
+  async query(sparql, options) {
+    this._assertOpen('query');
+    if (typeof sparql !== 'string') {
+      throw new TypeError('DatasetHandle.query: sparql must be a string');
+    }
+    const opts = options || {};
+    const sparql12 = opts.sparql12 === true || String(opts.version || '') === '1.2';
+    const fn = sparql12 ? this._e.datasetQuery12 : this._e.datasetQuery;
+    if (typeof fn !== 'function') {
+      throw new Error(
+        'DatasetHandle.query: this npm-entry bundle lacks ' +
+        `datasetQuery${sparql12 ? '12' : ''} — rebuild build-ocaml.sh js + npm.`);
+    }
+    const run = () => entryResult(fn(this._handle, sparql), 'query');
+    const r = this._withExtensionRounds ? await this._withExtensionRounds(run) : run();
+    if (r.kind === 'ask') return r.boolean;
+    if (r.kind === 'construct') {
+      return Dataset.fromNQuads(r.nquads, { blankNodePrefix: this._freshBnodePrefix(), prefixes: { ...this._prefixes } });
+    }
+    return bindingsFromSrj(r.srj);
+  }
+
+  /**
+   * Apply a SPARQL 1.1 Update to the stored dataset IN PLACE (the
+   * stored dataset is replaced and its backend rebuilt).
+   * @param {string} updateText
+   * @returns {Promise<DatasetHandle>} this handle, refreshed.
+   */
+  async update(updateText) {
+    this._assertOpen('update');
+    if (typeof updateText !== 'string') {
+      throw new TypeError('DatasetHandle.update: updateText must be a string');
+    }
+    if (typeof this._e.datasetUpdate !== 'function') {
+      throw pendingError('DatasetHandle.update');
+    }
+    const r = entryResult(this._e.datasetUpdate(this._handle, updateText), 'update');
+    this._size = r.count;
+    return this;
+  }
+
+  /**
+   * Serialize the stored dataset. 'turtle' uses the handle's own
+   * recorded prefixes (from openDataset(), or from a Dataset
+   * argument's `.prefixes`) automatically; pass `prefixes` to add to
+   * them or `literalShorthand:false` to turn off the bare-literal
+   * shorthand -- either forces the prefix/shorthand-aware ABI call.
+   * @param {{format?: 'nquads'|'turtle'|'ttl', prefixes?: object,
+   *   literalShorthand?: boolean}} [options]
+   * @returns {Promise<string>}
+   */
+  async serialize(options) {
+    this._assertOpen('serialize');
+    const opts = optionsOf('DatasetHandle.serialize', options);
+    const rawOut = String(opts.format || 'nquads').toLowerCase();
+    const outFormat = rawOut === 'ttl' ? 'turtle' : rawOut;
+    if (outFormat !== 'nquads' && outFormat !== 'turtle') {
+      throw new TypeError("DatasetHandle.serialize: format must be 'nquads' or 'turtle'");
+    }
+    if (outFormat === 'turtle') {
+      const mergedPrefixes = { ...this._prefixes, ...(opts.prefixes || {}) };
+      const needsWith = Object.keys(mergedPrefixes).length > 0 ||
+        opts.literalShorthand !== undefined;
+      if (needsWith) {
+        if (typeof this._e.datasetSerializeWith !== 'function') {
+          throw pendingError('DatasetHandle.serialize (prefixes/literalShorthand)');
+        }
+        const optionsJson = JSON.stringify({
+          prefixes: mergedPrefixes,
+          ...(opts.literalShorthand !== undefined ? { literalShorthand: !!opts.literalShorthand } : {}),
+        });
+        return entryResult(
+          this._e.datasetSerializeWith(this._handle, 'turtle', optionsJson), 'serialize').turtle;
+      }
+    }
+    if (typeof this._e.datasetSerialize !== 'function') throw pendingError('DatasetHandle.serialize');
+    const r = entryResult(this._e.datasetSerialize(this._handle, outFormat), 'serialize');
+    return outFormat === 'turtle' ? r.turtle : r.nquads;
+  }
+
+  /** Materialize the stored dataset as a heap Dataset. */
+  async toDataset() {
+    const nq = await this.serialize({ format: 'nquads' });
+    return Dataset.fromNQuads(nq, {
+      blankNodePrefix: this._freshBnodePrefix(),
+      prefixes: this._prefixes,
+    });
+  }
+
+  /** RDFC-1.0 canonical N-Quads of the stored dataset. */
+  async canonicalize() {
+    this._assertOpen('canonicalize');
+    const nq = await this.serialize({ format: 'nquads' });
+    if (typeof this._e.canonicalizeToNQuads !== 'function') {
+      throw pendingError('DatasetHandle.canonicalize');
+    }
+    return entryResult(this._e.canonicalizeToNQuads(nq), 'canonicalize').nquads;
+  }
+
+  /** Release the handle. Idempotent; every other method rejects after. */
+  async close() {
+    if (this._closed) return;
+    this._closed = true;
+    if (typeof this._e.datasetClose !== 'function') return;
+    entryResult(this._e.datasetClose(this._handle), 'close');
+  }
+}
+
 /**
  * Build the public API around a driver.
  *
@@ -188,11 +409,8 @@ function buildApi(driver) {
     return driver.runCli(args, files);
   }
 
-  function entryResult(jsonText, what) {
-    const r = JSON.parse(jsonText);
-    if (!r.ok) throw new Error(`${what}: ${r.error}`);
-    return r;
-  }
+  // entryResult() is now module-level (see above ParseError) -- pure,
+  // shared by every buildApi() instance and by DatasetHandle.
 
   function freshBnodePrefix() {
     return `p${parseCounter++}_`;
@@ -380,7 +598,7 @@ function buildApi(driver) {
   // stay document-scoped (the per-document renaming is F*'s
   // RDF.Dataset.Merge.rename_dataset_bnodes, applied at engine load).
   function toDocs(data, options) {
-    const opts = options || {};
+    const opts = optionsOf('data', options);
     const items = Array.isArray(data) ? data : [data];
     return items.map((item, i) => {
       if (item instanceof Dataset) {
@@ -395,6 +613,25 @@ function buildApi(driver) {
       throw new TypeError(
         `data[${i}]: expected a Dataset, a string, or {text, format}`);
     });
+  }
+
+  // The prefixes a result Dataset inherits from its inputs: the union of
+  // every Dataset input's `prefixes`, in input order, the first
+  // declaration of a label winning. update() and CONSTRUCT answer a
+  // FRESH Dataset built from N-Quads, which carry no prefixes; without
+  // this the parse -> update -> serialize round trip would lose the
+  // source labels (https://github.com/danbri/factoidal/issues/681).
+  function prefixesOfData(data) {
+    const items = Array.isArray(data) ? data : [data];
+    const out = {};
+    for (const item of items) {
+      if (item instanceof Dataset && item.prefixes) {
+        for (const [label, iri] of Object.entries(item.prefixes)) {
+          if (!(label in out)) out[label] = iri;
+        }
+      }
+    }
+    return out;
   }
 
   function docsToCliFiles(docs) {
@@ -446,27 +683,55 @@ function buildApi(driver) {
   // and both paths (entry, CLI) share one shape.
 
   /**
-   * Parse one RDF document into a Dataset.
+   * Parse one RDF document into a Dataset. Strict by default (issue
+   * #344): a syntax error, an undeclared prefix, or an unresolvable
+   * relative IRI (no baseIRI in effect) rejects with a ParseError
+   * (`line`/`column`/`offset` present for Turtle/TriG/N-Triples/
+   * N-Quads; RDF/XML and JSON-LD failures carry a message only).
+   * `{lenient:true}` (needs the npm-entry bundle's parseDocument;
+   * rejects naming the missing ABI function otherwise) returns
+   * whatever the parser recovered instead, with `dataset.diagnostics`
+   * describing what was skipped.
    * @param {string} text
-   * @param {{format?: string, baseIRI?: string}} [options]
+   * @param {{format?: string, baseIRI?: string, lenient?: boolean}} [options]
    * @returns {Promise<Dataset>}
    */
   async function parse(text, options) {
     if (typeof text !== 'string') {
       throw new TypeError('parse: text must be a string');
     }
-    const opts = options || {};
+    const opts = optionsOf('parse', options);
     const ext = extForFormat(opts.format);
     const baseIRI = opts.baseIRI || '';
     const bnodePrefix = freshBnodePrefix();
 
     const e = await entry();
     if (e) {
+      if (opts.lenient) {
+        if (typeof e.parseDocument !== 'function') {
+          throw new Error(
+            "parse: {lenient:true} requires parseDocument, which this " +
+            'npm-entry bundle predates — rebuild build-ocaml.sh js + npm.');
+        }
+        const r = entryResult(
+          e.parseDocument(text, DATA_FORMAT_TAG[ext], baseIRI, JSON.stringify({ lenient: true })),
+          'parse');
+        return Dataset.fromNQuads(r.nquads, {
+          blankNodePrefix: bnodePrefix,
+          prefixes: r.prefixes,
+          diagnostics: r.diagnostics,
+        });
+      }
       const r = entryResult(
         e.parseToDatasetJson(text, DATA_FORMAT_TAG[ext], baseIRI), 'parse');
-      return Dataset.fromNQuads(r.nquads, { blankNodePrefix: bnodePrefix });
+      return Dataset.fromNQuads(r.nquads, {
+        blankNodePrefix: bnodePrefix,
+        prefixes: r.prefixes,
+      });
     }
 
+    // CLI fallback path is unchanged -- no npm-entry bundle, so no
+    // parseDocument/diagnostics/prefixes; `lenient` is not consulted.
     const name = `/static/data.${ext}`;
     const args = ['--dump-nq', '-d', name];
     if (baseIRI) args.push('-b', baseIRI);
@@ -488,7 +753,7 @@ function buildApi(driver) {
     if (typeof sparql !== 'string') {
       throw new TypeError('query: sparql must be a string');
     }
-    const opts = options || {};
+    const opts = optionsOf('query', options);
     const entail = opts.entail || 'none';
     // x-ikl-* is NOT IMPLEMENTED. It is not withheld by policy.
     //
@@ -519,6 +784,16 @@ function buildApi(driver) {
       throw new TypeError(
         `query: entail must be one of ${[...ENTAIL_VALUES].join(', ')}`);
     }
+
+    if (data instanceof DatasetHandle) {
+      if (entail !== 'none') {
+        throw new TypeError(
+          "query: entail must be 'none' when data is a DatasetHandle " +
+          '(a handle carries no entailment-closure step)');
+      }
+      return data.query(sparql, opts);
+    }
+
     const form = sniffQueryForm(sparql);
     const docs = toDocs(data, opts);
 
@@ -553,6 +828,7 @@ function buildApi(driver) {
       if (r.kind === 'construct') {
         return Dataset.fromNQuads(r.nquads, {
           blankNodePrefix: freshBnodePrefix(),
+          prefixes: prefixesOfData(data),
         });
       }
       return bindingsFromSrj(r.srj);
@@ -620,9 +896,16 @@ function buildApi(driver) {
     if (typeof updateText !== 'string') {
       throw new TypeError('update: updateText must be a string');
     }
+    if (data instanceof DatasetHandle) {
+      throw new TypeError(
+        'update: data is a DatasetHandle; call handle.update() directly ' +
+        '-- update() always returns a FRESH Dataset, but a handle\'s own ' +
+        'update() mutates the handle in place and returns the handle.');
+    }
     const e = await entry();
     if (!e) throw pendingError('SPARQL UPDATE');
-    const docs = toDocs(data, options);
+    const opts = optionsOf('update', options);
+    const docs = toDocs(data, opts);
     let nq = '';
     for (const d of docs) {
       if (d.ext === 'nq') { nq += d.content; continue; }
@@ -631,7 +914,6 @@ function buildApi(driver) {
         'update(parse)');
       nq += r.nquads;
     }
-    const opts = options || {};
     const sparql12 = opts.sparql12 === true || String(opts.version || '') === '1.2';
     if (sparql12 && typeof e.updateDataset12 !== 'function') {
       throw new Error(
@@ -642,22 +924,74 @@ function buildApi(driver) {
       (sparql12 ? e.updateDataset12 : e.updateDataset)(nq, updateText), 'update');
     return Dataset.fromNQuads(r.nquads, {
       blankNodePrefix: freshBnodePrefix(),
+      prefixes: prefixesOfData(data),
     });
   }
 
   /**
+   * Open a dataset handle (issue #680): parse `data` once, then run
+   * many query()/update()/serialize() calls against the engine's own
+   * cached, indexed copy -- no re-parse, no SPARQL-index rebuild per
+   * call (see the tests/perf/npm_handle_vs_stateless.mjs numbers for
+   * the measured difference). Needs the npm-entry bundle.
+   * @param {Dataset|string|Array|{text,format}} data a Dataset (opened
+   *   as N-Quads, keeping the Dataset's own `.prefixes` on the handle
+   *   for Turtle output), a string (`options.format`/`baseIRI` apply),
+   *   or an array of those (each non-N-Quads document normalizes
+   *   through parseToDatasetJson first, then the whole array opens as
+   *   one N-Quads document -- no per-document prefixes survive that
+   *   merge).
+   * @param {{format?: string, baseIRI?: string}} [options]
+   * @returns {Promise<DatasetHandle>}
+   */
+  async function openDataset(data, options) {
+    const e = await entry();
+    if (!e) throw pendingError('openDataset (dataset handles)');
+    requireEntryFn(e, 'datasetOpen', 'openDataset');
+    const opts = optionsOf('openDataset', options);
+
+    if (data instanceof Dataset) {
+      const r = entryResult(e.datasetOpen(data.toNQuads(), 'nquads', ''), 'openDataset');
+      return new DatasetHandle(e, r.handle, r.count, data.prefixes, freshBnodePrefix, withExtensionRounds);
+    }
+    if (typeof data === 'string') {
+      const ext = extForFormat(opts.format);
+      const baseIRI = opts.baseIRI || '';
+      const r = entryResult(
+        e.datasetOpen(data, DATA_FORMAT_TAG[ext], baseIRI), 'openDataset');
+      return new DatasetHandle(e, r.handle, r.count, r.prefixes, freshBnodePrefix, withExtensionRounds);
+    }
+    const docs = toDocs(data, opts);
+    const nq = docsToEntryNQuads(e, docs, 'openDataset');
+    const r = entryResult(e.datasetOpen(nq, 'nquads', ''), 'openDataset');
+    return new DatasetHandle(e, r.handle, r.count, {}, freshBnodePrefix, withExtensionRounds);
+  }
+
+  /**
    * Serialize a dataset (engine-produced bytes, sorted N-Quads order).
-   * @param {Dataset|string|Array} data
-   * @param {{format?: 'nquads'|'ntriples'|'turtle', inputFormat?: string}} [options]
+   * @param {Dataset|string|Array|DatasetHandle} data a DatasetHandle
+   *   routes to `data.serialize(options)`.
+   * @param {{format?: 'nquads'|'ntriples'|'turtle', inputFormat?: string,
+   *   prefixes?: object, literalShorthand?: boolean}} [options]
+   *   `prefixes`/`literalShorthand` apply to 'turtle' only.
    * @returns {Promise<string>}
    *   'turtle' (prefix-compacted, subject-grouped — entry_jsoo.ml's
-   *   serializeTurtle -> RDF_Turtle_Serialize.turtle_of_graph_auto)
-   *   needs the npm-entry bundle and flattens every named graph into
-   *   the default graph (Turtle has no named-graph notion); use
-   *   'nquads' when graph names must survive.
+   *   serializeTurtle/serializeTurtleWith ->
+   *   RDF_Turtle_Serialize.turtle_of_graph_auto) needs the npm-entry
+   *   bundle and flattens every named graph into the default graph
+   *   (Turtle has no named-graph notion); use 'nquads' when graph
+   *   names must survive. `prefixes` is used, and unused caller
+   *   namespaces are dropped, when given or when `data` is a Dataset
+   *   with non-empty `.prefixes` (that Dataset's own prefixes are used
+   *   automatically); `literalShorthand` (default true) controls
+   *   whether xsd:integer/decimal/double/boolean literals with a
+   *   Turtle-grammar-matching lexical form print bare.
    */
   async function serialize(data, options) {
-    const opts = options || {};
+    const opts = optionsOf('serialize', options);
+    if (data instanceof DatasetHandle) {
+      return data.serialize(opts);
+    }
     const rawOut = String(opts.format || 'nquads').toLowerCase();
     const outFormat = rawOut === 'ttl' ? 'turtle' : rawOut;
     if (outFormat !== 'nquads' && outFormat !== 'ntriples' && outFormat !== 'turtle') {
@@ -669,8 +1003,20 @@ function buildApi(driver) {
     if (outFormat === 'turtle') {
       const e = await entry();
       if (!e) throw pendingError('Turtle serialization');
-      requireEntryFn(e, 'serializeTurtle', 'Turtle serialization');
       const nq = docsToEntryNQuads(e, docs, 'serialize(turtle)');
+      const dataPrefixes = (data instanceof Dataset) ? data.prefixes : null;
+      const hasOptions = opts.prefixes !== undefined || opts.literalShorthand !== undefined;
+      const useWith = hasOptions || (dataPrefixes && Object.keys(dataPrefixes).length > 0);
+      if (useWith) {
+        requireEntryFn(e, 'serializeTurtleWith', 'Turtle serialization (prefixes/literalShorthand)');
+        const mergedPrefixes = { ...(dataPrefixes || {}), ...(opts.prefixes || {}) };
+        const optionsJson = JSON.stringify({
+          prefixes: mergedPrefixes,
+          ...(opts.literalShorthand !== undefined ? { literalShorthand: !!opts.literalShorthand } : {}),
+        });
+        return entryResult(e.serializeTurtleWith(nq, optionsJson), 'serialize').turtle;
+      }
+      requireEntryFn(e, 'serializeTurtle', 'Turtle serialization');
       return entryResult(e.serializeTurtle(nq), 'serialize').turtle;
     }
 
@@ -702,7 +1048,10 @@ function buildApi(driver) {
    * @returns {Promise<string>}
    */
   async function canonicalize(data, options) {
-    const docs = toDocs(data, options);
+    if (data instanceof DatasetHandle) {
+      return data.canonicalize();
+    }
+    const docs = toDocs(data, optionsOf('canonicalize', options));
 
     const e = await entry();
     if (e) {
@@ -2198,6 +2547,18 @@ function buildApi(driver) {
         // only reports that the ABI exports exist.
         vcCrypto: typeof e.vcEd25519Verify === 'function' &&
           typeof e.vcEddsaVerifyFromCanonical === 'function',
+        // Bundle identity (issue #684) and the typed-API surface added
+        // by issues #344/#680/#681 -- probed the same way as every
+        // flag above, never assumed from bundle age.
+        profile: e.profile || 'full',
+        abiVersion: e.abiVersion,
+        datasetHandles: typeof e.datasetOpen === 'function' &&
+          typeof e.datasetQuery === 'function' &&
+          typeof e.datasetUpdate === 'function' &&
+          typeof e.datasetSerialize === 'function' &&
+          typeof e.datasetClose === 'function',
+        parseDiagnostics: typeof e.parseDocument === 'function',
+        turtlePrefixes: typeof e.serializeTurtleWith === 'function',
       };
     }
     // Probe --canonicalize support on the CLI bundle with a 1-quad doc.
@@ -2220,6 +2581,8 @@ function buildApi(driver) {
       xml: false, xpath: false, rif: false, cottasBytesStore: false,
       xslt: false, mathml: false, xforms: false, jsonSchema: false,
       schematron: false, toan: false, matrix: false, sigmoid: false, vcCrypto: false,
+      profile: 'full', abiVersion: undefined,
+      datasetHandles: false, parseDiagnostics: false, turtlePrefixes: false,
     };
   }
 
@@ -2228,6 +2591,7 @@ function buildApi(driver) {
     query,
     queryHdt,
     update,
+    openDataset,
     registerExtensionFunction,
     unregisterExtensionFunction,
     clearExtensionFunctions,
@@ -2293,8 +2657,16 @@ function buildApi(driver) {
     toCottas,
     capabilities,
     Dataset,
+    DatasetHandle,
+    ParseError,
     dataFactory,
+    // Metadata (issue #682): the same two fields on every driver's
+    // typed surface, so a caller can log/report which package version
+    // and which engine (js/wasm/entry/l4) answered a call without a
+    // separate require('../package.json').
+    version: require('../package.json').version,
+    engine: driver.engineName,
   };
 }
 
-module.exports = { buildApi, sniffQueryForm, bindingsFromSrj };
+module.exports = { buildApi, sniffQueryForm, bindingsFromSrj, ParseError, DatasetHandle };

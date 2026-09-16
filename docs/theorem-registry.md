@@ -601,11 +601,10 @@ What this registry's PROVED cells rest on, beyond F\*/Z3 itself:
   derivable from these three (order totality, `<` irreflexivity,
   sortedness transfer) must be proved in a consumer module, not added
   here.
-- **`assume val` realisations** — approximately 146 declarations
-  across the tree (a direct count against the current tree; the
-  project's own current-state doc records 141 from an earlier count,
-  and this task's brief cited ~148 — treat all three as approximate
-  and re-count before quoting a precise figure). The large majority
+- **`assume val` realisations** — 82 declarations across the tree
+  (measured 2026-09-16 with the command in CLAUDE.md iron rule #3;
+  this line said "approximately 146" from an unmeasured estimate until
+  then — re-count before quoting a figure). The large majority
   are the COTTAS/HDT storage I/O layer (pure I/O under iron rule
   #11), not semantic logic. Full audited breakdown:
   [`designissues/fstar-ocaml-boundary-audit.md`](designissues/fstar-ocaml-boundary-audit.md).

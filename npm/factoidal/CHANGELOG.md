@@ -1,6 +1,77 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 — 2026-09-16
+
+**Behaviour change: parsing is strict by default.** `parse()` (and
+every function that parses text input) now rejects on a syntax error,
+an undeclared prefix, or a relative IRI with no `baseIRI` in effect,
+instead of silently dropping the affected statements. The error is a
+new `class ParseError extends Error` (`name`, `line`, `column`,
+`offset`, `format` — position fields present for Turtle/TriG/
+N-Triples/N-Quads, absent for RDF/XML and JSON-LD, which carry a
+message only), exported from every entry point (`index.js`/`.mjs`,
+`wasm.js`, `l4-core.js`, `api.js`/`.mjs`, `lite.js`/`.mjs`, and
+`browser.js`, which declares its own copy since it has no imports).
+Pass `{lenient: true}` to `parse()` to recover instead: the returned
+Dataset holds whatever the parser recovered, and the new
+`dataset.diagnostics` array lists what was skipped (needs the
+npm-entry engine bundle's `parseDocument` export). Issues
+[344](https://github.com/danbri/factoidal/issues/344),
+[680](https://github.com/danbri/factoidal/issues/680),
+[681](https://github.com/danbri/factoidal/issues/681).
+
+**Dataset handles.** `openDataset(data, {format?, baseIRI?})` parses
+once and keeps the result indexed in the engine, so repeated
+`query()`/`update()`/`serialize()` calls against the returned
+`DatasetHandle` skip both the re-parse and the SPARQL-index rebuild a
+fresh `query(ds, ...)` call pays every time (measured ~2x faster per
+call on a 2,000-triple two-pattern join in this session — see
+`tests/perf/npm_handle_vs_stateless.mjs`). `query(data, sparql,
+options)`, `serialize(data, options)` and `canonicalize(data)` also
+accept a `DatasetHandle` directly; `update(handle, ...)` rejects with
+a `TypeError`, since `update()` always returns a fresh Dataset while
+`handle.update()` mutates the handle in place. `select.js` (the F*/
+Lean backend selector) deliberately does not route `openDataset()` —
+a handle is opened against one engine's own entry object, so there is
+no "same handle on the other engine" to fall through to.
+
+**Prefixes and Turtle literal shorthand.** `Dataset` gains `.prefixes`
+(the declared map from parsing, `{}` for N-Triples/N-Quads) and
+`.diagnostics` (own, non-enumerable properties, so `JSON.stringify()`/
+`toArray()` are unaffected either way). `serialize(data, {format:
+'turtle', prefixes?, literalShorthand?})` uses caller prefix pairs
+(dropping unused caller namespaces, skipping caller labels when
+auto-generating `nsN:` ones) when given, or automatically when `data`
+is a Dataset with non-empty `.prefixes`; `literalShorthand` (default
+`true`) controls whether `xsd:integer`/`decimal`/`double`/`boolean`
+literals with a Turtle-grammar-matching lexical form print bare.
+`DatasetHandle.serialize()` has the same options.
+
+**New entry point `@factoidal/core/lite`** (`lite.js`/`.mjs`/`.d.ts`):
+a smaller npm-entry ABI bundle (`factoidal-npm-entry-lite.js`, about
+half the gzip size of the full bundle — see README.md's "Choosing a
+bundle: full or lite") implementing the core surface (`parse`,
+`query`, `update`, `serialize`, `canonicalize`, `graphs`,
+`canonicalHash`, `openDataset`/`DatasetHandle`, the extension-function
+and SERVICE-endpoint registration functions, `capabilities`) with no
+SHACL, ShEx, OWL closure, JSON-LD, RDF/XML, CSVW, RML, RIF, XML,
+XPath, VC crypto, COTTAS, or CLI bundle (no entailment regimes, no
+`queryHdt`). `capabilities()` gains `profile` (`'full'` | `'lite'`),
+`abiVersion`, `datasetHandles`, `parseDiagnostics`, `turtlePrefixes`.
+Issue [684](https://github.com/danbri/factoidal/issues/684).
+
+**`browser.js`: `query()` and `toRdf()` route through the npm-entry
+ABI.** Whenever the persistent ABI bundle is available (already on
+`globalThis`, or fetched by `loadNpmEntry()`), `query()` with `entail:
+'none'` and `output: 'json'` (both defaults), and every `toRdf()`
+call, now go through it instead of the eval-per-call CLI bundle —
+falling back to the CLI bundle only when loading the ABI fails. This
+makes the classic-`<script>` route (README.md's "Bundlers and Content
+Security Policy" §b) CSP-safe for parsing and SELECT/ASK too, not only
+for the operations already ABI-routed. New `openDataset(text,
+{format?, baseIRI?})` on `browser.js` returns a handle with `query`/
+`update`/`serialize`/`close` over the same ABI. Issue
+[682](https://github.com/danbri/factoidal/issues/682) (second half).
 
 Three new entry points, for two storage protocols:
 
@@ -27,6 +98,57 @@ lives in the engine handle — and Solid-OIDC token verification is not
 built, so the first slice serves public resources and unauthenticated
 writes. Issue
 [659](https://github.com/danbri/factoidal/issues/659).
+
+New entry point `@factoidal/core/api`: `createApi(entry, options?)`
+wires the typed `parse`/`query`/`serialize`/... surface around an
+already-loaded npm-entry ABI object, with no `fetch` and no `new
+Function(src)` eval — the route for a bundler (esbuild, webpack,
+Rollup) or a page under `Content-Security-Policy: script-src 'self'`.
+`entry` accepts the `factoidalNpmEntry` object itself, a Promise of
+it, or a zero-argument function returning either. `browser.js`'s
+`loadNpmEntry()` now checks `globalThis.factoidalNpmEntry` before
+fetching anything, so a classic `<script src="factoidal-npm-entry.js">`
+tag (or the new `setNpmEntry(abi)`) makes every `browser.js` operation
+already routed through that ABI CSP-safe too. `package.json`'s
+`exports` map gains `./api` and direct subpaths for
+`factoidal-npm-entry.js`/`.wasm.js`/`.wasm.assets/*` (already shipped
+in `files`, not previously importable as package subpaths). Every
+typed entry point (`factoidal`, `factoidal/wasm`, `factoidal/api`,
+`factoidal/l4-core`) now reports `version` and `engine`. See
+README.md's "Bundlers and Content Security Policy" section. Proved
+against a real headless-Chromium page under that CSP header
+(`tests/web-demos/bundler_csp_smoke.sh`) and against esbuild's bundler
+(`test/bundler-esbuild.test.mjs`). Issue
+[682](https://github.com/danbri/factoidal/issues/682).
+
+README.md documents `parse()`'s output order (canonical/sorted
+N-Quads, not document order) and the blank-node label scheme
+(`_anonN` in document order for anonymous nodes, `p<k>_d<n>_` scope
+prefixes, no RDF meaning beyond within-dataset identity), pinned by
+`test/parse-order.test.js`. No behavior changed. Issue
+[683](https://github.com/danbri/factoidal/issues/683).
+
+A bare string where `parse`, `query`, `update`, `openDataset`,
+`serialize`, `canonicalize` or `DatasetHandle.serialize` take an
+options object now means `{ format: <string> }`, so
+`serialize(ds, 'turtle')` is `serialize(ds, { format: 'turtle' })`.
+Until now the string was read as an empty options object and
+`serialize(ds, 'turtle')` returned N-Quads with no error (found by the
+0.8.0 release probe). Any other non-object value throws a `TypeError`
+naming the function. Pinned by `test/options-format-string.test.js`.
+
+The shipped bundles are built from a fresh extraction of the F\* OWL
+closure source. The committed OCaml for `OWL.Closure` and
+`OWL.DirectMapping.Filter` had lagged the `.fst` files since the
+2026-09-07 OWL soundness audit (commit 709f3c4; the "Check F\* Extraction"
+workflow was red on `claude/main` from that date, runs 200 and 201),
+so 0.7.1 was built from the pre-audit rules. Observable in this
+release: the rule that derived `owl:sameAs` between named classes
+from `owl:equivalentClass` is removed, datatype-range clashes are
+decided by XSD value-space disjointness (`xsd_value_spaces_disjoint`),
+and the direct-mapping filter also excludes the built-in OWL annotation
+properties, not only declared ones. The npm-publish workflow re-extracts and refuses drift,
+so this correction is a precondition of the release.
 
 ## 0.7.1 — 2026-09-06
 
@@ -595,7 +717,7 @@ Known limits, measured:
   format-compatibility gate rejected stores written by the current js
   bundle (caught by the wasm/js parity test in `test/`).
 
-## Unreleased
+## Between 0.1.0-alpha.0 and 0.1.0 — unpublished
 
 - Package renamed from the placeholder `@danbri/foafos` to `factoidal`
   (issue #403). The package was never published under the old name, so
