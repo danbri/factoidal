@@ -39,11 +39,27 @@ test('parse: turtle smoke', async () => {
   assert.equal(names.size, 3);
 });
 
+test('parse: (await parse(TTL)).prefixes equals the declared map', async () => {
+  const ds = await parse(TTL);
+  assert.deepEqual(ds.prefixes, {
+    ex: 'http://example.org/',
+    foaf: 'http://xmlns.com/foaf/0.1/',
+  });
+  // Own, non-enumerable -- absent from Object.keys()/JSON.stringify().
+  assert.ok(!Object.keys(ds).includes('prefixes'));
+});
+
 test('parse: ntriples smoke', async () => {
   const ds = await parse(
     '<http://x/a> <http://x/p> "v" .\n<http://x/a> <http://x/p> _:b .\n',
     { format: 'ntriples' });
   assert.equal(ds.size, 2);
+});
+
+test('parse: ntriples input gives an empty prefixes map', async () => {
+  const ds = await parse(
+    '<http://x/a> <http://x/p> "v" .\n', { format: 'ntriples' });
+  assert.deepEqual(ds.prefixes, {});
 });
 
 test('parse: nquads smoke (named graph preserved)', async () => {

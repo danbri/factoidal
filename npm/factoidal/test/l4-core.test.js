@@ -538,3 +538,100 @@ test.skip('l4-core multi-document merge keeps blank-node labels document-scoped'
     assert.equal(rows.length, 2,
       'two documents each with _:b0 must contribute two distinct nodes');
   });
+
+// ---------------------------------------------------------------------
+// dataset handles (issues #344/#680/#681 on lib/api.js's side; the
+// Lean engine's own gap is https://github.com/danbri/factoidal/issues/685)
+// ---------------------------------------------------------------------
+
+test('l4-core dataset handle: open, query, update, serialize, close', async (t) => {
+  if (skipUnlessAvailable(t)) return;
+  if (await skipUnlessOp(t, 'datasetOpen')) return;
+  const h = await l4core.openDataset(JOIN_NT, { format: 'ntriples' });
+  assert.equal(h.size, 4);
+  assert.equal(h.closed, false);
+  const rows = await h.query(JOIN_Q);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rowMultiset(rows), rowMultiset(
+    await l4core.query(JOIN_NT, JOIN_Q, { format: 'ntriples' })));
+
+  await h.update(
+    `INSERT DATA { <${X}carol> <${X}name> "Carol" . ` +
+    `<${X}carol> <${X}age> "40"^^<${XSD_INT}> . }`);
+  assert.equal(h.size, 6);
+  const rows2 = await h.query(JOIN_Q);
+  assert.equal(rows2.length, 3);
+
+  const nq = await h.serialize({ format: 'nquads' });
+  assert.match(nq, /carol/);
+
+  await h.close();
+  assert.equal(h.closed, true);
+  await assert.rejects(() => h.query(JOIN_Q), /closed/);
+});
+
+// Owner rule, 2026-09-07 (CLAUDE.md "A stated shortfall is a failing
+// test plus an open issue"): each case below runs the Lean engine's
+// real dataset-handle ops and asserts the shortfall AWAY -- so it
+// fails today, naming the issue, and turns the suite red the day the
+// Lean side closes the gap (skips, rather than xfails, when the Lean
+// wasm assets are not resolvable at all -- that is not evidence about
+// the gap either way).
+const ISSUE_685 = 'https://github.com/danbri/factoidal/issues/685';
+
+function xfailOnLean(name, requiredOp, fn) {
+  test(`xfail: ${name} (${ISSUE_685})`, async (t) => {
+    if (skipUnlessAvailable(t)) return;
+    if (requiredOp && await skipUnlessOp(t, requiredOp)) return;
+    let failed = false;
+    try {
+      await fn(t);
+    } catch (error) {
+      failed = true;
+      t.diagnostic(`expected failure: ${String(error.message).slice(0, 200)}`);
+    }
+    assert.ok(failed,
+      `unexpected pass: ${name} now works on the Lean engine -- flip ` +
+      `this xfail to a real assertion and close ${ISSUE_685}`);
+  });
+}
+
+xfailOnLean('dataset-handle parse error carries a line/column position', 'datasetOpen', async () => {
+  await assert.rejects(
+    () => l4core.openDataset('this is not turtle', { format: 'turtle' }),
+    (err) => {
+      assert.ok(err.line !== undefined,
+        'expected a positioned error (a line member), same as the F* engine');
+      return true;
+    });
+});
+
+xfailOnLean('dataset handle records prefixes from a Turtle open()', 'datasetOpen', async () => {
+  const h = await l4core.openDataset(`@prefix ex: <${X}> .\nex:s ex:p ex:o .`, { format: 'turtle' });
+  try {
+    assert.ok(Object.keys(h.prefixes).length > 0,
+      'expected non-empty prefixes on the handle, same as the F* engine');
+  } finally {
+    await h.close();
+  }
+});
+
+xfailOnLean('dataset handle serialize({format:"turtle", literalShorthand:false}) is supported', 'datasetOpen', async () => {
+  const h = await l4core.openDataset(`<${X}s> <${X}p> "1"^^<${XSD_INT}> .`, { format: 'ntriples' });
+  try {
+    await h.serialize({ format: 'turtle', literalShorthand: false });
+  } finally {
+    await h.close();
+  }
+});
+
+xfailOnLean('dataset handle Turtle output prints small integers bare (literal shorthand) by default', 'datasetOpen', async () => {
+  const h = await l4core.openDataset(`<${X}s> <${X}p> "1"^^<${XSD_INT}> .`, { format: 'ntriples' });
+  try {
+    const ttl = await h.serialize({ format: 'turtle' });
+    assert.ok(!ttl.includes('^^'),
+      `expected the integer to print bare, same as the F* engine; got: ${ttl}`);
+  } finally {
+    await h.close();
+  }
+});
