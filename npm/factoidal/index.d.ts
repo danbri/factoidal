@@ -80,13 +80,52 @@ export interface DataFactory {
 export const dataFactory: DataFactory;
 
 /**
+ * A parse (or dataset-handle ABI) failure that carries a position
+ * (issue #344): `line`/`column`/`offset` are set when the failing
+ * engine call reported one (Turtle, TriG, N-Triples, N-Quads);
+ * `undefined` for an RDF/XML or JSON-LD failure, or any non-parse
+ * engine error, which stay a plain `Error`. `name` is `'ParseError'`.
+ */
+export class ParseError extends Error {
+  readonly name: 'ParseError';
+  readonly line?: number;
+  readonly column?: number;
+  readonly offset?: number;
+  readonly format?: string;
+}
+
+/** One recoverable-parse diagnostic from a `{lenient:true}` parse() call. */
+export interface ParseDiagnostic {
+  message: string;
+  offset: number;
+  line: number;
+  column: number;
+}
+
+/**
  * An in-memory RDF/JS DatasetCore
  * (https://rdf.js.org/dataset-spec/#datasetcore-interface) that also
  * round-trips to the engine's N-Quads interchange text.
  */
 export class Dataset implements Iterable<Quad> {
-  constructor(quads?: Iterable<Quad>);
+  constructor(
+    quads?: Iterable<Quad>,
+    options?: { prefixes?: Record<string, string>; diagnostics?: ParseDiagnostic[] }
+  );
   readonly size: number;
+  /**
+   * Prefixes the engine reported at parse time (declaration order, no
+   * colons), or `{}` for a Dataset with none recorded. A frozen, own,
+   * non-enumerable property -- absent from `JSON.stringify()`/
+   * `Object.keys()`, and from `toArray()`'s quads.
+   */
+  readonly prefixes: Record<string, string>;
+  /**
+   * Recoverable-parse diagnostics from a `{lenient:true}` parse() call,
+   * or `[]` for a strict parse (or one with no errors). Same
+   * non-enumerable-property treatment as `prefixes`.
+   */
+  readonly diagnostics: ParseDiagnostic[];
   add(quad: Quad): this;
   delete(quad: Quad): this;
   has(quad: Quad): boolean;
@@ -103,7 +142,12 @@ export class Dataset implements Iterable<Quad> {
   toString(): string;
   static fromNQuads(
     text: string,
-    options?: { blankNodePrefix?: string; factory?: DataFactory }
+    options?: {
+      blankNodePrefix?: string;
+      factory?: DataFactory;
+      prefixes?: Record<string, string>;
+      diagnostics?: ParseDiagnostic[];
+    }
   ): Dataset;
 }
 
@@ -144,11 +188,24 @@ export type DataInput =
   | { text: string; format?: DataFormat }
   | Array<Dataset | string | { text: string; format?: DataFormat }>;
 
+/** Anything query()/serialize()/canonicalize() accept: DataInput, or an already-open DatasetHandle. */
+export type QueryInput = DataInput | DatasetHandle;
+
 export interface ParseOptions {
   /** Default: 'turtle'. */
   format?: DataFormat;
   /** Base IRI for resolving relative IRIs (Turtle/TriG/RDF-XML). */
   baseIRI?: string;
+  /**
+   * Recover instead of rejecting on the first syntax error (issue
+   * #344): the returned Dataset holds whatever the parser recovered,
+   * and `dataset.diagnostics` lists what was skipped. Needs the
+   * npm-entry engine bundle's `parseDocument` export -- rejects
+   * naming it when absent. Default: false (strict; a syntax error,
+   * an undeclared prefix, or an unresolvable relative IRI rejects the
+   * whole parse with a ParseError).
+   */
+  lenient?: boolean;
 }
 
 export interface QueryOptions {
@@ -162,7 +219,11 @@ export interface QueryOptions {
  * Parse one RDF document into a Dataset. The returned Dataset's quad
  * order is sorted (canonical N-Quads order), not document order;
  * anonymous blank-node labels (`_anonN`) DO reflect document order.
- * See README.md's "Blank nodes, labels and statement order".
+ * See README.md's "Blank nodes, labels and statement order". Strict
+ * by default (issue #344): a syntax error rejects with a ParseError
+ * (`line`/`column`/`offset` for Turtle/TriG/N-Triples/N-Quads; a
+ * message only for RDF/XML and JSON-LD). `options.lenient` recovers
+ * instead; see ParseOptions.
  */
 export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 
@@ -171,10 +232,13 @@ export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
  * SELECT resolves to Bindings[]; ASK resolves to a boolean;
  * CONSTRUCT resolves to a Dataset (needs the npm-entry engine bundle
  * — rejects with an Error mentioning "pending npm-entry build" when
- * only the CLI bundle is available).
+ * only the CLI bundle is available). `data` may be a DatasetHandle
+ * from openDataset(), in which case this routes to `data.query()` and
+ * `options.entail` must be 'none' or omitted (a handle carries no
+ * entailment-closure step).
  */
 export function query(
-  data: DataInput,
+  data: QueryInput,
   sparql: string,
   options?: QueryOptions
 ): Promise<Bindings[] | boolean | Dataset>;
@@ -242,7 +306,11 @@ export function registerServiceEndpoint(
 export function clearServiceEndpoints(): Promise<void>;
 
 /**
- * Apply a SPARQL 1.1 Update, returning the updated Dataset.
+ * Apply a SPARQL 1.1 Update, returning the updated Dataset. `data`
+ * must NOT be a DatasetHandle -- update() always returns a FRESH
+ * Dataset, whereas a handle's own `handle.update()` mutates the
+ * handle in place and returns it; passing a handle here rejects with
+ * a TypeError naming `handle.update()`.
  * Needs the npm-entry engine bundle.
  */
 export function update(
@@ -250,6 +318,62 @@ export function update(
   updateText: string,
   options?: { format?: DataFormat }
 ): Promise<Dataset>;
+
+/**
+ * Open a dataset handle (issue #680): parse `data` once, then run
+ * many query()/update()/serialize() calls against the engine's own
+ * cached, indexed copy -- no re-parse, no SPARQL-index rebuild per
+ * call. Needs the npm-entry engine bundle.
+ * @param data a Dataset (opened as N-Quads, keeping the Dataset's own
+ *   `.prefixes` on the handle for Turtle output), a string
+ *   (`options.format`/`baseIRI` apply), or an array of those (each
+ *   non-N-Quads document normalizes through the strict parser first,
+ *   then the whole array opens as one N-Quads document -- no
+ *   per-document prefixes survive that merge).
+ */
+export function openDataset(
+  data: DataInput,
+  options?: { format?: DataFormat; baseIRI?: string }
+): Promise<DatasetHandle>;
+
+/**
+ * A dataset kept open and indexed in the engine (issue #680), from
+ * openDataset(). Every method rejects once `closed` is true.
+ */
+export class DatasetHandle {
+  /** The opaque engine handle id (e.g. "h1"). */
+  readonly handle: string;
+  /** Quad count as of the last open()/update(). */
+  readonly size: number;
+  /** Prefixes recorded at open (or carried over from a Dataset argument). */
+  readonly prefixes: Record<string, string>;
+  /** True once close() has run. */
+  readonly closed: boolean;
+  /** Run a SPARQL 1.1 query against the stored dataset. */
+  query(
+    sparql: string,
+    options?: { sparql12?: boolean; version?: string }
+  ): Promise<Bindings[] | boolean | Dataset>;
+  /** Apply a SPARQL 1.1 Update in place. Returns this handle, refreshed. */
+  update(updateText: string): Promise<DatasetHandle>;
+  /**
+   * Serialize the stored dataset. 'turtle' uses the handle's own
+   * recorded prefixes automatically; pass `prefixes` to add to them,
+   * or `literalShorthand:false` to turn off the bare-literal
+   * shorthand.
+   */
+  serialize(options?: {
+    format?: 'nquads' | 'turtle' | 'ttl';
+    prefixes?: Record<string, string>;
+    literalShorthand?: boolean;
+  }): Promise<string>;
+  /** Materialize the stored dataset as a heap Dataset. */
+  toDataset(): Promise<Dataset>;
+  /** RDFC-1.0 canonical N-Quads of the stored dataset. */
+  canonicalize(): Promise<string>;
+  /** Release the handle. Idempotent; every other method rejects after. */
+  close(): Promise<void>;
+}
 
 export interface SerializeOptions {
   /**
@@ -261,21 +385,40 @@ export interface SerializeOptions {
   format?: 'nquads' | 'ntriples' | 'turtle' | 'ttl';
   /** Format tag for string data inputs. Default: 'turtle'. */
   inputFormat?: DataFormat;
+  /**
+   * 'turtle' only (issue #681): caller prefix pairs win, in the
+   * caller's order; unused caller namespaces are not emitted; auto
+   * `nsN:` labels skip caller labels. Used automatically, merged with
+   * any pairs given here, when `data` is a Dataset with non-empty
+   * `.prefixes`.
+   */
+  prefixes?: Record<string, string>;
+  /**
+   * 'turtle' only. Default: true. Whether xsd:integer/decimal/double/
+   * boolean literals with a Turtle-grammar-matching lexical form print
+   * bare (`22`) instead of typed (`"22"^^xsd:integer`).
+   */
+  literalShorthand?: boolean;
 }
 
-/** Serialize a dataset (engine-produced, sorted N-Quads order). */
+/**
+ * Serialize a dataset (engine-produced, sorted N-Quads order). `data`
+ * may be a DatasetHandle, in which case this routes to
+ * `data.serialize(options)`.
+ */
 export function serialize(
-  data: DataInput,
+  data: QueryInput,
   options?: SerializeOptions
 ): Promise<string>;
 
 /**
  * RDFC-1.0 dataset canonicalization: canonical blank-node labels plus
  * sorted canonical N-Quads. Two isomorphic inputs canonicalize to the
- * same string.
+ * same string. `data` may be a DatasetHandle, in which case this
+ * routes to `data.canonicalize()` (options are ignored for a handle).
  */
 export function canonicalize(
-  data: DataInput,
+  data: QueryInput,
   options?: { format?: DataFormat }
 ): Promise<string>;
 
@@ -970,6 +1113,16 @@ export function capabilities(): Promise<{
   vcCrypto: boolean;
   /** The in-memory COTTAS bytes store exports are present. */
   cottasBytesStore: boolean;
+  /** Bundle identity (issue #684): 'full' or 'lite'; 'full' when no entry is loaded. */
+  profile: 'full' | 'lite' | string;
+  /** The loaded entry bundle's ABI version string (e.g. "2"), or undefined with no entry. */
+  abiVersion: string | undefined;
+  /** openDataset()/DatasetHandle (datasetOpen/Query/Update/Serialize/Close) are present. */
+  datasetHandles: boolean;
+  /** parse()'s `{lenient:true}` (parseDocument) is present. */
+  parseDiagnostics: boolean;
+  /** serialize()'s `{prefixes, literalShorthand}` (serializeTurtleWith) is present. */
+  turtlePrefixes: boolean;
 }>;
 
 // ---------------------------------------------------------------------
@@ -1020,6 +1173,7 @@ declare const _default: {
   query: typeof query;
   queryHdt: typeof queryHdt;
   update: typeof update;
+  openDataset: typeof openDataset;
   serialize: typeof serialize;
   canonicalize: typeof canonicalize;
   graphs: typeof graphs;
@@ -1071,6 +1225,8 @@ declare const _default: {
   vcCheckRelatedResourceDigests: typeof vcCheckRelatedResourceDigests;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
+  DatasetHandle: typeof DatasetHandle;
+  ParseError: typeof ParseError;
   dataFactory: DataFactory;
   queryRaw: typeof queryRaw;
   version: string;

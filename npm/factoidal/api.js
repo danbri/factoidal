@@ -39,7 +39,7 @@
 
 'use strict';
 
-const { buildApi } = require('./lib/api.js');
+const { buildApi, ParseError } = require('./lib/api.js');
 const rdfjs = require('./rdfjs.js');
 const pkg = require('./package.json');
 
@@ -118,6 +118,7 @@ function createApi(entry, options) {
 module.exports = {
   createApi,
   buildApi,
+  ParseError,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,
   version,

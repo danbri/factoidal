@@ -51,12 +51,15 @@ export function buildApi(driver: {
 
 export const Dataset: typeof import('./index').Dataset;
 export const dataFactory: import('./index').DataFactory;
+/** Position-carrying parse failure (issue #344); see index.d.ts's ParseError doc comment. */
+export const ParseError: typeof import('./index').ParseError;
 /** Package version string, e.g. '0.7.1'. */
 export const version: string;
 
 declare const _default: {
   createApi: typeof createApi;
   buildApi: typeof buildApi;
+  ParseError: typeof ParseError;
   Dataset: typeof Dataset;
   dataFactory: import('./index').DataFactory;
   version: string;

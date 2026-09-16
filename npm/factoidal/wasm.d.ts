@@ -10,6 +10,9 @@ import {
   QueryOptions,
   SerializeOptions,
   Bindings,
+  DatasetHandle,
+  ParseError,
+  QueryInput,
 } from './index';
 
 export {
@@ -21,6 +24,9 @@ export {
   QueryOptions,
   SerializeOptions,
   Bindings,
+  DatasetHandle,
+  ParseError,
+  QueryInput,
 };
 
 export {
@@ -32,17 +38,23 @@ export {
 
 export function parse(text: string, options?: ParseOptions): Promise<Dataset>;
 export function query(
-  data: DataInput,
+  data: QueryInput,
   sparql: string,
   options?: QueryOptions
 ): Promise<Bindings[] | boolean | Dataset>;
+/** `data` must NOT be a DatasetHandle -- call `handle.update()` directly instead. */
 export function update(
   data: DataInput,
   updateText: string,
   options?: { format?: DataFormat }
 ): Promise<Dataset>;
-export function serialize(
+/** Open a dataset handle (issue #680). Needs the npm-entry wasm entry bundle. */
+export function openDataset(
   data: DataInput,
+  options?: { format?: DataFormat; baseIRI?: string }
+): Promise<DatasetHandle>;
+export function serialize(
+  data: QueryInput,
   options?: SerializeOptions
 ): Promise<string>;
 export function canonicalize(
@@ -121,10 +133,13 @@ declare const _default: {
   parse: typeof parse;
   query: typeof query;
   update: typeof update;
+  openDataset: typeof openDataset;
   serialize: typeof serialize;
   canonicalize: typeof canonicalize;
   capabilities: typeof capabilities;
   Dataset: typeof Dataset;
+  DatasetHandle: typeof DatasetHandle;
+  ParseError: typeof ParseError;
   dataFactory: DataFactory;
   wasmAvailable: typeof wasmAvailable;
   version: string;
