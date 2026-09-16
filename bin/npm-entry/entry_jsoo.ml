@@ -1,37 +1,65 @@
-(* entry_jsoo — js_of_ocaml / wasm_of_ocaml entry point for the npm package.
+(* entry_jsoo — js_of_ocaml / wasm_of_ocaml FULL entry point for the
+   npm package (`factoidal-npm-entry.js` / `.wasm.js`).
 
-   This is a CONSUMER (rule #11): hand-written OCaml glue that exposes the
-   F*-extracted engine to JavaScript via a small, stable, string/JSON ABI.
-   No RDF or SPARQL semantics live here — every semantic operation
-   delegates to an F*-extracted module:
+   This is a CONSUMER (rule #11): it links entry_core.ml (the
+   parse/query/update/serialize/handle surface) and entry_extras.ml
+   (RIF, JSON-LD, XML, XPath, SHACL, ShEx, closures, tableau, OWL DL,
+   RML, CSVW, delta log, COTTAS, VC crypto, DID, XSLT, MathML, XForms,
+   JSON Schema, Schematron, TOAN, matrix, sigmoid) and exports the
+   union under the JS global `factoidalNpmEntry`. It contains no RDF/
+   SPARQL/OWL/etc. semantics of its own — every semantic operation
+   delegates to an F*-extracted module named in entry_core.ml's or
+   entry_extras.ml's own header/section comments.
 
-     parse        -> Parser_NTriples / Parser_Turtle / Parser_NQuads /
-                     Parser_TriG / Parser_RDFXML (+ RDF_Format dispatch,
-                     RDF_Dataset_Merge.rename_dataset_bnodes for
-                     per-document blank-node scoping)
-     query        -> SPARQL11_Parser.parse_sparql, OWL_QueryRewrite,
-                     SPARQL11_Store.run_select_query_backend_dataset /
-                     run_ask_query_backend_dataset (fallback:
-                     SPARQL11_Algebra.eval_select_query / eval_ask_query),
-                     SPARQL11_Algebra.eval_construct_query
-     update       -> SPARQL11_Parser.parse_sparql_update,
-                     SPARQL11_Algebra.apply_update
-     serialize    -> RDF_Canonical.canonical_nquads (sorted N-Quads)
-     canonicalize -> RDF_Canonical.canonicalize_to_nquads (RDFC-1.0)
-     serialize (turtle) -> RDF_Turtle_Serialize.turtle_of_graph_auto
-                     (prefix-compacted, subject-grouped pretty-print;
-                     human-facing, not the round-trip/hash-fidelity path)
-     SRJ terms    -> SPARQL_Protocol.json_term, SPARQL_JSON_Escape
+   A second, smaller export table — entry_lite_jsoo.ml, built as
+   `factoidal-npm-entry-lite.js` / `.wasm.js` — links entry_core.ml
+   ALONE (no entry_extras.ml) under the SAME global name, with
+   `profile: "lite"` in place of this file's `profile: "full"` and
+   without the entry_extras-only names below. Module split + lite
+   bundle: https://github.com/danbri/factoidal/issues/684. Design
+   record: docs/designissues/2026-07-05-bundle-modularity.md.
 
-   ABI contract (all arguments and results are strings; structure is JSON):
+   ABI contract (all arguments and results are strings; structure is
+   JSON):
 
      factoidalNpmEntry.abiVersion
-       "1" — bump when a signature or JSON shape changes.
+       "2" — bumped from "1" for the strict-by-default parse envelope,
+       dataset handles, and prefix-aware Turtle serialization below
+       (https://github.com/danbri/factoidal/issues/344,
+       https://github.com/danbri/factoidal/issues/680,
+       https://github.com/danbri/factoidal/issues/681). Bump again
+       when a signature or JSON shape changes.
+     factoidalNpmEntry.profile
+       "full" in this bundle, "lite" in factoidal-npm-entry-lite.js.
+
+     --- Strict parsing (https://github.com/danbri/factoidal/issues/344) ---
+
      factoidalNpmEntry.parseToDatasetJson(text, format, baseIri)
-       -> {"ok":true,"nquads":"...","count":N} | {"ok":false,"error":"..."}
-       format: "turtle"|"ntriples"|"nquads"|"trig"|"rdfxml" (aliases as in
-       RDF_Format.format_of_string); baseIri "" means none. The dataset
-       handle IS the returned N-Quads string.
+       -> {"ok":true,"count":N,"nquads":"...","prefixes":{"ex":"http://example.org/",...}}
+        | {"ok":false,"error":"<message>[ at line L, column C]",
+           "offset"?:N,"line"?:N,"column"?:N,"format":"turtle"}
+       format: "turtle"|"ntriples"|"nquads"|"trig"|"rdfxml"|"jsonld"
+       (aliases as in RDF_Format.format_of_string, plus the "*12" RDF
+       1.2 opt-in tags below); baseIri "" means none. Strict by
+       default: a syntax error, an undeclared prefix, or an
+       unresolvable relative IRI (no baseIri in effect) rejects the
+       WHOLE parse — nothing is silently dropped any more. "prefixes"
+       is `{}` for syntaxes that carry none (N-Triples, N-Quads,
+       RDF/XML, JSON-LD). "offset"/"line"/"column" are present only
+       when the parser reports a position (Turtle, TriG, N-Triples,
+       N-Quads); RDF/XML and JSON-LD failures carry a message only.
+       The dataset handle IS the returned N-Quads string, as before —
+       for a cached/indexed handle use datasetOpen instead.
+     factoidalNpmEntry.parseDocument(text, format, baseIri, optionsJson)
+       -> optionsJson "" or a JSON object. `{"lenient":true}` answers
+          {"ok":true,"count":N,"nquads":"...","prefixes":{...},
+           "diagnostics":[{"message":"...","offset":N,"line":L,"column":C},...]}
+          with whatever the parser recovered (statements before AND
+          after the first error, for Turtle/TriG; N-Triples/N-Quads
+          have no partial-recovery channel, so an empty dataset on
+          error) and `diagnostics` empty when there was no error.
+          Any other optionsJson (including "") answers exactly as
+          parseToDatasetJson.
      factoidalNpmEntry.queryDataset(nquads, sparql)
        -> {"ok":true,"kind":"select","srj":{...SPARQL results JSON...}}
         | {"ok":true,"kind":"ask","boolean":true|false}
@@ -49,6 +77,64 @@
        -> {"ok":true,"turtle":"..."} (prefix-compacted, subject-grouped
           pretty-print; parse(result) round-trips to the input graph,
           but the exact text is NOT stable/canonical the way nquads is)
+     factoidalNpmEntry.serializeTurtleWith(nquads, optionsJson)
+       (https://github.com/danbri/factoidal/issues/681)
+       -> {"ok":true,"turtle":"..."} | {"ok":false,"error":"..."}
+       optionsJson is "" or {"prefixes":{"ex":"http://example.org/"},
+       "literalShorthand":true|false}. Caller prefix pairs win, in the
+       caller's order; unused caller namespaces are not emitted; auto
+       `nsN:` labels skip caller labels. "literalShorthand" (default
+       true) controls whether xsd:integer/decimal/double/boolean
+       literals with a Turtle-grammar-matching lexical form print bare.
+
+     --- Dataset handles (https://github.com/danbri/factoidal/issues/680,
+         mirroring formal/lean4/Wasm/Ops/Handles.lean's op names and
+         envelopes) — parse and index ONCE, query/update/serialize many
+         times by handle instead of re-parsing N-Quads text and
+         rebuilding the SPARQL index on every call. Handles are
+         process-local strings "h1", "h2", ... in open order, never
+         reused. ---
+
+     factoidalNpmEntry.datasetOpen(text, format, baseIri)
+       -> {"ok":true,"handle":"h1","count":N,"prefixes":{...}}
+        | the parseToDatasetJson error envelope above (strict; the
+          dataset is not opened on a parse error).
+     factoidalNpmEntry.datasetQuery(handle, sparql)
+     factoidalNpmEntry.datasetQuery12(handle, sparql)
+       -> the queryDataset envelope family, evaluated against the
+          stored dataset and its CACHED indexed backend (no re-parse,
+          no backend rebuild) | {"ok":false,"error":"unknown dataset
+          handle: h9"}.
+     factoidalNpmEntry.datasetUpdate(handle, sparqlUpdate)
+       -> {"ok":true,"count":N} — the stored dataset is REPLACED and
+          its backend rebuilt. On a parse or evaluation error the
+          stored dataset is unchanged.
+     factoidalNpmEntry.datasetSerialize(handle, format)
+       -> {"ok":true,"nquads":"..."} | {"ok":true,"turtle":"..."}
+          ("nquads" | "turtle"; the Turtle path uses the prefixes
+          datasetOpen recorded from the parse).
+     factoidalNpmEntry.datasetSerializeWith(handle, format, optionsJson)
+       -> same as datasetSerialize, but optionsJson (same shape as
+          serializeTurtleWith's) overrides the handle's own prefixes/
+          shorthand when given; "prefixes" absent means the handle's
+          own prefixes.
+     factoidalNpmEntry.datasetClose(handle)
+       -> {"ok":true} | {"ok":false,"error":"unknown dataset handle: ..."}
+
+     --- SPARQL 1.2 opt-in variants (issue #… tokenize_12 parser family) ---
+
+     factoidalNpmEntry.queryDataset12 / askDataset12 / updateDataset12
+       -> same envelopes as the 1.1 forms; select the RDF 1.2 grammar
+          (TRIPLE/isTRIPLE/SUBJECT/PREDICATE/OBJECT/VERSION/lang-dir
+          builtins, <<( )>> triple-term patterns). The 1.1 forms above
+          stay byte-identical.
+
+     --- Everything below is FULL-BUNDLE ONLY (entry_extras.ml; absent
+         from factoidal-npm-entry-lite.js — a lite-bundle call to a
+         format needing RDF/XML or JSON-LD parsing, e.g.
+         parseToDatasetJson(x,"rdfxml",...), answers a routing error
+         naming this bundle instead). ---
+
      factoidalNpmEntry.rifSmoke()
        -> {"ok":true,"inputNquads":"...","saturatedNquads":"...",
            "inputCount":N,"derivedCount":N,"rounds":N,"fuel":N,
@@ -81,12 +167,12 @@
        "processingMode" -- passed straight through to parse_jsonld's
        matching parameters. Remote contexts / "@import" are an honest
        FAIL (no documentLoader registered for this consumer -- see the
-       jsonld_loader_register call below, same choice
+       jsonld_loader_register call in entry_extras.ml, same choice
        bin/factoidal-cli/bin/factoidal-http make).
        NOTE: parseToDatasetJson(text, "jsonld", baseIri) now also works
-       (the format-dispatch gap is fixed below) -- jsonldToRdf exists
-       for the extra options parseToDatasetJson's 3-string-arg ABI has
-       no room for.
+       (the format-dispatch gap is fixed via the extra_parsers hook) --
+       jsonldToRdf exists for the extra options parseToDatasetJson's
+       4-string-arg ABI has no room for.
      factoidalNpmEntry.shaclValidate(dataNQuads, shapesNQuads)
        -> {"ok":true,"conforms":true|false,"reportNquads":"..."}
         | {"ok":false,"error":"..."}
@@ -113,11 +199,25 @@
        -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
        dataNQuads is a dataset handle; only the default graph is
        closed over. mode is "RDFS"
-       (RDF_Graph_Executable.rdfs_closure_with_reflexivity) or "OWL-RL"
-       (.owl_rl_closure_with_reflexivity), fuel=100 -- the same
+       (RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch) or
+       "OWL-RL" (.owl_rl_closure_with_reflexivity), fuel=100 -- the same
        closures bin/w3c-runner drives for entailment-regime tests.
        Result is the closure graph (input + derived triples) as
        default-graph N-Quads text.
+     factoidalNpmEntry.rhoDfClosure(dataNQuads) / rhoDfFragmentCheck(dataNQuads)
+       / rdfsPlusClosure(dataNQuads)
+       -> see RDF.Entailment.RDFS.RhoDFClosure.fst /
+       RDF.Entailment.RDFSPlus.fst's module banners; entry_extras.ml's
+       own section comments carry the full envelope shapes.
+     factoidalNpmEntry.tableauMaterialise(dataNQuads)
+       / tableauDlInconsistent(dataNQuads)
+       -> Tableau.fst's model-construction reasoner (0 assume val,
+       verified); see entry_extras.ml's own section comment.
+     factoidalNpmEntry.owlIsConsistent(dataNquads, optsJson)
+       / owlEntails(premiseNquads, conclusionNquads, optsJson)
+       -> the verified clash-detecting tableau (Tableau.Refute.fst),
+       three-valued (true/false/null=budget-out, never a guessed
+       false); see entry_extras.ml's own section comment.
      factoidalNpmEntry.rmlMap(mappingNQuads, sourceData, sourceKind)
        -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
        mappingNQuads is a dataset handle for the RML mapping GRAPH
@@ -134,6 +234,38 @@
        lookup_parent hook) are not reachable through this one-document
        entry point; see bin/rml-runner/rml_runner.ml for the full
        multi-source join driver this does not attempt to replicate.
+     factoidalNpmEntry.csvwToRdf(csvText, metadataJson, optionsJson)
+       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
+       CSVW csv2rdf conversion (w3.org/TR/csv2rdf). csvText is the raw
+       tabular data (RFC 4180, tokenized by the F-star-extracted
+       RML_Sources.csv_parse_rows -- the same shared tokenizer rmlMap's
+       csv path uses); metadataJson is a CSVW metadata document
+       (tabular-metadata JSON), or "" to infer the schema from the
+       CSV's own header row. optionsJson is a JSON object (or "" for
+       defaults) with optional string fields:
+         "mode": "standard" (default -- full csvw:TableGroup/Table/Row
+                 wrapper, the shape 263/270 of the vendored W3C csv2rdf
+                 fixtures expect) or "minimal" (bare cell triples).
+         "base": base IRI for resolving the metadata's `url` and any
+                 aboutUrl/propertyUrl/valueUrl templates
+                 (default "file:///").
+         "url":  the tabular file's own URL, used when metadataJson has
+                 no `url` of its own; cell predicates default to
+                 `<tableUrl>#<colName>` so this shapes every emitted
+                 predicate IRI (default "table.csv", i.e.
+                 file:///table.csv under the default base).
+       Decoding is CSVW_Metadata.csvw_decode_metadata_text; conversion
+       is CSVW_Conversion.csvw_convert_document_standard/_minimal --
+       the same call path bin/csvw-runner/csvw_runner.ml drives.
+       Scope limitation (documented, not silent -- mirrors rmlMap's
+       one-source cut): every table in a multi-table `tables` group
+       reads the SAME csvText; per-table separate CSV sources need the
+       runner's file-per-table driver. Datatype `format` facets,
+       list-valued (`separator`) cells, and full inherited-property
+       propagation are not yet implemented -- see
+       docs/designissues/2026-07-05-csvw-program-plan.md's stage table
+       for measured coverage (19 pass, 251 fail of 270 vendored
+       csv2rdf fixtures at this stage).
      factoidalNpmEntry.deltaBatchToHex(sparqlUpdate, seq, epoch)
        -> {"ok":true,"hex":"...","opCount":N} | {"ok":false,"error":"..."}
        Browser-persistence prototype (issue #282's browser realisation,
@@ -244,2349 +376,118 @@
        the exact same reader/writer pair the native CLI's `factoidal
        compact --native-writer` and `--data-cottas-mem` already use in
        production, so this is a compatibility guarantee, not a hope.
-     factoidalNpmEntry.csvwToRdf(csvText, metadataJson, optionsJson)
-       -> {"ok":true,"nquads":"..."} | {"ok":false,"error":"..."}
-       CSVW csv2rdf conversion (w3.org/TR/csv2rdf). csvText is the raw
-       tabular data (RFC 4180, tokenized by the F-star-extracted
-       RML_Sources.csv_parse_rows -- the same shared tokenizer rmlMap's
-       csv path uses); metadataJson is a CSVW metadata document
-       (tabular-metadata JSON), or "" to infer the schema from the
-       CSV's own header row. optionsJson is a JSON object (or "" for
-       defaults) with optional string fields:
-         "mode": "standard" (default -- full csvw:TableGroup/Table/Row
-                 wrapper, the shape 263/270 of the vendored W3C csv2rdf
-                 fixtures expect) or "minimal" (bare cell triples).
-         "base": base IRI for resolving the metadata's `url` and any
-                 aboutUrl/propertyUrl/valueUrl templates
-                 (default "file:///").
-         "url":  the tabular file's own URL, used when metadataJson has
-                 no `url` of its own; cell predicates default to
-                 `<tableUrl>#<colName>` so this shapes every emitted
-                 predicate IRI (default "table.csv", i.e.
-                 file:///table.csv under the default base).
-       Decoding is CSVW_Metadata.csvw_decode_metadata_text; conversion
-       is CSVW_Conversion.csvw_convert_document_standard/_minimal --
-       the same call path bin/csvw-runner/csvw_runner.ml drives.
-       Scope limitation (documented, not silent -- mirrors rmlMap's
-       one-source cut): every table in a multi-table `tables` group
-       reads the SAME csvText; per-table separate CSV sources need the
-       runner's file-per-table driver. Datatype `format` facets,
-       list-valued (`separator`) cells, and full inherited-property
-       propagation are not yet implemented -- see
-       docs/designissues/2026-07-05-csvw-program-plan.md's stage table
-       for measured coverage (19 pass, 251 fail of 270 vendored
-       csv2rdf fixtures at this stage).
-     factoidalNpmEntry.sigmoidPoints(paramsJson)
-       -> {"ok":true,"points":[{"x":{...scaled...},"y":{...scaled...}},...]}
-        | {"ok":false,"error":"..."}
-       paramsJson is a JSON object {"k":"1.0","x0":"0.0","l":"1.0",
-       "xmin":"-6.0","xmax":"6.0","n":"24"} -- k/x0/l/xmin/xmax are
-       decimal-literal strings decoded by the SAME verified parser
-       xsd:decimal literals use (SPARQL11_Algebra.parse_to_scaled,
-       issue #8's "scaled decimal" (mantissa,scale) convention), n is
-       a nonnegative integer point count. ALL arithmetic -- argument
-       reduction, the truncated Taylor series, repeated squaring, the
-       n+1 evenly spaced x samples -- runs in Math.Sigmoid.fst
-       (exp_approx / sigmoid_points, exact rational internally, see
-       that module's header for the documented error bound); this
-       wrapper only decodes the JSON in and re-encodes the returned
-       `scaled` pairs out. Each point's "x"/"y" is
-       {"mantissa":"...","scale":"...","decimal":"..."} -- mantissa
-       and scale are the raw (int,nat) pair, decimal is the same
-       value formatted by SPARQL11_Algebra.format_scaled_value.
-     factoidalNpmEntry.sigmoidFormulaMathml()
-       -> {"ok":true,"mathml":"<math>...</math>"}
-       The Presentation MathML for L / (1 + exp(-k*(x - x0))), built
-       by constructing the Math.Expr.expr AST for that formula (fixed,
-       no input) and serializing it with MathML.Present.
-       to_presentation_mathml -- the same engine serializer post28's
-       existing TOAN cells use, so this formula is never hand-written
-       MathML on the JS side, only engine output.
+     factoidalNpmEntry.didKeyResolve(did)
+       -> {"ok":true,"did":"...","nquads":"..."} | {"ok":false,"error":"..."}
+       DID_Key.did_key_document -- see entry_extras.ml's own comment.
+     factoidalNpmEntry.vc*(...) -- VC Data Integrity crypto + VCDM 2.0
+       structural conformance checks; see entry_extras.ml's VC section
+       comment for each function's envelope.
+     factoidalNpmEntry.xsltTransform / mathmlEval / xformsRecalc /
+       jsonSchemaValidate / schematronValidate / toan* / matrix* /
+       sigmoid* -- typed engine functions (#74 npm FP surface); see
+       entry_extras.ml's "Typed engine functions" section for every
+       envelope shape.
 
    Rich types (RDF/JS terms, Dataset objects, Maps of bindings) live on
    the JavaScript side (npm/factoidal/rdfjs.js); the js_of_ocaml string
    bridge is the stable part, so the ABI stays strings + JSON.
 
    Build wiring: see bin/npm-entry/README.md — the `js` step of
-   formal/fstar/build-ocaml.sh compiles this file (after FSTAR_MODULES,
-   with -package js_of_ocaml) into npm_entry.byte, then js_of_ocaml /
-   wasm_of_ocaml emit docs/fstar-extracted/factoidal-npm-entry{.js,.wasm.js}. *)
-
-open RDF_Graph_Executable
-open SPARQL11_Algebra
+   formal/fstar/build-ocaml.sh compiles entry_core.ml, entry_extras.ml
+   and this file (in that order, after FSTAR_MODULES, with -package
+   js_of_ocaml) into npm_entry.byte, then js_of_ocaml / wasm_of_ocaml
+   emit docs/fstar-extracted/factoidal-npm-entry{.js,.wasm.js}. The
+   same step separately links entry_core.ml + entry_lite_jsoo.ml
+   (WITHOUT entry_extras.ml, and without -linkall) into
+   npm_entry_lite.byte, emitting factoidal-npm-entry-lite{.js,.wasm.js}. *)
 
 module Js = Js_of_ocaml.Js
-
-let abi_version = "1"
-
-(* Issue #275 (rule #11 ASSUME-IO): explicitly realise the JSON-LD
-   documentLoader seam as an honest "no remote loading" for this entry
-   point -- same choice bin/factoidal-cli, bin/factoidal-http, and
-   bin/factoidal-dump-nq each make explicitly (the ref cell's own
-   default is the same `fun _ -> None`; this line exists for rule-#11
-   auditability, not because behavior would differ without it). *)
-let () = JSONLD_Loader.jsonld_loader_register (fun _ -> FStar_Pervasives_Native.None)
-
-(* ---------------------------------------------------------------------
-   JSON envelope helpers. Escaping delegates to the F*-extracted
-   SPARQL_JSON_Escape so the byte-level JSON rules stay verified.
-   --------------------------------------------------------------------- *)
-
-let jstr (s : string) : string =
-  "\"" ^ SPARQL_JSON_Escape.json_escape s ^ "\""
-
-let err_json (msg : string) : string =
-  "{\"ok\":false,\"error\":" ^ jstr msg ^ "}"
-
-let ok_nquads_json (nq : string) : string =
-  "{\"ok\":true,\"nquads\":" ^ jstr nq ^ "}"
-
-let ok_turtle_json (ttl : string) : string =
-  "{\"ok\":true,\"turtle\":" ^ jstr ttl ^ "}"
-
-(* Run a thunk, mapping any exception into the error envelope. *)
-let guarded (f : unit -> string) : string =
-  try f () with
-  | e -> err_json (Printexc.to_string e)
-
-(* ---------------------------------------------------------------------
-   Parsing (dataset handle = N-Quads text)
-   --------------------------------------------------------------------- *)
-
-(* Per-document blank-node scope counter. RDF 1.1 scopes _:labels to the
-   document; each parse call is one document. The renaming itself is the
-   F* function RDF_Dataset_Merge.rename_dataset_bnodes — this counter is
-   only the per-call salt (same pattern as factoidal_cli.ml). *)
-let bnode_scope_counter = ref 0
-
-let scope_dataset_bnodes ds =
-  let n = !bnode_scope_counter in
-  incr bnode_scope_counter;
-  RDF_Dataset_Merge.rename_dataset_bnodes (Printf.sprintf "d%d_" n) ds
-
-let dataset_of_nquads (nq : string) : rdf_dataset =
-  Parser_NQuads.parse_nquads nq
-
-(* Mode-aware dataset handle: a SPARQL 1.2 query's input N-Quads may
-   carry <<( )>> triple terms (the JS side serialises a Quad term that
-   way), which the Mode_11 parse_nquads would silently drop -- so the
-   query would see a triple-term-free dataset and match nothing. Parse
-   the handle in the matching mode. *)
-let dataset_of_nquads_mode (sparql12 : bool) (nq : string) : rdf_dataset =
-  Parser_NQuads.parse_nquads_mode
-    (if sparql12 then Parser_NTriples.Mode_12 else Parser_NTriples.Mode_11)
-    nq
-
-let parse_text_to_dataset (text : string) (format_tag : string)
-    (base_iri : string) : (rdf_dataset, string) result =
-  let base = if base_iri = "" then None else Some base_iri in
-  (* Consumer-side RDF 1.2 opt-in (rule #11: DISPATCH only -- all Mode_12
-     parsing logic lives in the extracted F* parsers; this just selects
-     which extracted entrypoint to call, exactly as w3c_runner --rdf12
-     does). A "*12" format tag routes to the Parser_*.*_mode Mode_12
-     entrypoints; every other tag keeps the Mode_11 path byte-identical. *)
-  let mode, format_tag =
-    match String.lowercase_ascii format_tag with
-    | "ttl12" | "turtle12"   -> (Parser_NTriples.Mode_12, "ttl")
-    | "nt12"  | "ntriples12" -> (Parser_NTriples.Mode_12, "nt")
-    | "nq12"  | "nquads12"   -> (Parser_NTriples.Mode_12, "nq")
-    | "trig12"               -> (Parser_NTriples.Mode_12, "trig")
-    | _ -> (Parser_NTriples.Mode_11, format_tag)
-  in
-  let is12 = (mode = Parser_NTriples.Mode_12) in
-  let fmt =
-    if format_tag = "" then Some RDF_Format.Turtle
-    else
-      match RDF_Format.format_of_string format_tag with
-      | FStar_Pervasives_Native.Some f -> Some f
-      | FStar_Pervasives_Native.None -> None
-  in
-  match fmt with
-  | None -> Error (Printf.sprintf "unknown format tag '%s'" format_tag)
-  | Some fmt ->
-    let ds =
-      match fmt with
-      | RDF_Format.NQuads ->
-        if is12 then Parser_NQuads.parse_nquads_mode mode text
-        else Parser_NQuads.parse_nquads text
-      | RDF_Format.TriG ->
-        if is12 then
-          (match base with
-           | Some b -> Parser_TriG.parse_trig_with_base_lenient_mode mode text b
-           | None -> Parser_TriG.parse_trig_with_base_lenient_mode mode text "")
-        else
-          (match base with
-           | Some b -> Parser_TriG.parse_trig_with_base_lenient text b
-           | None -> Parser_TriG.parse_trig_lenient text)
-      | RDF_Format.NT ->
-        let triples =
-          if is12 then
-            (* Mode_12 N-Triples has only a STRICT entrypoint (option);
-               None = parse error, surfaced via failwith like the JSONLD
-               branch below (the caller's `guarded` wraps it to an error
-               envelope) -- never silently dropped to []. *)
-            (match Parser_NTriples.parse_ntriples_mode mode text with
-             | FStar_Pervasives_Native.Some ts -> ts
-             | FStar_Pervasives_Native.None ->
-               failwith "invalid RDF 1.2 N-Triples (Mode_12 parse error)")
-          else Parser_NTriples.parse_ntriples text
-        in
-        { ds_default = triples; ds_named = [] }
-      | RDF_Format.Turtle ->
-        let triples =
-          if is12 then
-            (match base with
-             | Some b -> Parser_Turtle.parse_turtle_with_base_mode mode text b
-             | None -> Parser_Turtle.parse_turtle_with_base_mode mode text "")
-          else
-            match base with
-            | Some b -> Parser_Turtle.parse_turtle_with_base text b
-            | None -> Parser_Turtle.parse_turtle text
-        in
-        { ds_default = triples; ds_named = [] }
-      | RDF_Format.RDFXML ->
-        let triples =
-          match base with
-          | Some b -> Parser_RDFXML.parse_rdfxml_with_base b text
-          | None -> Parser_RDFXML.parse_rdfxml text
-        in
-        { ds_default = triples; ds_named = [] }
-      | RDF_Format.JSONLD ->
-        (* Parser_JSONLD.parse_jsonld returns a whole rdf_dataset
-           (JSON-LD @graph can produce named graphs), unlike the
-           triple-list branches above. Remote contexts / "@import" fail
-           honestly (no loader registered -- see jsonld_loader_register
-           above); this was previously an unhandled match case (a
-           latent Match_failure any caller reaching this branch would
-           have hit -- see jsonldToRdf's ABI doc comment). *)
-        let fs_base =
-          match base with
-          | Some b -> FStar_Pervasives_Native.Some b
-          | None -> FStar_Pervasives_Native.None
-        in
-        (match Parser_JSONLD.parse_jsonld text fs_base
-                 FStar_Pervasives_Native.None FStar_Pervasives_Native.None
-                 FStar_Pervasives_Native.None with
-         | FStar_Pervasives_Native.Some ds -> ds
-         | FStar_Pervasives_Native.None ->
-           failwith ("invalid or unsupported JSON-LD (parse error, or a " ^
-                     "feature needing a remote-context loader this entry " ^
-                     "does not have)"))
-    in
-    Ok (scope_dataset_bnodes ds)
-
-let parse_to_dataset_json (text : string) (format_tag : string)
-    (base_iri : string) : string =
-  guarded (fun () ->
-    match parse_text_to_dataset text format_tag base_iri with
-    | Error msg -> err_json msg
-    | Ok ds ->
-      let nq = RDF_Canonical.canonical_nquads ds in
-      let count = Z.to_string (SPARQL11_Algebra.dataset_triple_count ds) in
-      "{\"ok\":true,\"count\":" ^ count ^ ",\"nquads\":" ^ jstr nq ^ "}")
-
-(* ---------------------------------------------------------------------
-   SPARQL results JSON (SELECT) — same rendering as factoidal_cli.ml's
-   print_results_json, but into a Buffer instead of stdout. Term-level
-   JSON comes from the F*-extracted SPARQL_Protocol.json_term.
-   --------------------------------------------------------------------- *)
-
-let srj_of_rows (vars : string list)
-    (rows : (string * rdf_term) list list) : string =
-  let buf = Buffer.create 1024 in
-  Buffer.add_string buf "{\"head\":{\"vars\":[";
-  List.iteri
-    (fun i v ->
-       if i > 0 then Buffer.add_char buf ',';
-       Buffer.add_string buf (jstr v))
-    vars;
-  Buffer.add_string buf "]},\"results\":{\"bindings\":[";
-  List.iteri
-    (fun i row ->
-       if i > 0 then Buffer.add_char buf ',';
-       Buffer.add_char buf '{';
-       let first = ref true in
-       List.iter
-         (fun v ->
-            match List.assoc_opt v row with
-            | None -> ()
-            | Some t ->
-              if !first then first := false else Buffer.add_char buf ',';
-              Buffer.add_string buf (jstr v);
-              Buffer.add_char buf ':';
-              Buffer.add_string buf (SPARQL_Protocol.json_term t))
-         vars;
-       Buffer.add_char buf '}')
-    rows;
-  Buffer.add_string buf "]}}";
-  Buffer.contents buf
-
-(* Variable list: declared projection for SELECT ?x ?y, first-seen order
-   of bound vars for SELECT * (same logic as factoidal_cli.ml). *)
-let vars_of_query_or_rows (q : query)
-    (rows : (string * rdf_term) list list) : string list =
-  match q.q_form with
-  | QF_Select (Select_Vars items) ->
-    List.filter_map
-      (fun item ->
-         match item with
-         | SI_Var v -> Some v
-         | SI_Expr (_, v) -> Some v)
-      items
-  | _ ->
-    let seen = Hashtbl.create 16 in
-    List.concat_map
-      (fun row ->
-         List.filter_map
-           (fun (v, _) ->
-              if Hashtbl.mem seen v then None
-              else (Hashtbl.add seen v (); Some v))
-           row)
-      rows
-
-(* ---------------------------------------------------------------------
-   Query evaluation over the N-Quads dataset handle
-   --------------------------------------------------------------------- *)
-
-let construct_triples_to_ntriples (triples : triple list) : string =
-  let buf = Buffer.create 1024 in
-  List.iter
-    (fun t ->
-       Buffer.add_string buf
-         (RDF_NQuads_Serialize.nq_line_for_triple_default_graph t))
-    triples;
-  Buffer.contents buf
-
-(* SPARQL 1.2 opt-in (rule #11 DISPATCH only): sparql12=true selects the
-   extracted parse_sparql_12_with_base (tokenize_12: TRIPLE/isTRIPLE/
-   SUBJECT/PREDICATE/OBJECT/VERSION/lang-dir builtins + <<( )>> triple-term
-   patterns), gated exactly as w3c_runner --sparql12. sparql12=false keeps
-   the SPARQL 1.1 parser byte-identical so the protected 1.1 suite is
-   unaffected. All algebra/eval is the shared extracted F* code below. *)
-let query_dataset_mode (sparql12 : bool) (nq : string) (sparql : string)
-    : string =
-  guarded (fun () ->
-    let ds = dataset_of_nquads_mode sparql12 nq in
-    let parsed =
-      if sparql12 then
-        SPARQL11_Parser.parse_sparql_12_with_base
-          FStar_Pervasives_Native.None sparql
-      else SPARQL11_Parser.parse_sparql sparql
-    in
-    match parsed with
-    | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL parse error: " ^ msg)
-    | SPARQL11_Parser.ParseOk (q, _) ->
-      let q = OWL_QueryRewrite.rewrite_query q in
-      let dsb () = SPARQL11_Store.indexed_dataset_backend ds in
-      (match q.q_form with
-       | QF_Ask ->
-         let b =
-           match SPARQL11_Store.run_ask_query_backend_dataset q (dsb ()) with
-           | FStar_Pervasives_Native.Some b -> b
-           | FStar_Pervasives_Native.None ->
-             SPARQL11_Algebra.eval_ask_query q ds.ds_default ds
-         in
-         "{\"ok\":true,\"kind\":\"ask\",\"boolean\":"
-         ^ (if b then "true" else "false") ^ "}"
-       | QF_Select _ ->
-         let rows =
-           match SPARQL11_Store.run_select_query_backend_dataset q (dsb ()) with
-           | FStar_Pervasives_Native.Some rows -> rows
-           | FStar_Pervasives_Native.None ->
-             SPARQL11_Algebra.eval_select_query q ds.ds_default ds
-         in
-         let vars = vars_of_query_or_rows q rows in
-         "{\"ok\":true,\"kind\":\"select\",\"srj\":"
-         ^ srj_of_rows vars rows ^ "}"
-       | QF_Construct _ ->
-         let triples =
-           SPARQL11_Algebra.eval_construct_query q ds.ds_default ds
-         in
-         "{\"ok\":true,\"kind\":\"construct\",\"nquads\":"
-         ^ jstr (construct_triples_to_ntriples triples) ^ "}"
-       | QF_Describe _ ->
-         err_json "DESCRIBE is not supported by the npm entry yet"))
-
-let query_dataset (nq : string) (sparql : string) : string =
-  query_dataset_mode false nq sparql
-let query_dataset_12 (nq : string) (sparql : string) : string =
-  query_dataset_mode true nq sparql
-
-let ask_dataset_mode (sparql12 : bool) (nq : string) (sparql : string)
-    : string =
-  guarded (fun () ->
-    let ds = dataset_of_nquads_mode sparql12 nq in
-    let parsed =
-      if sparql12 then
-        SPARQL11_Parser.parse_sparql_12_with_base
-          FStar_Pervasives_Native.None sparql
-      else SPARQL11_Parser.parse_sparql sparql
-    in
-    match parsed with
-    | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL parse error: " ^ msg)
-    | SPARQL11_Parser.ParseOk (q, _) ->
-      (match q.q_form with
-       | QF_Ask ->
-         let q = OWL_QueryRewrite.rewrite_query q in
-         let b =
-           match
-             SPARQL11_Store.run_ask_query_backend_dataset q
-               (SPARQL11_Store.indexed_dataset_backend ds)
-           with
-           | FStar_Pervasives_Native.Some b -> b
-           | FStar_Pervasives_Native.None ->
-             SPARQL11_Algebra.eval_ask_query q ds.ds_default ds
-         in
-         "{\"ok\":true,\"boolean\":" ^ (if b then "true" else "false") ^ "}"
-       | _ -> err_json "askDataset: query is not an ASK query"))
-
-let ask_dataset (nq : string) (sparql : string) : string =
-  ask_dataset_mode false nq sparql
-let ask_dataset_12 (nq : string) (sparql : string) : string =
-  ask_dataset_mode true nq sparql
-
-let update_dataset_mode (sparql12 : bool) (nq : string) (update_text : string)
-    : string =
-  guarded (fun () ->
-    let ds = dataset_of_nquads_mode sparql12 nq in
-    let parsed =
-      if sparql12 then
-        SPARQL11_Parser.parse_sparql_update_12_with_base
-          FStar_Pervasives_Native.None update_text
-      else SPARQL11_Parser.parse_sparql_update update_text
-    in
-    match parsed with
-    | SPARQL11_Parser.ParseErr msg ->
-      err_json ("SPARQL update parse error: " ^ msg)
-    | SPARQL11_Parser.ParseOk (u, _) ->
-      let ds' = SPARQL11_Algebra.apply_update ds u in
-      ok_nquads_json (RDF_Canonical.canonical_nquads ds'))
-
-let update_dataset (nq : string) (update_text : string) : string =
-  update_dataset_mode false nq update_text
-let update_dataset_12 (nq : string) (update_text : string) : string =
-  update_dataset_mode true nq update_text
-
-let serialize_nquads (nq : string) : string =
-  guarded (fun () ->
-    ok_nquads_json (RDF_Canonical.canonical_nquads (dataset_of_nquads nq)))
-
-let canonicalize_to_nquads (nq : string) : string =
-  guarded (fun () ->
-    ok_nquads_json (RDF_Canonical.canonicalize_to_nquads (dataset_of_nquads nq)))
-
-(* RDF_Turtle_Serialize.turtle_of_graph_auto takes a single rdf_graph,
-   not a dataset — named graphs are flattened into the default graph
-   for this pretty-print path (the fidelity-preserving path is
-   serializeNQuads / canonicalizeToNQuads, which keep graph structure). *)
-let serialize_turtle (nq : string) : string =
-  guarded (fun () ->
-    let ds = dataset_of_nquads nq in
-    let g = ds.ds_default @ List.concat_map (fun ng -> ng.ng_graph) ds.ds_named in
-    ok_turtle_json (RDF_Turtle_Serialize.turtle_of_graph_auto g))
-
-(* did:key resolution -- DID_Key.did_key_document (formal/fstar/DID.Key.fst),
-   the verified Ed25519 did:key resolver. Pure, no I/O: a did:key:z6Mk...
-   identifier IS a multibase+multicodec-encoded Ed25519 public key, and
-   "resolving" it is total function application producing the DID Document as
-   RDF triples. The consumer side only serializes those triples to N-Triples
-   with the same RDF_NQuads_Serialize path CONSTRUCT uses -- rule #11 holds
-   (no did:key semantics live here; all of parse/decode/vocabulary is in the
-   extracted F* module). None -> error for anything that is not a resolvable
-   Ed25519 did:key (non-"did:key:" prefix, non-z multibase, wrong multicodec,
-   or wrong decoded length). *)
-let did_key_resolve (did : string) : string =
-  guarded (fun () ->
-    match DID_Key.did_key_document did with
-    | FStar_Pervasives_Native.None ->
-      err_json
-        ("didKeyResolve: not a resolvable did:key (Ed25519 z6Mk... only): "
-         ^ did)
-    | FStar_Pervasives_Native.Some triples ->
-      "{\"ok\":true,\"did\":" ^ jstr did
-      ^ ",\"nquads\":" ^ jstr (construct_triples_to_ntriples triples) ^ "}")
-
-(* ---------------------------------------------------------------------
-   RIF Core (rule #11 consumer -- exports only). All semantics come
-   from F*-extracted modules already on the link line
-   (formal/fstar/build-ocaml.sh's FSTAR_MODULES): RIF_Core_Eval.fixpoint
-   / one_round (the same verified functions the RIF.Core.Eval.fst smoke
-   test and RIF_Core_Tests.saturate_with_program use), Parser_RIFXML.
-   parse_rif_program for the XML -> rif_program parse. Body-to-BGP
-   translation (RIF_Core_Translation) happens inside RIF_Core_Eval.
-   fire_rule already, so it is not called directly here.
-   --------------------------------------------------------------------- *)
-
-(* Real-world RIF-XML documents (every fixture in
-   third_party/testing/rif/tc/, per the RIF Core spec's own convention)
-   declare a DOCTYPE with internal-subset entities (&rif;/&xs;/&rdf;)
-   that expand to the RIF/XSD/RDF namespace IRIs; Parser_RIFXML.
-   parse_rif_program is a plain XML parser with no DTD/entity-expansion
-   step (by design -- that is XML infrastructure, not RIF Core
-   semantics), so it cannot see through them unless this is done first.
-   Ported verbatim from bin/w3c-runner/w3c_runner.ml's rif_xml_preprocess
-   (the exact same problem, same fix) so callers can hand this ABI a
-   real, unmodified RIF-XML document instead of hand-stripping the
-   DOCTYPE themselves. Consumer-side text preprocessing, not RIF
-   semantics -- rule #11 stays satisfied. *)
-let rif_xml_preprocess (s : string) : string =
-  let drop_doctype s =
-    match Str.search_forward (Str.regexp_string "<!DOCTYPE") s 0 with
-    | exception Not_found -> s
-    | start ->
-      let close_with_subset =
-        try Some (Str.search_forward (Str.regexp_string "]>") s start)
-        with Not_found -> None in
-      let close_idx =
-        match close_with_subset with
-        | Some i -> i + 2
-        | None ->
-          (try (Str.search_forward (Str.regexp_string ">") s start) + 1
-           with Not_found -> String.length s)
-      in
-      let pre = String.sub s 0 start in
-      let post = String.sub s close_idx (String.length s - close_idx) in
-      pre ^ post
-  in
-  let inline_entities s =
-    s
-    |> Str.global_replace (Str.regexp_string "&rif;")
-         "http://www.w3.org/2007/rif#"
-    |> Str.global_replace (Str.regexp_string "&xs;")
-         "http://www.w3.org/2001/XMLSchema#"
-    |> Str.global_replace (Str.regexp_string "&rdf;")
-         "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-  in
-  s |> drop_doctype |> inline_entities
-
-let rif_graph_to_nquads (g : triple list) : string =
-  let buf = Buffer.create 1024 in
-  List.iter
-    (fun t ->
-       Buffer.add_string buf
-         (RDF_NQuads_Serialize.nq_line_for_triple_default_graph t))
-    g;
-  Buffer.contents buf
-
-(* Telemetry only -- NOT part of the saturation answer. Counts rounds
-   to fixpoint by driving RIF_Core_Eval.one_round directly: the exact
-   verified primitive that RIF_Core_Eval.fixpoint composes internally
-   (see RIF.Core.Eval.fst section 5). The saturated graph reported to
-   the caller always comes from calling RIF_Core_Eval.fixpoint itself,
-   below; this loop's own graph output is discarded once the round
-   count is known. `cap` is a defensive bound so a pathological input
-   cannot spin forever counting rounds (fixpoint's own fuel parameter
-   is the real termination guarantee for the answer). *)
-let rif_rounds_to_fixpoint g program cap =
-  let rec go g n =
-    if n >= cap then n
-    else
-      let g', changed = RIF_Core_Eval.one_round g program in
-      if changed then go g' (n + 1) else n
-  in
-  go g 0
-
-let rif_result_json
-    (input : triple list) (saturated : triple list)
-    (rounds : int) (fuel : int) (engine_ms : float) : string =
-  let derived = List.length saturated - List.length input in
-  "{\"ok\":true"
-  ^ ",\"inputNquads\":" ^ jstr (rif_graph_to_nquads input)
-  ^ ",\"saturatedNquads\":" ^ jstr (rif_graph_to_nquads saturated)
-  ^ ",\"inputCount\":" ^ string_of_int (List.length input)
-  ^ ",\"derivedCount\":" ^ string_of_int derived
-  ^ ",\"rounds\":" ^ string_of_int rounds
-  ^ ",\"fuel\":" ^ string_of_int fuel
-  ^ ",\"engineMs\":" ^ Printf.sprintf "%.3f" engine_ms
-  ^ "}"
-
-(* rifSmoke() -- live re-run of RIF.Core.Eval.fst's own smoke program.
-   No user input; a fixed capability probe demonstrating the bundle
-   actually calls the verified engine rather than replaying a canned
-   value baked in at F* compile time. *)
-let rif_smoke_json () : string =
-  guarded (fun () ->
-    let input = RIF_Core_Eval.smoke_input_graph in
-    let program = RIF_Core_Eval.smoke_program in
-    let fuel = 8 in
-    let t0 = Sys.time () in
-    let saturated = RIF_Core_Eval.fixpoint input program (Z.of_int fuel) in
-    let t1 = Sys.time () in
-    let rounds = rif_rounds_to_fixpoint input program 64 in
-    rif_result_json input saturated rounds fuel ((t1 -. t0) *. 1000.0))
-
-(* rifEval(rifXml, dataNQuads) -- general entry point: parse arbitrary
-   RIF-XML rules, saturate against an arbitrary N-Quads premise graph
-   (default graph only -- RIF Core has no named-graph notion).
-   rif_xml_preprocess strips any DOCTYPE + inlines &rif;/&xs;/&rdf;
-   entities first (a no-op on a document that has none), so this
-   accepts real vendored RIF-XML unmodified, not just a hand-stripped
-   variant. *)
-let rif_eval_json (rif_xml : string) (data_nquads : string) : string =
-  guarded (fun () ->
-    let rif_xml = rif_xml_preprocess rif_xml in
-    let ds = dataset_of_nquads data_nquads in
-    let premise = ds.ds_default in
-    match Parser_RIFXML.parse_rif_program rif_xml with
-    | FStar_Pervasives_Native.None ->
-      err_json
-        "RIF-XML parse error (Parser_RIFXML.parse_rif_program returned None)"
-    | FStar_Pervasives_Native.Some program ->
-      let fuel = 100 in
-      let t0 = Sys.time () in
-      let saturated = RIF_Core_Eval.fixpoint premise program (Z.of_int fuel) in
-      let t1 = Sys.time () in
-      let rounds = rif_rounds_to_fixpoint premise program 256 in
-      rif_result_json premise saturated rounds fuel ((t1 -. t0) *. 1000.0))
-
-(* ---------------------------------------------------------------------
-   JSON-LD (rule #11 consumer -- exports only). Semantics come entirely
-   from Parser_JSONLD.parse_jsonld (+ JSONLD_Context / JSONLD_Expand it
-   calls internally); this wraps it with the same per-document
-   blank-node scoping parseToDatasetJson applies and an options-JSON
-   ABI for the parameters parseToDatasetJson's 3-string-arg shape has
-   no room for. See jsonldToRdf's doc comment (file header) for the
-   optionsJson field names.
-   --------------------------------------------------------------------- *)
-
-let jsonld_to_rdf_json (jsonld_text : string) (options_json : string) : string =
-  guarded (fun () ->
-    let root_opt =
-      if options_json = "" then FStar_Pervasives_Native.None
-      else Parser_JSON.parse_json options_json
-    in
-    let field key =
-      match root_opt with
-      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-      | FStar_Pervasives_Native.Some root -> Parser_JSON.json_get_string key root
-    in
-    let base = field "base" in
-    let rdf_direction = field "rdfDirection" in
-    let expand_context = field "expandContext" in
-    let processing_mode = field "processingMode" in
-    match Parser_JSONLD.parse_jsonld jsonld_text base rdf_direction
-            expand_context processing_mode with
-    | FStar_Pervasives_Native.None ->
-      err_json ("invalid or unsupported JSON-LD (parse error, or a " ^
-                "feature needing a remote-context loader this entry " ^
-                "does not have)")
-    | FStar_Pervasives_Native.Some ds ->
-      ok_nquads_json (RDF_Canonical.canonical_nquads (scope_dataset_bnodes ds)))
-
-(* jsonldFromRdf(nquads, optionsJson) -- the reverse of jsonldToRdf:
-   "Serialize RDF as JSON-LD". Parses the N-Quads dataset with the
-   F*-extracted Parser_NQuads.parse_nquads, calls JSONLD_FromRdf.from_rdf
-   (the same verified fromRdf algorithm bin/jsonld-fromrdf-runner drives
-   against the W3C json-ld fromRdf manifest), and serialises the resulting
-   expanded-form JSON-LD document with Parser_JSONLD.jcanon_document (JCS
-   canonical JSON). optionsJson fields: useNativeTypes / useRdfType (both
-   bool, both default false -- matching JSONLD_FromRdf.default_options).
-   Rule #11: no fromRdf semantics here, only marshalling + a call into the
-   extracted F* module. from_rdf returns None only for an invalid rdf:JSON
-   literal, mapped to the error envelope. *)
-let jsonld_from_rdf_json (nquads_text : string) (options_json : string) : string =
-  guarded (fun () ->
-    let root_opt =
-      if options_json = "" then FStar_Pervasives_Native.None
-      else Parser_JSON.parse_json options_json
-    in
-    let bool_field key =
-      match root_opt with
-      | FStar_Pervasives_Native.None -> false
-      | FStar_Pervasives_Native.Some root ->
-        (match Parser_JSON.json_get_field key root with
-         | FStar_Pervasives_Native.Some (Parser_JSON.JBool b) -> b
-         | _ -> false)
-    in
-    let str_field key =
-      match root_opt with
-      | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-      | FStar_Pervasives_Native.Some root ->
-        (match Parser_JSON.json_get_field key root with
-         | FStar_Pervasives_Native.Some (Parser_JSON.JString s) -> FStar_Pervasives_Native.Some s
-         | _ -> FStar_Pervasives_Native.None)
-    in
-    let opts =
-      { JSONLD_FromRdf.use_native_types = bool_field "useNativeTypes";
-        JSONLD_FromRdf.use_rdf_type = bool_field "useRdfType";
-        JSONLD_FromRdf.rdf_direction = str_field "rdfDirection" } in
-    let ds = Parser_NQuads.parse_nquads nquads_text in
-    match JSONLD_FromRdf.from_rdf ds opts with
-    | FStar_Pervasives_Native.None ->
-      err_json
-        ("jsonldFromRdf: from_rdf returned None (an rdf:JSON typed literal "
-         ^ "in the input is not valid JSON)")
-    | FStar_Pervasives_Native.Some doc ->
-      "{\"ok\":true,\"jsonld\":" ^ jstr (Parser_JSONLD.jcanon_document doc) ^ "}")
-
-(* ---------------------------------------------------------------------
-   XML well-formedness + XPath 1.0 (rule #11 consumers -- exports only).
-   Parser_XML.parse_xml_document (formal/fstar/Parser.XML.fst) is the
-   accept/reject signal bin/xml-runner drives against the W3C xmlconf
-   corpus; XPath_Eval.eval_xpath_from_root (formal/fstar/XPath.Eval.fst)
-   is the Stage-1 XPath engine tests/unit/xpath_tests.ml drives. This
-   wraps them for the browser ABI. No XML/XPath logic lives here.
-   --------------------------------------------------------------------- *)
-
-(* xmlWellformed(xmlText) -- generic XML 1.0 well-formedness, decided
-   solely by whether Parser_XML.parse_xml_document accepts the byte
-   string (Some = well-formed, None = not). The parser is byte-oriented
-   (UTF-8/ASCII) and has no DOCTYPE/DTD production, so a document with a
-   DOCTYPE reports wellformed:false -- the same documented scope
-   bin/xml-runner reports as "DOCTYPE/DTD not parsed". *)
-let xml_wellformed_json (xml_text : string) : string =
-  guarded (fun () ->
-    match Parser_XML.parse_xml_document xml_text with
-    | FStar_Pervasives_Native.Some _ -> "{\"ok\":true,\"wellformed\":true}"
-    | FStar_Pervasives_Native.None -> "{\"ok\":true,\"wellformed\":false}")
-
-(* xpathEval(xmlText, xpathExpr) -- evaluate an XPath 1.0 expression over
-   an XML document. Parses via Parser_XML.parse_xml_document, then calls
-   XPath_Eval.eval_xpath_from_root with no external variables. The result
-   is one of the four XPath 1.0 value types (node-set / string / number /
-   boolean); every string projection (to_string_val, item_string_value,
-   element_tag, attr field access) is F*-extracted -- this only shapes
-   the JSON envelope. *)
-let xpath_eval_json (xml_text : string) (xpath_expr : string) : string =
-  guarded (fun () ->
-    match Parser_XML.parse_xml_document xml_text with
-    | FStar_Pervasives_Native.None ->
-      err_json
-        "xpathEval: XML document is not well-formed (parse_xml_document returned None)"
-    | FStar_Pervasives_Native.Some root ->
-      (match XPath_Eval.eval_xpath_from_root root [] xpath_expr with
-       | FStar_Pervasives_Native.None ->
-         err_json
-           ("xpathEval: XPath parse error or Stage-1-unsupported construct: "
-            ^ xpath_expr)
-       | FStar_Pervasives_Native.Some v ->
-         (match v with
-          | XPath_Eval.XV_Bool b ->
-            "{\"ok\":true,\"resultType\":\"boolean\",\"value\":"
-            ^ (if b then "true" else "false") ^ "}"
-          | XPath_Eval.XV_Num _ ->
-            "{\"ok\":true,\"resultType\":\"number\",\"value\":"
-            ^ jstr (XPath_Eval.to_string_val v) ^ "}"
-          | XPath_Eval.XV_Str s ->
-            "{\"ok\":true,\"resultType\":\"string\",\"value\":" ^ jstr s ^ "}"
-          | XPath_Eval.XV_Nodes items ->
-            let node_json it =
-              let kind, name =
-                match it with
-                | XPath_Eval.CI_Elem (_, _, n) ->
-                  ("element",
-                   (match Parser_XML.element_tag n with
-                    | FStar_Pervasives_Native.Some t -> t
-                    | FStar_Pervasives_Native.None -> ""))
-                | XPath_Eval.CI_Attr (_, _, _, a) ->
-                  ("attribute", a.Parser_XML.attr_name)
-                | XPath_Eval.CI_Text (_, _, _, _) -> ("text", "")
-                | XPath_Eval.CI_Comment (_, _, _, _) -> ("comment", "")
-                | XPath_Eval.CI_PI (_, _, _, target, _) -> ("processing-instruction", target)
-              in
-              "{\"kind\":" ^ jstr kind ^ ",\"name\":" ^ jstr name
-              ^ ",\"value\":" ^ jstr (XPath_Eval.item_string_value it) ^ "}"
-            in
-            let arr = String.concat "," (List.map node_json items) in
-            "{\"ok\":true,\"resultType\":\"nodeset\",\"count\":"
-            ^ string_of_int (List.length items)
-            ^ ",\"stringValue\":" ^ jstr (XPath_Eval.to_string_val v)
-            ^ ",\"nodes\":[" ^ arr ^ "]}")))
-
-(* ---------------------------------------------------------------------
-   SHACL (rule #11 consumer -- exports only). All shape parsing, target
-   computation, constraint evaluation and report serialization live in
-   formal/fstar/SHACL.Validation.fst -- the same call path
-   bin/shacl-runner/shacl_runner.ml drives (parse_shape_from_graph +
-   validate + validation_report_to_graph).
-   --------------------------------------------------------------------- *)
-
-(* dataNQuads/shapesNQuads are dataset handles (same convention as
-   queryDataset/canonicalizeToNQuads/etc.) -- the default graph's
-   triples only (SHACL operates over a plain rdf_graph; a caller with
-   named-graph data/shapes should pick the graph it means before
-   calling, same documented scope cut fn.js's entail() already makes
-   for RDFS/OWL-RL closure). *)
-let shacl_validate_json (data_nquads : string) (shapes_nquads : string) : string =
-  guarded (fun () ->
-    let data_graph = (dataset_of_nquads data_nquads).ds_default in
-    let shapes_graph = (dataset_of_nquads shapes_nquads).ds_default in
-    let sg = SHACL_Validation.parse_shape_from_graph shapes_graph in
-    let report = SHACL_Validation.validate data_graph shapes_graph sg in
-    let report_graph = SHACL_Validation.validation_report_to_graph report in
-    "{\"ok\":true,\"conforms\":"
-    ^ (if report.SHACL_Validation.conforms then "true" else "false")
-    ^ ",\"reportNquads\":" ^ jstr (construct_triples_to_ntriples report_graph)
-    ^ "}")
-
-(* ---------------------------------------------------------------------
-   ShEx (rule #11 consumer -- exports only). ShExJ decoding lives in
-   formal/fstar/ShEx.Schema.fst; NodeConstraint dispatch and
-   triple-expression matching live in formal/fstar/ShEx.Validation.fst
-   -- the same call path bin/shex-runner/shex_runner.ml drives
-   (decode_shex_schema + validate_focus).
-   --------------------------------------------------------------------- *)
-
-(* A focus/shape-label string is an IRI, or "_:label" for a blank node
-   -- same convention shex_runner.ml's shape_label_str /
-   term_of_node_string helpers use, so a caller round-tripping a
-   shex_runner-style ShapeMap entry gets the identical term. *)
-let term_of_focus_string (s : string) : rdf_term =
-  if String.length s >= 2 && String.sub s 0 2 = "_:"
-  then T_BNode (String.sub s 2 (String.length s - 2))
-  else T_IRI s
-
-(* ShExJ-vs-ShExC schema-text dispatch (Stage 9, Parser.ShExC.fst): the
-   first non-whitespace character of a ShExJ document is always '{' (a
-   JSON object); ShExC schemas never start that way (a ShExC document
-   starts with a directive keyword, a shape label, or START). Both
-   decoders live in F* (ShEx_Schema.decode_shex_schema / Parser_ShExC.
-   parse_shexc_schema) -- this is pure I/O-adjacent dispatch, not
-   semantic logic, per iron rule #11. Documented in npm/factoidal's
-   shexValidate jsdoc and README as the sniffing rule callers can rely
-   on. *)
-let first_non_ws_char (s : string) : char option =
-  let len = String.length s in
-  let rec go i =
-    if i >= len then None
-    else match s.[i] with
-      | ' ' | '\t' | '\n' | '\r' -> go (i + 1)
-      | c -> Some c
-  in
-  go 0
-
-let decode_shex_schema_text (schema_text : string) : ShEx_Schema.shex_schema FStar_Pervasives_Native.option =
-  match first_non_ws_char schema_text with
-  | Some '{' -> ShEx_Schema.decode_shex_schema schema_text ""
-  | _ -> Parser_ShExC.parse_shexc_schema schema_text ""
-
-(* dataNQuads is a dataset handle (see shaclValidate's comment above for
-   the default-graph-only scope cut this shares). schemaText accepts
-   EITHER ShExJ (JSON) or ShExC (compact syntax) text -- see
-   decode_shex_schema_text's dispatch rule above. *)
-let shex_validate_json (data_nquads : string) (schema_text : string)
-    (focus : string) (shape_label : string) : string =
-  guarded (fun () ->
-    match decode_shex_schema_text schema_text with
-    | FStar_Pervasives_Native.None ->
-      err_json "could not decode schema (tried ShExJ then ShExC)"
-    | FStar_Pervasives_Native.Some schema ->
-      let data_graph = (dataset_of_nquads data_nquads).ds_default in
-      let focus_term = term_of_focus_string focus in
-      let shape_id =
-        if shape_label = "" then FStar_Pervasives_Native.None
-        else FStar_Pervasives_Native.Some shape_label
-      in
-      (match ShEx_Validation.validate_focus schema shape_id focus_term data_graph with
-       | FStar_Pervasives_Native.None ->
-         "{\"ok\":true,\"verdict\":null,\"deferred\":true}"
-       | FStar_Pervasives_Native.Some b ->
-         "{\"ok\":true,\"verdict\":" ^ (if b then "true" else "false")
-         ^ ",\"deferred\":false}"))
-
-(* ---------------------------------------------------------------------
-   RDFS / OWL-RL entailment closure (rule #11 consumer -- exports
-   only). Both closures live in formal/fstar/RDF.Graph.Executable.fst;
-   this is the same fuel=100 call bin/w3c-runner/w3c_runner.ml makes
-   for RDFS/OWL-RL entailment-regime tests.
-   --------------------------------------------------------------------- *)
-
-(* dataNQuads is a dataset handle; only the default graph is closed
-   over (see shaclValidate's comment above). *)
-let owl_closure_json (data_nquads : string) (mode : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    let fuel = Z.of_int 100 in
-    match mode with
-    | "RDFS" | "rdfs" ->
-      ok_nquads_json (construct_triples_to_ntriples
-        (RDF_Graph_Executable.rdfs_closure_with_reflexivity_dispatch graph fuel))
-    | "OWL-RL" | "owl-rl" | "owl_rl" ->
-      ok_nquads_json (construct_triples_to_ntriples
-        (RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel))
-    | _ ->
-      err_json (Printf.sprintf
-        "owlClosure: unknown mode '%s' (expected 'RDFS' or 'OWL-RL')" mode))
-
-(* ---------------------------------------------------------------------
-   Certified rho-df closure + fragment checker (rule #11 consumer --
-   exports only). Both live in
-   formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst: `rho_df_closure`
-   runs exactly the six rho-df rows (rdfs7/2/3/9/11/5, RDFS.Closure's
-   own `rdfs_rule_*` functions -- no rule body reimplemented here) to a
-   fixed point or `fuel` steps, whichever comes first; `is_rho_df_frag`
-   is the decidable `bool` twin of
-   RDF.Entailment.RDFS.Completeness.rho_df_frag_graph (a `prop`, so it
-   cannot be called from extracted code), pinned to it by
-   `lemma_is_rho_df_frag_correct`. See that module's banner for the
-   fragment/closure theorems (extensive, sound, closed, decides).
-   --------------------------------------------------------------------- *)
-
-(* Telemetry only -- NOT part of the closure answer. Counts rounds to
-   fixpoint by re-driving `rho_df_closure_step` directly (the exact
-   verified step function `rho_df_closure` composes with its own
-   fuel/length-test loop -- see RhoDFClosure.fst section 1) and
-   comparing graph length round over round, the same fixed-point test
-   `rho_df_closure` itself uses. The graph this loop touches is
-   discarded once the round count is known; the answer returned to the
-   caller always comes from calling `rho_df_closure` itself, below.
-   `cap` bounds a pathological input from spinning forever counting
-   rounds (`rho_df_closure`'s own `fuel` is the real termination
-   guarantee for the answer; same split as `rif_rounds_to_fixpoint`
-   above). *)
-let rho_df_rounds_to_fixpoint (g : triple list) (cap : int) : int =
-  let rec go g n =
-    if n >= cap then n
-    else
-      let g' = RDF_Entailment_RDFS_RhoDFClosure.rho_df_closure_step g in
-      if List.length g' <> List.length g then go g' (n + 1) else n
-  in
-  go g 0
-
-(* dataNQuads is a dataset handle; only the default graph is closed
-   over (same scope cut as owlClosure above). fuel = the input graph's
-   own triple count: the six-rule step is extensive and monotone
-   (`rho_df_closure_extensive`/`_sound`), so each non-fixed-point round
-   adds at least one triple, and a closure that has not reached a fixed
-   point after that many rounds cannot exist over a finite vocabulary
-   drawn from the input -- a generous, honest bound for a browser demo
-   graph, not a tuned constant. *)
-let rho_df_closure_json (data_nquads : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    let fuel_int = List.length graph in
-    let fuel = Z.of_int fuel_int in
-    let closed = RDF_Entailment_RDFS_RhoDFClosure.rho_df_closure graph fuel in
-    let rounds = rho_df_rounds_to_fixpoint graph (fuel_int + 1) in
-    "{\"ok\":true,\"ntriples\":"
-    ^ jstr (construct_triples_to_ntriples closed)
-    ^ ",\"rounds\":" ^ string_of_int rounds ^ "}")
-
-(* RDFS-Plus closure (rule #11 consumer -- exports only). The operator
-   lives in formal/fstar/RDF.Entailment.RDFSPlus.fst: the shipping
-   rdfs_closure_step plus the 13 RDFS-Plus OWL rows (equivalence,
-   sameAs family minus eq-ref, inverseOf, Symmetric/Transitive/
-   Functional/InverseFunctional), each row carrying its proved
-   licensing + truth lemmas -- see that module's banner for the tier
-   definition (RDFS-Plus, Allemang & Hendler 2008; RDFS++,
-   AllegroGraph) and the claim level (per-rule certificates, no
-   chain-level completeness). fuel = 4n+32: the step is extensive, so
-   every non-fixed-point round adds at least one triple; a generous,
-   honest browser-demo bound (roomier than rho-df's because the RDFS
-   step also emits axiom rows), not a tuned constant. *)
-let rdfs_plus_rounds_to_fixpoint (g : triple list) (cap : int) : int =
-  let rec go g n =
-    if n >= cap then n
-    else
-      let g' = RDF_Entailment_RDFSPlus.rdfs_plus_step g in
-      if List.length g' <> List.length g then go g' (n + 1) else n
-  in
-  go g 0
-
-let rdfs_plus_closure_json (data_nquads : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    let fuel_int = 4 * List.length graph + 32 in
-    let fuel = Z.of_int fuel_int in
-    let closed = RDF_Entailment_RDFSPlus.rdfs_plus_closure graph fuel in
-    let rounds = rdfs_plus_rounds_to_fixpoint graph (fuel_int + 1) in
-    "{\"ok\":true,\"ntriples\":"
-    ^ jstr (construct_triples_to_ntriples closed)
-    ^ ",\"rounds\":" ^ string_of_int rounds ^ "}")
-
-(* dataNQuads is a dataset handle; only the default graph is checked
-   (same scope cut as owlClosure/rhoDfClosure above). `fragment` is
-   `is_rho_df_frag`'s verbatim answer -- true iff every triple's object
-   is an IRI or blank node, and any rdfs:subPropertyOf triple's object
-   is specifically an IRI (Completeness.fst's F1/F2). *)
-let rho_df_fragment_check_json (data_nquads : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    Printf.sprintf "{\"ok\":true,\"fragment\":%b}"
-      (RDF_Entailment_RDFS_RhoDFClosure.is_rho_df_frag graph))
-
-(* ---------------------------------------------------------------------
-   OWL tableau reasoner (rule #11 consumer -- exports only). The
-   model-construction reasoner is formal/fstar/Tableau.fst
-   (Tableau.tableau_materialise, which adds `i rdf:type <CE>` for every
-   individual provably in a class expression; 0 assume val, verified).
-   That is the same function bin/w3c-runner drives for the SPARQL 1.1
-   entailment-regime suite (parent/paper-sparqldl/simple/bind) and that
-   bin/owl-runner runs under --regime dl. tableauDlInconsistent below
-   replays owl_runner's exact DL pipeline: RL closure -> tableau
-   materialise -> RL closure -> is_inconsistent (see its apply_closure
-   DL branch). All F* functions; this only composes them for the
-   npm/browser boundary. --------------------------------------------- *)
-
-(* Materialise class-expression memberships. dataNQuads is a dataset
-   handle; only the default graph is materialised (same scope choice as
-   owlClosure / shaclValidate above). addedCount is the number of
-   triples the tableau derived beyond the input. *)
-let tableau_materialise_json (data_nquads : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    let materialised = Tableau.tableau_materialise graph in
-    let added = List.length materialised - List.length graph in
-    let added = if added < 0 then 0 else added in
-    "{\"ok\":true,\"nquads\":"
-    ^ jstr (construct_triples_to_ntriples materialised)
-    ^ ",\"addedCount\":" ^ string_of_int added ^ "}")
-
-(* DL-regime inconsistency verdict. `inconsistent` is the DL answer
-   (RL -> tableau -> RL -> is_inconsistent); `rlAlone` is the plain
-   OWL-RL answer on the same input, so a caller can see the DL>=RL
-   flips the tableau accounts for (a disjointness clash reached only
-   after the tableau materialises a restriction membership the Datalog
-   closure never derives). *)
-let tableau_dl_inconsistent_json (data_nquads : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    let fuel = Z.of_int 100 in
-    let rl_only = RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel in
-    let g_rl = RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel in
-    let g_tab = Tableau.tableau_materialise g_rl in
-    let g_dl = RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_tab fuel in
-    Printf.sprintf "{\"ok\":true,\"inconsistent\":%b,\"rlAlone\":%b}"
-      (RDF_Graph_Executable.is_inconsistent g_dl)
-      (RDF_Graph_Executable.is_inconsistent rl_only))
-
-(* ---------------------------------------------------------------------
-   OWL DL reasoning by refutation (rule #11 consumer -- exports only).
-   owlIsConsistent / owlEntails expose the VERIFIED clash-detecting
-   tableau (formal/fstar/Tableau.Refute.fst) the way
-   bin/owl-runner/owl_runner.ml dispatches it under --regime dl, minus
-   owl_runner's native-only z3 counting oracle: z3_oracle_refutes spawns
-   a z3 subprocess, which js_of_ocaml/wasm_of_ocaml cannot do, so this
-   entry point never touches it. The chain is the pure verified one --
-   Tableau_Refute.tableau_consistent (three-valued: Some false = clash on
-   every branch, Some true = model built, None = fuel budget exhausted)
-   over the OWL-RL closure -- and the None case is reported as an honest
-   `null`, never a silent `false`. No reasoning logic lives here (rule
-   #11): the closure, the refuter, and negation_goals are all
-   F*-extracted; this only computes the RL closure, calls the refuter,
-   and shapes the JSON verdict. Default graph only (same scope cut as
-   owlClosure / tableauDlInconsistent above).
-   --------------------------------------------------------------------- *)
-
-(* Refutation budget (Tableau_Refute.tableau_consistent's threaded linear
-   `fuel`). Default 20000, matching owl_runner's refute_fuel. opts_json is
-   "" or a JSON object {"fuel":"<nat>"} (fuel a decimal STRING -- a large
-   budget can exceed JS's safe-integer range, so it crosses the ABI as
-   text). Unlike owl_runner there is NO SIGALRM wall-clock cap here:
-   js_of_ocaml has no Unix.setitimer, and the fuel bound is itself the
-   termination guarantee (fuel exhaustion returns None = indeterminate),
-   so a browser call is bounded by fuel alone. *)
-let owl_refute_fuel_of_opts (opts_json : string) : Prims.nat =
-  let default_fuel = Z.of_int 20000 in
-  if opts_json = "" then default_fuel
-  else
-    match Parser_JSON.parse_json opts_json with
-    | FStar_Pervasives_Native.None -> default_fuel
-    | FStar_Pervasives_Native.Some root ->
-      (match Parser_JSON.json_get_string "fuel" root with
-       | FStar_Pervasives_Native.Some s ->
-         (try Z.of_string s with _ -> default_fuel)
-       | FStar_Pervasives_Native.None -> default_fuel)
-
-(* owlIsConsistent(dataNquads, optsJson)
-   -> {"ok":true,"consistent":true|false|null,"reason"?:"..."}
-   Mirrors owl_runner's dl_refutes dispatch: RL closure of the input,
-   then Tableau_Refute.tableau_consistent on the closure. reason is a
-   plumbing-level description of the verdict source (there is no
-   clash-trace string in the verified refuter); present on the
-   false/null verdicts, omitted on true. *)
-let owl_is_consistent_json (data_nquads : string) (opts_json : string) : string =
-  guarded (fun () ->
-    let graph = (dataset_of_nquads data_nquads).ds_default in
-    let fuel100 = Z.of_int 100 in
-    let closure =
-      RDF_Graph_Executable.owl_rl_closure_with_reflexivity graph fuel100 in
-    let fuel = owl_refute_fuel_of_opts opts_json in
-    match Tableau_Refute.tableau_consistent closure fuel with
-    | FStar_Pervasives_Native.Some false ->
-      "{\"ok\":true,\"consistent\":false,\"reason\":"
-      ^ jstr ("the clash-detecting tableau derived a contradiction on "
-              ^ "every branch of the OWL-RL closure") ^ "}"
-    | FStar_Pervasives_Native.Some true ->
-      "{\"ok\":true,\"consistent\":true}"
-    | FStar_Pervasives_Native.None ->
-      "{\"ok\":true,\"consistent\":null,\"reason\":"
-      ^ jstr (Printf.sprintf
-                "budget-out: tableau refutation fuel %s exhausted before \
-                 every branch closed (indeterminate, not inconsistent); \
-                 raise it via opts.fuel"
-                (Z.to_string fuel))
-      ^ "}")
-
-(* Every conclusion triple present (exactly) in the closure? Soundness:
-   exact membership of a ground triple in the RL closure is always a valid
-   entailment witness. A conclusion carrying blank nodes needs either
-   matching labels or the refutation path below -- owl_runner's relaxed
-   bnode-existential match is a test-scoring convenience, not needed for a
-   clean API verdict, and is not replicated here. *)
-let closure_entails
-      (closure : RDF_Graph_Executable.rdf_graph)
-      (g_c : RDF_Graph_Executable.rdf_graph) : bool =
-  List.for_all
-    (fun t -> List.exists (RDF_Graph_Executable.triple_eq t) closure)
-    g_c
-
-(* owlEntails(premiseNquads, conclusionNquads, optsJson)
-   -> {"ok":true,"entailed":true|false|null,"via":"closure"|"refutation",
-       "reason"?:"..."}
-   Mirrors owl_runner's PositiveEntailment dispatch (run_positive_
-   entailment + pe_refute_entails): first the OWL-RL closure path, then
-   the negate-and-refute fallback. The conclusion is entailed via
-   refutation iff EVERY negation goal (Tableau_Refute.negation_goals
-   splits equivalences / conjunctions) refutes; a satisfiable goal
-   (Some true) is a countermodel => not entailed; an indeterminate goal
-   (None) with no countermodel => null (budget-out), never a silent
-   false. Verified-only chain (no z3). *)
-let owl_entails_json
-      (premise_nquads : string) (conclusion_nquads : string)
-      (opts_json : string) : string =
-  guarded (fun () ->
-    let g_p = (dataset_of_nquads premise_nquads).ds_default in
-    let g_c = (dataset_of_nquads conclusion_nquads).ds_default in
-    let fuel100 = Z.of_int 100 in
-    let closure =
-      RDF_Graph_Executable.owl_rl_closure_with_reflexivity g_p fuel100 in
-    let fuel = owl_refute_fuel_of_opts opts_json in
-    if closure_entails closure g_c then
-      "{\"ok\":true,\"entailed\":true,\"via\":\"closure\"}"
-    else
-      match Tableau_Refute.negation_goals g_c with
-      | FStar_Pervasives_Native.None ->
-        (* No sound negation for this conclusion form; only the closure
-           verdict (miss) is available. *)
-        "{\"ok\":true,\"entailed\":false,\"via\":\"closure\",\"reason\":"
-        ^ jstr ("not in the OWL-RL closure, and the conclusion form "
-                ^ "cannot be soundly negated for refutation") ^ "}"
-      | FStar_Pervasives_Native.Some goals ->
-        let results =
-          List.map
-            (fun neg ->
-               Tableau_Refute.tableau_consistent
-                 (List.append closure neg) fuel)
-            goals
-        in
-        if List.for_all (fun r -> r = FStar_Pervasives_Native.Some false) results
-        then "{\"ok\":true,\"entailed\":true,\"via\":\"refutation\"}"
-        else if List.exists (fun r -> r = FStar_Pervasives_Native.Some true) results
-        then
-          "{\"ok\":true,\"entailed\":false,\"via\":\"refutation\",\"reason\":"
-          ^ jstr ("a model satisfying the premise and the negated "
-                  ^ "conclusion was constructed (conclusion not entailed)")
-          ^ "}"
-        else
-          "{\"ok\":true,\"entailed\":null,\"via\":\"refutation\",\"reason\":"
-          ^ jstr (Printf.sprintf
-                    "budget-out: a refutation goal exhausted fuel %s "
-                    (Z.to_string fuel)
-                  ^ "before closing (indeterminate); raise it via opts.fuel")
-          ^ "}")
-
-(* ---------------------------------------------------------------------
-   RML (rule #11 consumer -- exports only). Mapping-document decoding
-   lives in formal/fstar/RML.Mapping.fst, logical-source iteration in
-   formal/fstar/RML.Sources.fst, term-map/triples-map evaluation in
-   formal/fstar/RML.Eval.fst -- the eval_triples_map_json/_csv
-   convenience wrappers bin/rml-runner/rml_runner.ml's eval_document
-   also composes, minus that driver's multi-source join-lookup table
-   (see rmlMap's doc comment, file header, for the resulting scope cut).
-   --------------------------------------------------------------------- *)
-
-(* mappingNQuads is a dataset handle for the RML mapping GRAPH (the
-   TriplesMap/LogicalSource/etc. RDF description) -- default graph
-   only, same convention as shaclValidate above. sourceData is the RML
-   logical source's raw data (JSON or CSV text, per sourceKind), not
-   RDF -- passed straight through to RML.Sources' iterators. *)
-let rml_map_json (mapping_nquads : string) (source_data : string)
-    (source_kind : string) : string =
-  guarded (fun () ->
-    match source_kind with
-    | "json" | "csv" ->
-      let mapping_graph = (dataset_of_nquads mapping_nquads).ds_default in
-      let doc = RML_Mapping.decode_mapping_document mapping_graph in
-      let eval_one (tmap : RML_Mapping.triples_map) : RML_Eval.placed_triple list =
-        match source_kind with
-        | "json" ->
-          (match Parser_JSON.parse_json source_data with
-           | FStar_Pervasives_Native.None -> []
-           | FStar_Pervasives_Native.Some root ->
-             RML_Eval.eval_triples_map_json tmap root FStar_Pervasives_Native.None)
-        | _ (* "csv" *) ->
-          RML_Eval.eval_triples_map_csv tmap source_data FStar_Pervasives_Native.None
-      in
-      let all_pts = List.concat_map eval_one doc.RML_Mapping.md_triples_maps in
-      let ds = RML_Eval.place_into_dataset RDF_Graph_Executable.empty_dataset all_pts in
-      ok_nquads_json (RDF_Canonical.canonical_nquads ds)
-    | _ ->
-      err_json (Printf.sprintf
-        "rmlMap: unknown sourceKind '%s' (expected 'json' or 'csv')" source_kind))
-
-(* ---------------------------------------------------------------------
-   CSVW csv2rdf (rule #11 consumer -- exports only). Metadata-document
-   decoding lives in formal/fstar/CSVW.Metadata.fst, URI-template
-   expansion in formal/fstar/CSVW.URITemplate.fst, the conversion
-   algorithm (standard + minimal modes) in
-   formal/fstar/CSVW.Conversion.fst, CSV tokenization in
-   formal/fstar/RML.Sources.fst -- the same call path
-   bin/csvw-runner/csvw_runner.ml drives. See csvwToRdf's doc comment
-   (file header) for the optionsJson fields and the one-source scope
-   cut this shares with rmlMap.
-   --------------------------------------------------------------------- *)
-
-let csvw_to_rdf_json (csv_text : string) (metadata_json : string)
-    (options_json : string) : string =
-  guarded (fun () ->
-    let root_opt =
-      if options_json = "" then FStar_Pervasives_Native.None
-      else Parser_JSON.parse_json options_json
-    in
-    let field key dflt =
-      match root_opt with
-      | FStar_Pervasives_Native.None -> dflt
-      | FStar_Pervasives_Native.Some root ->
-        (match Parser_JSON.json_get_string key root with
-         | FStar_Pervasives_Native.Some s -> s
-         | FStar_Pervasives_Native.None -> dflt)
-    in
-    let mode = field "mode" "standard" in
-    let base_iri = field "base" "file:///" in
-    let fallback_url = field "url" "table.csv" in
-    match mode with
-    | "standard" | "minimal" ->
-      let tables_opt =
-        (* Second component: the table-group's own meta (inherited-property
-           defaults + group common properties, Stage 2) — empty when the
-           document is a single table or absent entirely. *)
-        if metadata_json = "" then
-          FStar_Pervasives_Native.Some ([ CSVW_Conversion.csvw_no_metadata_table ], CSVW_Metadata.csvw_group_meta_empty)
-        else
-          (match CSVW_Metadata.csvw_decode_metadata_text metadata_json with
-           | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
-           | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_Table t) ->
-             FStar_Pervasives_Native.Some ([ t ], CSVW_Metadata.csvw_group_meta_empty)
-           | FStar_Pervasives_Native.Some (CSVW_Metadata.CSVW_TableGroup (ts, g)) ->
-             FStar_Pervasives_Native.Some (ts, g))
-      in
-      (match tables_opt with
-       | FStar_Pervasives_Native.None ->
-         err_json "csvwToRdf: metadataJson is not a decodable CSVW metadata document"
-       | FStar_Pervasives_Native.Some (tables, grp_meta) ->
-         let rows = RML_Sources.csv_parse_rows csv_text in
-         let tables_with_rows =
-           List.map (fun t -> (t, fallback_url, rows)) tables in
-         let triples =
-           if mode = "minimal"
-           then CSVW_Conversion.csvw_convert_document_minimal grp_meta.CSVW_Metadata.grp_inherited base_iri tables_with_rows
-           else CSVW_Conversion.csvw_convert_document_standard grp_meta FStar_Pervasives_Native.None base_iri FStar_Pervasives_Native.None tables_with_rows
-         in
-         let ds : RDF_Graph_Executable.rdf_dataset =
-           { RDF_Graph_Executable.ds_default = triples; ds_named = [] } in
-         ok_nquads_json (RDF_Canonical.canonical_nquads (scope_dataset_bnodes ds)))
-    | _ ->
-      err_json (Printf.sprintf
-        "csvwToRdf: unknown mode '%s' (expected 'standard' or 'minimal')" mode))
-
-(* ---------------------------------------------------------------------
-   Durable-UPDATE browser persistence (rule #11 consumer -- exports
-   only). Issue #282's browser realisation of the five delta-log I/O
-   primitives; see docs/designissues/2026-07-06-browser-persistence.md
-   for the v1 architecture decision (IndexedDB, not OPFS -- OPFS sync
-   access handles are worker-only and this entry point runs on the
-   main thread inside a hub cell). Every semantic/byte-layout decision
-   below is F*: RDF_Store_Columnar_DeltaLog.{serialize_delta_batch,
-   parse_delta_batch} (the verified, checksummed, self-framed delta-
-   batch format the native on-disk log already uses) and
-   RDF_Store_Columnar_DeltaMerge.{update_ops_to_delta_entries,
-   apply_entries_ref, delta_batches_named_graphs} (the same verified
-   translator/merge functions bin/factoidal-http/factoidal_http.ml's
-   --rw commit path drives natively). This OCaml layer moves opaque
-   bytes and dispatches per-graph loops only -- no RDF/SPARQL
-   semantics of its own.
-   --------------------------------------------------------------------- *)
-
-module DLog = RDF_Store_Columnar_DeltaLog
-module DMerge = RDF_Store_Columnar_DeltaMerge
-
-(* Wire transport: RDF_Bytes.bytes is `int list` (each element 0..255 --
-   FStar.Char.char extracts to plain OCaml int, see FStar_Char.ml).
-   Hex-encode/decode directly against that int list rather than routing
-   through RDF_Bytes.bytes_to_string/bytes_of_string, which round-trip
-   through BatUTF8 (FStar_String.ml) and can raise BatUChar.Out_of_range
-   on an arbitrary byte >= 128 that doesn't happen to start a valid
-   UTF-8 sequence -- the exact trap bin/delta-log-probe/probe.ml's own
-   header comment documents for this same byte type. Hex sidesteps any
-   string-encoding question entirely; this is ABI wire-transport
-   encoding at a bin/<consumer> boundary, not delta-log byte-LAYOUT
-   logic (rule #11 scopes the latter to F*, not the former). *)
-let hex_of_bytes (bs : RDF_Bytes.bytes) : string =
-  let buf = Buffer.create (List.length bs * 2) in
-  List.iter (fun b -> Buffer.add_string buf (Printf.sprintf "%02x" b)) bs;
-  Buffer.contents buf
-
-let bytes_of_hex (s : string) : RDF_Bytes.bytes option =
-  let n = String.length s in
-  if n mod 2 <> 0 then None
-  else
-    let rec go i acc =
-      if i >= n then Some (List.rev acc)
-      else
-        match (try Some (int_of_string ("0x" ^ String.sub s i 2)) with _ -> None) with
-        | None -> None
-        | Some b -> go (i + 2) (b :: acc)
-    in
-    go 0 []
-
-(* Per-call request salt for the same insert-data-same-bnode uniqueness
-   discipline SPARQL11_Algebra's apply_insert_data/apply_delete_data
-   already use (mirrors bnode_scope_counter above and factoidal-http's
-   own `next_seq`/`Unix.gettimeofday` salt -- this entry point has no
-   process-uptime clock worth reading, so a plain counter is the
-   simplest per-call-unique salt available here). *)
-let delta_salt_counter = ref 0
-let next_delta_salt () =
-  let n = !delta_salt_counter in
-  incr delta_salt_counter;
-  Printf.sprintf "browser_%d" n
-
-let delta_batch_to_hex (sparql_update : string) (seq : string) (epoch : string) : string =
-  guarded (fun () ->
-    match SPARQL11_Parser.parse_sparql_update sparql_update with
-    | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL update parse error: " ^ msg)
-    | SPARQL11_Parser.ParseOk (u, _rest) ->
-      let salt = next_delta_salt () in
-      (match DMerge.update_ops_to_delta_entries salt u.u_ops with
-       | FStar_Pervasives_Native.None ->
-         err_json
-           ("unsupported update op for the delta log (supported: INSERT " ^
-            "DATA, DELETE DATA, CLEAR, DROP, CREATE; DELETE/INSERT WHERE, " ^
-            "COPY, MOVE, ADD are not yet translatable)")
-       | FStar_Pervasives_Native.Some entries ->
-         let batch : DLog.delta_batch =
-           { DLog.db_seq = Z.of_string seq; DLog.db_epoch = Z.of_string epoch;
-             DLog.db_ops = entries }
-         in
-         let hex = hex_of_bytes (DLog.serialize_delta_batch batch) in
-         let op_count = string_of_int (List.length entries) in
-         "{\"ok\":true,\"hex\":" ^ jstr hex ^ ",\"opCount\":" ^ op_count ^ "}"))
-
-let delta_merge_apply_browser (nquads : string) (hex_blobs : string) : string =
-  guarded (fun () ->
-    let ds0 = dataset_of_nquads nquads in
-    let lines =
-      String.split_on_char '\n' hex_blobs
-      |> List.filter (fun s -> String.length (String.trim s) > 0)
-    in
-    (* Each line independently parsed; a torn/corrupt blob is skipped,
-       never partially decoded (see the ABI doc comment above). *)
-    let batches =
-      List.filter_map
-        (fun line ->
-           match bytes_of_hex (String.trim line) with
-           | None -> None
-           | Some bs ->
-             (match DLog.parse_delta_batch bs with
-              | FStar_Pervasives_Native.Some (b, _leftover) -> Some b
-              | FStar_Pervasives_Native.None -> None))
-        lines
-    in
-    let sorted =
-      List.sort (fun a b -> Z.compare a.DLog.db_seq b.DLog.db_seq) batches
-    in
-    let all_ops = List.concat_map (fun b -> b.DLog.db_ops) sorted in
-    let existing_names = List.map (fun ng -> ng.ng_name) ds0.ds_named in
-    let delta_names = DMerge.delta_batches_named_graphs sorted in
-    let all_names = List.sort_uniq compare (existing_names @ delta_names) in
-    let base_graph_for name =
-      match List.find_opt (fun ng -> ng.ng_name = name) ds0.ds_named with
-      | Some ng -> ng.ng_graph
-      | None -> []
-    in
-    let new_default =
-      DMerge.apply_entries_ref FStar_Pervasives_Native.None ds0.ds_default all_ops
-    in
-    let new_named =
-      List.map
-        (fun name ->
-           { ng_name = name;
-             ng_graph =
-               DMerge.apply_entries_ref (FStar_Pervasives_Native.Some name)
-                 (base_graph_for name) all_ops })
-        all_names
-    in
-    let ds' : rdf_dataset = { ds_default = new_default; ds_named = new_named } in
-    ok_nquads_json (RDF_Canonical.canonical_nquads ds'))
-
-(* ---------------------------------------------------------------------
-   In-memory COTTAS bytes store (rule #11 consumer -- exports only;
-   docs/designissues/2026-07-06-inmemory-bytes-store.md, stage 5 "the
-   browser call site"). Read path: Parquet_Footer.register_memory_buffer
-   (experimental_ocaml_glue/parquet_footer_zz_register_memory_buffer.sh)
-   + RDF.CottasStore.cottas_ondisk_open (both already linked into every
-   js_of_ocaml/wasm_of_ocaml bundle this file builds into -- see
-   formal/fstar/build-ocaml.sh's FSTAR_MODULES list, which has carried
-   RDF_CottasStore*/Parquet_Footer/RDF_Store_Capabilities_Cottas since
-   Phase 2, 2026-04-20) + SPARQL11_Store.cottas_ondisk_dataset_backend /
-   run_select_query_backend_dataset / run_ask_query_backend_dataset --
-   the EXACT same reader the native `--data-cottas`/`--data-cottas-mem`
-   CLI paths use (bin/factoidal-cli/factoidal_cli.ml's
-   open_cottas_ondisk_store / build_dataset_backend). No new decode or
-   query logic lives here: this is the browser call site the design
-   doc's stage list asked for, not a new engine.
-
-   Write path: RDF.CottasStore.BaseWriter.serialize_cottas_v2 is a pure
-   `Tot` function (no I/O, no assume val) already linked into this same
-   bundle -- toCottas below is argv-free orchestration around it,
-   mirroring bin/factoidal-cli/factoidal_cli.ml's
-   native_write_base_and_sidecars (quad conversion + consumer-side sort
-   + serialize), minus the sidecar/self-query prewarm step (out of
-   scope for a browser bytes handle -- sidecars are an on-disk-file
-   optimization; a buffer opened via openCottas has no sidecar files to
-   build).
-   --------------------------------------------------------------------- *)
-
-(* Registry: JS-visible handle string -> the opened on-disk-shaped
-   store. Process-wide (module-level ref), matching the same-lifetime
-   contract Parquet_Footer.ml's own __mim2_file_bytes_cache already
-   has (design doc "Open decisions" item 1: no eviction of the
-   underlying byte cache; closeCottas below only drops OUR registry
-   entry, disclosed in its own ABI doc comment above). *)
-let cottas_registry : (string, RDF_CottasStore.cottas_ondisk_store) Hashtbl.t =
-  Hashtbl.create 16
-
-let cottas_mem_counter = ref 0
-
-(* Hex -> raw OCaml string (binary-safe, unlike RDF_Bytes.bytes's
-   int-list-then-BatUTF8 round trip -- see hex_of_bytes's own comment
-   above for why that path is avoided for arbitrary bytes). None on
-   odd length or a non-hex-digit character; openCottas turns this into
-   an honest ok:false rather than an OCaml exception. *)
-let raw_string_of_hex (s : string) : string option =
-  let n = String.length s in
-  if n mod 2 <> 0 then None
-  else
-    let hex_digit c =
-      match c with
-      | '0'..'9' -> Some (Char.code c - Char.code '0')
-      | 'a'..'f' -> Some (Char.code c - Char.code 'a' + 10)
-      | 'A'..'F' -> Some (Char.code c - Char.code 'A' + 10)
-      | _ -> None
-    in
-    let out = Bytes.create (n / 2) in
-    let rec go i =
-      if i >= n / 2 then true
-      else
-        match hex_digit s.[2 * i], hex_digit s.[2 * i + 1] with
-        | Some hi, Some lo -> Bytes.set out i (Char.chr (hi * 16 + lo)); go (i + 1)
-        | _, _ -> false
-    in
-    if go 0 then Some (Bytes.unsafe_to_string out) else None
-
-let open_cottas (bytes_hex : string) : string =
-  guarded (fun () ->
-    match raw_string_of_hex bytes_hex with
-    | None ->
-      err_json "openCottas: bytesHex is not a valid hex string (odd length or non-hex digit)"
-    | Some raw_bytes ->
-      incr cottas_mem_counter;
-      let handle = Printf.sprintf "npmcottas:%d" !cottas_mem_counter in
-      Parquet_Footer.register_memory_buffer handle raw_bytes;
-      (match RDF_CottasStore.cottas_ondisk_open handle with
-       | FStar_Pervasives_Native.None ->
-         err_json
-           "openCottas: could not open COTTAS artifact from bytes \
-            (bad/missing Parquet footer, or truncated data)"
-       | FStar_Pervasives_Native.Some store ->
-         Hashtbl.replace cottas_registry handle store;
-         "{\"ok\":true,\"handle\":" ^ jstr handle ^ "}"))
-
-let close_cottas (handle : string) : string =
-  guarded (fun () ->
-    if Hashtbl.mem cottas_registry handle then begin
-      Hashtbl.remove cottas_registry handle;
-      "{\"ok\":true}"
-    end else
-      err_json (Printf.sprintf "closeCottas: unknown handle %s" handle))
-
-let query_cottas (handle : string) (sparql : string) : string =
-  guarded (fun () ->
-    match Hashtbl.find_opt cottas_registry handle with
-    | None -> err_json (Printf.sprintf "queryCottas: unknown handle %s" handle)
-    | Some cods ->
-      match SPARQL11_Parser.parse_sparql sparql with
-      | SPARQL11_Parser.ParseErr msg -> err_json ("SPARQL parse error: " ^ msg)
-      | SPARQL11_Parser.ParseOk (q, _) ->
-        let q = OWL_QueryRewrite.rewrite_query q in
-        let dsb = SPARQL11_Store.cottas_ondisk_dataset_backend cods in
-        (match q.q_form with
-         | QF_Ask ->
-           (match SPARQL11_Store.run_ask_query_backend_dataset q dsb with
-            | FStar_Pervasives_Native.Some b ->
-              "{\"ok\":true,\"kind\":\"ask\",\"boolean\":"
-              ^ (if b then "true" else "false") ^ "}"
-            | FStar_Pervasives_Native.None ->
-              err_json "queryCottas: backend ASK path unavailable for this query shape")
-         | QF_Select _ ->
-           (match SPARQL11_Store.run_select_query_backend_dataset q dsb with
-            | FStar_Pervasives_Native.Some rows ->
-              let vars = vars_of_query_or_rows q rows in
-              "{\"ok\":true,\"kind\":\"select\",\"srj\":" ^ srj_of_rows vars rows ^ "}"
-            | FStar_Pervasives_Native.None ->
-              err_json "queryCottas: backend SELECT path unavailable for this query shape")
-         | QF_Construct _ ->
-           let ds0 = SPARQL11_Store.materialize_dataset_backend dsb in
-           let triples = SPARQL11_Algebra.eval_construct_query q ds0.ds_default ds0 in
-           "{\"ok\":true,\"kind\":\"construct\",\"nquads\":"
-           ^ jstr (construct_triples_to_ntriples triples) ^ "}"
-         | QF_Describe _ ->
-           err_json "queryCottas: DESCRIBE is not supported"))
-
-(* Mirrors bin/factoidal-cli/factoidal_cli.ml's subject_to_cottas_string /
-   cottas_quad_of_triple_graph / cottas_quad_key -- duplicated here
-   (rule #11 consumer code, not shared library code) rather than
-   factored into a shared module, same pattern this file's rif_xml_
-   preprocess already follows relative to bin/w3c-runner/w3c_runner.ml. *)
-let subject_to_cottas_string (s : RDF_Graph_Executable.subject) : string =
-  match s with
-  | S_IRI i -> Printf.sprintf "<%s>" i
-  | S_BNode b -> Printf.sprintf "_:%s" b
-
-(* Wire format, not display -- see the same function in factoidal_cli.ml
-   and issue #443. RDF.Pretty.term_to_ntriples does not escape a
-   literal's lexical form, so it destroyed any literal containing a
-   quote, a newline or a backslash on the way into the store. *)
-let cottas_quad_of_triple_graph
-    (t : RDF_Graph_Executable.triple) (g : string option)
-    : RDF_CottasStore_BaseWriter.cottas_quad =
-  { RDF_CottasStore_BaseWriter.cq_s = subject_to_cottas_string t.s;
-    RDF_CottasStore_BaseWriter.cq_p = Printf.sprintf "<%s>" t.p;
-    RDF_CottasStore_BaseWriter.cq_o = RDF_NQuads_Serialize.nq_term_to_string t.o;
-    RDF_CottasStore_BaseWriter.cq_g =
-      (match g with Some iri -> Printf.sprintf "<%s>" iri | None -> "DEFAULT") }
-
-let cottas_quad_key (q : RDF_CottasStore_BaseWriter.cottas_quad) =
-  (q.RDF_CottasStore_BaseWriter.cq_s, q.RDF_CottasStore_BaseWriter.cq_p,
-   q.RDF_CottasStore_BaseWriter.cq_o, q.RDF_CottasStore_BaseWriter.cq_g)
-
-(* Anti-pattern #9-adjacent: stdlib `List.map`/`List.concat_map` are
-   NOT tail-recursive (each recursive call must `::` the result of the
-   one after it) and, per bin/factoidal-cli/factoidal_cli.ml's own
-   native_write_base_and_sidecars comment, blow the stack on a
-   large-enough input even natively (888,949 quads there); under
-   js_of_ocaml the effective call-stack budget is far smaller than
-   native OCaml's, so the SAME non-tail construction overflows at only
-   tens of thousands of quads (measured: 50,000 quads threw
-   `RangeError`/`Stack overflow` here before this fix). Build the
-   quad list with `List.iter` + a mutable accumulator (properly
-   tail-recursive; no result-consing after the recursive call) instead,
-   mirroring the CLI's own `Array.of_list`+`Array.sort` fix for the
-   same reason. *)
-let to_cottas (nq : string) : string =
-  guarded (fun () ->
-    let ds = dataset_of_nquads nq in
-    let acc = ref [] in
-    List.iter (fun t -> acc := cottas_quad_of_triple_graph t None :: !acc) ds.ds_default;
-    List.iter
-      (fun (ng : RDF_Graph_Executable.named_graph) ->
-         List.iter
-           (fun t -> acc := cottas_quad_of_triple_graph t (Some ng.ng_name) :: !acc)
-           ng.ng_graph)
-      ds.ds_named;
-    let arr = Array.of_list !acc in
-    Array.sort (fun a b -> compare (cottas_quad_key a) (cottas_quad_key b)) arr;
-    let sorted = Array.to_list arr in
-    let bytes = RDF_CottasStore_BaseWriter.serialize_cottas_v2 sorted in
-    "{\"ok\":true,\"cottasHex\":" ^ jstr (hex_of_bytes bytes)
-    ^ ",\"quadCount\":" ^ string_of_int (List.length sorted) ^ "}")
-
-(* ---------------------------------------------------------------------
-   VC Data Integrity crypto (eddsa-rdfc-2022) — rule #11 consumer.
-   All crypto delegates to F*-extracted VC_DataIntegrity, whose four
-   crypto assume vals are realised by HACL*: in the browser / Node this
-   is HACL*'s OWN official WebAssembly build (hacl_stubs.js over
-   third_party/hacl-wasm/, loaded by npm/factoidal/hacl-init.js); in the
-   native binary it is the vendored HACL* C. No crypto logic lives here.
-   The wasm backend MUST be initialised first (await initHacl()); until
-   then the primitive throws and `guarded` surfaces {"ok":false,...} —
-   verify NEVER silently succeeds without a real signature check. #286. *)
-
-let vc_sha256_hex (msg : string) : string =
-  guarded (fun () ->
-    "{\"ok\":true,\"sha256\":" ^ jstr (VC_DataIntegrity.hash_sha256_hex msg) ^ "}")
-
-let vc_ed25519_secret_to_public (sk_hex : string) : string =
-  guarded (fun () ->
-    let pk = VC_DataIntegrity.ed25519_secret_to_public sk_hex in
-    if pk = "" then
-      err_json "vcEd25519SecretToPublic: malformed secret key (need 32-byte hex)"
-    else "{\"ok\":true,\"publicKeyHex\":" ^ jstr pk ^ "}")
-
-let vc_ed25519_sign (sk_hex : string) (msg_hex : string) : string =
-  guarded (fun () ->
-    let s = VC_DataIntegrity.ed25519_sign sk_hex msg_hex in
-    if s = "" then
-      err_json "vcEd25519Sign: malformed input (need 32-byte hex key + hex message)"
-    else "{\"ok\":true,\"signatureHex\":" ^ jstr s ^ "}")
-
-let vc_ed25519_verify (pk_hex : string) (msg_hex : string) (sig_hex : string) : string =
-  guarded (fun () ->
-    let ok = VC_DataIntegrity.ed25519_verify pk_hex msg_hex sig_hex in
-    "{\"ok\":true,\"valid\":" ^ (if ok then "true" else "false") ^ "}")
-
-let vc_eddsa_create_from_canonical
-    (sk_hex : string) (canon_doc : string) (canon_cfg : string) : string =
-  guarded (fun () ->
-    match VC_DataIntegrity.eddsa_rdfc_2022_create_from_canonical
-            sk_hex canon_doc canon_cfg with
-    | FStar_Pervasives_Native.None ->
-      err_json "vcEddsaCreateFromCanonical: could not create proof \
-                (malformed key or encoding)"
-    | FStar_Pervasives_Native.Some pv ->
-      "{\"ok\":true,\"proofValue\":" ^ jstr pv ^ "}")
-
-let vc_eddsa_verify_from_canonical
-    (pk_hex : string) (canon_doc : string) (canon_cfg : string)
-    (proof_value : string) : string =
-  guarded (fun () ->
-    let ok = VC_DataIntegrity.eddsa_rdfc_2022_verify_from_canonical
-               pk_hex canon_doc canon_cfg proof_value in
-    "{\"ok\":true,\"verified\":" ^ (if ok then "true" else "false") ^ "}")
-
-(* VC Data Model 2.0 structural conformance (Track A2,
-   docs/designissues/2026-07-11-vc-canivc-eecc-plan.md). Delegates ALL
-   judgment to VC_Credential.vc_check_from_string (117 pass, 0 fail on
-   the offline vc_stage1 fixture suite) -- this wrapper only parses the
-   vendored VCDM v2 base context JSON text the consumer supplies (same
-   "parsed once, passed in as an already-decoded json_val" contract
-   bin/vc-runner/vc_runner.ml's load_v2_context follows) and turns the
-   vc_verdict into the same {"ok":true,...}/{"ok":false,...} envelope
-   every other export here uses. No structural-conformance logic lives
-   in this file (rule #11) -- see VC.Credential.fst for the checks. *)
-let vc_check_credential_json (v2ctx_json : string) (credential_json : string) : string =
-  guarded (fun () ->
-    match Parser_JSON.parse_json v2ctx_json with
-    | FStar_Pervasives_Native.None ->
-      failwith "vcCheckCredential (v2ctx): invalid JSON"
-    | FStar_Pervasives_Native.Some v2ctx ->
-      (match VC_Credential.vc_check_from_string v2ctx credential_json with
-       | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
-       | VC_Credential.VC_Fail reason ->
-         "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}"))
-
-(* Version-agnostic credentialSubject presence/shape check (Track A1,
-   docs/designissues/2026-07-11-vc-canivc-eecc-plan.md) --
-   VC_Credential.vc_check_credential_subject_from_string, which does
-   NOT gate on the VCDM 2.0 @context sentinel the way vc_check_from_
-   string above does. Used by bin/vc-api-shim/server.mjs for documents
-   whose @context is the legacy VC 1.1 base context (Data Integrity
-   proof mechanics are not scoped to a VCDM version -- see that file's
-   VC1_LEGACY_CONTEXT carve-out comment). *)
-let vc_check_credential_subject_json (credential_json : string) : string =
-  guarded (fun () ->
-    match VC_Credential.vc_check_credential_subject_from_string credential_json with
-    | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
-    | VC_Credential.VC_Fail reason ->
-      "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
-
-(* DATA_LOSS_DETECTION_ERROR check (Track A1, same plan doc) --
-   VC_Credential.vc_check_no_data_loss_from_string. `credential_json`
-   MUST already have any remote @context IRI the consumer recognizes
-   inlined to the real context object (this entry has no
-   remote-context loader registered -- see jsonld_loader_register
-   below); the F* side reads the document's OWN "@context" field to
-   build the term resolver, so a still-remote IRI string there fails
-   context processing honestly rather than silently skipping the
-   check. *)
-let vc_check_no_data_loss_json (credential_json : string) : string =
-  guarded (fun () ->
-    match VC_Credential.vc_check_no_data_loss_from_string credential_json with
-    | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
-    | VC_Credential.VC_Fail reason ->
-      "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
-
-(* relatedResource digest verification (VCDM 2.0 section 5.3, vc20-api
-   Track A4) -- VC_Credential.vc_check_related_resource_digests_from_
-   string. `registry_json` is the consumer's known-resource digest
-   registry, a JSON array of {"id": <resource URL>, "digestsHex":
-   [<lowercase hex>, ...]} entries the consumer computed from its
-   VENDORED copies of each resource's content bytes (see
-   bin/vc-api-shim/server.mjs's registry builder). All decode/match/
-   offline-policy semantics are in VC.Credential.fst (rule #11); this
-   wrapper only maps the vc_verdict onto the shared envelope. *)
-let vc_check_related_resource_digests_json
-    (registry_json : string) (credential_json : string) : string =
-  guarded (fun () ->
-    match VC_Credential.vc_check_related_resource_digests_from_string
-            registry_json credential_json with
-    | VC_Credential.VC_Pass -> "{\"ok\":true,\"valid\":true}"
-    | VC_Credential.VC_Fail reason ->
-      "{\"ok\":true,\"valid\":false,\"reason\":" ^ jstr reason ^ "}")
-
-(* ---------------------------------------------------------------------
-   Typed engine functions (#74 npm FP surface) -- rule #11 consumer
-   wrappers. Each parses its string inputs with the F* parsers
-   (Parser_XML / Parser_JSON) and serializes the F*-verified engine's
-   result to JSON. No transform / eval / validation / CAS logic lives
-   here; it is all in the extracted F* modules (XSLT.Transform,
-   MathML.Content, XForms.Bind, JSONSchema.Validate, Schematron.Validate,
-   Math.Series / Simplify / Subst / Diff / Matrix, MathML.Present).
-   --------------------------------------------------------------------- *)
-
-let parse_xml_or_fail (who : string) (xml : string) : Parser_XML.xml_node =
-  match Parser_XML.parse_xml_document xml with
-  | FStar_Pervasives_Native.Some n -> n
-  | FStar_Pervasives_Native.None ->
-    failwith (who ^ ": XML document is not well-formed "
-                  ^ "(parse_xml_document returned None)")
-
-let parse_json_or_fail (who : string) (s : string) : Parser_JSON.json_val =
-  match Parser_JSON.parse_json s with
-  | FStar_Pervasives_Native.Some v -> v
-  | FStar_Pervasives_Native.None -> failwith (who ^ ": invalid JSON")
-
-(* Look up a member of a JObject's field list (OCaml option, not F*'s). *)
-let rec json_field (name : string)
-    (fields : (string * Parser_JSON.json_val) list)
-    : Parser_JSON.json_val option =
-  match fields with
-  | [] -> None
-  | (k, v) :: tl -> if k = name then Some v else json_field name tl
-
-(* 1. XSLT ----------------------------------------------------------- *)
-let xslt_transform_json (stylesheet_xml : string) (source_xml : string)
-    : string =
-  guarded (fun () ->
-    let ss = parse_xml_or_fail "xsltTransform (stylesheet)" stylesheet_xml in
-    let src = parse_xml_or_fail "xsltTransform (source)" source_xml in
-    "{\"ok\":true,\"output\":" ^ jstr (XSLT_Transform.transform ss src) ^ "}")
-
-(* 2. MathML content eval -------------------------------------------- *)
-let mvalue_json (v : Math_Expr.mvalue) : string =
-  match v with
-  | Math_Expr.MV_Rat (n, d) ->
-    "{\"kind\":\"rat\",\"num\":" ^ Z.to_string n
-    ^ ",\"den\":" ^ Z.to_string d ^ "}"
-  | Math_Expr.MV_Bool b ->
-    "{\"kind\":\"bool\",\"value\":" ^ (if b then "true" else "false") ^ "}"
-  | Math_Expr.MV_Undef r ->
-    "{\"kind\":\"undef\",\"reason\":" ^ jstr r ^ "}"
-
-(* ci bindings: a JSON object mapping variable name -> lexical value. *)
-let json_pairs_of_object (who : string) (v : Parser_JSON.json_val)
-    : (string * string) list =
-  match v with
-  | Parser_JSON.JObject fields ->
-    List.map (fun (k, jv) ->
-      match jv with
-      | Parser_JSON.JString s -> (k, s)
-      | Parser_JSON.JNumber s -> (k, s)
-      | _ -> failwith (who ^ ": binding values must be strings or numbers"))
-      fields
-  | _ -> failwith (who ^ ": bindings must be a JSON object")
-
-let mathml_eval_json (content_mathml : string) (bindings_json : string)
-    : string =
-  guarded (fun () ->
-    let root = parse_xml_or_fail "mathmlEval" content_mathml in
-    let pairs =
-      json_pairs_of_object "mathmlEval"
-        (parse_json_or_fail "mathmlEval" bindings_json)
-    in
-    let v = MathML_Content.eval_doc_env pairs root in
-    "{\"ok\":true,\"value\":" ^ mvalue_json v ^ "}")
-
-(* 3. XForms recalculate --------------------------------------------- *)
-let opt_string_field (fields : (string * Parser_JSON.json_val) list)
-    (name : string) : string FStar_Pervasives_Native.option =
-  match json_field name fields with
-  | Some (Parser_JSON.JString s) -> FStar_Pervasives_Native.Some s
-  | _ -> FStar_Pervasives_Native.None
-
-let mip_type_of_json_string (s : string) : XForms_Bind.xf_mip_type =
-  match s with
-  | "string"  -> XForms_Bind.MipTypeString
-  | "boolean" -> XForms_Bind.MipTypeBoolean
-  | "integer" -> XForms_Bind.MipTypeInteger
-  | "decimal" -> XForms_Bind.MipTypeDecimal
-  | "float"   -> XForms_Bind.MipTypeFloat
-  | "double"  -> XForms_Bind.MipTypeDouble
-  | ""        -> XForms_Bind.MipTypeNone
-  | _         -> XForms_Bind.MipTypeUnsupported
-
-let xf_bind_of_json (who : string) (v : Parser_JSON.json_val)
-    : XForms_Bind.xf_bind =
-  match v with
-  | Parser_JSON.JObject fields ->
-    let bid =
-      match json_field "id" fields with
-      | Some (Parser_JSON.JString s) -> s
-      | _ -> ""
-    in
-    let btarget =
-      match json_field "target" fields with
-      | Some (Parser_JSON.JString s) -> s
-      | _ -> failwith (who ^ ": each bind needs a string 'target'")
-    in
-    let btype =
-      match json_field "type" fields with
-      | Some (Parser_JSON.JString s) -> mip_type_of_json_string s
-      | _ -> XForms_Bind.MipTypeNone
-    in
-    { XForms_Bind.bind_id = bid;
-      XForms_Bind.bind_target = btarget;
-      XForms_Bind.bind_calculate = opt_string_field fields "calculate";
-      XForms_Bind.bind_constraint = opt_string_field fields "constraint";
-      XForms_Bind.bind_relevant = opt_string_field fields "relevant";
-      XForms_Bind.bind_required = opt_string_field fields "required";
-      XForms_Bind.bind_readonly = opt_string_field fields "readonly";
-      XForms_Bind.bind_type = btype }
-  | _ -> failwith (who ^ ": each bind must be a JSON object")
-
-let node_validity_json (nv : XForms_Bind.node_validity) : string =
-  let b x = if x then "true" else "false" in
-  "{\"target\":" ^ jstr nv.XForms_Bind.nv_target
-  ^ ",\"value\":" ^ jstr nv.XForms_Bind.nv_value
-  ^ ",\"typeValid\":" ^ b nv.XForms_Bind.nv_type_valid
-  ^ ",\"constraint\":" ^ b nv.XForms_Bind.nv_constraint
-  ^ ",\"relevant\":" ^ b nv.XForms_Bind.nv_relevant
-  ^ ",\"required\":" ^ b nv.XForms_Bind.nv_required
-  ^ ",\"readonly\":" ^ b nv.XForms_Bind.nv_readonly
-  ^ ",\"valid\":" ^ b nv.XForms_Bind.nv_valid ^ "}"
-
-let xforms_recalc_json (instance_xml : string) (binds_json : string) : string =
-  guarded (fun () ->
-    let xdoc = parse_xml_or_fail "xformsRecalc" instance_xml in
-    let binds =
-      match parse_json_or_fail "xformsRecalc" binds_json with
-      | Parser_JSON.JArray items ->
-        List.map (xf_bind_of_json "xformsRecalc") items
-      | _ -> failwith "xformsRecalc: binds must be a JSON array"
-    in
-    match XForms_Bind.recalculate binds xdoc with
-    | FStar_Pervasives_Native.None ->
-      err_json ("xformsRecalc: recalculation failed "
-                ^ "(calculate cycle, or a MIP that failed to parse)")
-    | FStar_Pervasives_Native.Some (inst, validity) ->
-      let arr = String.concat "," (List.map node_validity_json validity) in
-      "{\"ok\":true,\"instance\":"
-      ^ jstr (XSLT_Transform.serialize_result inst)
-      ^ ",\"validity\":[" ^ arr ^ "]}")
-
-(* 4. JSON Schema (draft-07) ----------------------------------------- *)
-let json_schema_validate_json (schema_json : string) (instance_json : string)
-    : string =
-  guarded (fun () ->
-    let schema =
-      parse_json_or_fail "jsonSchemaValidate (schema)" schema_json in
-    let inst =
-      parse_json_or_fail "jsonSchemaValidate (instance)" instance_json in
-    match JSONSchema_Validate.validate schema inst with
-    | JSONSchema_Validate.VPass ->
-      "{\"ok\":true,\"valid\":true,\"result\":\"pass\",\"errors\":[]}"
-    | JSONSchema_Validate.VFail ->
-      "{\"ok\":true,\"valid\":false,\"result\":\"fail\",\"errors\":["
-      ^ jstr "instance does not satisfy the schema" ^ "]}"
-    | JSONSchema_Validate.VUnsupported ->
-      "{\"ok\":true,\"valid\":false,\"result\":\"unsupported\",\"errors\":["
-      ^ jstr "schema uses a keyword this validator does not support" ^ "]}")
-
-(* 5. Schematron ----------------------------------------------------- *)
-let schematron_finding_json (f : Schematron_Validate.finding) : string =
-  match f with
-  | Schematron_Validate.Assert_fail (ctx, test, msg, path) ->
-    "{\"type\":\"assert-fail\",\"context\":" ^ jstr ctx
-    ^ ",\"test\":" ^ jstr test ^ ",\"message\":" ^ jstr msg
-    ^ ",\"path\":" ^ jstr path ^ "}"
-  | Schematron_Validate.Report_hit (ctx, test, msg, path) ->
-    "{\"type\":\"report-hit\",\"context\":" ^ jstr ctx
-    ^ ",\"test\":" ^ jstr test ^ ",\"message\":" ^ jstr msg
-    ^ ",\"path\":" ^ jstr path ^ "}"
-  | Schematron_Validate.Indeterminate (ctx, test, msg, path, reason) ->
-    "{\"type\":\"indeterminate\",\"context\":" ^ jstr ctx
-    ^ ",\"test\":" ^ jstr test ^ ",\"message\":" ^ jstr msg
-    ^ ",\"path\":" ^ jstr path ^ ",\"reason\":" ^ jstr reason ^ "}"
-
-let schematron_validate_json (schematron_xml : string) (instance_xml : string)
-    : string =
-  guarded (fun () ->
-    let sch = parse_xml_or_fail "schematronValidate (schema)" schematron_xml in
-    let inst = parse_xml_or_fail "schematronValidate (instance)" instance_xml in
-    let findings = Schematron_Validate.validate sch inst in
-    let arr = String.concat "," (List.map schematron_finding_json findings) in
-    "{\"ok\":true,\"findings\":[" ^ arr ^ "]}")
-
-(* 6. TOAN exact CAS -------------------------------------------------- *)
-(* expr JSON codec (mirrors Math.Expr.expr):
-     {int:n} | {rat:[n,d]} | {bool:b} | {sym:name} | {app:fn,args:[...]}
-   A bare JSON number is E_Int; a bare JSON string is E_Sym. *)
-let rec expr_of_json (who : string) (v : Parser_JSON.json_val)
-    : Math_Expr.expr =
-  match v with
-  | Parser_JSON.JObject fields ->
-    (match json_field "int" fields with
-     | Some (Parser_JSON.JNumber n) -> Math_Expr.E_Int (Z.of_string n)
-     | _ ->
-     (match json_field "rat" fields with
-      | Some (Parser_JSON.JArray
-                [Parser_JSON.JNumber n; Parser_JSON.JNumber d]) ->
-        Math_Expr.E_Rat (Z.of_string n, Z.of_string d)
-      | _ ->
-      (match json_field "bool" fields with
-       | Some (Parser_JSON.JBool bb) -> Math_Expr.E_Bool bb
-       | _ ->
-       (match json_field "sym" fields with
-        | Some (Parser_JSON.JString s) -> Math_Expr.E_Sym s
-        | _ ->
-        (match json_field "app" fields with
-         | Some (Parser_JSON.JString fn) ->
-           let args =
-             (match json_field "args" fields with
-              | Some (Parser_JSON.JArray items) ->
-                List.map (expr_of_json who) items
-              | _ -> [])
-           in
-           Math_Expr.E_App (fn, args)
-         | _ ->
-           failwith (who ^ ": expr object needs one of "
-                         ^ "int / rat / bool / sym / app"))))))
-  | Parser_JSON.JNumber n -> Math_Expr.E_Int (Z.of_string n)
-  | Parser_JSON.JString s -> Math_Expr.E_Sym s
-  | _ -> failwith (who ^ ": not a valid expr JSON")
-
-let toan_mathml_result (e : Math_Expr.expr) : string =
-  "{\"ok\":true,\"mathml\":" ^ jstr (MathML_Present.to_content_mathml e) ^ "}"
-
-let toan_summation_json (body_json : string) (idx : string) (lo : string)
-    (hi : string) : string =
-  guarded (fun () ->
-    let body =
-      expr_of_json "toanSummation" (parse_json_or_fail "toanSummation" body_json)
-    in
-    toan_mathml_result
-      (Math_Series.summation body idx (Z.of_string lo) (Z.of_string hi)))
-
-let toan_product_json (body_json : string) (idx : string) (lo : string)
-    (hi : string) : string =
-  guarded (fun () ->
-    let body =
-      expr_of_json "toanProduct" (parse_json_or_fail "toanProduct" body_json)
-    in
-    toan_mathml_result
-      (Math_Series.finite_product body idx (Z.of_string lo) (Z.of_string hi)))
-
-let toan_simplify_json (expr_json : string) : string =
-  guarded (fun () ->
-    let e = expr_of_json "toanSimplify" (parse_json_or_fail "toanSimplify" expr_json) in
-    toan_mathml_result (Math_Simplify.simplify e))
-
-let toan_diff_json (expr_json : string) (var : string) : string =
-  guarded (fun () ->
-    let e = expr_of_json "toanDiff" (parse_json_or_fail "toanDiff" expr_json) in
-    toan_mathml_result (Math_Diff.diff var e))
-
-let toan_subst_json (expr_json : string) (var : string) (value_json : string)
-    : string =
-  guarded (fun () ->
-    let e = expr_of_json "toanSubst" (parse_json_or_fail "toanSubst" expr_json) in
-    let value =
-      expr_of_json "toanSubst (value)"
-        (parse_json_or_fail "toanSubst (value)" value_json)
-    in
-    toan_mathml_result (Math_Subst.subst var value e))
-
-(* 7. Matrix / vector algebra over exact rationals ------------------- *)
-let mvalue_of_json_cell (who : string) (v : Parser_JSON.json_val)
-    : Math_Expr.mvalue =
-  match v with
-  | Parser_JSON.JNumber n -> Math_Expr.mk_rat (Z.of_string n) (Z.of_int 1)
-  | Parser_JSON.JArray [Parser_JSON.JNumber num; Parser_JSON.JNumber den] ->
-    Math_Expr.mk_rat (Z.of_string num) (Z.of_string den)
-  | _ ->
-    failwith (who ^ ": each cell must be an integer or a [num,den] pair")
-
-let vector_of_json (who : string) (v : Parser_JSON.json_val)
-    : Math_Expr.mvalue list =
-  match v with
-  | Parser_JSON.JArray items -> List.map (mvalue_of_json_cell who) items
-  | _ -> failwith (who ^ ": expected a JSON array (vector)")
-
-let matrix_of_json (who : string) (v : Parser_JSON.json_val)
-    : Math_Expr.mvalue list list =
-  match v with
-  | Parser_JSON.JArray rows -> List.map (vector_of_json who) rows
-  | _ -> failwith (who ^ ": expected a JSON array of rows (matrix)")
-
-let mres_json (r : Math_Matrix.mres) : string =
-  "{\"ok\":true,\"result\":" ^ jstr (Math_Matrix.mres_to_string r)
-  ^ ",\"reason\":" ^ jstr (Math_Matrix.mres_reason r) ^ "}"
-
-let matrix_determinant_json (matrix_json : string) : string =
-  guarded (fun () ->
-    let m =
-      matrix_of_json "matrixDeterminant"
-        (parse_json_or_fail "matrixDeterminant" matrix_json)
-    in
-    mres_json (Math_Matrix.dyn_determinant (Math_Matrix.mk_matrix_res m)))
-
-let matrix_scalarproduct_json (a_json : string) (b_json : string) : string =
-  guarded (fun () ->
-    let a = vector_of_json "matrixScalarProduct"
-              (parse_json_or_fail "matrixScalarProduct" a_json) in
-    let bb = vector_of_json "matrixScalarProduct"
-               (parse_json_or_fail "matrixScalarProduct" b_json) in
-    mres_json (Math_Matrix.dyn_scalarproduct
-                 (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
-
-let matrix_vectorproduct_json (a_json : string) (b_json : string) : string =
-  guarded (fun () ->
-    let a = vector_of_json "matrixVectorProduct"
-              (parse_json_or_fail "matrixVectorProduct" a_json) in
-    let bb = vector_of_json "matrixVectorProduct"
-               (parse_json_or_fail "matrixVectorProduct" b_json) in
-    mres_json (Math_Matrix.dyn_vectorproduct
-                 (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
-
-let matrix_outerproduct_json (a_json : string) (b_json : string) : string =
-  guarded (fun () ->
-    let a = vector_of_json "matrixOuterProduct"
-              (parse_json_or_fail "matrixOuterProduct" a_json) in
-    let bb = vector_of_json "matrixOuterProduct"
-               (parse_json_or_fail "matrixOuterProduct" b_json) in
-    mres_json (Math_Matrix.dyn_outerproduct
-                 (Math_Matrix.mk_vector_res a) (Math_Matrix.mk_vector_res bb)))
-
-(* 8. Sigmoid (Math.Sigmoid.fst): bounded-rational exp_approx + point
-   sampling, plus an engine-serialized MathML rendering of the formula
-   -- issue #289 / hub post 28's sigmoid showcase. No exp/sigmoid
-   arithmetic lives here: every number this wrapper touches either
-   arrives already decoded by SPARQL11_Algebra.parse_to_scaled (the
-   same decimal-literal parser xsd:decimal uses) or is produced by
-   Math_Sigmoid.sigmoid_points / formatted by SPARQL11_Algebra.
-   format_scaled_value. -------------------------------------------- *)
-
-(* Decode a decimal-literal string ("1.5", "-6", "0.0390625", ...) into
-   Math.Sigmoid's `scaled` (mantissa, scale) representation via the
-   SAME verified parser xsd:decimal literals go through -- never a
-   hand-rolled float parse. *)
-let scaled_of_decimal_string (who : string) (s : string) : Prims.int * Prims.nat =
-  match SPARQL11_Algebra.parse_to_scaled s with
-  | FStar_Pervasives_Native.Some pair -> pair
-  | FStar_Pervasives_Native.None ->
-    failwith (who ^ ": not a decimal literal: " ^ s)
-
-(* mantissa/scale are JSON STRINGS (not bare numbers): unlike
-   mvalue_json's num/den elsewhere in this file, a scaled mantissa can
-   exceed JS's 2^53 safe-integer range for a decimal literal with many
-   digits, and this ABI should never silently lose precision crossing
-   the JS boundary -- the caller gets the exact digits back as text,
-   plus `decimal` (the same pair formatted by the verified formatter)
-   for convenience. *)
-let scaled_json ((mantissa, scale) : Prims.int * Prims.nat) : string =
-  "{\"mantissa\":" ^ jstr (Z.to_string mantissa)
-  ^ ",\"scale\":" ^ jstr (Z.to_string scale)
-  ^ ",\"decimal\":" ^ jstr (SPARQL11_Algebra.format_scaled_value mantissa scale)
-  ^ "}"
-
-let sigmoid_points_json (params_json : string) : string =
-  guarded (fun () ->
-    let fields =
-      match parse_json_or_fail "sigmoidPoints" params_json with
-      | Parser_JSON.JObject fs -> fs
-      | _ -> failwith "sigmoidPoints: params must be a JSON object"
-    in
-    let field_str name =
-      match json_field name fields with
-      | Some (Parser_JSON.JString s) -> s
-      | Some (Parser_JSON.JNumber s) -> s
-      | _ -> failwith ("sigmoidPoints: missing/invalid field \"" ^ name ^ "\"")
-    in
-    let who = "sigmoidPoints" in
-    let k    = scaled_of_decimal_string who (field_str "k") in
-    let x0   = scaled_of_decimal_string who (field_str "x0") in
-    let l    = scaled_of_decimal_string who (field_str "l") in
-    let xmin = scaled_of_decimal_string who (field_str "xmin") in
-    let xmax = scaled_of_decimal_string who (field_str "xmax") in
-    let n    = Z.of_string (field_str "n") in
-    let pts  = Math_Sigmoid.sigmoid_points k x0 l xmin xmax n in
-    let point_json (x, y) =
-      "{\"x\":" ^ scaled_json x ^ ",\"y\":" ^ scaled_json y ^ "}"
-    in
-    "{\"ok\":true,\"points\":[" ^ String.concat "," (List.map point_json pts) ^ "]}")
-
-(* L / (1 + exp(-k*(x - x0))) as a Math.Expr.expr -- the AST the
-   engine's own MathML.Present.to_presentation_mathml serializes below.
-   Fixed (no input): this is the formula label, not a computation. *)
-let sigmoid_formula_expr : Math_Expr.expr =
-  Math_Expr.E_App
-    ("divide",
-     [ Math_Expr.E_Sym "L";
-       Math_Expr.E_App
-         ("plus",
-          [ Math_Expr.E_Int Z.one;
-            Math_Expr.E_App
-              ("exp",
-               [ Math_Expr.E_App
-                   ("minus",
-                    [ Math_Expr.E_App
-                        ("times",
-                         [ Math_Expr.E_Sym "k";
-                           Math_Expr.E_App
-                             ("minus", [ Math_Expr.E_Sym "x"; Math_Expr.E_Sym "x0" ]) ])
-                    ])
-               ])
-          ])
-     ])
-
-let sigmoid_formula_mathml_json () : string =
-  guarded (fun () ->
-    "{\"ok\":true,\"mathml\":"
-    ^ jstr (MathML_Present.to_presentation_mathml sigmoid_formula_expr)
-    ^ "}")
-
-(* ---------------------------------------------------------------------
-   SPARQL 1.1 s17.6 extension functions -- issue #463.
-   https://github.com/danbri/factoidal/issues/463
-
-   Bridges caller-supplied JS functions (Comunica-style
-   extensionFunctions, keyed by absolute IRI) into the F*-specified
-   registry hook (SPARQL11.Algebra.extension_function_call, realised
-   by experimental_ocaml_glue/extension_function_registry.sh).
-
-   Marshaling only, no semantics: argument values go OUT through the
-   F*-extracted converters (er_to_term + SPARQL_Protocol.json_term, the
-   same SRJ term shape query results use), serialised as one JSON array
-   string. The JS return value comes BACK as a raw JS value decoded
-   field-by-field into an eval_result: an SRJ-style term object, or an
-   ergonomic JS primitive (boolean / number / string). null, undefined,
-   a thrown exception, or the JS bridge's pending marker all map to
-   None -> ER_Error in F*.
-
-   The async contract lives in lib/api.js: the engine is synchronous,
-   so api.js memoises per (iri, serialised args) and re-runs the query
-   until no pending async results remain. This file stays sync.
-   --------------------------------------------------------------------- *)
-
-let ext_pending_marker = "__FACTOIDAL_EXT_PENDING__"
-
-let ext_args_to_json (args : SPARQL11_Algebra.eval_result list) : string =
-  "["
-  ^ String.concat ","
-      (List.map
-         (fun r ->
-            match SPARQL11_Algebra.er_to_term r with
-            | FStar_Pervasives_Native.Some t -> SPARQL_Protocol.json_term t
-            | FStar_Pervasives_Native.None -> "{\"type\":\"error\"}")
-         args)
-  ^ "]"
-
-let ext_string_literal (s : string) : RDF_Term.rdf_term =
-  RDF_Term.T_Literal
-    { RDF_Term.lexical_form = s;
-      RDF_Term.datatype = "http://www.w3.org/2001/XMLSchema#string";
-      RDF_Term.lang_tag = FStar_Pervasives_Native.None;
-      RDF_Term.direction = FStar_Pervasives_Native.None }
-
-(* Read a string-valued field from a JS object; None when absent or
-   not a string. *)
-let ext_js_field (v : Js.Unsafe.any) (name : string) : string option =
-  let f = Js.Unsafe.get v (Js.string name) in
-  if Js.to_string (Js.typeof f) = "string"
-  then Some (Js.to_string (Js.Unsafe.coerce f))
-  else None
-
-let ext_decode_result (v : Js.Unsafe.any) : SPARQL11_Algebra.eval_result option =
-  match Js.to_string (Js.typeof (Js.Unsafe.coerce v)) with
-  | "undefined" -> None
-  | "boolean" -> Some (SPARQL11_Algebra.ER_Bool (Js.to_bool (Js.Unsafe.coerce v)))
-  | "number" ->
-    let f = Js.float_of_number (Js.Unsafe.coerce v) in
-    if Float.is_integer f && Float.abs f <= 9007199254740991.0
-    then Some (SPARQL11_Algebra.ER_Num (Z.of_float f))
-    else Some (SPARQL11_Algebra.ER_Dbl (Printf.sprintf "%.17g" f))
-  | "string" ->
-    let s = Js.to_string (Js.Unsafe.coerce v) in
-    if s = ext_pending_marker then None
-    else Some (SPARQL11_Algebra.ER_Term (ext_string_literal s))
-  | "object" ->
-    if not (Js.Opt.test (Obj.magic v : 'a Js.opt)) then None (* null *)
-    else
-      (match ext_js_field v "type", ext_js_field v "value" with
-       | Some "uri", Some value ->
-         Some (SPARQL11_Algebra.ER_Term (RDF_Term.T_IRI value))
-       | Some "bnode", Some value ->
-         Some (SPARQL11_Algebra.ER_Term (RDF_Term.T_BNode value))
-       | Some "literal", Some value ->
-         let (datatype, lang_tag) =
-           match ext_js_field v "xml:lang" with
-           | Some l ->
-             ("http://www.w3.org/1999/02/22-rdf-syntax-ns#langString",
-              FStar_Pervasives_Native.Some l)
-           | None ->
-             ((match ext_js_field v "datatype" with
-               | Some d -> d
-               | None -> "http://www.w3.org/2001/XMLSchema#string"),
-              FStar_Pervasives_Native.None)
-         in
-         Some (SPARQL11_Algebra.ER_Term (RDF_Term.T_Literal
-           { RDF_Term.lexical_form = value;
-             RDF_Term.datatype = datatype;
-             RDF_Term.lang_tag = lang_tag;
-             RDF_Term.direction = FStar_Pervasives_Native.None }))
-       | _, _ -> None)
-  | _ -> None
-
-let ext_register (iri : Js.js_string Js.t) (cb : Js.Unsafe.any) : Js.js_string Js.t =
-  let iri_s = Js.to_string iri in
-  SPARQL11_Algebra.extension_function_register iri_s
-    (fun args ->
-       let args_json = ext_args_to_json args in
-       match
-         (try
-            Some (Js.Unsafe.fun_call cb
-                    [| Js.Unsafe.inject (Js.string iri_s);
-                       Js.Unsafe.inject (Js.string args_json) |])
-          with _ -> None)
-       with
-       | None -> None
-       | Some v -> ext_decode_result v);
-  Js.string "{\"ok\":true}"
-
-let ext_unregister (iri : string) : string =
-  guarded (fun () ->
-    SPARQL11_Algebra.extension_function_unregister iri;
-    "{\"ok\":true}")
-
-let ext_clear () : string =
-  guarded (fun () ->
-    SPARQL11_Algebra.extension_function_clear ();
-    "{\"ok\":true}")
-
-(* SPARQL 1.1 SERVICE endpoint snapshots -- issue #57 family. The same
-   registry hook the W3C runner fills from qt:serviceData manifests
-   (SPARQL11_Algebra.service_endpoint_register, realised by
-   57_service_client_bind.sh), exposed over the ABI so browser/Node
-   callers can bind an endpoint IRI to a local graph snapshot and then
-   run SERVICE / LATERAL{SERVICE} queries against it. Marshaling only:
-   the payload is parsed by the F*-extracted N-Quads parser; the
-   snapshot registered is the payload's default graph. *)
-let register_service_endpoint (iri : string) (nq : string) : string =
-  guarded (fun () ->
-    let ds = dataset_of_nquads nq in
-    SPARQL11_Algebra.service_endpoint_register iri ds.ds_default;
-    "{\"ok\":true,\"count\":"
-    ^ string_of_int (List.length ds.ds_default) ^ "}")
-
-let clear_service_endpoints () : string =
-  guarded (fun () ->
-    SPARQL11_Algebra.service_endpoint_clear ();
-    "{\"ok\":true}")
-
-(* ---------------------------------------------------------------------
-   Js.export — the only js_of_ocaml-specific code. Strings cross the
-   boundary via Js.to_string / Js.string (UTF-16 JS <-> UTF-8 OCaml).
-   --------------------------------------------------------------------- *)
-
-let s0 (f : unit -> string) =
-  Js.Unsafe.inject
-    (Js.wrap_callback (fun () -> Js.string (f ())))
-
-let s1 (f : string -> string) =
-  Js.Unsafe.inject
-    (Js.wrap_callback (fun a -> Js.string (f (Js.to_string a))))
-
-let s2 (f : string -> string -> string) =
-  Js.Unsafe.inject
-    (Js.wrap_callback (fun a b ->
-       Js.string (f (Js.to_string a) (Js.to_string b))))
-
-let s3 (f : string -> string -> string -> string) =
-  Js.Unsafe.inject
-    (Js.wrap_callback (fun a b c ->
-       Js.string (f (Js.to_string a) (Js.to_string b) (Js.to_string c))))
-
-let s4 (f : string -> string -> string -> string -> string) =
-  Js.Unsafe.inject
-    (Js.wrap_callback (fun a b c d ->
-       Js.string (f (Js.to_string a) (Js.to_string b) (Js.to_string c)
-                    (Js.to_string d))))
 
 let () =
   Js.export "factoidalNpmEntry"
     (Js.Unsafe.obj
-       [| ("abiVersion", Js.Unsafe.inject (Js.string abi_version));
-          ("parseToDatasetJson", s3 parse_to_dataset_json);
-          ("queryDataset", s2 query_dataset);
-          ("askDataset", s2 ask_dataset);
-          ("updateDataset", s2 update_dataset);
+       [| ("abiVersion", Js.Unsafe.inject (Js.string Entry_core.abi_version));
+          ("profile", Js.Unsafe.inject (Js.string "full"));
+          ("parseToDatasetJson", Entry_core.s3 Entry_core.parse_to_dataset_json);
+          ("parseDocument", Entry_core.s4 Entry_core.parse_document_json);
+          ("queryDataset", Entry_core.s2 Entry_core.query_dataset);
+          ("askDataset", Entry_core.s2 Entry_core.ask_dataset);
+          ("updateDataset", Entry_core.s2 Entry_core.update_dataset);
           (* SPARQL 1.2 variants (tokenize_12 parser); selected by
              api.js when {sparql12:true}/{version:"1.2"} is requested. *)
-          ("queryDataset12", s2 query_dataset_12);
-          ("askDataset12", s2 ask_dataset_12);
-          ("updateDataset12", s2 update_dataset_12);
-          ("serializeNQuads", s1 serialize_nquads);
-          ("canonicalizeToNQuads", s1 canonicalize_to_nquads);
-          ("serializeTurtle", s1 serialize_turtle);
-          ("didKeyResolve", s1 did_key_resolve);
-          ("vcSha256Hex", s1 vc_sha256_hex);
-          ("vcEd25519SecretToPublic", s1 vc_ed25519_secret_to_public);
-          ("vcEd25519Sign", s2 vc_ed25519_sign);
-          ("vcEd25519Verify", s3 vc_ed25519_verify);
-          ("vcEddsaCreateFromCanonical", s3 vc_eddsa_create_from_canonical);
-          ("vcEddsaVerifyFromCanonical", s4 vc_eddsa_verify_from_canonical);
-          ("vcCheckCredential", s2 vc_check_credential_json);
-          ("vcCheckCredentialSubject", s1 vc_check_credential_subject_json);
-          ("vcCheckNoDataLoss", s1 vc_check_no_data_loss_json);
-          ("vcCheckRelatedResourceDigests", s2 vc_check_related_resource_digests_json);
-          ("xsltTransform", s2 xslt_transform_json);
-          ("mathmlEval", s2 mathml_eval_json);
-          ("xformsRecalc", s2 xforms_recalc_json);
-          ("jsonSchemaValidate", s2 json_schema_validate_json);
-          ("schematronValidate", s2 schematron_validate_json);
-          ("toanSummation", s4 toan_summation_json);
-          ("toanProduct", s4 toan_product_json);
-          ("toanSimplify", s1 toan_simplify_json);
-          ("toanDiff", s2 toan_diff_json);
-          ("toanSubst", s3 toan_subst_json);
-          ("matrixDeterminant", s1 matrix_determinant_json);
-          ("matrixScalarProduct", s2 matrix_scalarproduct_json);
-          ("matrixVectorProduct", s2 matrix_vectorproduct_json);
-          ("matrixOuterProduct", s2 matrix_outerproduct_json);
-          ("sigmoidPoints", s1 sigmoid_points_json);
-          ("sigmoidFormulaMathml", s0 sigmoid_formula_mathml_json);
-          ("rifSmoke", s0 rif_smoke_json);
-          ("rifEval", s2 rif_eval_json);
-          ("jsonldToRdf", s2 jsonld_to_rdf_json);
-          ("jsonldFromRdf", s2 jsonld_from_rdf_json);
-          ("xmlWellformed", s1 xml_wellformed_json);
-          ("xpathEval", s2 xpath_eval_json);
-          ("shaclValidate", s2 shacl_validate_json);
-          ("shexValidate", s4 shex_validate_json);
-          ("owlClosure", s2 owl_closure_json);
-          ("rhoDfClosure", s1 rho_df_closure_json);
-          ("rhoDfFragmentCheck", s1 rho_df_fragment_check_json);
-          ("rdfsPlusClosure", s1 rdfs_plus_closure_json);
-          ("tableauMaterialise", s1 tableau_materialise_json);
-          ("tableauDlInconsistent", s1 tableau_dl_inconsistent_json);
-          ("owlIsConsistent", s2 owl_is_consistent_json);
-          ("owlEntails", s3 owl_entails_json);
-          ("rmlMap", s3 rml_map_json);
-          ("csvwToRdf", s3 csvw_to_rdf_json);
-          ("deltaBatchToHex", s3 delta_batch_to_hex);
-          ("deltaMergeApplyBrowser", s2 delta_merge_apply_browser);
-          ("openCottas", s1 open_cottas);
-          ("queryCottas", s2 query_cottas);
-          ("closeCottas", s1 close_cottas);
-          ("toCottas", s1 to_cottas);
+          ("queryDataset12", Entry_core.s2 Entry_core.query_dataset_12);
+          ("askDataset12", Entry_core.s2 Entry_core.ask_dataset_12);
+          ("updateDataset12", Entry_core.s2 Entry_core.update_dataset_12);
+          ("serializeNQuads", Entry_core.s1 Entry_core.serialize_nquads);
+          ("canonicalizeToNQuads", Entry_core.s1 Entry_core.canonicalize_to_nquads);
+          ("serializeTurtle", Entry_core.s1 Entry_core.serialize_turtle);
+          ("serializeTurtleWith", Entry_core.s2 Entry_core.serialize_turtle_with);
+          (* Dataset handles (https://github.com/danbri/factoidal/issues/680). *)
+          ("datasetOpen", Entry_core.s3 Entry_core.dataset_open);
+          ("datasetQuery", Entry_core.s2 Entry_core.dataset_query);
+          ("datasetQuery12", Entry_core.s2 Entry_core.dataset_query_12);
+          ("datasetUpdate", Entry_core.s2 Entry_core.dataset_update);
+          ("datasetSerialize", Entry_core.s2 Entry_core.dataset_serialize);
+          ("datasetSerializeWith", Entry_core.s3 Entry_core.dataset_serialize_with);
+          ("datasetClose", Entry_core.s1 Entry_core.dataset_close);
+          ("didKeyResolve", Entry_core.s1 Entry_extras.did_key_resolve);
+          ("vcSha256Hex", Entry_core.s1 Entry_extras.vc_sha256_hex);
+          ("vcEd25519SecretToPublic", Entry_core.s1 Entry_extras.vc_ed25519_secret_to_public);
+          ("vcEd25519Sign", Entry_core.s2 Entry_extras.vc_ed25519_sign);
+          ("vcEd25519Verify", Entry_core.s3 Entry_extras.vc_ed25519_verify);
+          ("vcEddsaCreateFromCanonical", Entry_core.s3 Entry_extras.vc_eddsa_create_from_canonical);
+          ("vcEddsaVerifyFromCanonical", Entry_core.s4 Entry_extras.vc_eddsa_verify_from_canonical);
+          ("vcCheckCredential", Entry_core.s2 Entry_extras.vc_check_credential_json);
+          ("vcCheckCredentialSubject", Entry_core.s1 Entry_extras.vc_check_credential_subject_json);
+          ("vcCheckNoDataLoss", Entry_core.s1 Entry_extras.vc_check_no_data_loss_json);
+          ("vcCheckRelatedResourceDigests", Entry_core.s2 Entry_extras.vc_check_related_resource_digests_json);
+          ("xsltTransform", Entry_core.s2 Entry_extras.xslt_transform_json);
+          ("mathmlEval", Entry_core.s2 Entry_extras.mathml_eval_json);
+          ("xformsRecalc", Entry_core.s2 Entry_extras.xforms_recalc_json);
+          ("jsonSchemaValidate", Entry_core.s2 Entry_extras.json_schema_validate_json);
+          ("schematronValidate", Entry_core.s2 Entry_extras.schematron_validate_json);
+          ("toanSummation", Entry_core.s4 Entry_extras.toan_summation_json);
+          ("toanProduct", Entry_core.s4 Entry_extras.toan_product_json);
+          ("toanSimplify", Entry_core.s1 Entry_extras.toan_simplify_json);
+          ("toanDiff", Entry_core.s2 Entry_extras.toan_diff_json);
+          ("toanSubst", Entry_core.s3 Entry_extras.toan_subst_json);
+          ("matrixDeterminant", Entry_core.s1 Entry_extras.matrix_determinant_json);
+          ("matrixScalarProduct", Entry_core.s2 Entry_extras.matrix_scalarproduct_json);
+          ("matrixVectorProduct", Entry_core.s2 Entry_extras.matrix_vectorproduct_json);
+          ("matrixOuterProduct", Entry_core.s2 Entry_extras.matrix_outerproduct_json);
+          ("sigmoidPoints", Entry_core.s1 Entry_extras.sigmoid_points_json);
+          ("sigmoidFormulaMathml", Entry_core.s0 Entry_extras.sigmoid_formula_mathml_json);
+          ("rifSmoke", Entry_core.s0 Entry_extras.rif_smoke_json);
+          ("rifEval", Entry_core.s2 Entry_extras.rif_eval_json);
+          ("jsonldToRdf", Entry_core.s2 Entry_extras.jsonld_to_rdf_json);
+          ("jsonldFromRdf", Entry_core.s2 Entry_extras.jsonld_from_rdf_json);
+          ("xmlWellformed", Entry_core.s1 Entry_extras.xml_wellformed_json);
+          ("xpathEval", Entry_core.s2 Entry_extras.xpath_eval_json);
+          ("shaclValidate", Entry_core.s2 Entry_extras.shacl_validate_json);
+          ("shexValidate", Entry_core.s4 Entry_extras.shex_validate_json);
+          ("owlClosure", Entry_core.s2 Entry_extras.owl_closure_json);
+          ("rhoDfClosure", Entry_core.s1 Entry_extras.rho_df_closure_json);
+          ("rhoDfFragmentCheck", Entry_core.s1 Entry_extras.rho_df_fragment_check_json);
+          ("rdfsPlusClosure", Entry_core.s1 Entry_extras.rdfs_plus_closure_json);
+          ("tableauMaterialise", Entry_core.s1 Entry_extras.tableau_materialise_json);
+          ("tableauDlInconsistent", Entry_core.s1 Entry_extras.tableau_dl_inconsistent_json);
+          ("owlIsConsistent", Entry_core.s2 Entry_extras.owl_is_consistent_json);
+          ("owlEntails", Entry_core.s3 Entry_extras.owl_entails_json);
+          ("rmlMap", Entry_core.s3 Entry_extras.rml_map_json);
+          ("csvwToRdf", Entry_core.s3 Entry_extras.csvw_to_rdf_json);
+          ("deltaBatchToHex", Entry_core.s3 Entry_extras.delta_batch_to_hex);
+          ("deltaMergeApplyBrowser", Entry_core.s2 Entry_extras.delta_merge_apply_browser);
+          ("openCottas", Entry_core.s1 Entry_extras.open_cottas);
+          ("queryCottas", Entry_core.s2 Entry_extras.query_cottas);
+          ("closeCottas", Entry_core.s1 Entry_extras.close_cottas);
+          ("toCottas", Entry_core.s1 Entry_extras.to_cottas);
           (* SPARQL 1.1 s17.6 extension functions (issue #463). The
              callback is a JS function, not a string — registered
              directly rather than through the sN string helpers. *)
           ("registerExtensionFunction",
-             Js.Unsafe.inject (Js.wrap_callback ext_register));
-          ("unregisterExtensionFunction", s1 ext_unregister);
-          ("clearExtensionFunctions", s0 ext_clear);
-          ("registerServiceEndpoint", s2 register_service_endpoint);
-          ("clearServiceEndpoints", s0 clear_service_endpoints)
+             Js.Unsafe.inject (Js.wrap_callback Entry_core.ext_register));
+          ("unregisterExtensionFunction", Entry_core.s1 Entry_core.ext_unregister);
+          ("clearExtensionFunctions", Entry_core.s0 Entry_core.ext_clear);
+          ("registerServiceEndpoint", Entry_core.s2 Entry_core.register_service_endpoint);
+          ("clearServiceEndpoints", Entry_core.s0 Entry_core.clear_service_endpoints)
        |])

@@ -1,129 +1,157 @@
 # bin/npm-entry — js_of_ocaml / wasm_of_ocaml entry for the npm package
 
-`entry_jsoo.ml` is a consumer entry point (rule #11: hand-written
-OCaml consumers live in `bin/<consumer>/`) that exposes the
-F\*-extracted engine to JavaScript as a persistent string/JSON ABI —
-`factoidalNpmEntry.{parseToDatasetJson, queryDataset, askDataset,
-updateDataset, serializeNQuads, canonicalizeToNQuads}`. The ABI
-contract is documented in the header comment of
-[`entry_jsoo.ml`](entry_jsoo.ml); the JavaScript consumer is
-[`npm/factoidal/lib/api.js`](../../npm/factoidal/lib/api.js), which
-falls back to argv-driving the CLI bundle until the entry bundle is
-built.
+Two profiles, one ABI (https://github.com/danbri/factoidal/issues/684):
 
-The file type-checks against the current extraction output:
+| file | module split | links |
+|---|---|---|
+| `entry_core.ml` | `Entry_core` | parse/query/update/serialize/dataset-handle surface; only F* modules on the allowed-list in its own header comment |
+| `entry_extras.ml` | `Entry_extras` | RIF, JSON-LD, XML/XPath, SHACL, ShEx, closures + tableau, OWL DL, RML, CSVW, delta log, COTTAS, VC/DID crypto, XSLT, MathML, XForms, JSON Schema, Schematron, TOAN, matrix, sigmoid |
+| `entry_jsoo.ml` | full export table | `entry_core.ml` + `entry_extras.ml` → `factoidal-npm-entry.js` / `.wasm.js`, `profile: "full"` |
+| `entry_lite_jsoo.ml` | lite export table | `entry_core.ml` ALONE → `factoidal-npm-entry-lite.js` / `.wasm.js`, `profile: "lite"` |
+
+Both export tables use the SAME JS global `factoidalNpmEntry` (design
+record decision 5), so `npm/factoidal/lib/api.js`, `browser.js` and
+`createApi` work unchanged against either bundle — a caller picks the
+bundle file, not a different API shape. `entry_core.ml`'s
+`extra_parsers` hook is how RDF/XML and JSON-LD parsing reach
+`parseToDatasetJson`/`parseDocument`/`datasetOpen` when
+`entry_extras.ml` is linked (the full bundle); in the lite bundle the
+hook stays `None` and those two formats answer a routing error naming
+the full bundle instead of a missing-function crash.
+
+All four are CONSUMERS (rule #11): hand-written OCaml glue that
+exposes the F*-extracted engine to JavaScript via a small, stable,
+string/JSON ABI. No RDF or SPARQL semantics live here — every semantic
+operation delegates to an F*-extracted module, named in each file's
+own header/section comments:
+
+  parse (strict, with position + prefixes) -> Parser.Diagnostics.fst's
+                  turtle_document / trig_document / ntriples_diagnostic /
+                  nquads_diagnostic (extracted as Parser_Diagnostics.ml),
+                  RDF_Format dispatch, RDF_Dataset_Merge.rename_dataset_bnodes
+                  for per-document blank-node scoping
+  query         -> SPARQL11_Parser.parse_sparql, OWL_QueryRewrite,
+                  SPARQL11_Store.run_select_query_backend_dataset /
+                  run_ask_query_backend_dataset (fallback:
+                  SPARQL11_Algebra.eval_select_query / eval_ask_query),
+                  SPARQL11_Algebra.eval_construct_query
+  update        -> SPARQL11_Parser.parse_sparql_update,
+                  SPARQL11_Algebra.apply_update
+  serialize     -> RDF_Canonical.canonical_nquads (sorted N-Quads)
+  canonicalize  -> RDF_Canonical.canonicalize_to_nquads (RDFC-1.0)
+  serialize (turtle) -> RDF_Turtle_Serialize.turtle_of_graph_opts /
+                  turtle_of_graph_auto (prefix-compacted,
+                  subject-grouped pretty-print; caller prefixes win
+                  when given)
+  SRJ terms     -> SPARQL_Protocol.json_term, SPARQL_JSON_Escape
+
+The full ABI contract (every exported function, its JSON envelope
+shape, and which bundle carries it) is documented in the header
+comment of [`entry_jsoo.ml`](entry_jsoo.ml). The JavaScript consumer
+is [`npm/factoidal/lib/api.js`](../../npm/factoidal/lib/api.js).
+
+## abiVersion "2" — strict-by-default parsing, dataset handles, prefixes
+
+Bumped from "1" for three landings, all in `entry_core.ml`:
+
+- **Strict parsing**
+  (https://github.com/danbri/factoidal/issues/344). `parseToDatasetJson`
+  and `datasetOpen` reject the WHOLE parse on any syntax error, any
+  undeclared prefix, or any relative IRI that cannot resolve (no
+  `baseIri` in effect) — nothing is silently dropped any more. The
+  error envelope carries a byte offset plus 1-based line/column
+  (`Parser_Diagnostics.position_of_offset`) for every syntax the
+  parser can report a position for (Turtle, TriG, N-Triples,
+  N-Quads); RDF/XML and JSON-LD failures carry a message only. New
+  `parseDocument(text, format, baseIri, optionsJson)` adds an opt-in
+  `{"lenient":true}` mode that answers `ok:true` with whatever the
+  parser recovered plus a `diagnostics` array, for a caller that wants
+  the old best-effort behaviour with the drop count made visible
+  instead of invisible.
+- **Dataset handles**
+  (https://github.com/danbri/factoidal/issues/680, mirroring
+  `formal/lean4/Wasm/Ops/Handles.lean`'s op names and envelopes).
+  `datasetOpen`/`datasetQuery`/`datasetQuery12`/`datasetUpdate`/
+  `datasetSerialize`/`datasetSerializeWith`/`datasetClose` parse and
+  index a dataset ONCE and let a caller query/update/serialize it many
+  times by handle string (`"h1"`, `"h2"`, ... never reused), instead of
+  re-parsing N-Quads text and rebuilding the SPARQL index on every
+  call. `entry_core.ml`'s `eval_query_over_backend` is the one
+  evaluator both the stateless `queryDataset` and the handle-based
+  `datasetQuery` call, so query semantics are identical either way.
+- **Prefix-aware, shorthand-aware Turtle output**
+  (https://github.com/danbri/factoidal/issues/681).
+  `parseToDatasetJson`/`parseDocument`/`datasetOpen` report the
+  prefixes the parser read (`"prefixes":{"ex":"http://example.org/"}`,
+  labels without their trailing colon, in declaration order with a
+  later redeclaration of the same label winning); new
+  `serializeTurtleWith`/`datasetSerializeWith` take an `optionsJson`
+  of `{"prefixes":{label:iri},"literalShorthand":true|false}` — caller
+  prefix pairs win in the caller's order, unused caller namespaces are
+  not emitted, and auto `nsN:` labels skip caller labels
+  (`RDF_Turtle_Serialize.turtle_of_graph_opts`).
+
+Every ABI member from `abiVersion "1"` keeps its name and its
+envelope's existing members; nothing that used to work has changed
+shape.
+
+## Type-checking the four files standalone
 
 ```sh
 eval $(opam env --switch=fstar)
 cd formal/fstar/ocaml-output
 ocamlfind ocamlc -c -package fstar.lib,str,zarith,sha,digestif.c,js_of_ocaml \
-  -I . -w -8-14-26 ../../../bin/npm-entry/entry_jsoo.ml
+  -I . -w -8-14-26 ../../../bin/npm-entry/entry_core.ml
+ocamlfind ocamlc -c -package fstar.lib,str,zarith,sha,digestif.c,js_of_ocaml \
+  -I . -I ../../../bin/npm-entry -w -8-14-26 ../../../bin/npm-entry/entry_extras.ml
 ```
 
-(verified clean on 2026-07-04 against the committed `.cmi` set; run
-from a scratch dir with `-I ocaml-output` to avoid dropping artifacts
-into the build tree).
+(run from a scratch dir with `-I ocaml-output` to avoid dropping
+artifacts into the build tree; `bin/npm-entry/.gitignore` already
+excludes `*.cmi`/`*.cmo`/`*.cmx`/`*.o`/`*.byte` for the artifacts that
+DO land next to the source here, which they do for any cross-directory
+`../../../bin/npm-entry/*.ml` argument — see the build wiring note
+below).
 
-## Build wiring for formal/fstar/build-ocaml.sh
+## Build wiring in formal/fstar/build-ocaml.sh
 
-Three edits, all inside existing steps. Line numbers refer to the
-2026-07-04 state of the script.
+### 1. `js` step — full + lite `npm_entry*.byte` and their `.js`
 
-### 1. `js` step — build `npm_entry.byte` + `factoidal-npm-entry.js`
+The full build links `entry_core.ml entry_extras.ml entry_jsoo.ml` (in
+that order — `entry_extras.ml` `open`s `Entry_core`, `entry_jsoo.ml`
+references both) into `npm_entry.byte`, alongside `FSTAR_MODULES`, with
+`-I ../../../bin/npm-entry` added so the cross-directory `.cmi` files
+(ocamlc writes each source's `.cmi`/`.cmo` next to ITS OWN file, not
+into `cwd`) resolve. `js_of_ocaml` emits
+`docs/fstar-extracted/factoidal-npm-entry.js`.
 
-Add to `JS_TARGETS` (line 816) so the freshness check covers the new
-artifacts:
+The lite build runs after: every `FSTAR_MODULES` unit is compiled to a
+scratch bytecode object in `_lite_cmo/` (gitignored) and archived into
+one `.cma`; the final link (`entry_core.ml` + `entry_lite_jsoo.ml`)
+runs WITHOUT `-linkall`, so only the units those two files transitively
+reference get pulled from the archive — that module-level omission is
+the lite bundle's size lever (js_of_ocaml's own function-level
+dead-code elimination runs on top of it). `js_of_ocaml` emits
+`docs/fstar-extracted/factoidal-npm-entry-lite.js`.
 
-```sh
-    npm_entry.byte
-    ../../../docs/fstar-extracted/factoidal-npm-entry.js
-```
+### 2. `wasm-factoidal` step — wasm mirrors
 
-Add to `JS_SOURCES` (line 822):
+After the existing npm-entry wasm block (guarded on `npm_entry.byte`
+existing), a second block (guarded on `npm_entry_lite.byte` existing)
+mirrors it for the lite bytecode: same `wasm_of_ocaml compile`
+arguments, same `wasm_stub_shims.py` patch, output
+`docs/fstar-extracted/factoidal-npm-entry-lite.wasm.js` +
+`.wasm.assets/`.
 
-```sh
-    ../../../bin/npm-entry/entry_jsoo.ml
-```
+### 3. `npm` step — stage into npm/factoidal/
 
-After the `factoidal.byte` block (i.e. after `rm -f factoidal_serve.ml`
-/ its error check, around line 883–890), add the bytecode build — note
-the extra `js_of_ocaml` ocamlfind package, which is the only difference
-from the factoidal.byte invocation, and that no serve stub is needed
-(the entry links no `Factoidal_serve`):
-
-```sh
-    # Build npm-entry bytecode (bin/npm-entry/entry_jsoo.ml): the
-    # persistent string/JSON ABI for the npm package. Needs the
-    # js_of_ocaml library for Js.export / Js.wrap_callback.
-    run_with_heartbeat "ocamlc npm_entry.byte" "_ocamlc_npm_entry.log" -- \
-      ocamlfind ocamlc -package fstar.lib,str,zarith,sha,digestif.c,unix,js_of_ocaml -linkpkg -w -8-14-26 \
-      -custom parquet_zstd_stubs_jsoo.c \
-      "${FSTAR_MODULES[@]}" \
-      ../../../bin/npm-entry/entry_jsoo.ml \
-      -o npm_entry.byte
-    grep -i error _ocamlc_npm_entry.log || true
-```
-
-After the `js_of_ocaml factoidal` block (line 911–921), add:
-
-```sh
-    run_with_heartbeat "js_of_ocaml npm-entry" "_jsoo_npm_entry.log" -- \
-      js_of_ocaml \
-      +zarith_stubs_js/biginteger.js \
-      +zarith_stubs_js/runtime.js \
-      fstar_int_stubs.js \
-      fstar_hash_stubs.js \
-      fstar_utf8_output_stubs.js \
-      vendor/fzstd.umd.js \
-      parquet_zstd_stubs.js \
-      npm_entry.byte \
-      -o ../../../docs/fstar-extracted/factoidal-npm-entry.js
-    grep -v "Warning \[deprecated" _jsoo_npm_entry.log | grep -v "^$" || true
-    echo "  Built: docs/fstar-extracted/factoidal-npm-entry.js ($(wc -c < ../../../docs/fstar-extracted/factoidal-npm-entry.js) bytes)"
-```
-
-### 2. `wasm-factoidal` step (line 985+) — wasm entry bundle
-
-After the existing `wasm_of_ocaml factoidal` block (line 1009+), mirror
-it for the entry (guarded on `npm_entry.byte` existing, same shims):
-
-```sh
-  if [[ -f npm_entry.byte ]]; then
-    run_with_heartbeat "wasm_of_ocaml npm-entry" "_waoc_npm_entry.log" -- \
-      wasm_of_ocaml compile \
-      +zarith_stubs_js/biginteger.js \
-      +zarith_stubs_js/runtime.js \
-      wasm_runtime/zarith_runtime_wasm.js \
-      wasm_runtime/zarith_runtime.wat \
-      fstar_int_stubs.js \
-      npm_entry.byte \
-      -o ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
-    python3 wasm_stub_shims.py ../../../docs/fstar-extracted/factoidal-npm-entry.wasm.js
-  fi
-```
-
-### 3. `npm` step (Step 6, line 1038+) — stage into npm/factoidal/
-
-Next to the existing wasm copy block (line 1082 area), add
-optional-if-present copies:
-
-```sh
-  if [[ -f "$JSDIR/factoidal-npm-entry.js" ]]; then
-    cp "$JSDIR/factoidal-npm-entry.js" "$NPMDIR/factoidal-npm-entry.js"
-  fi
-  if [[ -f "$JSDIR/factoidal-npm-entry.wasm.js" ]]; then
-    cp "$JSDIR/factoidal-npm-entry.wasm.js" "$NPMDIR/factoidal-npm-entry.wasm.js"
-  fi
-  if [[ -d "$JSDIR/factoidal-npm-entry.wasm.assets" ]]; then
-    rm -rf "$NPMDIR/factoidal-npm-entry.wasm.assets"
-    cp -R "$JSDIR/factoidal-npm-entry.wasm.assets" "$NPMDIR/factoidal-npm-entry.wasm.assets"
-  fi
-```
-
-`npm/factoidal/package.json` already lists the three staged names in
-`files`, and `npm/factoidal/lib/api.js` + `test/helpers.js` pick them
-up automatically (env overrides `FACTOIDAL_NPM_ENTRY` /
-`FACTOIDAL_NPM_ENTRY_WASM` exist for ad-hoc testing).
+Next to the existing full-bundle copy block, an optional-if-present
+block copies `factoidal-npm-entry-lite.js`, `.wasm.js` and
+`.wasm.assets/` into `npm/factoidal/`, same pattern, same messages.
+`npm/factoidal/package.json`'s `files` list, `lib/api.js` and the
+typed wrapper for the lite profile are a later task (owned by a
+parallel change — this split's job stops at the OCaml entries, the
+build wiring, and the rebuilt bundles).
 
 ## What flips on after the build
 
@@ -136,3 +164,20 @@ up automatically (env overrides `FACTOIDAL_NPM_ENTRY` /
 - The API stops argv-driving the CLI bundle for query/parse and uses
   the persistent ABI (one bundle eval per process instead of one per
   call).
+- Dataset handles let a caller amortise parse + index cost across many
+  queries against the same data (`bin/npm-entry/smoke.mjs`'s item 8
+  measures the stateless-vs-handle timing difference).
+
+## Smoke checks
+
+`bin/npm-entry/smoke.mjs` (`node bin/npm-entry/smoke.mjs
+[bundle-path]`, default the full bundle) runs the behavioral checks
+for strict parsing, lenient `parseDocument`, dataset handles, prefix/
+shorthand-aware Turtle serialization, and (against the full bundle
+only) a diff against the previously committed bundle's `queryDataset`/
+`updateDataset` answers. Run it against BOTH
+`docs/fstar-extracted/factoidal-npm-entry.js` and
+`factoidal-npm-entry-lite.js` after any rebuild — profile-specific
+checks (full has `shaclValidate`, lite routes `rdfxml`/`jsonld` to a
+"load the full bundle" error) branch on the bundle's own
+`e.profile`.
