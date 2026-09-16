@@ -138,9 +138,17 @@ let rdf12_reifies_closure (ts : RDF_Triple.triple Prims.list) :
   FStar_List_Tot_Base.op_At ts
     (FStar_List_Tot_Base.collect reifies_prop_triples ts)
 let rdfs_regime_fuel : Prims.nat= (Prims.of_int (100))
+let rdf12_vocabulary_axioms : RDF_Triple.triple Prims.list=
+  [{
+     RDF_Triple.s = (RDF_Term.S_IRI rdf_reifies_iri);
+     RDF_Triple.p = RDFS_Closure.rdfs_range;
+     RDF_Triple.o = (RDF_Term.T_IRI rdfs_proposition_iri)
+   }]
 let rdfs_regime_closure (ts : RDF_Triple.triple Prims.list) :
   RDF_Triple.triple Prims.list=
-  RDFS_Closure.rdfs_closure (rdf12_reifies_closure ts) rdfs_regime_fuel
+  RDFS_Closure.rdfs_closure
+    (FStar_List_Tot_Base.op_At rdf12_vocabulary_axioms
+       (rdf12_reifies_closure ts)) rdfs_regime_fuel
 let subst_subj (x : RDF_Term.wf_iri) (y : RDF_Term.wf_iri)
   (s : RDF_Term.subject) : RDF_Term.subject=
   match s with
@@ -184,14 +192,212 @@ let apply_sameas_pair (acc : RDF_Triple.triple Prims.list)
 let owl_closure (ts : RDF_Triple.triple Prims.list) :
   RDF_Triple.triple Prims.list=
   FStar_List_Tot_Base.fold_left apply_sameas_pair ts (sameas_pairs ts)
+type gtriple =
+  {
+  gs: RDF_Term.rdf_term ;
+  gp: RDF_Term.wf_iri ;
+  go: RDF_Term.rdf_term }
+let __proj__Mkgtriple__item__gs (projectee : gtriple) : RDF_Term.rdf_term=
+  match projectee with | { gs; gp; go;_} -> gs
+let __proj__Mkgtriple__item__gp (projectee : gtriple) : RDF_Term.wf_iri=
+  match projectee with | { gs; gp; go;_} -> gp
+let __proj__Mkgtriple__item__go (projectee : gtriple) : RDF_Term.rdf_term=
+  match projectee with | { gs; gp; go;_} -> go
+let gtriple_of_triple (t : RDF_Triple.triple) : gtriple=
+  {
+    gs = (RDF_Entailment_Simple.subj_as_term t.RDF_Triple.s);
+    gp = (t.RDF_Triple.p);
+    go = (t.RDF_Triple.o)
+  }
+let match_subj_g (bnd : RDF_Term.rdf_term -> Prims.bool)
+  (b : RDF_Entailment_Simple.binding) (ps : RDF_Term.subject)
+  (gs : RDF_Term.rdf_term) :
+  RDF_Entailment_Simple.binding FStar_Pervasives_Native.option=
+  match ps with
+  | RDF_Term.S_BNode lbl ->
+      (match FStar_List_Tot_Base.assoc lbl b with
+       | FStar_Pervasives_Native.Some t ->
+           if RDF_Term.rdf_term_eq t gs
+           then FStar_Pervasives_Native.Some b
+           else FStar_Pervasives_Native.None
+       | FStar_Pervasives_Native.None ->
+           if bnd gs
+           then FStar_Pervasives_Native.Some ((lbl, gs) :: b)
+           else FStar_Pervasives_Native.None)
+  | RDF_Term.S_IRI i ->
+      (match gs with
+       | RDF_Term.T_IRI j ->
+           if i = j
+           then FStar_Pervasives_Native.Some b
+           else FStar_Pervasives_Native.None
+       | uu___ -> FStar_Pervasives_Native.None)
+let match_gtriple
+  (leq : Prims.bool -> RDF_Term.literal -> RDF_Term.literal -> Prims.bool)
+  (bnd : RDF_Term.rdf_term -> Prims.bool) (b : RDF_Entailment_Simple.binding)
+  (tb : RDF_Triple.triple) (ta : gtriple) :
+  RDF_Entailment_Simple.binding FStar_Pervasives_Native.option=
+  if tb.RDF_Triple.p = ta.gp
+  then
+    match match_subj_g bnd b tb.RDF_Triple.s ta.gs with
+    | FStar_Pervasives_Native.Some b1 ->
+        RDF_Entailment_Simple.match_term leq bnd false b1 tb.RDF_Triple.o
+          ta.go
+    | FStar_Pervasives_Native.None -> FStar_Pervasives_Native.None
+  else FStar_Pervasives_Native.None
+let rec try_match_g
+  (leq : Prims.bool -> RDF_Term.literal -> RDF_Term.literal -> Prims.bool)
+  (bnd : RDF_Term.rdf_term -> Prims.bool) (bs : RDF_Triple.triple Prims.list)
+  (b : RDF_Entailment_Simple.binding) (a : gtriple Prims.list) : Prims.bool=
+  match bs with
+  | [] -> true
+  | tb::rest -> try_alts_g leq bnd bs tb rest b a a
+and try_alts_g
+  (leq : Prims.bool -> RDF_Term.literal -> RDF_Term.literal -> Prims.bool)
+  (bnd : RDF_Term.rdf_term -> Prims.bool) (bs : RDF_Triple.triple Prims.list)
+  (tb : RDF_Triple.triple) (rest : RDF_Triple.triple Prims.list)
+  (b : RDF_Entailment_Simple.binding) (a : gtriple Prims.list)
+  (cand : gtriple Prims.list) : Prims.bool=
+  match cand with
+  | [] -> false
+  | ta::more ->
+      (match match_gtriple leq bnd b tb ta with
+       | FStar_Pervasives_Native.Some b1 ->
+           if try_match_g leq bnd rest b1 a
+           then true
+           else try_alts_g leq bnd bs tb rest b a more
+       | FStar_Pervasives_Native.None ->
+           try_alts_g leq bnd bs tb rest b a more)
+let entails_g
+  (leq : Prims.bool -> RDF_Term.literal -> RDF_Term.literal -> Prims.bool)
+  (bnd : RDF_Term.rdf_term -> Prims.bool) (a : gtriple Prims.list)
+  (b : RDF_Triple.triple Prims.list) : Prims.bool= try_match_g leq bnd b [] a
+let rec tt_occurrences (t : RDF_Term.rdf_term) :
+  RDF_Term.rdf_term Prims.list=
+  match t with
+  | RDF_Term.T_TripleTerm (uu___, uu___1, o) -> t :: (tt_occurrences o)
+  | uu___ -> []
+let graph_tt_occurrences (ts : RDF_Triple.triple Prims.list) :
+  RDF_Term.rdf_term Prims.list=
+  FStar_List_Tot_Base.collect (fun t -> tt_occurrences t.RDF_Triple.o) ts
+let proposition_gtriples (ts : RDF_Triple.triple Prims.list) :
+  gtriple Prims.list=
+  FStar_List_Tot_Base.map
+    (fun tt ->
+       {
+         gs = tt;
+         gp = rdf_type_iri;
+         go = (RDF_Term.T_IRI rdfs_proposition_iri)
+       }) (graph_tt_occurrences ts)
+let is_recognized_datatype (dt : RDF_Term.wf_iri) : Prims.bool=
+  ((((dt = RDF_Term.xsd_boolean) || (dt = XSD_Datatypes.xsd_dateTime)) ||
+      (dt = XSD_Datatypes.xsd_float))
+     || (dt = RDF_Term.xsd_double))
+    || (XSD_Datatypes.is_decimal_derived_datatype dt)
+let literal_type_gtriples (ts : RDF_Triple.triple Prims.list) :
+  gtriple Prims.list=
+  FStar_List_Tot_Base.collect
+    (fun t ->
+       match t.RDF_Triple.o with
+       | RDF_Term.T_Literal l ->
+           if
+             (is_recognized_datatype l.RDF_Term.datatype) &&
+               (Prims.op_Negation
+                  (XSD_Datatypes.literal_ill_formed l.RDF_Term.datatype
+                     l.RDF_Term.lexical_form))
+           then
+             [{
+                gs = (RDF_Term.T_Literal l);
+                gp = rdf_type_iri;
+                go = (RDF_Term.T_IRI (l.RDF_Term.datatype))
+              }]
+           else []
+       | uu___ -> []) ts
+let rdf_regime_gclosure (ts : RDF_Triple.triple Prims.list) :
+  gtriple Prims.list=
+  FStar_List_Tot_Base.op_At (FStar_List_Tot_Base.map gtriple_of_triple ts)
+    (FStar_List_Tot_Base.op_At (literal_type_gtriples ts)
+       (proposition_gtriples ts))
+let subclass_targets (closed : RDF_Triple.triple Prims.list)
+  (c : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  FStar_List_Tot_Base.collect
+    (fun t ->
+       if t.RDF_Triple.p = RDFS_Closure.rdfs_subClassOf
+       then
+         match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI a, RDF_Term.T_IRI b) ->
+             (if a = c then [b] else [])
+         | (uu___, uu___1) -> []
+       else []) closed
+let rdfs9_over_gtriples (closed : RDF_Triple.triple Prims.list)
+  (gts : gtriple Prims.list) : gtriple Prims.list=
+  FStar_List_Tot_Base.collect
+    (fun g ->
+       if g.gp = rdf_type_iri
+       then
+         match g.go with
+         | RDF_Term.T_IRI c ->
+             FStar_List_Tot_Base.map
+               (fun d ->
+                  { gs = (g.gs); gp = rdf_type_iri; go = (RDF_Term.T_IRI d) })
+               (subclass_targets closed c)
+         | uu___ -> []
+       else []) gts
+let range_targets (closed : RDF_Triple.triple Prims.list)
+  (p : RDF_Term.wf_iri) : RDF_Term.wf_iri Prims.list=
+  FStar_List_Tot_Base.collect
+    (fun t ->
+       if t.RDF_Triple.p = RDFS_Closure.rdfs_range
+       then
+         match ((t.RDF_Triple.s), (t.RDF_Triple.o)) with
+         | (RDF_Term.S_IRI a, RDF_Term.T_IRI b) ->
+             (if a = p then [b] else [])
+         | (uu___, uu___1) -> []
+       else []) closed
+let rdfs3_over_gtriples (closed : RDF_Triple.triple Prims.list) :
+  gtriple Prims.list=
+  FStar_List_Tot_Base.collect
+    (fun t ->
+       match t.RDF_Triple.o with
+       | RDF_Term.T_TripleTerm (uu___, uu___1, uu___2) ->
+           FStar_List_Tot_Base.map
+             (fun d ->
+                {
+                  gs = (t.RDF_Triple.o);
+                  gp = rdf_type_iri;
+                  go = (RDF_Term.T_IRI d)
+                }) (range_targets closed t.RDF_Triple.p)
+       | RDF_Term.T_Literal uu___ ->
+           FStar_List_Tot_Base.map
+             (fun d ->
+                {
+                  gs = (t.RDF_Triple.o);
+                  gp = rdf_type_iri;
+                  go = (RDF_Term.T_IRI d)
+                }) (range_targets closed t.RDF_Triple.p)
+       | uu___ -> []) closed
+let rdfs_regime_gclosure (ts : RDF_Triple.triple Prims.list) :
+  gtriple Prims.list=
+  let closed = rdfs_regime_closure ts in
+  let base =
+    FStar_List_Tot_Base.op_At (rdf_regime_gclosure closed)
+      (rdfs3_over_gtriples closed) in
+  FStar_List_Tot_Base.op_At base (rdfs9_over_gtriples closed base)
+let rec term_ill_formed (t : RDF_Term.rdf_term) : Prims.bool=
+  match t with
+  | RDF_Term.T_Literal l ->
+      XSD_Datatypes.literal_ill_formed l.RDF_Term.datatype
+        l.RDF_Term.lexical_form
+  | RDF_Term.T_TripleTerm (uu___, uu___1, o) -> term_ill_formed o
+  | uu___ -> false
+let rdf_inconsistent (ts : RDF_Triple.triple Prims.list) : Prims.bool=
+  FStar_List_Tot_Base.existsb (fun t -> term_ill_formed t.RDF_Triple.o) ts
 let entails_rdf (a : RDF_Triple.triple Prims.list)
   (b : RDF_Triple.triple Prims.list) : Prims.bool=
-  RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf a b
+  entails_g dt_value_leq bnd_rdf (rdf_regime_gclosure a) b
 let entails_rdfs (a : RDF_Triple.triple Prims.list)
   (b : RDF_Triple.triple Prims.list) : Prims.bool=
-  RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf
-    (rdfs_regime_closure a) b
+  entails_g dt_value_leq bnd_rdf (rdfs_regime_gclosure a) b
 let entails_rdfs_plus (a : RDF_Triple.triple Prims.list)
   (b : RDF_Triple.triple Prims.list) : Prims.bool=
-  RDF_Entailment_Simple.entails_with dt_value_leq bnd_rdf
-    (owl_closure (rdfs_regime_closure a)) b
+  let closed = owl_closure (rdfs_regime_closure a) in
+  entails_g dt_value_leq bnd_rdf (rdf_regime_gclosure closed) b
