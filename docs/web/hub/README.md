@@ -118,6 +118,7 @@ runs is:
   dimensions and wrap in a flex row, so the toolbar never forces
   page-level horizontal scroll at a 390px viewport; the textarea is
   `width: 100%` / `box-sizing: border-box` for the same reason.
+
 - ` ```js `, ` ```turtle `, ` ```fstar `, etc. — static, inert code
   samples. Use these for pure notation (Turtle syntax being
   introduced, an F\* type definition being quoted) where there is
@@ -126,6 +127,81 @@ runs is:
 Only convert a code sample to a live cell when it actually computes
 something a reader benefits from seeing run (a parse, a query, an
 entailment closure) — not every fenced block needs to be live.
+
+### Closed cells and the fold wrapper
+
+A fence line can carry flags after the language, separated by spaces:
+
+    ```observable-js closed
+    ```observable-js closed title="Library: circuit helpers"
+
+`closed` makes the cell mount collapsed. `title="..."` (the value can
+contain spaces) sets its summary line. `parseCellFlags(info)`
+(`docs/web/hub/reactive-cells.mjs`) parses this text into `{closed:
+boolean, title: string | null}`; an unrecognized word is ignored, so a
+future flag can be added without breaking a post written before it
+existed. Three places call it on the same string — everything after
+the `observable-js` word: `docs/.eleventy.js`'s fence renderer at
+build time, `hub.njk`'s `mountCell()` at mount time, and
+`tests/hub/_helpers.mjs`'s `extractObservableCellsWithFlags()` in the
+Node pinning tests.
+
+`docs/.eleventy.js` wraps markdown-it's own fence rule: for a fence
+whose info string starts with `observable-js` and carries more words,
+it renders the block exactly as the default rule would, then adds a
+`data-hub-cell-flags="<escaped rest of the info string>"` attribute to
+the `<code>` element. The `class` stays exactly
+`language-observable-js` — markdown-it's default fence renderer only
+ever takes the first word of the info string for the class, so every
+existing `pre > code.language-observable-js` selector keeps matching.
+
+`mountCell()` wraps a cell's four blocks — the static `<pre>`, the
+editor `<textarea>`, the toolbar, the output container — in a
+`<details class="observable-cell-fold">`, with a leading `<summary
+class="observable-cell-fold-summary">` ahead of them, same order
+inside as before:
+
+```
+<details class="observable-cell-fold" data-hub-cell-flags="...">
+  <summary class="observable-cell-fold-summary">Cell name</summary>
+  <pre><code class="language-observable-js">...</code></pre>
+  <textarea class="observable-cell-editor" hidden>...</textarea>
+  <div class="observable-cell-toolbar">...</div>
+  <div class="observable-cell" data-hub-cell="N">...</div>
+</details>
+```
+
+`open` is set on every cell's `<details>` except one flagged `closed`.
+The summary text is the `title` flag when given; otherwise `Cell
+<name>` for a named cell (`analyzeCell(source).name`), otherwise `Cell
+<index + 1>`. A native `<details>`/`<summary>` is focusable and toggles
+on Enter and Space on its own; `mountCell()` adds no key handling for
+this.
+
+A cell whose run rejects — the same `.observable-cell-error` state
+described above — also opens its `<details>` and adds
+`observable-cell-fold-error` to it, so a collapsed cell that fails is
+never hidden from a reader. A later successful run removes the class
+again; it leaves the `<details>` open, and closing it again is up to
+the reader.
+
+### Library cells at the end of a post
+
+`hub.njk` mounts a page's cells in two passes. Pass 1 walks every
+`observable-js` cell and registers its declared name. Pass 2 mounts
+each cell and hands it to the vendored Observable runtime, which
+computes the dependency order from the registered names and runs each
+cell once its inputs resolve, regardless of where either cell sits in
+the document. An earlier cell can call a function a later cell
+defines — a helper library, or any block of supporting definitions,
+does not have to precede its first use. The one rule: the defining
+cell must be a *named* cell (`name = ...`); an anonymous cell has no
+name for anything else to reference.
+
+[Post 47](../47-writing-hub-notebooks/)'s "Closed cells and library
+cells at the end" section is the worked example: an early cell calls
+`notebookHelpers.count(rows)`, and `notebookHelpers` is a closed,
+named cell at the very end of the file.
 
 ## Named cells: declare once, reference everywhere
 
