@@ -97,7 +97,12 @@ import { parse, query } from "factoidal/wasm";
 ### Load in the browser without npm
 
 You don't need `npm install` (or a bundler) to run this in a browser.
-Two options, in preference order:
+Two options, in preference order. Both load `browser.js`, which
+fetches the engine bundle and runs it with `new Function(src)` the
+first time an operation needs it — this needs `unsafe-eval` in the
+page's `Content-Security-Policy`. A page that cannot grant that, or a
+bundler build, uses the route in "Bundlers and Content Security
+Policy" below instead.
 
 1. **This site's own mirror (recommended, same-origin, no build step
    for you).** Every push regenerates `docs/npm/factoidal/` from this
@@ -165,6 +170,95 @@ so it never perturbs a diff against a W3C `.srx`-derived fixture, but
 readable as `result.engineMs` for timing/observability UIs. This is
 what `docs/fstar-extracted/factoidal-sparql-client.js`'s web component
 is built on, rather than duplicating the engine-invocation logic itself.
+
+### Bundlers and Content Security Policy
+
+`browser.js`'s `query()`/`toRdf()`/`canonicalize()` fetch the CLI
+bundle (`factoidal.js`) as text and run it with `new Function(src)`.
+A page whose `Content-Security-Policy` has no `unsafe-eval` (for
+example `script-src 'self'`) refuses that call, and a bundler
+(esbuild, webpack, Rollup, ...) has no file to fetch at all — it needs
+a statically importable module. `@factoidal/core/api` is that module
+(issue [682](https://github.com/danbri/factoidal/issues/682)).
+
+**(a) Bundler route.** Import `createApi` and the entry bundle as
+ordinary ES modules; your bundler resolves and includes both, and
+nothing in this path calls `eval` or `new Function`:
+
+```js
+import { createApi } from '@factoidal/core/api';
+import entryMod from '@factoidal/core/factoidal-npm-entry.js';
+
+const factoidal = createApi(entryMod.factoidalNpmEntry);
+const ds = await factoidal.parse('<a> <b> "c" .', { format: 'ntriples' });
+const rows = await factoidal.query(ds, 'SELECT * WHERE { ?s ?p ?o }');
+```
+
+`factoidal-npm-entry.js` is js_of_ocaml output with no `import`/
+`export` syntax of its own; a bundler treats it as CommonJS, and its
+default export carries `.factoidalNpmEntry`. That file has four
+literal `require(nodeBuiltinName)` call sites, in code this
+parse/query path never reaches (real file I/O, `isatty()`, a
+`TextDecoder` fallback, Zstd decompression for COTTAS bytes). Two
+(`util`, `fzstd`) are behind a `typeof require === "function"` guard;
+esbuild bundling for the browser resolves that to `false` at build
+time and never tries to bundle them. The other two (`node:fs`,
+`node:tty`) are unconditional inside class methods this path never
+calls, and need to be added to your bundler's external/Node-builtin
+exclusion list. `npm/factoidal/test/bundler-esbuild.test.mjs` derives
+this list from esbuild's own unresolved-import errors (rather than
+hardcoding it) and runs the bundled output; `tests/web-demos/
+bundler_csp_smoke.sh` bundles the same fixture and drives it through
+headless Chromium under a real `Content-Security-Policy: script-src
+'self'` response header.
+
+**(b) Classic `<script>` route, no bundler, for `browser.js`'s
+ABI-routed operations.** `api.mjs` re-exports `api.js`, which — like
+`index.mjs`/`index.js` — is CommonJS underneath (`require`/
+`module.exports`); a real browser has no `require`, so loading it
+needs either Node or a bundler's CJS interop (route (a)). What a raw
+`<script type="module">` page CAN do with no bundler: load the entry
+bundle as a plain script first, so `browser.js`'s own `loadNpmEntry()`
+finds it on `globalThis` and skips fetch + eval entirely:
+
+```html
+<script src="factoidal-npm-entry.js"></script>
+<script type="module" src="./my-app.js"></script>
+```
+
+```js
+// my-app.js -- an external file: script-src 'self' with no
+// 'unsafe-inline' blocks an inline <script type="module"> block too,
+// same as it would on any other page under that policy.
+import { shaclValidate } from './browser.js';
+const report = await shaclValidate(dataNQuads, shapesNQuads);
+// No eval: factoidal-npm-entry.js was already on globalThis when
+// browser.js's loadNpmEntry() looked.
+```
+
+The same applies to every other `browser.js` operation already routed
+through the npm-entry ABI rather than the CLI bundle — ShEx,
+`owlClosure`, RML, CSVW, JSON-LD, `didKeyResolve`, XML/XPath, the
+in-memory COTTAS store, VC crypto — and to `setNpmEntry(abi)` in place
+of the `<script src>` tag, for a page that obtains the ABI object some
+other way. `browser.js`'s `query()`/`toRdf()`/`canonicalize()` are not
+among these: they always go through the CLI bundle (see (c)), so a
+CSP-safe, bundler-free `SELECT`/`ASK`/`parse` is not available yet —
+route (a) is the one to use for that today.
+
+**(c) What still needs fetch + evaluate, and why.** The CLI bundle
+(`factoidal.js` / `factoidal.wasm.js`) is a separate build target from
+the npm-entry ABI (`bin/npm-entry/entry_jsoo.ml`). `browser.js`'s own
+`query()`/`toRdf()`/`canonicalize()` always go through it. Through
+`createApi()`, only entailment-regime queries (`{entail: 'RDFS' |
+'OWL-RL'}`) and `queryHdt()` still need it, because the npm-entry ABI
+does not implement them. A page under a strict CSP, or a bundler
+build, that needs `browser.js`'s core query path or those two
+`createApi()` operations still needs `unsafe-eval` (or a server-side
+call using the CLI's real argv interface) until that gap closes.
+Parsing and SELECT/ASK/CONSTRUCT without entailment are fully served,
+CSP-safely, through route (a); the npm-entry-ABI-routed operations
+listed under (b) are served through route (a) or (b).
 
 ### Durable browser persistence (delta log)
 
@@ -788,6 +882,9 @@ fixtures.
 | `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, jsonldFromRdf, didKey, xml, xpath, rif, cottasBytesStore, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
 | `dataFactory` | RDF/JS DataFactory | N/A | data-model class, not an engine operation |
 | `Dataset` | RDF/JS DatasetCore | N/A | returned by `parse`; accepted everywhere |
+| `createApi` (from `@factoidal/core/api`) | `(entry, {engineName?, initCrypto?}) => typed API` | N/A | builds this same typed surface around an already-loaded npm-entry ABI object, no fetch, no eval — see "Bundlers and Content Security Policy" above |
+| `version` | `string` | N/A | the package version (`package.json`'s), the same on every entry point |
+| `engine` | `string` | N/A | which driver answered this typed surface: `'js'`, `'wasm'`, `'entry'` (via `createApi()`), `'lean4-wasm'` |
 
 The `fn.js` functional layer's own combinators — `union`, `difference`,
 `filter`, `mapQuads`, `equals`, `hash`, `builder`/`fromChunks`,
