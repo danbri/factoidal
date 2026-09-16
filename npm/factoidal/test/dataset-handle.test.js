@@ -191,3 +191,24 @@ test('openDataset() needs the npm-entry bundle -- rejects with the pending-entry
     assert.equal(typeof factoidal.openDataset, 'function');
   }
 });
+
+
+// update() and CONSTRUCT answer a fresh Dataset built from N-Quads; the
+// source prefixes ride along so parse -> update -> serialize keeps the
+// document's labels (https://github.com/danbri/factoidal/issues/681).
+test('update() and CONSTRUCT results inherit the input Dataset\'s prefixes', async (t) => {
+  const caps = await factoidal.capabilities();
+  if (!caps.entry) { t.skip('pending npm-entry build'); return; }
+  const ds = await factoidal.parse(
+    '@prefix ex: <http://example.org/> .\nex:a ex:p 1.5 .\n');
+  assert.deepEqual(ds.prefixes, { ex: 'http://example.org/' });
+  const updated = await factoidal.update(ds,
+    'PREFIX ex: <http://example.org/> INSERT DATA { ex:b ex:p 2.5 }');
+  assert.deepEqual(updated.prefixes, { ex: 'http://example.org/' });
+  const ttl = await factoidal.serialize(updated, { format: 'turtle' });
+  assert.match(ttl, /@prefix ex: <http:\/\/example.org\/> \./);
+  assert.match(ttl, /ex:b ex:p 2\.5/);
+  const built = await factoidal.query(ds,
+    'PREFIX ex: <http://example.org/> CONSTRUCT { ?s ex:q ?o } WHERE { ?s ex:p ?o }');
+  assert.deepEqual(built.prefixes, { ex: 'http://example.org/' });
+});

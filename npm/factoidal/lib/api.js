@@ -275,7 +275,7 @@ class DatasetHandle {
     const r = this._withExtensionRounds ? await this._withExtensionRounds(run) : run();
     if (r.kind === 'ask') return r.boolean;
     if (r.kind === 'construct') {
-      return Dataset.fromNQuads(r.nquads, { blankNodePrefix: this._freshBnodePrefix() });
+      return Dataset.fromNQuads(r.nquads, { blankNodePrefix: this._freshBnodePrefix(), prefixes: { ...this._prefixes } });
     }
     return bindingsFromSrj(r.srj);
   }
@@ -601,6 +601,25 @@ function buildApi(driver) {
     });
   }
 
+  // The prefixes a result Dataset inherits from its inputs: the union of
+  // every Dataset input's `prefixes`, in input order, the first
+  // declaration of a label winning. update() and CONSTRUCT answer a
+  // FRESH Dataset built from N-Quads, which carry no prefixes; without
+  // this the parse -> update -> serialize round trip would lose the
+  // source labels (https://github.com/danbri/factoidal/issues/681).
+  function prefixesOfData(data) {
+    const items = Array.isArray(data) ? data : [data];
+    const out = {};
+    for (const item of items) {
+      if (item instanceof Dataset && item.prefixes) {
+        for (const [label, iri] of Object.entries(item.prefixes)) {
+          if (!(label in out)) out[label] = iri;
+        }
+      }
+    }
+    return out;
+  }
+
   function docsToCliFiles(docs) {
     const files = [];
     const flags = [];
@@ -795,6 +814,7 @@ function buildApi(driver) {
       if (r.kind === 'construct') {
         return Dataset.fromNQuads(r.nquads, {
           blankNodePrefix: freshBnodePrefix(),
+          prefixes: prefixesOfData(data),
         });
       }
       return bindingsFromSrj(r.srj);
@@ -890,6 +910,7 @@ function buildApi(driver) {
       (sparql12 ? e.updateDataset12 : e.updateDataset)(nq, updateText), 'update');
     return Dataset.fromNQuads(r.nquads, {
       blankNodePrefix: freshBnodePrefix(),
+      prefixes: prefixesOfData(data),
     });
   }
 

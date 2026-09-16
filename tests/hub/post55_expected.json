@@ -7,9 +7,9 @@
   "modelArcsLength": 107,
   "apiItems": {
     "strictParse": true,
-    "parseReturnsPrefixes": false,
-    "turtleUsesSourcePrefixes": false,
+    "parseReturnsPrefixes": true,
+    "turtleUsesSourcePrefixes": true,
     "decimalShorthand": true,
-    "datasetHandle": false
+    "datasetHandle": true
   }
 }
