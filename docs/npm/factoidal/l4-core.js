@@ -44,8 +44,10 @@ const NOT_SUPPORTED =
 // list are deliberately absent from the entry object: api.js
 // typeof-guards each one and capabilities() reports the truth.
 //
-// The resolved wasm's full dispatch surface has 21 ops
-// (`bin/linux-x86_64/l4factoidal ops`); this list wires 16 of them.
+// The resolved wasm's full dispatch surface has 23 ops
+// (`bin/linux-x86_64/l4factoidal ops`, re-measured 2026-09-16); this
+// list wires 21 of them, up from 16 once the 5 dataset-handle ops
+// below joined it (issues #344/#680/#681).
 // `clParse` reads CLIF text into a CL syntax tree and reports its
 // shape (sentence count, CL-vs-IKL dialect, canonical re-serialisation)
 // -- it never produces RDF, so it is NOT part of the IKL-to-RDF
@@ -87,15 +89,19 @@ const NOT_SUPPORTED =
 // `clParse` was unwired only because nobody had decided to wrap it,
 // which is why it is wired above instead of here.
 //
-// A second group is withheld for an unrelated, non-owner reason:
+// A second group WAS withheld for an unrelated, non-owner reason, and
+// is now wired (issues #344/#680/#681 landed a typed handle shape in
+// lib/api.js -- openDataset()/DatasetHandle):
 //
 //   - dataset handles (`datasetOpen`/`datasetQuery`/`datasetUpdate`/
-//     `datasetSerialize`/`datasetClose`): ordinary RDF dataset handles,
-//     not part of the CL/IKL decision above. Held back only because
-//     lib/api.js has no typed wrapper shape for a stateful handle yet
-//     (every existing typed op is request/response) — a scope
-//     judgement, not an owner ruling. Wiring these in is a reasonable
-//     follow-up.
+//     `datasetSerialize`/`datasetClose`): ordinary RDF dataset
+//     handles, not part of the CL/IKL decision above. The Lean
+//     engine's strict-parse error envelope carries the offset only
+//     inside the message text (no line/column/offset members), never
+//     records `prefixes`, and has no `datasetSerializeWith`/
+//     `datasetQuery12` -- see the OPS list comment above and
+//     https://github.com/danbri/factoidal/issues/685 (xfail cases in
+//     test/l4-core.test.js).
 const OPS = [
   'parseToDatasetJson',
   'queryDataset',
@@ -113,6 +119,18 @@ const OPS = [
   'clSerialize',
   'clAlphaNorm',
   'clNormalize',
+  // Dataset handles (issue #680) -- wired now that lib/api.js has a
+  // typed wrapper shape (openDataset/DatasetHandle). Two of the
+  // Lean engine's own dataset ops stay unwired: datasetQuery12 (no
+  // SPARQL 1.2 tokenizer on this side yet) and datasetSerializeWith
+  // (no prefix/shorthand-aware Turtle serializer yet) -- see
+  // https://github.com/danbri/factoidal/issues/685, pinned as xfail
+  // cases in test/l4-core.test.js.
+  'datasetOpen',
+  'datasetQuery',
+  'datasetUpdate',
+  'datasetSerialize',
+  'datasetClose',
 ];
 
 async function loadLeanEntry() {
@@ -180,6 +198,9 @@ module.exports = {
   shaclValidate: api.shaclValidate,
   shexValidate: api.shexValidate,
   capabilities: api.capabilities,
+  openDataset: api.openDataset,
+  DatasetHandle: api.DatasetHandle,
+  ParseError: api.ParseError,
   Dataset: rdfjs.Dataset,
   dataFactory: rdfjs.dataFactory,
   engine: 'lean4-wasm',

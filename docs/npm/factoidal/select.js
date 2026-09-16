@@ -95,9 +95,19 @@ function assertBackend(name, who) {
 //     encoding that has no user yet, and a typed wrapper would freeze
 //     that shape before we know whether it is right. Reachable only
 //     through the raw dispatch ABI.
-//   - ops, datasetOpen/Query/Update/Serialize/Close: not an owner
-//     ruling, just not yet wired (no typed-wrapper shape for a
-//     stateful handle exists in lib/api.js today).
+//   - ops: reflection only (lists the dispatch ABI's own op names);
+//     no typed wrapper needed.
+//   - openDataset()/DatasetHandle (issue #680, wired in lib/api.js as
+//     of issues #344/#680/#681): NOT in ROUTABLE below, by design, not
+//     an oversight. A handle is stateful and opened against ONE
+//     engine's entry object (openDataset() closes over that driver's
+//     `e`) -- there is no "same handle on the other engine" to route
+//     lean1st/fstar1st/slowcompareboth between, unlike every function
+//     above, which re-runs a fresh call on whichever engine the
+//     routing decision picks. A caller that wants handle-based
+//     querying on a specific engine calls fstarApi.openDataset() /
+//     leanApi.openDataset() directly (stateful handles are per
+//     engine).
 // See docs/designissues/2026-08-22-npm-l4-module-packaging.md's #618
 // section for the note.
 const ALWAYS_IF_ENTRY = new Set([

@@ -75,13 +75,30 @@ const c14n = await canonicalize(ds);
 const nq = await serialize(ds, { format: "nquads" });
 ```
 
-> ⚠️ **Pass `baseIRI` when your input uses relative IRIs.** In the
-> current build, statements whose relative IRIs cannot be resolved are
-> **dropped without an error**, so a document can parse to fewer
-> triples than it contains (`{ baseIRI: "https://example.org/doc" }`
-> fixes it). A count check after parsing is a cheap guard. Surfacing
-> these drops as a throw or a warnings channel is tracked in the
-> repository issues.
+> **Parsing is strict by default** (issue #344). A syntax error, an
+> undeclared prefix, or a relative IRI with no `baseIRI` in effect
+> rejects the WHOLE parse with a `ParseError` naming the line and
+> column — nothing is silently dropped:
+>
+> ```js
+> import { parse, ParseError } from "@factoidal/core";
+>
+> try {
+>   await parse("<a> <b> <c> .", { format: "turtle" }); // no baseIRI given
+> } catch (err) {
+>   if (err instanceof ParseError) {
+>     console.log(err.line, err.column, err.message);
+>     // 1 1 parse: resolved IRI invalid at line 1, column 1
+>   }
+> }
+> ```
+>
+> Pass `{ baseIRI: "https://example.org/doc" }` to resolve relative
+> IRIs, or `{ lenient: true }` to recover instead of rejecting: the
+> returned Dataset holds whatever the parser recovered (statements
+> before and after the error, for Turtle/TriG), and
+> `dataset.diagnostics` lists what was skipped. `lenient` needs the
+> npm-entry engine bundle.
 
 CommonJS: `const factoidal = require("@factoidal/core")`.
 
@@ -97,7 +114,12 @@ import { parse, query } from "factoidal/wasm";
 ### Load in the browser without npm
 
 You don't need `npm install` (or a bundler) to run this in a browser.
-Two options, in preference order:
+Two options, in preference order. Both load `browser.js`, which
+fetches the engine bundle and runs it with `new Function(src)` the
+first time an operation needs it — this needs `unsafe-eval` in the
+page's `Content-Security-Policy`. A page that cannot grant that, or a
+bundler build, uses the route in "Bundlers and Content Security
+Policy" below instead.
 
 1. **This site's own mirror (recommended, same-origin, no build step
    for you).** Every push regenerates `docs/npm/factoidal/` from this
@@ -166,6 +188,113 @@ readable as `result.engineMs` for timing/observability UIs. This is
 what `docs/fstar-extracted/factoidal-sparql-client.js`'s web component
 is built on, rather than duplicating the engine-invocation logic itself.
 
+### Bundlers and Content Security Policy
+
+`browser.js`'s `canonicalize()`, always, and `query()`/`toRdf()` only
+when the persistent npm-entry ABI bundle cannot be loaded, fetch the
+CLI bundle (`factoidal.js`) as text and run it with `new
+Function(src)`. A page whose `Content-Security-Policy` has no
+`unsafe-eval` (for example `script-src 'self'`) refuses that call, and
+a bundler (esbuild, webpack, Rollup, ...) has no file to fetch at all
+— it needs a statically importable module. `@factoidal/core/api` is
+that module (issue [682](https://github.com/danbri/factoidal/issues/682)).
+
+**(a) Bundler route.** Import `createApi` and the entry bundle as
+ordinary ES modules; your bundler resolves and includes both, and
+nothing in this path calls `eval` or `new Function`:
+
+```js
+import { createApi } from '@factoidal/core/api';
+import entryMod from '@factoidal/core/factoidal-npm-entry.js';
+
+const factoidal = createApi(entryMod.factoidalNpmEntry);
+const ds = await factoidal.parse('<a> <b> "c" .', { format: 'ntriples' });
+const rows = await factoidal.query(ds, 'SELECT * WHERE { ?s ?p ?o }');
+```
+
+`factoidal-npm-entry.js` is js_of_ocaml output with no `import`/
+`export` syntax of its own; a bundler treats it as CommonJS, and its
+default export carries `.factoidalNpmEntry`. That file has four
+literal `require(nodeBuiltinName)` call sites, in code this
+parse/query path never reaches (real file I/O, `isatty()`, a
+`TextDecoder` fallback, Zstd decompression for COTTAS bytes). Two
+(`util`, `fzstd`) are behind a `typeof require === "function"` guard;
+esbuild bundling for the browser resolves that to `false` at build
+time and never tries to bundle them. The other two (`node:fs`,
+`node:tty`) are unconditional inside class methods this path never
+calls, and need to be added to your bundler's external/Node-builtin
+exclusion list. `npm/factoidal/test/bundler-esbuild.test.mjs` derives
+this list from esbuild's own unresolved-import errors (rather than
+hardcoding it) and runs the bundled output; `tests/web-demos/
+bundler_csp_smoke.sh` bundles the same fixture and drives it through
+headless Chromium under a real `Content-Security-Policy: script-src
+'self'` response header.
+
+**(b) Classic `<script>` route, no bundler, for `browser.js`'s
+ABI-routed operations.** `api.mjs` re-exports `api.js`, which — like
+`index.mjs`/`index.js` — is CommonJS underneath (`require`/
+`module.exports`); a real browser has no `require`, so loading it
+needs either Node or a bundler's CJS interop (route (a)). What a raw
+`<script type="module">` page CAN do with no bundler: load the entry
+bundle as a plain script first, so `browser.js`'s own `loadNpmEntry()`
+finds it on `globalThis` and skips fetch + eval entirely:
+
+```html
+<script src="factoidal-npm-entry.js"></script>
+<script type="module" src="./my-app.js"></script>
+```
+
+```js
+// my-app.js -- an external file: script-src 'self' with no
+// 'unsafe-inline' blocks an inline <script type="module"> block too,
+// same as it would on any other page under that policy.
+import { query, toRdf, openDataset, shaclValidate } from './browser.js';
+
+// SELECT/ASK, no entailment, output:'json' (the default and common
+// case) -- routes through the already-loaded ABI. No eval either way:
+// factoidal-npm-entry.js was already on globalThis when browser.js's
+// loadNpmEntry() looked.
+const results = await query(dataTtl, 'SELECT * WHERE { ?s ?p ?o }');
+
+// Parse-to-N-Quads -- same route, whenever the ABI is loaded.
+const nquads = await toRdf(jsonldText, { format: 'jsonld' });
+
+// A dataset handle (issue #680), over the same ABI.
+const handle = await openDataset(dataTtl, { format: 'turtle' });
+const rows = await handle.query('SELECT * WHERE { ?s ?p ?o }');
+await handle.close();
+
+// Every other npm-entry-ABI-routed operation works the same way --
+// ShEx, owlClosure, RML, CSVW, JSON-LD, didKeyResolve, XML/XPath, the
+// in-memory COTTAS store, VC crypto.
+const report = await shaclValidate(dataNQuads, shapesNQuads);
+```
+
+A syntax error rejects with a `ParseError` (`name`, `line`, `column`,
+`offset`) on this route too. `setNpmEntry(abi)` works the same way in
+place of the `<script src>` tag, for a page that obtains the ABI
+object some other way.
+
+**(c) What still needs fetch + evaluate, and why.** The CLI bundle
+(`factoidal.js` / `factoidal.wasm.js`) is a separate build target from
+the npm-entry ABI (`bin/npm-entry/entry_jsoo.ml`) and covers what the
+ABI does not: entailment-regime queries (`{entail: 'RDFS' |
+'OWL-RL'}`), `queryHdt()`, `query()` output formats other than `json`,
+and `canonicalize()` (always — it has no ABI route). `query()`/
+`toRdf()` fall back to the CLI bundle only when the npm-entry ABI
+itself cannot be reached (no `factoidal-npm-entry.js` already on the
+page and no reachable fetch of one); the common `entail: 'none'`,
+`output: 'json'` query path and every `toRdf()` call go through the
+already-loaded ABI first, with no eval, whenever it is available
+(issue [682](https://github.com/danbri/factoidal/issues/682), second
+half). A page under a strict CSP, or a bundler build, that needs one
+of the CLI-bundle-only operations above, or that has no way to reach
+an entry bundle at all, still needs `unsafe-eval` (or a server-side
+call using the CLI's real argv interface) for that specific operation.
+Parsing and SELECT/ASK/CONSTRUCT without entailment are served,
+CSP-safely, through route (a), or through route (b) whenever the entry
+bundle is reachable.
+
 ### Durable browser persistence (delta log)
 
 `browser.js` also exports a small IndexedDB-backed durable-UPDATE log —
@@ -213,6 +342,51 @@ const q = quad(blankNode("x"),
 // RDF/JS data-model spec; Dataset implements DatasetCore
 // (add/delete/has/match/size/iteration).
 ```
+
+## Blank nodes, labels and statement order
+
+(Issue [683](https://github.com/danbri/factoidal/issues/683).)
+
+`parse()`'s returned Dataset does not preserve the source document's
+statement order. The npm-entry ABI's `parseToDatasetJson` answers
+`RDF_Canonical.canonical_nquads` (`formal/fstar/RDF.Canonical.fst`),
+which sorts and deduplicates lines before `Dataset.fromNQuads` ever
+sees the text — by the time a caller has the Dataset, there is no
+as-written order left in it to read back. `toNQuads()`/`serialize()`
+reflect this same sorted order.
+
+Blank-node labels, by contrast, DO trace parse order, though they
+still carry no RDF meaning (see below):
+
+- An anonymous node (`[ ... ]`, or a collection `( ... )`'s cons
+  cells) gets a label `_anonN`, N counting from 0 in DOCUMENT order —
+  the order its `[]` was encountered while parsing top to bottom
+  (`formal/fstar/Parser.Turtle.fst`'s `fresh_bnode`, via
+  `turtle_state.bnode_counter`).
+- A labelled blank node (`_:foo`) keeps that label as written; it is
+  never renumbered.
+- Every label is then prefixed twice: `d<n>_` once per parsed document
+  (`RDF_Dataset_Merge.rename_dataset_bnodes`, invoked by
+  `bin/npm-entry/entry_jsoo.ml`'s `scope_dataset_bnodes` — one call to
+  `parseToDatasetJson` is one document, so one `n`), then `p<k>_` once
+  per npm `parse()`/`query()` call (`lib/api.js`'s
+  `freshBnodePrefix()`) — giving a final label such as `p7_d7__anon43`.
+
+These labels are stable for a given document parsed against a given
+engine build (the same text, parsed at the same point in a process's
+lifetime, gets the same label), but per RDF 1.1 Concepts §3.4 a blank
+node identifies a resource without a global name — nothing may depend
+on the specific string, only on within-dataset identity (the same
+label appearing on more than one term in the same Dataset). Two
+different parses of the same document (two different calls, or two
+different engine builds) are not guaranteed to produce the same label
+text, only the same graph up to blank-node relabeling (RDF 1.1
+Concepts §3.6, "isomorphic").
+
+`test/parse-order.test.js` pins both facts: three `[]` nodes' label
+suffixes follow document order regardless of their subjects'
+alphabetical order, and `toNQuads()`'s six lines come back
+lexicographically sorted, not in document order.
 
 ## Custom extension functions (SPARQL 1.1 §17.6)
 
@@ -762,11 +936,12 @@ fixtures.
 
 | Function | Signature (informal) | CLI equivalent | Notes |
 |---|---|---|---|
-| `parse` | `(text, {format?, baseIRI?}) => Dataset` | `factoidal dump-nq -d FILE` (or `dump`/`dump-turtle`) | formats: `turtle`, `ntriples`, `nquads`, `trig`, `rdfxml`, `jsonld`\* — auto-detected where possible. Each call is one document: blank-node labels are scoped per RDF 1.1 |
-| `query` | `(Dataset \| string, sparql, {entail?}) => Bindings[] \| boolean \| Dataset` | `factoidal query -d FILE -e 'SPARQL' [--entail RDFS\|OWL-RL]` | SELECT → array of `Map<var, Term>`; ASK → boolean; CONSTRUCT → Dataset\*\*; `entail: "RDFS" \| "OWL-RL"` |
-| `update` | `(Dataset, sparqlUpdate) => Dataset` | `factoidal update -d FILE -e 'SPARQL update'` | \*\* in-memory; no persistence. (Durable UPDATE against a COTTAS store is a separate path: `factoidal serve --rw --delta-log ...` / `factoidal compact`.) |
-| `serialize` | `(Dataset, {format}) => string` | `factoidal dump-nq FILE` (nquads) / `factoidal dump FILE` (ntriples) / `factoidal dump-turtle FILE` | `nquads`, `ntriples` (sorted); `turtle`\*\* (prefix-compacted, subject-grouped — needs the entry bundle, flattens named graphs into the default graph) |
-| `canonicalize` | `(Dataset \| string) => string` | `factoidal canonicalize FILE` | RDFC-1.0 canonical N-Quads\*\* |
+| `parse` | `(text, {format?, baseIRI?, lenient?}) => Dataset` | `factoidal dump-nq -d FILE` (or `dump`/`dump-turtle`) | formats: `turtle`, `ntriples`, `nquads`, `trig`, `rdfxml`, `jsonld`\* — auto-detected where possible. Each call is one document: blank-node labels are scoped per RDF 1.1. Strict by default (issue #344) — a syntax error rejects with `ParseError` (`line`/`column`/`offset`, RDF/XML and JSON-LD carry a message only); `lenient: true`\*\* recovers instead, with `dataset.diagnostics` listing what was skipped. `dataset.prefixes` carries the declared map (`{}` for N-Triples/N-Quads) |
+| `query` | `(Dataset \| string \| DatasetHandle, sparql, {entail?}) => Bindings[] \| boolean \| Dataset` | `factoidal query -d FILE -e 'SPARQL' [--entail RDFS\|OWL-RL]` | SELECT → array of `Map<var, Term>`; ASK → boolean; CONSTRUCT → Dataset\*\*; `entail: "RDFS" \| "OWL-RL"`; a `DatasetHandle` routes to `handle.query()` and requires `entail: "none"` |
+| `update` | `(Dataset, sparqlUpdate) => Dataset` | `factoidal update -d FILE -e 'SPARQL update'` | \*\* in-memory; no persistence. (Durable UPDATE against a COTTAS store is a separate path: `factoidal serve --rw --delta-log ...` / `factoidal compact`.) `data` must not be a `DatasetHandle` — call `handle.update()` directly (it mutates in place and returns the handle, rather than a fresh Dataset) |
+| `openDataset` | `(Dataset \| string \| Array, {format?, baseIRI?}) => DatasetHandle` | `factoidal query --data-cottas-mem FILE -e 'SPARQL'` (nearest CLI analogue) | \*\* parses once, then indexes are reused across many `query()`/`update()`/`serialize()` calls (issue #680) — see "Dataset handles" below |
+| `serialize` | `(Dataset \| DatasetHandle, {format, prefixes?, literalShorthand?}) => string` | `factoidal dump-nq FILE` (nquads) / `factoidal dump FILE` (ntriples) / `factoidal dump-turtle FILE` | `nquads`, `ntriples` (sorted); `turtle`\*\* (prefix-compacted, subject-grouped — needs the entry bundle, flattens named graphs into the default graph). `prefixes` (issue #681) is used, and unused caller namespaces dropped, when given or when `data` is a Dataset with non-empty `.prefixes`; `literalShorthand` (default `true`) controls whether `xsd:integer`/`decimal`/`double`/`boolean` literals print bare |
+| `canonicalize` | `(Dataset \| string \| DatasetHandle) => string` | `factoidal canonicalize FILE` | RDFC-1.0 canonical N-Quads\*\* |
 | `graphs` | `(Dataset) => Array<[iri, Dataset]>` | `factoidal graphs list FILE` | enumerate named graphs (default graph excluded); pure enumeration, no engine round-trip |
 | `canonicalHash` | `(Dataset) => string` | `factoidal graphs hash FILE IRI` | RDFC-1.0 canonical hash of one graph\*\*; graph-scoped sibling of `canonicalize` — typically called with one entry of `graphs()`'s output |
 | `shaclValidate` | `(data, shapes) => {conforms, report: Dataset}` | `factoidal shacl --data FILE --shapes FILE [--json]` (alias: `factoidal validate --shapes FILE FILE`) | \*\* SHACL Core validation; `report` is the `sh:ValidationReport` graph; exit code 0 iff `sh:conforms` |
@@ -785,9 +960,14 @@ fixtures.
 | `queryCottas` | `(handle, sparql) => Bindings[] \| boolean \| Dataset` | `factoidal query --data-cottas-mem FILE -e 'SPARQL'` | \*\* SPARQL over a store opened by `openCottas()`; no `entail` option, no write overlay (read-only), no DESCRIBE |
 | `closeCottas` | `(handle) => void` | N/A | releases a handle from this process's registry; does not evict the underlying byte cache |
 | `queryRaw` | `(input, sparql) => string` | `factoidal query -d FILE -e 'SPARQL' -o json` | SPARQL-Results-JSON string, for callers that want the wire form |
-| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, jsonldFromRdf, didKey, xml, xpath, rif, cottasBytesStore, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies |
+| `capabilities` | `() => {construct, update, canonicalize, graphs, canonicalHash, shacl, shex, owlClosure, rml, csvw, jsonld, jsonldFromRdf, didKey, xml, xpath, rif, cottasBytesStore, profile, abiVersion, datasetHandles, parseDiagnostics, turtlePrefixes, ...}` | N/A | runtime feature probe; the CLI is one fixed native binary, not a runtime bundle whose feature set varies. `profile` is `'full'` or `'lite'` (see "Choosing a bundle" below); `datasetHandles`/`parseDiagnostics`/`turtlePrefixes` probe `openDataset`/`{lenient:true}`/the `serialize` prefix-and-shorthand options |
 | `dataFactory` | RDF/JS DataFactory | N/A | data-model class, not an engine operation |
-| `Dataset` | RDF/JS DatasetCore | N/A | returned by `parse`; accepted everywhere |
+| `Dataset` | RDF/JS DatasetCore | N/A | returned by `parse`; accepted everywhere; `.prefixes`/`.diagnostics` carry what the parser reported (own, non-enumerable properties) |
+| `DatasetHandle` | class, from `openDataset()` | N/A | `.query(sparql, {sparql12?})`, `.update(updateText)` (mutates in place, returns the handle), `.serialize({format?, prefixes?, literalShorthand?})`, `.toDataset()`, `.canonicalize()`, `.close()`; `.handle`/`.size`/`.prefixes`/`.closed` getters |
+| `ParseError` | `class ParseError extends Error` | N/A | thrown by `parse`/`query`/`openDataset`/etc. on a syntax error; `.line`/`.column`/`.offset` (numbers, or `undefined` for RDF/XML and JSON-LD) and `.format` |
+| `createApi` (from `@factoidal/core/api`) | `(entry, {engineName?, initCrypto?}) => typed API` | N/A | builds this same typed surface around an already-loaded npm-entry ABI object, no fetch, no eval — see "Bundlers and Content Security Policy" above |
+| `version` | `string` | N/A | the package version (`package.json`'s), the same on every entry point |
+| `engine` | `string` | N/A | which driver answered this typed surface: `'js'`, `'wasm'`, `'entry'` (via `createApi()`), `'lean4-wasm'` |
 
 The `fn.js` functional layer's own combinators — `union`, `difference`,
 `filter`, `mapQuads`, `equals`, `hash`, `builder`/`fromChunks`,
@@ -804,14 +984,44 @@ don't register (an honest failure, not a silent wrong answer) —
 tracked against the vendored W3C json-ld-api suite.
 \*\* CONSTRUCT, UPDATE, `canonicalize`, `canonicalHash`,
 `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`,
-`jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval`, `toCottas`, `openCottas`, `queryCottas`, and
-`closeCottas` are probed via `capabilities()`: they activate
-automatically when the dedicated npm-entry engine bundle is present,
-and the package reports their absence honestly against older bundles
-instead of guessing.
+`jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval`, `toCottas`, `openCottas`, `queryCottas`,
+`closeCottas`, `openDataset`, `{lenient:true}`, and the `serialize`
+`prefixes`/`literalShorthand` options are probed via `capabilities()`:
+they activate automatically when the dedicated npm-entry engine bundle
+is present, and the package reports their absence honestly against
+older bundles instead of guessing.
 `canonicalHash` rides the same engine support as `canonicalize` (it
 computes `canonicalize()` over one graph's triples); `graphs` is pure
 JS enumeration and is always available.
+
+### Dataset handles (issue #680)
+
+`openDataset()` parses once and keeps the result indexed in the
+engine, so repeated `query()`/`update()`/`serialize()` calls skip both
+the re-parse and the SPARQL-index rebuild that a fresh `query(ds, ...)`
+call pays every time:
+
+```js
+import { openDataset } from "@factoidal/core";
+
+const handle = await openDataset(`
+  @prefix ex: <http://example.org/> .
+  ex:alice ex:name "Alice" ; ex:knows ex:bob .
+`, { format: "turtle" });
+
+const rows = await handle.query("SELECT * WHERE { ?s ?p ?o }");
+await handle.update("PREFIX ex: <http://example.org/> INSERT DATA { ex:carol ex:name \"Carol\" }");
+const ttl = await handle.serialize({ format: "turtle" });
+await handle.close(); // every method rejects after this
+```
+
+`query(data, sparql, options)`, `serialize(data, options)`, and
+`canonicalize(data)` also accept a `DatasetHandle` for `data` directly
+(routing to the handle's own method); `update(handle, ...)` rejects
+with a `TypeError`, since `update()` always returns a fresh Dataset
+while `handle.update()` mutates the handle in place. Opening from a
+Dataset keeps that Dataset's own `.prefixes` on the handle for Turtle
+output. Needs the npm-entry engine bundle (`capabilities().datasetHandles`).
 
 ### The db API (openCottas/queryCottas/closeCottas/toCottas)
 
@@ -850,6 +1060,7 @@ initialised (auto on Node, explicit in the browser — see below);
 |---|---|---|---|---|
 | `parse`, `query` (SELECT/ASK), `serialize` (nquads/ntriples), `canonicalize`, `graphs`, `canonicalHash`, `queryHdt`, `queryRaw` | ✓ | ✓\* | ✓ | CLI bundle |
 | `query` (CONSTRUCT), `update`, `serialize` (turtle) | ✓ | ✓\* | ✓ | entry |
+| `openDataset` / `DatasetHandle` (`.query`/`.update`/`.serialize`/`.toDataset`/`.canonicalize`/`.close`) | ✓ | ✓\* | ✓ | entry |
 | `shaclValidate`, `shexValidate`, `owlClosure`, `rmlMap`, `csvwToRdf`, `jsonldToRdf`, `jsonldFromRdf`, `didKeyResolve`, `xmlWellformed`, `xpathEval`, `rifEval` | ✓ | ✓ | partial† | entry |
 | `coreRdfsClosure`/`rhoDfClosure`, `coreRdfsCheck`/`rhoDfFragmentCheck`, `rdfsPlusClosure`, `tableauMaterialise`, `tableauDlInconsistent`, `owlIsConsistent`, `owlEntails` | ✓ | ✓ | wrapper only‡ | entry |
 | `xsltTransform`, `mathmlEval`, `xformsRecalc`, `jsonSchemaValidate`, `schematronValidate`, `toan*`, `matrix*` | ✓ | ✓ | partial† | entry |
@@ -882,6 +1093,17 @@ wasm engine throws the existing "pending npm-entry bundle" error until
 that bundle is rebuilt via a real `wasm_of_ocaml` build (not a copy).
 `capabilities()` on the wasm engine reports this honestly (`tableau:
 false` etc.) rather than guessing.
+
+**The `lite` entry** (`require('@factoidal/core/lite')` /
+`import ... from '@factoidal/core/lite'`, Node only) implements the
+core row and the `openDataset`/`DatasetHandle` row above (`parse`,
+`query`, `update`, `serialize`, `canonicalize`, `graphs`,
+`canonicalHash`, `openDataset`/`DatasetHandle`, the extension-function
+and SERVICE-endpoint registration functions, `capabilities`) and
+nothing else: no SHACL, ShEx, OWL closure, JSON-LD, RDF/XML, CSVW,
+RML, RIF, XML, XPath, VC crypto, or COTTAS, and no CLI bundle (no
+entailment regimes, no `queryHdt`). `capabilities().profile` reads
+`'lite'`. See "Choosing a bundle: full or lite" below.
 
 ### VC crypto: the init story
 
@@ -1026,12 +1248,68 @@ depends on the source order: a subject-grouped or graph-grouped file
 gives disjoint ranges per block, a shuffled one gives overlapping ranges
 and a scan, which is correct and no worse than wire version 9.
 
+## Choosing a bundle: full or lite
+
+(Issue [684](https://github.com/danbri/factoidal/issues/684).)
+
+Two npm-entry ABI bundles ship: `factoidal-npm-entry.js` (`profile:
+"full"`, the default — `require('@factoidal/core')`) and
+`factoidal-npm-entry-lite.js` (`profile: "lite"` —
+`require('@factoidal/core/lite')`), both registering the same global
+`factoidalNpmEntry` (`abiVersion: "2"`). The lite bundle is about half
+the size:
+
+| | full (`.js`) | lite (`.js`) |
+|---|---:|---:|
+| Raw | 1151.7 KB | 581.4 KB |
+| gzip -9 | 338.8 KB | 169.2 KB |
+
+Pick `full` (the default) unless you specifically want the smaller
+download and only need the core surface. `lite` implements `parse`,
+`query`, `update`, `serialize`, `canonicalize`, `graphs`,
+`canonicalHash`, `openDataset`/`DatasetHandle`, the SPARQL 1.1 §17.6
+extension-function and SERVICE-endpoint registration functions, and
+`capabilities`. It does **not** implement SHACL, ShEx, OWL closure,
+JSON-LD, RDF/XML (`parseToDatasetJson(x, "rdfxml", ...)` answers a
+routing error naming the full bundle), CSVW, RML, RIF, XML, XPath, VC
+Data Integrity crypto, or COTTAS — and it ships no CLI bundle, so
+entailment-regime queries (`{entail: "RDFS" | "OWL-RL"}`) and
+`queryHdt()` are unavailable. `require('@factoidal/core/lite')`
+resolves `factoidal-npm-entry-lite.js` the same three-step way the
+full entry resolves its own bundle (env `FACTOIDAL_NPM_ENTRY_LITE`,
+then package-local, then `docs/fstar-extracted/`).
+
+## Bundle sizes
+
+`tools/bundle-sizes.sh` measures raw and `gzip -9` byte sizes for the
+bundles this package ships and writes
+[`docs/test-results/bundle-sizes.json`](../../docs/test-results/bundle-sizes.json).
+Re-run it after a rebuild; the table below is that file's content as
+of the commit noted underneath it, not a live value.
+
+| Bundle | Raw | gzip -9 |
+|---|---:|---:|
+| `factoidal-npm-entry.js` (js_of_ocaml, npm-entry ABI, full) | 1151.7 KB | 338.8 KB |
+| `factoidal.js` (js_of_ocaml, CLI bundle) | 1129.2 KB | 373.0 KB |
+| `factoidal-npm-entry.wasm.js` (wasm_of_ocaml loader, npm-entry ABI, full) | 44.2 KB | 15.3 KB |
+| `factoidal-npm-entry.wasm.assets/*.wasm` (its code asset) | 1425.4 KB | 359.3 KB |
+| `factoidal.wasm.js` (wasm_of_ocaml loader, CLI bundle) | 41.8 KB | 14.2 KB |
+| `factoidal.wasm.assets/*.wasm` (its code asset) | 1334.0 KB | 324.5 KB |
+| `l4-assets/l4factoidal.wasm` (Lean 4 engine) | 6210.8 KB | 1174.6 KB |
+| `l4-assets/l4factoidal.mjs` (Lean 4 loader) | 62.9 KB | 17.9 KB |
+| `factoidal-npm-entry-lite.js` (js_of_ocaml, npm-entry ABI, lite) | 581.4 KB | 169.2 KB |
+| `factoidal-npm-entry-lite.wasm.js` (wasm_of_ocaml loader, npm-entry ABI, lite) | 42.2 KB | 14.5 KB |
+| `factoidal-npm-entry-lite.wasm.assets/*.wasm` (its code asset) | 665.3 KB | 170.0 KB |
+
+Measured 2026-09-16 at commit `ec389c42`.
+
 ## Limits (deliberate, documented)
 
 - **In-memory only.** ~1.2 KB RAM per quad (measured); 1M quads ≈
   1.2 GB. No streaming parse yet — inputs are whole strings.
-- Lenient Turtle parsing: `parse()` cannot yet reject syntax errors
-  (bad input can yield an empty dataset).
+- `parse()` is strict by default (issue #344): a syntax error rejects
+  with a `ParseError` naming the line and column. Pass
+  `{lenient: true}` to recover instead — see the Quickstart section.
 - No *write* persistence in the npm build (SPARQL Update stays
   in-memory; durable UPDATE against a COTTAS store on disk is
   native-only today). *Reading* a COTTAS artifact's bytes is available

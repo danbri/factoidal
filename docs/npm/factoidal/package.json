@@ -44,6 +44,18 @@
       "types": "./wasm.d.ts",
       "default": "./wasm.js"
     },
+    "./lite": {
+      "types": "./lite.d.ts",
+      "import": "./lite.mjs",
+      "require": "./lite.js",
+      "default": "./lite.js"
+    },
+    "./api": {
+      "types": "./api.d.ts",
+      "import": "./api.mjs",
+      "require": "./api.js",
+      "default": "./api.js"
+    },
     "./rdfjs": "./rdfjs.js",
     "./fn": {
       "types": "./fn.d.ts",
@@ -60,6 +72,12 @@
     "./factoidal.js": "./factoidal.js",
     "./factoidal.wasm.js": "./factoidal.wasm.js",
     "./factoidal.wasm.assets/*": "./factoidal.wasm.assets/*",
+    "./factoidal-npm-entry.js": "./factoidal-npm-entry.js",
+    "./factoidal-npm-entry.wasm.js": "./factoidal-npm-entry.wasm.js",
+    "./factoidal-npm-entry.wasm.assets/*": "./factoidal-npm-entry.wasm.assets/*",
+    "./factoidal-npm-entry-lite.js": "./factoidal-npm-entry-lite.js",
+    "./factoidal-npm-entry-lite.wasm.js": "./factoidal-npm-entry-lite.wasm.js",
+    "./factoidal-npm-entry-lite.wasm.assets/*": "./factoidal-npm-entry-lite.wasm.assets/*",
     "./package.json": "./package.json",
     "./l4": {
       "types": "./l4.d.ts",
@@ -109,6 +127,12 @@
     "index.d.ts",
     "wasm.js",
     "wasm.d.ts",
+    "lite.js",
+    "lite.mjs",
+    "lite.d.ts",
+    "api.js",
+    "api.mjs",
+    "api.d.ts",
     "rdfjs.js",
     "fn.js",
     "fn.d.ts",
@@ -133,6 +157,9 @@
     "factoidal-npm-entry.js",
     "factoidal-npm-entry.wasm.js",
     "factoidal-npm-entry.wasm.assets/",
+    "factoidal-npm-entry-lite.js",
+    "factoidal-npm-entry-lite.wasm.js",
+    "factoidal-npm-entry-lite.wasm.assets/",
     "hacl-init.js",
     "hacl-wasm/",
     "version.json",
@@ -153,6 +180,9 @@
     "test": "node --test 'test/*.test.js' 'test/*.test.mjs'",
     "test:smoke": "node test/smoke.js && node test/smoke-wasm.mjs",
     "prepublishOnly": "npm test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   },
   "publishConfig": {
     "access": "public"
