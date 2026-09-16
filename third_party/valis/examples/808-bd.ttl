@@ -1,0 +1,116 @@
+# examples/808-bd.ttl
+#
+# TR-808 Bass Drum — standalone instrument circuit.
+#
+# Architecture: a bridged-T resonant network (TwinTBridge element) produces the
+# characteristic damped sine oscillation. A fast pitch envelope sweeps from the
+# attack peak down to the body frequency, giving the "thump". A Tanh stage
+# models the saturation in the original's output amplifier.
+#
+# Responds to MIDI note 36 (C2, General MIDI Kick 1).
+
+@prefix val:   <http://purl.org/stuff/valis/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix units: <http://lv2plug.in/ns/extensions/units#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix :      <urn:valis:808bd#> .
+
+:808bd a val:Circuit ;
+    rdfs:label "TR-808 Bass Drum" ;
+    val:element
+        :gate , :osc , :pitchEnv , :pitchScale ,
+        :ampEnv , :sat , :vca , :out ;
+    val:arc
+        :aGatePitchEnv , :aGateAmpEnv , :aGateTwinT ,
+        :aPitchEnvScale , :aScaleOsc ,
+        :aOscSat , :aSatVca , :aAmpEnvVca , :aVelOsc , :aVcaOut .
+
+:gate a val:NoteGate ; val:note 36 .
+
+:osc a val:TwinTBridge ;
+    val:decay 500.0 .
+
+# Fast pitch drop: attack peak swept down to body frequency.
+:pitchEnv a val:Envelope ;
+    val:attack  0.2 ;
+    val:decay   20.0 ;
+    val:sustain 0.0 ;
+    val:release 2.0 .
+
+# min = body frequency (Tune), max = attack pitch peak.
+:pitchScale a val:Scale ;
+    val:min 55.0 ;              # Hz — body frequency
+    val:max 210.0 .             # Hz — attack peak
+
+:ampEnv a val:Envelope ;
+    val:attack  1.0 ;
+    val:decay   5000.0 ;        # long hold — TwinTBridge internal decay shapes amplitude
+    val:sustain 0.0 ;
+    val:release 2000.0 .        # must outlast the TwinTBridge decay (500 ms)
+
+# Output stage saturation — models the clipping in the original's output amp.
+:sat a val:Tanh ;
+    val:gain 5.0 .
+
+:vca a val:VCA .
+
+:out a val:Output .
+
+# ── Arcs ──────────────────────────────────────────────────────────────────────
+
+:aGatePitchEnv a val:Arc ;
+    val:from [ val:node :gate     ; val:port "gate" ] ;
+    val:to   [ val:node :pitchEnv ; val:port "gate" ] .
+
+:aGateAmpEnv a val:Arc ;
+    val:from [ val:node :gate   ; val:port "gate" ] ;
+    val:to   [ val:node :ampEnv ; val:port "gate" ] .
+
+:aGateTwinT a val:Arc ;
+    val:from [ val:node :gate ; val:port "gate" ] ;
+    val:to   [ val:node :osc  ; val:port "trigger" ] .
+
+:aPitchEnvScale a val:Arc ;
+    val:from [ val:node :pitchEnv   ; val:port "out" ] ;
+    val:to   [ val:node :pitchScale ; val:port "in"  ] .
+
+:aScaleOsc a val:Arc ;
+    val:from [ val:node :pitchScale ; val:port "out"       ] ;
+    val:to   [ val:node :osc        ; val:port "frequency" ] .
+
+:aOscSat a val:Arc ;
+    val:from [ val:node :osc ; val:port "out" ] ;
+    val:to   [ val:node :sat ; val:port "in"  ] .
+
+:aSatVca a val:Arc ;
+    val:from [ val:node :sat ; val:port "out" ] ;
+    val:to   [ val:node :vca ; val:port "in"  ] .
+
+:aAmpEnvVca a val:Arc ;
+    val:from [ val:node :ampEnv ; val:port "out" ] ;
+    val:to   [ val:node :vca    ; val:port "cv"  ] .
+
+:aVelOsc a val:Arc ;
+    val:from [ val:node :gate ; val:port "velocity" ] ;
+    val:to   [ val:node :osc  ; val:port "velocity" ] .
+
+:aVcaOut a val:Arc ;
+    val:from [ val:node :vca ; val:port "out" ] ;
+    val:to   [ val:node :out ; val:port "in"  ] .
+
+# ── Host parameters ───────────────────────────────────────────────────────────
+
+:pDecay a val:Param ; val:slot 0 ;
+    val:target :osc ; val:property val:decay ;
+    lv2:name "Decay" ; lv2:symbol "decay" ;
+    units:unit units:ms ; lv2:minimum 50.0 ; lv2:maximum 2000.0 .
+
+:pTune a val:Param ; val:slot 1 ;
+    val:target :pitchScale ; val:property val:min ;
+    lv2:name "Tune" ; lv2:symbol "tune" ;
+    units:unit units:hz ; lv2:minimum 30.0 ; lv2:maximum 120.0 .
+
+:pDrive a val:Param ; val:slot 2 ;
+    val:target :sat ; val:property val:gain ;
+    lv2:name "Drive" ; lv2:symbol "drive" ;
+    lv2:minimum 1.0 ; lv2:maximum 20.0 .

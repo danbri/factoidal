@@ -1180,6 +1180,70 @@ const fn = {
     return new FnDataset(r.nquads);
   },
   /**
+   * Serialize a dataset (engine-produced bytes, sorted N-Quads order).
+   * Mirrors npm/factoidal/lib/api.js's `serialize(data, options)`.
+   * NOTE: this JSDoc deliberately never writes an inline object-type
+   * annotation as two adjacent open-brace characters -- Nunjucks reads
+   * that pair anywhere in this file, JS comment or not, as the start of
+   * a template expression, and fails the whole page's build. Same
+   * family as docs/web/hub/README.md's trap about this comment's own
+   * closing sequence appearing early inside itself -- a different pair
+   * of characters, same cause, and the reason this note avoids BOTH
+   * pairs rather than naming either one literally.
+   * @param {Dataset|string} data
+   * @param {object} [options]
+   * @param {'nquads'|'turtle'} [options.format]
+   * @param {string} [options.inputFormat]
+   * @param {object} [options.prefixes]
+   * @returns {Promise<string>}
+   *   'turtle' (prefix-compacted, subject-grouped -- entry_jsoo.ml's
+   *   serializeTurtle -> RDF_Turtle_Serialize.turtle_of_graph_auto)
+   *   flattens every named graph into the default graph (Turtle has no
+   *   named-graph notion); use 'nquads' (the default) when graph names
+   *   must survive. Needs the npm-entry engine bundle -- reaches for
+   *   `Factoidal.loadNpmEntry()`'s raw ABI internally, the same entry
+   *   `update` above uses.
+   */
+  async serialize(data, options) {
+    const opts = options || {};
+    const outFormat = String(opts.format || "nquads").toLowerCase();
+    if (outFormat !== "nquads" && outFormat !== "turtle") {
+      throw new TypeError("serialize: format must be 'nquads' or 'turtle'");
+    }
+    const abi = await Factoidal.loadNpmEntry();
+    let nq;
+    if (data && typeof data.toNQuads === "function") {
+      nq = data.toNQuads();
+    } else {
+      const parsed = JSON.parse(
+        abi.parseToDatasetJson(String(data), opts.inputFormat || "turtle", ""));
+      if (!parsed.ok) throw new Error(`serialize(parse): ${parsed.error}`);
+      nq = parsed.nquads;
+    }
+    if (outFormat === "turtle") {
+      if (opts.prefixes && typeof abi.serializeTurtleWith === "function") {
+        const r = JSON.parse(
+          abi.serializeTurtleWith(nq, JSON.stringify({ prefixes: opts.prefixes })));
+        if (!r.ok) throw new Error(`serialize: ${r.error}`);
+        return r.turtle;
+      }
+      if (typeof abi.serializeTurtle !== "function") {
+        throw new Error(
+          "serialize: the loaded factoidal-npm-entry bundle predates Turtle serialization");
+      }
+      const r = JSON.parse(abi.serializeTurtle(nq));
+      if (!r.ok) throw new Error(`serialize: ${r.error}`);
+      return r.turtle;
+    }
+    if (typeof abi.serializeNQuads !== "function") {
+      throw new Error(
+        "serialize: the loaded factoidal-npm-entry bundle predates N-Quads serialization");
+    }
+    const r = JSON.parse(abi.serializeNQuads(nq));
+    if (!r.ok) throw new Error(`serialize: ${r.error}`);
+    return r.nquads;
+  },
+  /**
    * Feature probe for the npm-entry engine bundle backing this page
    * (mirrors npm/factoidal/lib/api.js's `capabilities()` -- a
    * `typeof entry.X === 'function'` check per feature, not a blanket
