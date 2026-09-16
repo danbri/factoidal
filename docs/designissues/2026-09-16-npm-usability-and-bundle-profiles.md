@@ -106,6 +106,11 @@ Query cost, 2,000 triples, a two-pattern join, median of 20 runs
 | Stateless `queryDataset` (N-Quads text each call) | 155.6 ms | 132.6 ms |
 | `datasetQuery` on a handle | 58.9 ms | 53.6 ms |
 
+Through the typed JavaScript API (`tests/perf/npm_handle_vs_stateless.mjs`,
+2,000 triples, median of five runs, two runs): stateless `query()` 154.0 and
+159.0 ms; `handle.query()` 68.3 and 65.7 ms; `parse()` 424 and 420 ms;
+`openDataset()` 115 and 121 ms.
+
 The report measured 160 to 190 ms per SELECT on 1,486 triples and 600 to 660
 ms on 2,132 triples through the stateless path in Node.
 
