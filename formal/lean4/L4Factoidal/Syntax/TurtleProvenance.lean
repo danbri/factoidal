@@ -15,6 +15,11 @@ module keeps that information without touching the parser:
   statement), in document order. Projecting the triples out gives back
   `parseTurtle` exactly (`parseTurtleProv_triples`), so the annotated
   parse is the reference parse plus data, never a second parser.
+* `perTripleDataset` materialises the annotations as a dataset with one
+  named graph per triple, `<graphBase><n>`, and the provenance facts about
+  each graph name in the default graph; `Dataset.toNQuads` serialises it.
+  Concatenating the named graphs gives back the parse
+  (`perTripleDataset_triples`).
 * `reifyProvenance` materialises the annotations as RDF 1.2 reifiers,
   `_:r rdf:reifies <<( s p o )>>` plus one triple per provenance field,
   so downstream tools that speak RDF can attach parsing or validation
@@ -34,6 +39,7 @@ Design record: `docs/designissues/2026-09-20-triple-provenance.md`.
 
 import L4Factoidal.Syntax.Turtle
 import L4Factoidal.Syntax.TurtleTheorems
+import L4Factoidal.Syntax.NQuads
 
 namespace L4Factoidal.Syntax
 
@@ -258,6 +264,107 @@ theorem reifyProvenance_length (source : String) (annotated : List (Triple × Tr
       simp [reifyProvenance, List.flatMap_cons, reifyOne_length] at *
       omega
 
+/-! ## Materialisation as a dataset: one named graph per triple
+
+The N-Quads view of the same information. Every emitted triple goes into
+its own named graph, `<graphBase><n>` with `n` counting from 1 in document
+order, and the default graph carries the provenance facts about each graph
+name. A consumer that already speaks quads then attaches parsing or
+validation facts to a graph name with ordinary triples, and
+`Dataset.toNQuads` writes the whole thing out.
+
+`graphBase` is any well-formed IRI, so the names are well-formed by
+construction (`isIri_append`). A prefix such as `data:` is only a
+serialisation convenience: `data:` is also the RFC 2397 URI scheme, so
+the bound namespace must be an HTTP(S) IRI or a URN, never the bare
+scheme. -/
+
+/-- Appending to a well-formed IRI keeps it well-formed: it stays non-empty
+and still contains the colon. -/
+theorem isIri_append (b : WfIri) (s : String) : isIri (b.val ++ s) = true := by
+  have h := b.property
+  simp only [isIri, Bool.and_eq_true, Bool.not_eq_true'] at h ⊢
+  obtain ⟨h1, h2⟩ := h
+  refine ⟨?_, ?_⟩
+  · rw [String.isEmpty_eq_false_iff]
+    intro he
+    have ht : b.val.toList ++ s.toList = [] := by
+      simpa [String.toList_append] using congrArg String.toList he
+    have hb : b.val.toList = [] := (List.append_eq_nil_iff.mp ht).1
+    rw [List.contains_iff_mem, hb] at h2
+    simp at h2
+  · simp only [String.toList_append, List.contains_iff_mem, List.mem_append] at h2 ⊢
+    exact Or.inl h2
+
+/-- The graph name of the `n`-th emitted triple: `<graphBase><n>`. -/
+def graphName (graphBase : WfIri) (n : Nat) : WfIri :=
+  ⟨graphBase.val ++ toString n, isIri_append graphBase _⟩
+
+/-- The five provenance facts about one graph name. -/
+def graphFacts (source : String) (g : WfIri) (p : TripleProvenance) : List Triple :=
+  let r : Subject := .iri g
+  [ ⟨r, provSource,    .literal (Literal.string source)⟩,
+    ⟨r, provStatement, .literal (Literal.natural p.span.index)⟩,
+    ⟨r, provOrdinal,   .literal (Literal.natural p.ordinal)⟩,
+    ⟨r, provStart,     .literal (Literal.natural p.span.startPos)⟩,
+    ⟨r, provEnd,       .literal (Literal.natural p.span.endPos)⟩ ]
+
+/-- Pair each annotated triple with its graph name, numbering from `n`. -/
+def nameFrom (graphBase : WfIri) :
+    Nat → List (Triple × TripleProvenance) → List (WfIri × Triple × TripleProvenance)
+  | _, []      => []
+  | n, x :: xs => (graphName graphBase n, x) :: nameFrom graphBase (n + 1) xs
+
+theorem nameFrom_map_triple (graphBase : WfIri) :
+    ∀ (n : Nat) (xs : List (Triple × TripleProvenance)),
+      (nameFrom graphBase n xs).map (fun e => e.2.1) = xs.map Prod.fst := by
+  intro n xs
+  induction xs generalizing n with
+  | nil => rfl
+  | cons x xs ih => simp [nameFrom, ih]
+
+theorem nameFrom_length (graphBase : WfIri) :
+    ∀ (n : Nat) (xs : List (Triple × TripleProvenance)),
+      (nameFrom graphBase n xs).length = xs.length := by
+  intro n xs
+  induction xs generalizing n with
+  | nil => rfl
+  | cons x xs ih => simp [nameFrom, ih]
+
+/-- One named graph per triple, numbered from 1 in document order, with the
+provenance facts about the graph names in the default graph. -/
+def perTripleDataset (graphBase : WfIri) (source : String)
+    (annotated : List (Triple × TripleProvenance)) : Dataset :=
+  let named := nameFrom graphBase 1 annotated
+  { default := named.flatMap (fun e => graphFacts source e.1 e.2.2),
+    named   := named.map (fun e => { name := .iri e.1, graph := [e.2.1] }) }
+
+/-- Exactly one named graph per annotated triple. -/
+theorem perTripleDataset_named_length (graphBase : WfIri) (source : String)
+    (annotated : List (Triple × TripleProvenance)) :
+    (perTripleDataset graphBase source annotated).named.length = annotated.length := by
+  simp [perTripleDataset, nameFrom_length]
+
+/-- Concatenating the named graphs in order gives back the annotated triples,
+in order: the dataset is the parse plus data, nothing dropped or reordered. -/
+theorem perTripleDataset_triples (graphBase : WfIri) (source : String)
+    (annotated : List (Triple × TripleProvenance)) :
+    ((perTripleDataset graphBase source annotated).named.map NamedGraph.graph).flatten
+      = annotated.map Prod.fst := by
+  simp only [perTripleDataset]
+  rw [← nameFrom_map_triple graphBase 1 annotated]
+  generalize nameFrom graphBase 1 annotated = es
+  induction es with
+  | nil => rfl
+  | cons e es ih =>
+      rw [List.map_cons, List.map_cons, List.flatten_cons]
+      exact congrArg (List.cons _) ih
+
+/-- Parse a Turtle document straight into the per-triple dataset. -/
+def parseTurtleDataset (graphBase : WfIri) (source : String) (text : String)
+    (base : Option String := none) (mode : Mode := .rdf11) : Except ParseError Dataset :=
+  (parseTurtleProv text base mode).map (perTripleDataset graphBase source)
+
 /-! ## Axiom audit -/
 
 #print axioms parseStatementsFoldProv_forget
@@ -265,5 +372,8 @@ theorem reifyProvenance_length (source : String) (annotated : List (Triple × Tr
 #print axioms parseStatementsFoldProv_map_fst
 #print axioms parseTurtleProv_triples
 #print axioms reifyProvenance_length
+#print axioms isIri_append
+#print axioms perTripleDataset_named_length
+#print axioms perTripleDataset_triples
 
 end L4Factoidal.Syntax

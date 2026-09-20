@@ -39,8 +39,41 @@ keeps statement boundaries, so the ordinal comes for free there.
   (retrieval IRI, time, parser version) and composes with reifiers for
   triple-level facts. Nothing here prevents it.
 
-## RDF form
+## Dataset form: one named graph per triple (primary)
 
+Owner's steer (2026-09-20): N-Quads style datasets with a named graph per
+triple, `data:1`, `data:2`, and so on. `perTripleDataset graphBase source
+annotated` does that: the `n`-th emitted triple (from 1, document order)
+is the only triple of the named graph `<graphBase><n>`, and the default
+graph carries five facts about each graph name:
+
+    <graphBase>1 prov:source "<source>" ;
+        prov:statement <statement> ; prov:ordinal <ordinal> ;
+        prov:start <startPos> ; prov:end <endPos> .
+    s p o <graphBase>1 .
+
+`Dataset.toNQuads` serialises it; `parseTurtleDataset` goes from Turtle
+text to the dataset in one call. Proved: one named graph per annotated
+triple (`perTripleDataset_named_length`), and concatenating the named
+graphs in order gives back the parse (`perTripleDataset_triples`), so
+nothing is dropped or reordered on the way into the dataset.
+
+On the `data:` prefix: `data:` is also the RFC 2397 URI scheme, so
+`data:1` as an absolute IRI would be a data URI. The prefix is fine as a
+serialisation convenience once bound to a real namespace
+(`@prefix data: <https://factoidal.example/data/>`), and `graphBase` is
+any well-formed IRI, so the names are well-formed by construction
+(`isIri_append`). The `https://factoidal.example/` host is the same
+placeholder as the `prov:` namespace.
+
+Validation and later parsing facts attach to the graph name with ordinary
+triples in the default graph, or in a second named graph if a consumer
+wants provenance and validation kept apart. A store that already indexes
+by graph gets the per-triple lookup for free.
+
+## Reifier form (alternative)
+
+For consumers that want a single graph rather than a dataset,
 `reifyProvenance source annotated` produces, per annotated triple, six
 triples:
 
@@ -67,6 +100,8 @@ parsed graph when both are wanted.
 - `parseTurtleProv_triples`: projecting the provenance away from
   `parseTurtleProv` is exactly `parseTurtle`, errors included. The
   annotated parse is the reference parse plus data, not a second parser.
+- `perTripleDataset_named_length`, `perTripleDataset_triples`: the
+  dataset form keeps every triple, once, in order.
 - `reifyProvenance_length`: six triples per annotated triple.
 
 Build-time guards in `Syntax.TurtleProvenanceTests` pin spans and ordinals

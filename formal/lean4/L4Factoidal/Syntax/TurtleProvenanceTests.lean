@@ -60,6 +60,25 @@ private def reified : Graph := reifyProvenance "file:doc.ttl" annotated
               && o.val == "http://example.org/b"
         | _ => false)
 
+/- Dataset form: one named graph per triple, numbered from 1, five facts each
+in the default graph, and the N-Quads serialiser accepts it. -/
+private theorem baseIri : isIri "https://factoidal.example/data/" = true := by decide
+private def graphBase : WfIri := ⟨"https://factoidal.example/data/", baseIri⟩
+private def ds : Dataset := perTripleDataset graphBase "file:doc.ttl" annotated
+#guard ds.named.length == 3
+#guard ds.named.map (fun ng => ng.name)
+  == [.iri (graphName graphBase 1), .iri (graphName graphBase 2), .iri (graphName graphBase 3)]
+#guard (graphName graphBase 2).val == "https://factoidal.example/data/2"
+#guard (ds.named.map NamedGraph.graph).flatten == annotated.map Prod.fst
+#guard ds.default.length == 15
+#guard (match Dataset.toNQuads ds with
+        | .ok text => ((text.splitOn "\n").filter (fun l => !l.isEmpty)).length == 18
+                      && (text.splitOn "<https://factoidal.example/data/1> .").length == 2
+        | .error _ => false)
+#guard (match parseTurtleDataset graphBase "file:doc.ttl" doc with
+        | .ok d => d.named.length == 3
+        | .error _ => false)
+
 /- The span-forgetting fold is the plain fold on this document. -/
 #guard (match parseTurtleFoldProv (fun (n : Nat) _ ts => n + ts.length) 0 doc,
               parseTurtleFold (fun (n : Nat) ts => n + ts.length) 0 doc with
