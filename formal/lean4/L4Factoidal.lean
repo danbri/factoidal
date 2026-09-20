@@ -98,6 +98,8 @@ import L4Factoidal.Syntax.TurtleSerialize
 import L4Factoidal.Syntax.TriG
 import L4Factoidal.Syntax.TurtleTests
 import L4Factoidal.Syntax.TurtleTheorems
+import L4Factoidal.Syntax.TurtleProvenance
+import L4Factoidal.Syntax.TurtleProvenanceTests
 import L4Factoidal.Syntax.SyntaxTests
 import L4Factoidal.Syntax.SyntaxTheorems
 import L4Factoidal.Syntax.RdfXml
