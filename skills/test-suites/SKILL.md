@@ -402,6 +402,15 @@ refinements from 2026-07-04:
 - Cap ad-hoc runs at 10 minutes (`timeout 600`, anti-pattern #17); log
   long runs under `.claude-runs/` (#19).
 
+- **A gate whose tool is absent is not a skip and not a result.**
+  Install the tool, put it on PATH, run the gate (CLAUDE.md iron rule
+  15; recipes in `skills/session-restore/SKILL.md` § Gate tools: Deno
+  in 5 s, the Lean toolchain in 30 s). 2026-09-16: the 0.8.0 release
+  report carried "Deno is not installed, so the store-host suites ran
+  under Node only" and "the Lean toolchain is absent, so the native
+  smoke did not run". The owner: "Critical failing." Both gates ran
+  the same session once the tools were installed.
+
 ## What this skill does NOT cover
 
 - Building the runners — `build-and-test` skill.

@@ -120,6 +120,55 @@ if ! command -v fstar.exe >/dev/null 2>&1 && [[ ! -x "$HOME/.opam/fstar/bin/fsta
     > "$REPO_ROOT/.claude-runs/toolchain-cache-install.log" 2>&1 &
 fi
 
+# 0e. Gate tools: Deno and the pinned Lean toolchain (CLAUDE.md iron
+#     rule 15: a gate is never skipped because its tool is absent). On
+#     2026-09-16 the 0.8.0 release report skipped the Deno store-host
+#     runs and the Lean native smoke because neither tool was present;
+#     both install in under a minute behind the proxy (Deno 92 MB in
+#     about 5 s; elan + lean4 v4.33.1 in about 30 s, 2.9 GB), so they
+#     are installed in the background when missing. Logs:
+#     .claude-runs/gate-tools-deno.log, .claude-runs/gate-tools-lean.log.
+#     Every agent shell needs the PATH lines the orientation block
+#     prints; the hook cannot set PATH for later shells.
+GATE_TOOLS_STATUS=""
+# gh (the GitHub CLI) is not in the image either; it installs from the
+# Ubuntu repository in about 30 s. Whether a session may RUN
+# `gh workflow run` is a separate matter (the session's permission
+# layer; see skills/npm-release/SKILL.md), but the tool being absent
+# is never the reason a step is skipped (iron rule 15, 2026-09-16).
+if command -v gh >/dev/null 2>&1; then
+  GATE_TOOLS_STATUS="gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}'); "
+elif command -v apt-get >/dev/null 2>&1; then
+  GATE_TOOLS_STATUS="gh: installing in background (.claude-runs/gate-tools-gh.log); "
+  mkdir -p "$REPO_ROOT/.claude-runs"
+  nohup bash -c 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq gh' \
+    > "$REPO_ROOT/.claude-runs/gate-tools-gh.log" 2>&1 &
+else
+  GATE_TOOLS_STATUS="gh: absent, no apt-get; "
+fi
+if [[ -x "$HOME/.deno/bin/deno" ]]; then
+  GATE_TOOLS_STATUS="${GATE_TOOLS_STATUS}deno $("$HOME/.deno/bin/deno" --version 2>/dev/null | head -1 | awk '{print $2}') at ~/.deno/bin (export PATH=\$HOME/.deno/bin:\$PATH)"
+elif command -v deno >/dev/null 2>&1; then
+  GATE_TOOLS_STATUS="${GATE_TOOLS_STATUS}deno $(deno --version 2>/dev/null | head -1 | awk '{print $2}') on PATH"
+else
+  GATE_TOOLS_STATUS="${GATE_TOOLS_STATUS}deno: installing in background (.claude-runs/gate-tools-deno.log; then export PATH=\$HOME/.deno/bin:\$PATH)"
+  mkdir -p "$REPO_ROOT/.claude-runs"
+  nohup bash -c 'curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh -s -- -y' \
+    > "$REPO_ROOT/.claude-runs/gate-tools-deno.log" 2>&1 &
+fi
+LEAN_PIN="$(cat "$REPO_ROOT/formal/lean4/lean-toolchain" 2>/dev/null)"
+LEAN_PIN_DIR="$HOME/.elan/toolchains/$(printf '%s' "$LEAN_PIN" | sed 's#/#--#; s#:#---#')"
+if [[ -x "$HOME/.elan/bin/lake" && -d "$LEAN_PIN_DIR" ]]; then
+  GATE_TOOLS_STATUS="$GATE_TOOLS_STATUS; lean toolchain $LEAN_PIN at ~/.elan (export PATH=\$HOME/.elan/bin:\$PATH; lake runs from formal/lean4/)"
+elif command -v lake >/dev/null 2>&1; then
+  GATE_TOOLS_STATUS="$GATE_TOOLS_STATUS; lake on PATH (toolchain $LEAN_PIN resolved by elan on first use)"
+else
+  GATE_TOOLS_STATUS="$GATE_TOOLS_STATUS; lean toolchain $LEAN_PIN: installing in background (.claude-runs/gate-tools-lean.log; then export PATH=\$HOME/.elan/bin:\$PATH)"
+  mkdir -p "$REPO_ROOT/.claude-runs"
+  nohup bash -c 'curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none && "$HOME/.elan/bin/elan" toolchain install "$0"' "$LEAN_PIN" \
+    > "$REPO_ROOT/.claude-runs/gate-tools-lean.log" 2>&1 &
+fi
+
 # 1. Install fstar-mcp if missing. --locked is essential: fstar-mcp's
 #    git dep `pmcp` (paiml/rust-mcp-sdk) moved to an incompatible API
 #    at HEAD, so without the committed Cargo.lock (pmcp 1.9.4) the
@@ -211,12 +260,19 @@ fi
 #    Keep this short: it exists so the agent does NOT re-derive
 #    environment state with a dozen exploratory commands.
 FSTAR_STATUS="absent (committed binaries suffice for tests; for .fst work run skills/fstar-env)"
-command -v fstar.exe >/dev/null 2>&1 && FSTAR_STATUS="fstar.exe on PATH"
+if command -v fstar.exe >/dev/null 2>&1; then
+  FSTAR_STATUS="fstar.exe on PATH"
+elif [[ -x "$HOME/.opam/fstar/bin/fstar.exe" ]]; then
+  # Until 2026-09-16 this line said "absent" whenever the opam switch was
+  # not activated in the hook's own shell, which is always.
+  FSTAR_STATUS="installed in the opam switch 'fstar' (activate per shell: eval \$(opam env --switch=fstar --set-switch))"
+fi
 cat <<ORIENT
 factoidal session bootstrap:
 - ${BIN_STATUS}
 - test fixtures (all suites): ${TESTENV_STATUS} (tools/ensure-test-env.sh)
 - F* toolchain: ${FSTAR_STATUS}
+- gate tools: ${GATE_TOOLS_STATUS}
 - ${MCP_STATUS}
 - git: ${GIT_FRESHNESS}
 - commit identity: ${GIT_IDENTITY_STATUS}

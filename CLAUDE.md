@@ -236,6 +236,19 @@ root-level Lake failures.
     carries the wrong claim that paid for it). The repair commit and
     the doc update belong together; "fixed it, will document later"
     is how the same failure bills twice.
+15. **A gate is never skipped because its tool is absent.** Install
+    the tool, put it on PATH, run the gate. The install recipes are in
+    `skills/session-restore/SKILL.md` § Gate tools (Deno: one curl,
+    about 5 s; Lean: elan plus the pinned toolchain, about 30 s, then
+    the build the gate needs); F\* is `skills/fstar-env`. The session
+    hook installs Deno and the Lean toolchain in the background when
+    they are missing and reports them in its orientation block.
+    "Could not run in this container" is not a result. 2026-09-16: the
+    0.8.0 release report listed the Deno store-host runs and the Lean
+    native smoke as not run because `deno` and `lake` were absent,
+    when both install in under a minute behind the proxy. Owner:
+    "Critical failing." Both gates then ran in the same session
+    (numbers in `skills/npm-release/SKILL.md`).
 
 ## Known sound-but-narrow rewrites
 
@@ -813,6 +826,12 @@ session.
   table ("load-bearing", "smoke test", ...).
 - [`issue-hygiene`](skills/issue-hygiene/SKILL.md) — keep GitHub
   issues + checklists in sync as PRs land.
+- [`obsolescence-sweep`](skills/obsolescence-sweep/SKILL.md) — after a
+  feature lands, find the prose the landing made false ("not yet",
+  "out of scope", "parked") in docs, hub posts, skills, `.fst`
+  headers and suite yamls; `tools/obsolescence-sweep.sh` and the
+  stale-claim lexicon. (The session hook warned this entry was
+  missing until 2026-09-16.)
 - [`jsoo-debug-bundle`](skills/jsoo-debug-bundle/SKILL.md) — build a
   source-mapped JS bundle so browser-only crashes show real OCaml
   stacks.
