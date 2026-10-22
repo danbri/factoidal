@@ -3,6 +3,10 @@
 # third-party client library over a REAL socket, through the same socat
 # carrier line the deployment uses.
 #
+#   tools/xmpp-interop.sh          the native l4xmpp-serve behind socat
+#   tools/xmpp-interop.sh wasm     the Node host (npm/factoidal/xmpp/server.mjs)
+#                                  running the engine in WebAssembly
+#
 # Exit codes:
 #   0  the interop ran and passed
 #   1  the interop ran and FAILED
@@ -22,6 +26,13 @@ fail_setup () { echo "xmpp-interop: $1" >&2; exit 2; }
 
 command -v node >/dev/null 2>&1 || fail_setup "node is not on PATH"
 
+MODE="${1:-native}"
+case "$MODE" in
+  native|wasm) ;;
+  *) fail_setup "unknown mode '$MODE' (native or wasm)" ;;
+esac
+
+if [ "$MODE" = native ]; then
 [ -x "$BIN" ] || fail_setup \
   "l4xmpp-serve is not built at $BIN — run: (cd $REPO/formal/lean4 && lake build l4xmpp-serve)"
 
@@ -30,6 +41,7 @@ command -v socat >/dev/null 2>&1 || fail_setup \
         non-Lean surface is one socat line (deploy/fly/xmpp/entrypoint.sh).
         Install it (Debian: apt-get install socat; macOS: brew install socat)
         and run again. This is exit 2, not a pass: the interop did not run."
+fi
 
 # @xmpp/client is a test-only dependency. It is looked for in three
 # places so a checkout that has not run `npm install` says so plainly.
@@ -58,6 +70,7 @@ cleanup () {
 }
 trap cleanup EXIT
 
+if [ "$MODE" = native ]; then
 # THE CARRIER LINE. This is the plaintext variant of what
 # deploy/fly/xmpp/entrypoint.sh runs on 5223 with OPENSSL-LISTEN; the
 # only difference is the TLS termination, which a local test does not
@@ -65,9 +78,21 @@ trap cleanup EXIT
 socat "TCP-LISTEN:$PORT,reuseaddr,fork" \
   "EXEC:$BIN --domain $DOMAIN --state $STATE --plaintext,pipes" &
 CARRIER_PID=$!
+else
+# The Node host: the same library in WebAssembly, one engine session per
+# socket. The command exits 3 when the resolved wasm predates the session
+# ops; that is reported as exit 2 here, not as a pass.
+node "$REPO/npm/factoidal/bin/factoidal.mjs" xmpp-serve "$STATE" \
+  --domain "$DOMAIN" --port "$PORT" --quiet &
+CARRIER_PID=$!
+fi
 
 # Wait for the listener rather than sleeping a guess.
-for _ in $(seq 1 50); do
+for _ in $(seq 1 100); do
+  if ! kill -0 "$CARRIER_PID" 2>/dev/null; then
+    wait "$CARRIER_PID"; RC=$?
+    fail_setup "the $MODE server exited with status $RC before listening"
+  fi
   if node -e "require('net').connect($PORT,'127.0.0.1').on('connect',function(){this.end();process.exit(0)}).on('error',()=>process.exit(1))" 2>/dev/null; then
     break
   fi

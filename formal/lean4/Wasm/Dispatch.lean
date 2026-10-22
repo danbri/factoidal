@@ -49,6 +49,7 @@ import Wasm.Ops.Lws
 import Wasm.Ops.Solid
 import Wasm.Ops.Toan
 import Wasm.Ops.Xmpp
+import Wasm.Ops.XmppSession
 import Wasm.Ops.Crypto
 
 namespace L4Wasm
@@ -259,6 +260,11 @@ def lwsSolidOpNames : List String :=
   , "solidClientRequest"
   , "solidClientResponse" ]
 
+/-- The XMPP server-handle op names (`Wasm/Ops/XmppSession.lean`), served
+ONLY by `callIO`: a server and its sessions live in handle tables the pure
+`call` cannot reach. The stateless `xmpp*` parsers above stay in `opNames`. -/
+def xmppSessionOpNamesList : List String := Ops.xmppSessionOpNames
+
 /-- `{"ok":true,"abiVersion":"…","ops":[…],"blobOps":[…],"blobIoOps":[…]}`. -/
 private def opsReflectionFor (names : List String) : String :=
   (Json.object
@@ -425,6 +431,15 @@ def callIO (op : String) (argsJson : String) : IO String :=
         match args with
         | [a, b] => pure (Ops.solidClientResponse a b)
         | args => pure (errJson s!"solidClientResponse expects 2 arguments, got {args.length}"))
+  -- The XMPP server as handles (`Wasm/Ops/XmppSession.lean`).
+  | "xmppOpen"           => withArgs (arityIO1 op Ops.xmppOpen)
+  | "xmppClose"          => withArgs (arityIO1 op Ops.xmppClose)
+  | "xmppSessionOpen"    => withArgs (arityIO2 op Ops.xmppSessionOpen)
+  | "xmppSessionFeed"    => withArgs (arityIO2 op Ops.xmppSessionFeed)
+  | "xmppSessionDeliver" => withArgs (arityIO2 op Ops.xmppSessionDeliver)
+  | "xmppSessionClose"   => withArgs (arityIO1 op Ops.xmppSessionClose)
+  | "xmppRosterGet"      => withArgs (arityIO2 op Ops.xmppRosterGet)
+  | "xmppRosterSet"      => withArgs (arityIO3 op Ops.xmppRosterSet)
   | "storeHandleList" =>
       withArgs (fun args =>
         match args with
@@ -432,7 +447,7 @@ def callIO (op : String) (argsJson : String) : IO String :=
         | args => pure (errJson s!"storeHandleList expects 0 arguments, got {args.length}"))
   | "ops"              => pure (opsReflectionFor
                                  (opNames ++ handleOpNames ++ storeHandleOpNames ++ packOpNames
-                                    ++ extOpNames ++ lwsSolidOpNames))
+                                    ++ extOpNames ++ lwsSolidOpNames ++ xmppSessionOpNamesList))
   | _                  => pure (call op argsJson)
 
 /-- The dispatch entry the `l4_call_blob_io` C export serves: the string

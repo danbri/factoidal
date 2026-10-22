@@ -157,7 +157,7 @@ if [ ! -d "$WORK/mimalloc" ]; then
       https://github.com/microsoft/mimalloc "$WORK/mimalloc"
 fi
 cp "$WORK/mimalloc/include/mimalloc.h" "$INC/lean/mimalloc.h"
-printf '#pragma once\n#define LEAN_GITHASH "%s"\n' "$(lean --githash)" > "$INC/githash.h"
+printf '#pragma once\n#define LEAN_GITHASH "%s"\n' "$("$TOOLCHAIN/bin/lean" --githash)" > "$INC/githash.h"
 
 # ---------------------------------------------------------------------
 say "step 3 — regenerate the core library's C with the native lean"
@@ -166,10 +166,16 @@ gen_one() {
   local f="$1" out
   out="$CORE_C/$(echo "${f#$LEAN_SRC/}" | sed 's|/|_|g; s|\.lean$|.c|')"
   [ -s "$out" ] && return 0
-  lean -R "$LEAN_SRC" -c "$out" "$f" >/dev/null 2>&1 || { echo "GEN-FAIL $f" >&2; rm -f "$out"; }
+  # The toolchain's OWN binary, not the `lean` shim: elan resolves the
+  # shim from the CURRENT DIRECTORY's lean-toolchain file, and this
+  # script may be run from the repository root, which has none — then
+  # the default toolchain (another version) is used and every module
+  # fails with "incompatible header" (measured 2026-10-22: 631 GEN-FAILs,
+  # core-c with one file, an undefined-initialize_Init link).
+  "$TOOLCHAIN/bin/lean" -R "$LEAN_SRC" -c "$out" "$f" >/dev/null 2>&1 || { echo "GEN-FAIL $f" >&2; rm -f "$out"; }
 }
 export -f gen_one
-export CORE_C LEAN_SRC
+export CORE_C LEAN_SRC TOOLCHAIN
 # Init always; plus the Std subset the library imports (Std.Data.HashMap
 # / HashSet arrived with RLClosureIndexed and the COTTAS lazy dicts —
 # their initializers pull the Std/Data + Std/Classes import closure).

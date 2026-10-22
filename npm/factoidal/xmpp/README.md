@@ -59,6 +59,61 @@ carries these ops at all, so a caller (or a test) can skip gracefully
 against an older committed bundle instead of getting a confusing
 "unknown op" error.
 
+## The server: `@factoidal/core/xmpp/server` and `factoidal xmpp-serve`
+
+```sh
+mkdir -p state && printf 'juliet:r0m30\nromeo:juli3t\n' > state/accounts
+npx factoidal xmpp-serve state --domain localhost            # plaintext on 5222
+npx factoidal xmpp-serve state --cert fullchain.pem --key privkey.pem   # XEP-0368 direct TLS on 5223
+```
+
+```js
+import { listen } from '@factoidal/core/xmpp/server'
+const running = await listen({ dir: 'state', domain: 'localhost', port: 0 })
+console.log(running.origin)        // xmpp://127.0.0.1:<port>
+await running.close()
+```
+
+`server.mjs` is a socket, a UTF-8 decoder and a routing table. It runs
+one engine session per connection and answers every byte through the
+engine's `xmppSessionFeed` operation; `L4Factoidal.XMPP.Server.step`
+(Lean, `formal/lean4/L4Factoidal/XMPP/Server.lean`) makes every
+protocol decision and the host performs what comes back. It is the same
+library the native carrier (`deploy/fly/xmpp/`, one `l4xmpp-serve`
+process per connection behind socat) serves; the wasm session ops are
+`formal/lean4/Wasm/Ops/XmppSession.lean`.
+
+| op | arguments | answer |
+|---|---|---|
+| `xmppOpen` | `[configJson]` | `{ ok, handle, domain, accounts }` |
+| `xmppSessionOpen` | `[server, optionsJson]` | `{ ok, handle }` — `streamId` and `nonce` are required and come from the host's random source |
+| `xmppSessionFeed` | `[session, text]` | `{ ok, send: [...], route: [{to, text}], presence: [...], rostersSaved: [...], close, stage, bare, full }` |
+| `xmppSessionDeliver` | `[session, text]` | `{ ok, delivered, send }` — `delivered:false` for an unbound session; nothing is lost |
+| `xmppSessionClose` | `[session]` | `{ ok, send }` |
+| `xmppRosterGet` / `xmppRosterSet` | `[server, bare]` / `[server, bare, encoded]` | the roster in the engine's own on-disk encoding |
+| `xmppClose` | `[server]` | `{ ok, sessions }` |
+
+The state directory is laid out as the native carrier's, so the two
+hosts can share one: `DIR/accounts` (one `user:password` per line),
+`DIR/roster/<bare jid>.tsv` (persisted on every `rostersSaved`, loaded
+on start), and `DIR/spool/<bare jid>/<file>` — a stanza written there
+by any process is delivered to that account's bound session and
+unlinked. That last one is how a program that is not an XMPP client (a
+web application, say) hands a user a message: write a file.
+
+What it speaks: RFC 6120 stream negotiation, stream errors, SASL PLAIN
+and SCRAM-SHA-256, resource binding; RFC 6121 roster, presence
+subscription and broadcast, message delivery with the server-stamped
+`from`; XEP-0030 `disco#info`; XEP-0368 direct TLS with `--cert`/`--key`.
+Not: STARTTLS, server-to-server federation, MUC/MIX/GC3 rooms, PRECIS.
+Known limitation shared with the native harness: one SCRAM salt per
+server (`saltB64` in the config), not one per account.
+
+Tests: `node --test test/xmpp-serve.test.mjs` drives the host over real
+TCP sockets, including an independent SCRAM-SHA-256 computed with
+`node:crypto`; `tools/xmpp-interop.sh wasm` drives it with
+`@xmpp/client`, a third-party implementation.
+
 ## What this does not cover yet, on purpose
 
 - **Stanza construction from JSON.** `parseStanza` has no inverse: building
@@ -66,10 +121,9 @@ against an older committed bundle instead of getting a confusing
   sibling-node XML constructor the Lean side doesn't have yet.
 - **GC3 itself.** Still an unfinished, early-stage upstream XSF spec —
   see the design record.
-- **SASL/SCRAM computation.** The message *format* exists on the Lean
-  side (`L4Factoidal.XMPP.Sasl`); the actual hash/HMAC computation
-  doesn't yet (no HACL* HMAC-SHA-256 binding — see the design record's
-  crypto section).
+- **SASL/SCRAM computation as a pure function.** The server ops above
+  do SCRAM-SHA-256 (via `L4Factoidal.XMPP.Scram` and the HACL* SHA-256
+  binding); there is no standalone pure op for it in this module.
 - **MUC/MIX interop modules.**
 
 ## Known upstream limit (found via this module's tests, 2026-09-07)

@@ -147,6 +147,7 @@
     "bin/",
     "lws/",
     "solid/",
+    "xmpp/",
     "store-host/",
     "browser.js",
     "browser.d.ts",

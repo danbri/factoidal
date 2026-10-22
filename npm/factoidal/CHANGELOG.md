@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+**XMPP server from wasm.** `factoidal xmpp-serve DIR` and
+`@factoidal/core/xmpp/server` run the Lean XMPP server
+(`L4Factoidal.XMPP.Server` — RFC 6120 negotiation, SASL PLAIN and
+SCRAM-SHA-256, binding, RFC 6121 roster/presence/messages) in the
+WebAssembly engine, one engine session per TCP or direct-TLS (XEP-0368)
+connection. New engine ops `xmppOpen`, `xmppSessionOpen`,
+`xmppSessionFeed`, `xmppSessionDeliver`, `xmppSessionClose`,
+`xmppRosterGet`, `xmppRosterSet`, `xmppClose`
+(`formal/lean4/Wasm/Ops/XmppSession.lean`). The state directory is the
+native carrier's layout (`accounts`, `roster/`, `spool/`), so a stanza
+written as a file under `spool/<bare jid>/` is delivered to that
+account. See `xmpp/README.md`.
+
 ## 0.8.0 — 2026-09-16
 
 **Behaviour change: parsing is strict by default.** `parse()` (and

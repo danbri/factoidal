@@ -154,6 +154,19 @@ showed the wasm unmodified after the second run. So an unexpected sha
 change after a rebuild is a real input change, not link nondeterminism;
 chase it rather than shrugging.
 
+**Run it from any directory — but only since 2026-10-22.** Step 3 used
+to call `lean` through the elan shim, and elan picks the toolchain from
+the CURRENT directory's `lean-toolchain`. Run from the repository root
+(which has none) it silently used the default toolchain (v4.35.0 on the
+machine that paid for this) against v4.33.1 sources: every core module
+printed `GEN-FAIL` (the real error, hidden by `2>/dev/null`, was
+`incompatible header` on the first `.olean`), `core-c` held one file,
+and the failure surfaced only at the link as hundreds of
+`undefined symbol: l_List_appendTR___redArg` / `initialize_Init`. The
+script now calls `$TOOLCHAIN/bin/lean` directly for the regeneration
+and the githash. If a link ever reports an undefined core symbol again,
+check `core C files:` in step 3's output before anything else.
+
 Incremental: the script skips a core `.c`/`.o` that already exists, so a
 re-run after a change to *our* Lean code only redoes steps 0, 6 and 7
 (seconds). To force a clean build, delete the work directory.

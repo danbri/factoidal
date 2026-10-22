@@ -391,3 +391,34 @@ them.
   yet.
 - Committed to git in PR #661 (Jid/Wire/Core/Sasl/Gc3 landing) and this
   same-day wasm/JS follow-up.
+
+### 2026-10-22: the server from wasm, behind a Node socket
+
+`Wasm/Ops/XmppSession.lean` puts `Server.step` behind handles the way
+`Wasm/Ops/Lws.lean` puts the LWS operations behind one: `xmppOpen` holds
+a server (accounts, the roster of each bare JID, who is available),
+`xmppSessionOpen` one connection, `xmppSessionFeed` the bytes a socket
+read, and the answer is what the harness performs on files and a socket —
+`send`, `route`, `presence`, `rostersSaved`, `close`. The host supplies
+the stream id and the SCRAM nonce (the module has no random source) and
+owns routing: `route` is reported, and the host calls
+`xmppSessionDeliver` on the sessions bound to that bare JID, which asks
+`Session.canDeliver` before anything else — the gate the harness learned
+to ask first (defect 2 above).
+
+`npm/factoidal/xmpp/server.mjs` is the host and `factoidal xmpp-serve`
+the command: TCP or XEP-0368 direct TLS, one engine session per
+connection, in-memory routing with a per-account hold for unbound
+targets, rosters persisted under `DIR/roster/` in the engine's own
+encoding, and the harness's `DIR/spool/<bare jid>/` mailbox polled and
+delivered, so the two hosts share a state directory and a program that
+is not an XMPP client can hand a user a stanza by writing a file. No
+protocol decision moved: the harness's `drainBuffer` loop is reproduced
+op for op (fresh roster before every `step`, `maxUnits` as
+`policy-violation`), and `tests/xmpp/server.mjs`'s RFC sequences are
+replayed over real sockets in `npm/factoidal/test/xmpp-serve.test.mjs`,
+with the SCRAM exchange computed independently in `node:crypto`.
+`tools/xmpp-interop.sh wasm` drives it with `@xmpp/client`.
+
+The BEAM host of the "Runtime" section above is now the third option,
+after socat-per-process and Node-per-socket, not the second.

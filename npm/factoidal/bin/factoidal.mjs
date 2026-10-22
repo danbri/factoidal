@@ -112,6 +112,7 @@ commands:
   lws-serve DIR               serve Linked Web Storage 1.0 over HTTP
   solid-serve DIR             serve the Solid Protocol over HTTP
   solid-client OP URL         run one Solid client operation
+  xmpp-serve DIR              serve XMPP (RFC 6120/6121) over TCP or direct TLS
 
 global options:
   -h, --help                  print this text, or a command's own help
@@ -333,6 +334,42 @@ those operations landed makes this command exit 3 and say so.
 
 Specification: https://solidproject.org/TR/protocol`,
 
+  'xmpp-serve': `factoidal xmpp-serve - serve XMPP (RFC 6120 and RFC 6121) over TCP or direct TLS
+
+usage: factoidal xmpp-serve DIR [--domain NAME] [--port N] [--host ADDRESS]
+                            [--accounts FILE] [--cert FILE --key FILE]
+
+Starts a Node TCP server that runs one engine session per connection and
+answers every byte through the engine's xmppSessionFeed operation.
+
+DIR is the state directory, laid out as the native carrier's
+(formal/lean4/Harness/XmppServe.lean): DIR/accounts holds one
+user:password per line (unless --accounts names another file), rosters
+are persisted under DIR/roster/, and a stanza written as a file under
+DIR/spool/<bare jid>/ is delivered to that account's bound session.
+
+  --domain NAME    the domain the server is authoritative for (default localhost);
+                   a stream for any other domain is answered host-unknown
+  --port N         the port to bind; 0 takes an ephemeral one
+                   (default 5222, or 5223 with --cert and --key)
+  --host ADDRESS   the address to bind (default 127.0.0.1)
+  --accounts FILE  the accounts file (default DIR/accounts)
+  --cert FILE      PEM certificate chain: XEP-0368 direct TLS, no STARTTLS
+  --key FILE       PEM private key for --cert
+
+The server makes no protocol decision. Stream negotiation, SASL PLAIN and
+SCRAM-SHA-256, resource binding, the roster, presence subscription and
+broadcast, message routing with the server-stamped from, stream errors and
+disco#info are answered by formal/lean4/L4Factoidal/XMPP/. A WebAssembly
+module built before the session operations landed makes this command
+exit 3 and say so.
+
+Not implemented: STARTTLS (use --cert/--key), server-to-server federation,
+MUC/MIX/GC3 rooms.
+
+Specifications: https://www.rfc-editor.org/rfc/rfc6120 and
+https://www.rfc-editor.org/rfc/rfc6121`,
+
   'solid-client': `factoidal solid-client - run one Solid client operation
 
 usage: factoidal solid-client <get|put|post|delete|discover> URL [options]
@@ -412,6 +449,7 @@ const VALUE_OPTIONS = {
   compact: new Set([]),
   'lws-serve': new Set(['port', 'host', 'base']),
   'solid-serve': new Set(['port', 'host', 'base', 'owner']),
+  'xmpp-serve': new Set(['port', 'host', 'domain', 'accounts', 'cert', 'key']),
   'solid-client': new Set(['body', 'file', 'content-type', 'interpret'])
 }
 
@@ -1071,6 +1109,45 @@ async function commandSolidServe (positional, options) {
   return untilInterrupted(running, quiet)
 }
 
+async function commandXmppServe (positional, options) {
+  if (positional.length !== 1) throw new UsageError('xmpp-serve needs one DIR')
+  const quiet = options.quiet === true
+  const { listen, XmppHostError } = await import('../xmpp/server.mjs')
+  const fs = await import('node:fs/promises')
+  const useTls = options.cert !== undefined || options.key !== undefined
+  if (useTls && (typeof options.cert !== 'string' || typeof options.key !== 'string')) {
+    throw new UsageError('--cert and --key go together')
+  }
+  const settings = {
+    dir: positional[0],
+    port: servePort(options, useTls ? 5223 : 5222),
+    host: serveHost(options),
+    onError: (error) => { if (!quiet) err(`xmpp-serve: ${error.message}`) }
+  }
+  if (typeof options.domain === 'string') settings.domain = options.domain
+  if (typeof options.accounts === 'string') settings.accountsText = await fs.readFile(options.accounts, 'utf8')
+  if (useTls) {
+    settings.cert = await fs.readFile(options.cert)
+    settings.key = await fs.readFile(options.key)
+  }
+  let running
+  try {
+    running = await listen(settings)
+  } catch (error) {
+    if (error instanceof XmppHostError && error.unknownOp) {
+      return notWired('xmpp-serve', error.message)
+    }
+    throw error
+  }
+  if (!quiet) {
+    err(`xmpp-serve: listening on ${running.origin} for domain ${running.xmpp.domain}` +
+        ` (${running.xmpp.accounts} accounts, state ${positional[0]}` +
+        (useTls ? ', direct TLS)' : ', PLAINTEXT: no TLS on this listener)'))
+  }
+  out(running.origin)
+  return untilInterrupted(running, quiet)
+}
+
 // The command's verbs, as aliases for the wasm ABI's request kinds. A
 // kind name is accepted directly too, so this table adds a spelling and
 // hides nothing.
@@ -1138,7 +1215,8 @@ const COMMANDS = {
   compact: commandCompact,
   'lws-serve': commandLwsServe,
   'solid-serve': commandSolidServe,
-  'solid-client': commandSolidClient
+  'solid-client': commandSolidClient,
+  'xmpp-serve': commandXmppServe
 }
 
 // ----------------------------------------------------------------- main

@@ -213,6 +213,7 @@ extern_lib libl4exthost pkg := do
              `Wasm.Ops.Solid,
              `Wasm.Ops.Toan,
              `Wasm.Ops.Xmpp,
+             `Wasm.Ops.XmppSession,
              `Wasm.Ops.Crypto]
 
 -- Runs the XML parser over real W3C XML Conformance Test Suite files:
