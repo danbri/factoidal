@@ -1,21 +1,16 @@
 name: Deploy to GitHub Pages
 
 on:
+  # Since 2026-10-25 the site is built from danbri/factoidal-core main
+  # (owner: "keep workflow and page and build from factoidal-core main").
+  # This repository keeps the Pages URL https://danbri.github.io/factoidal/.
   push:
-    branches: [main, master, claude/main]
-    paths: [docs/**]
-  # Bot-pushed commits that use the default GITHUB_TOKEN do NOT
-  # trigger other workflows (GitHub limitation, preventing
-  # infinite loops). So dashboard-refresh's "ci: refresh dashboard"
-  # auto-commits and w3c-tests's "ci(linux-x86_64): generated docs
-  # artifacts" updates land on origin but never fire deploy-pages
-  # via the push trigger above. workflow_run subscribes deploy-pages
-  # to those workflows directly so the dashboard-pages publication
-  # happens whenever upstream successfully refreshes the data.
-  workflow_run:
-    workflows: ["Dashboard Refresh", "W3C Test Suite"]
-    types: [completed]
-    branches: [main, master, claude/main]
+    branches: [claude/main]
+    paths: [.github/workflows/deploy-pages.yml]
+  schedule:
+    - cron: '41 */3 * * *'
+  repository_dispatch:
+    types: [factoidal-core-docs]
   workflow_dispatch:
 
 permissions:
@@ -32,6 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: danbri/factoidal-core
+          ref: main
+          submodules: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -41,6 +40,16 @@ jobs:
         # build never depends on npmjs.org being reachable. See
         # third_party/eleventy/README.md.
         run: third_party/eleventy/install.sh docs
+      - name: Engine files of the published npm release (same-origin pages)
+        # The wasm is not in git (iron rule 9); pages that import
+        # /npm/factoidal/ need it. Take it from the published package.
+        run: |
+          set -euo pipefail
+          V=$(npm view @factoidal/core version)
+          npm pack "@factoidal/core@$V" --silent
+          tar -xzf "factoidal-core-$V.tgz"
+          cp package/l4-assets/l4factoidal.* npm/factoidal/l4-assets/
+          echo "engine files from @factoidal/core@$V"
       - name: Build
         working-directory: docs
         run: npx @11ty/eleventy --output=_site
