@@ -1,16 +1,29 @@
 name: Deploy to GitHub Pages
 
+# The site at https://danbri.github.io/factoidal/ is built from the docs/
+# sources of danbri/factoidal-core (branch main), not from this repository.
+# Owner decision, 2026-10-25, on the publishing proposal of
+# https://github.com/danbri/factoidal-core/pull/98: "site serves from
+# /factoidal/ repo". The URL stays; the content follows factoidal-core.
+#
+# The hub pages (docs/web/hub/*.md) load the published @factoidal/core
+# release from jsDelivr (docs/_data/factoidalRelease.js names the version).
+# The historical notebooks import the same-origin npm/factoidal/ copy, whose
+# wasm is gitignored in factoidal-core: the build fills it from the
+# danbri/factoidal-builds `web` release when there is one for the checked-out
+# commit, else from the npm package of the release that the hub pages load.
+
 on:
-  # Since 2026-10-25 the site is built from danbri/factoidal-core main
-  # (owner: "keep workflow and page and build from factoidal-core main").
-  # This repository keeps the Pages URL https://danbri.github.io/factoidal/.
+  # danbri/factoidal-core sends this when docs/** changes on main
+  # (.github/workflows/dispatch-pages.yml there; it needs a token secret).
+  repository_dispatch:
+    types: [factoidal-core-docs]
+  # Without the token, the site follows factoidal-core once a day.
+  schedule:
+    - cron: '17 5 * * *'
   push:
     branches: [claude/main]
     paths: [.github/workflows/deploy-pages.yml]
-  schedule:
-    - cron: '41 */3 * * *'
-  repository_dispatch:
-    types: [factoidal-core-docs]
   workflow_dispatch:
 
 permissions:
@@ -30,41 +43,40 @@ jobs:
         with:
           repository: danbri/factoidal-core
           ref: main
-          submodules: false
+          # tools/fetch-builds.sh picks the release whose source commit is
+          # HEAD or an ancestor of HEAD, so it needs the history.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install Eleventy (offline, vendored)
-        # third_party/eleventy/npm-cache is a vendored npm cache
-        # (134 packages, no registry access needed) so the Pages
-        # build never depends on npmjs.org being reachable. See
-        # third_party/eleventy/README.md.
-        run: third_party/eleventy/install.sh docs
-      - name: Engine files of the published npm release (same-origin pages)
-        # The wasm is not in git (iron rule 9); pages that import
-        # /npm/factoidal/ need it. Take it from the published package.
+      - name: Engine files for the historical notebooks (factoidal-builds web release)
+        id: builds
+        continue-on-error: true
+        run: tools/fetch-builds.sh --set web
+      - name: Engine files for the historical notebooks (npm package, when no release matched)
+        if: steps.builds.outcome != 'success'
         run: |
           set -euo pipefail
-          V=$(npm view @factoidal/core version)
-          npm pack "@factoidal/core@$V" --silent
-          tar -xzf "factoidal-core-$V.tgz"
-          cp package/l4-assets/l4factoidal.* npm/factoidal/l4-assets/
-          echo "engine files from @factoidal/core@$V"
+          version="$(node -p "require('./docs/_data/factoidalRelease.js').version")"
+          tmp="$(mktemp -d)"
+          (cd "$tmp" && npm pack "@factoidal/core@${version}" >/dev/null && tar xzf ./*.tgz)
+          mkdir -p npm/factoidal/l4-assets docs/web/hub/assets/l4
+          cp "$tmp"/package/l4-assets/l4factoidal.wasm "$tmp"/package/l4-assets/l4factoidal.mjs "$tmp"/package/l4-assets/l4factoidal.js npm/factoidal/l4-assets/
+          cp "$tmp"/package/l4-assets/l4factoidal.wasm "$tmp"/package/l4-assets/l4factoidal.mjs docs/web/hub/assets/l4/
+          echo "engine files from @factoidal/core@${version} (npm)"
+      - name: Install Eleventy (offline, vendored)
+        run: third_party/eleventy/install.sh docs
       - name: Build
         working-directory: docs
         run: npx @11ty/eleventy --output=_site
       - name: Check Pages link integrity (advisory)
-        # Broken links should not block stats / test-results from
-        # publishing — those are independent of design-doc cross-refs.
-        # Step is advisory: surfaces broken links as a GitHub workflow
-        # annotation but always exits 0 so the deploy proceeds. Run
-        # locally for the exact list:
-        #   ./tests/local/check_pages_links.sh docs/_site
         continue-on-error: true
         run: |
           if ! ./tests/local/check_pages_links.sh docs/_site; then
             echo "::warning::Broken links present in docs/_site — see step log; deploy continues."
           fi
+      - name: Record the source commit
+        run: git rev-parse HEAD > docs/_site/source-commit.txt
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_site
