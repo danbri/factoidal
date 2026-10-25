@@ -4,7 +4,9 @@ name: Deploy to GitHub Pages
 # sources of danbri/factoidal-core (branch main), not from this repository.
 # Owner decision, 2026-10-25, on the publishing proposal of
 # https://github.com/danbri/factoidal-core/pull/98: "site serves from
-# /factoidal/ repo". The URL stays; the content follows factoidal-core.
+# /factoidal/ repo", and earlier the same day (PR 1024): "keep workflow and
+# page and build from factoidal-core main". The URL stays; the content
+# follows factoidal-core.
 #
 # The hub pages (docs/web/hub/*.md) load the published @factoidal/core
 # release from jsDelivr (docs/_data/factoidalRelease.js names the version).
@@ -18,9 +20,10 @@ on:
   # (.github/workflows/dispatch-pages.yml there; it needs a token secret).
   repository_dispatch:
     types: [factoidal-core-docs]
-  # Without the token, the site follows factoidal-core once a day.
+  # Without the token, the site follows factoidal-core every 3 hours (the
+  # schedule of PR 1024, which PR 1025 had cut to daily by mistake).
   schedule:
-    - cron: '17 5 * * *'
+    - cron: '41 */3 * * *'
   push:
     branches: [claude/main]
     paths: [.github/workflows/deploy-pages.yml]
