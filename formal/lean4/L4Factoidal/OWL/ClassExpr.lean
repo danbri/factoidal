@@ -45,9 +45,9 @@ def owlQualifiedCardinality : WfIri :=
   ⟨"http://www.w3.org/2002/07/owl#qualifiedCardinality", rfl⟩
 def owlCardinality : WfIri := ⟨"http://www.w3.org/2002/07/owl#cardinality", rfl⟩
 
-/-- The four ordering facets. `pattern` and the length facets are out
-    of scope here and are simply absent from a parse, never guessed
-    at. -/
+/-- Datatype facets read by the current concrete-domain decision
+    procedures. Unsupported facets are absent from a parse, never
+    guessed at. -/
 def facetMinInclusive : WfIri :=
   ⟨"http://www.w3.org/2001/XMLSchema#minInclusive", rfl⟩
 def facetMaxInclusive : WfIri :=
@@ -56,9 +56,12 @@ def facetMinExclusive : WfIri :=
   ⟨"http://www.w3.org/2001/XMLSchema#minExclusive", rfl⟩
 def facetMaxExclusive : WfIri :=
   ⟨"http://www.w3.org/2001/XMLSchema#maxExclusive", rfl⟩
+def facetPattern : WfIri :=
+  ⟨"http://www.w3.org/2001/XMLSchema#pattern", rfl⟩
 
-def orderingFacets : List WfIri :=
-  [facetMinInclusive, facetMaxInclusive, facetMinExclusive, facetMaxExclusive]
+def supportedDatatypeFacets : List WfIri :=
+  [facetMinInclusive, facetMaxInclusive, facetMinExclusive, facetMaxExclusive,
+   facetPattern]
 
 /-! ## The AST -/
 
@@ -162,6 +165,29 @@ def walkRdfList (st : Store) : Term → Nat → List Term
             | some h, some t => h :: walkRdfList st t n
             | _, _           => []
 
+/-- Read an entire RDF collection or decline. Unlike `walkRdfList`,
+    exhausting fuel, reaching a dangling non-cell term, seeing a
+    cycle, or finding a cell without one unambiguous `rdf:first` and
+    `rdf:rest` value makes the whole result unavailable. -/
+def walkRdfListComplete (st : Store) (head : Term) : Option (List Term) :=
+  let rec go : Term → Nat → Std.HashSet Subject → List Term → Option (List Term)
+    | _, 0, _, _ => none
+    | t, n + 1, seen, acc =>
+        if t == .iri rdfNil then some acc.reverse
+        else
+          match termAsSubject t with
+          | none => none
+          | some s =>
+            if seen.contains s then none
+            else
+              let firsts := (st.withSubjPred s rdfFirst).map (·.o) |>.eraseDups
+              let rests := (st.withSubjPred s rdfRest).map (·.o) |>.eraseDups
+              match firsts, rests with
+              | [firstValue], [restValue] =>
+                  go restValue n (seen.insert s) (firstValue :: acc)
+              | _, _ => none
+  go head (st.graph.length + 1) ∅ []
+
 /-- A cardinality lexeme is a run of ASCII digits. Anything else is
     `none`, which makes the parse `unknown` — sound under the open
     world, where a restriction nobody could read constrains nothing. -/
@@ -179,14 +205,14 @@ def cardinalityValue (st : Store) (s : Subject) (p : WfIri) : Option Nat :=
   | _                 => none
 
 /-- One `owl:withRestrictions` element is a blank node carrying
-    exactly one `<facetIRI> <value>` triple. The four ordering facets
-    are probed by name — four lookups, and an unrecognised facet is
-    simply absent from the result rather than guessed at. -/
+    exactly one `<facetIRI> <value>` triple. Supported facets are
+    probed by name; an unrecognised facet is absent from the result
+    rather than guessed at. -/
 def facetPairsOf (st : Store) (heads : List Term) : List (WfIri × Term) :=
   heads.flatMap (fun h =>
     match termAsSubject h with
     | none   => []
-    | some s => orderingFacets.filterMap (fun f =>
+    | some s => supportedDatatypeFacets.filterMap (fun f =>
         (firstObject st s f).map (fun v => (f, v))))
 
 mutual
@@ -225,19 +251,30 @@ termination_by 3 * fuel
     never see those markers. Reading them needs this entry. -/
 def parseCeMarkers (st : Store) (s : Subject) (n : Nat) : ClassExpr :=
          match firstObject st s owlIntersectionOf with
-         | some head => .intersection (parseClassExprList st (walkRdfList st head (n + 1)) n)
+         | some head =>
+             match walkRdfListComplete st head with
+             | some members => .intersection (parseClassExprList st members n)
+             | none => .unknown
          | none =>
          match firstObject st s owlUnionOf with
-         | some head => .union (parseClassExprList st (walkRdfList st head (n + 1)) n)
+         | some head =>
+             match walkRdfListComplete st head with
+             | some members => .union (parseClassExprList st members n)
+             | none => .unknown
          | none =>
          match firstObject st s owlOneOf with
-         | some head => .oneOf (walkRdfList st head (n + 1))
+         | some head =>
+             match walkRdfListComplete st head with
+             | some members => .oneOf members
+             | none => .unknown
          | none =>
          match firstObject st s owlOnDatatype with
          | some (.iri baseDt) =>
              (match firstObject st s owlWithRestrictions with
               | some head =>
-                  .dataRestriction baseDt (facetPairsOf st (walkRdfList st head (n + 1)))
+                  match walkRdfListComplete st head with
+                  | some members => .dataRestriction baseDt (facetPairsOf st members)
+                  | none => .unknown
               | none => .dataRestriction baseDt [])
          | _ =>
          match firstObject st s owlComplementOf with

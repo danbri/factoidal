@@ -214,4 +214,26 @@ compared. -/
 guess. -/
 #guard !(valueSetIsEmpty (valueSetSubtract (.dense fullQInterval) (.enum [intL "1"])))
 
+/-! ## Explicit exclusions
+
+The finite-interval branch counts distinct values in the interval.
+Lexical aliases across the integer family collapse to one excluded
+value, and an exclusion outside the interval has no effect. -/
+
+#guard valueSetIsEmptyAfterExcluding
+  (.interval { lo := .incl 10, hi := .incl 10 }) [intL "10"]
+#guard valueSetIsEmptyAfterExcluding
+  (.interval { lo := .incl 10, hi := .incl 10 }) [byteL "+010"]
+#guard !(valueSetIsEmptyAfterExcluding
+  (.interval { lo := .incl 10, hi := .incl 11 }) [intL "10"])
+#guard !(valueSetIsEmptyAfterExcluding
+  (.interval { lo := .incl 10, hi := .incl 10 }) [intL "9"])
+#guard valueSetIsEmptyAfterExcluding
+  (.enum [intL "-0"]) [byteL "0"]
+#guard !(valueSetIsEmptyAfterExcluding
+  (.enum [intL "-0", intL "1"]) [byteL "0"])
+/-! Floating-point signed zero remains a distinct OWL data value and
+is disjoint from the integer family. -/
+#guard !(termProvablyEqual (fltL "-0") (intL "0"))
+
 end L4Factoidal.XSD

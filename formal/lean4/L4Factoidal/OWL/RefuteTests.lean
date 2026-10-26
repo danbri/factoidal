@@ -39,6 +39,10 @@ private def fuel : Nat := 40
 
 private def refuted (g : Graph) : Bool := refute g fuel == some false
 
+private def searchResult (g : Graph) (budget : Nat) : Verdict × Nat :=
+  let tb := collectAxioms g
+  search tb g { initState g with tbox := tb } budget
+
 /-! ## Negation normal form -/
 
 #guard ClassExpr.beq (nnf (.complement (.complement (.named exC)))) (.named exC)
@@ -161,6 +165,27 @@ private def gWitnessNotCounted : Graph :=
 
 #guard !(refuted gWitnessNotCounted)
 
+/-! Generated witnesses are fresh under arbitrary input blank-node
+names. Alpha-renaming an unrelated node to the old generated-name
+pattern cannot pool its `not C` label with the `∃p.C` witness. Adding
+`∀p.not C` makes the same existential genuinely inconsistent. -/
+private def collidingWitness : BNodeId := witnessId indI exP 0
+
+private def gWitnessNameCollision (constrained : Bool) : Graph :=
+  [ ⟨indI, rdfType, bnT "fresh-some"⟩,
+    ⟨bn "fresh-some", owlOnProperty, .iri exP⟩,
+    ⟨bn "fresh-some", owlSomeValuesFrom, .iri exC⟩,
+    ⟨.bnode collidingWitness, rdfType, bnT "fresh-not-c"⟩,
+    ⟨bn "fresh-not-c", owlComplementOf, .iri exC⟩ ] ++
+  if constrained then
+    [ ⟨indI, rdfType, bnT "fresh-all"⟩,
+      ⟨bn "fresh-all", owlOnProperty, .iri exP⟩,
+      ⟨bn "fresh-all", owlAllValuesFrom, bnT "fresh-not-c"⟩ ]
+  else []
+
+#guard tableauConsistent (gWitnessNameCollision false) fuel == some true
+#guard tableauConsistent (gWitnessNameCollision true) fuel == some false
+
 /-! ## Union branching
 
 `C ⊔ D` refutes the node only when BOTH disjuncts clash. -/
@@ -185,6 +210,234 @@ private def gUnionOneGood : Graph :=
 
 #guard !(refuted gUnionOneGood)
 
+/-! The total search keeps the old depth-first order and one shared
+budget pool. The root and each visited disjunct consume one unit. -/
+#guard searchResult gUnionBothBad 0 == (.out, 0)
+#guard searchResult gUnionBothBad 2 == (.out, 0)
+#guard searchResult gUnionBothBad 3 == (.clash, 0)
+#guard searchResult gUnionBothBad 8 == (.clash, 5)
+#guard searchResult gUnionOneGood 3 == (.open', 0)
+
+/-! ## Deterministic union propagation -/
+
+private def gForcedUnion (alsoNotD : Bool) : Graph :=
+  [ ⟨indI, rdfType, bnT "forced-u"⟩,
+    ⟨bn "forced-u", owlUnionOf, bnT "forced-u-1"⟩,
+    ⟨bn "forced-u-1", rdfFirst, .iri exC⟩,
+    ⟨bn "forced-u-1", rdfRest, bnT "forced-u-2"⟩,
+    ⟨bn "forced-u-2", rdfFirst, .iri exD⟩,
+    ⟨bn "forced-u-2", rdfRest, .iri rdfNil⟩,
+    ⟨indI, rdfType, bnT "forced-not-c"⟩,
+    ⟨bn "forced-not-c", owlComplementOf, .iri exC⟩ ] ++
+  if alsoNotD then
+    [ ⟨indI, rdfType, bnT "forced-not-d"⟩,
+      ⟨bn "forced-not-d", owlComplementOf, .iri exD⟩ ]
+  else []
+
+#guard tableauConsistent (gForcedUnion false) fuel == some true
+#guard tableauConsistent (gForcedUnion true) fuel == some false
+#guard !(unionChoiceContradicted .unknown [.complement .unknown])
+#guard ClassExpr.beqList
+  (liveUnionChoices [.named exC, .named exD, .named exY]
+    [.complement (.named exD)])
+  [.named exC, .named exY]
+#guard clashNodes [] { nodes := [{ id := indI, labels := [.union []] }] }
+
+private def wideForcedUnionState (n : Nat) : RState :=
+  { nodes := (List.range n).map (fun i =>
+      { id := .bnode ("forced-union-" ++ toString i),
+        labels := [.union [.named exC, .named exD],
+                   .complement (.named exC)] }) }
+
+private def forcedUnionPasses (n : Nat) : Bool :=
+  let (st, changed) := onePass [] [] (wideForcedUnionState n)
+  changed && st.nodes.all (fun node => memCe (.named exD) node.labels)
+
+#guard forcedUnionPasses 100
+#guard forcedUnionPasses 500
+#guard forcedUnionPasses 1000
+
+/-! ## Nominal identification and named class definitions -/
+
+private def exK : WfIri := ⟨"http://e/K", rfl⟩
+
+/-! The first nominal choice clashes after `i = y`; the second choice
+`i = z` stays open. Adding `z : C` closes both choices. -/
+private def gNominalChoice (zInC : Bool) : Graph :=
+  [ ⟨indI, rdfType, bnT "nom"⟩,
+    ⟨bn "nom", owlOneOf, bnT "nm1"⟩,
+    ⟨bn "nm1", rdfFirst, .iri exY⟩, ⟨bn "nm1", rdfRest, bnT "nm2"⟩,
+    ⟨bn "nm2", rdfFirst, .iri exZ⟩, ⟨bn "nm2", rdfRest, .iri rdfNil⟩,
+    ⟨indI, rdfType, bnT "notC-nom"⟩,
+    ⟨bn "notC-nom", owlComplementOf, .iri exC⟩,
+    ⟨.iri exY, rdfType, .iri exC⟩ ] ++
+  if zInC then [⟨.iri exZ, rdfType, .iri exC⟩] else []
+
+#guard tableauConsistent (gNominalChoice false) fuel == some true
+#guard tableauConsistent (gNominalChoice true) fuel == some false
+
+/-! Forced equalities are collected in node and label order. The
+batch closes a two-link equality cascade within two state visits;
+without the final positive label the same cascade remains open. -/
+private def forcedNominalCascadeState (contradiction : Bool) : RState :=
+  { nodes :=
+      [ { id := indI,
+          labels := [.oneOf [.iri exY], .complement (.named exC)] },
+        { id := .iri exY, labels := [.oneOf [.iri exZ]] },
+        { id := .iri exZ,
+          labels := if contradiction then [.named exC] else [] } ] }
+
+#guard forcedNominalPairs [] (forcedNominalCascadeState false) ==
+  [(indI.toTerm, .iri exY), (.iri exY, .iri exZ)]
+#guard search [] [] (forcedNominalCascadeState false) 2 == (.open', 0)
+#guard search [] [] (forcedNominalCascadeState true) 2 == (.clash, 0)
+
+/-! Candidate collection is a fold, so a wide nominal does not consume
+one native stack frame per member. These guards also pin the exact
+source-order cardinality at n/2n/4n. -/
+private def wideNominalState (n : Nat) : RState :=
+  { nodes := [{ id := indI,
+                labels := [.oneOf (List.replicate n (.iri exY))] }] }
+
+#guard (pendingNominal [] (wideNominalState 1000)).map List.length == some 1000
+#guard (pendingNominal [] (wideNominalState 2000)).map List.length == some 2000
+#guard (pendingNominal [] (wideNominalState 4000)).map List.length == some 4000
+
+private def wideForcedNominalBatchState (n : Nat) : RState :=
+  { nodes := (List.range n).map (fun i =>
+      { id := .bnode ("forced-batch-" ++ toString i),
+        labels := [.oneOf [.bnode ("forced-member-" ++ toString i)]] }) }
+
+private def forcedNominalBatchCount (n : Nat) : Nat :=
+  (propagateForcedNominals [] (wideForcedNominalBatchState n)).ident.length
+
+#guard forcedNominalBatchCount 25 == 25
+#guard forcedNominalBatchCount 50 == 50
+#guard forcedNominalBatchCount 100 == 100
+
+/-! Grouped distinctness sees through an intermediate alias. Without
+`i differentFrom z`, the two singleton choices can identify all three
+names; with it, the second identification is impossible. -/
+private def gNominalAlias (apart : Bool) : Graph :=
+  [ ⟨indI, rdfType, bnT "iy"⟩,
+    ⟨bn "iy", owlOneOf, bnT "iy-list"⟩,
+    ⟨bn "iy-list", rdfFirst, .iri exY⟩,
+    ⟨bn "iy-list", rdfRest, .iri rdfNil⟩,
+    ⟨.iri exY, rdfType, bnT "yz"⟩,
+    ⟨bn "yz", owlOneOf, bnT "yz-list"⟩,
+    ⟨bn "yz-list", rdfFirst, .iri exZ⟩,
+    ⟨bn "yz-list", rdfRest, .iri rdfNil⟩ ] ++
+  if apart then [⟨indI, owlDifferentFrom, .iri exZ⟩] else []
+
+#guard tableauConsistent (gNominalAlias false) fuel == some true
+#guard tableauConsistent (gNominalAlias true) fuel == some false
+
+/-! A live literal member makes the whole nominal choice unavailable.
+The resource branch alone clashes, so exploring only that branch would
+manufacture a refutation. -/
+private def gNominalLiteral : Graph :=
+  [ ⟨indI, rdfType, bnT "nl"⟩,
+    ⟨bn "nl", owlOneOf, bnT "nl1"⟩,
+    ⟨bn "nl1", rdfFirst, .iri exY⟩, ⟨bn "nl1", rdfRest, bnT "nl2"⟩,
+    ⟨bn "nl2", rdfFirst, cardLit "7"⟩, ⟨bn "nl2", rdfRest, .iri rdfNil⟩,
+    ⟨indI, rdfType, bnT "notC-lit"⟩,
+    ⟨bn "notC-lit", owlComplementOf, .iri exC⟩,
+    ⟨.iri exY, rdfType, .iri exC⟩ ]
+
+#guard tableauConsistent gNominalLiteral fuel == some true
+
+/-! Every named `oneOf` marker contributes an equivalence. The two
+singleton definitions force `y = z`; their asserted difference closes
+the graph. Removing it leaves a model. -/
+private def gNamedOneOfs (apart : Bool) : Graph :=
+  [ ⟨.iri exK, owlOneOf, bnT "ky"⟩,
+    ⟨bn "ky", rdfFirst, .iri exY⟩, ⟨bn "ky", rdfRest, .iri rdfNil⟩,
+    ⟨.iri exK, owlOneOf, bnT "kz"⟩,
+    ⟨bn "kz", rdfFirst, .iri exZ⟩, ⟨bn "kz", rdfRest, .iri rdfNil⟩ ] ++
+  if apart then [⟨.iri exY, owlDifferentFrom, .iri exZ⟩] else []
+
+#guard tableauConsistent (gNamedOneOfs false) fuel == some true
+#guard tableauConsistent (gNamedOneOfs true) fuel == some false
+
+/-! The empty enumeration denotes the empty class. Its declaration is
+satisfiable; asserting a member is not. -/
+private def gEmptyNamedOneOf : Graph :=
+  [⟨.iri exK, owlOneOf, .iri rdfNil⟩]
+
+#guard tableauConsistent gEmptyNamedOneOf fuel == some true
+#guard tableauConsistent (gEmptyNamedOneOf ++ [⟨indI, rdfType, .iri exK⟩]) fuel
+       == some false
+
+/-! An unterminated list is withheld. Treating its readable prefix as
+the complete singleton would conflict with `i differentFrom y`. -/
+private def gTruncatedNamedOneOf : Graph :=
+  [ ⟨.iri exK, owlOneOf, bnT "broken"⟩,
+    ⟨bn "broken", rdfFirst, .iri exY⟩,
+    ⟨indI, rdfType, .iri exK⟩,
+    ⟨indI, owlDifferentFrom, .iri exY⟩ ]
+
+#guard tableauConsistent gTruncatedNamedOneOf fuel == some true
+
+/-! Named Boolean markers are equivalences. Their contrapositives let
+`not K` expose the negated operands, and a disjoint union also makes
+its operands pairwise disjoint. -/
+private def namedBooleanList (marker : WfIri) : Graph :=
+  [ ⟨.iri exK, marker, bnT "kb1"⟩,
+    ⟨bn "kb1", rdfFirst, .iri exC⟩, ⟨bn "kb1", rdfRest, bnT "kb2"⟩,
+    ⟨bn "kb2", rdfFirst, .iri exD⟩, ⟨bn "kb2", rdfRest, .iri rdfNil⟩ ]
+
+private def notNamed (b : String) (c : WfIri) : Graph :=
+  [⟨indI, rdfType, .bnode b⟩, ⟨.bnode b, owlComplementOf, .iri c⟩]
+
+#guard refuted (namedBooleanList owlUnionOf ++
+  [⟨indI, rdfType, .iri exK⟩] ++ notNamed "nu-c" exC ++ notNamed "nu-d" exD)
+#guard refuted (namedBooleanList owlIntersectionOf ++
+  [⟨indI, rdfType, .iri exK⟩] ++ notNamed "ni-c" exC)
+#guard refuted (namedBooleanList owlUnionOf ++
+  notNamed "nu-k" exK ++ [⟨indI, rdfType, .iri exC⟩])
+#guard refuted (namedBooleanList owlDisjointUnionOf ++
+  [⟨indI, rdfType, .iri exC⟩, ⟨indI, rdfType, .iri exD⟩])
+
+/-! Pairwise disjointness necessarily emits quadratic output. These
+bounded n/2n/4n guards pin its exact output size while the emitted-C
+audit checks that neither fold consumes one native stack frame per
+operand. -/
+private def disjointUnionAxiomGraph (n : Nat) : Graph :=
+  [⟨.iri exK, owlDisjointUnionOf,
+      if n == 0 then .iri rdfNil else bnT "du-list-0"⟩] ++
+  (List.range n).flatMap (fun i =>
+    [ ⟨bn ("du-list-" ++ toString i), rdfFirst, .iri exC⟩,
+      ⟨bn ("du-list-" ++ toString i), rdfRest,
+        if i + 1 < n then bnT ("du-list-" ++ toString (i + 1))
+        else .iri rdfNil⟩ ])
+
+private def disjointUnionAxiomCount (n : Nat) : Nat :=
+  let g := disjointUnionAxiomGraph n
+  (namedClassExpressionAxioms [] (Store.ofGraph g)).length
+
+#guard disjointUnionAxiomCount 25 == 604
+#guard disjointUnionAxiomCount 50 == 2454
+#guard disjointUnionAxiomCount 100 == 9904
+
+/-! `∃p.{y}` produces the exact countable edge `(i,p,y)`. Through
+`p inverseOf q`, it violates `y : ≤0 q`. -/
+private def gSingletonNominalEdge (bounded : Bool) : Graph :=
+  [ ⟨.iri exP, owlInverseOf, .iri exQ⟩,
+    ⟨indI, rdfType, bnT "some-nom"⟩,
+    ⟨bn "some-nom", owlOnProperty, .iri exP⟩,
+    ⟨bn "some-nom", owlSomeValuesFrom, bnT "only-y"⟩,
+    ⟨bn "only-y", owlOneOf, bnT "only-y-list"⟩,
+    ⟨bn "only-y-list", rdfFirst, .iri exY⟩,
+    ⟨bn "only-y-list", rdfRest, .iri rdfNil⟩ ] ++
+  if bounded then
+    [ ⟨.iri exY, rdfType, bnT "max-zero-inverse"⟩,
+      ⟨bn "max-zero-inverse", owlOnProperty, .iri exQ⟩,
+      ⟨bn "max-zero-inverse", owlMaxCardinality, cardLit "0"⟩ ]
+  else []
+
+#guard tableauConsistent (gSingletonNominalEdge false) fuel == some true
+#guard tableauConsistent (gSingletonNominalEdge true) fuel == some false
+
 /-! ## `owl:FunctionalProperty` is a global `≤ 1 p` -/
 
 private def gFunctional : Graph :=
@@ -208,6 +461,40 @@ private def gSubProperty : Graph :=
     ⟨indI, exQ, .iri exY⟩ ]
 
 #guard refuted gSubProperty
+
+/-! A generated existential edge is excluded from positive-cardinality
+distinctness reasoning, but it still violates a maximum of zero. The
+role hierarchy widens the generated `p` edge to a `q` successor. The
+maximum-one and reversed-hierarchy neighbors are satisfiable. -/
+private def gGeneratedSubpropertyMax (bound : String) (reverse : Bool) : Graph :=
+  [ ⟨if reverse then .iri exQ else .iri exP, rdfsSubPropertyOf,
+      if reverse then .iri exP else .iri exQ⟩,
+    ⟨indI, rdfType, bnT "generated-some"⟩,
+    ⟨bn "generated-some", owlOnProperty, .iri exP⟩,
+    ⟨bn "generated-some", owlSomeValuesFrom, .iri exC⟩,
+    ⟨indI, rdfType, bnT "generated-max"⟩,
+    ⟨bn "generated-max", owlOnProperty, .iri exQ⟩,
+    ⟨bn "generated-max", owlMaxCardinality, cardLit bound⟩ ]
+
+#guard tableauConsistent (gGeneratedSubpropertyMax "0" false) fuel == some false
+#guard tableauConsistent (gGeneratedSubpropertyMax "1" false) fuel == some true
+#guard tableauConsistent (gGeneratedSubpropertyMax "0" true) fuel == some true
+
+/-! Qualified zero uses the same rule, restricted to a successor whose
+filler label is known. Changing the bound's filler from `C` to unrelated
+`D` leaves the graph satisfiable. -/
+private def gGeneratedSubpropertyQualifiedZero (filler : WfIri) : Graph :=
+  [ ⟨.iri exP, rdfsSubPropertyOf, .iri exQ⟩,
+    ⟨indI, rdfType, bnT "generated-q-some"⟩,
+    ⟨bn "generated-q-some", owlOnProperty, .iri exP⟩,
+    ⟨bn "generated-q-some", owlSomeValuesFrom, .iri exC⟩,
+    ⟨indI, rdfType, bnT "generated-q-max"⟩,
+    ⟨bn "generated-q-max", owlOnProperty, .iri exQ⟩,
+    ⟨bn "generated-q-max", owlMaxQualifiedCardinality, cardLit "0"⟩,
+    ⟨bn "generated-q-max", owlOnClass, .iri filler⟩ ]
+
+#guard tableauConsistent (gGeneratedSubpropertyQualifiedZero exC) fuel == some false
+#guard tableauConsistent (gGeneratedSubpropertyQualifiedZero exD) fuel == some true
 
 /-! ## Graph-level violations -/
 
@@ -283,9 +570,9 @@ this calculus is incomplete, so an open branch proves nothing. -/
 in `p2`. Functionality forces the `f3`-witness to BE the `f1`-witness
 and BE the `f2`-witness, so one element is in `p1` and in `¬p1`.
 
-No clash rule sees this without the ≤-rule: `clashForLabel`'s
-`maxCard` case counts only PROVABLY DISTINCT successors and never
-counts witnesses at all. Seventeen `WebOnt-description-logic`
+No clash rule sees this without the ≤-rule: for a POSITIVE maximum,
+`clashForLabel` counts only PROVABLY DISTINCT successors and does not
+count fresh witnesses. Seventeen `WebOnt-description-logic`
 inconsistency fixtures are this shape. -/
 
 private def exU : WfIri := ⟨"http://e/U", rfl⟩
@@ -313,6 +600,44 @@ private def gFunctionalMerge : Graph :=
     ⟨bn "x", rdfType, .iri exU⟩ ]
 
 #guard refuted gFunctionalMerge
+
+/-! Merge siblings use the same budget pool and preserve their source
+order. This fixture needs eleven visits and returns the unused pool. -/
+#guard searchResult gFunctionalMerge 8 == (.out, 0)
+#guard searchResult gFunctionalMerge 16 == (.clash, 5)
+
+/-! A qualified maximum ranges only over successors proved to be in
+the filler. `x : ≤1 p.C` has a model when `C` is empty, even if two
+unrelated `p` successors carry contradictory labels. Merging those
+successors would manufacture a contradiction. When both successors
+are in `C`, every permitted identification closes. -/
+private def gQualifiedMerge (inFiller : Bool) : Graph :=
+  [ ⟨indI, rdfType, bnT "qr"⟩,
+    ⟨bn "qr", owlOnProperty, .iri exP⟩,
+    ⟨bn "qr", owlMaxQualifiedCardinality, cardLit "1"⟩,
+    ⟨bn "qr", owlOnClass, .iri exC⟩,
+    ⟨indI, exP, .iri exY⟩, ⟨indI, exP, .iri exZ⟩,
+    ⟨.iri exY, rdfType, .iri exD⟩,
+    ⟨.iri exZ, rdfType, bnT "notD"⟩,
+    ⟨bn "notD", owlComplementOf, .iri exD⟩ ] ++
+  if inFiller then
+    [⟨.iri exY, rdfType, .iri exC⟩, ⟨.iri exZ, rdfType, .iri exC⟩]
+  else []
+
+#guard tableauConsistent (gQualifiedMerge false) fuel == some true
+#guard tableauConsistent (gQualifiedMerge true) fuel == some false
+
+/-! The `≤0 p.C` clash uses the same filler restriction. -/
+private def gQualifiedZero (inFiller : Bool) : Graph :=
+  [ ⟨indI, rdfType, bnT "qz"⟩,
+    ⟨bn "qz", owlOnProperty, .iri exP⟩,
+    ⟨bn "qz", owlMaxQualifiedCardinality, cardLit "0"⟩,
+    ⟨bn "qz", owlOnClass, .iri exC⟩,
+    ⟨indI, exP, .iri exY⟩ ] ++
+  if inFiller then [⟨.iri exY, rdfType, .iri exC⟩] else []
+
+#guard tableauConsistent (gQualifiedZero false) fuel == some true
+#guard tableauConsistent (gQualifiedZero true) fuel == some false
 
 /-! Drop the subproperty axioms and the same graph is satisfiable:
 three separate successors on three unrelated functional properties
@@ -441,10 +766,9 @@ answers `none`. -/
 #guard refute gComplement fuel == some false
 
 /-! A cyclic TBox (`A ⊑ ∃P.A`) keeps the expansion changing: budget 1
-is exhausted mid-search and the verdict is `none` — indeterminate,
-never collapsed into either Boolean. The SAME input at a working
-budget saturates under the witness-depth cap and answers
-`some true`. -/
+is exhausted mid-search. A larger budget reaches the witness-depth
+bound, but the existential obligation remains unsatisfied. Both are
+`none` — indeterminate until a sound blocking rule is available. -/
 private def gCyclicExists : Graph :=
   [ ⟨indI, rdfType, .iri exC⟩,
     ⟨.iri exC, rdfsSubClassOf, bnT "r"⟩,
@@ -452,8 +776,44 @@ private def gCyclicExists : Graph :=
     ⟨bn "r", owlSomeValuesFrom, .iri exC⟩ ]
 
 #guard tableauConsistent gCyclicExists 1 == none
-#guard tableauConsistent gCyclicExists fuel == some true
+#guard tableauConsistent gCyclicExists fuel == none
 #guard refute gCyclicExists 1 == none
+
+/-! ## Withheld witness obligations are indeterminate
+
+The depth bound must not turn an unfinished existential chain into a
+consistency result. At depth three the generated witness exposes the
+terminal `C`/`¬C` clash. At depth four the next witness is withheld, so
+both the satisfiable control and the contradiction return `out`; the
+engine must expand beyond this fixed limit to distinguish them. -/
+private def nestedSome : Nat → ClassExpr
+  | 0     => .named exC
+  | n + 1 => .someOf exP (nestedSome n)
+
+private def nestedAll (terminal : ClassExpr) : Nat → ClassExpr
+  | 0     => terminal
+  | n + 1 => .allOf exP (nestedAll terminal n)
+
+private def nestedDepthState (depth : Nat) (contradiction : Bool) : RState :=
+  let terminal := if contradiction then .complement (.named exC) else .named exC
+  { initState [] with
+    nodes := [{ id := indI,
+                labels := [nestedSome depth, nnf (nestedAll terminal depth)] }] }
+
+private def nestedDepthVerdict (depth : Nat) (contradiction : Bool) : Verdict :=
+  (search [] [] (nestedDepthState depth contradiction) fuel).1
+
+#guard nestedDepthVerdict maxWitnessDepth true == .clash
+#guard nestedDepthVerdict maxWitnessDepth false == .open'
+#guard nestedDepthVerdict (maxWitnessDepth + 1) true == .out
+#guard nestedDepthVerdict (maxWitnessDepth + 1) false == .out
+
+private def explicitCappedObligation : RState :=
+  { initState [] with
+    nodes := [{ id := bn "at-cap", labels := [.someOf exP (.named exC)] }],
+    wdepth := [("at-cap", maxWitnessDepth)] }
+
+#guard pendingWitnessObligation [] explicitCappedObligation
 
 /-! ## Paired witness: procedural clash ↔ declarative `Refuted`
 
@@ -487,14 +847,13 @@ encoding — ten triples, no base. -/
 #guard (negationGoals [⟨indI, exP, .iri exY⟩]).map (·.map List.length)
        == some [10]
 
-/-! A property assertion with a LITERAL object has no sound negation
-in this encoding (`owl:oneOf` of a literal is a data range):
-conservative `none`. A purely structural conclusion has no content
-assertion to negate: `none`. -/
-#guard negationGoals
+/-! A property assertion with a literal object negates to the four
+triples of an OWL negative data-property assertion. A purely structural
+conclusion has no content assertion to negate: `none`. -/
+#guard (negationGoals
         [⟨indI, exP, .literal ⟨{ lexicalForm := "v", datatype := xsdString,
-                                 langTag := none, direction := none }, rfl⟩⟩]
-       == none
+                                 langTag := none, direction := none }, rfl⟩⟩]).map
+       (·.map List.length) == some [4]
 #guard negationGoals [⟨bn "r", owlOnProperty, .iri exP⟩] == none
 
 /-! End to end, entailed: `i ∈ C, C ⊑ D ⊨ i ∈ D`. The negated
@@ -508,13 +867,68 @@ private def gPremiseSub : Graph :=
                             == some false))
        == some true
 
-/-! End to end, NOT entailed: `i ∈ C ⊭ i ∈ D`. The augmented graph
-has a model (quiescence, `some true`) — a countermodel, reported as
-`entailed: false`, never as a silent miss. -/
+/-! End to end, the refuter does not prove entailment:
+`i ∈ C ⊭ i ∈ D`. The augmented graph reaches quiescence
+(`some true`), but this executable result is not a certified model and
+does not itself prove non-entailment. -/
 #guard (negationGoals [⟨indI, rdfType, .iri exD⟩]).map
          (·.any (fun neg => tableauConsistent ([⟨indI, rdfType, .iri exC⟩] ++ neg)
                               fuel == some true))
        == some true
+
+/-! ## Fresh namespaces for generated negation goals
+
+Every identifier below is legal N-Quads input. Before
+`prepareNegationGoals`, a premise blank node named exactly like the
+generated complement node could be conflated with that node and turn
+the satisfiable `i : D, unrelated : ¬D, i : ¬C` goal into a false
+clash. The prepared premise and goal remain open. -/
+private def gNegationIdCollision : Graph :=
+  [ ⟨indI, rdfType, .iri exD⟩,
+    ⟨bn peNegClassBNode, owlComplementOf, .iri exD⟩ ]
+
+private def cUnrelatedMembership : Graph :=
+  [⟨indI, rdfType, .iri exC⟩]
+
+private def preparedGoalResults (premise conclusion : Graph) : Option (List (Option Bool)) :=
+  (prepareNegationGoals premise conclusion).map fun (premise', goals) =>
+    goals.map fun goal => tableauConsistent (premise' ++ goal) fuel
+
+#guard preparedGoalResults gNegationIdCollision cUnrelatedMembership
+       == some [some true]
+
+/-! `i rdf:type owl:Thing` is a semantic membership assertion, not a
+declaration to discard. Its negation is impossible, so even an empty
+premise refutes the single goal. -/
+#guard !isMetaTypeIri owlThing
+#guard preparedGoalResults [] [⟨indI, rdfType, .iri owlThing⟩]
+       == some [some false]
+
+/-! Conclusion scaffolding can carry the same legal input label. Its
+references must remain co-referential after renaming while staying
+disjoint from the generated complement node. Here the conclusion says
+`i : ¬D`; its negation is consistent with the premise `i : D`. -/
+private def cNegationIdCollision : Graph :=
+  [ ⟨bn peNegClassBNode, owlComplementOf, .iri exD⟩,
+    ⟨indI, rdfType, .bnode peNegClassBNode⟩ ]
+
+#guard preparedGoalResults [⟨indI, rdfType, .iri exD⟩] cNegationIdCollision
+       == some [some true]
+
+/-! Positive neighbor: a named complement axiom entails the anonymous
+complement membership even when its input label matches the generated
+negation node. This requires refutation after scoping, not exact triple
+containment in the premise. -/
+#guard preparedGoalResults
+    [⟨indI, rdfType, .iri exC⟩, ⟨.iri exC, owlComplementOf, .iri exD⟩]
+    cNegationIdCollision == some [some false]
+
+/-! The two input documents also receive different prefixes even when
+they use the same raw blank-node label. -/
+#guard bnodeScopePrefix ["owl-premise"] != bnodeScopePrefix ["owl-conclusion"]
+#guard bnodeScopePrefix ["owl-premise"] != ""
+#guard (bnodeScopePrefix ["owl-premise"]).startsWith "s_"
+#guard !(bnodeScopePrefix ["owl-premise"]).startsWith "_"
 
 
 /-! ## Literal distinctness is decided on VALUES
@@ -569,5 +983,473 @@ private def lit (lex : String) (dt : WfIri) : Literal :=
                               (lit "<br\n></br>" rdfXMLLiteral)
 #guard literalValuesDistinct (lit "\n<br></br>" rdfXMLLiteral)
                              (lit "<br></br>" rdfXMLLiteral)
+
+/-! ## Total-search equations and proof audit -/
+
+example (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RState) :
+    search tb g st 0 = (.out, 0) := search_zero tb g st
+
+example (tb : List (ClassExpr × ClassExpr)) (g : Graph) (st : RState)
+    (n : Nat) (h : clashNodes g st = true) :
+    search tb g st (n + 1) = (.clash, n) :=
+  search_immediate_clash tb g st n h
+
+#print axioms search_remaining_le
+#print axioms search_zero
+#print axioms search_immediate_clash
+#print axioms search_changed
+#print axioms inputWitnessIdUsed_indexed_eq_spec
+#print axioms foldl_filter_of_rejected_identity
+#print axioms onePassFiltered_eq
+#print axioms onePass_eq_filtered
+#print axioms addLabel_initial
+#print axioms fold_addLabel_initial
+#print axioms InitialLabelBuilder.add_wf
+#print axioms InitialLabelBuilder.add_nodes
+#print axioms InitialLabelBuilder.fold_nodes
+#print axioms InitialLabelBuilder.addSubject_wf
+#print axioms InitialLabelBuilder.addSubject_nodes
+#print axioms InitialLabelBuilder.foldSubject_nodes
+#print axioms InitialLabelBuilder.foldSubject_wf
+#print axioms initialLabelNodesIndexed_eq_spec
+#print axioms initialGraphNodesIndexed_eq_spec
+#print axioms fold_initialLabelEntries
+#print axioms fold_ensureInitialSubjects
+#print axioms indexedInitialState_eq_graphFold
+#print axioms initStateIndexed_eq
+#print axioms initState_eq_indexed
+#print axioms clashForLabel_maxCard_zero
+#print axioms clashForLabel_maxQualCard_zero
+#print axioms NamedAxiomIndex.add_getD
+#print axioms fold_namedAxiomIndex_getD
+#print axioms buildNamedAxiomIndex_getD
+#print axioms namedAxiomFor_rejected
+#print axioms applyAxioms_named_filter_eq
+#print axioms applyAxiomsDispatched_eq
+#print axioms onePassNodeDispatched_eq
+#print axioms onePassNodesDispatched_eq
+
+/-! Named-antecedent buckets retain the exact TBox order while
+interleaved nonmatching and nonnamed antecedents stay out. -/
+private def namedDispatchOrderCheck : Bool :=
+  let tb : List (ClassExpr × ClassExpr) :=
+    [ (.named exC, .named exD),
+      (.someOf exP (.named exC), .named exC),
+      (.named exD, .named exC),
+      (.named exC, .named exP) ]
+  match (buildNamedAxiomIndex tb).getD exC [] with
+  | [(.named a, .named b), (.named c, .named d)] =>
+      a == exC && b == exD && c == exC && d == exP
+  | _ => false
+
+#guard namedDispatchOrderCheck
+
+/-! The indexed initial-label builder preserves first-subject order,
+per-subject append order, exact `memCe` duplicate behaviour, and the
+rule that a top-level unreadable class expression is ignored. -/
+private def nestedUnknown : ClassExpr :=
+  .intersection [.unknown, .named exC]
+
+private def initialLabelOrderCheck : Bool :=
+  match initialLabelNodesIndexed
+      [ (indI, .named exC),
+        (bn "label-order", .named exD),
+        (indI, .named exD),
+        (indI, .named exC),
+        (indI, .unknown),
+        (indI, nestedUnknown),
+        (indI, nestedUnknown) ] with
+  | [first, second] =>
+      first.id == indI &&
+      second.id == bn "label-order" &&
+      match first.labels, second.labels with
+      | [a, b, c, d], [e] =>
+          ClassExpr.beq a (.named exC) &&
+          ClassExpr.beq b (.named exD) &&
+          ClassExpr.beq c nestedUnknown &&
+          ClassExpr.beq d nestedUnknown &&
+          ClassExpr.beq e (.named exD)
+      | _, _ => false
+  | _ => false
+
+#guard initialLabelOrderCheck
+
+/-! ## Datatype witnesses with explicitly forbidden values
+
+OWL 2 Direct Semantics §2.3.2 requires disjoint data-property
+extensions to share no subject-value pair.  A value asserted through
+`exP` is therefore excluded from an `exQ` existential when the two
+properties are disjoint.  The restriction below has the singleton
+integer value space `{10}`. -/
+
+private def typedTerm (lex : String) (dt : WfIri)
+    (h : literalWf { lexicalForm := lex, datatype := dt,
+                     langTag := none, direction := none }) : Term :=
+  .literal ⟨{ lexicalForm := lex, datatype := dt,
+              langTag := none, direction := none }, h⟩
+
+private def intTerm (lex : String) : Term :=
+  typedTerm lex xsdInteger (by
+    simp [literalWf, xsdInteger, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def uintTerm (lex : String) : Term :=
+  typedTerm lex XSD.xsdUnsignedInt (by
+    simp [literalWf, XSD.xsdUnsignedInt, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def floatTerm (lex : String) : Term :=
+  typedTerm lex XSD.xsdFloat (by
+    simp [literalWf, XSD.xsdFloat, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def decimalTerm (lex : String) : Term :=
+  typedTerm lex xsdDecimal (by
+    simp [literalWf, xsdDecimal, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def rationalTerm (lex : String) : Term :=
+  typedTerm lex XSD.owlRational (by
+    simp [literalWf, XSD.owlRational, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def disjointSingletonGraph
+    (assertedSubject : Subject) (assertedProperty : WfIri)
+    (assertedValue : Term) : Graph :=
+  [ ⟨.iri exP, owlPropertyDisjointWith, .iri exQ⟩,
+    ⟨assertedSubject, assertedProperty, assertedValue⟩,
+    ⟨.iri exC, rdfsSubClassOf, bnT "dsr"⟩,
+    ⟨bn "dsr", owlOnProperty, .iri exQ⟩,
+    ⟨bn "dsr", owlSomeValuesFrom, bnT "ddr"⟩,
+    ⟨bn "ddr", owlOnDatatype, .iri xsdInteger⟩,
+    ⟨bn "ddr", owlWithRestrictions, bnT "dfl1"⟩,
+    ⟨bn "dfl1", rdfFirst, bnT "dfmin"⟩,
+    ⟨bn "dfl1", rdfRest, bnT "dfl2"⟩,
+    ⟨bn "dfmin", facetMinInclusive, intTerm "10"⟩,
+    ⟨bn "dfl2", rdfFirst, bnT "dfmax"⟩,
+    ⟨bn "dfl2", rdfRest, .iri rdfNil⟩,
+    ⟨bn "dfmax", facetMaxInclusive, intTerm "10"⟩,
+    ⟨indI, rdfType, .iri exC⟩ ]
+
+#guard refuted (disjointSingletonGraph indI exP (intTerm "10"))
+/-! Integer lexical aliases and derived integer datatypes denote the
+same OWL data value. -/
+#guard refuted (disjointSingletonGraph indI exP (uintTerm "+010"))
+/-! Subject identity, the disjointness declaration, and value equality
+are each required. -/
+#guard !(refuted (disjointSingletonGraph (.iri exY) exP (intTerm "10")))
+#guard !(refuted (disjointSingletonGraph indI exF1 (intTerm "10")))
+#guard !(refuted (disjointSingletonGraph indI exP (intTerm "9")))
+
+/-! OWL 2 Syntax §9.6.4 makes a negative data-property assertion an
+explicit exclusion.  In this graph `owl:real` removes `-INF` from the
+enumeration, and the negative assertion removes integer negative zero
+because it denotes the same value as unsigned integer zero. -/
+
+private def negativeEnumGraph (source : Subject) (assertionProperty : WfIri)
+    (target : Term) : Graph :=
+  [ ⟨indI, rdfType, bnT "nall"⟩,
+    ⟨bn "nall", owlOnProperty, .iri exP⟩,
+    ⟨bn "nall", owlAllValuesFrom, .iri XSD.owlReal⟩,
+    ⟨indI, rdfType, bnT "nsome"⟩,
+    ⟨bn "nsome", owlOnProperty, .iri exP⟩,
+    ⟨bn "nsome", owlSomeValuesFrom, bnT "nenum"⟩,
+    ⟨bn "nenum", owlOneOf, bnT "nel1"⟩,
+    ⟨bn "nel1", rdfFirst, floatTerm "-INF"⟩,
+    ⟨bn "nel1", rdfRest, bnT "nel2"⟩,
+    ⟨bn "nel2", rdfFirst, intTerm "-0"⟩,
+    ⟨bn "nel2", rdfRest, .iri rdfNil⟩,
+    ⟨bn "npa", rdfType, .iri owlNegativePropertyAssertion⟩,
+    ⟨bn "npa", owlSourceIndividual, source.toTerm⟩,
+    ⟨bn "npa", owlAssertionProperty, .iri assertionProperty⟩,
+    ⟨bn "npa", owlTargetValue, target⟩ ]
+
+#guard refuted (negativeEnumGraph indI exP (uintTerm "0"))
+#guard !(refuted (negativeEnumGraph indI exP (uintTerm "1")))
+#guard !(refuted (negativeEnumGraph (.iri exY) exP (uintTerm "0")))
+#guard !(refuted (negativeEnumGraph indI exQ (uintTerm "0")))
+
+/-! A second admissible enumeration value keeps the existential
+satisfiable after zero is excluded. -/
+private def negativeEnumChoiceGraph : Graph :=
+  (negativeEnumGraph indI exP (uintTerm "0")).map (fun t =>
+    if t.s == bn "nel2" && t.p == rdfRest then
+      ⟨bn "nel2", rdfRest, bnT "nel3"⟩
+    else t) ++
+  [ ⟨bn "nel3", rdfFirst, intTerm "1"⟩,
+    ⟨bn "nel3", rdfRest, .iri rdfNil⟩ ]
+
+#guard !(refuted negativeEnumChoiceGraph)
+
+/-! ## Finite XSD pattern languages
+
+XSD pattern facets match the whole lexical form. The language of
+`a(b|c)` is exactly `{ab, ac}`; values already used through a disjoint
+property exhaust the existential filler. -/
+
+private def stringTerm (lex : String) : Term :=
+  typedTerm lex xsdString (by
+    simp [literalWf, xsdString, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+/-! A functional superproperty constrains assertions through its
+subproperties even when the assertion subject has no `rdf:type`.
+Initialisation must therefore create an empty node for every graph
+subject. Equal values, a nonfunctional superproperty, and assertions
+on different subjects remain satisfiable controls. -/
+private def untypedFunctionalStrings (functional equalValues : Bool)
+    (differentSubjects : Bool := false) : Graph :=
+  [ ⟨.iri exP, rdfType,
+      .iri (if functional then owlFunctionalProperty else owlDatatypeProperty)⟩,
+    ⟨.iri exQ, rdfsSubPropertyOf, .iri exP⟩,
+    ⟨indI, exP, stringTerm "T000-01"⟩,
+    ⟨if differentSubjects then .iri exY else indI, exQ,
+      stringTerm (if equalValues then "T000-01" else "BOOLEAN")⟩ ]
+
+#guard refuted (untypedFunctionalStrings true false)
+#guard !(refuted (untypedFunctionalStrings true true))
+#guard !(refuted (untypedFunctionalStrings false false))
+#guard !(refuted (untypedFunctionalStrings true false true))
+
+/-! ## Literal-valued positive-entailment goals
+
+The exact negation of `i p value` is an OWL negative data-property
+assertion with that target value. Value equality, rather than RDF term
+identity, closes numeric lexical aliases and canonical XML aliases.
+Unknown datatype mappings with unequal terms remain open. -/
+private def xmlTerm (lex : String) : Term :=
+  typedTerm lex rdfXMLLiteral (by
+    simp [literalWf, rdfXMLLiteral, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def unknownDatatype : WfIri := ⟨"http://e/unknownDatatype", rfl⟩
+private def aliasDatatype : WfIri := ⟨"http://e/decimalAlias", rfl⟩
+
+private def unknownTerm (lex : String) : Term :=
+  typedTerm lex unknownDatatype (by
+    simp [literalWf, unknownDatatype, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def aliasTerm (lex : String) : Term :=
+  typedTerm lex aliasDatatype (by
+    simp [literalWf, aliasDatatype, rdfLangString, rdfDirLangString,
+          Subtype.ext_iff])
+
+private def literalEntailmentResult (premise : Graph)
+    (conclusionValue : Term) : Option (List (Option Bool)) :=
+  preparedGoalResults premise [⟨indI, exP, conclusionValue⟩]
+
+#guard (negationGoals [⟨indI, exP, intTerm "1"⟩]).map List.length == some 1
+#guard negationGoals [⟨bn "anonymous-conclusion", exP, intTerm "1"⟩] == none
+
+#guard literalEntailmentResult [⟨indI, exP, intTerm "01"⟩] (intTerm "1") ==
+  some [some false]
+#guard literalEntailmentResult [⟨indI, exP, intTerm "1"⟩] (decimalTerm "1.0") ==
+  some [some false]
+#guard literalEntailmentResult [⟨indI, exP, xmlTerm "<br\n></br>"⟩]
+  (xmlTerm "<br></br>") == some [some false]
+
+/-! `owl:sameAs` on datatype IRIs does not import a lexical mapping in
+OWL 2 Direct Semantics: individual and datatype interpretations are
+separate. The Full/Proposed `WebOnt-I5.8-017` shape therefore remains
+open in this DL refuter. -/
+#guard literalEntailmentResult
+  [ ⟨.iri aliasDatatype, owlSameAs, .iri xsdDecimal⟩,
+    ⟨indI, exP, aliasTerm "01"⟩ ]
+  (decimalTerm "1") == some [some true]
+
+/-! Different values and incomparable unknown datatype values do not
+license a contradiction. Exact term identity remains exact even for
+an unsupported datatype. -/
+#guard literalEntailmentResult [⟨indI, exP, intTerm "2"⟩] (intTerm "1") ==
+  some [some true]
+#guard literalEntailmentResult [⟨.iri exY, exP, intTerm "1"⟩] (intTerm "1") ==
+  some [some true]
+#guard literalEntailmentResult [⟨indI, exQ, intTerm "1"⟩] (intTerm "1") ==
+  some [some true]
+#guard literalEntailmentResult [⟨indI, exP, unknownTerm "01"⟩]
+  (unknownTerm "1") == some [some true]
+#guard literalEntailmentResult [⟨indI, exP, unknownTerm "same"⟩]
+  (unknownTerm "same") == some [some false]
+
+/-! The singleton numeric intersection in `WebOnt-I5.8-010`: the
+premise forces one `p` value and the two ranges meet only at zero. -/
+private def signedZeroEntailmentPremise : Graph :=
+  [ ⟨.iri exP, rdfsRange, .iri XSD.xsdNonNegativeInteger⟩,
+    ⟨indI, rdfType, bnT "pe-signed-zero"⟩,
+    ⟨bn "pe-signed-zero", owlOnProperty, .iri exP⟩,
+    ⟨bn "pe-signed-zero", owlSomeValuesFrom,
+      .iri XSD.xsdNonPositiveInteger⟩ ]
+
+#guard literalEntailmentResult signedZeroEntailmentPremise (intTerm "0") ==
+  some [some false]
+
+private def patternExclusionGraph (pattern : String)
+    (asserted : List (Subject × String)) : Graph :=
+  [ ⟨.iri exP, owlPropertyDisjointWith, .iri exQ⟩,
+    ⟨.iri exC, rdfsSubClassOf, bnT "psome"⟩,
+    ⟨bn "psome", owlOnProperty, .iri exQ⟩,
+    ⟨bn "psome", owlSomeValuesFrom, bnT "pdr"⟩,
+    ⟨bn "pdr", owlOnDatatype, .iri xsdString⟩,
+    ⟨bn "pdr", owlWithRestrictions, bnT "pfl"⟩,
+    ⟨bn "pfl", rdfFirst, bnT "pfacet"⟩,
+    ⟨bn "pfl", rdfRest, .iri rdfNil⟩,
+    ⟨bn "pfacet", facetPattern, stringTerm pattern⟩,
+    ⟨indI, rdfType, .iri exC⟩ ] ++
+  asserted.map (fun (s, lex) => ⟨s, exP, stringTerm lex⟩)
+
+#guard refuted (patternExclusionGraph "a(b|c)" [(indI, "ab"), (indI, "ac")])
+/-! A value on another subject, a remaining pattern value, or an
+unsupported infinite regex cannot exhaust this existential. -/
+#guard !(refuted (patternExclusionGraph "a(b|c)" [(indI, "ab"), (.iri exY, "ac")]))
+#guard !(refuted (patternExclusionGraph "a(b|c|d)" [(indI, "ab"), (indI, "ac")]))
+#guard !(refuted (patternExclusionGraph "a.*" [(indI, "ab"), (indI, "ac")]))
+/-! Brace repetitions are rejected before the shared parser can
+expand their AST; a huge bound therefore returns promptly. -/
+#guard !(refuted (patternExclusionGraph "a{1000000000}"
+  [(indI, "a"), (indI, "aa")]))
+
+/-! ## Complete RDF collection parsing
+
+Long collection fillers are read independently of the class-expression
+depth cap. A minimum of 33 values from a 64-member nominal is
+satisfiable; a minimum of 65 is impossible. -/
+
+private def indexedBNode (stem : String) (n : Nat) : Term :=
+  bnT (stem ++ toString n)
+
+private def rdfListTriples (stem : String) (members : List Term) : Graph :=
+  (List.range members.length).zip members |>.map (fun (idx, member) =>
+    [ ⟨bn (stem ++ toString idx), rdfFirst, member⟩,
+      ⟨bn (stem ++ toString idx), rdfRest,
+        if idx + 1 < members.length then indexedBNode stem (idx + 1)
+        else .iri rdfNil⟩ ]) |>.flatten
+
+private def nominalMinGraph (minimum memberCount : Nat) : Graph :=
+  let members := (List.range memberCount).map (indexedBNode "nominal-member-")
+  [ ⟨indI, rdfType, bnT "nominal-min"⟩,
+    ⟨bn "nominal-min", owlOnProperty, .iri exP⟩,
+    ⟨bn "nominal-min", owlMinQualifiedCardinality, cardLit (toString minimum)⟩,
+    ⟨bn "nominal-min", owlOnClass, bnT "nominal-filler"⟩,
+    ⟨bn "nominal-filler", owlOneOf, indexedBNode "nominal-list-" 0⟩ ] ++
+  rdfListTriples "nominal-list-" members
+
+#guard !(refuted (nominalMinGraph 33 64))
+#guard refuted (nominalMinGraph 65 64)
+
+/-! Malformed and cyclic lists make the whole class expression
+unknown. They never expose a finite prefix as a complete nominal. -/
+private def malformedNominalGraph : Graph :=
+  [ ⟨indI, rdfType, bnT "malformed-min"⟩,
+    ⟨bn "malformed-min", owlOnProperty, .iri exP⟩,
+    ⟨bn "malformed-min", owlMinQualifiedCardinality, cardLit "2"⟩,
+    ⟨bn "malformed-min", owlOnClass, bnT "malformed-filler"⟩,
+    ⟨bn "malformed-filler", owlOneOf, bnT "malformed-list"⟩,
+    ⟨bn "malformed-list", rdfFirst, .iri exY⟩ ]
+
+private def cyclicNominalGraph : Graph :=
+  malformedNominalGraph ++
+  [⟨bn "malformed-list", rdfRest, bnT "malformed-list"⟩]
+
+#guard !(refuted malformedNominalGraph)
+#guard !(refuted cyclicNominalGraph)
+
+/-! IRI list cells are legal. Exact duplicate assertions carry one
+value; genuinely different `rdf:first` values make the collection
+ambiguous and therefore unreadable. -/
+private def iriCell : Graph :=
+  [ ⟨.iri exY, rdfFirst, .iri exZ⟩,
+    ⟨.iri exY, rdfRest, .iri rdfNil⟩ ]
+
+#guard walkRdfListComplete (Store.ofGraph iriCell) (.iri exY) == some [.iri exZ]
+#guard walkRdfListComplete (Store.ofGraph (iriCell ++ iriCell)) (.iri exY) ==
+  some [.iri exZ]
+#guard walkRdfListComplete
+  (Store.ofGraph (iriCell ++ [⟨.iri exY, rdfFirst, .iri exC⟩])) (.iri exY) == none
+
+/-! These indexed-store build-time checks cross
+the former depth boundary by two orders of magnitude and exercise the
+tail-recursive collection reader at increasing sizes. -/
+private def decodedListLength (n : Nat) : Option Nat :=
+  let members := (List.range n).map (indexedBNode "scale-member-")
+  let graph := rdfListTriples "scale-list-" members
+  (walkRdfListComplete (Store.ofIndex (Index.ofGraph graph))
+    (indexedBNode "scale-list-" 0)).map List.length
+
+#guard decodedListLength 1000 == some 1000
+#guard decodedListLength 2000 == some 2000
+#guard decodedListLength 4000 == some 4000
+
+/-! The intended, well-formed form of `New-Feature-Rational-002`
+still clashes: decimal 0.5 and rational 1/2 denote one value, while
+the minimum cardinality requires two. -/
+private def validRationalCardinalityGraph : Graph :=
+  [ ⟨indI, rdfType, bnT "rational-all"⟩,
+    ⟨bn "rational-all", owlOnProperty, .iri exP⟩,
+    ⟨bn "rational-all", owlAllValuesFrom, bnT "rational-enum"⟩,
+    ⟨bn "rational-enum", owlOneOf, indexedBNode "rational-list-" 0⟩,
+    ⟨indI, rdfType, bnT "rational-min"⟩,
+    ⟨bn "rational-min", owlOnProperty, .iri exP⟩,
+    ⟨bn "rational-min", owlMinCardinality, cardLit "2"⟩ ] ++
+  rdfListTriples "rational-list-"
+    [decimalTerm "0.5", rationalTerm "1/2"]
+
+#guard refuted validRationalCardinalityGraph
+
+/-! ## Anonymous data-property ranges and cardinality existence
+
+Two anonymous ranges intersect independently. Here `{1,2,3,4}` and
+`{4,5,6}` leave only value 4; `≥ 1 p` forces a filler, and a negative
+assertion excluding 4 makes that impossible. -/
+private def anonymousRangeMinGraph (negativeTarget : Option Term) : Graph :=
+  let firstRange := [intTerm "1", intTerm "2", intTerm "3", intTerm "4"]
+  let secondRange := [intTerm "4", intTerm "5", intTerm "6"]
+  [ ⟨indI, rdfType, bnT "anon-min"⟩,
+    ⟨bn "anon-min", owlOnProperty, .iri exP⟩,
+    ⟨bn "anon-min", owlMinCardinality, cardLit "1"⟩,
+    ⟨.iri exP, rdfsRange, bnT "anon-range-a"⟩,
+    ⟨.iri exP, rdfsRange, bnT "anon-range-b"⟩,
+    ⟨bn "anon-range-a", owlOneOf, indexedBNode "anon-list-a-" 0⟩,
+    ⟨bn "anon-range-b", owlOneOf, indexedBNode "anon-list-b-" 0⟩ ] ++
+  rdfListTriples "anon-list-a-" firstRange ++
+  rdfListTriples "anon-list-b-" secondRange ++
+  match negativeTarget with
+  | none => []
+  | some target =>
+    [ ⟨bn "anon-negative", rdfType, .iri owlNegativePropertyAssertion⟩,
+      ⟨bn "anon-negative", owlSourceIndividual, indI.toTerm⟩,
+      ⟨bn "anon-negative", owlAssertionProperty, .iri exP⟩,
+      ⟨bn "anon-negative", owlTargetValue, target⟩ ]
+
+#guard refuted (anonymousRangeMinGraph (some (intTerm "4")))
+#guard !(refuted (anonymousRangeMinGraph none))
+#guard !(refuted (anonymousRangeMinGraph (some (intTerm "3"))))
+
+/-! `WebOnt-oneOf-004` shape: the two anonymous ranges meet only at
+value 4 and minimum cardinality one forces that assertion. Negating
+the literal conclusion excludes precisely 4 and closes the goal. -/
+#guard preparedGoalResults (anonymousRangeMinGraph none)
+  [⟨indI, exP, intTerm "4"⟩] == some [some false]
+
+/-! A named range and an existential filler restriction can also
+meet at a singleton. Integer lexical aliases are compared by value. -/
+private def nonPositiveNonNegativeGraph (negativeTarget : Term) : Graph :=
+  [ ⟨indI, rdfType, bnT "signed-some"⟩,
+    ⟨bn "signed-some", owlOnProperty, .iri exP⟩,
+    ⟨bn "signed-some", owlSomeValuesFrom, .iri XSD.xsdNonPositiveInteger⟩,
+    ⟨.iri exP, rdfsRange, .iri XSD.xsdNonNegativeInteger⟩,
+    ⟨bn "signed-negative", rdfType, .iri owlNegativePropertyAssertion⟩,
+    ⟨bn "signed-negative", owlSourceIndividual, indI.toTerm⟩,
+    ⟨bn "signed-negative", owlAssertionProperty, .iri exP⟩,
+    ⟨bn "signed-negative", owlTargetValue, negativeTarget⟩ ]
+
+#guard refuted (nonPositiveNonNegativeGraph (uintTerm "0"))
+#guard !(refuted (nonPositiveNonNegativeGraph (uintTerm "1")))
+
+/-! Qualified-bound clashes require a definite shared filler. Two
+unreadable fillers cannot be equated merely because both parsed as
+`unknown`; a known equal filler still licenses the arithmetic clash. -/
+#guard !(existsMaxQualLt 2 exP .unknown [.maxQualCard 1 exP .unknown])
+#guard existsMaxQualLt 2 exP (.named exC) [.maxQualCard 1 exP (.named exC)]
 
 end L4Factoidal.OWL.Refute

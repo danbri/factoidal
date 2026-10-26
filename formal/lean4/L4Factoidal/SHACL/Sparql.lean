@@ -146,17 +146,29 @@ fixtures do not exercise it. -/
 def termToExpr? : Term → Option Expr
   | .iri i => some (.iri i)
   | .literal l =>
-    if l.val.datatype == RDF.xsdInteger then
+    if isIntegerDatatype l.val.datatype then
       match parseIntString l.val.lexicalForm with
-      | some n => some (.numericLit n)
+      | some n =>
+          if integerValueFitsDatatype l.val.datatype n then some (.numericLit n)
+          else some (.lit l)
       | none => some (.lit l)
-    else if l.val.datatype == RDF.xsdDecimal then some (.decimalLit l.val.lexicalForm)
-    else if l.val.datatype == RDF.xsdDouble || l.val.datatype == SPARQL.xsdFloat then
-      some (.doubleLit l.val.lexicalForm)
+    else if l.val.datatype == RDF.xsdDecimal then
+      if l.val.lexicalForm.toList.contains 'e' || l.val.lexicalForm.toList.contains 'E' then
+        some (.lit l)
+      else
+        match L4Factoidal.XSD.parseLexical l.val.lexicalForm with
+        | some (.num _ _ _) => some (.decimalLit l.val.lexicalForm)
+        | _ => some (.lit l)
+    else if l.val.datatype == SPARQL.xsdFloat then some (.lit l)
+    else if l.val.datatype == RDF.xsdDouble then
+      if (L4Factoidal.XSD.parseLexical l.val.lexicalForm).isSome then
+        some (.doubleLit l.val.lexicalForm)
+      else some (.lit l)
     else if l.val.datatype == RDF.xsdBoolean then
       -- Valid lexical forms only, matching `literalPromote`: an
-      -- ill-formed boolean stays a term literal so its type errors
-      -- surface, exactly as an unsubstituted binding's would.
+      -- ill-formed boolean stays a term literal, exactly as an
+      -- unsubstituted binding does. EBV maps that lexical to false;
+      -- operators that require a Boolean value still report an error.
       match l.val.lexicalForm with
       | "true" | "1" => some (.boolLit true)
       | "false" | "0" => some (.boolLit false)

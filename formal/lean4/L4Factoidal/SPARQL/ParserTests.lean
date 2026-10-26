@@ -40,6 +40,15 @@ namespace L4Factoidal.SPARQL
 
 -- [139] IRIREF, [140] PNAME_LN, [143] VAR1 / [144] VAR2.
 #guard tokensOf (tokenize "<http://a/b>") == [Token.iri "http://a/b", Token.eof]
+-- SPARQL 1.0 IRIREF codepoint escapes are decoded inside the token.
+#guard tokensOf (tokenize "<\\u0078>") == [Token.iri "x", Token.eof]
+#guard tokensOf (tokenize "<\\U00000078>") == [Token.iri "x", Token.eof]
+-- A malformed, surrogate, unterminated, or later-invalid escaped body must
+-- remain a less-than token rather than becoming a malformed IRI term.
+#guard (tokensOf (tokenize "<\\u007G>")).head? == some Token.lt
+#guard (tokensOf (tokenize "<\\uD800>")).head? == some Token.lt
+#guard (tokensOf (tokenize "<\\u0078")).head? == some Token.lt
+#guard (tokensOf (tokenize "<\\u0078\\q>")).head? == some Token.lt
 #guard tokensOf (tokenize "ex:local") == [Token.pname "ex:local", Token.eof]
 #guard tokensOf (tokenize "ex:") == [Token.pname "ex:", Token.eof]
 #guard tokensOf (tokenize "?x") == [Token.var "x", Token.eof]
@@ -254,6 +263,21 @@ namespace L4Factoidal.SPARQL
 #guard parses "ASK { FILTER(EXISTS { ?s ?p ?o }) }"
 #guard parses "ASK { FILTER NOT EXISTS { ?s ?p ?o } }"
 #guard parses "ASK { FILTER(?a IN (1, 2, 3)) }"
+#guard parses "PREFIX xsd: <http://www.w3.org/2001/XMLSchema#> ASK { FILTER xsd:integer(?o) }"
+#guard parses "PREFIX e: <http://e/> ASK { FILTER e:myFunc(?s, ?o) }"
+#guard !parses "ASK { FILTER <http://e/f> }"
+
+-- SPARQL 1.0 [42]/[45]: a nonempty collection expands to complete
+-- triples and may stand alone as a TriplesSameSubject. NIL alone is a
+-- GraphTerm and still requires a predicate-object list.
+#guard parses "SELECT * WHERE { ( ?z ) }"
+#guard parses "SELECT * WHERE { ( ( ?z ) ) }"
+#guard parses "SELECT * WHERE { ( ( ) ) }"
+#guard parses "PREFIX : <http://e/> SELECT * WHERE { ( [] [] ) }"
+#guard !parses "SELECT * WHERE { () }"
+
+-- IRIREF admits ampersand and equals; this is not a `<` comparison.
+#guard parses "BASE <http://example/?query> SELECT * WHERE { <a> <b> <&param=value> }"
 #guard parses "ASK { FILTER(?a NOT IN (1, 2)) }"
 #guard parses "ASK { FILTER(<http://a/f>(?a, ?b)) }"
 #guard parses "PREFIX f: <http://f/> ASK { FILTER(f:g(?a)) }"

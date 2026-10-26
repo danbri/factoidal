@@ -482,6 +482,11 @@ reasons about abstractly. The clash verdict is compared the same way. -/
 #guard indexedClosure gRngProp 3 == closure gRngProp 3
 #guard indexedClosure gDw 3 == closure gDw 3
 #guard indexedClosure [] 3 == closure [] 3
+
+/-! The public fuel-bound wrapper has the same list result and is
+rewritten to the indexed implementation during code generation. -/
+#guard indexedClosureFix gEq == closureFix gEq
+#print axioms closureFix_eq_indexedClosureFix
 -- A duplicate in the input survives in both (the index pictures the
 -- list, duplicates and all).
 #guard indexedClosure (gSco ++ gSco) 4 == closure (gSco ++ gSco) 4

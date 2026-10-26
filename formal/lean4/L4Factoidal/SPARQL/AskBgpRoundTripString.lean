@@ -289,9 +289,10 @@ theorem lexes_iri (body : List Char) (hplain : iriBodyPlain body = true)
           simpa [iriFirstOk, hb] using hfirst
         have hdlt : ¬ (d = '<') := by intro h; subst h; simp [isAlpha] at hd
         have hdeq : ¬ (d = '=') := by intro h; subst h; simp [isAlpha] at hd
-        have hguard : (isAlpha d || d == '>' || d == '_' || d == '/' || d == '#'
+        have hguard : (isAlpha d || d == '>' || d == '_' || d == '/' || d == '#' || d == '&'
             || ((d == '?' || d == '$') && hasGtBeforeTerminator (d :: body'
-                 ++ '>' :: rest))) = true := by
+                 ++ '>' :: rest)) ||
+            (d == '\\' && validEscapedIriBody (d :: body' ++ '>' :: rest))) = true := by
           have h1 : isAlpha d = true ∨ (d == '_') = true ∨ (d == '/') = true
               ∨ (d == '#') = true := by
             simp only [Bool.or_eq_true] at hd

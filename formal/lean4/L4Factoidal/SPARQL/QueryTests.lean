@@ -81,6 +81,55 @@ def dsMain : Dataset := { default := gNoCarol, named := [] }
 def dsNums : Dataset := { default := gNums, named := [] }
 def dsChain : Dataset := { default := gChain, named := [] }
 
+/-- The same source graph used by FROM and FROM NAMED denotes two graph
+instances whose blank nodes are scoped apart. -/
+def dsFromBnode : Dataset :=
+  { default := [],
+    named := [{ name := .iri gOne,
+                graph := [{ s := .bnode "x", p := pVal, o := .bnode "x" }] }] }
+
+#guard
+  let applied := (applyDataset [.default gOne, .named gOne] dsFromBnode []).1
+  match applied.default.head?, applied.named.head? with
+  | some td, some ng =>
+      match ng.graph.head? with
+      | some tn => td.s != tn.s
+      | none => false
+  | _, _ => false
+
+-- Uniform, role-specific renaming prevents a default-graph generated label
+-- from colliding with an adversarial source label in the named graph.
+def collidingBnode : String := bnodeScopePrefix ["dataset-default", gOne.val] ++ "x"
+def collidingSubject : Subject := .bnode collidingBnode
+
+def dsFromCollision : Dataset :=
+  { default := [],
+    named := [
+      { name := .iri gOne,
+        graph := [{ s := .bnode "x", p := pVal, o := .iri iAlice }] },
+      { name := .iri gTwo,
+        graph := [{ s := (collidingSubject : Subject), p := pVal, o := .iri iBob }] }] }
+
+#guard
+  let applied := (applyDataset [.default gOne, .named gTwo] dsFromCollision []).1
+  match applied.default.head?, applied.named.head? >>= (fun ng => ng.graph.head?) with
+  | some td, some tn => td.s != tn.s
+  | _, _ => false
+
+def dsNamedSharedBnode : Dataset :=
+  { default := [],
+    named := [
+      { name := .iri gOne,
+        graph := [{ s := .bnode "shared", p := pVal, o := .iri iAlice }] },
+      { name := .iri gTwo,
+        graph := [{ s := .bnode "shared", p := pAge, o := .iri iBob }] }] }
+
+-- RDF merge standardizes the blank nodes of distinct source graphs apart,
+-- even when the supplied dataset shares a blank node between those graphs.
+#guard
+  let merged := (applyDataset [.default gOne, .default gTwo] dsNamedSharedBnode []).1
+  (merged.default.map (fun t => t.s)).eraseDups.length == 2
+
 /-- A dataset whose default graph is empty and whose two named graphs
 hold one label each — the §18.6 GRAPH fixture. -/
 def dsNamed : Dataset :=
@@ -621,6 +670,19 @@ def pathPairs (path : PropertyPath) : List (String × String) :=
 #guard colS "label" (rows dsNamed
     (mkQuery (.select .all) (.graph (.iri gTwo) pLabels) (dataset := [.named gTwo])))
     == ["bbb"]
+-- Repeating one FROM NAMED IRI denotes one named graph, so GRAPH ?g
+-- evaluates it once rather than multiplying the solution bag.
+#guard (rows dsNamed
+    (mkQuery (.select .all) (.graph (.var "g") pLabels)
+      (dataset := [.named gOne, .named gOne]))).length == 1
+-- One uniform named-graph renaming preserves a blank node shared by two
+-- stored named graphs, so a join through that identity still succeeds.
+#guard (rows dsNamedSharedBnode
+    (mkQuery (.select .all)
+      (.join
+        (.graph (.iri gOne) (.bgp [tpv "x" pVal (.var "v")]))
+        (.graph (.iri gTwo) (.bgp [tpv "x" pAge (.var "a")])))
+      (dataset := [.named gOne, .named gTwo]))).length == 1
 -- Trailing VALUES joins onto the WHERE result (§10.2).
 #guard colS "label" (rows { default := gMain, named := [] }
     (mkQuery (.select .all) pLabels (postValues := some [[("s", .iri iBob)]]))) == ["bbb"]

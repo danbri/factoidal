@@ -866,8 +866,8 @@ check "rdfsPlusClosure" rdfsPlusClosure "$TMP/rdfsplus.json" \
 
 # --- OWL DL consistency / entailment (issue 586) ----------------------
 # Envelopes pinned against bin/npm-entry/entry_jsoo.ml's
-# owl_is_consistent_json / owl_entails_json: three-valued, budget-out
-# reported as null with a reason, never a silent false.
+# owl_is_consistent_json / owl_entails_json: three-valued, with
+# indeterminate visit or witness limits reported as null.
 args "$TMP/owl-cons-yes.json" "$SUBCLASS" ""
 check "owlIsConsistent consistent -> true, no reason" owlIsConsistent "$TMP/owl-cons-yes.json" \
   'r["ok"] is True and r["consistent"] is True and "reason" not in r'
@@ -886,15 +886,15 @@ _:r <http://www.w3.org/2002/07/owl#onProperty> <http://e/p> .
 _:r <http://www.w3.org/2002/07/owl#someValuesFrom> <http://e/A> .
 '
 args "$TMP/owl-cons-unk.json" "$CYCLIC" '{"fuel":"1"}'
-check "owlIsConsistent fuel 1 -> null (budget-out, fuel named)" owlIsConsistent "$TMP/owl-cons-unk.json" \
-  'r["ok"] is True and r["consistent"] is None and "budget-out" in r["reason"]
-   and "fuel 1 " in r["reason"]'
+check "owlIsConsistent fuel 1 -> null (indeterminate limit)" owlIsConsistent "$TMP/owl-cons-unk.json" \
+  'r["ok"] is True and r["consistent"] is None and "indeterminate" in r["reason"]
+   and "budget 1 " in r["reason"]'
 
-# The same cyclic TBox at the default budget saturates under the
-# witness-depth cap: consistent.
+# The same cyclic TBox at the default visit budget reaches the witness
+# depth bound with an unresolved existential: still indeterminate.
 args "$TMP/owl-cons-cyc.json" "$CYCLIC" ""
-check "owlIsConsistent cyclic TBox, default fuel -> true" owlIsConsistent "$TMP/owl-cons-cyc.json" \
-  'r["ok"] is True and r["consistent"] is True'
+check "owlIsConsistent cyclic TBox, default fuel -> null" owlIsConsistent "$TMP/owl-cons-cyc.json" \
+  'r["ok"] is True and r["consistent"] is None and "unresolved" in r["reason"]'
 
 # Entailment via the closure path: a type D . follows from
 # a type C, C subClassOf D by cax-sco.
@@ -904,20 +904,21 @@ args "$TMP/owl-ent-yes.json" "$SUBCLASS" "$CONCL" ""
 check "owlEntails subclass typing -> true via closure" owlEntails "$TMP/owl-ent-yes.json" \
   'r["ok"] is True and r["entailed"] is True and r["via"] == "closure"'
 
-# Not entailed: the negated conclusion is satisfiable beside the
-# premise (a countermodel), reported via the refutation path.
+# The bounded tableau can leave the unrelated negated conclusion open,
+# but it does not construct a model certificate. The public result is
+# therefore indeterminate rather than a claim of non-entailment.
 UNRELATED='<http://e/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://e/Zebra> .
 '
 args "$TMP/owl-ent-no.json" "$SUBCLASS" "$UNRELATED" ""
-check "owlEntails unrelated class -> false via refutation" owlEntails "$TMP/owl-ent-no.json" \
-  'r["ok"] is True and r["entailed"] is False and r["via"] == "refutation"
-   and "model" in r["reason"]'
-
-# Budget-out on a refutation goal: null, never a silent false.
-args "$TMP/owl-ent-unk.json" "$CYCLIC" "$UNRELATED" '{"fuel":"1"}'
-check "owlEntails fuel 1 -> null (budget-out)" owlEntails "$TMP/owl-ent-unk.json" \
+check "owlEntails unrelated class -> null via open refutation branch" owlEntails "$TMP/owl-ent-no.json" \
   'r["ok"] is True and r["entailed"] is None and r["via"] == "refutation"
-   and "budget-out" in r["reason"]'
+   and "no model certificate" in r["reason"]'
+
+# A visit or witness limit on a refutation goal is null.
+args "$TMP/owl-ent-unk.json" "$CYCLIC" "$UNRELATED" '{"fuel":"1"}'
+check "owlEntails fuel 1 -> null (indeterminate limit)" owlEntails "$TMP/owl-ent-unk.json" \
+  'r["ok"] is True and r["entailed"] is None and r["via"] == "refutation"
+   and "indeterminate" in r["reason"]'
 
 args "$TMP/owl-ent-badnq.json" 'not nquads @@@' "$CONCL" ""
 check "owlEntails bad premise -> error" owlEntails "$TMP/owl-ent-badnq.json" \

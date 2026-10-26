@@ -138,6 +138,23 @@ document's labels apart from another's. -/
 def Dataset.prefixBnodes (pre : String) (ds : Dataset) : Dataset :=
   ds.renameBnodes (fun b => pre ++ b)
 
+/-- A syntax-safe, injective, prefix-free blank-node scope prefix.
+Each Unicode scalar is written as decimal digits followed by `_`; `x_`
+separates tuple components and terminal `z_` cannot occur in an encoded
+component. The result contains only ASCII letters, digits, and `_`. -/
+def bnodeScopePrefix (parts : List String) : String :=
+  let encodePart (part : String) : String :=
+    String.join (part.toList.map fun c => toString c.toNat ++ "_")
+  "s_" ++ String.join (parts.map fun part => encodePart part ++ "x_") ++ "z_"
+
+/-- Scope a graph's blank nodes with a syntax-safe tuple key. -/
+def Graph.scopeBnodes (parts : List String) (g : Graph) : Graph :=
+  g.prefixBnodes (bnodeScopePrefix parts)
+
+/-- Dataset-wide counterpart of `Graph.scopeBnodes`. -/
+def Dataset.scopeBnodes (parts : List String) (ds : Dataset) : Dataset :=
+  ds.prefixBnodes (bnodeScopePrefix parts)
+
 /-! ## Set-semantics theorems -/
 
 /-- Membership distributes over append. -/

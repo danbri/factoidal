@@ -152,7 +152,7 @@ def erRank : EvalResult → Int
   | .term (.bnode _)         => 1
   | .term (.iri _)           => 2
   | .bool _                  => 3
-  | .num _ | .dec _ | .dbl _ => 4
+  | .num _ | .dec _ | .flt _ | .dbl _ => 4
   | .term (.literal _)       => 7
   | .term (.tripleTerm _ _ _) => 8
 
@@ -161,6 +161,7 @@ last-resort tiebreak below (port of `er_numeric_lexical`). -/
 def erNumericLexical : EvalResult → String
   | .num n             => toString n
   | .dec s             => s
+  | .flt s             => s
   | .dbl s             => s
   | .term (.literal l) => l.val.lexicalForm
   | _                  => ""
@@ -193,7 +194,7 @@ def sparqlOrder (a b : EvalResult) : Int :=
     | .term (.bnode x), .term (.bnode y) => strCompare x y
     | .term (.iri x),   .term (.iri y)   => strCompare x.val y.val
     | .bool x, .bool y => intCompare (if x then 1 else 0) (if y then 1 else 0)
-    | .num _, _ | .dec _, _ | .dbl _, _ => sparqlOrderNumeric a b
+    | .num _, _ | .dec _, _ | .flt _, _ | .dbl _, _ => sparqlOrderNumeric a b
     | .term (.literal l1), .term (.literal l2) => literalOrder l1.val l2.val
     | .term t1, .term t2 => termOrder t1 t2
     | _, _ => 0
@@ -669,9 +670,7 @@ def avgNumeric (vals : List EvalResult) : EvalResult :=
     let extended := s.mantissa * pow10 extra
     let divided := intDivT extended (Int.ofNat c)
     let resultScale := s.scale + extra
-    match resultKind with
-    | .dbl => .dbl (formatAsDouble divided resultScale)
-    | _    => .dec (stripTrailingDecimalZeros (formatScaledValue divided resultScale))
+    formatNumericResult ⟨divided, resultScale⟩ resultKind
 
 /-- §18.5.1.6 MIN by the §15.1 ordering; MIN of nothing is an error. -/
 def findMin (vals : List EvalResult) : EvalResult :=
@@ -745,6 +744,7 @@ def rewriteAggregates (env : EvalEnv) (g : SolutionGroup) : Expr → Expr
       | .num n     => .numericLit n
       | .bool b    => .boolLit b
       | .dec s     => .decimalLit s
+      | .flt f     => .lit (mkTypedLiteral f xsdFloat)
       | .dbl d     => .doubleLit d
       | .term (.iri i)     => .iri i
       | .term (.literal l) => .lit l
@@ -1665,15 +1665,22 @@ def applyDataset (dcs : List DatasetClause) (ds : Dataset) (active : Graph) :
   else
     let defaults := dcs.filterMap (fun dc =>
       match dc with
-      | .default i => ds.lookupNamedIri i.val
+      | .default i => (ds.lookupNamedIri i.val).map (fun g =>
+          g.scopeBnodes ["dataset-default", i.val])
       | .named _   => none)
-    let named := dcs.filterMap (fun dc =>
+    -- §13.2.2: duplicate FROM NAMED clauses identify one named graph.
+    -- Keep the first occurrence and preserve the source graph's existing
+    -- blank-node co-reference across stored graphs under one uniform renaming.
+    let namedRev := dcs.foldl (fun acc dc =>
       match dc with
-      -- §13.2: a `FROM NAMED` clause carries an IRI, so the graph it
-      -- installs is IRI-named.
-      | .named i => (ds.lookupNamedIri i.val).map (fun g =>
-          ({ name := .iri i, graph := g } : NamedGraph))
-      | .default _ => none)
+      | .named i =>
+          if acc.any (fun ng => ng.name == Subject.iri i) then acc
+          else match ds.lookupNamedIri i.val with
+            | some g => ({ name := .iri i,
+                           graph := g.scopeBnodes ["dataset-named"] } : NamedGraph) :: acc
+            | none => acc
+      | .default _ => acc) []
+    let named := namedRev.reverse
     let newDefault := defaults.foldl Graph.union Graph.empty
     ({ default := newDefault, named := named }, newDefault)
 

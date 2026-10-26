@@ -175,6 +175,14 @@ would conflate them and could produce a clash for the wrong reason —
 a FALSE pass. The conclusion graph's blank nodes are therefore renamed
 under a reserved prefix before `negationGoals` sees them.
 
+Correction, 2026-09-08: the prefix was not reserved by RDF syntax,
+and this did not discharge freshness for arbitrary accepted input.
+The [public counterexample and repair](2026-09-08-qualified-tableau-merges-and-public-closure.md#public-entailment-goal-name-collision)
+replace that policy with `prepareNegationGoals`: both input graphs
+are renamed into disjoint namespaces before generated goal nodes are
+introduced. Every caller must combine the returned scoped premise
+with its goals.
+
 **What would falsify the recommendation.**
 
 1. A NegativeEntailmentTest that fails after the change. It cannot

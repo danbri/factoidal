@@ -148,14 +148,14 @@ Two observations that change what is worth doing:
 
 Finding, not a work order.
 
-The OWL Lean tree holds 32 of the repository's 217 `partial def`. They are
-in `L4Factoidal/OWL/Refute.lean` (14), `L4Factoidal/OWL/Materialise.lean`
+Re-measured 2026-09-08, the OWL Lean tree holds 31 of the library's 156
+`partial def`. They are in `L4Factoidal/OWL/Refute.lean` (13), `L4Factoidal/OWL/Materialise.lean`
 (12), `L4Factoidal/OWL/FunctionalSyntax.lean` (5) and
 `L4Factoidal/OWL/QueryMaterialise.lean` (1). `L4Factoidal/OWL/Tableau.lean`
 itself holds none.
 
-Only ONE of the 32 is the tableau expansion: `Refute.search`. The other 13
-in `Refute.lean` are supporting recursions over class expressions and lists
+The tableau expansion `Refute.search` is total as of 2026-09-08. The 13
+remaining declarations in `Refute.lean` are supporting recursions over class expressions and lists
 (`nnf`, `ceDefinite`, `repOf`, `subpropertiesOfRaw`, …) whose termination
 is a structural or a list-length argument, not a blocking argument. The 12
 in `Materialise.lean` are the mutually recursive class-expression

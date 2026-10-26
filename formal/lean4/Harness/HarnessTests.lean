@@ -21,6 +21,7 @@ import Harness.Run
 import Harness.Fixtures
 
 open Harness
+open L4Factoidal.RDF
 
 namespace Harness.Tests
 
@@ -59,6 +60,37 @@ namespace Harness.Tests
 
 #guard trimTrailingNewlines "a\nb\n\n" == "a\nb"
 #guard trimTrailingNewlines "a\nb" == "a\nb"
+
+/-! ## Per-document blank-node scope -/
+
+def scopePred : WfIri := ⟨"http://example/p", by rfl⟩
+def scopeInput : Dataset :=
+  { default := [{ s := .bnode "x", p := scopePred, o := .bnode "x" }], named := [] }
+
+-- One document keeps repeated uses of its blank node co-referential.
+#guard (scopeFixtureDataset ["data", "/x.ttl"] scopeInput).default ==
+  [{ s := .bnode "s_100_97_116_97_x_47_120_46_116_116_108_x_z_x", p := scopePred,
+     o := .bnode "s_100_97_116_97_x_47_120_46_116_116_108_x_z_x" }]
+-- Loading the same bytes in another dataset role gives a disjoint scope.
+#guard (scopeFixtureDataset ["data", "/x.ttl"] scopeInput).default !=
+  (scopeFixtureDataset ["graph", "/x.ttl"] scopeInput).default
+-- Component lengths prevent tuple-boundary collisions.
+#guard bnodeScopePrefix ["graph", "a:b", "c"] != bnodeScopePrefix ["graph", "a", "b:c"]
+#guard bnodeScopePrefix [] != bnodeScopePrefix [""]
+-- The terminator makes scope prefixes prefix-free with respect to the source
+-- label: `(scope=a,label=98_x)` cannot collide with `(scope=ab,label=x)`.
+#guard bnodeScopePrefix ["a"] ++ "98_x" != bnodeScopePrefix ["ab"] ++ "x"
+-- Scope inputs may contain URI punctuation, spaces, and Unicode. The emitted
+-- label remains valid N-Triples and round-trips with its identity intact.
+#guard
+  let dsScoped := scopeFixtureDataset
+    ["query-source", "file:///tmp/é", "path with space/雪.ttl"] scopeInput
+  match L4Factoidal.Syntax.Graph.toNTriples dsScoped.default .rdf11 with
+  | .error _ => false
+  | .ok text =>
+      match L4Factoidal.Syntax.parseNTriples text .rdf11 with
+      | .ok reparsed => reparsed == dsScoped.default
+      | .error _ => false
 
 /-! ## The score-line grammar
 
@@ -298,6 +330,8 @@ def exB : Term := .iri ⟨"http://example.org/b", rfl⟩
 def lit1 : Term := .literal (Literal.string "1")
 def litInt1 : Term :=
   .literal ⟨{ lexicalForm := "1", datatype := xsdInteger, langTag := none, direction := none }, rfl⟩
+def typedLit (lex : String) (dt : WfIri) : WfLiteral :=
+  mkTypedLiteral lex dt
 def bn (l : String) : Term := .bnode l
 
 -- Plain rows: a multiset, order-insensitive.
@@ -312,6 +346,18 @@ def bn (l : String) : Term := .bnode l
 #guard compareSelectRows false false [[("x", lit1)]] [[("x", litInt1)]] == .notEqual
 -- …but the CSV-lenient comparison accepts it (CSV lost the datatype).
 #guard compareSelectRows false true [[("x", lit1)]] [[("x", litInt1)]] == .equal
+-- Numeric result comparison is by datatype value. These decimal spellings
+-- denote the same binary64 value; decimal remains exact, and binary32 has
+-- its own rounding boundary.
+#guard numericLiteralEqual (typedLit "4.0E-1" xsdDouble)
+    (typedLit "4.0000000000000002220446049250313080847263336181640625E-1" xsdDouble)
+#guard !numericLiteralEqual (typedLit "4.0E-1" xsdDecimal)
+    (typedLit "4.0000000000000002220446049250313080847263336181640625E-1" xsdDecimal)
+#guard numericLiteralEqual (typedLit "16777216" L4Factoidal.SPARQL.xsdFloat)
+    (typedLit "16777217" L4Factoidal.SPARQL.xsdFloat)
+#guard !numericLiteralEqual (typedLit "16777216" xsdDouble) (typedLit "16777217" xsdDouble)
+#guard !numericLiteralEqual (typedLit "1" L4Factoidal.SPARQL.xsdFloat)
+    (typedLit "1" xsdDouble)
 
 -- Blank nodes: ONE bijection across all rows. `_:a` in two expected
 -- rows must map to the SAME actual label.
@@ -348,17 +394,84 @@ def rsTurtle : String :=
 
 def rsDecoded : Option (List VarName × List Binding) :=
   match L4Factoidal.Syntax.parseTurtle rsTurtle (some "file:///r/x.ttl") with
-  | .ok g    => decodeRsResultSet g
+  | .ok g    =>
+      match decodeRdfResultSet g with
+      | .ok (.bindings vars rows) => some (vars, rows)
+      | _ => none
   | .error _ => none
 
 #guard rsDecoded.map Prod.fst == some ["x"]
 -- Rows come back in `rs:index` order.
 #guard rsDecoded.map Prod.snd == some [[("x", exA)], [("x", exB)]]
 #guard (match L4Factoidal.Syntax.parseTurtle rsTurtle (some "file:///r/x.ttl") with
-        | .ok g => isRsResultSet g | .error _ => false)
+        | .ok g => isRdfResultSet g | .error _ => false)
+
+-- An RDF graph is a set of triples. Repeating every assertion changes
+-- neither the single result-set root nor the decoded SELECT bag.
+#guard (match L4Factoidal.Syntax.parseTurtle rsTurtle (some "file:///r/x.ttl") with
+        | .ok g => decodeRdfResultSet (g ++ g) == decodeRdfResultSet g
+        | .error _ => false)
+
+def rsBagBlankNodeTurtle : String :=
+"@prefix rs: <http://www.w3.org/2001/sw/DataAccess/tests/result-set#> .
+[] a rs:ResultSet ;
+   rs:resultVariable \"x\", \"y\" ;
+   rs:solution [ rs:index 2 ;
+     rs:binding [ rs:variable \"x\" ; rs:value _:shared ] ;
+     rs:binding [ rs:variable \"y\" ; rs:value <http://example.org/b> ] ] ;
+   rs:solution [ rs:index 1 ;
+     rs:binding [ rs:variable \"x\" ; rs:value _:shared ] ;
+     rs:binding [ rs:variable \"y\" ; rs:value <http://example.org/a> ] ] ."
+
+-- Two distinct solution nodes remain two rows even when their `x` values
+-- are the same blank node. The index orders the distinguishing `y` values,
+-- and the blank-node identity is unchanged across both rows.
+#guard match L4Factoidal.Syntax.parseTurtle rsBagBlankNodeTurtle (some "file:///r/bag.ttl") with
+       | .ok g =>
+         match decodeRdfResultSet g with
+         | .ok (.bindings vars [first, second]) =>
+           vars == ["x", "y"] && first.lookup "y" == some exA &&
+             second.lookup "y" == some exB &&
+             match first.lookup "x", second.lookup "x" with
+             | some (.bnode a), some (.bnode b) => a == b
+             | _, _ => false
+         | _ => false
+       | .error _ => false
 -- A plain graph is not a result set.
 #guard (match L4Factoidal.Syntax.parseTurtle "<http://example.org/a> <http://example.org/p> 1 ." none with
-        | .ok g => isRsResultSet g | .error _ => true) == false
+        | .ok g => isRdfResultSet g | .error _ => true) == false
+
+/-! The DAWG RDF result-set vocabulary also represents ASK results.
+These guards exercise the complete expected-result dispatch rather than a
+harness-only graph helper. -/
+
+def rsBooleanTrueTurtle : String :=
+"@prefix rs: <http://www.w3.org/2001/sw/DataAccess/tests/result-set#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+[] a rs:ResultSet ; rs:boolean \"true\"^^xsd:boolean ."
+
+#guard match parseExpected "/r/true.ttl" rsBooleanTrueTurtle with
+       | .ok (.boolean true) => true
+       | _ => false
+
+def rsBooleanFalseRdfXml : String :=
+"<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"
+          xmlns:rs=\"http://www.w3.org/2001/sw/DataAccess/tests/result-set#\">
+  <rs:ResultSet>
+    <rs:boolean rdf:datatype=\"http://www.w3.org/2001/XMLSchema#boolean\">false</rs:boolean>
+  </rs:ResultSet>
+</rdf:RDF>"
+
+#guard match parseExpected "/r/false.rdf" rsBooleanFalseRdfXml with
+       | .ok (.boolean false) => true
+       | _ => false
+
+-- `rs:boolean` has range `xsd:boolean`; a plain string is malformed.
+#guard match parseExpected "/r/bad.ttl"
+  "@prefix rs: <http://www.w3.org/2001/sw/DataAccess/tests/result-set#> .
+   [] a rs:ResultSet ; rs:boolean \"true\" ." with
+       | .error _ => true
+       | _ => false
 
 end compare
 

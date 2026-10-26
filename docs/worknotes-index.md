@@ -15,6 +15,25 @@ worknote, kept as the record of a decision or a measurement),
 
 | Date | Note | Commit | Status |
 | --- | --- | --- | --- |
+| 2026-09-09 | [OWL forced nominal batching](20260909-owl-forced-nominal-batching.md) | pending | current: forced equalities share a search visit, focused 502 recovery |
+| 2026-09-09 | [OWL literal entailment goals](20260909-owl-literal-entailment-goals.md) | pending | current: exact negative data assertions, datatype punning boundary |
+| 2026-09-08 | [OWL named TBox dispatch](20260908-owl-refute-named-tbox-dispatch.md) | pending | current: exact ordered bucket proof, root full build, fresh schema.org phase measurements |
+| 2026-09-08 | [OWL hard native timeout](20260908-owl-refuter-hard-timeout.md) | pending | current: child process termination and reaping, measured process exit and wire scaling |
+| 2026-09-08 | [OWL untyped assertion subjects](20260908-owl-refute-untyped-functional-subjects.md) | pending | current: subject initialization repair with exact indexed implementation proof |
+| 2026-09-09 | [Lean DL completion continuation](20260909-lean-dl-completion-continuation.md) | pending | current: validated subject and zero-bound repairs, broader scale and catalog checks |
+| 2026-09-08 | [OWL maximum-zero required successors](20260908-owl-max-zero-required-successors.md) | pending | current: required edges violate zero bounds without a distinctness premise |
+| 2026-09-08 | [OWL TBox prefilter](20260908-owl-refute-tbox-prefilter.md) | pending | current: proved full-state/order equality, three native schema.org timing trials |
+| 2026-09-08 | [OWL indexed initial labels](20260908-owl-refute-indexed-initial-labels.md) | pending | current: proved equality to original initState, public compilation substitution, fresh phase timings |
+| 2026-09-08 | [OWL bounded witness obligations](20260908-owl-refuter-bounded-obligations.md) | pending | current: unresolved witness limits return unknown, owl:Thing conclusions produce goals |
+| 2026-09-08 | [OWL nominal identification](20260908-owl-nominal-identification.md) | pending | current: exhaustive resource nominal choices, fresh witness guards, branching cost under review |
+| 2026-09-08 | [OWL indexed initialization](20260908-owl-refute-indexed-initialization.md) | pending | current: exact indexed-store substitution, QUDT setup phase measurement |
+| 2026-09-08 | [OWL datatype exclusions and complete lists](20260908-owl-datatype-witness-exclusions.md) | pending | current: finite value exclusions, complete RDF collections, 118/9/1 inconsistency floor |
+| 2026-09-08 | [Public indexed OWL closure](20260908-owl-indexed-public-closure.md) | pending | current: proved compiler substitution and real-vocabulary timings |
+| 2026-09-08 | [OWL total search](20260908-owl-total-search.md) | pending | current: total branch loop, budget proofs, qualified-merge correction |
+| 2026-09-08 | [SPARQL 1.0 RDF result sets](20260908-lean-sparql10-rdf-result-sets.md) | pending | current: decoder, dataset, numeric and parser repairs; 474/7 legacy floor |
+| 2026-09-08 | [Qualified tableau merges and public closure](designissues/2026-09-08-qualified-tableau-merges-and-public-closure.md) | pending | current: reproduced false inconsistency and native scale baseline |
+| 2026-09-08 | [Lean DL completion and scale](20260908-lean-dl-completion-and-scale.md) | pending | current: owner priority, acceptance boundaries, and active assignments |
+| 2026-09-08 | [Lean RDF/SPARQL/OWL status and Codex skill discovery](20260908-lean-standards-status-and-codex-skills.md) | pending | current: native suite evidence and agent instructions |
 | 2026-04-20 | [SPARQL demo review](20260420-sparqldemo-review.md) | 7d5c00ed9 | historical |
 | 2026-04-21 | [Large Turtle stack overflow fix sketch](2026-04-21-large-turtle-stack-overflow-fix-sketch.md) | c29698f98 | historical |
 | 2026-08 | [Factoidal verified RDF block engine](2026-08-blockengine.md) | 27f9308f4 | current: design, part 1 |

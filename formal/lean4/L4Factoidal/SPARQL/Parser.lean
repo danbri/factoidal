@@ -1494,7 +1494,12 @@ def pFilterExpr (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (E
       .ok (e, ts2)
     | t =>
       if startsBuiltinCall t then pPrimaryExpr f st ts
-      else pErr "expected '(' or built-in call after FILTER" ts
+      else
+        match t with
+        | .iri _ | .pname _ =>
+            if peekTok (advTok ts) == .lparen then pPrimaryExpr f st ts
+            else pErr "expected function call after FILTER" ts
+        | _ => pErr "expected '(' or built-in call after FILTER" ts
 
 /-- [58] GraphGraphPattern's VarOrIri. -/
 def pGraphName (fuel : Nat) (st : PState) (ts : TStream) : Except ParseError (PatternTerm × TStream) :=
@@ -2257,7 +2262,9 @@ def pSubjectWithExtras (fuel : Nat) (st : PState) (ts : TStream) :
     | .lparen => do
       let (pt, ts1) ← pCollection f st (advTok ts)
       match patternTermToSubject pt.1 with
-      | some s => .ok ((s, pt.2, false), ts1)
+      | some s =>
+          let complete := match pt.2 with | .empty => false | _ => true
+          .ok ((s, pt.2, complete), ts1)
       | none   => pErr "collection cannot be used as subject" ts
     | .ttOpen => do
       let (pt, ts1) ← pTripleTermPattern f st (advTok ts)

@@ -1,0 +1,3 @@
+  cd formal/lean4
+  /Users/danbri/.elan/bin/lake build l4block-mvp
+  ./.lake/build/bin/l4block-mvp

@@ -1,0 +1,62 @@
+will it work to some level without either TikV or Postgresql components installed?
+
+
+• Yes. The core engine can run entirely in-process without TiKV or PostgreSQL.
+
+  The intended layering is:
+
+  Lean RDF/SPARQL semantics
+          ↓
+  Lean block/index/query execution
+          ↓
+  in-memory blocks or local byte files / mmap
+          ↓
+  optional PostgreSQL or TiKV persistence adapters
+
+  So an MVP can parse RDF, build indexed blocks, run SPARQL, serialize canonical block bytes, and test native/WASM execution locally. PostgreSQL and TiKV become deployment
+  backends once the canonical block format and decoded-scan contract are ready—not prerequisites for proving or exercising the engine.
+
+  For a useful early benchmark, local files plus memory mapping are probably the right first persistence boundary.
+
+
+› what major milestones stand between us and a basic capability to query wikidata dumps in real time?
+
+
+• For a basic, useful “query Wikidata dump data locally in near-real-time” capability, the major milestones are:
+
+   Milestone                          What it enables
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Streaming RDF loader               Ingest large Turtle/N-Triples dumps without holding the whole graph in Lean memory.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Stable term dictionary             Map RDF terms to shared TermIds while preserving RDF/SPARQL equality rules.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Sorted/indexed blocks              Store TermId triples in predicate-first and subject-first layouts, with block metadata for pruning.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Canonical block codec              Persist and mmap the same verified block bytes; prove decode preserves block meaning.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Query planner → block scans        Lower common SPARQL BGPs, filters, projections, limits, and simple joins into bounded scans and joins.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Native query runtime               Run the Lean-generated executable against local mmap files; benchmark on medium then large KGX/Wikidata subsets.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Incremental updates / freshness    Consume dump revisions or change feeds as immutable delta blocks plus compaction.
+  ─────────────────────────────────  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Operations layer                   Only then add PostgreSQL/TiKV adapters for shared service deployment, replication, and multi-node operation.
+
+  The shortest credible first target is narrower than arbitrary SPARQL over the complete Wikidata dump:
+
+  local Wikidata-derived subset
+  → stream ingest
+  → predicate/subject indexed blocks on disk
+  → SELECT BGP + FILTER + LIMIT + COUNT + simple joins
+  → mmap/native execution
+
+  That can be genuinely useful for interactive lookup and many analytical queries. Full Wikidata-scale, arbitrary SPARQL “in real time” requires more: multiple permutations,
+  join ordering/cardinality statistics, compression, parallel scan/join execution, named-graph and qualifier modelling, and incremental indexing.
+
+  PostgreSQL/TiKV are not on the critical path to that first local capability. The current gap is chiefly physical execution—streaming ingestion, TermId blocks, persisted
+  indexes, and planner lowering—not missing SPARQL semantics.
+
+
+› Ask a follow-up question
+
+  gpt-5.6-terra medium · ~/working/factoidal · Agent

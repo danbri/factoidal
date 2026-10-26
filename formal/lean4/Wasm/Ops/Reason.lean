@@ -34,7 +34,7 @@ import L4Factoidal.RDF.Datatypes
 import L4Factoidal.RDFS.Closure
 import L4Factoidal.RDFS.FullClosure
 import L4Factoidal.RDFS.RDFSPlus
-import L4Factoidal.OWL.RLClosure
+import L4Factoidal.OWL.RLClosureIndexed
 import L4Factoidal.OWL.Refute
 import L4Factoidal.OWL.NegationGoals
 import L4Factoidal.Syntax.NQuadsFast
@@ -111,12 +111,13 @@ def rdfsPlusClosure (nq : String) : String :=
 The chain is the F* npm entry's, engine for engine: the OWL-RL
 closure of the default graph, then the three-valued clash-detecting
 tableau (`L4Factoidal.OWL.Refute.tableauConsistent`, mirroring
-`Tableau_Refute.tableau_consistent`). The Lean closure is this
-tree's standard `OWL.RL.closureFix` (the same one `owlClosure`'s
-"OWL-RL" mode serves; the F* entry reaches the equivalent rows
-through `owl_rl_closure_with_reflexivity`, fuel 100 — same
-architecture, no layering here). The `none` verdict is reported as
-`null` with a budget-out reason, never a silent `false`.
+`Tableau_Refute.tableau_consistent`). The Lean source calls this
+tree's standard `OWL.RL.closureFix`; its proved `@[csimp]` equation
+selects `indexedClosureFix` in compiled code. This is the same closure
+that `owlClosure`'s "OWL-RL" mode serves. The F* entry reaches the
+equivalent rows through `owl_rl_closure_with_reflexivity`, fuel 100.
+The `none` verdict is reported as `null` with an indeterminate-limit
+reason, never a silent `false`.
 No reasoning logic lives here: closure, refuter and `negationGoals`
 are all `L4Factoidal` library code; these ops only parse, dispatch
 and shape the JSON verdict. -/
@@ -156,17 +157,18 @@ def owlIsConsistent (nq optsJson : String) : String :=
     | none =>
         okWith [("consistent", .null),
                 ("reason", .string
-                  (s!"budget-out: tableau refutation fuel {fuel} exhausted "
-                   ++ "before every branch closed (indeterminate, not "
-                   ++ "inconsistent); raise it via opts.fuel"))]
+                  (s!"indeterminate: tableau visit budget {fuel} was exhausted "
+                   ++ "or bounded witness construction left an unresolved "
+                   ++ "obligation; no consistency verdict"))]
 
 /-- `owlEntails(premiseNquads, conclusionNquads, optsJson)`. The two
-verified paths of the F* entry: `via:"closure"` when every conclusion
+dispatch paths are `via:"closure"` when every conclusion
 triple is exactly (engine triple equality) in the OWL-RL closure of
 the premise; `via:"refutation"` when the negated conclusion
-(`negationGoals`) is refuted on every goal. A satisfiable goal is a
-countermodel (`entailed:false`); an indeterminate goal with no
-countermodel is `null`. -/
+(`prepareNegationGoals`) is refuted on every goal. A quiescent open
+bounded expansion is not a certified model, so it cannot establish
+non-entailment; every result other than closure containment or all
+goals refuted is `null`. -/
 def owlEntails (premiseNq conclusionNq optsJson : String) : String :=
   match parseNQuadsFast premiseNq with
   | .error e => errJson (fmtParseError e)
@@ -180,28 +182,29 @@ def owlEntails (premiseNq conclusionNq optsJson : String) : String :=
       if gc.all (fun t => Graph.mem t closure) then
         okWith [("entailed", .bool true), ("via", .string "closure")]
       else
-        match L4Factoidal.OWL.Refute.negationGoals gc with
+        match L4Factoidal.OWL.Refute.prepareNegationGoals closure gc with
         | none =>
-            okWith [("entailed", .bool false), ("via", .string "closure"),
+            okWith [("entailed", .null), ("via", .string "closure"),
                     ("reason", .string
                       ("not in the OWL-RL closure, and the conclusion form "
-                       ++ "cannot be soundly negated for refutation"))]
-        | some goals =>
+                       ++ "cannot be soundly negated for refutation; "
+                       ++ "non-entailment is not established"))]
+        | some (premise, goals) =>
           let results := goals.map (fun neg =>
-            L4Factoidal.OWL.Refute.tableauConsistent (closure ++ neg) fuel)
+            L4Factoidal.OWL.Refute.tableauConsistent (premise ++ neg) fuel)
           if results.all (· == some false) then
             okWith [("entailed", .bool true), ("via", .string "refutation")]
           else if results.any (· == some true) then
-            okWith [("entailed", .bool false), ("via", .string "refutation"),
+            okWith [("entailed", .null), ("via", .string "refutation"),
                     ("reason", .string
-                      ("a model satisfying the premise and the negated "
-                       ++ "conclusion was constructed (conclusion not "
-                       ++ "entailed)"))]
+                      ("the bounded tableau reached a quiescent open branch "
+                       ++ "but produced no model certificate; entailment "
+                       ++ "remains indeterminate"))]
           else
             okWith [("entailed", .null), ("via", .string "refutation"),
                     ("reason", .string
-                      (s!"budget-out: a refutation goal exhausted fuel {fuel} "
-                       ++ "before closing (indeterminate); raise it via "
-                       ++ "opts.fuel"))]
+                      (s!"indeterminate: a refutation goal exhausted visit "
+                       ++ s!"budget {fuel} or retained an unresolved bounded "
+                       ++ "witness obligation"))]
 
 end L4Wasm.Ops

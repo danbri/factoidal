@@ -1,0 +1,20 @@
+Publish is running for @factoidal/core 0.3.0, workflow 33758782842, which re-extracts F* on Linux and refuses on drift before publishing.
+
+Is it a respectable RDF store yet? As a standards engine, yes. SPARQL 1.1 at 631 pass, 0 fail, SPARQL 1.2 at 254 pass, 0 fail, the RDF 1.1 and 1.2 syntaxes complete, and a correctness story almost nobody else has: round-trip theorems for every on-disk codec, a proof that the fast join equals the reference join, proofs that the fast parser equals the specification parser.
+
+As a store, it is early but real: Merkle-committed artifacts, a durable delta log with a crash-safety argument, atomic activation through a pointer, compaction, and now named graphs on disk.
+
+As a database, not yet, and here is precisely what is missing.
+
+- No server. The Lean persisted path has no SPARQL endpoint. You cannot point a client at it.
+- One writer. No locking in the JavaScript path, no transactions beyond a delta batch, no isolation story.
+- The planner is predicate-level. It picks blocks by constant predicate or graph name and otherwise reads everything. No statistics, no cost model, no join ordering.
+- Named-graph queries read whole blocks, because the postings sidecars have no graph dimension yet.
+- Scale is unproven above 3.1 million triples. Serious stores are measured at a hundred million and up. Pack is now about 12,000 triples per second, so a hundred million triples is a couple of hours, and nobody has tried it.
+- No peer benchmark exists. Not one number against Jena, Oxigraph, Virtuoso or Blazegraph, and no standard workload run at all. This is the credibility gap, not the code.
+
+The honest one-line verdict: a formally grounded, standards-complete engine with an early but genuine persistent store, and no evidence yet that it is competitive, because the comparison has never been run.
+
+That suggests the next milestone after named-graph sidecars, and it is cheap compared to what today cost: pick one standard benchmark, run it against this engine and against one peer on the same machine, and publish both columns including the ones we lose. A benchmark we lose is worth more than a benchmark we do not run.
+
+Meanwhile the parity supervisor is working through the OWL delta, where the Lean probe sits at 1,131 pass, 316 fail out of 1,457 against an F* engine that is near-perfect on the same ground. That is the largest single correctness gap left between the two trees.

@@ -1,0 +1,66 @@
+# A verified-transform network, described as RDF.
+#
+#            IIP(turtle)          IIP(shapes turtle)
+#                 |                      |
+#              [data]                [shapes]        gf:parse
+#                 |                      |
+#             [closure]                  |           rho-df (whole-graph)
+#                / \                     |
+#               /   \____________________|
+#              /                  \      |
+#          [canon]              [validate]           RDFC-1.0 | SHACL
+#             |                   /     \
+#          [sign]            conforms  report        ← network outputs
+#             |
+#        signature                                   ← network output
+#
+# Note the shape of the graph, not just the chain: `closure` fans OUT to two
+# consumers, `validate` fans IN from two producers. A linear pipe() could not
+# express this, which is the point of describing the network as data.
+#
+# The closure is load-bearing. The shapes target ex:Mammal, and NOTHING in the
+# input data is typed ex:Mammal — rex and fido are ex:Dog. Only after core-RDFS
+# closure does rdfs:subClassOf make them Mammals and the shape find any target
+# at all. Delete the closure process and validation passes vacuously.
+
+@prefix gf:  <http://factoidal.example/ns/graphflow#> .
+@prefix net: <http://factoidal.example/ns/graphflow/validate-and-sign#> .
+
+net:network a gf:Network ;
+    gf:name "validate-and-sign" ;
+    gf:claimsStreaming false ;
+    gf:process net:data, net:shapes, net:closure, net:validate, net:canon, net:sign .
+
+net:data     a gf:Process ; gf:name "data"     ; gf:component gf:parse .
+net:shapes   a gf:Process ; gf:name "shapes"   ; gf:component gf:parse .
+net:closure  a gf:Process ; gf:name "closure"  ; gf:component gf:rhoDfClosure .
+net:validate a gf:Process ; gf:name "validate" ; gf:component gf:shaclValidate .
+net:canon    a gf:Process ; gf:name "canon"    ; gf:component gf:canonicalize .
+net:sign     a gf:Process ; gf:name "sign"     ; gf:component gf:signEd25519 .
+
+net:c1 a gf:Connection ; gf:fromProcess net:data    ; gf:fromPort "out" ; gf:toProcess net:closure  ; gf:toPort "ds" .
+net:c2 a gf:Connection ; gf:fromProcess net:closure ; gf:fromPort "out" ; gf:toProcess net:validate ; gf:toPort "ds" .
+net:c3 a gf:Connection ; gf:fromProcess net:shapes  ; gf:fromPort "out" ; gf:toProcess net:validate ; gf:toPort "shapes" .
+net:c4 a gf:Connection ; gf:fromProcess net:closure ; gf:fromPort "out" ; gf:toProcess net:canon    ; gf:toPort "ds" .
+net:c5 a gf:Connection ; gf:fromProcess net:canon   ; gf:fromPort "out" ; gf:toProcess net:sign     ; gf:toPort "text" .
+
+net:iip-data a gf:InitialPacket ;
+    gf:targetProcess net:data ; gf:targetPort "text" ;
+    gf:value """@prefix ex:   <http://factoidal.example/ns/wrap#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:Dog rdfs:subClassOf ex:Mammal .
+
+ex:rex  a ex:Dog ; ex:name "Rex" .
+ex:fido a ex:Dog .
+""" .
+
+net:iip-shapes a gf:InitialPacket ;
+    gf:targetProcess net:shapes ; gf:targetPort "text" ;
+    gf:value """@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix ex: <http://factoidal.example/ns/wrap#> .
+
+ex:MammalShape a sh:NodeShape ;
+    sh:targetClass ex:Mammal ;
+    sh:property [ sh:path ex:name ; sh:minCount 1 ] .
+""" .

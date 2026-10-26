@@ -206,12 +206,13 @@ theorem nextToken_iri (pos : Nat) (d : Char) (body rest : List Char)
   simp only [hskip, hd1, hd2, reduceIte, beq_self_eq_true, if_true]
   conv => lhs; unfold nextToken.ltCase
   simp only [hlead, if_pos, hscan, processIriEscapes_id _ hne]
-  have hlead' : (isAlpha d || d == '>' || d == '_' || d == '/' || d == '#' ||
-                 (d == '?' || d == '$') && hasGtBeforeTerminator (d :: (body ++ '>' :: rest)))
+  have hlead' : (isAlpha d || d == '>' || d == '_' || d == '/' || d == '#' || d == '&' ||
+                 (d == '?' || d == '$') && hasGtBeforeTerminator (d :: (body ++ '>' :: rest)) ||
+                 (d == '\\' && validEscapedIriBody (d :: (body ++ '>' :: rest))))
                  = true := by
     simp only [iriLeadOk, Bool.or_eq_true] at hlead
     simp only [Bool.or_eq_true]
-    exact Or.inl hlead
+    exact Or.inl (Or.inl (Or.inl hlead))
   split
   · rename_i r h
     exact absurd (List.head_eq_of_cons_eq h) hd1

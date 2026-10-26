@@ -163,6 +163,7 @@ import L4Factoidal.OWL.Refute
 import L4Factoidal.OWL.NegationGoals
 import L4Factoidal.OWL.FunctionalSyntax
 import L4Factoidal.Syntax.RdfXml
+import L4Factoidal.Syntax.NTriples
 import Harness.Common
 
 open L4Factoidal.XML
@@ -681,6 +682,9 @@ structure Measure where
   closureRounds  : Nat := 0
   clashes        : Nat := 0
   capHits        : Nat := 0
+  /-- Refuter calls abandoned at their monotonic wall-clock deadline.
+      This is separate from closure caps and tableau budget exhaustion. -/
+  refuterTimeouts : Nat := 0
   parseFailures  : Nat := 0
   /-- Positive-entailment units the containment check missed and for
   which `negationGoals` produced NO goal at all: the refuter could not
@@ -688,22 +692,25 @@ structure Measure where
   refuter's negation coverage and it is counted here so that it is
   visible in the diagnostics instead of hidden inside a fail count. -/
   peNoGoals      : Nat := 0
-  /-- Containment missed, goals stated, a goal exhausted the tableau
-  budget: indeterminate. -/
-  peBudget       : Nat := 0
-  /-- Containment missed, goals stated, a goal has a countermodel:
-  the refuter says the entailment does not hold. -/
-  peCountermodel : Nat := 0
+  /-- Containment missed, goals stated, and a tableau result was
+  indeterminate because its visit budget or a bounded witness limit
+  was exhausted. -/
+  peLimits       : Nat := 0
+  /-- Containment missed, goals stated, and a bounded tableau reached a
+  quiescent open branch. This is not a certified model and does not
+  establish non-entailment. -/
+  peOpen         : Nat := 0
 deriving Repr
 
 def Measure.add (a b : Measure) : Measure :=
   { triplesParsed := a.triplesParsed + b.triplesParsed,
     closureRounds := a.closureRounds + b.closureRounds,
     clashes := a.clashes + b.clashes, capHits := a.capHits + b.capHits,
+    refuterTimeouts := a.refuterTimeouts + b.refuterTimeouts,
     parseFailures := a.parseFailures + b.parseFailures,
     peNoGoals := a.peNoGoals + b.peNoGoals,
-    peBudget := a.peBudget + b.peBudget,
-    peCountermodel := a.peCountermodel + b.peCountermodel }
+    peLimits := a.peLimits + b.peLimits,
+    peOpen := a.peOpen + b.peOpen }
 
 /-- What a judge returns: the verdict UNDER THE REGIME, the verdict the
 CLOSURE ALONE reached, and the measurement delta. The two verdicts are
@@ -931,37 +938,16 @@ no case that passes on containment can fail because of it.
 Decision and the specification citations:
 `docs/designissues/2026-09-04-owl-b1-class-expression-structure.md`. -/
 
-/-- Every document is parsed on its own, so a conclusion blank node
-`_:b0` and a closure blank node `_:b0` are unrelated but EQUAL as
-labels. Combining them without renaming would conflate two distinct
-resources and could yield a clash for the wrong reason — a false pass.
-The conclusion's blank nodes are moved under a reserved prefix that no
-parser produces and that `NegationGoals`'s own `__factoidal_pe_*`
-labels do not collide with. -/
-def peConclusionBNodePrefix : String := "__factoidal_pe_concl_"
-
-def renameSubjectBNode (s : Subject) : Subject :=
-  match s with
-  | .bnode b => .bnode (peConclusionBNodePrefix ++ b)
-  | other    => other
-
-def renameTermBNode : Term → Term
-  | .bnode b            => .bnode (peConclusionBNodePrefix ++ b)
-  | .tripleTerm s p o   => .tripleTerm (renameSubjectBNode s) p (renameTermBNode o)
-  | other               => other
-
-def renameConclusionBNodes (g : Graph) : Graph :=
-  g.map (fun t => { t with s := renameSubjectBNode t.s, o := renameTermBNode t.o })
-
 /-- Why the refutation check answered as it did.
 
 `entailed` is the only verdict that can turn a containment failure
 into a pass. The other three are the refuter's LIMITS and each is
 counted separately: `noGoals` means `negationGoals` does not negate
 this conclusion shape, so the refuter never got to ask the question;
-`budget` means a tableau ran out of steps; `countermodel` means the
-refuter found a model of the premise closure plus the negated
-conclusion and so says the entailment does not hold.
+`limit` means a tableau ran out of visits or retained an unresolved
+bounded witness obligation; `open` means one bounded expansion reached
+quiescence without a clash. The executable produces no model
+certificate, so both are indeterminate.
 
 The goals are ANDed because a conclusion graph is the conjunction of
 its content assertions, and each is negated SEPARATELY
@@ -969,12 +955,12 @@ its content assertions, and each is negated SEPARATELY
 while proving another is the unsound direction). -/
 inductive RefuteWhy where
   | entailed
-  | countermodel
-  | budget
+  | open
+  | limit
   | noGoals
   deriving DecidableEq, Repr
 
-/-! ## A wall-clock bound on the refuter
+/-! ## A hard native-process deadline on the refuter
 
 `--refute-budget` bounds the tableau's BRANCH expansions, and it is
 threaded, so it bounds the shape of the search. It does not bound the
@@ -985,90 +971,257 @@ why `type-consistency.rdf --dl` at the default budget did not finish in
 40 minutes on 2026-09-07 while `--cap-ms` sat there bounding only the
 closure.
 
-The bound here is on the HARNESS, not inside the tableau: the call runs
-in its own task and the judge stops waiting after `refuteMs`. The
-abandoned task keeps running until the process exits — Lean cannot
-interrupt a pure computation, and `IO.cancel` is a request a
-`partial def` loop never observes — so this buys a bounded WALL CLOCK
-per case, not bounded total work. It is stated that way because a
-reader who assumed otherwise would mis-read a long run's CPU time.
+The refutation runs in a child invocation of this executable. The
+parent polls the child against a monotonic deadline. At the deadline it
+terminates the child's process group and waits for the child, so no
+abandoned pure worker remains for Lean's native runtime to join during
+shutdown.
 
-A timed-out call returns the same verdict a budget-out returns: no
-verdict. The refuter then decides nothing, and the closure's verdict
+A timed-out call returns the same limit verdict as an exhausted visit
+budget or unresolved bounded witness obligation: no verdict. The
+refuter then decides nothing, and the closure's verdict
 stands, which is the withholding rule the module header states. So the
 bound can only LOSE refutations; it can never manufacture one. Every
 timeout prints a `REFUTER-WALLCLOCK` line, so a score computed under it
 says which cases it withheld on. -/
 
-/-- Default wall clock for one refuter call, overridable with
+/-- Default hard process deadline for one refuter call, overridable with
 `--refute-ms N`. -/
 def defaultRefuteMs : Nat := 20000
 
-/-- Poll a task to completion or to `steps` five-millisecond waits. -/
-def pollTask {α : Type} (t : Task (Except IO.Error α)) (steps : Nat)
-    : IO (Option α) := do
-  let mut got : Option α := none
-  let mut done := false
-  for _ in [0:steps] do
-    if !done then
-      if ← IO.hasFinished t then
-        done := true
-        match t.get with
-        | .ok v => got := some v
-        | .error _ => got := none
-      else
-        IO.sleep 5
-  pure got
-
-/-- `Refute.refute` under the wall clock. The `match` inside the task
-is what FORCES the result: `pure (refute …)` would hand back an
-unevaluated thunk and the work would happen in the polling thread. -/
-def refuteBounded (ms : Nat) (label : String) (g : Graph) (rb : Nat)
-    : IO (Option Bool) := do
-  let t ← IO.asTask (do
-    match L4Factoidal.OWL.Refute.refute g rb with
-    | some true  => pure (some true)
-    | some false => pure (some false)
-    | none       => pure none)
-  match ← pollTask t (ms / 5 + 1) with
-  | some v => pure v
-  | none =>
-    IO.cancel t
-    IO.println s!"REFUTER-WALLCLOCK {label}: abandoned after {ms} ms \
-({g.length} triples, budget {rb}); no verdict"
-    pure none
+structure BoundedResult (α : Type) where
+  value : α
+  timedOut : Bool
 
 def refuteEntailsWhy (closure : Graph) (gc : Graph) (rb : Nat) : RefuteWhy :=
-  match L4Factoidal.OWL.Refute.negationGoals (renameConclusionBNodes gc) with
+  match L4Factoidal.OWL.Refute.prepareNegationGoals closure gc with
   | none       => .noGoals
-  | some goals =>
+  | some (premise, goals) =>
     let step (acc : RefuteWhy) (goal : Graph) : RefuteWhy :=
       match acc with
       | .entailed =>
-        match L4Factoidal.OWL.Refute.tableauConsistent (closure ++ goal) rb with
+        match L4Factoidal.OWL.Refute.tableauConsistent (premise ++ goal) rb with
         | some false => .entailed      -- this conjunct is entailed
-        | some true  => .countermodel  -- countermodel: not entailed
-        | none       => .budget        -- budget out: indeterminate
+        | some true  => .open          -- open expansion: no model certificate
+        | none       => .limit        -- budget or witness limit: indeterminate
       | other => other
     goals.foldl step .entailed
 
-/-- `refuteEntailsWhy` under the same wall clock; a timeout is
-`.budget`, the verdict that withholds. -/
-def refuteEntailsWhyBounded (ms : Nat) (label : String) (closure : Graph)
-    (gc : Graph) (rb : Nat) : IO RefuteWhy := do
-  let t ← IO.asTask (do
-    match refuteEntailsWhy closure gc rb with
-    | .entailed     => pure RefuteWhy.entailed
-    | .countermodel => pure RefuteWhy.countermodel
-    | .budget       => pure RefuteWhy.budget
-    | .noGoals      => pure RefuteWhy.noGoals)
-  match ← pollTask t (ms / 5 + 1) with
-  | some v => pure v
+/-! The subprocess wire is RDF 1.2 N-Triples. Before serialisation every
+blank-node identifier is injectively encoded as a complete component of
+`bnodeScopePrefix`; this makes arbitrary in-memory identifiers legal in
+the concrete syntax while preserving co-reference. `renameBnodes`
+also reaches blank nodes nested inside RDF 1.2 triple terms. -/
+
+def refuteWireGraph (g : Graph) : Except String String :=
+  L4Factoidal.Syntax.Graph.toNTriples
+    (g.renameBnodes (fun b => bnodeScopePrefix [b])) .rdf12
+
+/-- Decode the serializer's one-triple-per-line wire without feeding
+the entire input through the list-character parser at once. Each line
+still uses the project N-Triples parser. The tail fold preserves
+duplicates and restores the original line order with one final
+reverse. Serializer escapes make embedded literal newlines `\\n`, so a
+physical newline is an unambiguous record boundary. -/
+def parseRefuteWireGraph (text : String) : Except String Graph :=
+  let parsed : Except String Graph := text.splitOn "\n" |>.foldl (fun acc line =>
+    match acc with
+    | .error e => .error e
+    | .ok triples =>
+        if line.isEmpty then .ok triples
+        else
+          match L4Factoidal.Syntax.parseNTriples line .rdf12 with
+          | .ok [t] => .ok (t :: triples)
+          | .ok _ => .error "wire record did not decode to exactly one triple"
+          | .error e => .error s!"N-Triples parse error: {e}"
+    ) (Except.ok [])
+  parsed.map List.reverse
+
+/-- Concrete wire guard covering exact list order and duplication,
+literal fields, nested RDF 1.2 terms, and an abstract blank-node id
+that is not itself legal N-Triples syntax. -/
+private def refuteWireGuardGraph : Graph :=
+  let p : WfIri := ⟨"urn:factoidal:wire:p", rfl⟩
+  let odd := "space / newline\n_:not-a-label"
+  let typed : WfLiteral :=
+    ⟨{ lexicalForm := "01", datatype := xsdInteger,
+       langTag := none, direction := none }, rfl⟩
+  let first : Triple :=
+    ⟨.bnode odd, p, .tripleTerm (.bnode odd) p (.literal (Literal.string "q\"\n\\"))⟩
+  [ first,
+    ⟨.iri p, p, .literal (Literal.langString "colour" "en-GB")⟩,
+    first,
+    ⟨.iri p, p, .literal (Literal.dirLangString "right" "ar" .rtl)⟩,
+    ⟨.iri p, p, .literal typed⟩ ]
+
+private def refuteWireGuard : Bool :=
+  match refuteWireGraph refuteWireGuardGraph with
+  | .error _ => false
+  | .ok text =>
+      match parseRefuteWireGraph text with
+      | .error _ => false
+      | .ok decoded =>
+          decoded == refuteWireGuardGraph.renameBnodes
+            (fun b => bnodeScopePrefix [b])
+
+#guard refuteWireGuard
+
+def readRefuteWireGraph (path : System.FilePath) : IO (Except String Graph) := do
+  try
+    let text ← IO.FS.readFile path
+    match parseRefuteWireGraph text with
+    | .ok g => pure (.ok g)
+    | .error e => pure (.error e)
+  catch e =>
+    pure (.error s!"wire file read error: {e}")
+
+def consistencyFalseCode : UInt32 := 10
+def consistencyTrueCode : UInt32 := 11
+def consistencyLimitCode : UInt32 := 12
+def entailsCode : UInt32 := 20
+def entailsOpenCode : UInt32 := 21
+def entailsLimitCode : UInt32 := 22
+def entailsNoGoalsCode : UInt32 := 23
+def workerErrorCode : UInt32 := 70
+
+/-- Hidden child entry point. Returning an exit code avoids an output
+pipe that could itself block. The parent supplies secure temporary file
+paths and controlled numeric arguments. -/
+def refuteWorkerMain : List String → IO (Option UInt32)
+  | ["--owl-refute-worker-consistency", path, budgetText] => do
+      match budgetText.toNat? with
+      | none => pure (some workerErrorCode)
+      | some budget =>
+          match ← readRefuteWireGraph path with
+          | .error _ => pure (some workerErrorCode)
+          | .ok g =>
+              pure (some <| match L4Factoidal.OWL.Refute.refute g budget with
+                | some false => consistencyFalseCode
+                | some true => consistencyTrueCode
+                | none => consistencyLimitCode)
+  | ["--owl-refute-worker-entails", closurePath, conclusionPath, budgetText] => do
+      match budgetText.toNat? with
+      | none => pure (some workerErrorCode)
+      | some budget =>
+          match ← readRefuteWireGraph closurePath, ← readRefuteWireGraph conclusionPath with
+          | .ok closure, .ok conclusion =>
+              pure (some <| match refuteEntailsWhy closure conclusion budget with
+                | .entailed => entailsCode
+                | .open => entailsOpenCode
+                | .limit => entailsLimitCode
+                | .noGoals => entailsNoGoalsCode)
+          | _, _ => pure (some workerErrorCode)
+  | _ => pure none
+
+/-- Poll a child until the monotonic deadline. A returned exit code has
+already been reaped by `tryWait`; timeout cleanup is handled by the
+caller. The finite range makes this orchestration total. -/
+def waitChildUntil {cfg} (child : IO.Process.Child cfg) (deadline : Nat)
+    : IO (Option UInt32) := do
+  let started ← IO.monoMsNow
+  let mut answer : Option UInt32 := none
+  let mut done := false
+  for _ in [0:(deadline - started + 2)] do
+    if !done then
+      let now ← IO.monoMsNow
+      if now ≥ deadline then
+        done := true
+      else
+        match ← child.tryWait with
+        | some code =>
+            answer := some code
+            done := true
+        | none => IO.sleep (UInt32.ofNat (min 5 (deadline - now)))
+  pure answer
+
+/-- Spawn this executable in a fresh process group. On timeout, kill
+and reap the child before returning; therefore no Lean worker survives
+the call or delays parent-process shutdown. The deadline includes
+process startup, child wire parsing, and refutation. Parent-side wire
+serialisation and the secure temporary-file write happen before it. -/
+def runRefuteChild (ms : Nat) (args : Array String) : IO (Option UInt32) := do
+  let exe ← IO.appPath
+  let started ← IO.monoMsNow
+  let child ← IO.Process.spawn {
+    cmd := exe.toString
+    args := args
+    stdin := .null
+    stdout := .null
+    stderr := .null
+    setsid := true }
+  match ← waitChildUntil child (started + ms) with
+  | some code => pure (some code)
   | none =>
-    IO.cancel t
-    IO.println s!"REFUTER-WALLCLOCK {label}: abandoned after {ms} ms \
+      try child.kill catch _ => pure ()
+      discard child.wait
+      pure none
+
+def writeRefuteWireGraph (path : System.FilePath) (g : Graph) : IO (Except String Unit) := do
+  match refuteWireGraph g with
+  | .error e => pure (.error e)
+  | .ok text =>
+      try
+        IO.FS.writeFile path text
+        pure (.ok ())
+      catch e => pure (.error s!"wire file write error: {e}")
+
+/-- `Refute.refute` under a hard child-process deadline. -/
+def refuteBounded (ms : Nat) (label : String) (g : Graph) (rb : Nat)
+    : IO (BoundedResult (Option Bool)) :=
+  IO.FS.withTempDir fun dir => do
+    let path := dir / "graph.nt"
+    match ← writeRefuteWireGraph path g with
+    | .error e =>
+        IO.println s!"REFUTER-WIRE {label}: {e}; no verdict"
+        pure { value := none, timedOut := false }
+    | .ok _ =>
+        match ← runRefuteChild ms
+          #["--owl-refute-worker-consistency", path.toString, toString rb] with
+        | none =>
+            IO.println s!"REFUTER-WALLCLOCK {label}: killed and reaped after {ms} ms \
+({g.length} triples, budget {rb}); no verdict"
+            pure { value := none, timedOut := true }
+        | some code =>
+            if code == consistencyFalseCode then
+              pure { value := some false, timedOut := false }
+            else if code == consistencyTrueCode then
+              pure { value := some true, timedOut := false }
+            else if code == consistencyLimitCode then
+              pure { value := none, timedOut := false }
+            else
+              IO.println s!"REFUTER-WORKER {label}: exit code {code}; no verdict"
+              pure { value := none, timedOut := false }
+
+/-- `refuteEntailsWhy` under the same hard child-process deadline; a
+timeout is `.limit`, the verdict that withholds. -/
+def refuteEntailsWhyBounded (ms : Nat) (label : String) (closure : Graph)
+    (gc : Graph) (rb : Nat) : IO (BoundedResult RefuteWhy) :=
+  IO.FS.withTempDir fun dir => do
+    let closurePath := dir / "closure.nt"
+    let conclusionPath := dir / "conclusion.nt"
+    match ← writeRefuteWireGraph closurePath closure, ← writeRefuteWireGraph conclusionPath gc with
+    | .ok _, .ok _ =>
+        match ← runRefuteChild ms #["--owl-refute-worker-entails", closurePath.toString,
+            conclusionPath.toString, toString rb] with
+        | none =>
+            IO.println s!"REFUTER-WALLCLOCK {label}: killed and reaped after {ms} ms \
 ({closure.length} triples, budget {rb}); no verdict"
-    pure RefuteWhy.budget
+            pure { value := .limit, timedOut := true }
+        | some code =>
+            if code == entailsCode then
+              pure { value := .entailed, timedOut := false }
+            else if code == entailsOpenCode then
+              pure { value := .open, timedOut := false }
+            else if code == entailsLimitCode then
+              pure { value := .limit, timedOut := false }
+            else if code == entailsNoGoalsCode then
+              pure { value := .noGoals, timedOut := false }
+            else
+              IO.println s!"REFUTER-WORKER {label}: exit code {code}; no verdict"
+              pure { value := .limit, timedOut := false }
+    | .error e, _ | _, .error e =>
+        IO.println s!"REFUTER-WIRE {label}: {e}; no verdict"
+        pure { value := .limit, timedOut := false }
 
 def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : Nat)
     (rms : Nat) (strict : Bool)
@@ -1136,11 +1289,15 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : N
         -- conformance relation itself to be tried: entailment by
         -- refutation. Only `entailed` overrides; anything else leaves
         -- the containment verdict in place.
-        let w ← refuteEntailsWhyBounded rms c.id r.graph gc rb
-        let m := { m with peNoGoals := m.peNoGoals + (if w == .noGoals then 1 else 0),
-                          peBudget := m.peBudget + (if w == .budget then 1 else 0),
-                          peCountermodel :=
-                            m.peCountermodel + (if w == .countermodel then 1 else 0) }
+        let bounded ← refuteEntailsWhyBounded rms c.id r.graph gc rb
+        let w := bounded.value
+        let m := { m with
+                          refuterTimeouts := m.refuterTimeouts +
+                            (if bounded.timedOut then 1 else 0),
+                          peNoGoals := m.peNoGoals + (if w == .noGoals then 1 else 0),
+                          peLimits := m.peLimits +
+                            (if w == .limit && !bounded.timedOut then 1 else 0),
+                          peOpen := m.peOpen + (if w == .open then 1 else 0) }
         if w == .entailed then
           -- Evidence line, one per fallback pass. `premise_alone` is
           -- falsification test 2 of the decision document: a premise
@@ -1148,7 +1305,10 @@ def judgePositive (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb : N
           -- pass on such a case proves nothing about the conclusion.
           -- `premise_alone=false` is the reading that keeps the pass
           -- meaningful.
-          let alone := (← refuteBounded rms c.id r.graph rb) == some false
+          let aloneRun ← refuteBounded rms c.id r.graph rb
+          let alone := aloneRun.value == some false
+          let m := { m with refuterTimeouts := m.refuterTimeouts +
+                            (if aloneRun.timedOut then 1 else 0) }
           IO.println s!"PE-BY-REFUTATION {c.id}: premise_alone_refuted={alone} \
 (closure {r.graph.length} triples)"
           return { regime := .pass, closure := closureOutcome,
@@ -1201,11 +1361,14 @@ def judgeConsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (rb 
     -- refuter, and it has to be visible as a failure — a refuter
     -- scored only on the cases it is meant to close cannot be caught
     -- fabricating a contradiction.
-    let refuted ←
+    let (refuted, refuterTimedOut) ←
       if rg.refuter then
-        pure ((← refuteBounded rms c.id r.graph rb) == some false)
-      else pure false
-    let m := { m with clashes := m.clashes + (if clash then 1 else 0) }
+        let bounded ← refuteBounded rms c.id r.graph rb
+        pure (bounded.value == some false, bounded.timedOut)
+      else pure (false, false)
+    let m := { m with clashes := m.clashes + (if clash then 1 else 0),
+                      refuterTimeouts := m.refuterTimeouts +
+                        (if refuterTimedOut then 1 else 0) }
     let closureOutcome : Harness.Outcome :=
       if clash then
         .fail s!"clash: detectClash fired on a premise asserted consistent ({r.graph.length} triples)"
@@ -1228,11 +1391,14 @@ def judgeInconsistency (cat : Catalog) (c : Case) (capMs : Nat) (rg : Regime) (r
   | .error o => return Verdict.same o m
   | .ok r =>
     let clash := detectClashPlusI r.index
-    let refuted ←
+    let (refuted, refuterTimedOut) ←
       if rg.refuter then
-        pure ((← refuteBounded rms c.id r.graph rb) == some false)
-      else pure false
-    let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0) }
+        let bounded ← refuteBounded rms c.id r.graph rb
+        pure (bounded.value == some false, bounded.timedOut)
+      else pure (false, false)
+    let m := { m with clashes := m.clashes + (if clash || refuted then 1 else 0),
+                      refuterTimeouts := m.refuterTimeouts +
+                        (if refuterTimedOut then 1 else 0) }
     let closureOutcome : Harness.Outcome :=
       if clash then .pass
       else if r.capped then
@@ -1357,10 +1523,11 @@ def runCatalog (name : String) (cat : Catalog) (capMs : Nat) (rg : Regime) (rb :
   IO.println s!"HARNESS-DIAG-OWL {name}: cases={cat.cases.length} units={r.units} \
 triples_parsed={r.measure.triplesParsed} closure_rounds={r.measure.closureRounds} \
 clashes={r.measure.clashes} cap_hits={r.measure.capHits} \
+refuter_timeouts={r.measure.refuterTimeouts} \
 parse_failures={r.measure.parseFailures} \
 refuter_passes={r.refuterPasses} refuter_flips_to_fail={r.refuterFlips} \
-pe_no_negation_goal={r.measure.peNoGoals} pe_refuter_budget={r.measure.peBudget} \
-pe_countermodel={r.measure.peCountermodel} wall_ms={r.wallMs}"
+pe_no_negation_goal={r.measure.peNoGoals} pe_refuter_indeterminate_limits={r.measure.peLimits} \
+pe_refuter_open={r.measure.peOpen} wall_ms={r.wallMs}"
   -- FAILs grouped by cause.
   let causes := (r.fails.map (·.1)).eraseDups
   for cause in causes do
@@ -1424,10 +1591,8 @@ structure Opts where
   regime : Regime := Regime.rl
   /-- `--refute-budget N`: the refuter's per-premise budget. -/
   refuteBudget : Nat := defaultRefuteBudget
-  /-- `--refute-ms N`: the wall clock allowed for ONE refuter call.
-  `--refute-budget` bounds the search shape; this bounds how long one
-  expansion may take. A timeout withholds a verdict — see
-  `refuteBounded`. -/
+  /-- `--refute-ms N`: hard child-process deadline for one refuter
+  call. `--refute-budget` separately bounds the search shape. -/
   refuteMs : Nat := defaultRefuteMs
   /-- `--tbox-census`: count the refuter's work per case instead of
   timing it. Prints, for every case, the TBox size, how many of its
@@ -1670,15 +1835,16 @@ unrelated triple absent = {!unrelatedAbsent}"
   IO.println s!"HARNESS-DIAG-OWL TOTAL: cases={totalCases} units={total.total} \
 triples_parsed={totalM.triplesParsed} closure_rounds={totalM.closureRounds} \
 clashes={totalM.clashes} cap_hits={totalM.capHits} parse_failures={totalM.parseFailures} \
+refuter_timeouts={totalM.refuterTimeouts} \
 refuter_passes={totalRefPass} refuter_flips_to_fail={totalRefFlip} \
-pe_no_negation_goal={totalM.peNoGoals} pe_refuter_budget={totalM.peBudget} \
-pe_countermodel={totalM.peCountermodel}"
+pe_no_negation_goal={totalM.peNoGoals} pe_refuter_indeterminate_limits={totalM.peLimits} \
+pe_refuter_open={totalM.peOpen}"
   if o.regime.refuter then
     IO.println s!"REFUTER-REACH: {totalRefPass} units the closure failed were decided \
 by refutation; {totalM.peNoGoals} positive-entailment units the closure failed produced \
 NO negation goal at all (`negationGoals` does not negate that conclusion shape, so the \
-refuter could not state the question), {totalM.peBudget} exhausted the tableau budget, \
-{totalM.peCountermodel} were answered with a countermodel."
+refuter could not state the question), {totalM.peLimits} hit a tableau visit or witness limit, \
+{totalM.peOpen} reached a quiescent open branch without a model certificate."
 
   IO.println "F* owl_runner comparison (docs/test-results/latest.json, RL regime"
   IO.println "  unless stated). Each F* number is the SUM of that catalog's"
@@ -1699,4 +1865,7 @@ refuter could not state the question), {totalM.peBudget} exhausted the tableau b
 
 end OwlProbe
 
-def main (args : List String) : IO UInt32 := OwlProbe.main args
+def main (args : List String) : IO UInt32 := do
+  match ← OwlProbe.refuteWorkerMain args with
+  | some code => pure code
+  | none => OwlProbe.main args

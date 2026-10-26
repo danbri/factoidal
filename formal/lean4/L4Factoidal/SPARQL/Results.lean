@@ -1,18 +1,21 @@
 /-
 L4Factoidal.SPARQL.Results — the SPARQL query-results model shared by
-the four wire formats (SRX/SRJ/CSV/TSV).
+SRX, SRJ, CSV, TSV, and the DAWG RDF result-set vocabulary.
 
 Port of the *shape* `SPARQL.Protocol.fst` builds its four serialisers
 (`serialise_response_json`/`_xml`/`_csv`/`_tsv`) and their `Parser.SRX`/
 `Parser.JSONResults`/`Parser.CSVResults` counterparts around, factored
 into one Lean type so `ResultsXml.lean`/`ResultsJson.lean`/
-`ResultsCsvTsv.lean` share it instead of each inventing their own.
+`ResultsCsvTsv.lean`/`ResultsRdf.lean` share it instead of each
+inventing their own.
 
 Specs (cited again in each format-specific module at the point they
 matter):
   * SPARQL 1.1 Query Results XML Format, https://www.w3.org/TR/rdf-sparql-XMLres/
   * SPARQL 1.1 Query Results JSON Format, https://www.w3.org/TR/sparql11-results-json/
   * SPARQL 1.1 Query Results CSV and TSV Formats, https://www.w3.org/TR/sparql11-results-csv-tsv/
+  * DAWG test-suite result-set vocabulary,
+    http://www.w3.org/2001/sw/DataAccess/tests/result-set#
 
 ## `QueryResult` — what these formats can hold
 

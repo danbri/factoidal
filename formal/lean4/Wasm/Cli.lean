@@ -163,7 +163,7 @@ def optsJsonOfFuel : Option String → String
 `false`/`null`) to stderr. Exit 0 for `true`, 1 for `false` or
 `unknown` — a verdict this CLI cannot tell apart from a plain failure
 by exit code alone, so a script that must distinguish "refuted" from
-"budget-out, raise --fuel" reads stdout, not just `$?`. -/
+"indeterminate" reads stdout, not just `$?`. -/
 def printVerdict (j : Json) (key : String) : IO UInt32 := do
   let printReason : IO Unit :=
     match j.getString? "reason" with
@@ -456,7 +456,7 @@ def usageLines : List String :=
   , "      rho-df / rdfs-plus)."
   , "  owl-consistent [FILE] [--format FMT] [--fuel N]"
   , "      Three-valued OWL DL consistency check: prints true, false,"
-  , "      or unknown (budget-out; raise --fuel). Exit 0 for true,"
+  , "      or unknown (visit budget or bounded witness limit). Exit 0 for true,"
   , "      1 for false or unknown — read stdout to tell those apart."
   , "  owl-entails PREMISE_FILE CONCLUSION_FILE [--format FMT] [--fuel N]"
   , "      Three-valued OWL DL entailment check, same convention."

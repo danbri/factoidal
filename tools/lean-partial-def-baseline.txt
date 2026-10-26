@@ -17,4 +17,6 @@
 # 2026-09-04: 172. Harness/PredicateShardPack.lean's three host read
 # loops (pre-pass, IBK2/IBK3 ingest, IBK4 N-Quads ingest) became one
 # `foldHandle` taking the per-pass `feed`.
-172
+# 2026-09-08: 171. OWL/Refute.search became a total fuel-indexed loop
+# with explicit branch continuations; the other semantic gaps remain.
+171

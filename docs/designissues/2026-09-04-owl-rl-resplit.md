@@ -549,8 +549,11 @@ Of the 177 positive-entailment units the closure failed:
   it is now a counted diagnostic (`pe_no_negation_goal`) and a printed
   line per unit (`PE-REFUTER-WITHHELD ... noGoals`), not a silent part
   of the 140;
-- **54** were answered with a countermodel: the refuter looked and said
-  the entailment does not hold on the RL closure it was given;
+- **54** reached a quiescent open branch, recorded then as a
+  `pe_countermodel`. Correction, 2026-09-08: the executable produces
+  no model certificate, so these results do not establish
+  non-entailment. The current counter is `pe_refuter_open`; see the
+  [correctness review](2026-09-08-qualified-tableau-merges-and-public-closure.md);
 - **0** exhausted the tableau budget, so no part of the residue is
   budget noise.
 

@@ -86,6 +86,13 @@ measurement, never by assertion.
 Standing priorities: `docs/claude-rules/current-state.md` § Standing
 priorities.
 
+Owner priority, 2026-09-08: complete Lean OWL DL/tableau coverage and
+performance at useful dataset sizes first. Bring the legacy SPARQL 1.0
+suite up to specification in a parallel subagent. Preserve the SPARQL
+1.1/1.2 floors. Report corpus coverage, algorithm completeness, proof
+coverage, and measured scale separately; no one score establishes all four.
+See [the completion worknote](docs/20260908-lean-dl-completion-and-scale.md).
+
 > **CLAUDE.md is short on purpose.** Operational detail lives in
 > per-topic skill docs (`skills/<name>/SKILL.md` —
 > [agentskills.io](https://agentskills.io) format, vendor-neutral) and

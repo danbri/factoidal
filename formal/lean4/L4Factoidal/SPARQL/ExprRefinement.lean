@@ -44,11 +44,41 @@ without reading the engine's `ebv` match arms. `none` is the table's
 "type error" row. The String row is the un-language-tagged case only,
 so `rdf:langString` and `rdf:dirLangString` fall to "any other
 argument". -/
+private def decimalEbvSpec (s : String) : Option Bool :=
+  if s.toList.contains 'e' || s.toList.contains 'E' then some false else
+  match L4Factoidal.XSD.parseLexical s with
+  | some (.num _ m _) => some (m != 0)
+  | _ => some false
+
+private def integerEbvSpec (dt : WfIri) (s : String) : Option Bool :=
+  match parseIntString s with
+  | some n => if integerValueFitsDatatype dt n then some (n != 0) else some false
+  | none => some false
+
+private def floatingEbvSpec (isFloat : Bool) (s : String) : Option Bool :=
+  match L4Factoidal.XSD.parseLexical s with
+  | none => some false
+  | some .nan => some false
+  | some (.inf _) => some true
+  | some parsed@(.num _ m e) =>
+      if m == 0 then some false else
+      let k10 : Int := ((toString m).length : Int) - 1 + e
+      let boundary : Int := if isFloat then -46 else -324
+      if k10 < boundary then some false
+      else if k10 > boundary then some true
+      else
+        let value := if isFloat then L4Factoidal.XSD.canon 24 (-126) 127 parsed
+                     else L4Factoidal.XSD.canonDouble parsed
+        match value.cls with
+        | .zero | .nan => some false
+        | .finite _ _ | .inf => some true
+
 def ebvSpec : EvalResult → Option Bool
   | .bool b => some b
   | .num n  => some (n ≠ 0)
-  | .dec s  => some (s ≠ "0" && s ≠ "0.0" && s ≠ "")
-  | .dbl s  => some (s ≠ "0" && s ≠ "0.0" && s ≠ "NaN" && s ≠ "")
+  | .dec s  => decimalEbvSpec s
+  | .flt s  => floatingEbvSpec true s
+  | .dbl s  => floatingEbvSpec false s
   | .term (.literal l) =>
       if l.val.datatype == xsdBoolean then
         -- SPARQL 1.2 §17.2: valid boolean lexical forms only
@@ -61,9 +91,11 @@ def ebvSpec : EvalResult → Option Bool
         | _ => none
       else if l.val.datatype == xsdString then
         some (l.val.lexicalForm.length > 0)
-      else if isNumericDatatype l.val.datatype then
-        some (l.val.lexicalForm ≠ "0" && l.val.lexicalForm ≠ "0.0" &&
-              l.val.lexicalForm ≠ "")
+      else if isIntegerDatatype l.val.datatype then
+        integerEbvSpec l.val.datatype l.val.lexicalForm
+      else if l.val.datatype == xsdDecimal then decimalEbvSpec l.val.lexicalForm
+      else if l.val.datatype == xsdFloat then floatingEbvSpec true l.val.lexicalForm
+      else if l.val.datatype == xsdDouble then floatingEbvSpec false l.val.lexicalForm
       else none
   | .term (.iri _) => none
   | .term (.bnode _) => none
@@ -261,6 +293,16 @@ theorem strCompare_beq_zero (a b : String) : (strCompare a b == 0) = (a == b) :=
   rw [Bool.eq_iff_iff, beq_iff_eq, beq_iff_eq]
   exact strCompare_eq_zero_iff a b
 
+theorem dateDatatype_eqs_false (dt : WfIri) (h : isDateDatatype dt = false) :
+    (dt == xsdDate) = false ∧ (dt == xsdDateTime) = false := by
+  constructor
+  · cases hd : (dt == xsdDate) with
+    | false => rfl
+    | true => simp [isDateDatatype, hd] at h
+  · cases hdt : (dt == xsdDateTime) with
+    | false => rfl
+    | true => simp [isDateDatatype, hdt] at h
+
 /-! ### Agreement -/
 
 theorem eq_num_matches_spec (a b : Int) :
@@ -269,18 +311,45 @@ theorem eq_num_matches_spec (a b : Int) :
   have hz : Scaled.cmp ⟨a, 0⟩ ⟨b, 0⟩ = intCompare a b := by
     simp [Scaled.cmp, pow10_zero]
   constructor <;>
-    simp [valueCompare, numericCompare, EvalResult.toNumeric?, hz,
-          applyCompOp, eqSpecNum, intCompare_beq_zero, bne]
+    simp [valueCompare, valueCompareCore, numericValueCompare, numericKind?, numericCompare,
+          EvalResult.toNumeric?, hz,
+          promoteKind, roundScaledToKind?, applyCompOp, eqSpecNum,
+          intCompare_beq_zero, bne]
 
 theorem eq_plain_string_matches_spec (l1 l2 : WfLiteral)
     (h1 : l1.val.datatype = xsdString) (h2 : l2.val.datatype = xsdString)
-    (t1 : l1.val.langTag = none) (t2 : l2.val.langTag = none) :
+    (t1 : l1.val.langTag = none) (t2 : l2.val.langTag = none)
+    (d1 : l1.val.direction = none) (d2 : l2.val.direction = none) :
     valueCompare (.term (.literal l1)) (.term (.literal l2)) .eq
         = some (eqSpecPlainString l1 l2) ∧
     valueCompare (.term (.literal l1)) (.term (.literal l2)) .ne
         = some (!eqSpecPlainString l1 l2) := by
+  have hn : isNumericDatatype xsdString = false := by decide
+  have hi : isIntegerDatatype xsdString = false := by decide
+  have hdec : (xsdString == xsdDecimal) = false := by decide
+  have hflt : (xsdString == xsdFloat) = false := by decide
+  have hdbl : (xsdString == xsdDouble) = false := by decide
+  have hb : (xsdString == xsdBoolean) = false := by decide
+  have hd : isDateDatatype xsdString = false := by decide
+  have hp1 : literalPromote l1 = .term (.literal l1) := by
+    simp [literalPromote, h1, hi, hdec, hflt, hdbl, hb]
+  have hp2 : literalPromote l2 = .term (.literal l2) := by
+    simp [literalPromote, h2, hi, hdec, hflt, hdbl, hb]
+  have hdate1 : (xsdString == xsdDate) = false := by decide
+  have hdate2 : (xsdString == xsdDateTime) = false := by decide
+  have hvd1 : validDateLiteral l1 = false := by
+    simp [validDateLiteral, dateKind?, h1, hdate1, hdate2]
+  have hvd2 : validDateLiteral l2 = false := by
+    simp [validDateLiteral, dateKind?, h2, hdate1, hdate2]
+  have hm : hasSpecificEqualityMapping (.literal l1) (.literal l2) = false := by
+    simp [hasSpecificEqualityMapping, validNumericLiteral, validBooleanLiteral,
+          hp1, hp2, h1, h2, hb, hvd1, hvd2]
+  have hs : sameTermEq (.literal l1) (.literal l2) =
+      (l1.val.lexicalForm == l2.val.lexicalForm) := by
+    simp [sameTermEq, h1, h2, t1, t2, d1, d2]
   constructor <;>
-    simp [valueCompare, h1, h2, t1, t2, applyCompOp, eqSpecPlainString,
+    simp [valueCompare, valueCompareCore, hp1, hp2, h1, h2, t1, t2,
+          hm, hs, hn, hb, hd, applyCompOp, eqSpecPlainString,
           strCompare_beq_zero, bne]
 
 /-- Same-kind decimal reflexivity. The scaled-value parse is a total
@@ -291,37 +360,152 @@ theorem eq_dec_reflexive (s : String) (h : (parseToScaled s).isSome) :
   cases hp : parseToScaled s with
   | none => rw [hp] at h; exact absurd h (by simp)
   | some v =>
-      simp [valueCompare, numericCompare, EvalResult.toNumeric?, hp,
-            applyCompOp, Scaled.cmp_refl]
+      simp [valueCompare, valueCompareCore, numericValueCompare, numericKind?, numericCompare,
+            EvalResult.toNumeric?, hp,
+            promoteKind, roundScaledToKind?, applyCompOp, Scaled.cmp_refl]
 
-theorem eq_dbl_reflexive (s : String) (h : (parseDoubleToScaled s).isSome) :
+/-- Same-kind double reflexivity whenever the lexical denotes a non-NaN
+IEEE value. Signed zero and infinity are included. -/
+theorem eq_dbl_reflexive (s : String) (p : L4Factoidal.XSD.Parsed)
+    (hp : L4Factoidal.XSD.parseLexical s = some p)
+    (hn : (L4Factoidal.XSD.canonDouble p).cls ≠ .nan) :
     valueCompare (.dbl s) (.dbl s) .eq = some true := by
-  cases hp : parseDoubleToScaled s with
-  | none => rw [hp] at h; exact absurd h (by simp)
-  | some v =>
-      simp [valueCompare, numericCompare, EvalResult.toNumeric?, hp,
-            applyCompOp, Scaled.cmp_refl]
+  generalize hc : L4Factoidal.XSD.canonDouble p = c at hn
+  cases c with
+  | mk neg cls =>
+      cases cls <;>
+        simp_all [valueCompare, valueCompareCore, numericValueCompare, numericKind?,
+          canonicalNumericAt?, canonicalNumericCompare, promoteKind, applyCompOp,
+          finiteDyadicCompare, intCompare]
 
-/-- Two literals of DIFFERENT datatypes are a type error under `=`, not
-a `false`. This is what keeps `=` open-world on datatypes the engine
-does not know. -/
-theorem eq_literal_different_datatype_typeerror (l1 l2 : WfLiteral)
-    (h : l1.val.datatype ≠ l2.val.datatype) :
-    valueCompare (.term (.literal l1)) (.term (.literal l2)) .eq = none := by
-  have hne : (l1.val.datatype == l2.val.datatype) = false :=
-    beq_eq_false_iff_ne.mpr h
-  simp [valueCompare, hne]
-
-/-- Two literals of the SAME datatype whose language tags are in DIFFERENT
-SPARQL language-tag equivalence classes are unequal — a definite `false`, not
-a type error.  This deliberately uses `langTagOptionEq` rather than structural
-`Option String` inequality: language tags compare case-insensitively. -/
-theorem eq_literal_same_datatype_diff_lang (l1 l2 : WfLiteral)
+/-- Distinct lexical forms in one unsupported datatype have no value-space
+operator mapping. Under equality they therefore produce a type error. The
+hypotheses classify the datatype explicitly rather than assuming the result of
+the executable comparison. -/
+theorem eq_unsupported_same_datatype_diff_lexical_typeerror (l1 l2 : WfLiteral)
     (hd : l1.val.datatype = l2.val.datatype)
-    (ht : langTagOptionEq l1.val.langTag l2.val.langTag = false) :
-    valueCompare (.term (.literal l1)) (.term (.literal l2)) .eq = some false ∧
-    valueCompare (.term (.literal l1)) (.term (.literal l2)) .ne = some true := by
-  constructor <;> simp [valueCompare, hd, ht]
+    (ht1 : l1.val.langTag = none) (ht2 : l2.val.langTag = none)
+    (hdir1 : l1.val.direction = none) (hdir2 : l2.val.direction = none)
+    (hi : isIntegerDatatype l1.val.datatype = false)
+    (hdec : (l1.val.datatype == xsdDecimal) = false)
+    (hflt : (l1.val.datatype == xsdFloat) = false)
+    (hdbl : (l1.val.datatype == xsdDouble) = false)
+    (hbool : (l1.val.datatype == xsdBoolean) = false)
+    (hdate : isDateDatatype l1.val.datatype = false)
+    (hstr : (l1.val.datatype == xsdString) = false)
+    (hlex : l1.val.lexicalForm ≠ l2.val.lexicalForm) :
+    valueCompare (.term (.literal l1)) (.term (.literal l2)) .eq = none := by
+  have hi2 : isIntegerDatatype l2.val.datatype = false := by simpa [← hd] using hi
+  have hdec2 : (l2.val.datatype == xsdDecimal) = false := by simpa [← hd] using hdec
+  have hflt2 : (l2.val.datatype == xsdFloat) = false := by simpa [← hd] using hflt
+  have hdbl2 : (l2.val.datatype == xsdDouble) = false := by simpa [← hd] using hdbl
+  have hbool2 : (l2.val.datatype == xsdBoolean) = false := by simpa [← hd] using hbool
+  have hdate2 : isDateDatatype l2.val.datatype = false := by simpa [← hd] using hdate
+  have hstr2 : (l2.val.datatype == xsdString) = false := by simpa [← hd] using hstr
+  have hn1 : isNumericDatatype l1.val.datatype = false := by
+    simp [isNumericDatatype, hi, hdec, hflt, hdbl]
+  have hn2 : isNumericDatatype l2.val.datatype = false := by
+    simp [isNumericDatatype, hi2, hdec2, hflt2, hdbl2]
+  have hp1 : literalPromote l1 = .term (.literal l1) := by
+    simp [literalPromote, hi, hdec, hflt, hdbl, hbool]
+  have hp2 : literalPromote l2 = .term (.literal l2) := by
+    simp [literalPromote, hi2, hdec2, hflt2, hdbl2, hbool2]
+  have hvn1 : validNumericLiteral l1 = false := by simp [validNumericLiteral, hp1]
+  have hvn2 : validNumericLiteral l2 = false := by simp [validNumericLiteral, hp2]
+  have hvb1 : validBooleanLiteral l1 = false := by
+    simp [validBooleanLiteral, hbool]
+  have hvb2 : validBooleanLiteral l2 = false := by
+    simp [validBooleanLiteral, hbool2]
+  have hdateParts1 := dateDatatype_eqs_false l1.val.datatype hdate
+  have hdateParts2 := dateDatatype_eqs_false l2.val.datatype hdate2
+  have hvd1 : validDateLiteral l1 = false := by
+    simp [validDateLiteral, dateKind?, hdateParts1.1, hdateParts1.2]
+  have hvd2 : validDateLiteral l2 = false := by
+    simp [validDateLiteral, dateKind?, hdateParts2.1, hdateParts2.2]
+  have hm : hasSpecificEqualityMapping (.literal l1) (.literal l2) = false := by
+    simp [hasSpecificEqualityMapping, hvn1, hvn2, hvb1, hvb2, hvd1, hvd2]
+  have hs : sameTermEq (.literal l1) (.literal l2) = false := by
+    have hlexb : (l1.val.lexicalForm == l2.val.lexicalForm) = false :=
+      beq_eq_false_iff_ne.mpr hlex
+    simp [sameTermEq, hd, ht1, ht2, hdir1, hdir2, hlexb]
+  simp [valueCompare, hp1, hp2, hm, hs, valueCompareCore, ht1, ht2,
+        hn1, hn2, hbool, hbool2, hdate, hdate2, hstr, hstr2]
+
+/-- Well-formed language strings in different language-tag equivalence
+classes are definitely unequal. The constructor supplies the datatype,
+language tag, and direction invariants used by the operator mapping. -/
+theorem eq_langString_diff_lang (s1 s2 tag1 tag2 : String)
+    (ht : langTagOptionEq (some tag1) (some tag2) = false) :
+    valueCompare (.term (.literal (Literal.langString s1 tag1)))
+        (.term (.literal (Literal.langString s2 tag2))) .eq = some false ∧
+    valueCompare (.term (.literal (Literal.langString s1 tag1)))
+        (.term (.literal (Literal.langString s2 tag2))) .ne = some true := by
+  let l1 := Literal.langString s1 tag1
+  let l2 := Literal.langString s2 tag2
+  change valueCompare (.term (.literal l1)) (.term (.literal l2)) .eq = some false ∧
+    valueCompare (.term (.literal l1)) (.term (.literal l2)) .ne = some true
+  have hi : isIntegerDatatype l1.val.datatype = false := by
+    simpa [l1, Literal.langString] using
+      (show isIntegerDatatype rdfLangString = false by decide)
+  have hdec : (l1.val.datatype == xsdDecimal) = false := by
+    simpa [l1, Literal.langString] using
+      (show (rdfLangString == xsdDecimal) = false by decide)
+  have hflt : (l1.val.datatype == xsdFloat) = false := by
+    simpa [l1, Literal.langString] using
+      (show (rdfLangString == xsdFloat) = false by decide)
+  have hdbl : (l1.val.datatype == xsdDouble) = false := by
+    simpa [l1, Literal.langString] using
+      (show (rdfLangString == xsdDouble) = false by decide)
+  have hbool : (l1.val.datatype == xsdBoolean) = false := by
+    simpa [l1, Literal.langString] using
+      (show (rdfLangString == xsdBoolean) = false by decide)
+  have hdate : isDateDatatype l1.val.datatype = false := by
+    simpa [l1, Literal.langString] using
+      (show isDateDatatype rdfLangString = false by decide)
+  have hi2 : isIntegerDatatype l2.val.datatype = false := by
+    simpa [l2, Literal.langString] using
+      (show isIntegerDatatype rdfLangString = false by decide)
+  have hdec2 : (l2.val.datatype == xsdDecimal) = false := by
+    simpa [l2, Literal.langString] using
+      (show (rdfLangString == xsdDecimal) = false by decide)
+  have hflt2 : (l2.val.datatype == xsdFloat) = false := by
+    simpa [l2, Literal.langString] using
+      (show (rdfLangString == xsdFloat) = false by decide)
+  have hdbl2 : (l2.val.datatype == xsdDouble) = false := by
+    simpa [l2, Literal.langString] using
+      (show (rdfLangString == xsdDouble) = false by decide)
+  have hbool2 : (l2.val.datatype == xsdBoolean) = false := by
+    simpa [l2, Literal.langString] using
+      (show (rdfLangString == xsdBoolean) = false by decide)
+  have hdate2 : isDateDatatype l2.val.datatype = false := by
+    simpa [l2, Literal.langString] using
+      (show isDateDatatype rdfLangString = false by decide)
+  have hp1 : literalPromote l1 = .term (.literal l1) := by
+    simp [literalPromote, hi, hdec, hflt, hdbl, hbool]
+  have hp2 : literalPromote l2 = .term (.literal l2) := by
+    simp [literalPromote, hi2, hdec2, hflt2, hdbl2, hbool2]
+  have hvn1 : validNumericLiteral l1 = false := by simp [validNumericLiteral, hp1]
+  have hvn2 : validNumericLiteral l2 = false := by simp [validNumericLiteral, hp2]
+  have hvb1 : validBooleanLiteral l1 = false := by
+    simp [validBooleanLiteral, hbool]
+  have hvb2 : validBooleanLiteral l2 = false := by
+    simp [validBooleanLiteral, hbool2]
+  have hdateParts1 := dateDatatype_eqs_false l1.val.datatype hdate
+  have hdateParts2 := dateDatatype_eqs_false l2.val.datatype hdate2
+  have hvd1 : validDateLiteral l1 = false := by
+    simp [validDateLiteral, dateKind?, hdateParts1.1, hdateParts1.2]
+  have hvd2 : validDateLiteral l2 = false := by
+    simp [validDateLiteral, dateKind?, hdateParts2.1, hdateParts2.2]
+  have hm : hasSpecificEqualityMapping (.literal l1) (.literal l2) = false := by
+    simp [hasSpecificEqualityMapping, hvn1, hvn2, hvb1, hvb2, hvd1, hvd2]
+  have htag1 : l1.val.langTag = some tag1 := by simp [l1, Literal.langString]
+  have htag2 : l2.val.langTag = some tag2 := by simp [l2, Literal.langString]
+  have hs : sameTermEq (.literal l1) (.literal l2) = false := by
+    simp [sameTermEq, htag1, htag2, ht]
+  constructor <;>
+    simp [valueCompare, hp1, hp2, hm, hs, valueCompareCore,
+          htag1, htag2, ht, unequalRdfTerms]
+
 
 /-- The expression-level corollary: the `.compare .eq` arm over two
 integer-denoting sub-expressions computes the transcribed spec. -/
@@ -353,7 +537,8 @@ theorem eval_eq_num_matches_spec (env : EvalEnv) (mu : Binding)
 #print axioms strCompare_beq_zero
 #print axioms eq_num_matches_spec
 #print axioms eq_plain_string_matches_spec
-#print axioms eq_literal_same_datatype_diff_lang
+#print axioms eq_langString_diff_lang
+#print axioms eq_unsupported_same_datatype_diff_lexical_typeerror
 #print axioms eval_eq_num_matches_spec
 
 end L4Factoidal.SPARQL.ExprRefinement

@@ -1,0 +1,87 @@
+# Graphflow: a flow-based-programming vocabulary for verified RDF transforms.
+#
+# The nomenclature follows classical FBP (J. Paul Morrison) as cross-referenced
+# by https://github.com/flux-doctrine/awesome-fbp: a Network of Processes, each
+# an instance of a Component, wired through named Ports by Connections, with
+# Initial Information Packets supplying constant inputs.
+#
+# The namespace is factoidal.example on purpose: this is a spike, and the IRI
+# does not resolve. Do not publish it under a real domain without deciding the
+# vocabulary is stable.
+
+@prefix gf:   <http://factoidal.example/ns/graphflow#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+gf: a owl:Ontology ;
+    rdfs:label "Graphflow" ;
+    rdfs:comment "Flow-based description of verified RDF transformation networks." .
+
+gf:Network a rdfs:Class ;
+    rdfs:label "Network" ;
+    rdfs:comment "A directed acyclic graph of processes. Classical FBP calls this a network; NoFlo a graph; NiFi a flow." .
+
+gf:Component a rdfs:Class ;
+    rdfs:label "Component" ;
+    rdfs:comment "A black box with named ports, realised by one @factoidal/core fn.* function. Reusable across networks." .
+
+gf:Process a rdfs:Class ;
+    rdfs:label "Process" ;
+    rdfs:comment "One occurrence of a component inside a network. Two processes may share a component." .
+
+gf:Port a rdfs:Class ;
+    rdfs:label "Port" ;
+    rdfs:comment "A named, typed input or output of a component." .
+
+gf:Connection a rdfs:Class ;
+    rdfs:label "Connection" ;
+    rdfs:comment "A wire from one process's output port to another's input port. Classical FBP calls this a bounded buffer; nothing here is buffered yet — see the README's streaming section." .
+
+gf:InitialPacket a rdfs:Class ;
+    rdfs:label "Initial Information Packet (IIP)" ;
+    rdfs:comment "A constant delivered to an input port at network start. This is how a network carries its own inputs and stays self-contained." .
+
+# --- properties -----------------------------------------------------------
+
+gf:name      a rdf:Property ; rdfs:comment "Local name, unique within its network or component." .
+gf:process   a rdf:Property ; rdfs:domain gf:Network ; rdfs:range gf:Process .
+gf:component a rdf:Property ; rdfs:domain gf:Process ; rdfs:range gf:Component .
+gf:fn        a rdf:Property ; rdfs:domain gf:Component ;
+    rdfs:comment "The @factoidal/core fn.* export this component is realised by." .
+gf:semantics a rdf:Property ; rdfs:domain gf:Component ;
+    rdfs:comment "Where the meaning of this transform is defined — an F* module, a W3C spec, or both. Recorded in every transform certificate as graphflow.md's 'semantics version identifier'." .
+gf:mode      a rdf:Property ; rdfs:domain gf:Component ; rdfs:range gf:Mode .
+gf:portOf    a rdf:Property ; rdfs:domain gf:Port ; rdfs:range gf:Component .
+gf:direction a rdf:Property ; rdfs:domain gf:Port .
+gf:index     a rdf:Property ; rdfs:domain gf:Port ; rdfs:comment "Argument position, so a port list has a stable order." .
+gf:kind      a rdf:Property ; rdfs:domain gf:Port ; rdfs:range gf:Kind ;
+    rdfs:comment "What flows through the port. Determines how its content hash is computed." .
+
+gf:fromProcess a rdf:Property ; rdfs:domain gf:Connection ; rdfs:range gf:Process .
+gf:fromPort    a rdf:Property ; rdfs:domain gf:Connection .
+gf:toProcess   a rdf:Property ; rdfs:domain gf:Connection ; rdfs:range gf:Process .
+gf:toPort      a rdf:Property ; rdfs:domain gf:Connection .
+
+gf:targetProcess a rdf:Property ; rdfs:domain gf:InitialPacket ; rdfs:range gf:Process .
+gf:targetPort    a rdf:Property ; rdfs:domain gf:InitialPacket .
+gf:value         a rdf:Property ; rdfs:domain gf:InitialPacket .
+
+gf:claimsStreaming a rdf:Property ; rdfs:domain gf:Network ;
+    rdfs:comment "True if the network claims it can run in bounded memory end to end. The checker refuses that claim when any component is gf:WholeGraph — a necessary condition, not a sufficient one." .
+
+# --- individuals ----------------------------------------------------------
+
+gf:In  a gf:Direction ; rdfs:label "in" .
+gf:Out a gf:Direction ; rdfs:label "out" .
+
+gf:Dataset a gf:Kind ; rdfs:label "dataset" ;
+    rdfs:comment "An RDF dataset. Hashed by RDFC-1.0 canonicalisation, so two datasets differing only in blank-node labels hash alike." .
+gf:Text a gf:Kind ; rdfs:label "text" ;
+    rdfs:comment "A byte string. Hashed by sha256 of its UTF-8 encoding." .
+gf:Json a gf:Kind ; rdfs:label "json" ;
+    rdfs:comment "A JSON value. Hashed by sha256 of its key-sorted serialisation." .
+
+gf:Streamable a gf:Mode ; rdfs:label "streamable" ;
+    rdfs:comment "The OPERATION admits a bounded-memory implementation. It does not claim today's fn.* implementation is one — none of them are yet." .
+gf:WholeGraph a gf:Mode ; rdfs:label "whole-graph" ;
+    rdfs:comment "The operation needs the entire graph before it can emit anything: canonicalisation, closure, validation. No streaming implementation is possible, so any network containing one cannot stream end to end." .

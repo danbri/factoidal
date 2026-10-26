@@ -5,6 +5,11 @@ description: Work with Factoidal's Lean 4 tree under formal/lean4/, including sc
 
 # Factoidal Lean basics
 
+OWL review, 2026-09-08: [qualified tableau merge counterexample and public
+closure path](../../docs/designissues/2026-09-08-qualified-tableau-merges-and-public-closure.md).
+Do not infer executable refuter soundness from the declarative theorem, or
+public API speed from the indexed corpus runner. Check the actual path.
+
 ## What exists (started 2026-08-22; re-measure before scope claims)
 
 `formal/lean4/` is a self-contained lake project, library name

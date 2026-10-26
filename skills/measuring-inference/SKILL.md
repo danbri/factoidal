@@ -199,6 +199,32 @@ an instrument that did not run. The same applies to `decide`/`rfl`
 over results: keep measurement in `IO`, force it, and cross-check the
 sum.
 
+### Task timeouts need a compiled execution check too (2026-09-08)
+
+Putting `match expensivePure input with ... => pure result` inside an
+`IO.asTask` action does not establish that the worker performs the work.
+The native OWL harness evaluated `Refute.refute` before `lean_io_as_task`;
+the worker merely wrapped its already-computed result. A configured
+20-second timeout consequently allowed a 40-second case with no timeout
+line. Inspect generated C and exercise a case that must time out.
+
+Making the computation depend on an `IO.Ref` read inside the worker and
+forcing its result through IO there fixed the hoisting, but did not make the
+timeout hard. An abandoned pure task kept consuming CPU, and the native
+runtime waited for it during shutdown: a one-second caller deadline still
+made the process take 110.94 seconds.
+
+The native OWL probe now runs each bounded refutation in a child process
+group. It polls `IO.monoMsNow`, then calls `Child.kill` and `Child.wait` before
+continuing. Verify the complete native process time with an external timer and
+check for a surviving child when the host permits it; timing only the caller
+is insufficient. Count refuter timeouts separately from closure caps. The
+graph wire must preserve term fields, blank-node co-reference, duplicate
+triples, and list order, because order affects bounded search. See the
+[measured defect](../../docs/20260908-lean-dl-completion-and-scale.md#native-timeout-defect-and-per-case-costs),
+the [hard-timeout repair](../../docs/20260908-owl-refuter-hard-timeout.md),
+and [timeout tracking](https://github.com/danbri/factoidal/issues/655).
+
 ## 10. A new rule row has TWO cost gates, and a green suite sees neither
 
 Adding a rule row to a closure is measured by its score delta. Two

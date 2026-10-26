@@ -811,6 +811,57 @@ def intervalCount (iv : Interval) : Option Nat :=
   | some lo, some hi => some (if hi ≥ lo then (hi - lo + 1).toNat else 0)
   | _,       _       => none
 
+/-! ## Finite exclusions
+
+An OWL negative data-property assertion, or an asserted value on a
+disjoint data property, removes a VALUE from one existential
+obligation.  Enumeration operands can be filtered directly.  A
+bounded integer interval is handled by cardinality: count only
+distinct, exactly parsed integer values which lie in the interval.
+The count is therefore a lower bound on excluded values and cannot
+manufacture an empty value space.
+-/
+
+/-- The upper bound on values left after `excludedDistinct` different
+    members of a finite space have been excluded.  This is the
+    arithmetic fact used by `valueSetIsEmptyAfterExcluding`. -/
+def finiteSpaceRemainingUpperBound (spaceSize excludedDistinct : Nat) : Nat :=
+  spaceSize - excludedDistinct
+
+theorem finiteSpaceRemainingUpperBound_eq_zero_iff
+    (spaceSize excludedDistinct : Nat) :
+    finiteSpaceRemainingUpperBound spaceSize excludedDistinct = 0 ↔
+      spaceSize ≤ excludedDistinct := by
+  exact Nat.sub_eq_zero_iff_le
+
+/-- Distinct excluded integer values that are members of `iv`.
+    Unreadable values and values from other datatype families are
+    absent, so the result can only under-count exclusions. -/
+def excludedIntegerValuesIn (iv : Interval) (excluded : List Term) : List Int :=
+  ((excluded.filterMap termIntOpt).filter (valueInInterval · iv)).eraseDups
+
+/-- Is `space` provably empty after removing the finite set
+    `excluded`?  Equality is OWL data-value equality through
+    `termProvablyEqual`; unknown comparisons retain the value.
+
+    Dense, date/time and family-only spaces are not made empty by a
+    finite exclusion.  A bounded integer interval is empty only when
+    its number of distinct, in-range excluded integer values reaches
+    the exact interval cardinality. -/
+def valueSetIsEmptyAfterExcluding (space : ValueSet) (excluded : List Term) : Bool :=
+  match space with
+  | .empty => true
+  | .enum xs =>
+      (xs.filter (fun x => !(excluded.any (termProvablyEqual x)))).isEmpty
+  | .interval iv =>
+      match intervalCount iv with
+      | some n => finiteSpaceRemainingUpperBound n
+                    (excludedIntegerValuesIn iv excluded).length == 0
+      | none   => false
+  | .dateInterval iv => intervalEmptyDense iv
+  | .dense qi => qIntervalEmpty qi
+  | .unconstrained | .family _ => false
+
 def dropProvablyEqual (h : Term) (xs : List Term) : List Term :=
   xs.filter (fun x => !(termProvablyEqual h x))
 

@@ -1,0 +1,51 @@
+# The component catalogue: which @factoidal/core fn.* functions may appear in a
+# network, what their ports are, and where their meaning is defined.
+#
+# `gf:semantics` is the field that makes a transform certificate worth having.
+# It names the F* module (and W3C spec) the transform's meaning comes from, so
+# a certificate says "this input became this output under THIS semantics",
+# not merely "some code ran".
+
+@prefix gf: <http://factoidal.example/ns/graphflow#> .
+
+# --- parse ----------------------------------------------------------------
+gf:parse a gf:Component ;
+    gf:fn "parse" ;
+    gf:mode gf:Streamable ;
+    gf:semantics "RDF 1.1 Turtle; formal/fstar/RDF.Turtle.fst (F*-verified parser, Iron Rule 4)" .
+gf:parse-text a gf:Port ; gf:portOf gf:parse ; gf:direction gf:In  ; gf:index 0 ; gf:name "text" ; gf:kind gf:Text .
+gf:parse-out  a gf:Port ; gf:portOf gf:parse ; gf:direction gf:Out ; gf:index 0 ; gf:name "out"  ; gf:kind gf:Dataset .
+
+# --- rho-df (core RDFS) closure -------------------------------------------
+gf:rhoDfClosure a gf:Component ;
+    gf:fn "rhoDfClosure" ;
+    gf:mode gf:WholeGraph ;
+    gf:semantics "core RDFS closure; formal/fstar/RDF.Entailment.RDFS.RhoDFClosure.fst rho_df_closure, decides-iff in docs/theorem-registry.md" .
+gf:rhoDfClosure-ds  a gf:Port ; gf:portOf gf:rhoDfClosure ; gf:direction gf:In  ; gf:index 0 ; gf:name "ds"  ; gf:kind gf:Dataset .
+gf:rhoDfClosure-out a gf:Port ; gf:portOf gf:rhoDfClosure ; gf:direction gf:Out ; gf:index 0 ; gf:name "out" ; gf:kind gf:Dataset .
+
+# --- SHACL validation -----------------------------------------------------
+gf:shaclValidate a gf:Component ;
+    gf:fn "validate" ;
+    gf:mode gf:WholeGraph ;
+    gf:semantics "SHACL Core; formal/fstar SHACL_Validation (validation_report_to_graph)" .
+gf:shaclValidate-ds       a gf:Port ; gf:portOf gf:shaclValidate ; gf:direction gf:In  ; gf:index 0 ; gf:name "ds"       ; gf:kind gf:Dataset .
+gf:shaclValidate-shapes   a gf:Port ; gf:portOf gf:shaclValidate ; gf:direction gf:In  ; gf:index 1 ; gf:name "shapes"   ; gf:kind gf:Dataset .
+gf:shaclValidate-conforms a gf:Port ; gf:portOf gf:shaclValidate ; gf:direction gf:Out ; gf:index 0 ; gf:name "conforms" ; gf:kind gf:Json .
+gf:shaclValidate-report   a gf:Port ; gf:portOf gf:shaclValidate ; gf:direction gf:Out ; gf:index 1 ; gf:name "report"   ; gf:kind gf:Dataset .
+
+# --- RDFC-1.0 canonicalisation --------------------------------------------
+gf:canonicalize a gf:Component ;
+    gf:fn "canonicalize" ;
+    gf:mode gf:WholeGraph ;
+    gf:semantics "RDFC-1.0 (W3C RDF Dataset Canonicalization); formal/fstar RDF.Canonical" .
+gf:canonicalize-ds  a gf:Port ; gf:portOf gf:canonicalize ; gf:direction gf:In  ; gf:index 0 ; gf:name "ds"  ; gf:kind gf:Dataset .
+gf:canonicalize-out a gf:Port ; gf:portOf gf:canonicalize ; gf:direction gf:Out ; gf:index 0 ; gf:name "out" ; gf:kind gf:Text .
+
+# --- Ed25519 signature over the canonical form ----------------------------
+gf:signEd25519 a gf:Component ;
+    gf:fn "signEd25519" ;
+    gf:mode gf:Streamable ;
+    gf:semantics "Ed25519 (RFC 8032) via HACL*, the F*/Low*-verified library; fn.vcEd25519Sign" .
+gf:signEd25519-text a gf:Port ; gf:portOf gf:signEd25519 ; gf:direction gf:In  ; gf:index 0 ; gf:name "text" ; gf:kind gf:Text .
+gf:signEd25519-out  a gf:Port ; gf:portOf gf:signEd25519 ; gf:direction gf:Out ; gf:index 0 ; gf:name "out"  ; gf:kind gf:Text .

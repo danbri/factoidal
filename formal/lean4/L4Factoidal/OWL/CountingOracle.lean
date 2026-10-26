@@ -3,12 +3,14 @@ L4Factoidal.OWL.CountingOracle — the counting-fragment consistency path.
 
 Port of `formal/fstar/Tableau.CountingOracle.fst` (1,663 lines).
 
-The clash-detecting refutation tableau decides OWL 2 DL consistency for
-everything except one fragment: finite-model cardinality COUNTING, where
-the contradiction is a linear system over the sizes of named classes
-(the pigeonhole shape). This module is that fragment — recognised,
-extracted, encoded, and, for the systems the corpus actually produces,
-DECIDED inside the verified boundary.
+This module extracts linear constraints over finite named-class sizes
+(the pigeonhole shape) and checks arithmetic contradiction certificates.
+The executable tableau does not call it. Counting is one of several
+remaining DL gaps; neither the tableau nor this module establishes a
+complete OWL 2 DL decision procedure. In particular, integer class-size
+constraints need a justified finiteness premise before they can license
+an OWL refutation. See https://github.com/danbri/factoidal/issues/651 and
+https://github.com/danbri/factoidal/issues/586.
 
 ## The single `assume val` becomes a parameter
 
@@ -141,8 +143,8 @@ def walkList (g : Graph) : Term → Nat → List Term
               | some rest => hd :: walkList g rest fuel
               | none => [hd]
 
-/-- Multi-digit non-negative decimal. The tableau's own reader covers
-only 0–9; dl-910's bounds are 20 / 30 / 601. -/
+/-- Multi-digit non-negative decimal, including dl-910's bounds
+    20 / 30 / 601. -/
 def parseNat (s : String) : Option Nat :=
   if s.isEmpty then none
   else s.toList.foldl

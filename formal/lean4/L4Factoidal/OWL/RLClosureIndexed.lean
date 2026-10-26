@@ -856,6 +856,10 @@ def closureI (i : Index) (fuel : Nat) : Index :=
 def indexedClosure (g : Graph) (fuel : Nat) : Graph :=
   (closureI (Index.ofGraph g) fuel).toGraph
 
+/-- The indexed engine at the public closure fuel bound. -/
+def indexedClosureFix (g : Graph) : Graph :=
+  indexedClosure g (closureFuelBound g)
+
 /-! ## Section 6 — the clash rows, over a store -/
 
 def eqDiff1AtS (s : Store) (d : Triple) : Bool :=
@@ -1526,6 +1530,15 @@ LIST, at every fuel. -/
 theorem indexedClosure_eq (g : Graph) (fuel : Nat) :
     indexedClosure g fuel = closure g fuel :=
   (Index.Wf.closure fuel (Index.Wf.ofGraph g)).all
+
+/-- The code generator replaces the list-scan public closure with the
+    exactly equal indexed engine. The readable list definition remains
+    the specification used by existing proofs. -/
+@[csimp] theorem closureFix_eq_indexedClosureFix :
+    @closureFix = @indexedClosureFix := by
+  funext g
+  unfold closureFix indexedClosureFix
+  exact (indexedClosure_eq g (closureFuelBound g)).symm
 
 /-- Set-membership form of the bridge. -/
 theorem mem_indexedClosure_iff (g : Graph) (fuel : Nat) (t : Triple) :

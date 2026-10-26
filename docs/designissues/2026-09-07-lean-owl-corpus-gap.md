@@ -766,7 +766,7 @@ restricted to the leaf.
         (hDepth : RoleDepth A ≤ 3) (hEx : ExCount A ≤ 6) :
         ¬ Consistent R A → Refuted R A
 
-Two things block it, and they are work items, not unknowns.
+One work item blocks it.
 
 1. **The inductive lift.** `canon_models_all` covers the literal leaf.
    The lift needs the ⊓ / ⊔ decomposition cases and the ∀ / ∃
@@ -774,15 +774,15 @@ Two things block it, and they are work items, not unknowns.
    one element to the expansion tree, and the role extension stops
    being `False`. This is ordinary structural induction over
    `Concept`; it is bounded work, not research.
-2. **`search` is a `partial def`.** A completeness theorem about the
-   EXECUTABLE engine needs an induction principle for it, and a
-   `partial def` has none. The prerequisite is a fuel-indexed
-   reformulation with a proof that the fuel-indexed and the partial
-   versions agree — the same move `RLClosureIndexed.indexedClosure_eq`
-   already made for the closure. The repository's no-new-`partial def`
-   rule points the same way.
 
-Until both land, the statement above stays an OBLIGATION in this
+The former second blocker is retired as of 2026-09-08. `search` is a
+total fuel-indexed loop with an explicit depth-first continuation stack.
+`search_remaining_le` proves that its returned budget does not exceed
+the supplied budget, and `search_zero` / `search_immediate_clash` expose
+the boundary equations. The executable-to-calculus completeness theorem
+still needs the inductive lift above.
+
+Until that lift lands, the statement above stays an OBLIGATION in this
 record, not a lemma with a hypothesis arranged to make it provable.
 
 ### 11.5 Features whose completeness is open, with the ids that need them

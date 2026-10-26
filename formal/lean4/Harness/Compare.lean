@@ -27,9 +27,8 @@ with the expected one, reproducing `bin/w3c-runner/w3c_runner.ml`'s
     expected literal by lexical form only (`term_equal_csv_lenient`).
   * a search that runs out of budget is `budgetExceeded` — reported,
     never read as a pass (#316 in the F* tree).
-  * an `rs:ResultSet` Turtle file decodes to rows through
-    `rs:solution` / `rs:binding` / `rs:variable` / `rs:value`, with
-    `rs:index` ordering the rows when every solution carries one.
+  * DAWG RDF result-set graphs are decoded by the reusable
+    `L4Factoidal.SPARQL.ResultsRdf` library module before comparison.
 
 Everything here is total and `#guard`-checkable; `Harness/HarnessTests.lean`
 pins the behaviour. No `sorry`, no `axiom`, no `native_decide`, no
@@ -61,13 +60,29 @@ abbrev TermCmp := BMap → Term → Term → Option BMap
 
 /-- The F* runner's `numeric_literal_equal`: two literals of the same
 numeric datatype (integer, decimal, float, double) are equal when
-their VALUES are, read through the engine's own scaled-decimal parser
-(`parseDoubleToScaled`, which also accepts a lowercase `e`). -/
+their VALUES are. Integer and decimal use exact scaled values. Float
+and double compare their IEEE-754 values, so a short expected lexical
+form also matches the exact decimal expansion of the same binary
+value. -/
 def numericLiteralEqual (e a : WfLiteral) : Bool :=
   e.val.datatype == a.val.datatype && isNumericDatatype e.val.datatype &&
-  (match parseDoubleToScaled e.val.lexicalForm, parseDoubleToScaled a.val.lexicalForm with
-   | some x, some y => x.cmp y == 0
-   | _, _ => false)
+  if e.val.datatype == xsdFloat then
+    match L4Factoidal.XSD.parseLexical e.val.lexicalForm,
+          L4Factoidal.XSD.parseLexical a.val.lexicalForm with
+    | some x, some y => L4Factoidal.XSD.fvalEq
+        (L4Factoidal.XSD.canon 24 (-126) 127 x)
+        (L4Factoidal.XSD.canon 24 (-126) 127 y)
+    | _, _ => false
+  else if e.val.datatype == xsdDouble then
+    match L4Factoidal.XSD.parseLexical e.val.lexicalForm,
+          L4Factoidal.XSD.parseLexical a.val.lexicalForm with
+    | some x, some y => L4Factoidal.XSD.fvalEq
+        (L4Factoidal.XSD.canonDouble x) (L4Factoidal.XSD.canonDouble y)
+    | _, _ => false
+  else
+    match parseDoubleToScaled e.val.lexicalForm, parseDoubleToScaled a.val.lexicalForm with
+    | some x, some y => x.cmp y == 0
+    | _, _ => false
 
 /-- `Term.eqb`, or value-equal numeric literals (`term_equal`). -/
 def termEqualLenient : Term → Term → Bool
@@ -222,69 +237,6 @@ def compareSelectRows (ordered csv : Bool) (expected actual : List Binding) : Cm
       | .exceeded => .budgetExceeded
   else
     (if matchGreedy termMatchStrict expected actual then .equal else .notEqual)
-
-/-! ## `rs:ResultSet` — SELECT results written as Turtle
-
-Some sparql11 tests (`aggregates/agg-empty-group-count-graph`,
-`bindings/graph`) ship their expected rows in the DAWG result-set
-vocabulary. Port of the decoder inside `run_query_eval_test`. -/
-
-def rsNs : String := "http://www.w3.org/2001/sw/DataAccess/tests/result-set#"
-
-/-- The subject typed `rs:ResultSet`, if the graph has one. -/
-def rsResultSetSubject (g : Graph) : Option Subject :=
-  (g.find? (fun t =>
-    t.p.val == rdfType &&
-    (match t.o with
-     | .iri i => i.val == rsNs ++ "ResultSet"
-     | _      => false))).map (·.s)
-
-def isRsResultSet (g : Graph) : Bool := (rsResultSetSubject g).isSome
-
-/-- The lexical form of a literal object, if the term is one. -/
-def literalLex : Term → Option String
-  | .literal l => some l.val.lexicalForm
-  | _          => none
-
-/-- One `rs:solution` node → (its `rs:index`, its row). -/
-def rsDecodeSolution (g : Graph) (sol : Subject) : Option Nat × Binding :=
-  let idx : Option Nat :=
-    (findObject? g sol (rsNs ++ "index")).bind literalLex |>.bind String.toNat?
-  let row : Binding :=
-    (findObjects g sol (rsNs ++ "binding")).filterMap (fun bnd =>
-      match subjectOfTerm bnd with
-      | none   => none
-      | some b =>
-          match (findObject? g b (rsNs ++ "variable")).bind literalLex,
-                findObject? g b (rsNs ++ "value") with
-          | some v, some t => some (v, t)
-          | _,      _      => none)
-  (idx, row)
-
-/-- Stable insertion sort on the index. -/
-def insertByIndex (x : Nat × Binding) : List (Nat × Binding) → List (Nat × Binding)
-  | []        => [x]
-  | y :: rest => if x.1 < y.1 then x :: y :: rest else y :: insertByIndex x rest
-
-def sortByIndex (rows : List (Nat × Binding)) : List (Nat × Binding) :=
-  rows.foldl (fun acc r => insertByIndex r acc) []
-
-/-- Decode the result set: (`rs:resultVariable`s, rows). Rows come in
-`rs:index` order when every solution carries an index, else in graph
-order. -/
-def decodeRsResultSet (g : Graph) : Option (List VarName × List Binding) :=
-  match rsResultSetSubject g with
-  | none    => none
-  | some rs =>
-      let vars := (findObjects g rs (rsNs ++ "resultVariable")).filterMap literalLex
-      let sols := (findObjects g rs (rsNs ++ "solution")).filterMap subjectOfTerm
-      let decoded := sols.map (rsDecodeSolution g)
-      let indexed := decoded.filterMap (fun r => r.1.map (fun i => (i, r.2)))
-      let rows :=
-        if !decoded.isEmpty && indexed.length == decoded.length then
-          (sortByIndex indexed).map Prod.snd
-        else decoded.map Prod.snd
-      some (vars, rows)
 
 /-- Render a row for a FAIL line. -/
 def termShow : Term → String

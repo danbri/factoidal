@@ -719,6 +719,26 @@ def hasGtBeforeTerminator : List Char → Bool
     else if isWsC c || c == ')' || c == '}' || c == ']' then false
     else hasGtBeforeTerminator rest
 
+/-- Validate Unicode escapes from the start of an IRIREF body through its
+closing angle bracket. This is used only for the ambiguous case where the
+first body character is a backslash: malformed escapes must not make the
+less-than token look like an IRIREF. -/
+def validEscapedIriBody : List Char → Bool
+  | [] => false
+  | '>' :: _ => true
+  | '\\' :: 'u' :: a :: b :: c :: d :: rest =>
+      match readHexDigits 4 [a, b, c, d] 0 with
+      | some (cp, _) =>
+          (charOfCodepoint? cp).isSome && validEscapedIriBody rest
+      | none => false
+  | '\\' :: 'U' :: a :: b :: c :: d :: e :: f :: g :: h :: rest =>
+      match readHexDigits 8 [a, b, c, d, e, f, g, h] 0 with
+      | some (cp, _) =>
+          (charOfCodepoint? cp).isSome && validEscapedIriBody rest
+      | none => false
+  | '\\' :: _ => false
+  | _ :: rest => validEscapedIriBody rest
+
 /-! ## `next_token` — one token from the current position -/
 
 /-- Port of `next_token`. Skips whitespace and comments first, then
@@ -832,13 +852,15 @@ def nextToken (v12 : Bool) (pos0 : Nat) (cs0 : List Char) :
 where
   /-- The `<` disambiguation: `<IRI>` versus the less-than operator.
   An IRIREF is recognised when the next character is a letter, `>`,
-  `_`, `/`, `#`, or a `?`/`$` with a `>` ahead of any terminator. -/
+  `_`, `/`, `#`, `&`, a `?`/`$` with a closing `>`, or the
+  start of a valid Unicode-escaped IRIREF body. -/
   ltCase (pos : Nat) (c : Char) (rest : List Char) : Token × Nat × Nat × List Char :=
     match rest with
     | [] => (.lt, pos, pos + 1, [])
     | d :: _ =>
-      if isAlpha d || d == '>' || d == '_' || d == '/' || d == '#' ||
-         ((d == '?' || d == '$') && hasGtBeforeTerminator rest) then
+      if isAlpha d || d == '>' || d == '_' || d == '/' || d == '#' || d == '&' ||
+         ((d == '?' || d == '$') && hasGtBeforeTerminator rest) ||
+         (d == '\\' && validEscapedIriBody rest) then
         let (body, pos', rest') := scanIriBody (pos + 1) rest []
         (.iri (String.ofList (processIriEscapes body)), pos, pos', rest')
       else (.lt, pos, pos + 1, rest)

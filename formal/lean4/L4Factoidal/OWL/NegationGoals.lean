@@ -24,10 +24,13 @@ equivalence conclusion `C ≡ D` expands to the two subsumption goals
 One unsupported conjunct collapses the whole conclusion to `none`
 (conservative — the caller keeps its closure verdict).
 
-`negationGoals` returns the CONJUNCTION of goals: the caller proves
-the entailment iff `tableauConsistent (closure ++ goal) fuel` answers
-`some false` for EVERY goal; a `some true` on any goal is a
-countermodel (not entailed); otherwise the answer is indeterminate.
+`prepareNegationGoals` returns a scoped premise and the CONJUNCTION of
+goals: the caller proves the entailment iff
+`tableauConsistent (premise ++ goal) fuel` answers `some false` for
+EVERY goal. A `some true` is only a quiescent open bounded expansion;
+the executable does not construct or certify a Direct Semantics model,
+so it does not prove non-entailment. Any result other than all goals
+refuted is indeterminate.
 
 ## The ¬p(x,y) encoding
 
@@ -43,9 +46,9 @@ i.e. `x : ≤0 p.{y}`. In every model `{y}` denotes `{den(y)}`, so
 to `y` — precisely `¬(⟨x,y⟩ ∈ EXT(p))`, nothing stronger (a bare
 `≤0 p` would forbid ALL p-successors, which is unsound). The
 tautology `y ∈ {y}` is asserted alongside so the filler filter
-recognises `y`. A literal object is out of this encoding
-(`owl:oneOf` of a literal is a data range) — such a conclusion falls
-to `none`.
+recognises `y`. For a literal object, the exact negation is represented
+directly as an OWL `NegativePropertyAssertion` with `targetValue`;
+using an unrestricted `≤0 p` there would again be too strong.
 
 ## Structural vs content triples
 
@@ -99,14 +102,15 @@ def owlOnDataRange : WfIri :=
 
 /-- `rdf:type` objects that DECLARE rather than assert: membership in
     one of these is never the fact a PositiveEntailment conclusion is
-    testing. `owl:Nothing` is deliberately absent — an
-    `i rdf:type owl:Nothing` conclusion is a real, if degenerate,
-    claim. Port of `is_meta_type_iri`. -/
+    testing. `owl:Thing` and `owl:Nothing` are deliberately absent: an
+    individual typed as either class states a semantic membership,
+    even though the former is tautological and the latter impossible.
+    Port of `is_meta_type_iri`, with that executable coverage repair. -/
 def isMetaTypeIri (i : WfIri) : Bool :=
   i == owlClass || i == owlObjectProperty || i == owlDatatypeProperty
   || i == owlAnnotationProperty || i == owlNamedIndividual
   || i == owlRestriction || i == rdfsClass || i == rdfProperty
-  || i == rdfsDatatype || i == owlDataRange || i == owlThing
+  || i == rdfsDatatype || i == owlDataRange
   || i == owlOntology
   || i == owlFunctionalProperty || i == owlInverseFunctionalProperty
   || i == owlTransitiveProperty || i == owlSymmetricProperty
@@ -174,12 +178,23 @@ def isNegatablePropertyAssertion (t : Triple) : Bool :=
   && (match t.o with | .iri _ => true | .bnode _ => true | _ => false)
   && !isAxiomOrSpecialPredicate t.p
 
+/-- A plain data-property assertion on a named individual. Its exact
+    negation is an OWL negative property assertion with `targetValue`.
+    The literal object fixes the data-property reading. -/
+def isNegatableDataPropertyAssertion (t : Triple) : Bool :=
+  (match t.s with | .iri _ => true | .bnode _ => false)
+  && (match t.o with | .literal _ => true | _ => false)
+  && !isAxiomOrSpecialPredicate t.p
+
 /-! ## Fresh bnode ids
 
-The `__factoidal_` prefix is illegal in W3C fixtures / parser output,
-so these never collide with premise or closure bnodes. Each
-refutation goal is a SEPARATE graph handed to the refuter on its own,
-so reusing one fixed id set across goals is safe. -/
+RDF parsers may accept every identifier below as an input blank-node
+label. `prepareNegationGoals` therefore scopes every premise and
+conclusion blank node before these names are introduced. The scope
+encoding starts with `s_`, while these generated identifiers start
+with `_`, so the namespaces are disjoint. Each refutation goal is a
+SEPARATE graph handed to the refuter on its own, so reusing one fixed
+identifier set across goals is safe. -/
 
 def peNegClassBNode  : BNodeId := "__factoidal_pe_neg_class"
 def peSubFreshBNode  : BNodeId := "__factoidal_pe_sub_witness"
@@ -190,6 +205,7 @@ def pePropOneofBNode : BNodeId := "__factoidal_pe_prop_oneof"
 def pePropListBNode  : BNodeId := "__factoidal_pe_prop_list"
 def peNegClassBNodeB : BNodeId := "__factoidal_pe_neg_class_b"
 def peBoolCeBNode    : BNodeId := "__factoidal_pe_bool_ce"
+def peDataNpaBNode   : BNodeId := "__factoidal_pe_data_npa"
 
 /-! ## Goal builders -/
 
@@ -218,6 +234,16 @@ def negPairTriples (sub : Subject) (p : WfIri) (m : Term)
       ⟨lcell, rdfFirst,                   m⟩,
       ⟨lcell, rdfRest,                    .iri rdfNil⟩,
       ⟨mSubj, rdfType,                    .bnode pePropOneofBNode⟩ ]
+
+/-- Triples for the exact negation of a positive data-property
+    assertion `p(sub, value)`. `value` remains the conclusion literal;
+    the refuter compares OWL data values rather than RDF lexical forms. -/
+def negDataPairTriples (sub : Subject) (p : WfIri) (value : Term) : Graph :=
+  let n : Subject := .bnode peDataNpaBNode
+  [ ⟨n, rdfType, .iri owlNegativePropertyAssertion⟩,
+    ⟨n, owlSourceIndividual, sub.toTerm⟩,
+    ⟨n, owlAssertionProperty, .iri p⟩,
+    ⟨n, owlTargetValue, value⟩ ]
 
 /-- Refutation goal for a property SUBSUMPTION `P ⊑ Q`: a fresh pair
     ⟨a,b⟩ with `P(a,b)` and `a : ≤0 Q.{b}` (= ¬Q(a,b)). `b` is a
@@ -388,6 +414,9 @@ def negateContentTriple (base : Graph) (t : Triple)
     some [⟨t.s, owlSameAs, t.o⟩ :: base]
   else if t.p == owlSameAs then
     some [⟨t.s, owlDifferentFrom, t.o⟩ :: base]
+  else if isNegatableDataPropertyAssertion t then
+    -- `s p value` → the exact OWL negative data-property assertion.
+    some [negDataPairTriples t.s t.p t.o ++ base]
   else if isNegatablePropertyAssertion t then
     -- `s p o` → ¬p(s,o) on the existing named terms.
     match negPairTriples t.s t.p t.o with
@@ -418,5 +447,20 @@ def negationGoals (gC : Graph) : Option (List Graph) :=
     | none          => none
     | some []       => none
     | some (g :: t) => some (g :: t)
+
+/-- Scope the premise and conclusion into disjoint blank-node
+    namespaces before introducing the fixed goal-builder identifiers.
+
+    RDF blank-node labels are document-local. The caller must combine
+    the returned premise, rather than the unscoped input premise, with
+    each returned goal. `Graph.scopeBnodes` renames nested RDF 1.2
+    triple-term blank nodes as well as ordinary subjects and objects. -/
+def prepareNegationGoals (premise conclusion : Graph)
+    : Option (Graph × List Graph) :=
+  let premise' := Graph.scopeBnodes ["owl-premise"] premise
+  let conclusion' := Graph.scopeBnodes ["owl-conclusion"] conclusion
+  match negationGoals conclusion' with
+  | none       => none
+  | some goals => some (premise', goals)
 
 end L4Factoidal.OWL.Refute

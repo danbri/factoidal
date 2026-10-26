@@ -59,21 +59,53 @@ promotion, which `Expr.lit` alone does not perform. -/
 theorem termToExpr_evalIn_eq_literalPromote (env : EvalEnv) (mu : Binding) (l : WfLiteral) :
     (termToExpr? (.literal l)).map (Expr.evalIn env mu) = some (literalPromote l) := by
   simp only [termToExpr?, literalPromote]
-  by_cases h1 : (l.val.datatype == RDF.xsdInteger) = true
-  · rw [if_pos h1, if_pos h1]
-    cases hp : parseIntString l.val.lexicalForm <;> simp [Expr.evalIn, hp]
+  by_cases h1 : isIntegerDatatype l.val.datatype = true
+  · have hnf : l.val.datatype.val ≠ SPARQL.xsdFloat.val := by
+      intro heq
+      have hdt : l.val.datatype = SPARQL.xsdFloat := Subtype.ext heq
+      rw [hdt] at h1
+      have hfi : isIntegerDatatype SPARQL.xsdFloat = false := by decide
+      rw [hfi] at h1
+      contradiction
+    rw [if_pos h1, if_pos h1]
+    cases hp : parseIntString l.val.lexicalForm with
+    | none => simp [Expr.evalIn, hnf]
+    | some n =>
+        by_cases hf : integerValueFitsDatatype l.val.datatype n = true
+        · simp [Expr.evalIn, hf]
+        · simp [Expr.evalIn, hf, hnf]
   · rw [if_neg h1, if_neg h1]
     by_cases h2 : (l.val.datatype == RDF.xsdDecimal) = true
-    · rw [if_pos h2, if_pos h2]; simp [Expr.evalIn]
+    · have hnf : l.val.datatype.val ≠ SPARQL.xsdFloat.val := by
+        intro heq
+        have hdt : l.val.datatype = SPARQL.xsdFloat := Subtype.ext heq
+        rw [hdt] at h2
+        have hdf : (SPARQL.xsdFloat == RDF.xsdDecimal) = false := by decide
+        rw [hdf] at h2
+        contradiction
+      rw [if_pos h2, if_pos h2]
+      by_cases he :
+          'e' ∈ l.val.lexicalForm.toList ||
+          'E' ∈ l.val.lexicalForm.toList
+      · simp [he, Expr.evalIn, hnf]
+      · cases hp : L4Factoidal.XSD.parseLexical l.val.lexicalForm with
+        | none => simp [he, Expr.evalIn, hnf]
+        | some parsed =>
+            cases parsed <;> simp [he, Expr.evalIn, hnf]
     · rw [if_neg h2, if_neg h2]
-      by_cases h3 :
-          (l.val.datatype == RDF.xsdDouble || l.val.datatype == SPARQL.xsdFloat) = true
-      · rw [if_pos h3, if_pos h3]; simp [Expr.evalIn]
+      by_cases h3 : (l.val.datatype == SPARQL.xsdFloat) = true
+      · rw [if_pos h3, if_pos h3]
+        simp [Expr.evalIn, literalPromote, h1, h2, h3]
       · rw [if_neg h3, if_neg h3]
-        by_cases h4 : (l.val.datatype == RDF.xsdBoolean) = true
+        by_cases h4 : (l.val.datatype == RDF.xsdDouble) = true
         · rw [if_pos h4, if_pos h4]
-          split <;> simp_all [Expr.evalIn]
-        · rw [if_neg h4, if_neg h4]; simp [Expr.evalIn]
+          cases hp : L4Factoidal.XSD.parseLexical l.val.lexicalForm <;>
+            simp [Expr.evalIn, h3]
+        · rw [if_neg h4, if_neg h4]
+          by_cases h5 : (l.val.datatype == RDF.xsdBoolean) = true
+          · rw [if_pos h5, if_pos h5]
+            split <;> simp_all [Expr.evalIn]
+          · rw [if_neg h5, if_neg h5]; simp [Expr.evalIn, h3]
 
 /-- The same statement in the form the substitution uses it: replacing
 `Expr.var v` by `termToExpr? t` preserves the value `Expr.var v` has
@@ -212,6 +244,8 @@ theorem validateWithSparql_sound_core (data shapesRaw : Graph) (sg : ShapesGraph
 
 /-! ## Axiom audit -/
 
+#print axioms termToExpr_evalIn_eq_literalPromote
+#print axioms substVarExpr_var_evalIn
 #print axioms withPreboundQuery_error
 #print axioms sparqlViolationsForFocus_eq_nil_iff
 #print axioms customAskViolation_eq_nil_iff

@@ -1,0 +1,1864 @@
+{
+  "date": "2026-09-08",
+  "source_commit": "0c331255b3a0fec0306b5459a944749364db891f",
+  "lean_toolchain": "leanprover/lean4:v4.33.1",
+  "build": {
+    "cwd": "formal/lean4",
+    "argv": [
+      "lake",
+      "build",
+      "l4w3c",
+      "l4rdf-semantics",
+      "l4owl-probe"
+    ],
+    "exit_code": 0,
+    "jobs": 228,
+    "full_build": false
+  },
+  "runs": [
+    {
+      "name": "rdf11",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4w3c",
+        "third_party/testing/w3c/rdf/rdf11/rdf-mt/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf11/rdf-n-quads/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf11/rdf-n-triples/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf11/rdf-trig/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf11/rdf-turtle/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf11/rdf-xml/manifest.ttl"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 0,
+      "score_lines": [
+        "rdf-mt: 39 pass, 0 fail, 0 skip, 0 unsupported (out of 39)",
+        "rdf-n-quads: 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87)",
+        "rdf-n-triples: 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)",
+        "rdf-trig: 356 pass, 0 fail, 0 skip, 0 unsupported (out of 356)",
+        "rdf-turtle: 313 pass, 0 fail, 0 skip, 0 unsupported (out of 313)",
+        "rdf-xml: 166 pass, 0 fail, 0 skip, 0 unsupported (out of 166)",
+        "TOTAL: 1031 pass, 0 fail, 0 skip, 0 unsupported (out of 1031)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG rdf-mt: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=133 gsp_seeded=0",
+        "HARNESS-DIAG rdf-n-quads: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-n-triples: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-trig: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-turtle: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-xml: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=133 gsp_seeded=0"
+      ],
+      "failures": [],
+      "skips_and_unsupported": []
+    },
+    {
+      "name": "rdf12-syntax",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4w3c",
+        "third_party/testing/w3c/rdf/rdf12/rdf-n-quads/c14n/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-n-quads/syntax/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-n-triples/c14n/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-n-triples/syntax/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-trig/eval/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-trig/syntax/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-turtle/eval/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-turtle/syntax/manifest.ttl",
+        "third_party/testing/w3c/rdf/rdf12/rdf-xml/eval/manifest.ttl"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 0,
+      "score_lines": [
+        "rdf-n-quads/c14n: 41 pass, 0 fail, 0 skip, 0 unsupported (out of 41)",
+        "rdf-n-quads/syntax: 27 pass, 0 fail, 0 skip, 0 unsupported (out of 27)",
+        "rdf-n-triples/c14n: 41 pass, 0 fail, 0 skip, 0 unsupported (out of 41)",
+        "rdf-n-triples/syntax: 29 pass, 0 fail, 0 skip, 0 unsupported (out of 29)",
+        "rdf-trig/eval: 25 pass, 0 fail, 0 skip, 0 unsupported (out of 25)",
+        "rdf-trig/syntax: 35 pass, 0 fail, 0 skip, 0 unsupported (out of 35)",
+        "rdf-turtle/eval: 29 pass, 0 fail, 0 skip, 0 unsupported (out of 29)",
+        "rdf-turtle/syntax: 67 pass, 0 fail, 0 skip, 0 unsupported (out of 67)",
+        "rdf-xml/eval: 30 pass, 0 fail, 0 skip, 0 unsupported (out of 30)",
+        "TOTAL: 324 pass, 0 fail, 0 skip, 0 unsupported (out of 324)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG rdf-n-quads/c14n: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=41 gsp_seeded=0",
+        "HARNESS-DIAG rdf-n-quads/syntax: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-n-triples/c14n: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=43 gsp_seeded=0",
+        "HARNESS-DIAG rdf-n-triples/syntax: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-trig/eval: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-trig/syntax: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-turtle/eval: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-turtle/syntax: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf-xml/eval: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=84 gsp_seeded=0"
+      ],
+      "failures": [],
+      "skips_and_unsupported": []
+    },
+    {
+      "name": "sparql10",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4w3c",
+        "third_party/testing/w3c/sparql/sparql10/manifest.ttl"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 1,
+      "score_lines": [
+        "basic: 27 pass, 0 fail, 0 skip, 0 unsupported (out of 27)",
+        "triple-match: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)",
+        "open-world: 11 pass, 7 fail, 0 skip, 0 unsupported (out of 18)",
+        "algebra: 12 pass, 2 fail, 0 skip, 0 unsupported (out of 14)",
+        "bnode-coreference: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)",
+        "optional: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)",
+        "optional-filter: 5 pass, 0 fail, 0 skip, 0 unsupported (out of 5)",
+        "graph: 14 pass, 3 fail, 0 skip, 0 unsupported (out of 17)",
+        "dataset: 4 pass, 8 fail, 0 skip, 0 unsupported (out of 12)",
+        "type-promotion: 0 pass, 30 fail, 0 skip, 0 unsupported (out of 30)",
+        "cast: 6 pass, 1 fail, 0 skip, 0 unsupported (out of 7)",
+        "boolean-effective-value: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)",
+        "bound: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)",
+        "expr-builtin: 19 pass, 5 fail, 0 skip, 0 unsupported (out of 24)",
+        "expr-ops: 12 pass, 6 fail, 0 skip, 0 unsupported (out of 18)",
+        "expr-equals: 14 pass, 1 fail, 0 skip, 0 unsupported (out of 15)",
+        "regex: 21 pass, 0 fail, 0 skip, 0 unsupported (out of 21)",
+        "i18n: 4 pass, 1 fail, 0 skip, 0 unsupported (out of 5)",
+        "construct: 5 pass, 0 fail, 0 skip, 0 unsupported (out of 5)",
+        "ask: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)",
+        "distinct: 11 pass, 0 fail, 0 skip, 0 unsupported (out of 11)",
+        "sort: 4 pass, 10 fail, 0 skip, 0 unsupported (out of 14)",
+        "solution-seq: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)",
+        "reduced: 2 pass, 0 fail, 0 skip, 0 unsupported (out of 2)",
+        "syntax-sparql1: 75 pass, 6 fail, 0 skip, 0 unsupported (out of 81)",
+        "syntax-sparql2: 49 pass, 4 fail, 0 skip, 0 unsupported (out of 53)",
+        "syntax-sparql3: 51 pass, 0 fail, 0 skip, 0 unsupported (out of 51)",
+        "syntax-sparql4: 12 pass, 0 fail, 0 skip, 0 unsupported (out of 12)",
+        "syntax-sparql5: 2 pass, 0 fail, 0 skip, 0 unsupported (out of 2)",
+        "TOTAL: 397 pass, 84 fail, 0 skip, 0 unsupported (out of 481)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG basic: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=58 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG triple-match: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=16 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG open-world: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=307 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG algebra: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=53 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG bnode-coreference: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=6 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG optional: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=44 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG optional-filter: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=24 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG graph: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=51 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG dataset: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=31 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG type-promotion: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG cast: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG boolean-effective-value: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=38 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG bound: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=4 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG expr-builtin: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=211 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG expr-ops: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=209 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG expr-equals: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=243 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG regex: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=78 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG i18n: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=13 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG construct: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=120 gsp_seeded=0",
+        "HARNESS-DIAG ask: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=4 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG distinct: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=266 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG sort: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=24 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG solution-seq: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=86 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG reduced: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=42 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-sparql1: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-sparql2: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-sparql3: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-sparql4: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-sparql5: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=1850 triples_compared=120 gsp_seeded=0"
+      ],
+      "failures": [
+        {
+          "suite": "open-world",
+          "message": "FAIL open-eq-06: results mismatch: expected 0 rows, got 1; unmatched actual: [?v=\"b\"^^<http://example/t#type1>, ?x=<http://example/ns#x2>]"
+        },
+        {
+          "suite": "open-world",
+          "message": "FAIL open-eq-07: results mismatch: expected 12 rows, got 11; unmatched expected: [?x1=<http://example/x7>, ?v1=_:b0, ?x2=<http://example/x7>, ?v2=_:b0]"
+        },
+        {
+          "suite": "open-world",
+          "message": "FAIL open-eq-08: results mismatch: expected 42 rows, got 0; unmatched expected: [?x1=<http://example/x1>, ?v1=\"xyz\", ?x2=<http://example/x2>, ?v2=\"xyz\"@en] | [?x1=<http://example/x1>, ?v1=\"xyz\", ?x2=<http://example/x3>, ?v2=\"xyz\"@EN] | [?x1=<http://example/x1>, ?v1=\"xyz\", ?x2=<http://example/x7>, ?v2=_:b0] | [?x1=<http://example/x1>, ?v1=\"xyz\", ?x2=<http://example/x8>, ?v2=<http://example/xyz>] | [?x1=<http://example/x2>, ?v1=\"xyz\"@en, ?x2=<http://example/x1>, ?v2=\"xyz\"]"
+        },
+        {
+          "suite": "open-world",
+          "message": "FAIL open-eq-10: results mismatch: expected 52 rows, got 11; unmatched expected: [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y2>, ?v2=\"abc\"@en] | [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y3>, ?v2=\"abc\"@EN] | [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y7>, ?v2=_:b0] | [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y8>, ?v2=<http://example/abc>] | [?x=<http://example/x2>, ?v1=\"xyz\"@en, ?y=<http://example/y1>, ?v2=\"abc\"]; unmatched actual: [?v2=\"abc\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?y=<http://example/y5>, ?v1=\"xyz\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x=<http://example/x5>] | [?v2=\"abc\"^^<http://example/unknown>, ?y=<http://example/y6>, ?v1=\"xyz\"^^<http://example/unknown>, ?x=<http://example/x6>]"
+        },
+        {
+          "suite": "open-world",
+          "message": "FAIL open-eq-11: results mismatch: expected 52 rows, got 11; unmatched expected: [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y2>, ?v2=\"abc\"@en] | [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y3>, ?v2=\"abc\"@EN] | [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y7>, ?v2=_:b0] | [?x=<http://example/x1>, ?v1=\"xyz\", ?y=<http://example/y8>, ?v2=<http://example/abc>] | [?x=<http://example/x2>, ?v1=\"xyz\"@en, ?y=<http://example/y1>, ?v2=\"abc\"]; unmatched actual: [?v2=\"abc\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?y=<http://example/y5>, ?v1=\"xyz\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x=<http://example/x5>] | [?v2=\"abc\"^^<http://example/unknown>, ?y=<http://example/y6>, ?v1=\"xyz\"^^<http://example/unknown>, ?x=<http://example/x6>]"
+        },
+        {
+          "suite": "open-world",
+          "message": "FAIL open-eq-12: results mismatch: expected 10 rows, got 64; unmatched actual: [?v2=\"xyz\", ?y=<http://example/x1>, ?v1=\"xyz\", ?x=<http://example/x1>] | [?v2=\"xyz\"@en, ?y=<http://example/x2>, ?v1=\"xyz\", ?x=<http://example/x1>] | [?v2=\"xyz\"@EN, ?y=<http://example/x3>, ?v1=\"xyz\", ?x=<http://example/x1>] | [?v2=\"xyz\", ?y=<http://example/x4>, ?v1=\"xyz\", ?x=<http://example/x1>] | [?v2=_:xyz, ?y=<http://example/x7>, ?v1=\"xyz\", ?x=<http://example/x1>]"
+        },
+        {
+          "suite": "open-world",
+          "message": "FAIL date-2: results mismatch: expected 3 rows, got 4; unmatched expected: [?x=<http://example/dt1>, ?v=\"2006-08-23T09:00:00+01:00\"^^<http://www.w3.org/2001/XMLSchema#dateTime>]; unmatched actual: [?v=\"2006-08-23Z\"^^<http://www.w3.org/2001/XMLSchema#date>, ?x=<http://example/d2>] | [?v=\"2006-08-23+00:00\"^^<http://www.w3.org/2001/XMLSchema#date>, ?x=<http://example/d3>]"
+        },
+        {
+          "suite": "algebra",
+          "message": "FAIL Optional-filter - 1: results mismatch: expected 3 rows, got 2; unmatched expected: [?x=<http://example/x2>, ?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?y=<http://example/x3>, ?w=\"4\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?x=<http://example/x2>, ?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?y=<http://example/x3>, ?w=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>]; unmatched actual: [?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x=<http://example/x2>]"
+        },
+        {
+          "suite": "algebra",
+          "message": "FAIL Optional-filter - 2 filters: results mismatch: expected 2 rows, got 2; unmatched expected: [?x=<http://example/x2>, ?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?y=<http://example/x3>, ?w=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>]; unmatched actual: [?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x=<http://example/x2>]"
+        },
+        {
+          "suite": "graph",
+          "message": "FAIL graph-09: results mismatch: expected 0 rows, got 1; unmatched actual: [?q=<http://example/q>, ?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/graph/data-g4.ttl>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?p=<http://example/p>, ?s=_:x]"
+        },
+        {
+          "suite": "graph",
+          "message": "FAIL graph-10b: results mismatch: expected 0 rows, got 2; unmatched actual: [?q=<http://example/p>, ?v=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/graph/data-g3-dup.ttl>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?p=<http://example/p>, ?s=_:x] | [?q=<http://example/p>, ?v=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/graph/data-g3-dup.ttl>, ?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?p=<http://example/p>, ?s=_:a]"
+        },
+        {
+          "suite": "graph",
+          "message": "FAIL graph-11: results mismatch: expected 8 rows, got 8"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-01: results mismatch: expected 2 rows, got 0; unmatched expected: [?p=<http://example/p>, ?s=<http://example/a>, ?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?s=<http://example/x>, ?p=<http://example/p>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-03: results mismatch: expected 2 rows, got 0; unmatched expected: [?s=<http://example/x>, ?p=<http://example/p>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g1.ttl>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?s=<http://example/a>, ?p=<http://example/p>, ?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g1.ttl>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-05: results mismatch: expected 2 rows, got 0; unmatched expected: [?s=<http://example/x>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?p=<http://example/p>] | [?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=<http://example/a>, ?p=<http://example/p>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-06: results mismatch: expected 1 rows, got 0; unmatched expected: [?p=<http://example/q>, ?o=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g2.ttl>, ?s=<http://example/x>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-07: results mismatch: expected 3 rows, got 0; unmatched expected: [?o=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=<http://example/x>, ?p=<http://example/q>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g2.ttl>] | [?p=<http://example/p>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=<http://example/x>] | [?p=<http://example/p>, ?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=<http://example/a>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-08: results mismatch: expected 1 rows, got 0; unmatched expected: [?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g2.ttl>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?q=<http://example/q>, ?s=<http://example/x>, ?p=<http://example/p>, ?v=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-11: results mismatch: expected 8 rows, got 0; unmatched expected: [?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g3.ttl>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=_:anon_5, ?p=<http://example/p>] | [?p=<http://example/p>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g1.ttl>, ?s=<http://example/x>] | [?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g1.ttl>, ?s=<http://example/a>, ?p=<http://example/p>, ?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?s=<http://example/x>, ?o=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?p=<http://example/q>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g2.ttl>] | [?s=<http://example/x>, ?p=<http://example/p>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>]"
+        },
+        {
+          "suite": "dataset",
+          "message": "FAIL dataset-12b: results mismatch: expected 12 rows, got 0; unmatched expected: [?o=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=<http://example/x>, ?p=<http://example/q>, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g2.ttl>] | [?s=<http://example/x>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?p=<http://example/p>] | [?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g1.ttl>, ?o=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=<http://example/x>, ?p=<http://example/p>] | [?p=<http://example/p>, ?s=_:anon_18, ?g=<file://$REPO_ROOT/third_party/testing/w3c/sparql/sparql10/dataset/data-g3.ttl>, ?o=\"9\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?o=\"2\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?s=_:anon_24, ?p=<http://example/q>]"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-double-double: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-double-float: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-double-decimal: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-float-float: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-float-decimal: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-decimal-decimal: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-integer-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-nonPositiveInteger-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-negativeInteger-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-long-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-int-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-byte-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-nonNegativeInteger-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-unsignedLong-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-unsignedInt-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-unsignedShort-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-unsignedByte-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-positiveInteger-short: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-double: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-float: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-decimal: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-short-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-byte-short-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-long-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-int-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-short-byte-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-double-float-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-double-decimal-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "type-promotion",
+          "message": "FAIL tP-float-decimal-fail: expected file is not a boolean result but the query is ASK"
+        },
+        {
+          "suite": "cast",
+          "message": "FAIL Cast to xsd:dateTime: results mismatch: expected 1 rows, got 7; unmatched actual: [?s=<http://example.org/iri>] | [?s=<http://example.org/str>] | [?s=<http://example.org/fltdbl>] | [?s=<http://example.org/decimal>] | [?s=<http://example.org/int>]"
+        },
+        {
+          "suite": "expr-builtin",
+          "message": "FAIL str-1: results mismatch: expected 4 rows, got 5; unmatched actual: [?v=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x=<http://example.org/things#xi3>]"
+        },
+        {
+          "suite": "expr-builtin",
+          "message": "FAIL str-2: results mismatch: expected 1 rows, got 0; unmatched expected: [?x=<http://example.org/things#xi3>, ?v=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>]"
+        },
+        {
+          "suite": "expr-builtin",
+          "message": "FAIL sameTerm-simple: results mismatch: expected 14 rows, got 18; unmatched actual: [?v2=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi3>, ?v1=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi1>] | [?v2=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi3>, ?v1=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi2>] | [?v2=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi1>, ?v1=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi3>] | [?v2=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi2>, ?v1=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi3>]"
+        },
+        {
+          "suite": "expr-builtin",
+          "message": "FAIL sameTerm-eq: results mismatch: expected 14 rows, got 17; unmatched expected: [?x1=<http://example.org/things#xb>, ?v1=_:b, ?x2=<http://example.org/things#xb>, ?v2=_:b]; unmatched actual: [?v2=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi3>, ?v1=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi1>] | [?v2=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi3>, ?v1=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi2>] | [?v2=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi1>, ?v1=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi3>] | [?v2=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi2>, ?v1=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x1=<http://example.org/things#xi3>]"
+        },
+        {
+          "suite": "expr-builtin",
+          "message": "FAIL sameTerm-not-eq: results mismatch: expected 28 rows, got 24; unmatched expected: [?x1=<http://example.org/things#xi2>, ?v1=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi3>, ?v2=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?x1=<http://example.org/things#xi3>, ?v1=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi2>, ?v2=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?x1=<http://example.org/things#xi3>, ?v1=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi1>, ?v2=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?x1=<http://example.org/things#xi1>, ?v1=\"1\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?x2=<http://example.org/things#xi3>, ?v2=\"01\"^^<http://www.w3.org/2001/XMLSchema#integer>]"
+        },
+        {
+          "suite": "expr-ops",
+          "message": "FAIL + operator on number mixed datatypes: results mismatch: expected 16 rows, got 16; unmatched expected: [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"6\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?result=\"6\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"6\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?result=\"6\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"6\"^^<http://www.w3.org/2001/XMLSchema#float>]; unmatched actual: [?result=\"6.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?result=\"6.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>] | [?result=\"6.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"6.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"6.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]"
+        },
+        {
+          "suite": "expr-ops",
+          "message": "FAIL - operator on number mixed datatypes: results mismatch: expected 16 rows, got 16; unmatched expected: [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"0\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?result=\"0\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"0\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?result=\"0\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"0\"^^<http://www.w3.org/2001/XMLSchema#float>]; unmatched actual: [?result=\"0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?result=\"0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>] | [?result=\"0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]"
+        },
+        {
+          "suite": "expr-ops",
+          "message": "FAIL * operator on number mixed datatypes: results mismatch: expected 16 rows, got 16; unmatched expected: [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"9\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?result=\"9\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"9\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?result=\"9\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"9\"^^<http://www.w3.org/2001/XMLSchema#float>]; unmatched actual: [?result=\"9.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?result=\"9.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>] | [?result=\"9.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"9.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"9.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]"
+        },
+        {
+          "suite": "expr-ops",
+          "message": "FAIL / operator on number mixed datatypes: results mismatch: expected 16 rows, got 16; unmatched expected: [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"1\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?result=\"1\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"1\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?result=\"1\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"1\"^^<http://www.w3.org/2001/XMLSchema#float>]; unmatched actual: [?result=\"1.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>] | [?result=\"1.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>] | [?result=\"1.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#integer>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"1.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#decimal>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>] | [?result=\"1.0E0\"^^<http://www.w3.org/2001/XMLSchema#double>, ?right=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?left=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]"
+        },
+        {
+          "suite": "expr-ops",
+          "message": "FAIL Unary Plus with various datatype: results mismatch: expected 4 rows, got 4; unmatched expected: [?v=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]; unmatched actual: [?result=\"3\"^^<http://www.w3.org/2001/XMLSchema#double>, ?v=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]"
+        },
+        {
+          "suite": "expr-ops",
+          "message": "FAIL Unary Minus with various datatype: results mismatch: expected 4 rows, got 4; unmatched expected: [?v=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>, ?result=\"-3\"^^<http://www.w3.org/2001/XMLSchema#float>]; unmatched actual: [?result=\"-3\"^^<http://www.w3.org/2001/XMLSchema#double>, ?v=\"3\"^^<http://www.w3.org/2001/XMLSchema#float>]"
+        },
+        {
+          "suite": "expr-equals",
+          "message": "FAIL Equality with dateTime: results mismatch: expected 5 rows, got 2; unmatched expected: [?x=<http://example.org/things#d3>] | [?x=<http://example.org/things#d5>] | [?x=<http://example.org/things#d7>]"
+        },
+        {
+          "suite": "i18n",
+          "message": "FAIL normalization-02: results mismatch: expected 1 rows, got 0; unmatched expected: [?S=<http://example/vocab#s2>]"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-1: expected-result parse error: unknown result format: result-sort-1.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-2: expected-result parse error: unknown result format: result-sort-2.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-3: expected-result parse error: unknown result format: result-sort-3.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-4: expected-result parse error: unknown result format: result-sort-4.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-5: expected-result parse error: unknown result format: result-sort-5.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-6: expected-result parse error: unknown result format: result-sort-6.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-7: expected-result parse error: unknown result format: result-sort-7.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-8: expected-result parse error: unknown result format: result-sort-8.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-9: expected-result parse error: unknown result format: result-sort-9.rdf"
+        },
+        {
+          "suite": "sort",
+          "message": "FAIL sort-10: expected-result parse error: unknown result format: result-sort-10.rdf"
+        },
+        {
+          "suite": "syntax-sparql1",
+          "message": "FAIL syntax-lists-03.rq: should parse but was rejected: expected path primary (offset 24)"
+        },
+        {
+          "suite": "syntax-sparql1",
+          "message": "FAIL syntax-lists-04.rq: should parse but was rejected: expected path primary (offset 28)"
+        },
+        {
+          "suite": "syntax-sparql1",
+          "message": "FAIL syntax-lists-05.rq: should parse but was rejected: expected path primary (offset 25)"
+        },
+        {
+          "suite": "syntax-sparql1",
+          "message": "FAIL syntax-forms-02.rq: should parse but was rejected: expected path primary (offset 61)"
+        },
+        {
+          "suite": "syntax-sparql1",
+          "message": "FAIL syntax-expr-04.rq: should parse but was rejected: expected '(' or built-in call after FILTER (offset 85)"
+        },
+        {
+          "suite": "syntax-sparql1",
+          "message": "FAIL syntax-expr-05.rq: should parse but was rejected: expected '(' or built-in call after FILTER (offset 125)"
+        },
+        {
+          "suite": "syntax-sparql2",
+          "message": "FAIL syntax-general-14.rq: should parse but was rejected: expected object (offset 89)"
+        },
+        {
+          "suite": "syntax-sparql2",
+          "message": "FAIL syntax-lists-05.rq: should parse but was rejected: expected path primary (offset 56)"
+        },
+        {
+          "suite": "syntax-sparql2",
+          "message": "FAIL syntax-esc-04.rq: should parse but was rejected: expected L4Factoidal.SPARQL.Token.rbrace (offset 114)"
+        },
+        {
+          "suite": "syntax-sparql2",
+          "message": "FAIL syntax-esc-05.rq: should parse but was rejected: expected L4Factoidal.SPARQL.Token.rbrace (offset 126)"
+        }
+      ],
+      "skips_and_unsupported": []
+    },
+    {
+      "name": "sparql11",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4w3c",
+        "third_party/testing/w3c/sparql/sparql11/manifest-all.ttl"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 0,
+      "score_lines": [
+        "add: 8 pass, 0 fail, 0 skip, 0 unsupported (out of 8)",
+        "aggregates: 47 pass, 0 fail, 0 skip, 0 unsupported (out of 47)",
+        "basic-update: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)",
+        "bind: 10 pass, 0 fail, 0 skip, 0 unsupported (out of 10)",
+        "bindings: 11 pass, 0 fail, 0 skip, 0 unsupported (out of 11)",
+        "cast: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "clear: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)",
+        "construct: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)",
+        "copy: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "csv-tsv-res: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "delete-data: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "delete-insert: 17 pass, 0 fail, 0 skip, 0 unsupported (out of 17)",
+        "delete-where: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "delete: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)",
+        "drop: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)",
+        "entailment: 70 pass, 0 fail, 0 skip, 0 unsupported (out of 70)",
+        "exists: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "functions: 75 pass, 0 fail, 0 skip, 0 unsupported (out of 75)",
+        "grouping: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "json-res: 4 pass, 0 fail, 0 skip, 0 unsupported (out of 4)",
+        "move: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "negation: 12 pass, 0 fail, 0 skip, 0 unsupported (out of 12)",
+        "project-expression: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)",
+        "property-path: 33 pass, 0 fail, 0 skip, 0 unsupported (out of 33)",
+        "service: 7 pass, 0 fail, 0 skip, 0 unsupported (out of 7)",
+        "subquery: 14 pass, 0 fail, 0 skip, 0 unsupported (out of 14)",
+        "syntax-query: 94 pass, 0 fail, 0 skip, 0 unsupported (out of 94)",
+        "syntax-update-1: 54 pass, 0 fail, 0 skip, 0 unsupported (out of 54)",
+        "syntax-update-2: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)",
+        "update-silent: 13 pass, 0 fail, 0 skip, 0 unsupported (out of 13)",
+        "syntax-fed: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)",
+        "service-description: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)",
+        "protocol: 34 pass, 0 fail, 0 skip, 0 unsupported (out of 34)",
+        "http-rdf-update: 19 pass, 0 fail, 0 skip, 0 unsupported (out of 19)",
+        "TOTAL: 631 pass, 0 fail, 0 skip, 0 unsupported (out of 631)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG add: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=134 gsp_seeded=0",
+        "HARNESS-DIAG aggregates: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=176 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG basic-update: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=56 gsp_seeded=0",
+        "HARNESS-DIAG bind: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=60 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG bindings: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=50 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG cast: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=372 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG clear: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=12 gsp_seeded=0",
+        "HARNESS-DIAG construct: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=64 gsp_seeded=0",
+        "HARNESS-DIAG copy: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=84 gsp_seeded=0",
+        "HARNESS-DIAG csv-tsv-res: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=76 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG delete-data: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=96 gsp_seeded=0",
+        "HARNESS-DIAG delete-insert: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=122 gsp_seeded=0",
+        "HARNESS-DIAG delete-where: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=96 gsp_seeded=0",
+        "HARNESS-DIAG delete: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=370 gsp_seeded=0",
+        "HARNESS-DIAG drop: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=12 gsp_seeded=0",
+        "HARNESS-DIAG entailment: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=247 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG exists: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=16 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG functions: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=569 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG grouping: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=18 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG json-res: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=26 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG move: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=54 gsp_seeded=0",
+        "HARNESS-DIAG negation: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=84 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG project-expression: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=24 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG property-path: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=149 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG service: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=34 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG subquery: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=74 triples_compared=24 gsp_seeded=0",
+        "HARNESS-DIAG syntax-query: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-update-1: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-update-2: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG update-silent: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=12 gsp_seeded=0",
+        "HARNESS-DIAG syntax-fed: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG service-description: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG protocol: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG http-rdf-update: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=1",
+        "HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=1975 triples_compared=1136 gsp_seeded=1"
+      ],
+      "failures": [],
+      "skips_and_unsupported": []
+    },
+    {
+      "name": "sparql12",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4w3c",
+        "third_party/testing/w3c/sparql/sparql12/codepoint-escapes/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/eval-triple-terms/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/expression/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/grouping/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/lang-basedir/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/rdf11/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/syntax-triple-terms-negative/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/syntax-triple-terms-positive/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/syntax/manifest.ttl",
+        "third_party/testing/w3c/sparql/sparql12/version/manifest.ttl"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 0,
+      "score_lines": [
+        "codepoint-escapes: 8 pass, 0 fail, 0 skip, 0 unsupported (out of 8)",
+        "eval-triple-terms: 41 pass, 0 fail, 0 skip, 0 unsupported (out of 41)",
+        "expression: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)",
+        "grouping: 1 pass, 0 fail, 0 skip, 0 unsupported (out of 1)",
+        "lang-basedir: 11 pass, 0 fail, 0 skip, 0 unsupported (out of 11)",
+        "rdf11: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)",
+        "sparql12/syntax: 2 pass, 0 fail, 0 skip, 0 unsupported (out of 2)",
+        "syntax-triple-terms-negative: 65 pass, 0 fail, 0 skip, 0 unsupported (out of 65)",
+        "syntax-triple-terms-positive: 113 pass, 0 fail, 0 skip, 0 unsupported (out of 113)",
+        "version: 9 pass, 0 fail, 0 skip, 0 unsupported (out of 9)",
+        "TOTAL: 254 pass, 0 fail, 0 skip, 0 unsupported (out of 254)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG codepoint-escapes: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG eval-triple-terms: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=214 triples_compared=82 gsp_seeded=0",
+        "HARNESS-DIAG expression: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=20 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG grouping: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=6 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG lang-basedir: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=55 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG rdf11: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=5 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG sparql12/syntax: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-triple-terms-negative: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG syntax-triple-terms-positive: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG version: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=0 gsp_seeded=0",
+        "HARNESS-DIAG TOTAL: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=300 triples_compared=82 gsp_seeded=0"
+      ],
+      "failures": [],
+      "skips_and_unsupported": []
+    },
+    {
+      "name": "rdf12-semantics",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4rdf-semantics"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 1,
+      "score_lines": [
+        "rdf-semantics: 40 pass, 7 fail, 0 skip, 0 unsupported (out of 47)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG rdf-semantics: no_manifest=0 zero_tests=0 budget_exceeded=0 rows_compared=0 triples_compared=114 gsp_seeded=0"
+      ],
+      "failures": [
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL literal-type: should entail under RDF but does not (action 1 triples, result 2)"
+        },
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL malformed-literal-no-spurious: should NOT entail under RDF but does"
+        },
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL malformed-literal-bnode-neg: should NOT entail under RDF but does"
+        },
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL annotation: should entail under simple but does not (action 3 triples, result 1)"
+        },
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL annotation-unfolded: should entail under simple but does not (action 2 triples, result 3)"
+        },
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL triple-terms-propositions: should entail under RDFS but does not (action 1 triples, result 2)"
+        },
+        {
+          "suite": "rdf-semantics",
+          "message": "FAIL reifies-range: should entail under RDFS but does not (action 1 triples, result 1)"
+        }
+      ],
+      "skips_and_unsupported": []
+    },
+    {
+      "name": "owl-profiles",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4owl-probe",
+        "--dir",
+        "third_party/testing/owl",
+        "profile-RL.rdf",
+        "profile-QL.rdf",
+        "profile-EL.rdf"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 1,
+      "score_lines": [
+        "profile-RL.rdf PositiveEntailmentTest: 30 pass, 0 fail, 0 skip, 0 unsupported (out of 30)",
+        "profile-RL.rdf NegativeEntailmentTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "profile-RL.rdf ConsistencyTest: 76 pass, 0 fail, 0 skip, 0 unsupported (out of 76)",
+        "profile-RL.rdf InconsistencyTest: 14 pass, 0 fail, 0 skip, 0 unsupported (out of 14)",
+        "profile-RL.rdf: 126 pass, 0 fail, 0 skip, 0 unsupported (out of 126)",
+        "profile-QL.rdf PositiveEntailmentTest: 20 pass, 0 fail, 0 skip, 0 unsupported (out of 20)",
+        "profile-QL.rdf NegativeEntailmentTest: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)",
+        "profile-QL.rdf ConsistencyTest: 58 pass, 0 fail, 0 skip, 0 unsupported (out of 58)",
+        "profile-QL.rdf InconsistencyTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "profile-QL.rdf: 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87)",
+        "profile-EL.rdf PositiveEntailmentTest: 28 pass, 1 fail, 0 skip, 0 unsupported (out of 29)",
+        "profile-EL.rdf NegativeEntailmentTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "profile-EL.rdf ConsistencyTest: 72 pass, 0 fail, 0 skip, 0 unsupported (out of 72)",
+        "profile-EL.rdf InconsistencyTest: 12 pass, 1 fail, 1 skip, 0 unsupported (out of 14)",
+        "profile-EL.rdf: 118 pass, 2 fail, 1 skip, 0 unsupported (out of 121)",
+        "TOTAL: 331 pass, 2 fail, 1 skip, 0 unsupported (out of 334)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1260 closure_rounds=476 clashes=14 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=175",
+        "HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=317 clashes=6 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=102",
+        "HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1120 closure_rounds=443 clashes=12 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=136",
+        "HARNESS-DIAG-OWL TOTAL: cases=243 units=334 triples_parsed=3252 closure_rounds=1236 clashes=32 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0"
+      ],
+      "failures": [
+        {
+          "suite": "owl-profiles",
+          "message": "FAIL New-Feature-Keys-002 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (93 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-profiles",
+          "message": "FAIL WebOnt-someValuesFrom-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#fred> <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#parent> _:b1 (closure 164 triples, 7 rounds)"
+        }
+      ],
+      "skips_and_unsupported": [
+        "SKIP WebOnt-Thing-005 [InconsistencyTest]: semantics-rdf-based-only"
+      ]
+    },
+    {
+      "name": "owl-rl",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4owl-probe",
+        "--dir",
+        "third_party/testing/owl"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 1,
+      "score_lines": [
+        "profile-RL.rdf PositiveEntailmentTest: 30 pass, 0 fail, 0 skip, 0 unsupported (out of 30)",
+        "profile-RL.rdf NegativeEntailmentTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "profile-RL.rdf ConsistencyTest: 76 pass, 0 fail, 0 skip, 0 unsupported (out of 76)",
+        "profile-RL.rdf InconsistencyTest: 14 pass, 0 fail, 0 skip, 0 unsupported (out of 14)",
+        "profile-RL.rdf: 126 pass, 0 fail, 0 skip, 0 unsupported (out of 126)",
+        "profile-EL.rdf PositiveEntailmentTest: 28 pass, 1 fail, 0 skip, 0 unsupported (out of 29)",
+        "profile-EL.rdf NegativeEntailmentTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "profile-EL.rdf ConsistencyTest: 72 pass, 0 fail, 0 skip, 0 unsupported (out of 72)",
+        "profile-EL.rdf InconsistencyTest: 12 pass, 1 fail, 1 skip, 0 unsupported (out of 14)",
+        "profile-EL.rdf: 118 pass, 2 fail, 1 skip, 0 unsupported (out of 121)",
+        "profile-QL.rdf PositiveEntailmentTest: 20 pass, 0 fail, 0 skip, 0 unsupported (out of 20)",
+        "profile-QL.rdf NegativeEntailmentTest: 3 pass, 0 fail, 0 skip, 0 unsupported (out of 3)",
+        "profile-QL.rdf ConsistencyTest: 58 pass, 0 fail, 0 skip, 0 unsupported (out of 58)",
+        "profile-QL.rdf InconsistencyTest: 6 pass, 0 fail, 0 skip, 0 unsupported (out of 6)",
+        "profile-QL.rdf: 87 pass, 0 fail, 0 skip, 0 unsupported (out of 87)",
+        "type-positive-entailment.rdf PositiveEntailmentTest: 138 pass, 66 fail, 0 skip, 2 unsupported (out of 206)",
+        "type-positive-entailment.rdf ConsistencyTest: 204 pass, 0 fail, 0 skip, 2 unsupported (out of 206)",
+        "type-positive-entailment.rdf: 342 pass, 66 fail, 0 skip, 4 unsupported (out of 412)",
+        "type-inconsistency.rdf InconsistencyTest: 44 pass, 83 fail, 1 skip, 0 unsupported (out of 128)",
+        "type-inconsistency.rdf: 44 pass, 83 fail, 1 skip, 0 unsupported (out of 128)",
+        "type-consistency.rdf PositiveEntailmentTest: 138 pass, 66 fail, 0 skip, 2 unsupported (out of 206)",
+        "type-consistency.rdf NegativeEntailmentTest: 23 pass, 0 fail, 0 skip, 0 unsupported (out of 23)",
+        "type-consistency.rdf ConsistencyTest: 351 pass, 1 fail, 0 skip, 2 unsupported (out of 354)",
+        "type-consistency.rdf: 512 pass, 67 fail, 0 skip, 4 unsupported (out of 583)",
+        "TOTAL: 1229 pass, 218 fail, 2 skip, 8 unsupported (out of 1457)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG-OWL profile-RL.rdf: cases=91 units=126 triples_parsed=1260 closure_rounds=476 clashes=14 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=171",
+        "HARNESS-DIAG-OWL profile-EL.rdf: cases=87 units=121 triples_parsed=1120 closure_rounds=443 clashes=12 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=137",
+        "HARNESS-DIAG-OWL profile-QL.rdf: cases=65 units=87 triples_parsed=872 closure_rounds=317 clashes=6 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=103",
+        "HARNESS-DIAG-OWL type-positive-entailment.rdf: cases=206 units=412 triples_parsed=28912 closure_rounds=1640 clashes=0 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=37087",
+        "HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5530 closure_rounds=518 clashes=44 cap_hits=0 parse_failures=0 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=300",
+        "HARNESS-DIAG-OWL type-consistency.rdf: cases=354 units=583 triples_parsed=41384 closure_rounds=2290 clashes=0 cap_hits=0 parse_failures=1 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=43014",
+        "HARNESS-DIAG-OWL TOTAL: cases=931 units=1457 triples_parsed=79078 closure_rounds=5684 clashes=76 cap_hits=0 parse_failures=1 refuter_passes=0 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0"
+      ],
+      "failures": [
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-Keys-002 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (93 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-someValuesFrom-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#fred> <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#parent> _:b1 (closure 164 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Consistent-but-all-unsat [PositiveEntailmentTest]: closure-gap: missing <http://example.com/2a> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://www.w3.org/2002/07/owl#Nothing> (closure 588 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-DataQCR-001 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/Meg> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> _:b1 (closure 119 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-DisjointUnion-001 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/Stewie> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/Boy> (closure 192 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-ObjectQCR-001 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#minQualifiedCardinality> \"2\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 196 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL rdfbased-sem-restrict-maxqcr-inst-obj-one [PositiveEntailmentTest]: closure-gap: missing <http://www.example.org#x1> <http://www.w3.org/2002/07/owl#sameAs> <http://www.example.org#x2> (closure 134 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-AllDifferent-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/AllDifferent/premises001#Barney> <http://www.w3.org/2002/07/owl#differentFrom> <http://www.w3.org/2002/03owlt/AllDifferent/premises001#Fred> (closure 132 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-AnnotationProperty-002 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> (closure 164 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2000/01/rdf-schema#Class> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/Class/premises003#ex> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> (closure 126 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-005-direct [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/Class/nonconclusions005#c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> (closure 112 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-006 [PositiveEntailmentTest]: closure-gap: missing _:b2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> (closure 129 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-FunctionalProperty-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/FunctionalProperty/premises004#prop> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> (closure 155 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-FunctionalProperty-005 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction> (closure 112 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.2-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.2/premises002#Nothing> <http://www.w3.org/2002/07/owl#equivalentClass> <http://www.w3.org/2002/07/owl#Nothing> (closure 157 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.2-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.2/premises004#notA> <http://www.w3.org/2002/07/owl#complementOf> <http://www.w3.org/2002/03owlt/I5.2/premises004#A> (closure 238 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.2-006 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.2/premises006#AorB> <http://www.w3.org/2002/07/owl#unionOf> _:b1 (closure 421 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.21-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.21/premises002#Amphisbaenidae> <http://www.w3.org/2002/07/owl#disjointWith> <http://www.w3.org/2002/03owlt/I5.21/premises002#Agamidae> (closure 518 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.24-002 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#intersectionOf> _:b1 (closure 125 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.24-003 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#allValuesFrom> <http://www.w3.org/2002/03owlt/I5.24/premises003#A> (closure 147 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.24-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.24/conclusions004#prop> <http://www.w3.org/2000/01/rdf-schema#range> <http://www.w3.org/2002/03owlt/I5.24/conclusions004#A> (closure 163 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.26-009 [PositiveEntailmentTest]: closure-gap: no single blank-node mapping serves every conclusion triple (closure 123 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.3-014 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/x> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.org/y> (closure 150 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.3-015 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/p> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.org/q> (closure 237 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.5-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.5-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.8/premises004#john> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> (closure 239 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-010 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.8/premises010#john> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> (closure 233 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-017 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.8/premises017#xx> <http://www.w3.org/2002/03owlt/I5.8/premises017#yy> \"1\"^^<http://www.w3.org/2001/XMLSchema#decimal> (closure 113 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-InverseFunctionalProperty-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/InverseFunctionalProperty/premises004#prop> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#InverseFunctionalProperty> (closure 155 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Nothing-002 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#oneOf> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Restriction-005-direct [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#allValuesFrom> <http://www.w3.org/2002/03owlt/Restriction/nonconclusions005#c> (closure 140 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Restriction-006 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#someValuesFrom> <http://www.w3.org/2002/07/owl#Thing> (closure 123 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-SymmetricProperty-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/SymmetricProperty/premises002#equalityOnA> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#SymmetricProperty> (closure 191 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-SymmetricProperty-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/SymmetricProperty/premises003#path> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#ObjectProperty> (closure 139 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-TransitiveProperty-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/TransitiveProperty/premises002#symProp> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#TransitiveProperty> (closure 174 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-001 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#maxCardinality> \"1\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 150 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-002 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#cardinality> \"1\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 156 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-003 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#maxCardinality> \"2\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 150 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-004 [PositiveEntailmentTest]: closure-gap: missing _:b2 <http://www.w3.org/2002/07/owl#cardinality> \"2\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 174 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-006 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#cardinality> \"1\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 130 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-complementOf-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/complementOf/premises001#B> <http://www.w3.org/2002/07/owl#complementOf> <http://www.w3.org/2002/03owlt/complementOf/premises001#A> (closure 110 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-201 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V822576> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C110> (closure 4004 triples, 9 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-202 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V8472> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C60> (closure 2960 triples, 9 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-205 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V16561> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C6> (closure 746 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-206 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V21027> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C30> (closure 7689 triples, 11 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-208 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V16457> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C38> (closure 5010 triples, 9 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-901 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#intersectionOf> _:b3 (closure 215 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-903 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#intersectionOf> _:b3 (closure 215 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-differentFrom-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/differentFrom/premises002#Barney> <http://www.w3.org/2002/07/owl#differentFrom> <http://www.w3.org/2002/03owlt/differentFrom/premises002#Wilma> (closure 135 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-distinctMembers-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/distinctMembers/premises001#Fred> <http://www.w3.org/2002/07/owl#differentFrom> <http://www.w3.org/2002/03owlt/distinctMembers/premises001#Barney> (closure 132 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentClass-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/equivalentClass/premises004#c1> <http://www.w3.org/2002/07/owl#equivalentClass> <http://www.w3.org/2002/03owlt/equivalentClass/premises004#c2> (closure 185 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentClass-006 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#intersectionOf> _:b3 (closure 149 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentClass-007 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#intersectionOf> _:b2 (closure 148 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentProperty-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/equivalentProperty/premises004#p> <http://www.w3.org/2002/07/owl#equivalentProperty> <http://www.w3.org/2002/03owlt/equivalentProperty/premises004#q> (closure 203 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentProperty-005 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/equivalentProperty/premises005#p> <http://www.w3.org/2002/07/owl#equivalentProperty> <http://www.w3.org/2002/03owlt/equivalentProperty/premises005#q> (closure 122 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-extra-credit-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/extra-credit/premises002#N-times-M> <http://www.w3.org/2002/07/owl#sameAs> \"345\"^^<http://www.w3.org/2001/XMLSchema#int> (closure 402 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-extra-credit-003 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/2002/03owlt/extra-credit/premises003#N> (closure 400 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-extra-credit-004 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/2002/03owlt/extra-credit/premises004#N> (closure 400 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-imports-010 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/07/owl#imports> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-oneOf-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/oneOf/premises003#myT> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/03owlt/oneOf/premises003#T2> (closure 140 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-oneOf-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/oneOf/premises004#i> <http://www.w3.org/2002/03owlt/oneOf/premises004#p> \"4\"^^<http://www.w3.org/2001/XMLSchema#integer> (closure 164 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-someValuesFrom-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/someValuesFrom/premises001#i> <http://www.w3.org/2002/03owlt/someValuesFrom/premises001#p> _:b0 (closure 175 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-someValuesFrom-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#fred> <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#parent> _:b1 (closure 164 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-unionOf-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/unionOf/premises002#John> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/03owlt/unionOf/premises002#B> (closure 135 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-unionOf-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/unionOf/premises003#A-and-B> <http://www.w3.org/2002/07/owl#unionOf> _:b1 (closure 201 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-unionOf-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/unionOf/premises004#A-and-B> <http://www.w3.org/2002/07/owl#oneOf> _:b1 (closure 205 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Contradicting datatype Restrictions [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (154 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Contradicting-dateTime-restrictions [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (132 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Datatype-Float-Discrete-001 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (112 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL datatype-restriction-min-max-inconsistency [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (135 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Different types in Datatype Restrictions and Complement [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (151 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Inconsistent Byte Filler [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (219 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Inconsistent Data Complement with the Restrictions [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (151 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Inconsistent Disjoint Dataproperties [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (127 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Inconsistent String Pattern with Disjoint Dataproperties [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (122 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL inconsistent_datatypes [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (210 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Minus Infinity is not in owl:real [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (132 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-Keys-002 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (93 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-Rational-002 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (109 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-TopObjectProperty-001 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (92 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL one=two [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (465 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.5-003 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (72 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.5-004 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (72 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-001 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (196 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-003 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (201 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-001 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (223 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-003 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (197 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-004 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (284 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-007 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (307 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-008 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (308 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-010 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (242 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-011 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (236 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-012 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (225 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-013 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (241 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-014 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (200 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-015 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (237 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-017 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (233 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-019 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (415 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-022 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (464 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-023 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (322 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-026 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (273 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-027 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (255 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-029 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (228 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-030 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (208 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-032 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (212 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-033 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (193 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-035 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (168 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-040 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (1525 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-102 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (218 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-105 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (155 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-106 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (173 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-107 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (322 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-108 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (407 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-109 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (206 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-110 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (222 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-111 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (229 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-502 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (1114 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-504 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (1336 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-601 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (516 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-602 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (205 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-603 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (214 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-604 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (323 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-608 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (600 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-610 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (277 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-611 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (255 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-612 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (242 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-613 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (275 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-614 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (228 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-615 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (302 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-617 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (250 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-623 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (436 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-626 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (293 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-627 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (273 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-629 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (263 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-630 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (253 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-632 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (245 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-633 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (237 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-641 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (244 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-642 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (272 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-643 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (248 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-644 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (218 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-646 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (186 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-650 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (305 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-909 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (387 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-910 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (308 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-disjointWith-010 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (93 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-maxCardinality-001 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (105 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-miscellaneous-203 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (84 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-miscellaneous-204 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (84 triples, 4 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL Consistent-but-all-unsat [PositiveEntailmentTest]: closure-gap: missing <http://example.com/2a> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://www.w3.org/2002/07/owl#Nothing> (closure 588 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL FS2RDF-literals-ar [ConsistencyTest]: parser: premise: rdf:datatype on a property element with element content (RDF/XML §7.2.16) (at 0)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-DataQCR-001 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/Meg> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> _:b1 (closure 119 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-DisjointUnion-001 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/Stewie> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/Boy> (closure 192 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL New-Feature-ObjectQCR-001 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#minQualifiedCardinality> \"2\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 196 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL rdfbased-sem-restrict-maxqcr-inst-obj-one [PositiveEntailmentTest]: closure-gap: missing <http://www.example.org#x1> <http://www.w3.org/2002/07/owl#sameAs> <http://www.example.org#x2> (closure 134 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-AllDifferent-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/AllDifferent/premises001#Barney> <http://www.w3.org/2002/07/owl#differentFrom> <http://www.w3.org/2002/03owlt/AllDifferent/premises001#Fred> (closure 132 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-AnnotationProperty-002 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> (closure 164 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2000/01/rdf-schema#Class> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/Class/premises003#ex> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> (closure 126 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-005-direct [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/Class/nonconclusions005#c> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> (closure 112 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Class-006 [PositiveEntailmentTest]: closure-gap: missing _:b2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> (closure 129 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-FunctionalProperty-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/FunctionalProperty/premises004#prop> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> (closure 155 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-FunctionalProperty-005 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Restriction> (closure 112 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.2-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.2/premises002#Nothing> <http://www.w3.org/2002/07/owl#equivalentClass> <http://www.w3.org/2002/07/owl#Nothing> (closure 157 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.2-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.2/premises004#notA> <http://www.w3.org/2002/07/owl#complementOf> <http://www.w3.org/2002/03owlt/I5.2/premises004#A> (closure 238 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.2-006 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.2/premises006#AorB> <http://www.w3.org/2002/07/owl#unionOf> _:b1 (closure 421 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.21-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.21/premises002#Amphisbaenidae> <http://www.w3.org/2002/07/owl#disjointWith> <http://www.w3.org/2002/03owlt/I5.21/premises002#Agamidae> (closure 518 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.24-002 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#intersectionOf> _:b1 (closure 125 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.24-003 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#allValuesFrom> <http://www.w3.org/2002/03owlt/I5.24/premises003#A> (closure 147 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.24-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.24/conclusions004#prop> <http://www.w3.org/2000/01/rdf-schema#range> <http://www.w3.org/2002/03owlt/I5.24/conclusions004#A> (closure 163 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.26-009 [PositiveEntailmentTest]: closure-gap: no single blank-node mapping serves every conclusion triple (closure 123 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.3-014 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/x> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://example.org/y> (closure 150 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.3-015 [PositiveEntailmentTest]: closure-gap: missing <http://example.org/p> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <http://example.org/q> (closure 237 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.5-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.5-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#FunctionalProperty> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.8/premises004#john> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> (closure 239 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-010 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.8/premises010#john> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Thing> (closure 233 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-I5.8-017 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/I5.8/premises017#xx> <http://www.w3.org/2002/03owlt/I5.8/premises017#yy> \"1\"^^<http://www.w3.org/2001/XMLSchema#decimal> (closure 113 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-InverseFunctionalProperty-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/InverseFunctionalProperty/premises004#prop> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#InverseFunctionalProperty> (closure 155 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Nothing-002 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#oneOf> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Restriction-005-direct [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#allValuesFrom> <http://www.w3.org/2002/03owlt/Restriction/nonconclusions005#c> (closure 140 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-Restriction-006 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#someValuesFrom> <http://www.w3.org/2002/07/owl#Thing> (closure 123 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-SymmetricProperty-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/SymmetricProperty/premises002#equalityOnA> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#SymmetricProperty> (closure 191 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-SymmetricProperty-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/SymmetricProperty/premises003#path> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#ObjectProperty> (closure 139 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-TransitiveProperty-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/TransitiveProperty/premises002#symProp> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#TransitiveProperty> (closure 174 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-001 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#maxCardinality> \"1\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 150 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-002 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#cardinality> \"1\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 156 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-003 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#maxCardinality> \"2\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 150 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-004 [PositiveEntailmentTest]: closure-gap: missing _:b2 <http://www.w3.org/2002/07/owl#cardinality> \"2\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 174 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-cardinality-006 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#cardinality> \"1\"^^<http://www.w3.org/2001/XMLSchema#nonNegativeInteger> (closure 130 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-complementOf-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/complementOf/premises001#B> <http://www.w3.org/2002/07/owl#complementOf> <http://www.w3.org/2002/03owlt/complementOf/premises001#A> (closure 110 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-201 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V822576> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C110> (closure 4004 triples, 9 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-202 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V8472> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C60> (closure 2960 triples, 9 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-205 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V16561> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C6> (closure 746 triples, 8 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-206 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V21027> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C30> (closure 7689 triples, 11 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-208 [PositiveEntailmentTest]: closure-gap: missing <http://oiled.man.example.net/test#V16457> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://oiled.man.example.net/test#C38> (closure 5010 triples, 9 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-901 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#intersectionOf> _:b3 (closure 215 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-description-logic-903 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#intersectionOf> _:b3 (closure 215 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-differentFrom-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/differentFrom/premises002#Barney> <http://www.w3.org/2002/07/owl#differentFrom> <http://www.w3.org/2002/03owlt/differentFrom/premises002#Wilma> (closure 135 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-distinctMembers-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/distinctMembers/premises001#Fred> <http://www.w3.org/2002/07/owl#differentFrom> <http://www.w3.org/2002/03owlt/distinctMembers/premises001#Barney> (closure 132 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentClass-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/equivalentClass/premises004#c1> <http://www.w3.org/2002/07/owl#equivalentClass> <http://www.w3.org/2002/03owlt/equivalentClass/premises004#c2> (closure 185 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentClass-006 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/2002/07/owl#intersectionOf> _:b3 (closure 149 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentClass-007 [PositiveEntailmentTest]: closure-gap: missing _:b0 <http://www.w3.org/2002/07/owl#intersectionOf> _:b2 (closure 148 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentProperty-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/equivalentProperty/premises004#p> <http://www.w3.org/2002/07/owl#equivalentProperty> <http://www.w3.org/2002/03owlt/equivalentProperty/premises004#q> (closure 203 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-equivalentProperty-005 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/equivalentProperty/premises005#p> <http://www.w3.org/2002/07/owl#equivalentProperty> <http://www.w3.org/2002/03owlt/equivalentProperty/premises005#q> (closure 122 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-extra-credit-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/extra-credit/premises002#N-times-M> <http://www.w3.org/2002/07/owl#sameAs> \"345\"^^<http://www.w3.org/2001/XMLSchema#int> (closure 402 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-extra-credit-003 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/2002/03owlt/extra-credit/premises003#N> (closure 400 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-extra-credit-004 [PositiveEntailmentTest]: closure-gap: missing _:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <http://www.w3.org/2002/03owlt/extra-credit/premises004#N> (closure 400 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-imports-010 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/07/owl#imports> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> (closure 106 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-oneOf-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/oneOf/premises003#myT> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/03owlt/oneOf/premises003#T2> (closure 140 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-oneOf-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/oneOf/premises004#i> <http://www.w3.org/2002/03owlt/oneOf/premises004#p> \"4\"^^<http://www.w3.org/2001/XMLSchema#integer> (closure 164 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-someValuesFrom-001 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/someValuesFrom/premises001#i> <http://www.w3.org/2002/03owlt/someValuesFrom/premises001#p> _:b0 (closure 175 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-someValuesFrom-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#fred> <http://www.w3.org/2002/03owlt/someValuesFrom/premises003#parent> _:b1 (closure 164 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-unionOf-002 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/unionOf/premises002#John> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/03owlt/unionOf/premises002#B> (closure 135 triples, 7 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-unionOf-003 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/unionOf/premises003#A-and-B> <http://www.w3.org/2002/07/owl#unionOf> _:b1 (closure 201 triples, 6 rounds)"
+        },
+        {
+          "suite": "owl-rl",
+          "message": "FAIL WebOnt-unionOf-004 [PositiveEntailmentTest]: closure-gap: missing <http://www.w3.org/2002/03owlt/unionOf/premises004#A-and-B> <http://www.w3.org/2002/07/owl#oneOf> _:b1 (closure 205 triples, 6 rounds)"
+        }
+      ],
+      "skips_and_unsupported": [
+        "SKIP WebOnt-Thing-005 [InconsistencyTest]: semantics-rdf-based-only",
+        "UNSUPPORTED Qualified-cardinality-boolean [PositiveEntailmentTest]: functional-syntax",
+        "UNSUPPORTED Qualified-cardinality-boolean [ConsistencyTest]: functional-syntax",
+        "UNSUPPORTED Qualified-cardinality-restricted-int [PositiveEntailmentTest]: functional-syntax",
+        "UNSUPPORTED Qualified-cardinality-restricted-int [ConsistencyTest]: functional-syntax",
+        "SKIP WebOnt-Thing-005 [InconsistencyTest]: semantics-rdf-based-only",
+        "UNSUPPORTED Qualified-cardinality-boolean [PositiveEntailmentTest]: functional-syntax",
+        "UNSUPPORTED Qualified-cardinality-boolean [ConsistencyTest]: functional-syntax",
+        "UNSUPPORTED Qualified-cardinality-restricted-int [PositiveEntailmentTest]: functional-syntax",
+        "UNSUPPORTED Qualified-cardinality-restricted-int [ConsistencyTest]: functional-syntax"
+      ]
+    },
+    {
+      "name": "owl-dl-inconsistency",
+      "cwd": "repository root",
+      "argv": [
+        "formal/lean4/.lake/build/bin/l4owl-probe",
+        "--dir",
+        "third_party/testing/owl",
+        "--dl",
+        "type-inconsistency.rdf"
+      ],
+      "manifest_path_note": "l4w3c manifest paths were passed as absolute paths under the repository root; equivalent relative paths are shown here.",
+      "exit_code": 1,
+      "score_lines": [
+        "type-inconsistency.rdf InconsistencyTest: 116 pass, 11 fail, 1 skip, 0 unsupported (out of 128)",
+        "type-inconsistency.rdf InconsistencyTest [closure alone]: 49 pass, 78 fail, 1 skip, 0 unsupported (out of 128)",
+        "type-inconsistency.rdf [closure alone]: 49 pass, 78 fail, 1 skip, 0 unsupported (out of 128)",
+        "type-inconsistency.rdf [closure or refutation]: 116 pass, 11 fail, 1 skip, 0 unsupported (out of 128)",
+        "TOTAL [closure alone]: 49 pass, 78 fail, 1 skip, 0 unsupported (out of 128)",
+        "TOTAL [closure or refutation]: 116 pass, 11 fail, 1 skip, 0 unsupported (out of 128)"
+      ],
+      "diagnostics": [
+        "HARNESS-DIAG-OWL type-inconsistency.rdf: cases=128 units=128 triples_parsed=5530 closure_rounds=718 clashes=116 cap_hits=0 parse_failures=0 refuter_passes=67 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0 wall_ms=3553",
+        "HARNESS-DIAG-OWL TOTAL: cases=128 units=128 triples_parsed=5530 closure_rounds=718 clashes=116 cap_hits=0 parse_failures=0 refuter_passes=67 refuter_flips_to_fail=0 pe_no_negation_goal=0 pe_refuter_budget=0 pe_countermodel=0"
+      ],
+      "failures": [
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL Inconsistent Disjoint Dataproperties [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (129 triples, 2 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL Inconsistent String Pattern with Disjoint Dataproperties [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (124 triples, 2 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL Minus Infinity is not in owl:real [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (135 triples, 2 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL one=two [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (598 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-035 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (180 triples, 2 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-040 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (1537 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-108 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (419 triples, 2 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-502 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (1114 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-504 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (1336 triples, 3 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-909 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (387 triples, 5 rounds)"
+        },
+        {
+          "suite": "owl-dl-inconsistency",
+          "message": "FAIL WebOnt-description-logic-910 [InconsistencyTest]: closure-gap: no clash row fired on a premise asserted inconsistent (308 triples, 4 rounds)"
+        }
+      ],
+      "skips_and_unsupported": [
+        "SKIP WebOnt-Thing-005 [InconsistencyTest]: semantics-rdf-based-only"
+      ]
+    }
+  ],
+  "codex_skill_discovery": {
+    "symlink": ".agents/skills -> ../.claude/skills",
+    "api": "skills/list",
+    "forceReload": true,
+    "results": [
+      {
+        "cwd": ".",
+        "skill_names": [
+          "autonomous-time-discipline",
+          "blockengine",
+          "build-and-test",
+          "choosing-models",
+          "counting-coverage",
+          "crypto-policy",
+          "danbri-function-precrime-checkers",
+          "disk-storage-format",
+          "factoidal-lean-basics",
+          "fast-verify-extract",
+          "fstar-env",
+          "fstar-mcp",
+          "fstar-module-style",
+          "github-and-prs",
+          "github-coauthor-policy",
+          "issue-hygiene",
+          "issue-management",
+          "jsonld-context-cache",
+          "jsoo-debug-bundle",
+          "lean-mwe",
+          "lean-proof",
+          "lean-review",
+          "lean4-performance",
+          "lean4-proof-patterns",
+          "lean4-wasm-export",
+          "lws-solid",
+          "markdown-style",
+          "mcp-setup-readme",
+          "measuring-inference",
+          "node-crypto-haclstar-vc-wasm-build",
+          "npm-release",
+          "obsolescence-sweep",
+          "ocaml-boundary",
+          "perf-benchmarking",
+          "proof-factory",
+          "repo-tour",
+          "session-cost-accounting",
+          "session-economy",
+          "session-restore",
+          "shardborough-storage",
+          "site-and-dashboard",
+          "skos-integrity",
+          "subagent-prompting",
+          "test-suites",
+          "using-factoidal",
+          "workflow-gotchas-debugging"
+        ],
+        "errors": [],
+        "enabled": true
+      },
+      {
+        "cwd": "formal/lean4",
+        "skill_names": [
+          "autonomous-time-discipline",
+          "blockengine",
+          "build-and-test",
+          "choosing-models",
+          "counting-coverage",
+          "crypto-policy",
+          "danbri-function-precrime-checkers",
+          "disk-storage-format",
+          "factoidal-lean-basics",
+          "fast-verify-extract",
+          "fstar-env",
+          "fstar-mcp",
+          "fstar-module-style",
+          "github-and-prs",
+          "github-coauthor-policy",
+          "issue-hygiene",
+          "issue-management",
+          "jsonld-context-cache",
+          "jsoo-debug-bundle",
+          "lean-mwe",
+          "lean-proof",
+          "lean-review",
+          "lean4-performance",
+          "lean4-proof-patterns",
+          "lean4-wasm-export",
+          "lws-solid",
+          "markdown-style",
+          "mcp-setup-readme",
+          "measuring-inference",
+          "node-crypto-haclstar-vc-wasm-build",
+          "npm-release",
+          "obsolescence-sweep",
+          "ocaml-boundary",
+          "perf-benchmarking",
+          "proof-factory",
+          "repo-tour",
+          "session-cost-accounting",
+          "session-economy",
+          "session-restore",
+          "shardborough-storage",
+          "site-and-dashboard",
+          "skos-integrity",
+          "subagent-prompting",
+          "test-suites",
+          "using-factoidal",
+          "workflow-gotchas-debugging"
+        ],
+        "errors": [],
+        "enabled": true
+      }
+    ]
+  },
+  "hygiene_audit": "lean-hygiene-audit: 669 .lean files scanned (comments and string literals stripped first)\n  sorry                0 (must be 0)\n  user axiom           0 (must be 0)\n  native_decide        0 (must be 0)\n  unsafe               0 (must be 0)\n  @[implemented_by]    0 (must be 0)\n  partial def          172 (baseline 172, must not increase)\n  #print axioms        SKIPPED (no --build-log). A grep cannot see through an import; this run did not check dependencies.\n\nlean-hygiene-audit: clean\n",
+  "registry_name_audit": "Registry rule ids: 52\nWith a Lean theorem naming them: 50\nAbsent, and recorded as unproved on the F* side too: 2\nAbsent with no such record -- REAL GAPS: 0\n\nRule-id-shaped tokens that are NOT OWL 2 RL rule ids, ignored (11):\n  cax-adc-dw, cax-dw-comp, cax-eqc, cls-int, cls-maxqc1-comp, dt-branch, dt-rng-intersect, eq-equal, prp-eqp, prp-inv, prp-rfl\n\nAbsent by agreement with the F* side:\n  cls-maxqc3     registry: UNATTEMPTED (F* too)\n  cls-maxqc4     registry: UNATTEMPTED (F* too)\n\nNo gap: every registry rule id the F* side proves is named by a Lean theorem.\n\nThis locates theorems; it does not review them. See the header.\n"
+}

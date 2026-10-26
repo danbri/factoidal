@@ -58,6 +58,7 @@ import L4Factoidal.SPARQL.UpdateParser
 import L4Factoidal.SPARQL.ResultsXml
 import L4Factoidal.SPARQL.ResultsJson
 import L4Factoidal.SPARQL.ResultsCsvTsv
+import L4Factoidal.SPARQL.ResultsRdf
 import L4Factoidal.OWL.QueryEval
 import L4Factoidal.RIF.Saturate
 
@@ -172,6 +173,10 @@ coming after, as in the F* runner). -/
 def mergeDatasets (a b : Dataset) : Dataset :=
   { default := Graph.union a.default b.default, named := a.named ++ b.named }
 
+/-- Give one retrieved RDF document its own blank-node scope. -/
+def scopeFixtureDataset (scope : List String) (ds : Dataset) : Dataset :=
+  ds.scopeBnodes scope
+
 /-- Read and parse every fixture of a test. `.error o` carries the
 outcome to report (skip for a missing file, fail for a parse error). -/
 def loadFixtures (tc : TestCase) (mode : Mode := .rdf11) :
@@ -183,7 +188,7 @@ def loadFixtures (tc : TestCase) (mode : Mode := .rdf11) :
     | some text =>
       match parseDataFile df text mode with
       | .error e => return .error (.fail s!"data parse error in {basename df}: {e}")
-      | .ok d    => ds := mergeDatasets ds d
+      | .ok d    => ds := mergeDatasets ds (scopeFixtureDataset ["data", df] d)
   for (iri, path) in tc.graphData do
     match ← readOpt path with
     | none      => return .error (.skip s!"file missing: {path}")
@@ -192,7 +197,8 @@ def loadFixtures (tc : TestCase) (mode : Mode := .rdf11) :
       | .error e => return .error (.fail s!"graph data parse error in {basename path}: {e}")
       | .ok d    =>
         if h : isIri iri = true then
-          ds := { ds with named := ds.named ++ [{ name := .iri ⟨iri, h⟩, graph := d.default }] }
+          let scopedDs := scopeFixtureDataset ["graph", iri, path] d
+          ds := { ds with named := ds.named ++ [{ name := .iri ⟨iri, h⟩, graph := scopedDs.default }] }
         else return .error (.fail s!"qt:graphData name is not an IRI: {iri}")
   let mut services : List (Iri × Graph) := []
   for (endpoint, path) in tc.serviceData do
@@ -201,8 +207,36 @@ def loadFixtures (tc : TestCase) (mode : Mode := .rdf11) :
     | some text =>
       match parseDataFile path text mode with
       | .error e => return .error (.fail s!"service data parse error in {basename path}: {e}")
-      | .ok d    => services := services ++ [(endpoint, d.default)]
+      | .ok d    =>
+          let scopedDs := scopeFixtureDataset ["service", endpoint, path] d
+          services := services ++ [(endpoint, scopedDs.default)]
   return .ok (ds, services)
+
+/-- Materialise local RDF graphs named directly by query `FROM` and
+`FROM NAMED` clauses. Manifest `qt:data`/`qt:graphData` remains the
+first source; a local `file:` graph absent there is retrieved once and
+installed under its clause IRI so the semantic `applyDataset` function
+can construct the active dataset. Non-local IRIs remain unresolved in
+this offline runner. -/
+def loadQueryDatasetSources (q : Query) (initial : Dataset)
+    (mode : Mode := .rdf11) : IO (Except Outcome Dataset) := do
+  let mut ds := initial
+  for dc in q.dataset do
+    let i := match dc with | .default i | .named i => i
+    if (ds.lookupNamedIri i.val).isNone && i.val.startsWith "file://" then
+      let path := stripFileScheme i.val
+      match ← readOpt path with
+      | none => return .error (.skip s!"query dataset source missing: {path}")
+      | some text =>
+          match parseDataFile path text mode with
+          | .error e =>
+              return Except.error
+                (Outcome.fail s!"query dataset parse error in {basename path}: {e}")
+          | .ok parsed =>
+              let scopedDs := scopeFixtureDataset ["query-source", i.val] parsed
+              ds := { ds with named := ds.named ++
+                [{ name := .iri i, graph := scopedDs.default }] }
+  return .ok ds
 
 /-- What an expected-result file decodes to. -/
 inductive Expected where
@@ -210,8 +244,8 @@ inductive Expected where
   | boolean (b : Bool)
   | graph   (g : Graph)
 
-/-- Decode the expected file by extension (the `.srx/.srj/.tsv/.csv`
-and `.ttl` branches of `run_query_eval_test`). -/
+/-- Decode the expected file by extension. RDF result-set graphs use
+the same decoder after either Turtle or RDF/XML parsing. -/
 def parseExpected (rf text : String) (mode : Mode := .rdf11) : Except String Expected :=
   let ofResult (label : String) (csv : Bool) (r : Except ResultsError QueryResult) :
       Except String Expected :=
@@ -219,6 +253,9 @@ def parseExpected (rf text : String) (mode : Mode := .rdf11) : Except String Exp
     | .ok (.bindings _ rows) => .ok (.rows rows csv)
     | .ok (.boolean b)       => .ok (.boolean b)
     | .error e               => .error s!"{label}: {e}"
+  let ofGraph (g : Graph) : Except String Expected :=
+    if isRdfResultSet g then ofResult "RDF result set" false (decodeRdfResultSet g)
+    else .ok (.graph g)
   if rf.endsWith ".srx" then ofResult "SRX" false (parseSrx text)
   else if rf.endsWith ".srj" then ofResult "SRJ" false (parseSrj text)
   else if rf.endsWith ".tsv" then ofResult "TSV" false (parseTsv text)
@@ -226,12 +263,11 @@ def parseExpected (rf text : String) (mode : Mode := .rdf11) : Except String Exp
   else if rf.endsWith ".ttl" then
     match parseTurtle text (some ("file://" ++ rf)) mode with
     | .error e => .error s!"Turtle: {fmtParseError e}"
-    | .ok g    =>
-      if isRsResultSet g then
-        match decodeRsResultSet g with
-        | some (_, rows) => .ok (.rows rows false)
-        | none           => .error "rs:ResultSet typed but no result-set subject"
-      else .ok (.graph g)
+    | .ok g    => ofGraph g
+  else if rf.endsWith ".rdf" then
+    match RdfXml.parseRdfXml text (some ("file://" ++ rf)) with
+    | .error e => .error s!"RDF/XML: {fmtParseError e}"
+    | .ok g    => ofGraph g
   else .error s!"unknown result format: {basename rf}"
 
 /-- The FAIL text for a SELECT mismatch: counts plus the expected rows
@@ -426,7 +462,10 @@ def runQueryEvaluation (tc : TestCase) (mode : Mode := .rdf11) : IO RunResult :=
   | .ok q =>
   match ← loadFixtures tc mode with
   | .error o => return .ofOutcome o
-  | .ok (ds0, services) =>
+  | .ok (dsLoaded, services) =>
+  match ← loadQueryDatasetSources q dsLoaded mode with
+  | .error o => return .ofOutcome o
+  | .ok ds0 =>
   -- SPARQL 1.1 Entailment Regimes: answers are simple-entailment
   -- answers over the regime's closure of the active graph, with the
   -- minimal datatype map (the suite names no recognised datatypes).
