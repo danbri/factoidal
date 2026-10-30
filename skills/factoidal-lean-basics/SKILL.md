@@ -44,6 +44,14 @@ shard packer, the proofs between them, the costs paid and open):
 ## Toolchain
 
 - Install: `curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y`.
+  A fresh sandbox container has no elan; the session hook installs
+  elan and the pinned toolchain in the background when missing
+  (`tools/sandbox-bootstrap.sh` step 0e, since 2026-09-16) and the
+  orientation block's `gate tools:` line says where it stands. Manual,
+  measured 2026-09-16 behind the proxy: elan-init 1 s (use
+  `--default-toolchain none`), `elan toolchain install "$(cat
+  formal/lean4/lean-toolchain)"` 24 s and 2.9 GB. A Lean gate is never
+  skipped because `lake` is absent (CLAUDE.md iron rule 15).
 - **PATH trap (2026-08-22, paid for):** every fresh harness shell
   needs `export PATH="$HOME/.elan/bin:$PATH"` or `lake` is absent —
   and a gate script that silently loses `lake` LOOKS like it passed.

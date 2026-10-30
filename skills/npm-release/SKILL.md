@@ -148,6 +148,32 @@ Trigger it in one of two ways:
 - `gh workflow run npm-publish.yml --repo danbri/factoidal`
 - push a tag matching `npm-v*`
 
+**Which environment can trigger it (established 2026-09-16).** Every
+publish so far (0.3.0 through 0.7.1, workflow runs 1 to 13) was a
+`workflow_dispatch` from a Claude Code session on the owner's Mac,
+where `gh` is logged in as the owner: for 0.7.1 the version commit
+d3bfa8b and its merge 322a9d3 (author offset +0100, the Mac) were
+followed four seconds later by the dispatch of run 13. From a cloud
+session (Claude Code on the web, commits at +0000), measured
+2026-09-16: `gh` is not preinstalled but installs in 30 s
+(`apt-get install -y gh`, Ubuntu 2.45.0; the session hook now does
+this in step 0e, iron rule 15), and `GH_TOKEN`/`GITHUB_TOKEN` are set
+in the environment. What then blocks the publish is the session's
+own permission layer, not GitHub: `gh workflow run ...`, `gh api ...`
+and a direct `curl` to api.github.com are refused by the Claude Code
+auto-mode classifier as an "Auto-Mode Bypass", so no dispatch
+request is sent. The GitHub integration's own dispatch call answers
+403 "Resource not accessible by integration" (its token has no
+`actions: write`), and the git credential answers HTTP 403 to a tag
+push (branches under `claude/*` only). A session that hits this
+records it in the tracker issue and stops; it never edits the
+permission settings to let itself through. To let cloud sessions
+publish, the owner adds a Bash permission rule for `gh workflow run`
+(Claude Code settings, `permissions.allow`, e.g.
+`Bash(gh workflow run:*)`) and grants the token `actions: write`, or
+runs the command from a Mac session, or presses "Run workflow" on
+the Actions page.
+
 What the workflow does, in order:
 
 1. checks out with `submodules: recursive` — the package's own
@@ -187,14 +213,44 @@ to overwrite.
 | hub notebooks | `node --test tests/hub/*_test.mjs` | 436 pass, 4 fail, 1 skipped (out of 441); the 4 are post17/post18 commit-citation checks that fail only on a shallow clone (0 fail on a full clone) |
 | package suite | `cd npm/factoidal && npm test` | 340 pass, 0 fail, 2 skipped (out of 342) |
 | npm-entry smoke | `node bin/npm-entry/smoke.mjs docs/fstar-extracted/factoidal-npm-entry.js` and the same with `factoidal-npm-entry-lite.js` | 33 pass, 0 fail (out of 33) for each bundle |
-| store host | `node tests/store-host/conformance.mjs` | 24 pass, 0 fail, 10 skipped (out of 34) under Node; Deno was not installed in the 2026-09-16 container, so its run is unmeasured there (2026-09-03: 29 pass, 0 fail (out of 29) under both) |
-| the command | `node tests/store-host/cli.mjs` | 7 pass, 0 fail, 1 skipped (out of 8) under Node; Deno as above (2026-09-03: 13 pass, 0 fail (out of 13) under both) |
+| store host | `node tests/store-host/conformance.mjs` (the Node run also drives the Deno run when `deno` is on PATH; install Deno first, see below) | 24 pass, 0 fail, 10 skipped (out of 34) under Node and the same under Deno 2.9.6 |
+| the command | `node tests/store-host/cli.mjs` (same Deno rule) | 7 pass, 0 fail, 1 skipped (out of 8) under Node and the same under Deno |
 | tarball | `cd npm/factoidal && npm pack --dry-run` | the `files` list above, 193 files (62 on 2026-09-03, before the lite profile, the `api` entry and the mirror of the wasm assets) |
 | wasm copies | the tail of `build-wasm.sh` | "all committed wasm copies agree" |
-| Lean native | `bash formal/lean4/Wasm/native-smoke.sh` | see the script's own report; needs `lake` on PATH (`export PATH=$HOME/.elan/bin:$PATH`), absent from the 2026-09-16 container |
+| Lean native | `bash formal/lean4/Wasm/native-smoke.sh` (needs `lake`: install the Lean toolchain first, see below, then `export PATH=$HOME/.elan/bin:$PATH`) | 128 pass, 0 fail (out of 128), measured 2026-09-16 after installing the toolchain in the same session |
 | browser surface | `tests/web-demos/hub_browser_all.sh` | 54 pass, 0 fail (out of 54 posts); the node harness cannot see browser-only gaps; run this too |
 | bundler and CSP page | `tests/web-demos/bundler_csp_smoke.sh` | PASS, exit 0 |
 | extraction drift | the `Check F\* Extraction` workflow on the release commit, or `./build-ocaml.sh extract --force-full` followed by `git diff --stat -- 'formal/fstar/ocaml-output/*.ml'` | no diff. The publish workflow runs this same check and refuses to publish on drift; it was red on `claude/main` from 2026-09-07 to the 0.8.0 preparation (two OWL modules, re-extracted in commit 93f012e) |
+
+### Tools the gates need: install them, never skip a gate
+
+CLAUDE.md iron rule 15. A gate that was not run because its tool was
+absent is not a gate result, and "could not run in this container" is
+not a line for a release report. Every tool below installs in under a
+minute behind the sandbox proxy; the session hook
+(`tools/sandbox-bootstrap.sh` step 0e) starts the Deno and Lean
+installs in the background when they are missing and prints their
+state in the orientation block. Each agent shell still needs the PATH
+lines. Full recipes and proxy facts: `skills/session-restore/SKILL.md`
+§ Gate tools.
+
+| Tool | Install (fresh container) | Measured 2026-09-16 | PATH |
+| --- | --- | --- | --- |
+| Deno | `curl -fsSL https://deno.land/install.sh \| DENO_INSTALL="$HOME/.deno" sh -s -- -y` | 5 s, 92 MB, Deno 2.9.6 | `export PATH=$HOME/.deno/bin:$PATH` |
+| Lean (elan + pinned toolchain) | `curl -sSf https://elan.lean-lang.org/elan-init.sh \| sh -s -- -y --default-toolchain none`, then `elan toolchain install "$(cat formal/lean4/lean-toolchain)"` | 1 s + 24 s, 2.9 GB, lean4 v4.33.1 | `export PATH=$HOME/.elan/bin:$PATH`; `lake` runs from `formal/lean4/` |
+| F\* + z3 | `skills/fstar-env/SKILL.md` (the hook restores it from the `toolchain-cache` branch) | 2 to 4 min cold | `eval $(opam env --switch=fstar --set-switch)` |
+
+`native-smoke.sh` builds `l4wasm-cli` and `l4block-shard-pack` itself
+(`lake build` of their closure, 114 modules; 2 min 17 s on
+the 2026-09-16 container, cold).
+
+Record, 2026-09-16: the 0.8.0 release report said the Deno store-host
+runs and the Lean native smoke "could not run in this container"
+because `deno` and `lake` were absent. The owner: "Critical failing."
+Both tools were then installed with the commands above and both gates
+ran in the same session; the Deno scores equal the Node scores and the
+native smoke result is in the table. The rows above no longer carry an
+"unmeasured" cell, and never will again.
 
 The package suite runs again inside `npm publish` through
 `prepublishOnly`, so a failure there aborts the publish after the

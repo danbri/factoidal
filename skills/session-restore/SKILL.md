@@ -21,6 +21,48 @@ network fetches. Restore per that branch's README; Emscripten itself
 reinstalls via emsdk (not cached, 1.7 GB), and uv.h comes from
 `apt-get install libuv1-dev`.
 
+## Gate tools: Deno and the Lean toolchain
+
+CLAUDE.md iron rule 15: a gate is never skipped because its tool is
+absent. The store-host suites (`tests/store-host/*.mjs`) run under
+Node and Deno; the Lean native smoke (`formal/lean4/Wasm/native-smoke.sh`)
+needs `lake`. Neither tool is in the container image. Since 2026-09-16
+the hook (`tools/sandbox-bootstrap.sh` step 0e) installs both in the
+background when missing, logging to `.claude-runs/gate-tools-deno.log`
+and `.claude-runs/gate-tools-lean.log`, and prints their state on the
+`gate tools:` line of the orientation block. When that line says
+"installing", wait for the log's last line before running the gate.
+Manual recipe (the same commands the hook runs):
+
+```bash
+# Deno: 5 s, 92 MB (measured 2026-09-16, Deno 2.9.6)
+curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.deno" sh -s -- -y
+export PATH="$HOME/.deno/bin:$PATH"
+deno --version
+
+# Lean: elan 1 s, the pinned toolchain 24 s and 2.9 GB (lean4 v4.33.1)
+curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+export PATH="$HOME/.elan/bin:$PATH"
+elan toolchain install "$(cat formal/lean4/lean-toolchain)"
+(cd formal/lean4 && lake --version)   # lake resolves the pin from formal/lean4/
+```
+
+Proxy facts (2026-09-16): `deno.land`, `dl.deno.land`,
+`elan.lean-lang.org` and `releases.lean-lang.org` answer 200 through
+the sandbox proxy; `github.com` HTML pages answer 403, but elan-init's
+own download of the elan binary succeeded. The npm package `deno` is
+the fallback if the installer script is ever blocked
+(`npm install -g deno`). Every new harness shell starts without these
+PATH entries: put the `export PATH=...` line in the same command as the
+gate, and check that the tool ran (`command -v lake`) before reading a
+silent log as a pass (see `skills/factoidal-lean-basics` § Toolchain,
+the 2026-08-22 PATH trap).
+
+Record: on 2026-09-16 the `@factoidal/core` 0.8.0 release report listed
+these two gates as not run because the tools were absent. The owner
+called it a critical failing. Both installed in under a minute and both
+gates ran in the same session.
+
 ## What restores automatically (the bootstrap hook)
 
 `.claude/hooks/session-start.sh` → `tools/sandbox-bootstrap.sh` runs
@@ -33,6 +75,7 @@ in remote sandboxes on every session start, all steps idempotent:
 | pycottas venv (`_tmp.junk/pycottas-venv`) | PyPI | ~1 min | no-op |
 | **Skill discovery symlinks** `.claude/skills/<n>` | regenerated fresh from `skills/*/` | instant | instant |
 | F\* toolchain (backgrounded) | `toolchain-cache` branch | ~2-4 min | no-op |
+| Deno + elan with the pinned Lean toolchain (backgrounded; step 0e, since 2026-09-16) | deno.land, elan.lean-lang.org, releases.lean-lang.org | ~5 s + ~30 s (2.9 GB) | no-op |
 | fstar-mcp binary + daemon | cargo / running pid | ~2-3 min | instant |
 | **Git freshness** (fetch + auto-ff when behind) | `origin/<branch>` | ~2 s | ~2 s |
 
