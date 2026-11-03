@@ -67,6 +67,34 @@ jobs:
           cp "$tmp"/package/l4-assets/l4factoidal.wasm "$tmp"/package/l4-assets/l4factoidal.mjs "$tmp"/package/l4-assets/l4factoidal.js npm/factoidal/l4-assets/
           cp "$tmp"/package/l4-assets/l4factoidal.wasm "$tmp"/package/l4-assets/l4factoidal.mjs docs/web/hub/assets/l4/
           echo "engine files from @factoidal/core@${version} (npm)"
+      - name: Checked Lean scene runtimes for the renderer Hub pages
+        if: ${{ hashFiles('docs/web/hub/html-webgpu/index.njk', 'docs/web/hub/svg-webgpu/index.njk') != '' }}
+        run: |
+          set -euo pipefail
+          tools/fetch-builds.sh --set foafnaut-web
+          node --input-type=module <<'JS'
+          import {existsSync,readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {execFileSync} from 'node:child_process';
+          const definitions=[
+           ['html-webgpu','manifest.json','factoidal-html-webgpu-runtime-v1',['web-render.mjs','web-render.wasm','render-plan.mjs','render-plan.wasm','gpu-transport.mjs','render-plan-host.mjs','source-witness.json']],
+           ['svg-webgpu','provenance.json','factoidal-svg-webgpu-runtime-v1',['svg_engine.mjs','gpu_transport.mjs','render_plan.mjs','engines/svg-engine.mjs','engines/svg-engine.wasm','engines/render-plan.mjs','engines/render-plan.wasm']],
+          ];
+          for(const [name,manifestName,format,expected]of definitions){
+           if(!existsSync(`docs/web/hub/${name}/index.njk`))continue;
+           const root=`docs/web/hub/${name}/runtime`,record=JSON.parse(readFileSync(`${root}/${manifestName}`,'utf8'));
+           if(record.format!==format||record.kind!=='release'||!/^[0-9a-f]{40}$/.test(record.sourceCommit??''))throw Error(`Unpublished or invalid ${name} runtime`);
+           execFileSync('git',['merge-base','--is-ancestor',record.sourceCommit,'HEAD']);
+           if(!Array.isArray(record.files)||record.files.length!==expected.length)throw Error(`Incomplete ${name} runtime`);
+           const seen=new Set();
+           for(const entry of record.files){
+            if(!expected.includes(entry.path)||seen.has(entry.path))throw Error(`Unexpected ${name} runtime path`);
+            seen.add(entry.path);const bytes=readFileSync(`${root}/${entry.path}`);
+            if(bytes.length!==entry.bytes||createHash('sha256').update(bytes).digest('hex')!==entry.sha256)throw Error(`Stale ${name} runtime file`);
+           }
+           console.log(`Verified published ${name} runtime from ${record.sourceCommit}`);
+          }
+          JS
       - name: Install Eleventy (offline, vendored)
         run: third_party/eleventy/install.sh docs
       - name: Build
