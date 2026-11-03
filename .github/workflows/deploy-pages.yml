@@ -110,6 +110,9 @@ jobs:
         run: git rev-parse HEAD > docs/_site/source-commit.txt
       - uses: actions/upload-pages-artifact@v3
         with:
+          # Re-running the build can leave the prior attempt's artifact in this
+          # workflow run. A distinct attempt name prevents ambiguous deployment.
+          name: github-pages-attempt-${{ github.run_attempt }}
           path: docs/_site
 
   deploy:
@@ -121,3 +124,5 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-attempt-${{ github.run_attempt }}
