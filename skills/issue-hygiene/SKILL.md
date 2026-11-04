@@ -159,6 +159,17 @@ to issue link `]` chars.
 ## Cautions
 
 - **Never bulk-close based on age**. Old isn't dead.
+- **Never close an epic-tracker issue (e.g. #200, #198, profile-specific
+  epics) until every "done criteria" / "Done criterion" checkbox in its
+  body is ticked.** Momentum comments — *"end is in sight"*, *"the
+  momentum is real"*, *"endgame burst"* — describe progress, not
+  completion. The body's done-criterion list is the contract; close
+  only when every box on that list is `[x]`. **Real example**: #200
+  was closed on 2026-05-10 15:14Z by an agent session that posted *"End
+  very much in sight. The momentum is real"* with **11 items remaining**
+  three minutes later — the body's done-criterion ("drop the CLAUDE.md
+  rule #11 caveat") was not met (and is still not met). Reopened
+  2026-05-14.
 - **Never close codename-violator issues** without the migration-epic
   box ticked AND a PR link AND the audit confirming retirement.
 - **Never reorder priority labels** — that's the user's call.
