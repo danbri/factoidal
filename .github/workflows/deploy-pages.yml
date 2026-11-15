@@ -18,8 +18,10 @@ name: Deploy to GitHub Pages
 on:
   # danbri/factoidal-core sends this when docs/** changes on main
   # (.github/workflows/dispatch-pages.yml there; it needs a token secret).
+  # danbri/factoidal-builds sends factoidal-builds-hub-data when its conformance-data
+  # workflow commits new data for the Conformance page (branch hub-data there).
   repository_dispatch:
-    types: [factoidal-core-docs]
+    types: [factoidal-core-docs, factoidal-builds-hub-data]
   # Without the token, the site follows factoidal-core every 3 hours (the
   # schedule of PR 1024, which PR 1025 had cut to daily by mistake).
   schedule:
@@ -51,7 +53,9 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # The Hub's Textnaut pages are made at build time with module.stripTypeScriptTypes
+          # (Node 22.13 or later).
+          node-version: 22
       - name: Engine files for the historical notebooks (factoidal-builds web release)
         id: builds
         continue-on-error: true
@@ -95,6 +99,21 @@ jobs:
            console.log(`Verified published ${name} runtime from ${record.sourceCommit}`);
           }
           JS
+      - name: Data of the Conformance page (factoidal-builds, branch hub-data)
+        # Written and kept with its history by conformance-data.yml in danbri/factoidal-builds.
+        # Without it the page says that this build has no data.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          test -d docs/web/hub/conformance || exit 0
+          # By commit, so a just-pushed commit is not hidden by the branch URL's cache.
+          sha="$(git ls-remote https://github.com/danbri/factoidal-builds.git refs/heads/hub-data | cut -f1)"
+          test -n "$sha"
+          for f in data.json history.json; do
+            curl -fsS --retry 3 -o "docs/web/hub/conformance/$f" "https://raw.githubusercontent.com/danbri/factoidal-builds/$sha/conformance/$f"
+          done
+          node -e 'for (const f of ["data.json","history.json"]) JSON.parse(require("fs").readFileSync("docs/web/hub/conformance/"+f,"utf8"))'
+          echo "Conformance data from factoidal-builds hub-data $sha"
       - name: Install Eleventy (offline, vendored)
         run: third_party/eleventy/install.sh docs
       - name: Build
