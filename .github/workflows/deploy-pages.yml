@@ -124,6 +124,20 @@ jobs:
           done
           node -e 'for (const f of ["data.json","history.json"]) JSON.parse(require("fs").readFileSync("docs/web/hub/conformance/"+f,"utf8"))'
           echo "Conformance data from factoidal-builds hub-data $sha"
+      - name: Data of the Data and documents page (factoidal-builds, branch hub-data, specs/)
+        # Written by the same conformance-data.yml (core tests/browser-wpt/specs-data.py).
+        # Without it the page says that this build has no data.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          test -d docs/web/hub/specs || exit 0
+          sha="$(git ls-remote https://github.com/danbri/factoidal-builds.git refs/heads/hub-data | cut -f1)"
+          test -n "$sha"
+          for f in data.json history.json records.csv; do
+            curl -fsS --retry 3 -o "docs/web/hub/specs/$f" "https://raw.githubusercontent.com/danbri/factoidal-builds/$sha/specs/$f"
+          done
+          node -e 'for (const f of ["data.json","history.json"]) JSON.parse(require("fs").readFileSync("docs/web/hub/specs/"+f,"utf8"))'
+          echo "Data and documents data from factoidal-builds hub-data $sha"
       - name: Install Eleventy (offline, vendored)
         run: third_party/eleventy/install.sh docs
       - name: Build
