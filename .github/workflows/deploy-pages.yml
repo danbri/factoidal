@@ -143,6 +143,19 @@ jobs:
       - name: Build
         working-directory: docs
         run: npx @11ty/eleventy --output=_site
+      - name: Hub copies of openly licensed pages (factoidal-builds third_party/realpages)
+        # Foafnaut and Textnaut on the Hub can not read other sites; they show the pages listed in
+        # labs/demos/foafnaut/realpages/hub-copies.json from these copies, with each page's licence
+        # and attribution (docs/web/hub/foafnaut/copies.mjs). Without them those links open in a new tab.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          test -f tools/hub-copies.mjs || exit 0
+          tmp="$(mktemp -d)"
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/danbri/factoidal-builds.git "$tmp/builds"
+          git -C "$tmp/builds" sparse-checkout set third_party/realpages
+          node tools/hub-copies.mjs --realpages "$tmp/builds/third_party/realpages" --out docs/_site/web/hub/foafnaut/copies
+          echo "Hub copies from factoidal-builds $(git -C "$tmp/builds" rev-parse HEAD)"
       - name: Check Pages link integrity (advisory)
         continue-on-error: true
         run: |
