@@ -1289,3 +1289,25 @@ LOAD) requires I/O effects. Strategy:
 
 - Low\* rewrite for standalone C extraction via KaRaMeL
 - CI: verify F\* → extract → test → sign
+
+## Known narrow rewrite: OWL.QueryRewrite max-cardinality anchor
+
+Moved here from CLAUDE.md on 2026-11-26. Tracked in https://github.com/danbri/factoidal/issues/236.
+
+`OWL.QueryRewrite.fst` — N=1 qualified `CE_MaxCardinality` rewrite
+emits an anchor triple `?subj P ?_mxqc1_anchor_<k>` to make parent7
+pass. The anchor silently drops vacuous-truth individuals (zero
+`P`-edges satisfy max-1) and OWL Full punned class-individuals — that
+narrowness remains. The internal-variable LEAK the 2026-07-09 strict
+runner exposed (`?_sv_`/`?_mc_`/`?_mxqc1_` vars appearing in `SELECT *`
+result rows) is FIXED (task #100): `OWL.QueryEval.eval_select_query_owl`
+strips rewrite-internal vars from the FINAL user projection only, via
+`SPARQL11.Algebra.strip_rewrite_internal_vars`. It must stay at the
+top level — inner `wrap_distinct_over_ggp` Select_All sub-selects
+deliberately re-expose the anchor var so the enclosing pattern can JOIN
+on it (simple5), so stripping inside them decorrelates the join. The
+regime suite is at 70 pass, 0 fail (out of 70; re-measured 2026-07-10). Tracked in **#236**. Generalise from anchor
+→ UNION as documented there before relying on this rewrite for OWL DL
+outside the entailment regime suite (the anchor still MULTIPLIES rows
+per P-edge and drops vacuous-truth individuals).
+

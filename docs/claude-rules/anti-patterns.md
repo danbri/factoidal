@@ -337,3 +337,108 @@ stable — do not renumber.
 
     Closing an epic on momentum erases the tracker the user relies
     on to know what's still open. Don't do it.
+
+## CLAUDE.md anti-patterns 26 to 34 (full text)
+
+Moved here from CLAUDE.md on 2026-11-26, when CLAUDE.md was cut to one line per
+anti-pattern. The numbers are the CLAUDE.md numbers, which commit messages cite.
+They are not the numbers of the list above.
+
+26. **Three language bans** in prose AND code comments (owner
+    correction, 2026-08-23). Rewrite table:
+    `skills/markdown-style/SKILL.md`.
+    (a) **Sycophantic adjectives**: `honest`, `genuine`, `important`,
+    `critical`, `big-picture`, `headline`, `key insight`, `key
+    finding`.
+    (b) **Aphorisms** — a short balanced sentence written to sound
+    like a maxim. Banned examples from this repo: "A vacuous truth is
+    not an entailment", "a cap that hides which test it costs is a
+    silent cap", "Withholding is sound; manufacturing emptiness is
+    not". Write the rule as a rule. Also banned: "not X, but Y"
+    contrast pairs, and telling the reader which of your points
+    matters ("worth noting", "the point is", "this matters
+    because"). These are named patterns in the published catalogue of
+    Claude writing tics.
+    (c) **Metaphor in any statement of a SEMANTIC RULE.** "A spelling
+    difference is not a value difference" was metaphor AND factually
+    wrong — `"colour"` and `"color"` ARE different `xsd:string`
+    values. The actual rule is about whether a datatype's LEXICAL
+    MAPPING is injective. Use the specification's own term from
+    [`docs/w3c-glossary.md`](docs/w3c-glossary.md); if the term is
+    missing, add it there first.
+27. Landing an old-branch agent commit onto a much newer tip silently
+    drops `build-ocaml.sh` module-list entries (auto-merge) and
+    consumer `.ml` changes — the build exits 0 but the feature isn't
+    built. Verify the module list + force ancestor-safe consumer files;
+    prefer a dedicated landing agent. Full text: hazard #11 in
+    `skills/workflow-gotchas-debugging/SKILL.md`.
+28. An audit that finds nothing is evidence about the AUDIT's reach
+    before it is evidence about the code. State the method next to the
+    result, and pick one that can see the failure you are looking for.
+    (2026-08-23: a squashed-module-name audit of the Lean port gap
+    reported "no other false negative"; four modules, 1,298 F* lines,
+    were already covered — the method cannot see a consolidation or a
+    substantive rename, and its silence about exactly those was read as
+    coverage. The reported figure was 120 of 220; the real one was 125.
+    Full text: hazard #28 in `skills/workflow-gotchas-debugging`.)
+29. A theorem whose hypothesis restates its conclusion type-checks
+    and proves nothing. Before claiming a theorem discharges an
+    obligation, unfold the conclusion and check no premise contains it;
+    a proof body of `exact h` is the tell. Delete such a theorem, never
+    weaken it -- it makes commit messages and design docs claim the
+    obligation is met. (2026-08-23, `Cottas.PresenceWriter`: a
+    `buildPresence_correct` under the heading "the producer-side
+    obligation, closed" took `BuiltCorrectly` with re-indexed bounds as
+    a hypothesis. Full text: hazard #29 in
+    `skills/workflow-gotchas-debugging`.)
+30. A measurement tool must derive its inputs from the repository on
+    every run. A cached file list reports the cache, not the tree, and
+    says nothing about being old. (2026-08-23:
+    `tools/lean-port-gap.py` read its Lean module list from the
+    session scratchpad and reported a module as not covered minutes
+    after its Lean file landed; the same cache would have made the
+    tool crash on a fresh container. Fail loudly on an empty walk, and
+    write generated reports to a temp path. Full text: hazard #30 in
+    `skills/workflow-gotchas-debugging`.)
+31. Coverage is an explicit decision, never a name resemblance. A
+    matching last name component is a suggestion to audit, not a
+    result; and a lookup table whose misses fall through to a
+    heuristic cannot report its own breakage. (2026-08-23: adding
+    `HDT/Store.lean` made `SPARQL11.Store` — 1,452 lines, unported —
+    vanish from the Lean port gap's not-covered list, because both end
+    in `Store`. The audit found seven such false positives and two
+    aliases pointing at a Lean module that does not exist, hidden
+    because the leaf rule matched something else. The reported count
+    had been over by five. A count that moves without a cause is a bug
+    report: chase it before writing the number down. Full text: hazard
+    #31 in `skills/workflow-gotchas-debugging`.)
+32. A hub post's live cells run against the js/npm bundle, not the
+    native binary. A docs landing that adds cells calling a new F\*
+    feature is NOT docs-only — rebuild the bundle (the js build
+    incrementally SKIPS npm-entry; force it) and gate on `node --test
+    tests/hub/postNN` AND the headless-browser sweep
+    `tests/web-demos/hub_browser_all.sh` — the node harness binds
+    `fn` to the node package, so it cannot see browser-surface gaps
+    (missing hub.njk wrappers, Turtle-vs-N-Quads calling-convention
+    mismatches: two owner-reported live breakages, 2026-08-07/08).
+    Full text: hazards #12 and #22 in the same skill.
+33. A `.ml` under `ocaml-output/` captured between `fstar.exe --codegen
+    OCaml` and `./ocaml-patches.sh` compiles and is missing every glue
+    realisation. Three Lean-titled commits swept such files into git on
+    2026-08-24; the shipping linux binary was rebuilt from them and lost
+    the COTTAS on-disk companion chain, the SPARQL extension-function
+    registry, the Parquet footer glue and the SHACL `sh:sparql` marker
+    for two days, with `git status` clean and every suite green. Commit
+    `.ml` only after a COMPLETE `extract`, stage it by explicit path,
+    and never let a commit carry files its subject does not name. Full
+    text: hazard #34 in `skills/workflow-gotchas-debugging`.
+34. A routing change that moves query shapes from the reference evaluator
+    to a backend runner must be gated by a query only the reference
+    semantics decide (EXISTS/NOT EXISTS, MINUS, OPTIONAL+FILTER,
+    sub-SELECT) on the path that changed. (2026-09-02: the WASM/CLI query
+    op was routed through the physical-plan runners without
+    `env.dataset`; FILTER NOT EXISTS answered zero rows for a day while
+    `lake build`, native-smoke, the hub suite and CI were all green, none
+    of which ran an EXISTS query through that path. Found by
+    `tools/w3c-persisted-census.sh`. Full text: hazard #35 in
+    `skills/workflow-gotchas-debugging`.)

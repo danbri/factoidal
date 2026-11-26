@@ -7,6 +7,14 @@ description: Work with Factoidal's Lean 4 tree under formal/lean4/, including sc
 
 ## What exists (started 2026-08-22; re-measure before scope claims)
 
+Working directory rule (moved from CLAUDE.md 2026-11-26): run every
+`lake build`, `lake exe` and `lake env` with `formal/lean4/` as the
+explicit working directory of that same command, for example
+`cd formal/lean4 && lake build`. Run git at the repository root. Do not
+depend on a `cd` from an earlier tool call. Never run `lake` at the
+repository root. On 2026-08-31 this was missed several times and
+produced invalid root-level Lake failures.
+
 `formal/lean4/` is a self-contained lake project, library name
 `L4Factoidal` (naming deliberately not finalised — owner: "don't rush
 that"). Workstream + continuation ladder:
